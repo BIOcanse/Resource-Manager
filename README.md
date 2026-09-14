@@ -1,31 +1,32 @@
-# Resource Manager / 资源管理器
+# Resource Manager
 
-Windows 资源监控与调度工具。
+Resource Manager is a Windows desktop application for monitoring resource usage and controlling how applications share CPU, memory, and GPUs.
 
-本项目由作者维护，不接受外部贡献或 Pull Request。
+## Features
 
-## 构建
+- **Application-level monitoring.** View CPU, memory, GPU, disk, and network activity by application or individual process. Sort resource tables and explore visual usage breakdowns.
+- **CPU scheduling.** Use automatic scheduling or per-application settings to control CPU priorities, core placement, and exclusive allocation.
+- **Memory management.** Configure per-application memory policies and periodic working-set trimming.
+- **GPU placement.** Set preferred GPUs and adjust GPU performance scores for scheduling. Optional GPU Shim support provides additional placement options for supported applications.
+- **Shared GPU memory accounting.** Distinguish private and shared allocations, with shared allocations apportioned among the processes using them.
+- **Customizable monitoring.** Choose dashboard items, layouts, colors, and update frequencies.
+- **Software recognition and profiles.** Bundled software definitions provide classifications and default scores. User overrides are stored separately from defaults and automatically discovered installation paths.
+- **Scheduling visibility.** Inspect scheduling scores, actions, and optimization reports.
+- **Background operation.** Run the backend as a Windows service, keep the desktop interface in the system tray, and optionally start at sign-in.
+- **Local APIs and adapter SDK.** Access monitoring data and integrate with the resource-management service.
 
-需要 Windows x64、.NET 10 SDK、Node.js 22.18 或更新版本、Zig 0.16.0 和 MinGW-w64 GCC/G++。将编译器加入 PATH。
+Hardware readings depend on available drivers and providers. GPU placement support depends on the application's rendering API and device lifecycle.
 
-在 `Resource Manager/Resource Manager-APP/ClientApp` 运行 `npm ci`，然后在仓库根目录运行：
+## Download
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "Resource Manager/publish-all-win-x64.ps1" -SkipStop
-```
+Get the Windows x64 beta from the [latest release](https://github.com/BIOcanse/Resource-Manager/releases/latest).
 
-输出位于 `Resource Manager/Bin`。桌面界面需要 Microsoft Edge WebView2 Runtime。
+Microsoft Edge WebView2 Runtime is required. The beta includes the .NET runtime. Preserve your Config and UserData folders when updating.
 
-## 许可与致谢
+## License and Acknowledgements
 
-项目采用 [Apache-2.0](LICENSE)。第三方组件保留各自许可，完整致谢见应用设置和 [第三方声明](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md)。感谢每一位上游作者和维护者。
+Resource Manager is licensed under [Apache-2.0](LICENSE). Third-party components retain their own licenses.
 
----
-
-Resource monitoring and scheduling for Windows.
+Our sincere thanks to Microsoft, the .NET Foundation, and every upstream author and maintainer whose work makes this project possible. All dependencies are acknowledged, including those whose licenses do not require attribution. See the application's Credits page and [Third-Party Notices](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md).
 
 This project is maintained by the author. External contributions and pull requests are not accepted.
-
-Build on Windows x64 with .NET 10 SDK, Node.js 22.18 or newer, Zig 0.16.0 and MinGW-w64 GCC/G++ on PATH. Run `npm ci` in the ClientApp directory, then the command above. Build output is in `Resource Manager/Bin`. The desktop interface requires Microsoft Edge WebView2 Runtime.
-
-Licensed under Apache-2.0. Third-party components retain their own licenses. Our sincere thanks to every upstream author and maintainer.
