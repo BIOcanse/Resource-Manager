@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>ResourceManager.Adapter.SharedMemory</AssemblyName>
+    <RootNamespace>ResourceManager.Adapter.SharedMemory</RootNamespace>
+    <AdapterNativeRoot>$(MSBuildProjectDirectory)\..\..\zig</AdapterNativeRoot>
+    <AdapterNativeZigExecutable Condition="'$(AdapterNativeZigExecutable)' == ''">zig</AdapterNativeZigExecutable>
+    <AdapterNativeOptimize Condition="'$(AdapterNativeOptimize)' == '' and '$(Configuration)' == 'Debug'">Debug</AdapterNativeOptimize>
+    <AdapterNativeOptimize Condition="'$(AdapterNativeOptimize)' == ''">ReleaseFast</AdapterNativeOptimize>
+    <AdapterNativeInstallRoot>$(AdapterNativeRoot)\zig-out\msbuild\$(AdapterNativeOptimize)</AdapterNativeInstallRoot>
+    <AdapterNativeOutput>$(AdapterNativeInstallRoot)\bin\ResourceManager.Adapter.Native.dll</AdapterNativeOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ResourceManager.Adapter.Abstractions\ResourceManager.Adapter.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <AdapterNativeSource Include="$(AdapterNativeRoot)\build.zig" />
+    <AdapterNativeSource Include="$(AdapterNativeRoot)\src\**\*.zig" />
+    <None Include="$(AdapterNativeOutput)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="ResourceManager.Adapter.Native.dll"
+          ExcludeFromSingleFile="true"
+          Visible="false" />
+  </ItemGroup>
+  <Target Name="BuildAdapterNative"
+          BeforeTargets="PrepareForBuild"
+          Inputs="@(AdapterNativeSource)"
+          Outputs="$(AdapterNativeOutput)"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdapterNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(AdapterNativeRoot)"
+          Command="&quot;$(AdapterNativeZigExecutable)&quot; build --prefix &quot;$(AdapterNativeInstallRoot)&quot; -Doptimize=$(AdapterNativeOptimize)" />
+  </Target>
+</Project>

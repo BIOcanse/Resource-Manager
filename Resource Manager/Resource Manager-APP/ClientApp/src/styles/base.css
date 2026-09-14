@@ -1,0 +1,53 @@
+/* Base Reset */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body[data-font-smoothing="system"] {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: auto;
+}
+
+body[data-font-smoothing="grayscale"] {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
+}
+
+body[data-font-smoothing="disabled"] {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+}
+
+html,
+body,
+#root {
+  scrollbar-color: var(--line) transparent;
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  height: 100%;
+  color: var(--text);
+  overflow: hidden;
+  --modal-viewport-top: var(--shellbar-height);
+  --toast-viewport-top: calc(var(--shellbar-height) + 12px);
+}
+
+#root {
+  min-height: 100%;
+}
+
+body[data-page="components"] {
+  --modal-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height));
+  --toast-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height) + 12px);
+}

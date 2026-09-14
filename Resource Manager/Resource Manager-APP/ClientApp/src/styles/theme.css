@@ -1,0 +1,169 @@
+/* Theme Tokens */
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --bg: color(display-p3 0.958 0.970 0.972);
+  --surface: color(display-p3 1 1 0.995);
+  --surface-soft: color(display-p3 0.982 0.992 0.988);
+  --surface-strong: color(display-p3 0.924 0.950 0.944);
+  --table-header-bg: color(display-p3 0.976 0.986 0.982);
+  --hover-bg: color(display-p3 0.952 0.982 0.974);
+  --text: color(display-p3 0.090 0.125 0.112);
+  --muted: color(display-p3 0.390 0.448 0.426);
+  --line: color(display-p3 0.840 0.878 0.866);
+  --line-soft: color(display-p3 0.925 0.948 0.940);
+  --divider: color(display-p3 0.830 0.838 0.840);
+  --divider-soft: color(display-p3 0.900 0.905 0.906);
+  --accent: color(display-p3 0.055 0.560 0.486);
+  --accent-strong: color(display-p3 0.040 0.435 0.380);
+  --accent-soft: color(display-p3 0.930 0.982 0.970);
+  --control-disabled-bg: color-mix(in oklab, var(--surface-strong) 58%, var(--surface));
+  --control-disabled-border: color-mix(in oklab, var(--line) 72%, var(--surface));
+  --control-disabled-text: var(--muted);
+  --warn: color(display-p3 0.735 0.460 0.070);
+  --warn-soft: color(display-p3 1 0.972 0.890);
+  --danger: color(display-p3 0.700 0.205 0.205);
+  --danger-soft: color(display-p3 1 0.925 0.925);
+  --shell-bg: color(display-p3 1 1 0.995 / 0.96);
+  --badge-bg: color(display-p3 0.940 0.934 0.900);
+  --empty-bg: color(display-p3 1 1 0.995 / 0.56);
+  --resource-empty: color(display-p3 1 1 0.995);
+  --on-accent: color(display-p3 1 1 1);
+  --backdrop: color(display-p3 0.090 0.125 0.112 / 0.34);
+  --shadow: 0 14px 34px color(display-p3 0.110 0.150 0.140 / 0.1);
+  --modal-shadow: 0 24px 80px color(display-p3 0.110 0.150 0.140 / 0.20);
+  --shellbar-height: 42px;
+  --managementbar-height: 44px;
+  --workspace-max-width: 1800px;
+  --app-shell-x-padding: 16px;
+
+  /* Refinement layer: radius / layered elevation / edge highlight / hairline.
+     elev-* reference --shadow-color so light-family themes only re-point that. */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --shadow-color: 0.110 0.150 0.140;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.05), 0 2px 6px color(display-p3 var(--shadow-color) / 0.06);
+  --elev-2: 0 2px 6px color(display-p3 var(--shadow-color) / 0.08), 0 10px 26px color(display-p3 var(--shadow-color) / 0.10);
+  --elev-3: 0 10px 28px color(display-p3 var(--shadow-color) / 0.12), 0 28px 68px color(display-p3 var(--shadow-color) / 0.18);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.60);
+  --hairline: color(display-p3 var(--shadow-color) / 0.10);
+  --text-muted: var(--muted);
+  --accent-contrast: var(--on-accent);
+  --border-strong: var(--line);
+  --edge: var(--line-soft);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: color(display-p3 0.078 0.086 0.090);
+  --surface: color(display-p3 0.118 0.130 0.132);
+  --surface-soft: color(display-p3 0.145 0.160 0.158);
+  --surface-strong: color(display-p3 0.180 0.200 0.196);
+  --table-header-bg: color(display-p3 0.135 0.150 0.150);
+  --hover-bg: color(display-p3 0.165 0.188 0.182);
+  --text: color(display-p3 0.875 0.900 0.890);
+  --muted: color(display-p3 0.635 0.675 0.658);
+  --line: color(display-p3 0.255 0.286 0.278);
+  --line-soft: color(display-p3 0.205 0.228 0.222);
+  --divider: color(display-p3 0.250 0.255 0.258);
+  --divider-soft: color(display-p3 0.195 0.200 0.202);
+  --accent: color(display-p3 0.175 0.675 0.590);
+  --accent-strong: color(display-p3 0.260 0.760 0.672);
+  --accent-soft: color(display-p3 0.130 0.210 0.195);
+  --warn: color(display-p3 0.825 0.595 0.210);
+  --warn-soft: color(display-p3 0.245 0.190 0.105);
+  --danger: color(display-p3 0.845 0.335 0.320);
+  --danger-soft: color(display-p3 0.250 0.125 0.125);
+  --shell-bg: color(display-p3 0.112 0.124 0.126 / 0.96);
+  --badge-bg: color(display-p3 0.220 0.190 0.115);
+  --empty-bg: color(display-p3 0.125 0.138 0.140 / 0.56);
+  --resource-empty: color(display-p3 0.105 0.116 0.118);
+  --on-accent: color(display-p3 0.040 0.060 0.056);
+  --backdrop: color(display-p3 0.020 0.025 0.026 / 0.56);
+  --shadow: 0 14px 34px color(display-p3 0.020 0.025 0.026 / 0.34);
+  --modal-shadow: 0 24px 80px color(display-p3 0.020 0.025 0.026 / 0.55);
+  --shadow-color: 0.000 0.004 0.006;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.30), 0 2px 8px color(display-p3 var(--shadow-color) / 0.28);
+  --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 12px 32px color(display-p3 var(--shadow-color) / 0.40);
+  --elev-3: 0 12px 32px color(display-p3 var(--shadow-color) / 0.50), 0 32px 72px color(display-p3 var(--shadow-color) / 0.58);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.05);
+  --hairline: color(display-p3 1 1 1 / 0.06);
+}
+
+:root[data-theme="lowContrast"] {
+  color-scheme: light;
+  --bg: color(display-p3 0.900 0.914 0.902);
+  --surface: color(display-p3 0.936 0.946 0.932);
+  --surface-soft: color(display-p3 0.912 0.928 0.916);
+  --surface-strong: color(display-p3 0.840 0.862 0.852);
+  --table-header-bg: color(display-p3 0.888 0.904 0.894);
+  --hover-bg: color(display-p3 0.870 0.895 0.884);
+  --text: color(display-p3 0.180 0.205 0.195);
+  --muted: color(display-p3 0.430 0.465 0.450);
+  --line: color(display-p3 0.740 0.765 0.752);
+  --line-soft: color(display-p3 0.805 0.830 0.818);
+  --divider: color(display-p3 0.785 0.792 0.794);
+  --divider-soft: color(display-p3 0.842 0.848 0.850);
+  --accent: color(display-p3 0.185 0.520 0.455);
+  --accent-strong: color(display-p3 0.120 0.395 0.350);
+  --accent-soft: color(display-p3 0.820 0.880 0.858);
+  --warn: color(display-p3 0.650 0.440 0.120);
+  --warn-soft: color(display-p3 0.925 0.875 0.760);
+  --danger: color(display-p3 0.610 0.245 0.235);
+  --danger-soft: color(display-p3 0.905 0.800 0.792);
+  --shell-bg: color(display-p3 0.936 0.946 0.932 / 0.96);
+  --badge-bg: color(display-p3 0.862 0.842 0.752);
+  --empty-bg: color(display-p3 0.936 0.946 0.932 / 0.56);
+  --resource-empty: color(display-p3 0.930 0.940 0.928);
+  --on-accent: color(display-p3 0.960 0.976 0.968);
+  --backdrop: color(display-p3 0.180 0.205 0.195 / 0.26);
+  --shadow: 0 14px 34px color(display-p3 0.180 0.205 0.195 / 0.08);
+  --modal-shadow: 0 24px 80px color(display-p3 0.180 0.205 0.195 / 0.16);
+  --shadow-color: 0.180 0.205 0.195;
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.45);
+  --hairline: color(display-p3 var(--shadow-color) / 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --bg: color(display-p3 0.078 0.086 0.090);
+    --surface: color(display-p3 0.118 0.130 0.132);
+    --surface-soft: color(display-p3 0.145 0.160 0.158);
+    --surface-strong: color(display-p3 0.180 0.200 0.196);
+    --table-header-bg: color(display-p3 0.135 0.150 0.150);
+    --hover-bg: color(display-p3 0.165 0.188 0.182);
+    --text: color(display-p3 0.875 0.900 0.890);
+    --muted: color(display-p3 0.635 0.675 0.658);
+    --line: color(display-p3 0.255 0.286 0.278);
+    --line-soft: color(display-p3 0.205 0.228 0.222);
+    --divider: color(display-p3 0.250 0.255 0.258);
+    --divider-soft: color(display-p3 0.195 0.200 0.202);
+    --accent: color(display-p3 0.175 0.675 0.590);
+    --accent-strong: color(display-p3 0.260 0.760 0.672);
+    --accent-soft: color(display-p3 0.130 0.210 0.195);
+    --warn: color(display-p3 0.825 0.595 0.210);
+    --warn-soft: color(display-p3 0.245 0.190 0.105);
+    --danger: color(display-p3 0.845 0.335 0.320);
+    --danger-soft: color(display-p3 0.250 0.125 0.125);
+    --shell-bg: color(display-p3 0.112 0.124 0.126 / 0.96);
+    --badge-bg: color(display-p3 0.220 0.190 0.115);
+    --empty-bg: color(display-p3 0.125 0.138 0.140 / 0.56);
+    --resource-empty: color(display-p3 0.105 0.116 0.118);
+    --on-accent: color(display-p3 0.040 0.060 0.056);
+    --backdrop: color(display-p3 0.020 0.025 0.026 / 0.56);
+    --shadow: 0 14px 34px color(display-p3 0.020 0.025 0.026 / 0.34);
+    --modal-shadow: 0 24px 80px color(display-p3 0.020 0.025 0.026 / 0.55);
+    --shadow-color: 0.000 0.004 0.006;
+    --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.30), 0 2px 8px color(display-p3 var(--shadow-color) / 0.28);
+    --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 12px 32px color(display-p3 var(--shadow-color) / 0.40);
+    --elev-3: 0 12px 32px color(display-p3 var(--shadow-color) / 0.50), 0 32px 72px color(display-p3 var(--shadow-color) / 0.58);
+    --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.05);
+    --hairline: color(display-p3 1 1 1 / 0.06);
+  }
+}

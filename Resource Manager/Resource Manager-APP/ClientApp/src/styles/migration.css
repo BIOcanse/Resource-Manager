@@ -1,0 +1,165 @@
+/* Migration Workbench */
+.migration-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 160px;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.migration-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.migration-form input,
+.migration-form textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.migration-form .standard-select {
+  min-width: 0;
+  width: 100%;
+}
+
+.migration-paths-field {
+  grid-column: 1 / -1;
+}
+
+.migration-risk-toggle {
+  display: flex !important;
+  grid-column: 1 / -1;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.migration-risk-toggle input {
+  width: auto;
+}
+
+.migration-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.migration-roots,
+.migration-plan,
+.migration-records,
+.discovery-sessions,
+.discovery-candidates {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.migration-plan,
+.migration-records,
+.discovery-sessions,
+.discovery-candidates {
+  display: grid;
+  gap: 8px;
+}
+
+.migration-item,
+.migration-record,
+.discovery-item {
+  border-top: 1px solid var(--divider);
+  padding-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.migration-item strong,
+.migration-record strong,
+.discovery-item strong {
+  color: var(--text);
+}
+
+.migration-item code,
+.migration-record code,
+.discovery-item code {
+  overflow-wrap: anywhere;
+}
+
+.discovery-meta {
+  color: var(--muted);
+}
+
+.discovery-evidence-list {
+  display: grid;
+  gap: 4px;
+}
+
+.discovery-evidence {
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
+
+.discovery-evidence span {
+  color: var(--muted);
+}
+
+.migration-discovery {
+  border-top: 1px solid var(--divider);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.migration-discovery label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.migration-discovery input,
+.migration-discovery textarea {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.discovery-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.discovery-item-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.migration-record-header {
+  margin-top: 12px;
+}
+
+.migration-record-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.migration-record-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}

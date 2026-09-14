@@ -1,0 +1,141 @@
+.browser-runtime-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 18px 20px 28px;
+}
+
+.browser-runtime-header,
+.browser-runtime-section-heading,
+.browser-runtime-row {
+  display: flex;
+  align-items: center;
+}
+
+.browser-runtime-header {
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.browser-runtime-header h2,
+.browser-runtime-section-heading h3 {
+  margin: 0;
+}
+
+.browser-runtime-header p,
+.browser-runtime-section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.browser-runtime-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.icon-text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.browser-runtime-current,
+.browser-runtime-browsers {
+  padding: 18px 0;
+}
+
+.browser-runtime-current {
+  border-bottom: 1px solid var(--divider);
+}
+
+.browser-runtime-section-heading {
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.browser-runtime-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-runtime-list {
+  display: grid;
+  gap: 8px;
+}
+
+.browser-runtime-row {
+  min-height: 58px;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--edge-highlight);
+}
+
+.browser-runtime-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 190px;
+  flex: 1;
+}
+
+.browser-runtime-row-main span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-runtime-selection {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: var(--radius-sm);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.browser-runtime-details-button {
+  flex: 0 0 auto;
+}
+
+.browser-runtime-empty {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  align-content: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.browser-runtime-empty strong {
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .browser-runtime-page {
+    padding-inline: 12px;
+  }
+
+  .browser-runtime-header,
+  .browser-runtime-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .browser-runtime-actions {
+    justify-content: flex-start;
+  }
+
+  .browser-runtime-row-main {
+    min-width: 0;
+  }
+}

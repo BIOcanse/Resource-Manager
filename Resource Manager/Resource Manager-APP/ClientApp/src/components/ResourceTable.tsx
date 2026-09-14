@@ -1,0 +1,1202 @@
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import type { JSX } from "solid-js";
+import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
+import { pointerReorderProps } from "../interactions/pointerReorder";
+import { userFacingLabel } from "../presentation/userFacingText";
+import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
+import type { SoftwareContextMenuTarget } from "./SoftwareContextMenu";
+import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../types";
+import { uiText } from "../text";
+import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
+import type { ObservationState } from "../observation/observationState";
+import {
+  moveResourceTableFocus,
+  reconcileResourceTableFocus,
+  resourceTableFocusableRows,
+  type ResourceRowFocusMove
+} from "../resourceTable/resourceTableFocus";
+import {
+  classifyResourceTableContentState,
+  type ResourceTableContentState
+} from "../resourceTable/resourceTableContentState";
+import { resourceTableColumnsEqual } from "../resourceTable/resourceTableColumnIdentity";
+import { projectResourceTableHeat } from "../resourceTable/resourceTableHeat";
+import { formatBytes } from "../utils";
+import { ContentState } from "../ui/patterns/ContentState.tsx";
+import { useInlineEditorFocus } from "../interactions/inlineEditorFocus";
+
+const rowHeight = 38;
+const overscan = 6;
+const slotReserve = 10;
+const minColumnWidth = 56;
+const maxColumnWidth = 520;
+type CssVars = JSX.CSSProperties & Record<string, string>;
+interface RowSearchKeyCacheEntry {
+  signature: string;
+  key: string;
+}
+
+type SoftwareContextMenuHandler = (
+  event: MouseEvent,
+  target: SoftwareContextMenuTarget,
+  returnFocusTarget?: HTMLElement | null
+) => void;
+
+interface ResourceTableProps {
+  editMode: boolean;
+  editingAvailable: boolean;
+  saveState: "idle" | "saving" | "error";
+  mode: ResourceTableViewMode;
+  catalog: MetricDefinition[];
+  metricSnapshot: MetricSnapshot | null;
+  metricObservation: ObservationState;
+  columnSettings: ResourceTableColumnSettings[];
+  snapshot: ResourceTableSnapshot | null;
+  sortColumnId: string;
+  sortDirection: string;
+  expandedSoftwareIds: Record<string, boolean>;
+  highlightedSoftwareId?: string | null;
+  onModeChange: (mode: ResourceTableViewMode) => void;
+  onToggleEdit: () => void;
+  onCancelEdit: () => void;
+  onSortChange: (columnId: string, direction: "asc" | "desc") => void;
+  onToggleColumn: (columnId: string, visible: boolean) => void;
+  onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
+  onToggleExpand: (softwareId: string) => void;
+  onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  onReorderColumn: (sourceColumnId: string, targetColumnId: string) => void;
+}
+
+export function ResourceTable(props: ResourceTableProps) {
+  let editButton: HTMLButtonElement | undefined;
+  let editorRegion: HTMLDivElement | undefined;
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const rowSearchKeyCache = new Map<string, RowSearchKeyCacheEntry>();
+  const sourceRows = createMemo(() => props.snapshot?.rows ?? []);
+  const projectedRows = createMemo(() => projectResourceTableRows(
+    sourceRows(),
+    props.mode,
+    props.expandedSoftwareIds,
+    searchQuery(),
+    rowSearchKeyCache));
+  const visibleRows = createMemo(() => projectResourceTableHeat(projectedRows()));
+  const baseCount = createMemo(() => {
+    const rows = sourceRows();
+    return props.mode === "software"
+      ? rows.filter((row) => row.kind === "software").length
+      : rows.filter((row) => row.kind !== "summary").length;
+  });
+  const visibleBusinessCount = createMemo(() => projectedRows()
+    .filter((row) => row.kind !== "summary").length);
+  const contentState = createMemo(() => props.snapshot === null
+    ? "ready-empty"
+    : classifyResourceTableContentState({
+      businessRowCount: baseCount(),
+      visibleBusinessRowCount: visibleBusinessCount(),
+      searchActive: Boolean(normalizeSearchText(searchQuery()))
+    }));
+  const statusText = createMemo(() => {
+    if (props.mode === "performance") {
+      return "--";
+    }
+
+    const total = baseCount();
+    if (normalizeSearchText(searchQuery())) {
+      return `${projectedRows().filter((row) => row.kind !== "summary").length} / ${total}`;
+    }
+
+    return String(total);
+  });
+  useInlineEditorFocus({
+    active: () => props.editMode,
+    opener: () => editButton,
+    editor: () => editorRegion
+  });
+
+  return (
+    <section
+      class="resource-table-panel"
+      aria-label={uiText.resourceTable.panel}
+    >
+      <div class="panel-header">
+        <div class="resource-table-title">
+          <h2>{props.mode === "performance" ? uiText.resourceTable.performance : uiText.resourceTable.panel}</h2>
+          <Show when={props.mode !== "performance"}>
+            <span id="resourceTableStatus">{statusText()}</span>
+          </Show>
+        </div>
+        <div class="panel-header-actions">
+          <Show when={props.saveState === "error"}>
+            <span class="save-state error">{uiText.common.saveFailed}</span>
+          </Show>
+          <Show when={props.mode !== "performance"}>
+            <label class="resource-table-search">
+              <input
+                type="search"
+                aria-label={uiText.resourceTable.searchPlaceholder}
+                value={searchQuery()}
+                placeholder={uiText.resourceTable.searchPlaceholder}
+                spellcheck={false}
+                onInput={(event) => setSearchQuery(event.currentTarget.value)}
+              />
+            </label>
+          </Show>
+          <ResourceTableModeSwitch mode={props.mode} onModeChange={props.onModeChange} />
+          <Show when={props.editMode}>
+            <button
+              class="secondary"
+              type="button"
+              aria-label="取消资源列表列编辑"
+              disabled={props.saveState === "saving"}
+              onClick={props.onCancelEdit}
+            >
+              取消
+            </button>
+          </Show>
+          <Show when={props.mode !== "performance"}>
+            <button
+              ref={editButton}
+              class="panel-refresh-button"
+              type="button"
+              data-focus-key="resource-table-edit"
+              aria-label={props.editMode ? "保存资源列表列" : "编辑资源列表列"}
+              disabled={!props.editingAvailable || props.saveState === "saving"}
+              onClick={props.onToggleEdit}
+            >
+              {props.editMode
+                ? props.saveState === "saving" ? uiText.common.saving : uiText.resourceTable.save
+                : uiText.resourceTable.edit}
+            </button>
+          </Show>
+        </div>
+      </div>
+      <Show when={props.editMode && props.mode !== "performance"}>
+        <ResourceTableColumnEditor
+          onElement={(element) => { editorRegion = element; }}
+          mode={props.mode}
+          catalog={props.catalog}
+          columns={props.columnSettings}
+          onToggle={props.onToggleColumn}
+        />
+      </Show>
+      <Show
+        when={props.mode === "performance"}
+        fallback={
+          <>
+            <div class="resource-table-retained-surface" hidden={contentState() !== null}>
+              <VirtualResourceTable
+                mode={props.mode}
+                editMode={props.editMode}
+                rows={visibleRows()}
+                snapshot={props.snapshot}
+                columnSettings={props.columnSettings}
+                sortColumnId={props.sortColumnId}
+                sortDirection={props.sortDirection}
+                expandedSoftwareIds={props.expandedSoftwareIds}
+                highlightedSoftwareId={props.highlightedSoftwareId}
+                onSortChange={props.onSortChange}
+                onColumnWidthChange={props.onColumnWidthChange}
+                onToggleExpand={props.onToggleExpand}
+                onSoftwareContextMenu={props.onSoftwareContextMenu}
+                onReorderColumn={props.onReorderColumn}
+              />
+            </div>
+            <Show when={contentState() !== null}>
+              <ResourceTableContentStateView
+                state={contentState()!}
+                onClearSearch={() => setSearchQuery("")}
+              />
+            </Show>
+          </>
+        }
+      >
+        <ResourcePerformancePanel
+          catalog={props.catalog}
+          snapshot={props.metricSnapshot}
+          observation={props.metricObservation}
+        />
+      </Show>
+    </section>
+  );
+}
+
+function ResourceTableContentStateView(props: {
+  readonly state: ResourceTableContentState;
+  readonly onClearSearch: () => void;
+}) {
+  if (props.state === "filtered-empty") {
+    return (
+      <ContentState
+        kind="empty"
+        title="没有匹配的资源"
+        detail="当前筛选条件未匹配任何软件或进程。"
+        actions={<button class="secondary" type="button" onClick={props.onClearSearch}>清除搜索</button>}
+      />
+    );
+  }
+  return (
+    <ContentState
+      kind="empty"
+      title="当前没有可显示的资源"
+      detail="当前视图中没有软件或进程记录。"
+    />
+  );
+}
+
+function ResourceTableModeSwitch(props: {
+  mode: ResourceTableViewMode;
+  onModeChange: (mode: ResourceTableViewMode) => void;
+}) {
+  const modes: Array<{ id: ResourceTableViewMode; label: string }> = [
+    { id: "software", label: uiText.resourceTable.modes.software },
+    { id: "process", label: uiText.resourceTable.modes.process },
+    { id: "performance", label: uiText.resourceTable.modes.performance }
+  ];
+  return (
+    <SegmentedControl
+      value={props.mode}
+      options={modes}
+      ariaLabel={uiText.resourceTable.viewLabel}
+      class="resource-table-mode-switch"
+      itemClass="resource-table-mode-button"
+      onChange={props.onModeChange}
+    />
+  );
+}
+
+function ResourceTableColumnEditor(props: {
+  onElement?: (element: HTMLDivElement) => void;
+  mode: ResourceTableViewMode;
+  catalog: MetricDefinition[];
+  columns: ResourceTableColumnSettings[];
+  onToggle: (columnId: string, visible: boolean) => void;
+}) {
+  const byId = () => new Map(props.columns.map((column) => [column.id, column]));
+  return (
+    <div
+      ref={props.onElement}
+      class="resource-table-column-editor"
+      role="group"
+      aria-label="资源列表列编辑器"
+    >
+      <For each={resourceTableEditorColumns(props.columns, props.catalog, props.mode)}>
+        {(column) => (
+          <label class="resource-table-column-option">
+            <input
+              type="checkbox"
+              disabled={column.id === "name"}
+              checked={byId().get(column.id)?.visible ?? column.visible}
+              onChange={(event) => props.onToggle(column.id, event.currentTarget.checked)}
+            />
+            <span>{column.label}</span>
+          </label>
+        )}
+      </For>
+    </div>
+  );
+}
+
+function VirtualResourceTable(props: {
+  mode: ResourceTableViewMode;
+  editMode: boolean;
+  rows: ResourceTableRow[];
+  snapshot: ResourceTableSnapshot | null;
+  columnSettings: ResourceTableColumnSettings[];
+  sortColumnId: string;
+  sortDirection: string;
+  expandedSoftwareIds: Record<string, boolean>;
+  highlightedSoftwareId?: string | null;
+  onSortChange: (columnId: string, direction: "asc" | "desc") => void;
+  onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
+  onToggleExpand: (softwareId: string) => void;
+  onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  onReorderColumn: (sourceColumnId: string, targetColumnId: string) => void;
+}) {
+  let viewport: HTMLDivElement | undefined;
+  const [scrollTop, setScrollTop] = createSignal(0);
+  const [scrollLeft, setScrollLeft] = createSignal(0);
+  const [viewportHeight, setViewportHeight] = createSignal(360);
+  const [viewportWidth, setViewportWidth] = createSignal(0);
+  const [scrollbarWidth, setScrollbarWidth] = createSignal(0);
+  const [dragColumnId, setDragColumnId] = createSignal<string | null>(null);
+  const [overColumnId, setOverColumnId] = createSignal<string | null>(null);
+  const [activeRowId, setActiveRowId] = createSignal<string | null>(null);
+  const rows = createMemo(() => props.rows);
+  const columnSettingsById = createMemo(() => new Map(props.columnSettings.map((column) => [column.id, column])));
+  const columnOrderIndex = createMemo(() => new Map(props.columnSettings.map((column, index) => [column.id, index])));
+  const baseColumns = createMemo(() => {
+    const source = props.snapshot?.columns ?? resourceTableColumnOptions([], props.mode).filter((column) => column.visible);
+    const order = columnOrderIndex();
+    return source
+      .map((column) => ({
+        ...column,
+        label: gpuMetricLabel(column.id, column.label),
+        width: columnSettingsById().get(column.id)?.width ?? column.width
+      }))
+      .sort((left, right) =>
+        (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+  });
+
+  const clearColumnDragState = () => {
+    setDragColumnId(null);
+    setOverColumnId(null);
+  };
+  const baseTableWidth = createMemo(() => baseColumns().reduce((sum, column) => sum + clampColumnWidth(column.width), 0));
+  const tableWidth = createMemo(() => Math.max(baseTableWidth(), viewportWidth()));
+  const columnWidths = createMemo(() => distributeColumnWidths(baseColumns(), tableWidth()));
+  const columns = createMemo<ResourceTableColumn[]>((previous) => {
+    const next = baseColumns().map((column, index) => ({
+      ...column,
+      width: columnWidths()[index] ?? column.width
+    }));
+    return resourceTableColumnsEqual(previous, next) ? previous : next;
+  }, []);
+  const columnIds = createMemo(() => columns().map((column) => column.id));
+  const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
+  const visibleRange = createMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
+    return { start };
+  });
+  const slots = createMemo(() => {
+    const count = Math.ceil(viewportHeight() / rowHeight) + overscan * 2 + slotReserve;
+    return Array.from({ length: Math.max(1, count) }, (_, index) => index);
+  });
+  let lastScrolledHighlightKey = "";
+  let lastActiveRowIndex = 0;
+  let focusFrame = 0;
+
+  createEffect(() => {
+    const current = activeRowId();
+    const focusable = resourceTableFocusableRows(rows());
+    const currentIndex = focusable.findIndex((row) => row.id === current);
+    if (currentIndex >= 0) {
+      lastActiveRowIndex = currentIndex;
+      return;
+    }
+    setActiveRowId(reconcileResourceTableFocus(
+      focusable,
+      current,
+      lastActiveRowIndex));
+  });
+
+  createEffect(() => {
+    const rowCount = rows().length;
+    if (!viewport || rowCount === 0) {
+      return;
+    }
+    const target = Math.min(
+      scrollTop(),
+      Math.max(0, rowCount * rowHeight - viewportHeight()));
+    if (viewport.scrollTop !== target) {
+      viewport.scrollTop = target;
+    }
+    if (scrollTop() !== target) {
+      setScrollTop(target);
+    }
+  });
+
+  createEffect(() => {
+    const highlightedSoftwareId = props.highlightedSoftwareId;
+    if (!viewport || !highlightedSoftwareId || props.mode !== "process") {
+      return;
+    }
+
+    const rowIndex = rows().findIndex((row) => row.kind === "process" && row.softwareId === highlightedSoftwareId);
+    if (rowIndex < 0) {
+      return;
+    }
+
+    const key = `${highlightedSoftwareId}:${rowIndex}`;
+    if (lastScrolledHighlightKey === key) {
+      return;
+    }
+
+    lastScrolledHighlightKey = key;
+    const nextScrollTop = Math.max(0, rowIndex * rowHeight - rowHeight * 2);
+    viewport.scrollTop = nextScrollTop;
+    setScrollTop(nextScrollTop);
+  });
+
+  onMount(() => {
+    const updateSize = () => {
+      if (viewport) {
+        setViewportHeight(Math.max(180, viewport.clientHeight));
+        setViewportWidth(Math.max(0, viewport.clientWidth));
+        setScrollbarWidth(Math.max(0, viewport.offsetWidth - viewport.clientWidth));
+      }
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    if (viewport) {
+      observer.observe(viewport);
+    }
+    onCleanup(() => observer.disconnect());
+    onCleanup(() => {
+      if (focusFrame) {
+        cancelAnimationFrame(focusFrame);
+      }
+    });
+  });
+
+  const activateRow = (rowId: string, focus: boolean) => {
+    const rowIndex = rows().findIndex((row) => row.id === rowId);
+    if (rowIndex < 0) {
+      return;
+    }
+    const focusableIndex = resourceTableFocusableRows(rows()).findIndex((row) => row.id === rowId);
+    if (focusableIndex >= 0) {
+      lastActiveRowIndex = focusableIndex;
+    }
+    setActiveRowId(rowId);
+    if (!focus || !viewport) {
+      return;
+    }
+
+    const rowTop = rowIndex * rowHeight;
+    const rowBottom = rowTop + rowHeight;
+    let nextScrollTop = viewport.scrollTop;
+    if (rowTop < viewport.scrollTop) {
+      nextScrollTop = rowTop;
+    } else if (rowBottom > viewport.scrollTop + viewport.clientHeight) {
+      nextScrollTop = Math.max(0, rowBottom - viewport.clientHeight);
+    }
+    if (nextScrollTop !== viewport.scrollTop) {
+      viewport.scrollTop = nextScrollTop;
+      setScrollTop(nextScrollTop);
+    }
+
+    queueMicrotask(() => {
+      if (!viewport) {
+        return;
+      }
+      if (focusFrame) {
+        cancelAnimationFrame(focusFrame);
+      }
+      focusFrame = requestAnimationFrame(() => {
+        focusFrame = 0;
+        const element = [...viewport!.querySelectorAll<HTMLElement>("[data-resource-row-id]")]
+          .find((candidate) => candidate.dataset.resourceRowId === rowId);
+        element?.focus({ preventScroll: true });
+      });
+    });
+  };
+
+  const moveActiveRow = (move: ResourceRowFocusMove) => {
+    const next = moveResourceTableFocus(rows(), activeRowId(), move);
+    if (next) {
+      activateRow(next, true);
+    }
+  };
+
+  const openRowContextMenu = (row: ResourceTableRow, element: HTMLElement) => {
+    if (!props.onSoftwareContextMenu || (row.kind !== "software" && row.kind !== "process")) {
+      return;
+    }
+    props.onSoftwareContextMenu(
+      contextMenuEventForElement(element),
+      createSoftwareContextTargetFromRow(row, props.mode, props.expandedSoftwareIds),
+      element);
+  };
+
+  const handleRowKeyDown = (
+    event: KeyboardEvent,
+    row: ResourceTableRow,
+    element: HTMLElement
+  ) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    const move = event.key === "ArrowUp"
+      ? "previous"
+      : event.key === "ArrowDown"
+        ? "next"
+        : event.key === "Home"
+          ? "first"
+          : event.key === "End"
+            ? "last"
+            : null;
+    if (move) {
+      event.preventDefault();
+      moveActiveRow(move);
+      return;
+    }
+    const canExpand = props.mode === "software"
+      && row.kind === "software"
+      && Boolean(row.softwareId)
+      && (row.processCount ?? 0) > 0;
+    if (canExpand) {
+      const expanded = props.expandedSoftwareIds[row.softwareId!] === true;
+      const shouldToggle = event.key === " "
+        || (event.key === "ArrowRight" && !expanded)
+        || (event.key === "ArrowLeft" && expanded);
+      if (shouldToggle) {
+        event.preventDefault();
+        props.onToggleExpand(row.softwareId!);
+        return;
+      }
+    }
+    if (event.key === "Enter"
+      || event.key === "ContextMenu"
+      || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      openRowContextMenu(row, element);
+    }
+  };
+
+  const updateSort = (column: ResourceTableColumn) => {
+    if (!column.sortable) {
+      return;
+    }
+
+    const nextDirection = props.sortColumnId === column.id && props.sortDirection === "desc" ? "asc" : "desc";
+    props.onSortChange(column.id, nextDirection);
+  };
+
+  const startResize = (event: PointerEvent, column: ResourceTableColumn) => {
+    if (!props.editMode) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = clampColumnWidth(column.width);
+    const resize = (moveEvent: PointerEvent) => {
+      const nextWidth = clampColumnWidth(startWidth + moveEvent.clientX - startX);
+      props.onColumnWidthChange(column.id, nextWidth, false);
+    };
+    const stop = (upEvent: PointerEvent) => {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stop);
+      const nextWidth = clampColumnWidth(startWidth + upEvent.clientX - startX);
+      props.onColumnWidthChange(column.id, nextWidth, true);
+    };
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop, { once: true });
+  };
+
+  const resizeByKeyboard = (
+    event: KeyboardEvent,
+    column: ResourceTableColumn
+  ) => {
+    if (!props.editMode
+      || event.altKey
+      || event.ctrlKey
+      || event.metaKey
+      || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    props.onColumnWidthChange(
+      column.id,
+      clampColumnWidth(column.width + direction * 12),
+      false);
+  };
+
+  return (
+    <div
+      class="resource-table-frame"
+      role="table"
+      aria-label={uiText.resourceTable.panel}
+      aria-rowcount={rows().length + 1}
+      aria-colcount={columns().length}
+    >
+      <div
+        class="resource-table-header-clip"
+        role="rowgroup"
+        style={{ "--table-scrollbar-width": `${scrollbarWidth()}px` } satisfies CssVars}
+      >
+        <div
+          class="resource-table-header"
+          role="row"
+          aria-rowindex={1}
+          style={{
+            "grid-template-columns": gridTemplate(),
+            width: `${tableWidth()}px`,
+            transform: `translateX(${-scrollLeft()}px)`
+          }}
+        >
+          <For each={columnIds()}>
+            {(columnId, columnIndex) => {
+              const column = () => columns().find((candidate) => candidate.id === columnId)!;
+              return (
+              <div
+                role="columnheader"
+                aria-colindex={columnIndex() + 1}
+                aria-sort={props.sortColumnId === columnId
+                  ? props.sortDirection === "asc" ? "ascending" : "descending"
+                  : "none"}
+                class="resource-table-head-cell"
+                classList={{
+                  active: props.sortColumnId === columnId,
+                  editing: props.editMode,
+                  "drag-source": dragColumnId() === columnId,
+                  "drag-over": overColumnId() === columnId && dragColumnId() !== null && dragColumnId() !== columnId
+                }}
+                {...pointerReorderProps(() => ({
+                  enabled: props.editMode,
+                  group: "resource-table-column",
+                  sourceId: columnId,
+                  onStart: setDragColumnId,
+                  onOver: setOverColumnId,
+                  onCommit: props.onReorderColumn,
+                  onEnd: clearColumnDragState
+                }))}
+              >
+                <button
+                  class="resource-table-sort-button"
+                  type="button"
+                  disabled={!column().sortable}
+                  onClick={() => updateSort(column())}
+                >
+                  <span>{column().label}</span>
+                  <Show when={props.sortColumnId === columnId}>
+                    <small>{props.sortDirection === "asc" ? "↑" : "↓"}</small>
+                  </Show>
+                </button>
+                <Show when={props.editMode}>
+                  <span class="resource-table-column-order-actions">
+                    <button
+                      class="resource-table-column-order-button"
+                      type="button"
+                      disabled={columnIndex() === 0}
+                      aria-label={`左移 ${column().label} 列`}
+                      title="左移"
+                      onClick={() => {
+                        const previous = columns()[columnIndex() - 1];
+                        if (previous) {
+                          props.onReorderColumn(columnId, previous.id);
+                        }
+                      }}
+                    >
+                      <ArrowLeft aria-hidden="true" size={13} />
+                    </button>
+                    <button
+                      class="resource-table-column-order-button"
+                      type="button"
+                      disabled={columnIndex() === columns().length - 1}
+                      aria-label={`右移 ${column().label} 列`}
+                      title="右移"
+                      onClick={() => {
+                        const next = columns()[columnIndex() + 1];
+                        if (next) {
+                          props.onReorderColumn(next.id, columnId);
+                        }
+                      }}
+                    >
+                      <ArrowRight aria-hidden="true" size={13} />
+                    </button>
+                  </span>
+                </Show>
+                <span
+                  class="resource-table-column-resizer"
+                  role="separator"
+                  tabIndex={props.editMode ? 0 : -1}
+                  aria-orientation="vertical"
+                  aria-label={`调整 ${column().label} 列宽`}
+                  aria-valuemin={minColumnWidth}
+                  aria-valuemax={maxColumnWidth}
+                  aria-valuenow={Math.round(clampColumnWidth(column().width))}
+                  aria-disabled={props.editMode ? "false" : "true"}
+                  onPointerDown={(event) => startResize(event, column())}
+                  onKeyDown={(event) => resizeByKeyboard(event, column())}
+                />
+              </div>
+              );
+            }}
+          </For>
+        </div>
+      </div>
+      <div
+        class="resource-table-viewport"
+        role="rowgroup"
+        ref={viewport}
+        onScroll={(event) => {
+          if (rows().length > 0) {
+            setScrollTop(event.currentTarget.scrollTop);
+          }
+          setScrollLeft(event.currentTarget.scrollLeft);
+        }}
+      >
+        <div class="resource-table-spacer" style={{ height: `${rows().length * rowHeight}px`, width: `${tableWidth()}px` }}>
+          <For each={slots()}>
+            {(slot) => {
+              const rowIndex = () => visibleRange().start + slot;
+              const row = () => rows()[rowIndex()];
+              return (
+                <ResourceTableRowSlot
+                  row={row}
+                  columns={columns}
+                  gridTemplate={gridTemplate}
+                  rowIndex={rowIndex}
+                  mode={props.mode}
+                  expandedSoftwareIds={() => props.expandedSoftwareIds}
+                  highlightedSoftwareId={props.highlightedSoftwareId}
+                  activeRowId={activeRowId}
+                  onActivateRow={activateRow}
+                  onRowKeyDown={handleRowKeyDown}
+                  onToggleExpand={props.onToggleExpand}
+                  onSoftwareContextMenu={props.onSoftwareContextMenu}
+                />
+              );
+            }}
+          </For>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResourceTableRowSlot(props: {
+  row: () => ResourceTableRow | undefined;
+  columns: () => ResourceTableColumn[];
+  gridTemplate: () => string;
+  rowIndex: () => number;
+  mode: ResourceTableViewMode;
+  expandedSoftwareIds: () => Record<string, boolean>;
+  highlightedSoftwareId?: string | null;
+  activeRowId: () => string | null;
+  onActivateRow: (rowId: string, focus: boolean) => void;
+  onRowKeyDown: (event: KeyboardEvent, row: ResourceTableRow, element: HTMLElement) => void;
+  onToggleExpand: (softwareId: string) => void;
+  onSoftwareContextMenu?: SoftwareContextMenuHandler;
+}) {
+  const row = () => props.row();
+  const hasRow = () => row() !== undefined;
+  const isHighlighted = () => Boolean(
+    props.highlightedSoftwareId
+    && row()?.softwareId === props.highlightedSoftwareId
+    && (row()?.kind === "process" || row()?.kind === "software"));
+  const isExpandable = () => props.mode === "software"
+    && row()?.kind === "software"
+    && Boolean(row()?.softwareId)
+    && (row()?.processCount ?? 0) > 0;
+  return (
+    <div
+      class="resource-table-row"
+      role="row"
+      data-resource-row-id={row()?.id}
+      aria-rowindex={props.rowIndex() + 2}
+      aria-label={row()?.name}
+      aria-expanded={isExpandable()
+        ? props.expandedSoftwareIds()[row()?.softwareId ?? ""] === true
+          ? "true"
+          : "false"
+        : undefined}
+      tabIndex={hasRow() && row()?.id === props.activeRowId() ? 0 : -1}
+      classList={{
+        "process-row": row()?.kind === "process",
+        "software-row": row()?.kind === "software",
+        "summary-row": row()?.kind === "summary",
+        "empty-row": !hasRow(),
+        highlighted: isHighlighted()
+      }}
+      aria-hidden={hasRow() ? "false" : "true"}
+      onFocus={() => {
+        const current = row();
+        if (current) {
+          props.onActivateRow(current.id, false);
+        }
+      }}
+      onPointerDown={() => {
+        const current = row();
+        if (current) {
+          props.onActivateRow(current.id, false);
+        }
+      }}
+      onKeyDown={(event) => {
+        const current = row();
+        if (current) {
+          props.onRowKeyDown(event, current, event.currentTarget);
+        }
+      }}
+      onContextMenu={(event) => {
+        const current = row();
+        if (!current || !props.onSoftwareContextMenu || (current.kind !== "software" && current.kind !== "process")) {
+          return;
+        }
+
+        event.preventDefault();
+        props.onSoftwareContextMenu(
+          event,
+          createSoftwareContextTargetFromRow(current, props.mode, props.expandedSoftwareIds()),
+          event.currentTarget);
+      }}
+      style={{
+        "grid-template-columns": props.gridTemplate(),
+        transform: `translateY(${props.rowIndex() * rowHeight}px)`,
+        visibility: hasRow() ? "visible" : "hidden",
+        "pointer-events": hasRow() ? "auto" : "none"
+      }}
+    >
+      <For each={props.columns().map((column) => column.id)}>
+        {(columnId, columnIndex) => {
+          const column = () => props.columns().find((candidate) => candidate.id === columnId)!;
+          return <ResourceTableCell
+            column={column()}
+            columnIndex={columnIndex()}
+            row={row}
+            mode={props.mode}
+            expandedSoftwareIds={props.expandedSoftwareIds}
+            onToggleExpand={props.onToggleExpand}
+            onSoftwareContextMenu={props.onSoftwareContextMenu}
+          />;
+        }}
+      </For>
+    </div>
+  );
+}
+
+function resourceTableEditorColumns(
+  settings: ResourceTableColumnSettings[],
+  catalog: MetricDefinition[],
+  mode: ResourceTableViewMode
+): ResourceTableColumn[] {
+  const available = resourceTableColumnOptions(catalog, mode);
+  const availableById = new Map(available.map((column) => [column.id, column]));
+  const configured = settings
+    .map((setting) => availableById.get(setting.id))
+    .filter((column): column is ResourceTableColumn => Boolean(column));
+  const configuredIds = new Set(configured.map((column) => column.id));
+  return configured.concat(available.filter((column) => !configuredIds.has(column.id)));
+}
+
+function createSoftwareContextTargetFromRow(
+  row: ResourceTableRow,
+  mode: ResourceTableViewMode,
+  expandedSoftwareIds: Record<string, boolean>): SoftwareContextMenuTarget
+{
+  const processIds = row.kind === "process" && row.processId
+    ? [row.processId]
+    : row.processIds ?? [];
+  return {
+    name: row.kind === "process" ? row.softwareName ?? row.name : row.name,
+    softwareId: row.softwareId,
+    softwareName: row.softwareName ?? (row.kind === "software" ? row.name : undefined),
+    processIds,
+    processTargets: row.kind === "process"
+      && row.processId
+      && row.processStartKey
+        ? [{
+            processId: row.processId,
+            processStartKey: row.processStartKey
+          }]
+        : [],
+    processNames: row.kind === "process" ? [row.name] : row.processNames ?? [],
+    executablePaths: row.executablePaths ?? [],
+    canExpand: mode === "software" && row.kind === "software" && Boolean(row.softwareId) && (row.processCount ?? 0) > 0,
+    expanded: row.softwareId ? expandedSoftwareIds[row.softwareId] === true : false
+  };
+}
+
+function projectResourceTableRows(
+  rows: ResourceTableRow[],
+  mode: ResourceTableViewMode,
+  expandedSoftwareIds: Record<string, boolean>,
+  query: string,
+  searchKeyCache: Map<string, RowSearchKeyCacheEntry>)
+{
+  const summaryRows = rows.filter((row) => row.kind === "summary");
+  const dataRows = rows.filter((row) => row.kind !== "summary");
+  const normalizedQuery = normalizeSearchText(query);
+  if (normalizedQuery) {
+    pruneSearchKeyCache(searchKeyCache, dataRows);
+  }
+  if (mode === "process") {
+    const projected = normalizedQuery
+      ? dataRows.filter((row) => resourceTableRowMatches(row, normalizedQuery, searchKeyCache))
+      : dataRows;
+    return [...summaryRows, ...projected];
+  }
+
+  if (!normalizedQuery) {
+    return [...summaryRows, ...dataRows.filter((row) =>
+      row.kind !== "process"
+      || (row.softwareId ? expandedSoftwareIds[row.softwareId] : false))];
+  }
+
+  const matchedRowIds = new Set<string>();
+  const matchedSoftwareIds = new Set<string>();
+  const contextSoftwareIds = new Set<string>();
+  for (const row of dataRows) {
+    if (!resourceTableRowMatches(row, normalizedQuery, searchKeyCache)) {
+      continue;
+    }
+
+    matchedRowIds.add(row.id);
+    if (row.kind === "software" && row.softwareId) {
+      matchedSoftwareIds.add(row.softwareId);
+    } else if (row.kind === "process" && row.softwareId) {
+      contextSoftwareIds.add(row.softwareId);
+    }
+  }
+
+  return [...summaryRows, ...dataRows.filter((row) => {
+    const softwareId = row.softwareId;
+    if (row.kind === "software") {
+      return matchedRowIds.has(row.id)
+        || (softwareId !== undefined && softwareId !== null && contextSoftwareIds.has(softwareId));
+    }
+
+    if (row.kind !== "process" || !softwareId || !expandedSoftwareIds[softwareId]) {
+      return false;
+    }
+
+    return matchedRowIds.has(row.id) || matchedSoftwareIds.has(softwareId);
+  })];
+}
+
+function resourceTableRowMatches(
+  row: ResourceTableRow,
+  normalizedQuery: string,
+  cache: Map<string, RowSearchKeyCacheEntry>)
+{
+  return resourceTableRowSearchKey(row, cache).includes(normalizedQuery);
+}
+
+function resourceTableRowSearchKey(
+  row: ResourceTableRow,
+  cache: Map<string, RowSearchKeyCacheEntry>)
+{
+  const parts = [
+    row.id,
+    row.name,
+    row.status,
+    row.softwareId ?? "",
+    row.processId?.toString() ?? "",
+    row.values?.pid?.displayValue ?? "",
+    row.values?.user?.displayValue ?? "",
+    row.values?.architecture?.displayValue ?? ""
+  ];
+  const signature = parts.join("\u0000");
+  const cached = cache.get(row.id);
+  if (cached?.signature === signature) {
+    return cached.key;
+  }
+
+  const key = normalizeSearchText(parts.join(" "));
+  cache.set(row.id, { signature, key });
+  return key;
+}
+
+function pruneSearchKeyCache(
+  cache: Map<string, RowSearchKeyCacheEntry>,
+  rows: ResourceTableRow[])
+{
+  if (cache.size <= rows.length * 2 + slotReserve) {
+    return;
+  }
+
+  const liveIds = new Set(rows.map((row) => row.id));
+  for (const rowId of cache.keys()) {
+    if (!liveIds.has(rowId)) {
+      cache.delete(rowId);
+    }
+  }
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function ResourceTableCell(props: {
+  column: ResourceTableColumn;
+  columnIndex: number;
+  row: () => ResourceTableRow | undefined;
+  mode: ResourceTableViewMode;
+  expandedSoftwareIds: () => Record<string, boolean>;
+  onToggleExpand: (softwareId: string) => void;
+  onSoftwareContextMenu?: SoftwareContextMenuHandler;
+}) {
+  const row = () => props.row();
+  const value = () => row()?.values?.[props.column.id];
+  const heat = () => value()?.heatPercent ?? 0;
+  if (props.column.id === "name") {
+    return (
+      <div
+        class="resource-table-cell name-cell"
+        classList={{ indented: row()?.depth === 1 }}
+        role="cell"
+        aria-colindex={props.columnIndex + 1}
+      >
+        <Show
+          when={row()?.kind === "software" && row()?.softwareId && (row()?.processCount ?? 0) > 0}
+          fallback={<span class="resource-row-spacer" />}
+        >
+          <button
+            type="button"
+            class="resource-row-expander"
+            tabIndex={-1}
+            onClick={() => row()?.softwareId && props.onToggleExpand(row()!.softwareId!)}
+            aria-label={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? uiText.resourceTable.collapseProcesses : uiText.resourceTable.expandProcesses}
+            aria-expanded={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "true" : "false"}
+          >
+            {props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "▾" : "▸"}
+          </button>
+        </Show>
+        <span class="resource-row-name" title={row()?.name}>{row()?.name ?? ""}</span>
+        <Show when={props.onSoftwareContextMenu && (row()?.kind === "software" || row()?.kind === "process")}>
+          <button
+            type="button"
+            class="resource-row-actions"
+            tabIndex={-1}
+            aria-label={`更多操作：${row()?.name ?? "当前项目"}`}
+            title="更多操作"
+            data-focus-key={`resource-row-actions:${row()?.id ?? "unknown"}`}
+            onClick={(event) => openRowActions(event.currentTarget)}
+            onKeyDown={(event) => {
+              if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.stopPropagation();
+              }
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openRowActions(event.currentTarget);
+            }}
+          >
+            <MoreHorizontal aria-hidden="true" size={16} strokeWidth={2} />
+          </button>
+        </Show>
+      </div>
+    );
+  }
+
+  if (props.column.id === "status") {
+    const status = () => userFacingLabel(row()?.status, "状态未知");
+    return (
+      <div class="resource-table-cell status-cell" role="cell" aria-colindex={props.columnIndex + 1} title={status()}>
+        {status()}
+      </div>
+    );
+  }
+
+  if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
+    return (
+      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={value()?.displayValue ?? props.column.label}>
+        {value()?.displayValue ?? "--"}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      class="resource-table-cell value-cell"
+      role="cell"
+      aria-colindex={props.columnIndex + 1}
+      classList={{ unavailable: value()?.availability === "Unavailable" }}
+      style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
+      title={value()?.sharedValue != null
+        ? `${props.column.label}: ${value()?.displayValue}\n自有 ${formatBytes((value()?.value ?? 0) - value()!.sharedValue!)} · 共享分摊 ${formatBytes(value()?.sharedValue)}`
+        : value() ? `${props.column.label}: ${value()?.displayValue}` : props.column.label}
+    >
+      {value()?.displayValue ?? "--"}
+    </div>
+  );
+
+  function openRowActions(element: HTMLElement) {
+    const current = row();
+    if (!current || !props.onSoftwareContextMenu || (current.kind !== "software" && current.kind !== "process")) {
+      return;
+    }
+
+    props.onSoftwareContextMenu(
+      contextMenuEventForElement(element),
+      createSoftwareContextTargetFromRow(current, props.mode, props.expandedSoftwareIds()),
+      element);
+  }
+}
+
+function contextMenuEventForElement(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  return new MouseEvent("contextmenu", {
+    clientX: Math.min(window.innerWidth - 8, rect.right),
+    clientY: Math.min(window.innerHeight - 8, rect.bottom),
+    bubbles: false,
+    cancelable: true
+  });
+}
+
+function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
+  const processMode = mode === "process";
+  return [
+    { id: "name", label: uiText.resourceTable.columns.name, unit: "", visible: true, sortable: true, width: 260 },
+    ...(processMode ? [{ id: "pid", label: uiText.resourceTable.columns.pid, unit: "", visible: true, sortable: true, width: 76 }] : []),
+    { id: "status", label: uiText.resourceTable.columns.status, unit: "", visible: true, sortable: true, width: 92 },
+    ...(processMode ? [
+      { id: "user", label: uiText.resourceTable.columns.user, unit: "", visible: true, sortable: true, width: 150 },
+      { id: "architecture", label: uiText.resourceTable.columns.architecture, unit: "", visible: true, sortable: true, width: 76 }
+    ] : []),
+    { id: "cpu", label: uiText.resourceTable.columns.cpu, unit: "%", visible: true, sortable: true, width: 86 },
+    { id: "memory", label: uiText.resourceTable.columns.memory, unit: "B", visible: true, sortable: true, width: 110 },
+    ...gpuResourceTableColumns(catalog),
+    { id: "disk", label: uiText.resourceTable.columns.disk, unit: "B/s", visible: true, sortable: true, width: 106 },
+    { id: "network", label: uiText.resourceTable.columns.network, unit: "bps", visible: true, sortable: true, width: 106 }
+  ];
+}
+
+function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColumn[] {
+  return catalog
+    .filter((metric) => /^gpu\.\d+\.(usage|vram)$/i.test(metric.id))
+    .sort((left, right) => gpuColumnOrder(left.id) - gpuColumnOrder(right.id))
+    .map((metric) => ({
+      id: metric.id,
+      label: gpuMetricLabel(metric.id, metric.label),
+      unit: metric.id.endsWith(".vram") ? "B" : "%",
+      visible: true,
+      sortable: true,
+      width: metric.id.endsWith(".vram") ? 132 : 108
+    }));
+}
+
+function clampColumnWidth(value: number) {
+  return Math.round(Math.min(maxColumnWidth, Math.max(minColumnWidth, Number(value) || 100)));
+}
+
+function distributeColumnWidths(columns: ResourceTableColumn[], targetWidth: number) {
+  const baseWidths = columns.map((column) => clampColumnWidth(column.width));
+  const baseWidth = baseWidths.reduce((sum, width) => sum + width, 0);
+  const extraWidth = Math.max(0, Math.floor(targetWidth) - baseWidth);
+  if (columns.length === 0 || extraWidth <= 0) {
+    return baseWidths;
+  }
+
+  const weights = columns.map((column) => resourceTableColumnFlexWeight(column.id));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || columns.length;
+  let assignedExtra = 0;
+  return baseWidths.map((width, index) => {
+    if (index === baseWidths.length - 1) {
+      return width + extraWidth - assignedExtra;
+    }
+
+    const extra = Math.floor(extraWidth * weights[index] / totalWeight);
+    assignedExtra += extra;
+    return width + extra;
+  });
+}
+
+function resourceTableColumnFlexWeight(columnId: string) {
+  if (columnId === "name") return 3;
+  if (columnId === "status" || columnId === "user") return 1.4;
+  if (columnId === "memory" || columnId.endsWith(".vram")) return 1.2;
+  if (columnId === "pid" || columnId === "architecture") return 0.7;
+  return 1;
+}
+
+function gpuMetricLabel(metricId: string, fallback: string) {
+  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(metricId);
+  if (!match) {
+    return fallback;
+  }
+
+  return match[2].toLowerCase() === "vram"
+    ? uiText.resourceTable.gpuVramLabel(match[1])
+    : uiText.resourceTable.gpuUsageLabel(match[1]);
+}
+
+function gpuColumnOrder(metricId: string) {
+  const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(metricId);
+  return match ? Number(match[1]) * 2 + (match[2].toLowerCase() === "vram" ? 1 : 0) : 999;
+}

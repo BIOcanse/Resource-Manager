@@ -1,0 +1,75 @@
+/* Manual Software Modal */
+.manual-software-modal {
+  max-width: 620px;
+}
+
+.metric-modal {
+  max-width: min(1040px, calc(100vw - 36px));
+}
+
+.manual-software-body {
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.manual-software-field {
+  display: grid;
+  gap: 6px;
+}
+
+.manual-software-field span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.manual-software-field input,
+.manual-software-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.manual-software-field .standard-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.manual-software-field textarea {
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.manual-software-candidate-meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.detail-modal-header {
+  align-items: flex-start;
+}
+
+.detail-modal-heading {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.detail-modal-heading h2 {
+  overflow-wrap: anywhere;
+}
+
+#softwareDetailSubtitle {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.3;
+}

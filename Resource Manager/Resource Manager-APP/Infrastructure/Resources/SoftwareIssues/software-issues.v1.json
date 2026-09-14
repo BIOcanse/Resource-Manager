@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "entries": [
+    {
+      "id": "app-notebook-fan-control-winring0x64-known-vulnerabilities",
+      "softwareIdentityId": "app-notebook-fan-control",
+      "kind": "KnownSecurityVulnerability",
+      "severity": "Warning",
+      "label": "存在已公开安全漏洞",
+      "message": "随软件安装的 WinRing0x64.sys 1.2.0.5 与已公开漏洞记录匹配。建议更新或卸载包含该驱动的旧版本；Resource Manager 不据此判断软件为恶意软件。",
+      "artifacts": [
+        {
+          "path": "%ProgramFiles(x86)%\\NoteBook FanControl\\WinRing0x64.sys",
+          "length": 14544,
+          "sha256": "11BD2C9F9E2397C9A16E0990E4ED2CF0679498FE0FD418A3DFDAC60B5C160EE5",
+          "fileVersion": "1.2.0.5"
+        }
+      ],
+      "references": [
+        {
+          "label": "CVE-2020-14979",
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-14979"
+        },
+        {
+          "label": "CVE-2023-1048",
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-1048"
+        },
+        {
+          "label": "Microsoft 易受攻击驱动阻止规则",
+          "url": "https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/design/microsoft-recommended-driver-block-rules"
+        }
+      ]
+    }
+  ]
+}

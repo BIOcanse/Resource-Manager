@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>资源管理器</title>
+    <link rel="icon" href="data:,">
+    <script>
+      (() => {
+        let theme = "system";
+        try {
+          const raw = localStorage.getItem("resource-manager:appearance");
+          const appearance = raw ? JSON.parse(raw) : null;
+          const storedTheme = appearance && typeof appearance.theme === "string"
+            ? appearance.theme
+            : "system";
+          if (storedTheme === "dark" || storedTheme === "light"
+            || storedTheme === "lowContrast" || storedTheme === "system") {
+            theme = storedTheme;
+          }
+        } catch {
+          // The backend remains authoritative; an invalid cache uses the system palette.
+        }
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --preboot-background: rgb(244, 247, 248);
+      }
+
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+        background: var(--preboot-background);
+      }
+
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        --preboot-background: rgb(20, 22, 23);
+      }
+
+      html[data-theme="lowContrast"] {
+        color-scheme: light;
+        --preboot-background: rgb(230, 233, 230);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html[data-theme="system"] {
+          color-scheme: dark;
+          --preboot-background: rgb(20, 22, 23);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
