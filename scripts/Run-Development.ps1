@@ -11,7 +11,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $PSScriptRoot
 $AppRoot = Join-Path $Root "Resource Manager\Resource Manager-APP"
 $SoftwareRoot = Split-Path -Parent $AppRoot
 $ClientRoot = Join-Path $AppRoot "ClientApp"
@@ -33,7 +33,7 @@ $ApiAccessTokenPath = Join-Path $Root "Resource Manager\Config\Runtime\loopback-
 $ApiAccessTokenHeaderName = "X-Resource-Manager-Token"
 $ApiPort = 9321
 $StartupTimeout = [TimeSpan]::FromSeconds(20)
-$LogPath = Join-Path $Root "资源管理器开发运行.log"
+$LogPath = Join-Path $Root "development.log"
 
 if (-not ("System.Net.Http.HttpClient" -as [type])) {
     Add-Type -AssemblyName System.Net.Http

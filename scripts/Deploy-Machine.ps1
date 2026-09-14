@@ -12,7 +12,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDirectory = Split-Path -Parent $PSScriptRoot
 $repositoryModule = Join-Path $scriptDirectory 'scripts\ResourceManager.MachineDeployment.ps1'
 $modulePath = if (Test-Path -LiteralPath $repositoryModule) {
     $repositoryModule
