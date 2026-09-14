@@ -1,20 +1,18 @@
 # Resource Manager
 
-Resource Manager is a Windows desktop application for monitoring resource usage and controlling how applications share CPU, memory, and GPUs.
+See where your PC's resources go, and decide which applications get priority.
+
+Resource Manager brings application-level monitoring and resource scheduling together on Windows. Find demanding applications, manage competing workloads, and choose how your software shares CPU, memory, and GPUs.
 
 ## Features
 
-- **Find what is using your PC.** Identify applications that are loading your CPU or GPU, taking up RAM or GPU memory, or generating disk and network traffic. Compare applications at a glance, then drill down into individual processes.
-- **Give important applications priority.** Let automatic scheduling balance CPU resources, or choose priorities, core placement, and exclusive allocation for specific applications.
-- **Manage background memory use.** Set memory policies for individual applications, including periodic working-set trimming to reclaim resident memory.
-- **Choose which GPU an application uses.** Assign applications to a preferred GPU and customize scheduling preferences. Optional GPU Shim support extends placement control to compatible applications.
-- **Build the dashboard you need.** Pick the metrics that matter to you and customize their layout, colors, and update frequency.
-- **Spend less time configuring applications.** Built-in software recognition supplies classifications and starting policies for many applications. Customize individual applications to suit your workflow.
-- **See what scheduling actually does.** Inspect application scores, scheduling actions, and reports to understand how resources are being managed.
-- **Keep resource management out of your way.** Run in the background, access the interface from the system tray, and optionally start automatically when you sign in.
-- **Connect your own tools.** Use local APIs and the adapter SDK to integrate resource monitoring and management into your workflow.
+- **See the whole application, not just a list of processes.** Compare CPU, RAM, GPU, GPU memory, disk, and network usage by application, then drill down when you need more detail. Sort by resource use to find demanding software and tailor the dashboard to what you want to watch.
+- **Manage competing workloads automatically.** Use resource scheduling to prioritize important applications and manage background CPU and memory use. Built-in software recognition provides a starting point without requiring you to configure every application from scratch.
+- **Keep control over individual applications.** Choose automatic scheduling or set your own CPU and memory policies, core placement, exclusive allocation, and preferred GPU. Inspect scheduling decisions and reports to see what the manager is doing.
 
-Hardware readings depend on available drivers and providers. GPU placement support depends on the application's rendering API and device lifecycle.
+Resource Manager can stay in the system tray and start when you sign in, so you can leave it running without keeping a window open.
+
+Hardware readings depend on available drivers and providers. GPU placement, including optional GPU Shim support, depends on application compatibility; it does not guarantee that a running application can switch GPUs.
 
 ## Download
 
@@ -28,6 +26,10 @@ Extract the complete release folder to a permanent location. Run `Install.cmd` t
 
 Resource Manager is licensed under [Apache-2.0](LICENSE). Third-party components retain their own licenses.
 
-Our sincere thanks to Microsoft, the .NET Foundation, and every upstream author and maintainer whose work makes this project possible. All dependencies are acknowledged, including those whose licenses do not require attribution. See the application's Credits page and [Third-Party Notices](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md).
+This project would not be possible without the work of Microsoft, the .NET Foundation, and the many upstream authors and maintainers behind its dependencies. We are deeply grateful for their work. Full acknowledgements and license information are available in the application's Credits page and [Third-Party Notices](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md).
+
+## Integrations and Source
+
+Local APIs and the adapter SDK let you connect your own monitoring and management tools.
 
 This project is maintained by the author. External contributions and pull requests are not accepted.
