@@ -50,7 +50,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             46100,
             null,
             "SkyrimSE",
-            @"F:\JIZIYU\The Elder Scrolls V Skyrim - Special Edition\SkyrimSE.exe",
+            @"C:\Games\Skyrim Special Edition\SkyrimSE.exe",
             false));
 
         Assert.NotNull(attribution);
