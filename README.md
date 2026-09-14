@@ -20,7 +20,7 @@ Hardware readings depend on available drivers and providers. GPU placement depen
 
 Get the Windows x64 beta from the [latest release](https://github.com/BIOcanse/Resource-Manager/releases/latest).
 
-Microsoft Edge WebView2 Runtime is required. The beta includes the .NET runtime. Preserve your Config and UserData folders when updating.
+The Windows 11 x64 package includes the .NET runtime. It uses your system's WebView2 runtime; if WebView2 is missing, it automatically downloads and installs the official Microsoft runtime on first startup. An internet connection is needed only for this setup. Preserve your Config and UserData folders when updating.
 
 Extract the complete release folder to a permanent location. Run `Install.cmd` to register that directory, then `Start.cmd` to start the service and desktop interface. `Restart.cmd` restarts the service. Service management requests administrator permission; the interface runs as a standard user.
 

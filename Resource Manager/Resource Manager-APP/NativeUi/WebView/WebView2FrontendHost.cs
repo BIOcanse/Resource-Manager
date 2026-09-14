@@ -129,7 +129,7 @@ internal sealed class WebView2FrontendHost : IDisposable
             "WEBVIEW2_DEFAULT_BACKGROUND_COLOR",
             WebViewAppearanceBootstrap.ToWebViewEnvironmentValue(backgroundColor));
 
-        var runtime = BrowserRuntimeResolver.Resolve();
+        var runtime = await BrowserRuntimeResolver.ResolveAsync();
         System.Diagnostics.Trace.WriteLine(
             $"WebView2 runtime selected: {runtime.Version} ({runtime.Source})");
         environment ??= await CoreWebView2Environment.CreateAsync(

@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
-using ResourceManager.Shared.BrowserRuntimes;
 
 namespace ResourceManager.NativeUi.WebView;
 
@@ -11,44 +11,31 @@ internal sealed record BrowserRuntimeResolution(
 
 internal static class BrowserRuntimeResolver
 {
-    public static BrowserRuntimeResolution Resolve()
+    public static Task<BrowserRuntimeResolution> ResolveAsync()
+        => ResolveAsync(ProbeSystem, InstallSystemRuntimeAsync);
+
+    internal static async Task<BrowserRuntimeResolution> ResolveAsync(
+        Func<string?> probeSystem, Func<Task> installSystemRuntime)
     {
-        if (TryProbe(browserExecutableFolder: null, out var systemVersion))
+        var version = probeSystem();
+        if (string.IsNullOrWhiteSpace(version))
         {
-            return new BrowserRuntimeResolution(null, systemVersion, "SystemShared");
+            await installSystemRuntime();
+            version = probeSystem();
+            if (string.IsNullOrWhiteSpace(version))
+                throw new InvalidOperationException(
+                    "WebView2 setup completed, but the system runtime is not available. Restart Resource Manager and try again.");
         }
 
-        var discovery = BrowserRuntimeDiscovery.Discover(NativeUiPaths.PackageRoot);
-        var candidates = discovery.Candidates
-            .Where(static candidate => candidate.Kind == BrowserRuntimeKinds.WebView2Runtime)
-            .OrderBy(static candidate => candidate.Source == "Managed" ? 0 : 1)
-            .ThenByDescending(static candidate => ParseVersion(candidate.Version))
-            .ThenBy(static candidate => candidate.Id, StringComparer.Ordinal);
-
-        foreach (var candidate in candidates)
-        {
-            if (TryProbe(candidate.RuntimeDirectory, out var version))
-            {
-                return new BrowserRuntimeResolution(
-                    candidate.RuntimeDirectory,
-                    version,
-                    candidate.Source);
-            }
-
-            System.Diagnostics.Trace.WriteLine(
-                $"WebView2 candidate rejected by compatibility probe: {candidate.RuntimeDirectory}");
-        }
-
-        throw new InvalidOperationException(
-            "没有找到兼容的 WebView2 Runtime。请安装共享运行时后重试。");
+        return new BrowserRuntimeResolution(null, version, "SystemShared");
     }
 
-    private static bool TryProbe(string? browserExecutableFolder, out string version)
+    private static string? ProbeSystem()
     {
         try
         {
-            version = CoreWebView2Environment.GetAvailableBrowserVersionString(browserExecutableFolder);
-            return !string.IsNullOrWhiteSpace(version);
+            var version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+            return string.IsNullOrWhiteSpace(version) ? null : version;
         }
         catch (Exception ex) when (
             ex is WebView2RuntimeNotFoundException
@@ -56,14 +43,36 @@ internal static class BrowserRuntimeResolver
                 or InvalidOperationException
                 or COMException)
         {
-            version = "";
-            return false;
+            return null;
         }
     }
 
-    private static Version ParseVersion(string value)
+    private static async Task InstallSystemRuntimeAsync()
     {
-        var token = value.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "0.0";
-        return Version.TryParse(token, out var parsed) ? parsed : new Version(0, 0);
+        var script = Path.Combine(AppContext.BaseDirectory, "InstallWebView2Runtime.ps1");
+        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        var start = new ProcessStartInfo(powershell)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", script, "-DownloadDirectory",
+            Path.Combine(NativeUiPaths.PackageRoot, "Dependencies", "shared-webview2-runtime", "installer") })
+            start.ArgumentList.Add(argument);
+
+        using var process = Process.Start(start)
+            ?? throw new InvalidOperationException("WebView2 setup could not start.");
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Trace.WriteLine(await output);
+        var detail = await error;
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"Automatic WebView2 setup failed. Check your internet connection and try again. {detail.Trim()}");
     }
 }
