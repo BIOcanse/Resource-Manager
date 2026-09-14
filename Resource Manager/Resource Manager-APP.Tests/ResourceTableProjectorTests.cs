@@ -128,7 +128,7 @@ public sealed class ResourceTableProjectorTests
             25,
             100,
             "2 MB",
-            @"DESKTOP\kings",
+            @"TEST-PC\test-user",
             "x64");
         var software = new ResourceSoftwareSegment(
             "software:test-app",
@@ -173,7 +173,7 @@ public sealed class ResourceTableProjectorTests
         Assert.Equal("worker.exe", row.Name);
         Assert.Equal("运行中", row.Status);
         Assert.Equal("4242", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
-        Assert.Equal(@"DESKTOP\kings", row.Values[ResourceTableColumnIds.User].DisplayValue);
+        Assert.Equal(@"TEST-PC\test-user", row.Values[ResourceTableColumnIds.User].DisplayValue);
         Assert.Equal("x64", row.Values[ResourceTableColumnIds.Architecture].DisplayValue);
         Assert.Equal("2.0 MB", row.Values[ResourceTableColumnIds.Memory].DisplayValue);
     }
@@ -501,7 +501,7 @@ public sealed class ResourceTableProjectorTests
             25,
             100,
             "2 MB",
-            @"DESKTOP\kings",
+            @"TEST-PC\test-user",
             "x64");
         var software = new ResourceSoftwareSegment(
             "software:test-app",
