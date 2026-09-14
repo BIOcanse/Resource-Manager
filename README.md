@@ -4,11 +4,10 @@ Resource Manager is a Windows desktop application for monitoring resource usage 
 
 ## Features
 
-- **Find what is using your PC.** See which applications are consuming CPU, memory, GPU, disk, and network resources. Compare applications at a glance, then drill down into individual processes.
+- **Find what is using your PC.** Identify applications that are loading your CPU or GPU, taking up RAM or GPU memory, or generating disk and network traffic. Compare applications at a glance, then drill down into individual processes.
 - **Give important applications priority.** Let automatic scheduling balance CPU resources, or choose priorities, core placement, and exclusive allocation for specific applications.
 - **Manage background memory use.** Set memory policies for individual applications, including periodic working-set trimming to reclaim resident memory.
 - **Choose which GPU an application uses.** Assign applications to a preferred GPU and customize scheduling preferences. Optional GPU Shim support extends placement control to compatible applications.
-- **Understand GPU memory usage.** See private allocations separately from shared allocations, with shared memory divided among its users instead of counted in full for each process.
 - **Build the dashboard you need.** Pick the metrics that matter to you and customize their layout, colors, and update frequency.
 - **Spend less time configuring applications.** Built-in software recognition supplies classifications and starting policies for many applications. Customize individual applications to suit your workflow.
 - **See what scheduling actually does.** Inspect application scores, scheduling actions, and reports to understand how resources are being managed.
