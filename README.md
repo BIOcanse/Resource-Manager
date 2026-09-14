@@ -6,13 +6,15 @@ Resource Manager brings application-level monitoring and resource scheduling tog
 
 ## Features
 
-- **See the whole application, not just a list of processes.** Compare CPU, RAM, GPU, GPU memory, disk, and network usage by application, then drill down when you need more detail. Sort by resource use to find demanding software and tailor the dashboard to what you want to watch.
-- **Manage competing workloads automatically.** Use resource scheduling to prioritize important applications and manage background CPU and memory use. Built-in software recognition provides a starting point without requiring you to configure every application from scratch.
-- **Keep control over individual applications.** Choose automatic scheduling or set your own CPU and memory policies, core placement, exclusive allocation, and preferred GPU. Inspect scheduling decisions and reports to see what the manager is doing.
+- **CPU scheduling that puts important applications first.** Give games and demanding software priority while keeping background applications under control. Automatic scheduling manages CPU priorities and core placement; per-application settings and exclusive allocation let you decide how CPU resources are shared.
+- **Memory optimization for competing workloads.** Reclaim resident memory from background applications and adjust their memory treatment, leaving more RAM available for the software you are actively using. Use automatic management or choose a memory policy for each application.
+- **GPU scheduling that frees up dedicated GPU memory.** Direct compatible background applications to the integrated GPU instead of letting them occupy the dedicated GPU. This leaves more VRAM available for games and graphics-heavy workloads, with per-application GPU preferences when you want direct control.
+- **Reports that help you find abnormal applications.** Review reported application behavior, resource-use evidence, and the actions taken by the manager. Investigate software that is consuming resources unexpectedly rather than trying to catch it in a live process list.
+- **Fast, detailed resource monitoring.** Go beyond Task Manager's standard views with application-level summaries, process-level detail, and customizable CPU, RAM, GPU, GPU memory, disk, and network displays. A responsive panel designed for low overhead makes it practical to keep an eye on your system while you work or play.
 
-Resource Manager can stay in the system tray and start when you sign in, so you can leave it running without keeping a window open.
+Built-in software recognition reduces manual setup. Tray operation and optional startup at sign-in keep monitoring and scheduling available without leaving a window open.
 
-Hardware readings depend on available drivers and providers. GPU placement, including optional GPU Shim support, depends on application compatibility; it does not guarantee that a running application can switch GPUs.
+Hardware readings depend on available drivers and providers. GPU placement depends on application and driver support; not every running application can switch GPUs.
 
 ## Download
 
