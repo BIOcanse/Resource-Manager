@@ -1,0 +1,220 @@
+/* Optimization Page */
+.optimization-modebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.optimization-mode-group {
+  display: inline-flex;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--line);
+}
+
+.optimization-mode {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.optimization-mode.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.optimization-mode.pending {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+
+.optimization-mode-actions {
+  min-width: 0;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.optimization-mode-status {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.optimization-surface {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 14px 16px;
+}
+
+.optimization-heading {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.optimization-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.optimization-report-filter {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--line);
+}
+
+.optimization-report-filter button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.optimization-report-filter button.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.optimization-report-list {
+  display: grid;
+  gap: 10px;
+}
+
+.optimization-report,
+.optimization-trust-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 12px;
+}
+
+.optimization-report.severity-warning {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.optimization-report.severity-critical {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.optimization-report-main {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.optimization-report-main strong,
+.optimization-trust-item strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.optimization-report-main span,
+.optimization-trust-item span,
+.optimization-evidence small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.optimization-evidence {
+  display: grid;
+  gap: 3px;
+}
+
+.optimization-report-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 360px;
+}
+
+.optimization-report-state {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.optimization-report-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.optimization-empty {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--empty-bg);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.optimization-trust-modal {
+  max-width: 720px;
+}
+
+.optimization-trust-body {
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.optimization-trust-item div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.optimization-trust-item button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.optimization-advanced-layout {
+  display: grid;
+  gap: 14px;
+}

@@ -1,0 +1,234 @@
+/* Shared Panels */
+.resource-breakdown-panel,
+.resource-table-panel,
+.controlled-panel,
+.management-surface,
+.migration-panel {
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 14px 16px;
+}
+
+#componentsPage .management-surface,
+#migrationWorkbenchPage .migration-panel {
+  margin-top: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 10px;
+}
+
+.panel-header-actions {
+  position: sticky;
+  right: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: -4px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 4px;
+}
+
+.save-state {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  max-width: min(160px, 30vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-state.error {
+  color: var(--danger);
+}
+
+.monitor-settings-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  margin: 12px 0;
+  border-left: 3px solid var(--line);
+  background: var(--surface-soft);
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.monitor-settings-state.warning {
+  border-left-color: var(--warn);
+  color: var(--text);
+}
+
+.monitor-settings-state.error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+.monitor-settings-state button {
+  margin-left: auto;
+}
+
+.panel-refresh-button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toolbar-search {
+  width: clamp(160px, 18vw, 260px);
+  min-width: 0;
+  height: 30px;
+}
+
+.toolbar-search input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
+}
+
+.toolbar-search input::placeholder {
+  color: var(--muted);
+}
+
+.toolbar-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.panel-header h2,
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+#controlledCount,
+#managementCount,
+#resourceBreakdownStatus,
+#resourceTableStatus,
+#migrationStatus,
+#migrationRecordCount,
+#optimizationCount {
+  min-width: 28px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--badge-bg);
+  color: var(--warn);
+  font-weight: 700;
+  font-size: 13px;
+}
+.observation-state {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.observation-state strong {
+  color: var(--text);
+}
+
+.observation-state.stale,
+.observation-state.profile-disabled {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.observation-state.error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.content-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 112px;
+  border-top: 1px solid var(--divider-soft);
+  padding: 20px 8px;
+  color: var(--muted);
+}
+
+.content-state-icon {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.content-state.unavailable .content-state-icon {
+  color: var(--danger);
+}
+
+.content-state-copy {
+  min-width: 0;
+}
+
+.content-state-copy strong {
+  color: var(--text);
+}
+
+.content-state-copy p {
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+
+.content-state-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .content-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .content-state-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    padding-left: 33px;
+  }
+}

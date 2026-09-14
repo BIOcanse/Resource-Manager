@@ -1,0 +1,190 @@
+/* Shared Controls */
+button {
+  min-height: 36px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background-color: var(--accent);
+  background-image: linear-gradient(color(display-p3 1 1 1 / 0.10), color(display-p3 0 0 0 / 0.05));
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 14px;
+}
+
+button:not(:disabled):hover {
+  background-color: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+/* Elevation only on the prominent buttons: bare accent primaries (no modifier
+   class) and .secondary. Flat/ghost buttons always carry their own class so
+   they never pick up a stray shadow. */
+button:not([class]):not(:disabled),
+button.secondary:not(:disabled) {
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+button:not([class]):not(:disabled):hover,
+button.secondary:not(:disabled):hover {
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+button.secondary {
+  background-color: var(--surface);
+  background-image: none;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+button.secondary:not(:disabled):hover {
+  background-color: var(--surface-strong);
+}
+
+button:disabled:disabled {
+  cursor: default;
+  opacity: 1;
+  background-color: var(--control-disabled-bg);
+  background-image: none;
+  border-color: var(--control-disabled-border);
+  color: var(--control-disabled-text);
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+.hidden {
+  display: none !important;
+}
+/* Product-owned select popup. Native select menus bypass theme and cannot share
+   the app's placement, keyboard, and narrow-window behavior. */
+.standard-select {
+  min-width: 0;
+}
+
+.standard-select-trigger {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 10px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.standard-select-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.standard-select-trigger:disabled {
+  opacity: 0.48;
+}
+
+.standard-select-popover {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--elev-3), var(--edge-highlight);
+}
+
+.standard-select-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin: 8px 8px 4px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.standard-select-search input {
+  min-width: 0;
+  min-height: 32px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+}
+
+.standard-select-options {
+  min-height: 0;
+  overflow: auto;
+  padding: 5px;
+}
+
+.standard-select-options > button {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  padding: 6px 9px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.standard-select-options > button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standard-select-options > button.active,
+.standard-select-options > button:not(:disabled):hover {
+  background: var(--hover-bg);
+}
+
+.standard-select-options > button.selected {
+  color: color-mix(in oklab, var(--accent) 78%, var(--text));
+  font-weight: 700;
+}
+
+.standard-select-options > button:disabled {
+  opacity: 0.38;
+}
+
+.standard-select-group {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  padding: 8px 9px 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.standard-select-empty {
+  padding: 14px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}

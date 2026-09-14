@@ -1,0 +1,326 @@
+{
+  "namespace": "resource-manager",
+  "children": [
+    {
+      "id": "backend",
+      "description": "Backend-owned decisions. Current migration covers CPU remediation and its existing scheduling/history consumers, not every backend setting.",
+      "children": [
+        {
+          "id": "monitoring",
+          "description": "Backend subscriptions publish current values; readers do not sample.",
+          "children": [
+            {
+              "id": "cpu_residency",
+              "description": "Per-process CPU core observations, distinct from a weighted CPU score.",
+              "build": {
+                "simple": [
+                  {
+                    "index": 0,
+                    "id": "observation_window_ms",
+                    "description": "CPU residency observation window, not algorithm history retention.",
+                    "value_type": "positive_int32",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": 5000,
+                    "consumers": [
+                      "HostManagerPlanCompiler.CompileCpuCoreResidency"
+                    ]
+                  }
+                ],
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "execution_time_source",
+                    "description": "Actual per-logical-processor execution durations, not context-switch counts.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": {
+                      "kind": "kernel_etw_context_switch_qpc_closed_intervals_v1",
+                      "maximum_closed_slices": 524288
+                    },
+                    "consumers": [
+                      "HostManagerPlanCompiler.CompileCpuCoreResidency"
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "scheduling",
+          "description": "Scheduling reads shared snapshots and requests persistent backend subscriptions.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "subscription_interval_ms",
+                "description": "Scheduler background subscription interval. The current explicit choice is 0.2 Hz. Rebuilding and restarting changes the startup subscriptions.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 5000,
+                "consumers": ["HostManagerPlanCompiler.CompileSchedulerSamplingInterval"]
+              }
+            ]
+          },
+          "children": [
+            {
+              "id": "transitions",
+              "description": "Transition decisions, game startup grace and failure retry are independent quantities.",
+              "runtime": {
+                "simple": [
+                  {
+                    "index": 0,
+                    "id": "required_consecutive_decisions",
+                    "description": "Existing confirmation votes. This is not a CPU history length or a score average.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "host_manager_profile",
+                    "source_path": "/hot_publish/smart_coordinator/required_consecutive_decisions",
+                    "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "game_start_grace_ms",
+                    "description": "Existing game-start grace. It does not implement lower boost exit thresholds.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "host_manager_profile",
+                    "source_path": "/hot_publish/smart_coordinator/game_start_grace_ms",
+                    "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+                  },
+                  {
+                    "index": 2,
+                    "id": "failure_retry_ms",
+                    "description": "Retry delay following a failed action, not a cooldown following success.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "host_manager_profile",
+                    "source_path": "/hot_publish/smart_coordinator/failure_retry_ms",
+                    "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+                  }
+                ],
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "boost_entry_exit_policy",
+                    "description": "Explicit entry and lower exit thresholds for game enhancement.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "Separate entry/exit quantities and calibration follow the corrected unique CPU score; consecutive votes alone do not implement this policy."
+                  },
+                  {
+                    "index": 1,
+                    "id": "game_boost_notification",
+                    "description": "Game system notifications: confirmed enhancement and an independently switchable reminder when a running game has not entered enhancement within its configured observation time.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "NativeUi delivery, persisted switches and named observation duration are not wired to existing game/effect facts yet. Reminders do not retune B, force enhancement or add frontend warnings."
+                  }
+                ]
+              }
+            },
+            {
+              "id": "placement",
+              "description": "Placement is not the CPU score denominator.",
+              "build": {
+                "simple": [
+                  {
+                    "index": 0,
+                    "id": "gpu_api_observation_window_ms",
+                    "description": "First-use actual GPU API observation window inside the original placement action deadline; no separate discovery cycle or retry.",
+                    "value_type": "positive_int32",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": 5000,
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
+                  }
+                ],
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "gpu_window_execution_limits",
+                    "description": "Serial GPU preparation and controlled window execution: explicit window count, shared cleanup allowance, separate preparation/window payload bounds and pipe buffers. All work shares the original action deadline; no retries or synchronous fallback.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": { "maximum_window_count": 16, "cleanup_reserve_ms": 1000, "maximum_frame_bytes": 80, "pipe_buffer_bytes": 4096, "preparation_maximum_frame_bytes": 590312 },
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
+                  }
+                ]
+              },
+              "runtime": {
+                "simple": [
+                  {
+                    "index": 0,
+                    "id": "action_timeout_ms",
+                    "description": "Existing placement action total deadline, shared by policy and serial GPU window work, including cleanup. Not a fresh timeout per window.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "host_manager_profile",
+                    "source_path": "/hot_publish/placement_coordinator/action_timeout_ms",
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
+                  }
+                ],
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "automatic_exclusivity",
+                    "description": "Automatic core/CCD exclusivity, including its entry/exit and move compensation policy.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "Profile thresholds exist, but the inspected placement bridge submits an empty desired set and only restores. Those declarations are not proof of automatic candidate generation."
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "scoring",
+          "description": "One software-scoring definition; CPU and GPU remain separate resource dimensions.",
+          "build": {
+            "complex": [
+              {
+                "index": 0,
+                "id": "software_welfare",
+                "description": "The sole native scorer adds one catalog-base-mean welfare bonus per software. CPU and memory use max(0, 1 - utilization / utilization_baseline_percent) independently, without recipient counts, state modifiers or CPU capacity compensation. GPU welfare retains its prior formula until its separate policy decision.",
+                "value_type": "object",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": { "kind": "software_base_mean_utilization_bonus", "utilization_baseline_percent": 70 },
+                "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+              }
+            ]
+          },
+          "runtime": {
+            "complex": [
+              {
+                "index": 0,
+                "id": "base_score_tiers",
+                "description": "Existing shared base-importance tier boundaries, not software-kind default scores.",
+                "value_type": "object",
+                "update_class": "publish_plan",
+                "status": "active",
+                "value_source": "host_manager_profile",
+                "source_path": "/hot_publish/smart_coordinator/base_score_tiers",
+                "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+              }
+            ]
+          },
+          "children": [
+            {
+              "id": "cpu",
+              "description": "Physical-core usage is weighted by the compiled per-core capacity and divided by the shared machine baseline. CPU-input and score smoothing remain separate pending consumers.",
+              "build": {
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "smt_accounting",
+                    "description": "Compile each physical core's logical sibling count, fixed reciprocal and logical-to-physical mapping from startup topology. Runtime multiplies execution duration by the compiled share; it does not discover topology or count active threads. Separate from CPU-Z weights and B.",
+                    "value_type": "object",
+                    "update_class": "rebuild_backend",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": { "kind": "fixed_logical_processor_share" },
+                    "consumers": ["HostManagerPlanCompiler.CompileCpuCoreResidency"]
+                  }
+                ]
+              },
+              "runtime": {
+                "simple": [
+                  {
+                    "index": 0,
+                    "id": "machine_baseline_ratio",
+                    "description": "One machine reference B for all software, independent of core performance weights.",
+                    "value_type": "number",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "cpu_configuration",
+                    "source_path": "/baseline_ratio",
+                    "consumers": ["HostManagerPlanCompiler.CompileCpuScoring"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "cpu_input_retained_rounds",
+                    "description": "Retained CPU input rounds requested by the CPU algorithm; retention does not prescribe an average.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "The user requested three CPU rounds. The CPU history consumer is not yet connected; the stateless welfare-capacity intermediate is not a data item or history consumer."
+                  },
+                  {
+                    "index": 2,
+                    "id": "score_retained_rounds",
+                    "description": "Independent retained score rounds; five rounds is an example, not an adopted product default.",
+                    "value_type": "positive_int32",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "Score history and its independent algorithm have not been implemented or calibrated."
+                  }
+                ],
+                "complex": [
+                  {
+                    "index": 0,
+                    "id": "state_multipliers",
+                    "description": "Current CPU runtime-state multiplier table, consumed in ABI state order.",
+                    "value_type": "array",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "host_manager_profile",
+                    "source_path": "/hot_publish/smart_coordinator/process_policy/state_multipliers",
+                    "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
+                  },
+                  {
+                    "index": 1,
+                    "id": "core_performance_weights",
+                    "description": "Compiled per-physical-core reference weights. Complete manual vectors or known homogeneous relative units are available; unadmitted CPU-Z research and heuristic topology display scores are not automatic weights.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "cpu_configuration",
+                    "source_path": "/core_performance_weights",
+                    "consumers": ["HostManagerPlanCompiler.CompileCpuScoring"]
+                  },
+                  {
+                    "index": 2,
+                    "id": "cpu_input_algorithm",
+                    "description": "Algorithm consuming the requested CPU history, independent of the cache contract.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "The current scorer uses instantaneous weighted physical-core CPU. CPU input smoothing has not been connected."
+                  },
+                  {
+                    "index": 3,
+                    "id": "score_algorithm",
+                    "description": "Independent score smoothing after the unique weighted CPU formula.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "pending",
+                    "pending_reason": "No score-history consumer exists. Do not treat three transition votes as score smoothing."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

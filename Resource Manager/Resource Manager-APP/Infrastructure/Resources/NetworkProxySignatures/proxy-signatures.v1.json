@@ -1,0 +1,136 @@
+{
+  "version": "1.0.0",
+  "proxies": [
+    {
+      "id": "clash-family",
+      "displayName": "Clash / Mihomo",
+      "processNames": [
+        "Clash for Windows",
+        "Clash Verge",
+        "Clash Verge Rev",
+        "clash",
+        "clash-meta",
+        "clash-verge",
+        "clash-verge-service",
+        "clash.meta",
+        "mihomo",
+        "mihomo-party"
+      ],
+      "defaultListenPorts": [7890, 7891, 7892, 7893, 9090]
+    },
+    {
+      "id": "v2rayn",
+      "displayName": "v2rayN / Xray / sing-box",
+      "processNames": ["v2rayN", "v2ray", "xray", "sing-box", "tun2socks"],
+      "defaultListenPorts": [10808, 10809]
+    },
+    {
+      "id": "nekoray",
+      "displayName": "NekoRay / NekoBox",
+      "processNames": ["nekoray", "nekobox", "sing-box", "xray", "hysteria", "tuic-client"],
+      "defaultListenPorts": [1080, 2080]
+    },
+    {
+      "id": "sing-box",
+      "displayName": "sing-box",
+      "processNames": ["sing-box"],
+      "defaultListenPorts": [1080, 2080, 7890]
+    },
+    {
+      "id": "shadowsocks-windows",
+      "displayName": "Shadowsocks-Windows",
+      "processNames": ["Shadowsocks", "shadowsocks", "shadowsocksr", "ss-local"],
+      "defaultListenPorts": [1080]
+    },
+    {
+      "id": "hiddify",
+      "displayName": "Hiddify",
+      "processNames": ["Hiddify", "sing-box"],
+      "defaultListenPorts": [1080, 2080]
+    },
+    {
+      "id": "qv2ray",
+      "displayName": "Qv2ray",
+      "processNames": ["Qv2ray", "v2ray", "xray"],
+      "defaultListenPorts": [1080, 8888]
+    },
+    {
+      "id": "trojan-qt5",
+      "displayName": "Trojan-Qt5",
+      "processNames": ["trojan-qt5", "trojan"],
+      "defaultListenPorts": [1080]
+    },
+    {
+      "id": "proxifier",
+      "displayName": "Proxifier",
+      "processNames": ["Proxifier", "ProxyChecker"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "netch",
+      "displayName": "Netch",
+      "processNames": ["Netch", "netch", "tun2socks"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "sstap",
+      "displayName": "SSTap",
+      "processNames": ["SSTap", "sstap", "tun2socks"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "adguard",
+      "displayName": "AdGuard",
+      "processNames": ["Adguard", "AdguardSvc"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "fiddler",
+      "displayName": "Fiddler",
+      "processNames": ["Fiddler", "Fiddler Everywhere"],
+      "defaultListenPorts": [8888]
+    },
+    {
+      "id": "charles",
+      "displayName": "Charles Proxy",
+      "processNames": ["Charles"],
+      "defaultListenPorts": [8888]
+    },
+    {
+      "id": "mitmproxy",
+      "displayName": "mitmproxy",
+      "processNames": ["mitmproxy", "mitmdump"],
+      "defaultListenPorts": [8080, 8888]
+    },
+    {
+      "id": "http-toolkit",
+      "displayName": "HTTP Toolkit",
+      "processNames": ["HTTP Toolkit", "httptoolkit-server"],
+      "defaultListenPorts": [8000, 8080, 8888]
+    },
+    {
+      "id": "cloudflare-warp",
+      "displayName": "Cloudflare WARP",
+      "processNames": ["Cloudflare WARP", "warp-svc", "warp-cli"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "tailscale",
+      "displayName": "Tailscale",
+      "processNames": ["tailscale", "tailscaled"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "zerotier",
+      "displayName": "ZeroTier",
+      "processNames": ["ZeroTier One", "zerotier-one_x64"],
+      "defaultListenPorts": []
+    },
+    {
+      "id": "generic-local-proxy",
+      "displayName": "Generic Local Proxy",
+      "processNames": ["privoxy", "gost", "winxray"],
+      "defaultListenPorts": [8118, 8888]
+    }
+  ]
+}

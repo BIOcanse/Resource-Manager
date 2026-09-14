@@ -1,0 +1,154 @@
+/* Native Shell */
+.window-shellbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: var(--shellbar-height);
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 176px 0 12px;
+  background: var(--shell-bg);
+  border-bottom: 1px solid var(--divider);
+  backdrop-filter: blur(14px);
+  user-select: none;
+}
+
+.shell-pages {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.shell-page {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.shell-page:hover,
+.shell-page.active {
+  border-color: var(--accent-soft);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.window-drag-region {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  cursor: grab;
+}
+
+.window-drag-region:active {
+  cursor: grabbing;
+}
+
+.window-drag-region strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#shellPageName {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.window-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.shell-utility-actions {
+  position: absolute;
+  top: 0;
+  right: 126px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.shell-task-button {
+  position: relative;
+  width: 42px;
+  min-height: var(--shellbar-height);
+  height: var(--shellbar-height);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.shell-task-button:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.shell-task-count {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--danger);
+  color: var(--on-accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.window-button {
+  width: 42px;
+  min-height: var(--shellbar-height);
+  height: var(--shellbar-height);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.window-button:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+#windowCloseButton:hover {
+  background: var(--danger);
+  color: var(--on-accent);
+}

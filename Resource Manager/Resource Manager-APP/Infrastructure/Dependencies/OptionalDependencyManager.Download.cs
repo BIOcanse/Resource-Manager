@@ -1,0 +1,98 @@
+using System.Diagnostics;
+using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Application.Operations;
+using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Operations;
+
+namespace ResourceManager.App.Infrastructure.Dependencies;
+
+public sealed partial class OptionalDependencyManager
+{
+    public async Task<OptionalDependencyDownloadResult> DownloadAsync(
+        string id,
+        bool acknowledgeExternalTerms,
+        CancellationToken cancellationToken,
+        IProgress<DependencyDownloadProgress>? progress = null)
+    {
+        var definition = OptionalDependencyCatalog.Find(id)
+            ?? throw new InvalidOperationException($"Unknown dependency: {id}");
+
+        EnsureTerms(definition, acknowledgeExternalTerms);
+
+        if (string.IsNullOrWhiteSpace(definition.DownloadUrl))
+        {
+            throw new InvalidOperationException("This dependency does not have a stable direct download URL.");
+        }
+
+        var paths = GetPaths(definition);
+        Directory.CreateDirectory(paths.InstallerDirectory);
+
+        var trackingScope = new FileChangeTrackingScope(
+            $"dependency-download:{definition.Id}",
+            [paths.InstallerDirectory]);
+        var before = await fileChangeTracker.CaptureAsync(trackingScope, cancellationToken);
+
+        var destination = Path.Combine(paths.InstallerDirectory, definition.InstallerFileName);
+        var temporary = destination + ".download";
+
+        long bytesWritten = 0;
+        try
+        {
+            using var response = await httpClient.GetAsync(
+                definition.DownloadUrl,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var totalBytes = response.Content.Headers.ContentLength;
+            var startedAt = Stopwatch.GetTimestamp();
+            progress?.Report(CreateProgress(definition.Id, bytesWritten, totalBytes, startedAt));
+
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var target = new FileStream(
+                temporary,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 128 * 1024,
+                useAsync: true);
+
+            var buffer = new byte[128 * 1024];
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                bytesWritten += read;
+                progress?.Report(CreateProgress(definition.Id, bytesWritten, totalBytes, startedAt));
+            }
+        }
+        catch
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+
+            throw;
+        }
+
+        File.Move(temporary, destination, overwrite: true);
+        var length = new FileInfo(destination).Length;
+        progress?.Report(new DependencyDownloadProgress(definition.Id, length, length, 100, null));
+        var after = await fileChangeTracker.CaptureAsync(trackingScope, cancellationToken);
+        var fileChanges = fileChangeTracker.Compare(before, after);
+
+        return new OptionalDependencyDownloadResult(
+            definition.Id,
+            "downloaded",
+            destination,
+            length,
+            "安装器已下载到托管依赖目录。",
+            fileChanges);
+    }
+}

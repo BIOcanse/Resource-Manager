@@ -1,0 +1,148 @@
+/* Page Layout */
+.app-shell {
+  position: fixed;
+  top: var(--shellbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 18px var(--app-shell-x-padding) 28px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+body[data-page="components"] .app-shell,
+.app-shell.components-shell {
+  top: calc(var(--shellbar-height) + var(--managementbar-height));
+}
+
+.app-shell > * {
+  width: 100%;
+  min-width: 0;
+  max-width: var(--workspace-max-width);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.app-page-title {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.app-page-title:focus {
+  outline: none;
+}
+
+.app-page-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+body[data-page="components"] .app-header {
+  display: none;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.page {
+  min-width: 0;
+}
+
+#monitorPage.active-page {
+  width: 100%;
+  max-width: none;
+}
+
+.active-page {
+  display: block;
+}
+
+#componentsPage.active-page {
+  display: block;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.monitor-toolbar {
+  position: sticky;
+  left: 0;
+  right: 0;
+  z-index: 14;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+  pointer-events: none;
+}
+
+.monitor-toolbar .toolbar {
+  position: sticky;
+  right: 0;
+  z-index: 15;
+  pointer-events: auto;
+  margin-left: auto;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 4px;
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.topbar h2 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+#captureTime {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#pageHint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.settings-credit-dependencies {
+  margin-top: 24px;
+  overflow-wrap: anywhere;
+}
+.settings-credit-dependencies summary { cursor: pointer; font-weight: 600; }
+.settings-credit-dependencies ul { padding-left: 20px; line-height: 1.8; }
+.settings-credit-title strong { overflow-wrap: anywhere; min-width: 0; }

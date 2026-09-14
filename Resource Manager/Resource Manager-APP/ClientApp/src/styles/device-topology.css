@@ -1,0 +1,641 @@
+/* Device Topology */
+.details-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  overflow-x: auto;
+}
+
+.details-tab {
+  min-height: 32px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.details-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.device-scope-tabs {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.device-scope-tab {
+  min-width: 96px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.device-scope-tab + .device-scope-tab {
+  border-left: 1px solid var(--divider);
+}
+
+.device-scope-tab.active {
+  background: color-mix(in oklab, var(--accent) 22%, var(--surface-soft));
+  color: var(--text);
+}
+
+.device-topology-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.device-topology-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.device-topology-header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.device-topology-header h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.device-topology-header span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-topology-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(260px, 340px) minmax(420px, 1fr);
+  grid-template-areas:
+    "ports detail top"
+    "notes notes notes";
+  gap: 12px;
+  min-width: 0;
+}
+
+.device-port-list,
+.device-port-detail,
+.device-top-view {
+  min-width: 0;
+  height: clamp(500px, calc(100dvh - 190px), 720px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.device-port-list {
+  grid-area: ports;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.device-port-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-port-list-title strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.device-port-search {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.device-port-search:focus {
+  border-color: var(--accent);
+  outline: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+.device-port-item {
+  --device-tree-depth: 0;
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 8px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.device-port-item.nested {
+  width: calc(100% - (var(--device-tree-depth) * 14px));
+  margin-left: calc(var(--device-tree-depth) * 14px);
+  position: relative;
+}
+
+.device-port-item.nested::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  width: 8px;
+  border-top: 1px solid color-mix(in oklab, var(--accent) 38%, var(--divider));
+}
+
+.device-port-item.device-node {
+  border-style: dashed;
+  background: color-mix(in oklab, var(--surface-soft) 72%, var(--surface));
+}
+
+.device-port-item.device-node .device-port-icon {
+  border-color: color-mix(in oklab, var(--warn) 44%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  color: color-mix(in oklab, var(--warn) 78%, var(--text));
+}
+
+.device-port-item:hover,
+.device-port-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.device-port-item.disconnected:not(.active) .device-port-icon {
+  opacity: 0.62;
+}
+
+.device-port-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.device-port-main strong,
+.device-port-protocol {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-main strong {
+  font-size: 13px;
+}
+
+.device-port-main small,
+.device-port-protocol {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-port-main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+  white-space: normal;
+}
+
+.device-port-protocol {
+  max-width: 86px;
+  padding: 2px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.device-port-protocol.connected {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+  color: color-mix(in oklab, var(--accent) 76%, var(--text));
+}
+
+.device-port-protocol.disconnected {
+  color: var(--muted);
+}
+
+.device-port-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--accent) 48%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--accent) 9%, var(--surface));
+  color: color-mix(in oklab, var(--accent) 80%, var(--text));
+}
+
+.device-port-icon.large {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+
+.device-port-icon > svg {
+  display: block;
+}
+
+.device-top-view {
+  grid-area: top;
+  display: grid;
+  align-content: center;
+  gap: 14px;
+  min-height: 420px;
+  padding: 18px;
+}
+
+.device-laptop {
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  min-width: 0;
+}
+
+.device-laptop-lid {
+  width: min(520px, 92%);
+  aspect-ratio: 1.6;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 2px solid color-mix(in oklab, var(--accent) 58%, var(--line));
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, color-mix(in oklab, var(--accent) 10%, transparent), transparent 54%),
+    var(--surface);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+.device-brand-logo {
+  max-width: 78%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(30px, 5vw, 58px);
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-laptop-lid strong,
+.device-laptop-lid small {
+  max-width: 82%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-laptop-lid strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.device-laptop-lid small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-laptop-hinge {
+  width: min(460px, 82%);
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.device-laptop-base {
+  width: min(560px, 98%);
+  min-height: 92px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.device-laptop-base span {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.device-system-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.device-system-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-detail {
+  grid-area: detail;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.device-port-detail-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.device-port-detail-title div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.device-port-detail-title strong,
+.device-port-detail-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-port-detail-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-relation-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-relation-path span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.device-relation-path span:not(:last-child)::after {
+  content: "→";
+  margin-left: 4px;
+  color: color-mix(in oklab, var(--accent) 68%, var(--muted));
+}
+
+.device-relation-path span:last-child {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.device-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.device-detail-summary-item {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-detail-summary-item span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-detail-summary-item strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.device-details-button {
+  justify-self: start;
+}
+
+.device-detail-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.device-detail-divider::before,
+.device-detail-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--divider);
+}
+
+.device-detail-divider span {
+  flex: none;
+}
+
+.device-detail-grid {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 7px 10px;
+  align-items: start;
+  font-size: 12px;
+}
+
+.device-detail-grid span {
+  color: var(--muted);
+}
+
+.device-detail-grid strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-id-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--divider-soft);
+}
+
+.device-id-block strong {
+  font-size: 12px;
+}
+
+.device-id-block code {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.device-topology-notes {
+  grid-area: notes;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.device-topology-notes span,
+.device-topology-empty,
+.device-topology-loading {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.device-topology-notes span {
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.device-topology-empty,
+.device-topology-loading {
+  margin: 0;
+}
+
+@media (max-width: 1180px) {
+  .device-topology-layout {
+    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-areas:
+      "ports detail"
+      "top top"
+      "notes notes";
+  }
+
+  .device-port-detail {
+    height: auto;
+    max-height: 680px;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-page="details"] .app-shell {
+    overflow-x: hidden;
+  }
+
+  body[data-page="details"] .app-shell > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .device-topology-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "ports"
+      "detail"
+      "top"
+      "notes";
+  }
+
+  .device-port-list {
+    height: min(480px, 65dvh);
+  }
+
+  .device-top-view {
+    height: auto;
+    min-height: 420px;
+  }
+
+  .device-port-detail {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .device-detail-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .device-detail-grid strong {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

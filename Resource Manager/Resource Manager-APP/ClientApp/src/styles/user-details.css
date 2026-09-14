@@ -1,0 +1,74 @@
+.user-details-backdrop {
+  z-index: 72;
+}
+
+.user-details-modal {
+  width: min(760px, calc(100vw - 36px));
+  max-width: 760px;
+}
+
+.user-details-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: grid;
+  gap: 18px;
+}
+
+.user-details-summary {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.user-details-section {
+  min-width: 0;
+}
+
+.user-details-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.user-details-section dl {
+  margin: 0;
+  border-top: 1px solid var(--divider);
+}
+
+.user-details-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.user-details-row dt,
+.user-details-row dd {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.user-details-row dt {
+  color: var(--muted);
+}
+
+.user-details-row dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.details-button {
+  min-height: 30px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .user-details-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

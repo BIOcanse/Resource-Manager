@@ -1,0 +1,186 @@
+using ResourceManager.App.Domain.Dependencies;
+
+namespace ResourceManager.App.Application.Dependencies;
+
+public static class OptionalDependencyCatalog
+{
+    public static IReadOnlyList<OptionalDependencyDefinition> Definitions { get; } =
+    [
+        new OptionalDependencyDefinition(
+            Id: "shared-webview2-runtime",
+            Name: "共享 WebView2 运行时",
+            Vendor: "Microsoft",
+            Category: "Shared web runtime",
+            SourcePageUrl: "https://developer.microsoft.com/en-us/microsoft-edge/webview2/",
+            DownloadUrl: "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+            ExternalTermsUrl: "https://www.microsoft.com/en-us/legal/terms-of-use",
+            InstallerFileName: "MicrosoftEdgeWebview2Setup.exe",
+            InstallerFilePatterns:
+            [
+                "MicrosoftEdgeWebview2Setup*.exe"
+            ],
+            InstallDirectoryName: "shared-webview2-runtime",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths: [],
+            InstallNote: "Microsoft 官方 Evergreen Bootstrapper。安装后由全机 WebView2 软件共享，不随每个软件重复打包。"),
+        new OptionalDependencyDefinition(
+            Id: "amd-smu-pawnio-provider",
+            Name: "AMD SMU / PawnIO Provider",
+            Vendor: "namazso / AMD SMU",
+            Category: "CPU telemetry provider",
+            SourcePageUrl: "https://pawnio.eu/",
+            DownloadUrl: "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe",
+            ExternalTermsUrl: "https://pawnio.eu/",
+            InstallerFileName: "PawnIO_setup.exe",
+            InstallerFilePatterns:
+            [
+                "PawnIO_setup*.exe",
+                "PawnIO*.exe"
+            ],
+            InstallDirectoryName: "PawnIO",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths: [],
+            InstallNote: "安装官方签名 PawnIO 驱动；AMD SMU Provider 后续通过 PawnIO 设备和 RyzenSMU 模块读取 PM table。该驱动必须显式安装和验证，不随基础包静默启用。"),
+        new OptionalDependencyDefinition(
+            Id: "msi-afterburner",
+            Name: "MSI Afterburner",
+            Vendor: "MSI",
+            Category: "External telemetry helper",
+            SourcePageUrl: "https://www.msi.com/Landing/afterburner/graphics-cards",
+            DownloadUrl: null,
+            ExternalTermsUrl: "https://www.msi.com/Landing/afterburner/graphics-cards",
+            InstallerFileName: "MSIAfterburnerSetup.exe",
+            InstallerFilePatterns:
+            [
+                "MSIAfterburnerSetup*.exe",
+                "*Afterburner*.exe"
+            ],
+            InstallDirectoryName: "MSI Afterburner",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths:
+            [
+                "MSIAfterburner.exe"
+            ],
+            InstallNote: "MSI 官方直链对自动客户端不稳定，当前先使用官方来源页。"),
+        new OptionalDependencyDefinition(
+            Id: "amd-ryzen-master-monitoring-sdk",
+            Name: "AMD Ryzen Master Monitoring SDK",
+            Vendor: "AMD",
+            Category: "CPU telemetry SDK",
+            SourcePageUrl: "https://www.amd.com/en/developer/ryzen-master-monitoring-sdk.html",
+            DownloadUrl: "https://download.amd.com/Desktop/amd-ryzen-master-monitoring-sdk_3.0.1.4971.exe",
+            ExternalTermsUrl: "https://www.amd.com/en/developer/ryzen-master-monitoring-sdk/ryzen-master-monitoring-sdk-eula.html",
+            InstallerFileName: "amd-ryzen-master-monitoring-sdk_3.0.1.4971.exe",
+            InstallerFilePatterns:
+            [
+                "amd-ryzen-master-monitoring-sdk_*.exe"
+            ],
+            InstallDirectoryName: "AMD Ryzen Master Monitoring SDK",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths:
+            [
+                "bin\\Device.dll",
+                "bin\\Platform.dll",
+                "bin\\AMDRyzenMasterDriver.sys"
+            ],
+            InstallNote: "安装器包含 AMD 驱动/运行时组件，必须显式处理。"),
+        new OptionalDependencyDefinition(
+            Id: "librehardwaremonitor-provider",
+            Name: "LibreHardwareMonitor Provider",
+            Vendor: "LibreHardwareMonitor",
+            Category: "Hardware sensor bridge",
+            SourcePageUrl: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor",
+            DownloadUrl: null,
+            ExternalTermsUrl: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LICENSE",
+            InstallerFileName: "LibreHardwareMonitor.zip",
+            InstallerFilePatterns:
+            [
+                "LibreHardwareMonitor*.zip",
+                "LibreHardwareMonitor*.exe"
+            ],
+            InstallDirectoryName: "LibreHardwareMonitor",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths:
+            [
+                "LibreHardwareMonitor.exe"
+            ],
+            InstallNote: "通用硬件监控桥；用于 CPU/系统风扇、内存温度、主板/电压等传感缺口。运行时可通过 WMI 暴露传感器；涉及驱动/管理员权限时必须显式确认。"),
+        new OptionalDependencyDefinition(
+            Id: "notebook-fancontrol-provider",
+            Name: "Notebook FanControl Provider",
+            Vendor: "NBFC",
+            Category: "Notebook EC fan provider",
+            SourcePageUrl: "https://github.com/hirschmann/nbfc",
+            DownloadUrl: null,
+            ExternalTermsUrl: "https://github.com/hirschmann/nbfc/blob/master/LICENSE.md",
+            InstallerFileName: "NBFCInstaller.exe",
+            InstallerFilePatterns:
+            [
+                "NBFC*.exe",
+                "NoteBookFanControl*.exe",
+                "NBFC*.msi",
+                "NoteBookFanControl*.msi"
+            ],
+            InstallDirectoryName: "NoteBook FanControl",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths: [],
+            InstallNote: "笔记本 EC 风扇路线；依赖机型配置，用于显卡驱动和通用硬件监控都不暴露风扇时的候选 Provider。不能静默启用或自动写 EC。"),
+        new OptionalDependencyDefinition(
+            Id: "windows-performance-toolkit",
+            Name: "Windows Performance Toolkit",
+            Vendor: "Microsoft",
+            Category: "System trace and latency diagnostics",
+            SourcePageUrl: "https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install",
+            DownloadUrl: "https://go.microsoft.com/fwlink/?linkid=2289980",
+            ExternalTermsUrl: "https://www.microsoft.com/en-us/legal/terms-of-use",
+            InstallerFileName: "adksetup-10.1.26100.2454.exe",
+            InstallerFilePatterns:
+            [
+                "adksetup*.exe"
+            ],
+            InstallDirectoryName: "windows-performance-toolkit",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths:
+            [
+                "Windows Performance Toolkit\\wpr.exe",
+                "Windows Performance Toolkit\\xperf.exe",
+                "Windows Performance Toolkit\\wpa.exe",
+                "Windows Performance Toolkit\\wpaexporter.exe"
+            ],
+            InstallNote: "Windows ADK 的 Windows Performance Toolkit 功能；安装命令应只选择 OptionId.WindowsPerformanceToolkit。Kernel trace 启动需要管理员或受限提权 helper。"),
+        new OptionalDependencyDefinition(
+            Id: "latencymon",
+            Name: "LatencyMon",
+            Vendor: "Resplendence",
+            Category: "Latency diagnostics helper",
+            SourcePageUrl: "https://www.resplendence.com/latencymon",
+            DownloadUrl: "https://www.resplendence.com/download/LatencyMon.exe",
+            ExternalTermsUrl: "https://www.resplendence.com/latencymon",
+            InstallerFileName: "LatencyMon-7.31.exe",
+            InstallerFilePatterns:
+            [
+                "LatencyMon*.exe"
+            ],
+            InstallDirectoryName: "LatencyMon",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths:
+            [
+                "LatMon.exe",
+                "rspLLL64.sys"
+            ],
+            InstallNote: "LatencyMon 可作为 ISR/DPC/hard pagefault 辅助诊断工具；它带厂商内核驱动，但没有公开稳定 API，主链路仍使用 ETW/WPT。")
+    ];
+
+    public static OptionalDependencyDefinition? Find(string id)
+    {
+        return Definitions.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
+    }
+}

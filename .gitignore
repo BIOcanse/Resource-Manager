@@ -1,0 +1,44 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/publish/
+**/artifacts/
+**/.artifacts/
+**/wwwroot/
+**/TestResults/
+**/test-results/
+**/.zig-cache*/
+**/.zig-global-cache*/
+**/zig-out/
+**/__pycache__/
+**/target/
+**/.codex/
+**/.codex-*/
+**/.playwright-cli/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/.claude/
+**/.env
+**/.env.*
+*.user
+*.suo
+*.log
+*.tmp
+*.dmp
+*.etl
+*.har
+*.pfx
+*.p12
+*.pem
+*.key
+/Resource Manager/Config/
+/Resource Manager/UserData/
+/Resource Manager/Dependencies/
+/Resource Manager/Misc/
+/Resource Manager/Bin/
+/Resource Manager/.resource-manager-validation-authority/
+/docs/
+/evidence/
+/output/

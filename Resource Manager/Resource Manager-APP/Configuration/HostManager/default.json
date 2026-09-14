@@ -1,0 +1,1820 @@
+{
+  "schema_version": 42,
+  "profile_revision": 59,
+  "profile_name": "default",
+  "build_specialize": {
+    "target_os": "windows",
+    "target_architecture": "x64",
+    "shared_resource_abi_version": 11,
+    "resource_scheduler_abi_version": 11,
+    "adapter_private_resource_ledger_abi_version": 3,
+    "adapter_instance_lease_abi_version": 196608,
+    "smart_coordinator_abi_version": 524288,
+    "memory_cleanup_abi_version": 65540,
+    "placement_coordinator_abi_version": 65536,
+    "applied_ownership_abi_version": 131072,
+    "transaction_journal_abi_version": 327680,
+    "sampling_subscription_abi_version": 196608,
+    "portable_software_registry_abi_version": 65536,
+    "software_identity_catalog_abi_version": 327680,
+    "software_identity_resolution_abi_version": 65536,
+    "report_coordinator_abi_version": 393216,
+    "file_query_abi_version": 131072,
+    "public_service_coordinator_abi_version": 196608,
+    "display_coordinator_abi_version": 196608,
+    "operation_coordinator_abi_version": 65536,
+    "metric_snapshot_abi_version": 196608,
+    "process_policy_executor_abi_version": 131072,
+    "pdh_collector_abi_version": 65536,
+    "native_modules": [
+      "adapter_private_resource_ledger",
+      "adapter_instance_lease",
+      "applied_ownership",
+      "display_coordinator",
+      "file_query",
+      "memory_cleanup_planner",
+      "metric_snapshot",
+      "operation_coordinator",
+      "placement_coordinator",
+      "public_service_coordinator",
+      "report_coordinator",
+      "sampling_subscription",
+      "smart_coordinator",
+      "pdh_collector",
+      "process_policy_executor",
+      "resource_scheduler",
+      "shared_resource",
+      "software_identity_catalog",
+      "software_identity_portable_registry",
+      "software_identity_resolution",
+      "transaction_journal"
+    ],
+    "capacity_limits": {
+      "shared_resource_capacity": 65536,
+      "shared_subscription_capacity": 262144,
+      "shared_task_capacity": 262144,
+      "scheduler_target_capacity": 32768,
+      "scheduler_resource_capacity": 1048576,
+      "scheduler_pending_capacity": 65536,
+      "adapter_private_resource_state_capacity": 65536,
+      "adapter_instance_lease_capacity": 65536,
+      "smart_coordinator_process_capacity": 32768,
+      "smart_coordinator_software_group_capacity": 32768,
+      "smart_coordinator_gpu_state_capacity": 262144,
+      "smart_coordinator_input_row_capacity": 262144,
+      "smart_coordinator_action_capacity": 65536,
+      "smart_coordinator_reservation_capacity": 131072,
+      "smart_coordinator_atomic_group_capacity": 32768,
+      "process_policy_batch_capacity": 65536,
+      "memory_cleanup_state_capacity": 65536,
+      "placement_coordinator_maximum_desired_capacity": 65536,
+      "placement_coordinator_maximum_applied_capacity": 65536,
+      "placement_coordinator_maximum_action_capacity": 65536,
+      "placement_coordinator_maximum_state_capacity": 65536,
+      "placement_coordinator_core_capacity": 1024,
+      "placement_coordinator_ccd_capacity": 64,
+      "placement_coordinator_target_capacity": 32768,
+      "placement_coordinator_reservation_capacity": 32768,
+      "applied_ownership_record_capacity": 65536,
+      "applied_ownership_primary_index_capacity": 131072,
+      "applied_ownership_payload_index_capacity": 131072,
+      "applied_ownership_resident_byte_budget": 134217728,
+      "applied_ownership_image_byte_budget": 33554432,
+      "transaction_journal_record_capacity": 65536,
+      "transaction_journal_resident_byte_budget": 268435456,
+      "transaction_journal_payload_count": 65536,
+      "transaction_journal_payload_byte_budget": 1073741824,
+      "sampling_subscription_roles": [
+        {
+          "role_id": 1,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 2,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 3,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 65536,
+          "maximum_membership_count": 262144,
+          "maximum_due_item_count": 65536,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 4,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 5,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 6,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        },
+        {
+          "role_id": 7,
+          "maximum_source_count": 4096,
+          "maximum_item_count": 4096,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 4096,
+          "maximum_source_view_count": 4096,
+          "maximum_expired_source_count": 4096
+        }
+      ],
+      "portable_software_registry": {
+        "maximum_registration_count": 65536,
+        "maximum_path_count": 65536,
+        "maximum_persistence_operation_count": 65536,
+        "maximum_registration_snapshot_count": 65536,
+        "maximum_path_snapshot_count": 65536,
+        "maximum_executable_path_byte_count": 32768,
+        "maximum_root_path_byte_count": 32768,
+        "registration_index_capacity": 131072,
+        "path_index_capacity": 131072
+      },
+      "software_identity_catalog": {
+        "maximum_entry_count": 65536,
+        "maximum_alias_count": 262144,
+        "maximum_root_count": 131072,
+        "maximum_catalog_key_byte_count": 134217728,
+        "maximum_query_fact_count": 64,
+        "maximum_query_signal_count": 6,
+        "maximum_query_key_byte_count": 65536,
+        "entry_index_capacity": 131072,
+        "alias_index_capacity": 524288,
+        "identity_index_capacity": 131072,
+        "root_index_capacity": 262144
+      },
+      "software_identity_resolution": {
+        "maximum_policy_count": 64,
+        "maximum_observation_count": 4096,
+        "policy_index_capacity": 128
+      },
+      "report_coordinator": {
+        "maximum_source_count": 64,
+        "maximum_rule_count": 256,
+        "maximum_observation_count": 8192,
+        "maximum_report_count": 4096,
+        "maximum_trust_count": 4096,
+        "maximum_bucket_count": 131072,
+        "maximum_persistence_operation_count": 196608,
+        "maximum_report_output_count": 4096,
+        "maximum_rolling_observation_count": 512,
+        "source_index_capacity": 128,
+        "rule_index_capacity": 512,
+        "observation_index_capacity": 16384,
+        "report_index_capacity": 8192,
+        "trust_index_capacity": 8192,
+        "bucket_index_capacity": 262144,
+        "planned_persistence_index_capacity": 524288
+      },
+      "file_query": {
+        "maximum_query_session_count": 64,
+        "maximum_total_resident_byte_budget": 1073741824,
+        "per_session": {
+          "maximum_query_utf8_byte_count": 4096,
+          "maximum_query_rune_count": 1024,
+          "maximum_plan_utf8_byte_count": 131072,
+          "maximum_source_plan_count": 3,
+          "maximum_candidate_count_per_source": 1000,
+          "maximum_submitted_candidate_count": 3000,
+          "maximum_unique_candidate_count": 3000,
+          "maximum_candidate_submit_batch_count": 128,
+          "maximum_candidate_submit_utf8_byte_count": 1048576,
+          "candidate_text_arena_byte_count": 8388608,
+          "maximum_file_name_utf8_byte_count": 1024,
+          "maximum_result_count": 200,
+          "entry_index_capacity": 4096,
+          "ordinal_index_capacity": 4096
+        }
+      },
+      "public_service_coordinator": {
+        "maximum_capability_count": 64,
+        "maximum_route_count": 256,
+        "maximum_model_count": 4096,
+        "maximum_model_alias_count": 16384,
+        "maximum_request_count": 65536,
+        "maximum_rate_bucket_count": 65536,
+        "maximum_lease_count": 65536,
+        "maximum_subscription_count": 65536,
+        "maximum_task_count": 16384,
+        "capability_index_capacity": 128,
+        "model_index_capacity": 8192,
+        "alias_index_capacity": 32768,
+        "request_index_capacity": 131072,
+        "rate_bucket_index_capacity": 131072,
+        "lease_index_capacity": 131072,
+        "subscription_index_capacity": 131072,
+        "task_index_capacity": 32768,
+        "maximum_catalog_text_bytes": 1048576,
+        "maximum_model_text_bytes": 67108864,
+        "resident_byte_budget": 536870912
+      },
+      "display_coordinator": {
+        "maximum_source_count": 5,
+        "maximum_observation_count": 4096,
+        "maximum_node_count": 8192,
+        "maximum_edge_count": 4096,
+        "maximum_capability_count": 4096,
+        "maximum_diff_entry_count": 131072,
+        "maximum_text_binding_count": 16384,
+        "maximum_text_byte_count": 16777216,
+        "maximum_unresolved_count": 4096,
+        "maximum_source_batch_count": 5,
+        "identity_index_capacity": 32768,
+        "text_index_capacity": 16384,
+        "resident_byte_budget": 536870912
+      },
+      "operation_coordinator": {
+        "maximum_operation_count": 65536,
+        "maximum_domain_count": 65536,
+        "maximum_action_count": 4096,
+        "operation_index_capacity": 131072,
+        "domain_index_capacity": 131072,
+        "maximum_read_count": 65536,
+        "maximum_persistence_byte_count": 33554432,
+        "resident_byte_budget": 536870912,
+        "maximum_payload_count": 131072,
+        "maximum_payload_byte_count": 1073741824,
+        "maximum_effect_receipt_count": 65536,
+        "maximum_envelope_byte_count": 1342177280
+      },
+      "metric_snapshot": {
+        "maximum_source_count": 32,
+        "maximum_metric_count": 4096,
+        "maximum_rule_count": 8192,
+        "maximum_requested_count": 4096,
+        "maximum_observation_count": 8192,
+        "maximum_gpu_adapter_count": 64,
+        "maximum_persistence_source_count": 32,
+        "maximum_persistence_rule_count": 8192,
+        "maximum_persistence_gpu_count": 64,
+        "source_index_capacity": 64,
+        "metric_index_capacity": 8192,
+        "rule_index_capacity": 16384,
+        "gpu_index_capacity": 128,
+        "gpu_luid_index_capacity": 128,
+        "gpu_key_index_capacity": 128,
+        "maximum_plan_metric_count": 4096,
+        "maximum_source_mode_count": 32,
+        "maximum_source_plan_count": 32,
+        "maximum_metric_plan_count": 8192,
+        "resident_byte_budget": 134217728
+      }
+    }
+  },
+  "host_recreate": {
+      "shared_resources": {
+        "resource_capacity": 256,
+        "subscription_capacity": 1024,
+        "task_capacity": 2048,
+        "maximum_subscription_lease_duration_ms": 30000,
+        "maximum_queue_duration_ms": 30000,
+        "maximum_grant_duration_ms": 30000
+      },
+    "resource_scheduler": {
+      "target_capacity": 512,
+      "private_resource_capacity": 8192,
+      "pending_capacity": 2048,
+      "journal_pending_capacity": 4096,
+      "authority_capacity": 32768,
+      "feedback_capacity": 8192,
+      "private_ledger_capacity": 512,
+      "maximum_resident_bytes": 268435456
+    },
+    "adapter_private_resource_ledger": {
+      "state_capacity": 256
+    },
+    "adapter_instance_lease": {
+      "capacity": 4096,
+      "lease_duration_ms": 30000,
+      "maximum_attestation_age_ms": 5000
+    },
+    "smart_coordinator": {
+      "maximum_processes": 4096,
+      "maximum_software_groups": 2048,
+      "maximum_gpu_states": 32768,
+      "maximum_input_rows": 32768,
+      "maximum_actions": 8192,
+      "maximum_reservations": 8192,
+      "maximum_atomic_groups": 4096
+    },
+    "memory_cleanup": {
+      "state_capacity": 8192
+    },
+    "placement_coordinator": {
+      "maximum_desired_count": 8192,
+      "maximum_applied_count": 8192,
+      "maximum_action_count": 8192,
+      "maximum_state_count": 8192,
+      "core_capacity": 256,
+      "ccd_capacity": 32,
+      "target_capacity": 2048,
+      "reservation_capacity": 2048
+    },
+    "applied_ownership": {
+      "record_capacity": 8192,
+      "primary_index_capacity": 16384,
+      "payload_index_capacity": 16384,
+      "resident_byte_budget": 16777216,
+      "image_byte_budget": 4194304,
+      "ledger_relative_path": "host-manager/applied-ownership/ledger.bin"
+    },
+    "transaction_journal": {
+      "record_capacity": 8192,
+      "resident_byte_budget": 33554432,
+      "payload_count": 8192,
+      "payload_byte_budget": 268435456,
+      "journal_relative_path": "host-manager/transaction-journal/journal.bin",
+      "payload_relative_directory": "host-manager/transaction-journal/payloads"
+    },
+    "sampling_subscription": {
+      "roles": [
+        {
+          "role_id": 1,
+          "maximum_source_count": 256,
+          "maximum_item_count": 1024,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 1024,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        },
+        {
+          "role_id": 2,
+          "maximum_source_count": 256,
+          "maximum_item_count": 2048,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 2048,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        },
+        {
+          "role_id": 3,
+          "maximum_source_count": 1024,
+          "maximum_item_count": 8192,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 8192,
+          "maximum_source_view_count": 1024,
+          "maximum_expired_source_count": 1024
+        },
+        {
+          "role_id": 4,
+          "maximum_source_count": 256,
+          "maximum_item_count": 1024,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 1024,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        },
+        {
+          "role_id": 5,
+          "maximum_source_count": 256,
+          "maximum_item_count": 1024,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 1024,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        },
+        {
+          "role_id": 6,
+          "maximum_source_count": 256,
+          "maximum_item_count": 1024,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 1024,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        },
+        {
+          "role_id": 7,
+          "maximum_source_count": 256,
+          "maximum_item_count": 1024,
+          "maximum_membership_count": 8192,
+          "maximum_due_item_count": 1024,
+          "maximum_source_view_count": 256,
+          "maximum_expired_source_count": 256
+        }
+      ]
+    },
+    "portable_software_registry": {
+      "capacity": {
+        "maximum_registration_count": 4096,
+        "maximum_path_count": 8192,
+        "maximum_persistence_operation_count": 4096,
+        "maximum_registration_snapshot_count": 4096,
+        "maximum_path_snapshot_count": 4096,
+        "maximum_executable_path_byte_count": 4096,
+        "maximum_root_path_byte_count": 4096,
+        "registration_index_capacity": 8192,
+        "path_index_capacity": 16384
+      }
+    },
+    "software_identity_catalog": {
+      "capacity": {
+        "maximum_entry_count": 8192,
+        "maximum_alias_count": 32768,
+        "maximum_root_count": 16384,
+        "maximum_catalog_key_byte_count": 16777216,
+        "maximum_query_fact_count": 16,
+        "maximum_query_signal_count": 6,
+        "maximum_query_key_byte_count": 32768,
+        "entry_index_capacity": 16384,
+        "alias_index_capacity": 65536,
+        "identity_index_capacity": 16384,
+        "root_index_capacity": 32768
+      },
+      "prohibited_executable_aliases": [
+        "app",
+        "application",
+        "client",
+        "cmd",
+        "conhost",
+        "crashhandler",
+        "electron",
+        "ffmpeg",
+        "game",
+        "helper",
+        "host",
+        "installer",
+        "java",
+        "javaw",
+        "launcher",
+        "main",
+        "node",
+        "powershell",
+        "pwsh",
+        "python",
+        "python3",
+        "rundll32",
+        "service",
+        "setup",
+        "start",
+        "svchost",
+        "uninstall",
+        "update",
+        "updater"
+      ],
+      "launcher_tokens": [
+        "hyp",
+        "launcher",
+        "启动器"
+      ],
+      "managed_child_segments": [
+        "games"
+      ]
+    },
+    "software_identity_resolution": {
+      "capacity": {
+        "maximum_policy_count": 10,
+        "maximum_observation_count": 512,
+        "policy_index_capacity": 16
+      },
+      "source_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    "report_coordinator": {
+      "capacity": {
+        "maximum_source_count": 16,
+        "maximum_rule_count": 64,
+        "maximum_observation_count": 2048,
+        "maximum_report_count": 1024,
+        "maximum_trust_count": 2048,
+        "maximum_bucket_count": 21632,
+        "maximum_persistence_operation_count": 32768,
+        "maximum_report_output_count": 1024,
+        "maximum_rolling_observation_count": 128,
+        "source_index_capacity": 32,
+        "rule_index_capacity": 128,
+        "observation_index_capacity": 4096,
+        "report_index_capacity": 2048,
+        "trust_index_capacity": 4096,
+        "bucket_index_capacity": 65536,
+        "planned_persistence_index_capacity": 65536
+      },
+      "rules": [
+        {
+          "fact_kind": 1,
+          "rule_handle": 1031,
+          "source_handle": 9,
+          "coverage_scope_handle": 9,
+          "family_handle": 120,
+          "report_type_handle": 20,
+          "resource_kind_handle": 9,
+          "payload_handle": 20,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 32,
+          "severity": 2,
+          "required_consecutive_hits": 6,
+          "required_consecutive_misses": 3,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 90,
+          "clear_threshold": 85,
+          "stale_after_ms": 60000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1023,
+          "predicate_index": 0,
+          "predicate_count": 3
+        },
+        {
+          "fact_kind": 2,
+          "rule_handle": 1032,
+          "source_handle": 9,
+          "coverage_scope_handle": 9,
+          "family_handle": 120,
+          "report_type_handle": 20,
+          "resource_kind_handle": 9,
+          "payload_handle": 20,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 32,
+          "severity": 2,
+          "required_consecutive_hits": 6,
+          "required_consecutive_misses": 3,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 70,
+          "clear_threshold": 60,
+          "stale_after_ms": 60000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1023,
+          "predicate_index": 1,
+          "predicate_count": 3
+        },
+        {
+          "fact_kind": 3,
+          "rule_handle": 1033,
+          "source_handle": 9,
+          "coverage_scope_handle": 9,
+          "family_handle": 120,
+          "report_type_handle": 20,
+          "resource_kind_handle": 9,
+          "payload_handle": 20,
+          "metric_selector": 1,
+          "comparison": 2,
+          "priority": 32,
+          "severity": 2,
+          "required_consecutive_hits": 6,
+          "required_consecutive_misses": 3,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 85,
+          "clear_threshold": 90,
+          "stale_after_ms": 60000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1023,
+          "predicate_index": 2,
+          "predicate_count": 3
+        },
+        {
+          "fact_kind": 4,
+          "rule_handle": 1034,
+          "source_handle": 12,
+          "coverage_scope_handle": 12,
+          "family_handle": 121,
+          "report_type_handle": 21,
+          "resource_kind_handle": 13,
+          "payload_handle": 21,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 45,
+          "severity": 2,
+          "required_consecutive_hits": 1,
+          "required_consecutive_misses": 2,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 10,
+          "clear_threshold": 5,
+          "stale_after_ms": 180000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1024,
+          "predicate_index": 0,
+          "predicate_count": 1
+        },
+        {
+          "fact_kind": 5,
+          "rule_handle": 1035,
+          "source_handle": 12,
+          "coverage_scope_handle": 12,
+          "family_handle": 121,
+          "report_type_handle": 21,
+          "resource_kind_handle": 13,
+          "payload_handle": 21,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 45,
+          "severity": 2,
+          "required_consecutive_hits": 1,
+          "required_consecutive_misses": 2,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 3,
+          "clear_threshold": 1,
+          "stale_after_ms": 180000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1025,
+          "predicate_index": 0,
+          "predicate_count": 1
+        },
+        {
+          "fact_kind": 6,
+          "rule_handle": 1036,
+          "source_handle": 12,
+          "coverage_scope_handle": 12,
+          "family_handle": 121,
+          "report_type_handle": 21,
+          "resource_kind_handle": 13,
+          "payload_handle": 21,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 50,
+          "severity": 3,
+          "required_consecutive_hits": 1,
+          "required_consecutive_misses": 2,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 5,
+          "clear_threshold": 2,
+          "stale_after_ms": 180000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1026,
+          "predicate_index": 0,
+          "predicate_count": 1
+        },
+        {
+          "fact_kind": 7,
+          "rule_handle": 1037,
+          "source_handle": 14,
+          "coverage_scope_handle": 14,
+          "family_handle": 122,
+          "report_type_handle": 22,
+          "resource_kind_handle": 5,
+          "payload_handle": 22,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 36,
+          "severity": 2,
+          "required_consecutive_hits": 3,
+          "required_consecutive_misses": 2,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 10,
+          "clear_threshold": 7.5,
+          "stale_after_ms": 60000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1027,
+          "predicate_index": 0,
+          "predicate_count": 1
+        }
+      ]
+    },
+    "file_query": {
+      "query_session_count": 8,
+      "per_session": {
+        "maximum_query_utf8_byte_count": 4096,
+        "maximum_query_rune_count": 1024,
+        "maximum_plan_utf8_byte_count": 131072,
+        "maximum_source_plan_count": 3,
+        "maximum_candidate_count_per_source": 1000,
+        "maximum_submitted_candidate_count": 3000,
+        "maximum_unique_candidate_count": 3000,
+        "maximum_candidate_submit_batch_count": 128,
+        "maximum_candidate_submit_utf8_byte_count": 1048576,
+        "candidate_text_arena_byte_count": 8388608,
+        "maximum_file_name_utf8_byte_count": 1024,
+        "maximum_result_count": 200,
+        "entry_index_capacity": 4096,
+        "ordinal_index_capacity": 4096
+      }
+    },
+    "public_service_coordinator": {
+      "capacity": {
+        "maximum_capability_count": 16,
+        "maximum_route_count": 32,
+        "maximum_model_count": 1024,
+        "maximum_model_alias_count": 4096,
+        "maximum_request_count": 4096,
+        "maximum_rate_bucket_count": 4096,
+        "maximum_lease_count": 4096,
+        "maximum_subscription_count": 4096,
+        "maximum_task_count": 2048,
+        "capability_index_capacity": 32,
+        "model_index_capacity": 2048,
+        "alias_index_capacity": 8192,
+        "request_index_capacity": 8192,
+        "rate_bucket_index_capacity": 8192,
+        "lease_index_capacity": 8192,
+        "subscription_index_capacity": 8192,
+        "task_index_capacity": 4096,
+        "maximum_catalog_text_bytes": 65536,
+        "maximum_model_text_bytes": 16777216,
+        "resident_byte_budget": 134217728
+      },
+      "maximum_concurrent_model_tasks": 4,
+      "maximum_requests_per_rate_window": 600,
+      "maximum_inflight_requests_per_caller": 32,
+      "retryable_task_outcomes": [
+        "provider_unavailable",
+        "timeout",
+        "transport_failure"
+      ],
+      "maximum_task_attempt_count": 3,
+      "retryable_http_status_policies": [
+        "request_timeout",
+        "throttled",
+        "server_error"
+      ],
+      "rate_window_ms": 60000,
+      "request_timeout_ms": 120000,
+      "lease_timeout_ms": 30000,
+      "subscription_timeout_ms": 30000,
+      "task_timeout_ms": 600000,
+      "retry_delay_ms": 5000,
+      "model_catalog_acquisition_interval_ms": 15000,
+      "model_catalog_last_good_lifetime_ms": 60000,
+      "model_catalog_acquisition_timeout_ms": 10000,
+      "loopback_only": true
+    },
+    "display_coordinator": {
+      "capacity": {
+        "maximum_source_count": 5,
+        "maximum_observation_count": 256,
+        "maximum_node_count": 512,
+        "maximum_edge_count": 256,
+        "maximum_capability_count": 256,
+        "maximum_diff_entry_count": 8192,
+        "maximum_text_binding_count": 1024,
+        "maximum_text_byte_count": 1048576,
+        "maximum_unresolved_count": 256,
+        "maximum_source_batch_count": 5,
+        "identity_index_capacity": 2048,
+        "text_index_capacity": 1024,
+        "resident_byte_budget": 67108864
+      },
+      "persistence_relative_path": "display-coordinator/display-coordinator-v3.bin",
+      "required_sources": [
+        "display_config"
+      ],
+      "optional_sources": [
+        "dxgi",
+        "edid",
+        "setup_api_monitor",
+        "oem_connector_profile"
+      ],
+      "identity_source_priority": [
+        "edid",
+        "setup_api_monitor",
+        "display_config",
+        "dxgi",
+        "oem_connector_profile"
+      ],
+      "friendly_name_source_priority": [
+        "edid",
+        "setup_api_monitor",
+        "display_config",
+        "dxgi",
+        "oem_connector_profile"
+      ],
+      "capability_source_priority": [
+        "dxgi",
+        "display_config",
+        "edid",
+        "setup_api_monitor",
+        "oem_connector_profile"
+      ],
+      "projection_source_priority": [
+        "display_config",
+        "dxgi",
+        "edid",
+        "setup_api_monitor",
+        "oem_connector_profile"
+      ],
+      "identity_contract_version": 65536,
+      "capability_contract_version": 65536,
+      "maximum_future_skew_ms": 30000
+    },
+    "operation_coordinator": {
+      "capacity": {
+        "maximum_operation_count": 8192,
+        "maximum_domain_count": 8192,
+        "maximum_action_count": 1024,
+        "operation_index_capacity": 16384,
+        "domain_index_capacity": 16384,
+        "maximum_read_count": 8192,
+        "maximum_persistence_byte_count": 4194304,
+        "resident_byte_budget": 134217728,
+        "maximum_payload_count": 32768,
+        "maximum_payload_byte_count": 268435456,
+        "maximum_effect_receipt_count": 8192,
+        "maximum_envelope_byte_count": 335544320
+      },
+      "canonical_envelope_relative_path": "operation-coordinator/operation-coordinator-v1.bin"
+    },
+    "metric_snapshot": {
+      "capacity": {
+        "maximum_source_count": 16,
+        "maximum_metric_count": 2048,
+        "maximum_rule_count": 4096,
+        "maximum_requested_count": 2048,
+        "maximum_observation_count": 4096,
+        "maximum_gpu_adapter_count": 16,
+        "maximum_persistence_source_count": 16,
+        "maximum_persistence_rule_count": 4096,
+        "maximum_persistence_gpu_count": 16,
+        "source_index_capacity": 32,
+        "metric_index_capacity": 4096,
+        "rule_index_capacity": 8192,
+        "gpu_index_capacity": 32,
+        "gpu_luid_index_capacity": 32,
+        "gpu_key_index_capacity": 32,
+        "maximum_plan_metric_count": 2048,
+        "maximum_source_mode_count": 16,
+        "maximum_source_plan_count": 16,
+        "maximum_metric_plan_count": 4096,
+        "resident_byte_budget": 67108864
+      },
+      "persistence_relative_path": "metric-snapshot/metric-snapshot-v2.bin",
+      "catalog_contract_version": 65536,
+      "value_contract_version": 65536,
+      "observation_contract_version": 65536,
+      "inventory_contract_version": 65536,
+      "persistence_contract_version": 131072,
+      "cpu_counter_contract_version": 65536
+    },
+    "pdh_collector": {
+      "baseline_reset_interval_ms": 5000
+    }
+  },
+  "hot_publish": {
+    "shared_resources": {
+      "subscription_coefficient": 0.25,
+      "maintenance_interval_ms": 1000
+    },
+    "resource_scheduler": {
+      "configuration": {
+        "bytes_per_megabyte": 1048576,
+        "size_importance_minimum": 1,
+        "size_importance_maximum": 2.25,
+        "size_log_divisor": 16,
+        "resource_kind_multipliers": [
+          1.8,
+          0.48,
+          0.88,
+          1.35,
+          0.88,
+          2.2,
+          0.48,
+          0.48,
+          2.2,
+          1.8,
+          0.88,
+          1.35,
+          0.88
+        ],
+        "surface_multipliers": [
+          1.45,
+          1.2,
+          0.95,
+          0.72,
+          0.6
+        ],
+        "policy_grade_multipliers": [
+          0.55,
+          0.8,
+          0.95,
+          1,
+          1.1
+        ],
+        "policy_grade_pressure": [
+          4,
+          3,
+          2,
+          1,
+          0
+        ],
+        "scheduling_grade_multipliers": [
+          0.5,
+          0.75,
+          1,
+          1.35
+        ],
+        "absent_scheduling_grade_multiplier": 1,
+        "discard_kind_multipliers": [
+          3.3,
+          0.32,
+          0.9,
+          2.6,
+          0.9,
+          4,
+          0.32,
+          0.32,
+          4,
+          3.3,
+          0.9,
+          2.8,
+          1.25
+        ],
+        "trim_kind_multipliers": [
+          2.5,
+          0.42,
+          2.5,
+          1.8,
+          2.5,
+          2.5,
+          0.42,
+          0.42,
+          2.5,
+          1.5,
+          0.65,
+          0.65,
+          1.8
+        ],
+        "move_down_kind_multipliers": [
+          1.8,
+          1.25,
+          1.15,
+          0.95,
+          1.15,
+          3,
+          3,
+          1.25,
+          3,
+          2.2,
+          0.95,
+          1.15,
+          0.95
+        ],
+        "move_up_kind_multipliers": [
+          2.4,
+          1.3,
+          2.4,
+          0.9,
+          2.4,
+          2.4,
+          1.3,
+          2.4,
+          2.4,
+          0.9,
+          0.9,
+          0.9,
+          0.9
+        ],
+        "activity_base_multiplier": 0.7,
+        "activity_quadratic_scale": 3.3,
+        "activity_normalizer": 255,
+        "demand_multipliers": [
+          1.7,
+          1.22,
+          1.08
+        ],
+        "large_resource_bytes": 536870912,
+        "high_activity_score": 192,
+        "physical_to_virtual_desperate_pressure_level": 3,
+        "physical_to_virtual_minimum_free_ratio": 0.25,
+        "physical_to_virtual_desperate_minimum_free_ratio": 0.18,
+        "vram_to_physical_minimum_free_ratio": 0.15,
+        "pressure_free_ratio_thresholds": [
+          0.06,
+          0.12,
+          0.2
+        ],
+        "vram_target_free_ratio": 0.3,
+        "desired_free_ratios_level_2_to_4": [
+          0.24,
+          0.18,
+          0.12
+        ],
+        "minimum_release_bytes": [
+          67108864,
+          134217728,
+          268435456,
+          536870912
+        ],
+        "maximum_release_shares": [
+          0.15,
+          0.3,
+          0.5,
+          0.75
+        ],
+        "base_score_thresholds": [
+          81,
+          61,
+          21
+        ],
+        "base_release_multipliers": [
+          0.15,
+          0.35,
+          0.65,
+          1
+        ],
+        "base_score_minimum": 0,
+        "base_score_maximum": 100,
+        "trim_release_numerator": 1,
+        "trim_release_denominator": 4,
+        "maximum_actions_per_target": 1,
+        "strong_pressure_free_ratio": 0.2,
+        "danger_severity_weights": [
+          2,
+          4,
+          1,
+          8,
+          16
+        ]
+      },
+      "dispatch": {
+        "execution_capability_enabled": false,
+        "per_action_timeout_ms": 1500,
+        "pending_action_ttl_ms": 30000,
+        "maximum_in_flight_actions": 8,
+        "maximum_in_flight_actions_per_target": 1
+      }
+    },
+    "adapter_private_resource_ledger": {
+      "maximum_snapshot_age_ms": 30000,
+      "maximum_future_clock_skew_ms": 5000,
+      "settlement_interval_ms": 5000,
+      "request_timeout_ms": 1500,
+      "maximum_response_bytes": 4194304,
+      "maximum_concurrent_reads": 8,
+      "maximum_cycle_duration_ms": 5000,
+      "active_increment": 64,
+      "decay_numerator": 75,
+      "decay_denominator": 100
+    },
+    "smart_coordinator": {
+      "feature_flags": [
+        "process_policy",
+        "adapter_cpu",
+        "adapter_gpu",
+        "critical_events"
+      ],
+      "normal_interval_ms": 10000,
+      "event_interval_ms": 1000,
+      "event_boost_ms": 10000,
+      "game_start_grace_ms": 10000,
+      "required_consecutive_decisions": 3,
+      "failure_retry_ms": 5000,
+      "reservation_timeout_ms": 30000,
+      "maximum_actions_per_realtime_tick": 1,
+      "memory_mode_policy": {
+        "enabled": true,
+        "source_kind": "product-baseline",
+        "ratio_units_maximum": 10000,
+        "strong_begin_free_ratio_units": 1000,
+        "normal_minimum_free_ratio_units": 3000,
+        "unrestricted_minimum_free_ratio_units": 6000,
+        "allow_unrestricted": true,
+        "optimize_memory_priority": 3,
+        "paged_frozen_memory_priority": 1,
+        "foreign_memory_priority_disposition": "reject",
+        "owned_state_verification_interval_cycles": 1
+      },
+      "base_score_tiers": {
+        "high_minimum_base_score": 81,
+        "middle_minimum_base_score": 21
+      },
+      "process_policy": {
+        "state_multipliers": [
+          1,
+          1.35,
+          1.12,
+          0.75,
+          0.55,
+          0.45,
+          0
+        ],
+        "a1_minimum_cpu_score": 120,
+        "default_minimum_cpu_score_scale": 70,
+        "level1_maximum_cpu_score_scale": 60,
+        "level2_maximum_cpu_score_scale": 50,
+        "level3_maximum_cpu_score_scale": 34,
+        "low_tier_level4_maximum_cpu_score_scale": 34
+      },
+      "cpu_adapter_policy": {
+        "extreme_minimum_score": 120,
+        "normal_minimum_score": 60,
+        "optimize_minimum_score": 25
+      },
+      "gpu_adapter_policy": {
+        "state_multipliers": [
+          1,
+          1.35,
+          1.12,
+          0.75,
+          0.55,
+          0.45,
+          0
+        ],
+        "extreme_minimum_score": 120,
+        "normal_minimum_score": 60,
+        "optimize_minimum_score": 25
+      }
+    },
+    "memory_cleanup": {
+      "critical_free_ratio": 0.06,
+      "very_low_free_ratio": 0.12,
+      "low_free_ratio": 0.2,
+      "guarded_free_ratio": 0.3,
+      "critical_batch_count": 6,
+      "very_low_batch_count": 4,
+      "low_batch_count": 2,
+      "guarded_batch_count": 1,
+      "emergency_batch_count": 6
+    },
+    "placement_coordinator": {
+      "retry_delay_ms": 5000,
+      "action_timeout_ms": 30000,
+      "maximum_future_skew_ms": 5000
+    },
+    "applied_ownership": {
+      "maximum_future_skew_ms": 5000,
+      "persistence_retry_delay_ms": 5000,
+      "recovery_deadline_ms": 300000,
+      "shutdown_drain_timeout_ms": 30000
+    },
+    "transaction_journal": {
+      "maximum_recovery_attempts": 3,
+      "retry_delay_ms": 5000,
+      "recovery_deadline_ms": 300000,
+      "maximum_future_skew_ms": 5000,
+      "shutdown_drain_timeout_ms": 30000
+    },
+    "sampling_subscription": {
+      "roles": [
+        {
+          "role_id": 1,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 2000
+        },
+        {
+          "role_id": 2,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 2000
+        },
+        {
+          "role_id": 3,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 5000
+        },
+        {
+          "role_id": 4,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 2000
+        },
+        {
+          "role_id": 5,
+          "default_interval_ms": 2000,
+          "minimum_interval_ms": 250,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 4000
+        },
+        {
+          "role_id": 6,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 2000
+        },
+        {
+          "role_id": 7,
+          "default_interval_ms": 1000,
+          "minimum_interval_ms": 100,
+          "active_ttl_ms": 5000,
+          "maximum_future_skew_ms": 5000,
+          "freshness_grace_ms": 2000
+        }
+      ]
+    },
+    "portable_software_registry": {
+      "maximum_future_skew_ms": 5000,
+      "resident_byte_budget": 268435456
+    },
+    "software_identity_catalog": {
+      "resident_byte_budget": 67108864,
+      "minimum_contains_key_length": 3,
+      "exact_text_score": 120,
+      "contains_text_score": 50,
+      "identity_minimum_score": 90,
+      "strong_evidence_minimum_score": 90,
+      "root_hit_bonus": 20,
+      "query_launcher_match_bonus": 60,
+      "query_launcher_nonmatch_penalty": 80,
+      "root_launcher_match_bonus": 80,
+      "root_launcher_nonmatch_penalty": 120,
+      "root_reject_score": -100,
+      "signal_weights": [
+        45,
+        40,
+        30,
+        30,
+        25,
+        10
+      ],
+      "root_signal_weights": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "strong_signal_mask": 31,
+      "root_signal_mask": 7,
+      "launcher_non_entry_requires_root": true
+    },
+    "software_identity_resolution": {
+      "maximum_future_skew_ms": 5000,
+      "resident_byte_budget": 1048576,
+      "source_policies": [
+        {
+          "source_id": 1,
+          "priority": 10,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 2,
+          "priority": 20,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 3,
+          "priority": 30,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 4,
+          "priority": 40,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 5,
+          "priority": 50,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 6,
+          "priority": 60,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 7,
+          "priority": 70,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 8,
+          "priority": 80,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 9,
+          "priority": 90,
+          "stop_on_unavailable": false
+        },
+        {
+          "source_id": 10,
+          "priority": 100,
+          "stop_on_unavailable": false
+        }
+      ]
+    },
+    "report_coordinator": {
+      "bucket_width_ms": 3600000,
+      "window_24h_ms": 86400000,
+      "window_7d_ms": 604800000,
+      "maximum_future_skew_ms": 300000,
+      "default_stale_after_ms": 900000,
+      "default_retention_ms": 604800000,
+      "metadata_checkpoint_interval_ms": 3600000,
+      "resident_byte_budget": 134217728
+    },
+    "file_query": {
+      "short_query_rune_threshold": 3,
+      "unicode_tokenizer_version": 393472,
+      "unicode_remove_diacritics_mode": 2,
+      "trigram_tokenizer_contract_version": 65536,
+      "candidate_limit_multiplier": 8,
+      "candidate_limit_floor": 128,
+      "candidate_limit_ceiling": 1000,
+      "file_name_priority": 1,
+      "relative_path_priority": 2,
+      "software_name_priority": 3,
+      "text_matching_version": 65536,
+      "per_session_resident_byte_budget": 12582912,
+      "total_resident_byte_budget": 100663296
+    },
+    "public_service_coordinator": {
+      "service_name": "Resource Manager Local Public Service",
+      "api_version": "1.0.0",
+      "base_path": "/api/public/v1",
+      "anonymous_caller_handle": 1,
+      "ai_provider_handle": 1,
+      "model_alias_projection_contract_version": 65536,
+      "load_task_base_score": 1000,
+      "unload_task_base_score": 900,
+      "capabilities": [
+        {
+          "handle": 1,
+          "payload_handle": 101,
+          "id": "catalog",
+          "display_name": "Service catalog",
+          "description": "Local public service capabilities.",
+          "setting": "always",
+          "available": true
+        },
+        {
+          "handle": 2,
+          "payload_handle": 102,
+          "id": "file-index",
+          "display_name": "File index",
+          "description": "Shared indexed file query service.",
+          "setting": "file_index",
+          "available": true
+        },
+        {
+          "handle": 3,
+          "payload_handle": 103,
+          "id": "sqlite-database",
+          "display_name": "SQLite database",
+          "description": "Managed local SQLite database service.",
+          "setting": "database",
+          "available": true
+        },
+        {
+          "handle": 4,
+          "payload_handle": 104,
+          "id": "ai-model-catalog",
+          "display_name": "AI model catalog",
+          "description": "Local open model catalog and gateway.",
+          "setting": "ai_model_catalog",
+          "available": true
+        },
+        {
+          "handle": 5,
+          "payload_handle": 105,
+          "id": "browser-runtime-catalog",
+          "display_name": "Browser runtime catalog",
+          "description": "Installed browser runtime inventory.",
+          "setting": "always",
+          "available": true
+        },
+        {
+          "handle": 6,
+          "payload_handle": 106,
+          "id": "public-resource-directory",
+          "display_name": "Public resource directory",
+          "description": "Shared public resource directory.",
+          "setting": "always",
+          "available": true
+        }
+      ],
+      "routes": [
+        {
+          "handle": 1,
+          "capability_handle": 0,
+          "payload_handle": 201,
+          "path": "/api/public/v1",
+          "methods": ["GET", "HEAD"],
+          "exact_path": true,
+          "catalog_route": true,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 2,
+          "capability_handle": 0,
+          "payload_handle": 202,
+          "path": "/api/public/v1/capabilities",
+          "methods": ["GET", "HEAD"],
+          "exact_path": true,
+          "catalog_route": true,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 3,
+          "capability_handle": 2,
+          "payload_handle": 203,
+          "path": "/api/public/v1/index",
+          "methods": ["GET", "HEAD"],
+          "exact_path": false,
+          "catalog_route": false,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 4,
+          "capability_handle": 3,
+          "payload_handle": 204,
+          "path": "/api/public/v1/sqlite",
+          "methods": ["GET", "HEAD", "POST", "PUT"],
+          "exact_path": false,
+          "catalog_route": false,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 5,
+          "capability_handle": 4,
+          "payload_handle": 205,
+          "path": "/api/public/v1/ai",
+          "methods": ["GET", "HEAD", "POST"],
+          "exact_path": false,
+          "catalog_route": false,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 6,
+          "capability_handle": 5,
+          "payload_handle": 206,
+          "path": "/api/public/v1/browser-runtimes",
+          "methods": ["GET", "HEAD"],
+          "exact_path": false,
+          "catalog_route": false,
+          "bypass_rate_limit": false
+        },
+        {
+          "handle": 7,
+          "capability_handle": 6,
+          "payload_handle": 207,
+          "path": "/api/public/v1/resources",
+          "methods": ["GET", "HEAD"],
+          "exact_path": false,
+          "catalog_route": false,
+          "bypass_rate_limit": false
+        }
+      ]
+    },
+    "operation_coordinator": {
+      "maximum_global_running_count": 32,
+      "maximum_recent_terminal_count": 4096,
+      "maximum_start_actions_per_plan": 64,
+      "maximum_cancel_actions_per_plan": 64,
+      "maximum_recover_actions_per_plan": 64,
+      "maximum_future_skew_ms": 30000,
+      "kinds": [
+        {
+          "name": "component.download",
+          "priority": 100,
+          "maximum_attempts": 3,
+          "retry_delay_ms": 5000,
+          "execution_timeout_ms": 1800000,
+          "cancel_grace_ms": 30000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "component.install",
+          "priority": 100,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 1800000,
+          "cancel_grace_ms": 30000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "dependency.download",
+          "priority": 100,
+          "maximum_attempts": 3,
+          "retry_delay_ms": 5000,
+          "execution_timeout_ms": 1800000,
+          "cancel_grace_ms": 30000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "dependency.launch-installer",
+          "priority": 100,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 1800000,
+          "cancel_grace_ms": 30000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "software.uninstall",
+          "priority": 100,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 1800000,
+          "cancel_grace_ms": 30000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "migration.execute",
+          "priority": 90,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 21600000,
+          "cancel_grace_ms": 60000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "migration.restore",
+          "priority": 90,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 21600000,
+          "cancel_grace_ms": 60000,
+          "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "discovery.start",
+          "priority": 80,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 86400000,
+          "cancel_grace_ms": 60000,
+          "terminal_retention_ms": 604800000
+        }
+      ]
+    },
+    "metric_snapshot": {
+      "catalog_manifest_version": 1,
+      "maximum_future_skew_ms": 30000,
+      "resident_byte_budget": 67108864,
+      "source_policies": [
+        {
+          "source_id": "windows.cpu",
+          "source_handle": 1,
+          "source_role": "metrics",
+          "priority": 10,
+          "retention": "retain_last_good",
+          "required": true,
+          "capability_mask": 1,
+          "semantic_fingerprint": 16103486361577013318
+        },
+        {
+          "source_id": "windows.memory",
+          "source_handle": 2,
+          "source_role": "metrics",
+          "priority": 10,
+          "retention": "retain_last_good",
+          "required": true,
+          "capability_mask": 2,
+          "semantic_fingerprint": 14832892961647581103
+        },
+        {
+          "source_id": "windows.virtual-memory",
+          "source_handle": 3,
+          "source_role": "metrics",
+          "priority": 10,
+          "retention": "retain_last_good",
+          "required": true,
+          "capability_mask": 4,
+          "semantic_fingerprint": 9423844482853860241
+        },
+        {
+          "source_id": "windows.gpu-adapter-order",
+          "source_handle": 4,
+          "source_role": "gpu_inventory",
+          "priority": 10,
+          "retention": "retain_last_good",
+          "required": true,
+          "capability_mask": 8,
+          "semantic_fingerprint": 6493362343780971029
+        },
+        {
+          "source_id": "pdh.cpu-frequency",
+          "source_handle": 5,
+          "source_role": "metrics",
+          "priority": 100,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 16,
+          "semantic_fingerprint": 13177039702616421220
+        },
+        {
+          "source_id": "pdh.gpu-engine",
+          "source_handle": 6,
+          "source_role": "metrics",
+          "priority": 200,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 32,
+          "semantic_fingerprint": 15813837841405255820
+        },
+        {
+          "source_id": "nvidia.nvml",
+          "source_handle": 7,
+          "source_role": "metrics",
+          "priority": 100,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 64,
+          "semantic_fingerprint": 10364409241500620869
+        },
+        {
+          "source_id": "nvidia.nvapi",
+          "source_handle": 8,
+          "source_role": "metrics",
+          "priority": 90,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 128,
+          "semantic_fingerprint": 12696012481376002044
+        },
+        {
+          "source_id": "amd.adlx",
+          "source_handle": 9,
+          "source_role": "metrics",
+          "priority": 100,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 256,
+          "semantic_fingerprint": 17323201892607747752
+        },
+        {
+          "source_id": "amd.smu",
+          "source_handle": 10,
+          "source_role": "metrics",
+          "priority": 50,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 512,
+          "semantic_fingerprint": 11526329103366598108
+        },
+        {
+          "source_id": "windows.storage-sensors",
+          "source_handle": 11,
+          "source_role": "metrics",
+          "priority": 100,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 1024,
+          "semantic_fingerprint": 11514769179777931343
+        },
+        {
+          "source_id": "hardware-monitor.wmi",
+          "source_handle": 12,
+          "source_role": "metrics",
+          "priority": 300,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 2048,
+          "semantic_fingerprint": 14756694195182590191
+        },
+        {
+          "source_id": "notebook-oem.fan",
+          "source_handle": 13,
+          "source_role": "metrics",
+          "priority": 80,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 4096,
+          "semantic_fingerprint": 16241024782512152485
+        },
+        {
+          "source_id": "pdh.system-io",
+          "source_handle": 14,
+          "source_role": "metrics",
+          "priority": 100,
+          "retention": "mark_unavailable",
+          "required": false,
+          "capability_mask": 8192,
+          "semantic_fingerprint": 13270681645198439091
+        }
+      ],
+      "rule_templates": [
+        {"template_id":"cpu.usage.windows","metric_id_template":"cpu.usage","source_id":"windows.cpu","scope_expansion":"cpu","metric_kind":"cpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":1,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1001},
+        {"template_id":"memory.usage.windows","metric_id_template":"memory.usage","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1002},
+        {"template_id":"memory.percent.windows","metric_id_template":"memory.percent","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1003},
+        {"template_id":"memory.total.windows","metric_id_template":"memory.total","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_total","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1078},
+        {"template_id":"virtualMemory.usage.windows","metric_id_template":"virtualMemory.usage","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1004},
+        {"template_id":"virtualMemory.percent.windows","metric_id_template":"virtualMemory.percent","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1005},
+        {"template_id":"virtualMemory.total.windows","metric_id_template":"virtualMemory.total","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_total","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1079},
+
+        {"template_id":"cpu.frequency.pdh","metric_id_template":"cpu.frequency","source_id":"pdh.cpu-frequency","scope_expansion":"cpu","metric_kind":"cpu_frequency","value_kind":"float64","retention":"retain_last_good","capability_mask":16,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1010},
+        {"template_id":"cpu.frequencyPercent.pdh","metric_id_template":"cpu.frequencyPercent","source_id":"pdh.cpu-frequency","scope_expansion":"cpu","metric_kind":"cpu_frequency","value_kind":"float64","retention":"retain_last_good","capability_mask":16,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1011},
+        {"template_id":"cpu.packagePower.smu","metric_id_template":"cpu.packagePower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1014},
+        {"template_id":"cpu.coreVoltage.smu","metric_id_template":"cpu.coreVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4611686018427387904,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1015},
+        {"template_id":"cpu.packageCurrent.smu","metric_id_template":"cpu.packageCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1016},
+        {"template_id":"cpu.temperature.smu","metric_id_template":"cpu.temperature","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1017},
+        {"template_id":"cpu.stapmPower.smu","metric_id_template":"cpu.stapmPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1018},
+        {"template_id":"cpu.actualPower.smu","metric_id_template":"cpu.actualPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1019},
+        {"template_id":"cpu.averagePower.smu","metric_id_template":"cpu.averagePower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1020},
+        {"template_id":"cpu.tdcCurrent.smu","metric_id_template":"cpu.tdcCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1021},
+        {"template_id":"cpu.edcCurrent.smu","metric_id_template":"cpu.edcCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1022},
+        {"template_id":"cpu.platformPower.smu","metric_id_template":"cpu.platformPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1023},
+        {"template_id":"cpu.platformVoltage.smu","metric_id_template":"cpu.platformVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4612811918334230528,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1024},
+        {"template_id":"cpu.igpuFrequency.smu","metric_id_template":"cpu.igpuFrequency","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1025},
+        {"template_id":"cpu.igpuVoltage.smu","metric_id_template":"cpu.igpuVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4612811918334230528,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1026},
+        {"template_id":"cpu.igpuTemperature.smu","metric_id_template":"cpu.igpuTemperature","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1027},
+        {"template_id":"cpu.smuFrequency.smu","metric_id_template":"cpu.smuFrequency","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1028},
+
+        {"template_id":"cpu.fanRpm.wmi","metric_id_template":"cpu.fanRpm","source_id":"hardware-monitor.wmi","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1030},
+        {"template_id":"cpu.fanPercent.wmi","metric_id_template":"cpu.fanPercent","source_id":"hardware-monitor.wmi","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1031},
+        {"template_id":"cpu.fanRpm.oem","metric_id_template":"cpu.fanRpm","source_id":"notebook-oem.fan","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1032},
+        {"template_id":"cpu.fanPercent.oem","metric_id_template":"cpu.fanPercent","source_id":"notebook-oem.fan","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1033},
+        {"template_id":"memory.temperature.wmi","metric_id_template":"memory.temperature","source_id":"hardware-monitor.wmi","scope_expansion":"memory","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1034},
+        {"template_id":"system.motherboardTemperature.wmi","metric_id_template":"system.motherboardTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1035},
+        {"template_id":"system.vrmTemperature.wmi","metric_id_template":"system.vrmTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1036},
+        {"template_id":"system.chipsetTemperature.wmi","metric_id_template":"system.chipsetTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1037},
+        {"template_id":"system.motherboardVoltage.wmi","metric_id_template":"system.motherboardVoltage","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4626322717216342016,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1038},
+
+        {"template_id":"disk.total.activePercent.pdh","metric_id_template":"disk.total.activePercent","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1040},
+        {"template_id":"disk.total.readBytesPerSec.pdh","metric_id_template":"disk.total.readBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1041},
+        {"template_id":"disk.total.writeBytesPerSec.pdh","metric_id_template":"disk.total.writeBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1042},
+        {"template_id":"disk.total.queueLength.pdh","metric_id_template":"disk.total.queueLength","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1043},
+        {"template_id":"network.total.receiveBytesPerSec.pdh","metric_id_template":"network.total.receiveBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1044},
+        {"template_id":"network.total.sendBytesPerSec.pdh","metric_id_template":"network.total.sendBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1045},
+        {"template_id":"network.total.utilizationPercent.pdh","metric_id_template":"network.total.utilizationPercent","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1046},
+        {"template_id":"disk.temperature.windows","metric_id_template":"disk.{disk}.temperature","source_id":"windows.storage-sensors","scope_expansion":"storage_sensor","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":1024,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1047},
+        {"template_id":"fan.speed.wmi","metric_id_template":"fan.{fan}.speed","source_id":"hardware-monitor.wmi","scope_expansion":"system_fan","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1048},
+        {"template_id":"fan.speedPercent.wmi","metric_id_template":"fan.{fan}.speedPercent","source_id":"hardware-monitor.wmi","scope_expansion":"system_fan","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1049},
+
+        {"template_id":"gpu.usage.pdh","metric_id_template":"gpu.{gpu}.usage","source_id":"pdh.gpu-engine","scope_expansion":"gpu_adapter","metric_kind":"gpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":32,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1100},
+        {"template_id":"gpu.usage.nvml","metric_id_template":"gpu.{gpu}.usage","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1101},
+        {"template_id":"gpu.graphicsClock.nvml","metric_id_template":"gpu.{gpu}.graphicsClock","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1102},
+        {"template_id":"gpu.graphicsClockPercent.nvml","metric_id_template":"gpu.{gpu}.graphicsClockPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1103},
+        {"template_id":"gpu.vram.nvml","metric_id_template":"gpu.{gpu}.vram","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1104},
+        {"template_id":"gpu.vramTotal.nvml","metric_id_template":"gpu.{gpu}.vramTotal","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_total","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1080},
+        {"template_id":"gpu.vramPercent.nvml","metric_id_template":"gpu.{gpu}.vramPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1105},
+        {"template_id":"gpu.memoryClock.nvml","metric_id_template":"gpu.{gpu}.memoryClock","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1106},
+        {"template_id":"gpu.power.nvml","metric_id_template":"gpu.{gpu}.power","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1107},
+        {"template_id":"gpu.powerLimit.nvml","metric_id_template":"gpu.{gpu}.powerLimit","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1108},
+        {"template_id":"gpu.temperature.nvml","metric_id_template":"gpu.{gpu}.temperature","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1109},
+        {"template_id":"gpu.fanPercent.nvml","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1110},
+        {"template_id":"gpu.fanRpm.nvapi","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1111},
+        {"template_id":"gpu.coreVoltage.nvapi","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1112},
+        {"template_id":"gpu.current.nvapi","metric_id_template":"gpu.{gpu}.current","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1113},
+
+        {"template_id":"gpu.graphicsClock.adlx","metric_id_template":"gpu.{gpu}.graphicsClock","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1120},
+        {"template_id":"gpu.graphicsClockPercent.adlx","metric_id_template":"gpu.{gpu}.graphicsClockPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1121},
+        {"template_id":"gpu.vram.adlx","metric_id_template":"gpu.{gpu}.vram","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1122},
+        {"template_id":"gpu.vramTotal.adlx","metric_id_template":"gpu.{gpu}.vramTotal","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_total","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1081},
+        {"template_id":"gpu.vramPercent.adlx","metric_id_template":"gpu.{gpu}.vramPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1123},
+        {"template_id":"gpu.memoryClock.adlx","metric_id_template":"gpu.{gpu}.memoryClock","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1124},
+        {"template_id":"gpu.power.adlx","metric_id_template":"gpu.{gpu}.power","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1125},
+        {"template_id":"gpu.boardPower.adlx","metric_id_template":"gpu.{gpu}.boardPower","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1126},
+        {"template_id":"gpu.temperature.adlx","metric_id_template":"gpu.{gpu}.temperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1127},
+        {"template_id":"gpu.hotspotTemperature.adlx","metric_id_template":"gpu.{gpu}.hotspotTemperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1128},
+        {"template_id":"gpu.intakeTemperature.adlx","metric_id_template":"gpu.{gpu}.intakeTemperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1129},
+        {"template_id":"gpu.fanPercent.adlx","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1130},
+        {"template_id":"gpu.coreVoltage.adlx","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1131},
+
+        {"template_id":"gpu.power.wmi","metric_id_template":"gpu.{gpu}.power","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1140},
+        {"template_id":"gpu.temperature.wmi","metric_id_template":"gpu.{gpu}.temperature","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1141},
+        {"template_id":"gpu.fanRpm.wmi","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1142},
+        {"template_id":"gpu.fanPercent.wmi","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1143},
+        {"template_id":"gpu.coreVoltage.wmi","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1144},
+        {"template_id":"gpu.current.wmi","metric_id_template":"gpu.{gpu}.current","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1145},
+        {"template_id":"gpu.fanRpm.oem","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"notebook-oem.fan","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1146},
+        {"template_id":"gpu.fanPercent.oem","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"notebook-oem.fan","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1147}
+      ]
+    },
+    "process_policy_executor": {
+      "maximum_batch_items": 512
+    },
+    "pdh_collector": {
+      "frame_reuse_window_ms": 50,
+      "last_good_lifetime_ms": 10000
+    }
+  }
+}

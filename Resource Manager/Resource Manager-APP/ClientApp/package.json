@@ -1,0 +1,52 @@
+{
+  "name": "resource-manager-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test:wire": "node --experimental-strip-types tests/resourceBreakdownWire.test.ts && node --experimental-strip-types tests/resourceMonitorDecoder.test.ts",
+    "test:monitor-refresh": "node --experimental-strip-types tests/sourceLeaseBinding.test.ts && node --experimental-strip-types tests/pushValueSourceFamily.test.ts && node --experimental-strip-types tests/resourceMonitorDecoder.test.ts && node --experimental-strip-types tests/resourceMonitorApi.test.ts && node --experimental-strip-types tests/resourceSelection.test.ts",
+    "test:window-resize": "node --experimental-strip-types tests/windowResizeContract.test.ts",
+    "test:management-navigation": "node --experimental-strip-types tests/managementNavigationContract.test.ts",
+    "test:metric-copy": "node --experimental-strip-types tests/metricCopyContract.test.ts",
+    "test:device-topology": "node --experimental-strip-types tests/deviceTopologyStateDecoder.test.ts && node --experimental-strip-types tests/deviceTopologyApi.test.ts && node --experimental-strip-types tests/externalInterfaceTree.test.ts && node --experimental-strip-types tests/internalInterfaceTree.test.ts",
+    "test:frontend-work": "node --experimental-strip-types tests/frontendVisibilityDemand.test.ts && node --conditions=browser --experimental-strip-types tests/frontendVisibilityDemandBinding.test.ts && node --experimental-strip-types tests/frontendWorkContract.test.ts",
+    "test:host-transport": "node --experimental-strip-types tests/hostMessageTransport.test.ts",
+    "test:request-transport": "node --experimental-strip-types tests/httpTransport.test.ts",
+    "test:frontend-runtime": "node --experimental-strip-types tests/backendSessionOwner.test.ts && node --experimental-strip-types tests/pushValueSourceFamily.test.ts && node --experimental-strip-types tests/requestClient.test.ts && node --experimental-strip-types tests/sourceRegistry.test.ts && node --experimental-strip-types tests/sourceRegistryContract.test.ts && node --experimental-strip-types tests/cpuSourceDecoders.test.ts && node --experimental-strip-types tests/monitorSourceDecoders.test.ts && node --conditions=browser --experimental-strip-types tests/settingsStore.test.ts && npx tsc -p tests/tsconfig.task-registry.json && node --experimental-strip-types tests/taskRegistry.test.ts && node --experimental-strip-types tests/taskRegistryContract.test.ts && node --experimental-strip-types tests/taskCenterProjection.test.ts && node --experimental-strip-types tests/resourceLayoutSettleTransition.test.ts && node --experimental-strip-types tests/localSystemStatusDecoder.test.ts && node --experimental-strip-types tests/localSystemStatusApi.test.ts && node --experimental-strip-types tests/runtimeCapabilitiesDecoder.test.ts && node --experimental-strip-types tests/runtimeCapabilitiesApi.test.ts && node --experimental-strip-types tests/resourceManagerSelfSchedulingDecoder.test.ts && node --experimental-strip-types tests/resourceManagerSelfSchedulingApi.test.ts && node --experimental-strip-types tests/appSettingsResultDecoder.test.ts && node --experimental-strip-types tests/appSettingsApi.test.ts && node --experimental-strip-types tests/optimizationReportsDecoder.test.ts && node --experimental-strip-types tests/optimizationReportsApi.test.ts && node --experimental-strip-types tests/softwareMetadataDecoder.test.ts && node --experimental-strip-types tests/softwareMetadataApi.test.ts && node --experimental-strip-types tests/softwareMetadataLeaseBinding.test.ts && node --experimental-strip-types tests/softwareMetadataDetailProjection.test.ts",
+    "test:frontend-performance-monitor": "node --experimental-strip-types tests/frontendPerformanceMonitor.test.ts",
+    "test:debug-mode": "node --experimental-strip-types tests/debugModeContract.test.ts",
+    "test:settings-localization": "node --experimental-strip-types tests/settingsLocalizationContract.test.ts && node --experimental-strip-types tests/settingsCredits.test.ts",
+    "test:settings-persistence": "node --experimental-strip-types tests/settingsPersistenceContract.test.ts && node --experimental-strip-types tests/settingsApplicationDisposition.test.ts && node --experimental-strip-types tests/editableHotkeySafety.test.ts",
+    "test:copy-boundary": "node --experimental-strip-types tests/frontendCopyBoundaryContract.test.ts",
+    "test:dashboard-binding": "node --experimental-strip-types tests/dashboardGpuBinding.test.ts",
+    "test:gpu-target-options": "node --experimental-strip-types tests/gpuPlacementTargetOptions.test.ts && node --experimental-strip-types tests/gpuDeviceName.test.ts && node --experimental-strip-types tests/gpuSchedulingModelSource.test.ts",
+    "test:operations": "node --experimental-strip-types tests/operationContract.test.ts && node --experimental-strip-types tests/operationsStateDecoder.test.ts && node --experimental-strip-types tests/operationsApi.test.ts && node --experimental-strip-types tests/operationRegistry.test.ts && node --experimental-strip-types tests/systemProcessIdentity.test.ts",
+    "test:smart-state": "node --experimental-strip-types tests/hostManagerRollbackWire.test.ts",
+    "test:observation-state": "node --experimental-strip-types tests/observationState.test.ts",
+    "test:production-usability": "node --experimental-strip-types tests/productionUsabilityRecoveryContract.test.ts && node --experimental-strip-types tests/frontendBuildManifest.test.ts && node --experimental-strip-types tests/resourcePerformanceHistory.test.ts && node --experimental-strip-types tests/resourceTableContentState.test.ts && node --experimental-strip-types tests/resourceTableColumnIdentity.test.ts && node --experimental-strip-types tests/resourceTooltipPlacement.test.ts && node --experimental-strip-types tests/observationTimestamp.test.ts && node tests/liveNativeUiDiagnostics.test.mjs",
+    "test:semantic-state": "node --experimental-strip-types tests/semanticStateContract.test.ts",
+    "test:accessibility": "node --experimental-strip-types tests/accessibilityContract.test.ts && node --experimental-strip-types tests/resourceTableFocus.test.ts && node --experimental-strip-types tests/activeDescendantListbox.test.ts",
+    "test:html": "node --experimental-strip-types tests/htmlArtifactContract.test.ts",
+    "test:browser": "npm run build && node tests/browser/runBrowserGate.mjs",
+    "test:frontend-performance:mock": "npm run build && node tests/browser/runFrontendPerformanceGate.mjs",
+    "test:frontend-performance:mock:quick": "npm run build && node tests/browser/runFrontendPerformanceGate.mjs --quick",
+    "test:frontend-performance:live": "node tests/browser/runLiveFrontendPerformanceGate.mjs",
+    "test:frontend-performance:live:quick": "node tests/browser/runLiveFrontendPerformanceGate.mjs --quick",
+    "test:live-native-ui": "node tests/browser/runLiveNativeUiGate.mjs",
+    "test:contracts": "npm run test:wire && npm run test:monitor-refresh && npm run test:window-resize && npm run test:management-navigation && npm run test:metric-copy && npm run test:device-topology && npm run test:frontend-work && npm run test:host-transport && npm run test:request-transport && npm run test:frontend-runtime && npm run test:frontend-performance-monitor && npm run test:debug-mode && npm run test:settings-localization && npm run test:settings-persistence && npm run test:copy-boundary && npm run test:dashboard-binding && npm run test:gpu-target-options && npm run test:operations && npm run test:smart-state && npm run test:observation-state && npm run test:production-usability && npm run test:semantic-state && npm run test:accessibility && npm run test:html"
+  },
+  "dependencies": {
+    "lucide-solid": "^1.24.0",
+    "solid-js": "1.9.13"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "6.0.3",
+    "vite": "8.1.0",
+    "vite-plugin-solid": "2.11.12"
+  }
+}

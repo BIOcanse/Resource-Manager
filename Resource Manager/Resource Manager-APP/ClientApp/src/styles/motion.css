@@ -1,0 +1,383 @@
+/* ============================================================
+   动画 / Motion（body[data-animations] 控制；风格对齐 Windows
+   原生组件：快速、克制、强减速、小位移、无弹跳）
+   ============================================================ */
+
+:root {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* 数据条：连续更新的宽度用近线性缓和收尾，避免起步 ease-in 造成的颗粒/跳感 */
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* --- 入场关键帧：小位移 + 淡入 --- */
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes motion-rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+}
+
+@keyframes motion-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes motion-dialog-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+}
+
+@keyframes motion-toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+
+/* --- 交互控件：悬停 / 按压 --- */
+button {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+/* 数据分段、表头排序、编辑槽整体不参与按压缩放（与拖拽/精确选择冲突） */
+button.resource-segment:active,
+button.resource-segment-empty:active,
+button.resource-process-segment:active {
+  transform: none;
+}
+
+body[data-resource-bar-hardware-acceleration="on"] button.resource-segment:active,
+body[data-resource-bar-hardware-acceleration="on"] button.resource-segment-empty:active,
+body[data-resource-bar-hardware-acceleration="on"] button.resource-process-segment:active {
+  transform: none;
+}
+
+.resource-table-head-cell:active,
+.edit-slot:active {
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+/* 开关：轨道变色 + 滑块减速滑动（覆盖基础样式里的 120ms ease） */
+.settings-switch span {
+  transition:
+    background var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-medium) var(--ease-standard);
+}
+
+.settings-switch span::after {
+  transition: transform var(--motion-medium) var(--ease-decel);
+}
+
+/* --- 页面与分区入场 --- */
+.page {
+  animation: motion-page-enter var(--motion-page) var(--ease-decel);
+}
+
+.settings-section-panel {
+  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+}
+
+/* --- 弹窗与 Toast --- */
+.modal-backdrop {
+  animation: motion-fade-in var(--motion-medium) var(--ease-standard);
+}
+
+.modal {
+  animation: motion-dialog-in var(--motion-medium) var(--ease-decel);
+}
+
+.toast {
+  animation: motion-toast-in var(--motion-page) var(--ease-decel);
+}
+
+/* --- 资源条形图：设置项控制硬件合成路径 --- */
+/* 分段按 softwareId keyed。硬件加速开启时提升整条可视平面，子段继续用
+   设备像素对齐后的 translateX + 真实宽度，避免每个色块独立 will-change 成层。 */
+.resource-segment,
+.resource-process-segment,
+.resource-segment-empty {
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+}
+
+body[data-animations="normal"]:not([data-resource-bar-hardware-acceleration="on"]) .resource-segment-layer.motion-segment {
+  transition:
+    left var(--motion-bar) var(--ease-bar),
+    width var(--motion-bar) var(--ease-bar);
+}
+
+body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment {
+  transition:
+    transform var(--motion-bar) var(--ease-bar),
+    width var(--motion-bar) var(--ease-bar);
+}
+
+body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-segment,
+body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-process-segment,
+body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-segment-empty {
+  transition: box-shadow var(--motion-medium) var(--ease-standard);
+}
+
+/* 展开面板整体上浮展开；按 softwareId keyed，切换分段时重挂→重放，轮询时不重挂 */
+@keyframes motion-panel-unfold {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+.resource-process-panel {
+  animation: motion-panel-unfold var(--motion-panel) var(--ease-decel);
+  transform-origin: top center;
+}
+
+/* --- 资源表格 --- */
+.resource-table-row {
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.resource-table-head-cell small {
+  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
+}
+
+/* --- 编辑模式与拖拽反馈 --- */
+.metric-card {
+  transition:
+    padding var(--motion-medium) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-decel),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+body[data-animations="normal"] .management-card {
+  transition:
+    background var(--motion-medium) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+body[data-animations="normal"] .management-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in oklab, var(--surface-soft) 88%, var(--accent-soft));
+  box-shadow: var(--elev-2), var(--edge-highlight);
+}
+
+body[data-animations="normal"] .management-action-button:not(:disabled),
+body[data-animations="normal"] .management-settings-button:not(:disabled) {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+body[data-animations="normal"] .management-action-button:not(:disabled):hover,
+body[data-animations="normal"] .management-settings-button:not(:disabled):hover {
+  transform: none;
+}
+
+body[data-animations="normal"] .management-action-button:not(:disabled):active,
+body[data-animations="normal"] .management-settings-button:not(:disabled):active {
+  transform: none;
+}
+
+.edit-slot,
+.resource-breakdown-item {
+  transition:
+    opacity var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+
+.edit-slot {
+  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+}
+
+/* --- 无动画 / 超高性能：一切瞬时 --- */
+body[data-animations="none"] *,
+body[data-animations="none"] *::before,
+body[data-animations="none"] *::after,
+body[data-animations="ultra"] *,
+body[data-animations="ultra"] *::before,
+body[data-animations="ultra"] *::after {
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+}
+
+body[data-window-resizing="yes"] {
+  --motion-fast: 0ms;
+  --motion-medium: 0ms;
+  --motion-page: 0ms;
+  --motion-panel: 0ms;
+  --motion-bar: 0ms;
+}
+
+/* --- 超高性能：额外抹平精修视觉层（阴影 / 高光 / 毛玻璃），回到最精简观感、
+   最低渲染开销。只重指向令牌，不改布局；边框改回实线以保持分隔清晰。
+   用透明零阴影而非 none，避免 box-shadow 列表里出现非法的 none。 --- */
+body[data-animations="ultra"] {
+  --shadow: 0 0 0 0 transparent;
+  --modal-shadow: 0 0 0 0 transparent;
+  --elev-1: 0 0 0 0 transparent;
+  --elev-2: 0 0 0 0 transparent;
+  --elev-3: 0 0 0 0 transparent;
+  --edge-highlight: 0 0 0 0 transparent;
+  --hairline: var(--line);
+}
+
+body[data-animations="normal"] .settings-row,
+body[data-animations="normal"] .device-port-item,
+body[data-animations="normal"] .optimization-report,
+body[data-animations="normal"] .software-detail-tabs button,
+body[data-animations="normal"] .device-port-icon {
+  transition:
+    background var(--motion-medium) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-medium) var(--ease-standard),
+    transform var(--motion-medium) var(--ease-decel),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+
+body[data-animations="normal"] .settings-row:hover {
+  background: color-mix(in oklab, var(--surface-soft) 92%, var(--accent-soft));
+}
+
+body[data-animations="normal"] .device-port-item:not(:disabled):hover,
+body[data-animations="normal"] .optimization-report:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+body[data-animations="normal"] .device-port-item:not(:disabled):active,
+body[data-animations="normal"] .software-detail-tabs button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+body[data-animations="normal"] .modal-header .icon-button:not(:disabled):hover {
+  transform: rotate(4deg);
+}
+
+body[data-animations="ultra"] .resource-table-header,
+body[data-animations="ultra"] .resource-table-row,
+body[data-animations="ultra"] .resource-segment-layer,
+body[data-animations="ultra"] .resource-segment-canvas {
+  will-change: auto;
+}
+
+body[data-animations="ultra"] .resource-segment:hover,
+body[data-animations="ultra"] .resource-process-segment:hover,
+body[data-animations="ultra"] .resource-segment-empty:hover,
+body[data-animations="ultra"] .resource-segment.precision-selected {
+  filter: none;
+}
+
+body[data-animations="ultra"] .metric-card:not(.editing):hover {
+  transform: none;
+}
+
+body[data-animations="ultra"] .settings-row:hover,
+body[data-animations="ultra"] .device-port-item:hover,
+body[data-animations="ultra"] .optimization-report:hover,
+body[data-animations="ultra"] .modal-header .icon-button:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .device-port-icon {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .modal,
+body[data-animations="ultra"] .optimization-report,
+body[data-animations="ultra"] .settings-section-panel {
+  box-shadow: none;
+}
+
+body[data-animations="ultra"] .window-shellbar,
+body[data-animations="ultra"] .management-tabs {
+  backdrop-filter: none;
+  background: var(--surface);
+}
+
+/* ============================================================
+   细节打磨 / Polish（不改布局与配色令牌，只加系统级观感细节）
+   ============================================================ */
+
+/* 统一键盘焦点环：克制的 accent 描边，仅键盘可见，不影响鼠标态 */
+button:focus-visible,
+.shell-page:focus-visible,
+.settings-segment:focus-visible,
+.settings-nav-item:focus-visible,
+.resource-table-mode-button:focus-visible,
+.icon-button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-switch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* 文本选中色对齐主题 */
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* 现代细滚动条（Win11 风：细、圆角、悬停显现）。表格视口按运行时实测宽度对齐表头，
+   宽度变化不会破坏对齐。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--line) 82%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--line) 82%, transparent);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
