@@ -157,7 +157,8 @@ foreach ($entry in $manifestEntries) {
     if ([long]$entry.length -lt 0 -or [string]$entry.sha256 -notmatch '^[0-9A-F]{64}$') {
         throw "Final image manifest contains invalid metadata for: $path"
     }
-    if ($path -match '(?i)\.(pdb|cs|csproj|sln|zig|c|cc|cpp|h|hpp|ps1|cmd)$') {
+    if ($path -cne 'ResourceManagerNativeUi/InstallWebView2Runtime.ps1' -and
+        $path -match '(?i)\.(pdb|cs|csproj|sln|zig|c|cc|cpp|h|hpp|ps1|cmd)$') {
         throw "Final image contains a forbidden development artifact: $path"
     }
 }
@@ -168,6 +169,7 @@ $requiredPaths = @(
     'ResourceManager/GpuPlacementShim/ResourceManager.GpuWindowAction.exe'
     'ResourceManager/GpuPlacementShim/ResourceManager.GpuPlacementPreparation.exe'
     'ResourceManagerNativeUi/ResourceManager.NativeUi.exe'
+    'ResourceManagerNativeUi/InstallWebView2Runtime.ps1'
     'ResourceManagerLauncher/ResourceManager.Launcher.exe'
 )
 foreach ($requiredPath in $requiredPaths) {
