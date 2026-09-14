@@ -4,16 +4,16 @@ Resource Manager is a Windows desktop application for monitoring resource usage 
 
 ## Features
 
-- **Application-level monitoring.** View CPU, memory, GPU, disk, and network activity by application or individual process. Sort resource tables and explore visual usage breakdowns.
-- **CPU scheduling.** Use automatic scheduling or per-application settings to control CPU priorities, core placement, and exclusive allocation.
-- **Memory management.** Configure per-application memory policies and periodic working-set trimming.
-- **GPU placement.** Set preferred GPUs and adjust GPU performance scores for scheduling. Optional GPU Shim support provides additional placement options for supported applications.
-- **Shared GPU memory accounting.** Distinguish private and shared allocations, with shared allocations apportioned among the processes using them.
-- **Customizable monitoring.** Choose dashboard items, layouts, colors, and update frequencies.
-- **Software recognition and profiles.** Bundled software definitions provide classifications and default scores. User overrides are stored separately from defaults and automatically discovered installation paths.
-- **Scheduling visibility.** Inspect scheduling scores, actions, and optimization reports.
-- **Background operation.** Run the backend as a Windows service, keep the desktop interface in the system tray, and optionally start at sign-in.
-- **Local APIs and adapter SDK.** Access monitoring data and integrate with the resource-management service.
+- **Find what is using your PC.** See which applications are consuming CPU, memory, GPU, disk, and network resources. Compare applications at a glance, then drill down into individual processes.
+- **Give important applications priority.** Let automatic scheduling balance CPU resources, or choose priorities, core placement, and exclusive allocation for specific applications.
+- **Manage background memory use.** Set memory policies for individual applications, including periodic working-set trimming to reclaim resident memory.
+- **Choose which GPU an application uses.** Assign applications to a preferred GPU and customize scheduling preferences. Optional GPU Shim support extends placement control to compatible applications.
+- **Understand GPU memory usage.** See private allocations separately from shared allocations, with shared memory divided among its users instead of counted in full for each process.
+- **Build the dashboard you need.** Pick the metrics that matter to you and customize their layout, colors, and update frequency.
+- **Spend less time configuring applications.** Built-in software recognition supplies classifications and starting policies for many applications. Customize individual applications to suit your workflow.
+- **See what scheduling actually does.** Inspect application scores, scheduling actions, and reports to understand how resources are being managed.
+- **Keep resource management out of your way.** Run in the background, access the interface from the system tray, and optionally start automatically when you sign in.
+- **Connect your own tools.** Use local APIs and the adapter SDK to integrate resource monitoring and management into your workflow.
 
 Hardware readings depend on available drivers and providers. GPU placement support depends on the application's rendering API and device lifecycle.
 
@@ -22,6 +22,8 @@ Hardware readings depend on available drivers and providers. GPU placement suppo
 Get the Windows x64 beta from the [latest release](https://github.com/BIOcanse/Resource-Manager/releases/latest).
 
 Microsoft Edge WebView2 Runtime is required. The beta includes the .NET runtime. Preserve your Config and UserData folders when updating.
+
+Extract the complete release folder to a permanent location. Run `Install.cmd` to register that directory, then `Start.cmd` to start the service and desktop interface. `Restart.cmd` restarts the service. Service management requests administrator permission; the interface runs as a standard user.
 
 ## License and Acknowledgements
 

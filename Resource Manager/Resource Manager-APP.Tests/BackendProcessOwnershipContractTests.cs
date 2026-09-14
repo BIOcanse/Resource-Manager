@@ -54,7 +54,7 @@ public sealed class BackendProcessOwnershipContractTests
         var repositoryRoot = FindRepositoryRoot();
         var runner = File.ReadAllText(Path.Combine(
             repositoryRoot,
-            "资源管理器开发运行.ps1"));
+            "scripts", "Run-Development.ps1"));
         var backendStart = runner.IndexOf(
             "启动外层脚本拥有的调试后端",
             StringComparison.Ordinal);
@@ -102,7 +102,7 @@ public sealed class BackendProcessOwnershipContractTests
     [Fact]
     public void DevelopmentStopUsesOwnedConsoleExitAndChecksEtwCleanup()
     {
-        var runner = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "资源管理器开发运行.ps1"));
+        var runner = File.ReadAllText(Path.Combine(FindRepositoryRoot(), "scripts", "Run-Development.ps1"));
         Assert.Contains("Invoke-DevelopmentBackendStop", runner, StringComparison.Ordinal);
         Assert.Contains(@"scripts\BackendLifetime\Stop-OwnedBackend.ps1", runner, StringComparison.Ordinal);
         Assert.Contains("CreationFileTimeUtc", runner, StringComparison.Ordinal);
@@ -137,7 +137,7 @@ public sealed class BackendProcessOwnershipContractTests
             ".."));
         return File.Exists(Path.Combine(
             repositoryRoot,
-            "资源管理器开发运行.ps1"))
+            "scripts", "Run-Development.ps1"))
             ? repositoryRoot
             : throw new DirectoryNotFoundException(
                 "Could not locate the repository root from the test source path.");
