@@ -40,8 +40,10 @@ if (-not $SkipPublish) {
     $previous = $env:NoDefaultCurrentDirectoryInExePath
     Remove-Item Env:\NoDefaultCurrentDirectoryInExePath -ErrorAction SilentlyContinue
     try {
+        # 路径里有空格（Resource Manager），-File 后面必须自己带引号，
+        # 否则 powershell.exe 把它拆成两个参数，报「文件没有 .ps1 扩展名」。
         Invoke-Checked 'powershell.exe' @(
-            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $publishScript,
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$publishScript`"",
             '-Target', 'All') $repositoryRoot
     }
     finally {
