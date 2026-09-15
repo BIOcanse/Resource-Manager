@@ -1,6 +1,7 @@
 import type { StandardContextMenuModel } from "./StandardContextMenu";
 import type { SystemProcessIdentity } from "../types";
 import { normalizeSystemProcessIdentities } from "../processes/systemProcessIdentity";
+import { uiText } from "../text.ts";
 
 export interface SoftwareContextMenuTarget {
   name: string;
@@ -38,66 +39,66 @@ export function createSoftwareContextMenuModel(
   const canGoToDetails = Boolean(target.softwareId);
   const systemActionUnavailableTitle = actions.allowSystemActions
     ? undefined
-    : "当前启动配置只提供查看，不执行系统操作。";
+    : uiText.contextMenu.viewOnly;
   return {
     id: crypto.randomUUID(),
     x,
     y,
     returnFocusTarget,
     unavailableReason: actions.allowSystemActions
-      ? "当前条目没有可展开、定位或执行的操作。"
-      : "当前启动配置只提供查看，并且该条目没有可用的展开或详情操作。",
+      ? uiText.contextMenu.nothingToDo
+      : uiText.contextMenu.viewOnlyNothingToDo,
     items: [
       {
         id: "expand",
-        label: target.expanded ? "折叠" : "展开",
+        label: target.expanded ? uiText.contextMenu.collapse : uiText.contextMenu.expand,
         disabled: !target.canExpand,
-        title: target.canExpand ? undefined : "当前列表没有可展开的进程组。",
+        title: target.canExpand ? undefined : uiText.contextMenu.noExpandableGroup,
         onSelect: () => actions.onExpand(target)
       },
       {
         id: "terminate",
-        label: "结束任务",
+        label: uiText.contextMenu.endTask,
         danger: true,
         disabled: !actions.allowSystemActions || !hasProcess,
-        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : "没有匹配到正在运行的进程。"),
+        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : uiText.contextMenu.noRunningProcess),
         onSelect: () => actions.onTerminate(target)
       },
       {
         id: "dump",
-        label: "创建内存转储文件",
+        label: uiText.contextMenu.createDump,
         separatorBefore: true,
         disabled: !actions.allowSystemActions || !hasProcess,
-        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : "没有可创建转储的进程。"),
+        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : uiText.contextMenu.noDumpProcess),
         onSelect: () => actions.onCreateDump(target)
       },
       {
         id: "details",
-        label: "转到详细信息",
+        label: uiText.contextMenu.goToDetails,
         separatorBefore: true,
         disabled: !canGoToDetails,
-        title: canGoToDetails ? undefined : "当前软件没有稳定的软件标识，无法标记进程。",
+        title: canGoToDetails ? undefined : uiText.contextMenu.noStableIdentity,
         onSelect: () => actions.onGoToDetails(target)
       },
       {
         id: "file-location",
-        label: "打开文件所在的位置",
+        label: uiText.contextMenu.openFileLocation,
         disabled: !actions.allowSystemActions || !fileLocation,
-        title: systemActionUnavailableTitle ?? (fileLocation ? undefined : "没有可打开的安装目录或进程路径。"),
+        title: systemActionUnavailableTitle ?? (fileLocation ? undefined : uiText.contextMenu.noFileLocation),
         onSelect: () => actions.onOpenFileLocation(target)
       },
       {
         id: "search",
-        label: "在线搜索",
+        label: uiText.contextMenu.onlineSearch,
         disabled: !actions.allowSystemActions || !target.name.trim(),
         title: systemActionUnavailableTitle,
         onSelect: () => actions.onSearchOnline(target)
       },
       {
         id: "properties",
-        label: "属性",
+        label: uiText.contextMenu.properties,
         disabled: !actions.allowSystemActions || !primaryPropertiesPath(target),
-        title: systemActionUnavailableTitle ?? (primaryPropertiesPath(target) ? undefined : "没有可打开系统属性的文件或目录路径。"),
+        title: systemActionUnavailableTitle ?? (primaryPropertiesPath(target) ? undefined : uiText.contextMenu.noPropertiesPath),
         onSelect: () => actions.onProperties(target)
       }
     ]

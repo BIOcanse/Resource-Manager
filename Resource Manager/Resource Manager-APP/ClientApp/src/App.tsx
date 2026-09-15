@@ -29,6 +29,7 @@ import {
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
+import { applyLanguage, uiText } from "./text.ts";
 import type {
   MetricDefinition,
   PageId
@@ -132,21 +133,27 @@ export default function App() {
     softwareMetadataLanguage: () => resolveLanguageMode(
       settings.settings().appearance?.language)
   });
+
+  // 界面语言：设置里的选择是唯一来源，解析、载入和 <html lang/dir> 都由 appTextStore 完成。
+  createEffect(() => {
+    applyLanguage(settings.settings().appearance?.language ?? "system");
+  });
+
   const pageTitle = createMemo(() => {
     if (activePage() === "components") {
-      return "组件与软件";
+      return uiText.page.components;
     }
     if (activePage() === "optimization") {
-      return "性能优化";
+      return uiText.page.optimization;
     }
     if (activePage() === "details") {
-      return "详细信息";
+      return uiText.page.details;
     }
     if (activePage() === "settings") {
-      return "设置";
+      return uiText.page.settings;
     }
 
-    return "监视控制台";
+    return uiText.page.monitor;
   });
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled !== false);
   const pageRefresh = usePageRefreshScheduler({
@@ -255,9 +262,9 @@ export default function App() {
 
   async function promptMetricDependency(metric: MetricDefinition, dependency: MetricDependencyState) {
     if (!await confirmDialog({
-      title: `${metric.label} 需要 ${dependency.name}`,
-      message: `当前状态：${dependency.stateLabel}`,
-      details: ["是否前往“组件与软件”完成安装或检查？"],
+      title: uiText.appShellExtras.metricNeedsComponent(metric.label, dependency.name),
+      message: uiText.appShellExtras.currentState(dependency.stateLabel),
+      details: [uiText.appShellExtras.goToComponents],
       tone: "warning"
     })) {
       return;
@@ -356,7 +363,7 @@ export default function App() {
         onClose={softwareActions.closeContextMenu}
         onUnavailable={(message) => showToast({
           tone: "info",
-          title: "当前没有可执行的操作",
+          title: uiText.appShellExtras.noRunnableAction,
           message
         })}
       />
@@ -366,7 +373,7 @@ export default function App() {
         projection={frontendRuntime.taskCenter}
         diagnosticsEnabled={settings.settings().debug?.debugModeEnabled === true}
         onClose={() => setTaskCenterOpen(false)}
-        onCancelError={(error) => showErrorToast(error, "无法取消任务")}
+        onCancelError={(error) => showErrorToast(error, uiText.appShellExtras.cancelTaskFailed)}
       />
       <ConfirmDialogHost request={confirmQueue()[0] ?? null} onResolve={resolveConfirmDialog} />
       <ToastHost items={toasts()} onDismiss={dismissToast} />

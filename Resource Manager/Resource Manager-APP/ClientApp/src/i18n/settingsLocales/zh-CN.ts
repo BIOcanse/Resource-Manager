@@ -1,3 +1,3 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("zh-CN");

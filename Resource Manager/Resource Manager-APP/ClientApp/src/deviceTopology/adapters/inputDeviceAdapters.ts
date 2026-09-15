@@ -12,6 +12,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, KeyboardDeviceModel, MouseDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
   id: "keyboard",
@@ -20,7 +21,7 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
     || port.service?.toLocaleLowerCase() === "kbdhid"
     || hasUsbInterface(port, /HID Boot Keyboard|\[03\/01\/01\]/i),
   createModel: (context) => {
-    const title = deviceTitle(context, "USB 键盘");
+    const title = deviceTitle(context, uiText.deviceAdapters.usbKeyboard);
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
     const protocols = interfaceProtocols(context.port);
@@ -29,18 +30,18 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
     const reportRate = formatRate(context.port.hid?.theoreticalReportRateHz, "Hz");
     const scanRate = context.port.hid?.reportedScanRateHz
       ? formatRate(context.port.hid.reportedScanRateHz, "Hz")
-      : "标准 HID 未报告";
-    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, "HID 键盘");
+      : uiText.deviceAdapters.standardHidNotReported;
+    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidKeyboard);
     const useInternalSummary = context.scope === "internal" && !hasInputTimingEvidence(context.port);
     return {
       adapterId: "keyboard",
       kind: "keyboard",
-      deviceTypeLabel: "键盘",
+      deviceTypeLabel: uiText.deviceAdapters.keyboard,
       title,
       subtitle: useInternalSummary
         ? [inputProtocol, facts?.transport].filter(Boolean).join(" · ")
-        : `HID 键盘 · ${connection.currentLink}`,
-      badge: "键盘",
+        : uiText.deviceAdapters.hidKeyboardLink(connection.currentLink),
+      badge: uiText.deviceAdapters.keyboard,
       iconKind: "keyboard",
       ...connection,
       hidMode: inputProtocol,
@@ -52,13 +53,13 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
       summaryFields: useInternalSummary
         ? internalInputSummary(inputProtocol, facts)
         : summaryFields(
-          ["输入协议", inputProtocol],
-          ["USB 轮询周期", pollingInterval],
-          ["理论报告率", reportRate],
-          ["内部扫描率", scanRate]
+          [uiText.deviceAdapters.label.inputProtocol, inputProtocol],
+          [uiText.deviceAdapters.label.usbPollingInterval, pollingInterval],
+          [uiText.deviceAdapters.label.theoreticalReportRate, reportRate],
+          [uiText.deviceAdapters.label.internalScanRate, scanRate]
         ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: ["键盘", "keyboard", "hid boot keyboard", ...protocols]
+      searchTerms: [uiText.deviceAdapters.keyboard, "keyboard", "hid boot keyboard", ...protocols]
     };
   }
 };
@@ -70,7 +71,7 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
     || port.service?.toLocaleLowerCase() === "mouhid"
     || hasUsbInterface(port, /HID Boot Mouse|\[03\/01\/02\]/i),
   createModel: (context) => {
-    const title = deviceTitle(context, "USB 鼠标");
+    const title = deviceTitle(context, uiText.deviceAdapters.usbMouse);
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
     const protocols = interfaceProtocols(context.port);
@@ -79,18 +80,18 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
     const reportRate = formatRate(context.port.hid?.theoreticalReportRateHz, "Hz");
     const dpi = context.port.hid?.reportedDpi
       ? `${context.port.hid.reportedDpi.toLocaleString()} DPI`
-      : "标准 HID 未报告";
-    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, "HID 鼠标");
+      : uiText.deviceAdapters.standardHidNotReported;
+    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidMouse);
     const useInternalSummary = context.scope === "internal" && !hasInputTimingEvidence(context.port);
     return {
       adapterId: "mouse",
       kind: "mouse",
-      deviceTypeLabel: "鼠标",
+      deviceTypeLabel: uiText.deviceAdapters.mouse,
       title,
       subtitle: useInternalSummary
         ? [inputProtocol, facts?.transport].filter(Boolean).join(" · ")
-        : `HID 鼠标 · ${connection.currentLink}`,
-      badge: "鼠标",
+        : uiText.deviceAdapters.hidMouseLink(connection.currentLink),
+      badge: uiText.deviceAdapters.mouse,
       iconKind: "mouse",
       ...connection,
       hidMode: inputProtocol,
@@ -102,13 +103,13 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
       summaryFields: useInternalSummary
         ? internalInputSummary(inputProtocol, facts)
         : summaryFields(
-          ["输入协议", inputProtocol],
-          ["USB 轮询周期", pollingInterval],
-          ["理论报告率", reportRate],
+          [uiText.deviceAdapters.label.inputProtocol, inputProtocol],
+          [uiText.deviceAdapters.label.usbPollingInterval, pollingInterval],
+          [uiText.deviceAdapters.label.theoreticalReportRate, reportRate],
           ["DPI", dpi]
         ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: ["鼠标", "mouse", "hid boot mouse", ...protocols]
+      searchTerms: [uiText.deviceAdapters.mouse, "mouse", "hid boot mouse", ...protocols]
     };
   }
 };
@@ -124,9 +125,9 @@ function internalInputSummary(
   facts: ReturnType<typeof internalDeviceFacts>
 ) {
   return summaryFields(
-    ["输入协议", inputProtocol],
-    ["内部传输", facts?.transport],
-    ["驱动服务", facts?.driverService],
-    ["设备状态", facts?.deviceStatus]
+    [uiText.deviceAdapters.label.inputProtocol, inputProtocol],
+    [uiText.deviceAdapters.label.internalTransport, facts?.transport],
+    [uiText.deviceAdapters.label.driverService, facts?.driverService],
+    [uiText.deviceAdapters.label.deviceStatus, facts?.deviceStatus]
   );
 }

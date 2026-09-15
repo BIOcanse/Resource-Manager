@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("hu-HU", {
   sections: { performance: "Teljesítmény", appearance: "Megjelenés", systemIntegration: "Rendszerintegráció", debug: "Hibakeresés", credits: "Köszönet" },

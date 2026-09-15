@@ -1,44 +1,44 @@
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppThemeMode } from "../types";
-import { createCreditGroups } from "./settingsCredits";
-import { resolveLanguageMode } from "./settingsLanguages";
-import { createSettingsLocale } from "./settingsLocaleFactory";
-import type { ConcreteAppLanguageMode, SettingsCopy, SettingsTextBundle } from "./settingsTypes";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppThemeMode } from "../types.ts";
+import { createCreditGroups } from "./settingsCredits.ts";
+import { resolveLanguageMode } from "./settingsLanguages.ts";
+import { createSettingsLocale } from "./settingsLocaleFactory.ts";
+import type { ConcreteAppLanguageMode, SettingsCopy, SettingsTextBundle } from "./settingsTypes.ts";
 
 type SettingsLocaleModule = { default: SettingsCopy };
 type SettingsLocaleLoader = () => Promise<SettingsLocaleModule>;
 
 const localeLoaders = {
-  "zh-CN": () => import("./settingsLocales/zh-CN"),
-  "zh-TW": () => import("./settingsLocales/zh-TW"),
-  "en-US": () => import("./settingsLocales/en-US"),
-  "ja-JP": () => import("./settingsLocales/ja-JP"),
-  "ko-KR": () => import("./settingsLocales/ko-KR"),
-  "fr-FR": () => import("./settingsLocales/fr-FR"),
-  "de-DE": () => import("./settingsLocales/de-DE"),
-  "es-ES": () => import("./settingsLocales/es-ES"),
-  "es-MX": () => import("./settingsLocales/es-MX"),
-  "pt-BR": () => import("./settingsLocales/pt-BR"),
-  "pt-PT": () => import("./settingsLocales/pt-PT"),
-  "ru-RU": () => import("./settingsLocales/ru-RU"),
-  "uk-UA": () => import("./settingsLocales/uk-UA"),
-  "pl-PL": () => import("./settingsLocales/pl-PL"),
-  "tr-TR": () => import("./settingsLocales/tr-TR"),
-  "it-IT": () => import("./settingsLocales/it-IT"),
-  "nl-NL": () => import("./settingsLocales/nl-NL"),
-  "sv-SE": () => import("./settingsLocales/sv-SE"),
-  "fi-FI": () => import("./settingsLocales/fi-FI"),
-  "da-DK": () => import("./settingsLocales/da-DK"),
-  "nb-NO": () => import("./settingsLocales/nb-NO"),
-  "cs-CZ": () => import("./settingsLocales/cs-CZ"),
-  "hu-HU": () => import("./settingsLocales/hu-HU"),
-  "ro-RO": () => import("./settingsLocales/ro-RO"),
-  "el-GR": () => import("./settingsLocales/el-GR"),
-  "he-IL": () => import("./settingsLocales/he-IL"),
-  "ar-SA": () => import("./settingsLocales/ar-SA"),
-  "hi-IN": () => import("./settingsLocales/hi-IN"),
-  "id-ID": () => import("./settingsLocales/id-ID"),
-  "vi-VN": () => import("./settingsLocales/vi-VN"),
-  "th-TH": () => import("./settingsLocales/th-TH")
+  "zh-CN": () => import("./settingsLocales/zh-CN.ts"),
+  "zh-TW": () => import("./settingsLocales/zh-TW.ts"),
+  "en-US": () => import("./settingsLocales/en-US.ts"),
+  "ja-JP": () => import("./settingsLocales/ja-JP.ts"),
+  "ko-KR": () => import("./settingsLocales/ko-KR.ts"),
+  "fr-FR": () => import("./settingsLocales/fr-FR.ts"),
+  "de-DE": () => import("./settingsLocales/de-DE.ts"),
+  "es-ES": () => import("./settingsLocales/es-ES.ts"),
+  "es-MX": () => import("./settingsLocales/es-MX.ts"),
+  "pt-BR": () => import("./settingsLocales/pt-BR.ts"),
+  "pt-PT": () => import("./settingsLocales/pt-PT.ts"),
+  "ru-RU": () => import("./settingsLocales/ru-RU.ts"),
+  "uk-UA": () => import("./settingsLocales/uk-UA.ts"),
+  "pl-PL": () => import("./settingsLocales/pl-PL.ts"),
+  "tr-TR": () => import("./settingsLocales/tr-TR.ts"),
+  "it-IT": () => import("./settingsLocales/it-IT.ts"),
+  "nl-NL": () => import("./settingsLocales/nl-NL.ts"),
+  "sv-SE": () => import("./settingsLocales/sv-SE.ts"),
+  "fi-FI": () => import("./settingsLocales/fi-FI.ts"),
+  "da-DK": () => import("./settingsLocales/da-DK.ts"),
+  "nb-NO": () => import("./settingsLocales/nb-NO.ts"),
+  "cs-CZ": () => import("./settingsLocales/cs-CZ.ts"),
+  "hu-HU": () => import("./settingsLocales/hu-HU.ts"),
+  "ro-RO": () => import("./settingsLocales/ro-RO.ts"),
+  "el-GR": () => import("./settingsLocales/el-GR.ts"),
+  "he-IL": () => import("./settingsLocales/he-IL.ts"),
+  "ar-SA": () => import("./settingsLocales/ar-SA.ts"),
+  "hi-IN": () => import("./settingsLocales/hi-IN.ts"),
+  "id-ID": () => import("./settingsLocales/id-ID.ts"),
+  "vi-VN": () => import("./settingsLocales/vi-VN.ts"),
+  "th-TH": () => import("./settingsLocales/th-TH.ts")
 } satisfies Record<ConcreteAppLanguageMode, SettingsLocaleLoader>;
 
 const localeCache = new Map<ConcreteAppLanguageMode, Promise<SettingsTextBundle>>();

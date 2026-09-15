@@ -37,7 +37,7 @@ import {
 import type { ManagementStore } from "../stores/managementStore";
 import type { MigrationWorkbenchStore } from "../stores/migrationStore";
 import type { MonitorStore } from "../stores/monitorStore";
-import { managementRoleLabel, softwareDisplayKindLabel, uiText } from "../text";
+import { managementRoleLabel, softwareDisplayKindLabel, uiText } from "../text.ts";
 import type {
   DetailNotice,
   GpuPlacementObservedProcessInput,
@@ -148,7 +148,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     if (!options.mutablePersistenceEnabled()) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "当前启动配置不提供软件策略编辑。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.policyEditUnavailable });
       return;
     }
 
@@ -161,7 +161,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       textOrEmpty(item.id).toLowerCase() === textOrEmpty(target.softwareId ?? target.targetKey).toLowerCase()
       || normalizeName(item.name) === normalizeName(target.displayName));
     if (!matched) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "软件列表中还没有匹配项。请先到“组件与软件”刷新。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.softwareListNoMatch });
       return;
     }
 
@@ -170,7 +170,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
   async function openSoftwareSettingsById(softwareId: string, softwareName: string) {
     if (!options.mutablePersistenceEnabled()) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "当前启动配置不提供软件策略编辑。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.policyEditUnavailable });
       return;
     }
 
@@ -187,7 +187,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: "软件列表中没有找到这项策略对应的软件。"
+        message: uiText.softwareActions.policySoftwareMissing
       });
       return;
     }
@@ -249,13 +249,13 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     const processTargets = normalizedProcessTargets(target);
     if (processTargets.length === 0) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "没有匹配到正在运行的进程。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noRunningProcess });
       return;
     }
 
     if (!await confirmDialog({
-      title: `结束任务：${target.softwareName ?? target.name}`,
-      message: `将结束 ${processTargets.length} 个当前匹配进程。`,
+      title: uiText.softwareActions.endTaskTitle(target.softwareName ?? target.name),
+      message: uiText.softwareActions.endTaskMessage(processTargets.length),
       details: processTargets.map((item) => `PID ${item.processId}`).slice(0, 12),
       tone: "warning"
     })) {
@@ -264,9 +264,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await terminateProcesses(processTargets);
-      showSystemProcessResult(result, "结束任务完成");
+      showSystemProcessResult(result, uiText.softwareActions.endTaskDone);
     } catch (error) {
-      showErrorToast(error, "结束任务失败");
+      showErrorToast(error, uiText.softwareActions.endTaskFailed);
     }
   }
 
@@ -277,13 +277,13 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     const processTargets = normalizedProcessTargets(target);
     if (processTargets.length === 0) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "没有可创建转储的进程。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noDumpProcess });
       return;
     }
 
     if (!await confirmDialog({
-      title: `创建内存转储：${target.softwareName ?? target.name}`,
-      message: `将为 ${processTargets.length} 个进程创建完整内存转储，文件可能很大。`,
+      title: uiText.softwareActions.dumpTitle(target.softwareName ?? target.name),
+      message: uiText.softwareActions.dumpMessage(processTargets.length),
       details: processTargets.map((item) => `PID ${item.processId}`).slice(0, 12),
       tone: "warning"
     })) {
@@ -292,15 +292,15 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await createProcessDumps(processTargets);
-      showSystemProcessResult(result, "内存转储完成");
+      showSystemProcessResult(result, uiText.softwareActions.dumpDone);
     } catch (error) {
-      showErrorToast(error, "创建内存转储文件失败");
+      showErrorToast(error, uiText.softwareActions.dumpFailed);
     }
   }
 
   function goToProcessDetailsForSoftware(target: SoftwareContextMenuTarget) {
     if (!target.softwareId) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "当前软件没有稳定的软件标识，无法标记进程。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noStableSoftwareIdentity });
       return;
     }
 
@@ -313,7 +313,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     highlightClearTimer = window.setTimeout(() => {
       setHighlightedSoftwareId((current) => current === target.softwareId ? null : current);
     }, 9000);
-    showToast({ tone: "info", title: uiText.feedback.info, message: `已转到进程级，并标记 ${target.softwareName ?? target.name} 的进程。` });
+    showToast({ tone: "info", title: uiText.feedback.info, message: uiText.softwareActions.markedProcesses(target.softwareName ?? target.name) });
   }
 
   async function openFileLocationForSoftwareContextTarget(target: SoftwareContextMenuTarget) {
@@ -323,15 +323,15 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     const path = primaryFileLocation(target);
     if (!path) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "没有可打开的安装目录或进程路径。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noInstallDirectory });
       return;
     }
 
     try {
       const result = await openPath(path, fileLocationSelectMode(target));
-      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, "已打开文件所在的位置"), details: [result.openedPath ?? path] });
+      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, uiText.softwareActions.openedFileLocation), details: [result.openedPath ?? path] });
     } catch (error) {
-      showErrorToast(error, "打开文件所在的位置失败");
+      showErrorToast(error, uiText.softwareActions.openFileLocationFailed);
     }
   }
 
@@ -342,9 +342,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     try {
       const result = await searchOnline(target.softwareName ?? target.name);
-      showToast({ tone: "info", title: uiText.feedback.info, message: "已打开在线搜索。", details: [result.url] });
+      showToast({ tone: "info", title: uiText.feedback.info, message: uiText.softwareActions.openedOnlineSearch, details: [result.url] });
     } catch (error) {
-      showErrorToast(error, "在线搜索失败");
+      showErrorToast(error, uiText.softwareActions.onlineSearchFailed);
     }
   }
 
@@ -355,15 +355,15 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     const path = primaryPropertiesPath(target);
     if (!path) {
-      showToast({ tone: "warning", title: uiText.feedback.warning, message: "没有可打开系统属性的文件或目录路径。" });
+      showToast({ tone: "warning", title: uiText.feedback.warning, message: uiText.softwareActions.noPropertiesPath });
       return;
     }
 
     try {
       const result = await openProperties(path);
-      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, "已打开属性窗口"), details: [result.openedPath ?? path] });
+      showToast({ tone: "success", title: uiText.feedback.success, message: userFacingMessage(result.message, uiText.softwareActions.openedProperties), details: [result.openedPath ?? path] });
     } catch (error) {
-      showErrorToast(error, "打开属性失败");
+      showErrorToast(error, uiText.softwareActions.openPropertiesFailed);
     }
   }
 
@@ -419,10 +419,10 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     showToast({
       tone: failed.length > 0 ? "warning" : "success",
       title,
-      message: userFacingMessage(result.message, "进程操作已完成"),
+      message: userFacingMessage(result.message, uiText.softwareActions.processActionDone),
       details: uniqueStrings([
         result.directoryPath ?? "",
-        ...result.items.map((item) => item.path || item.processName || (item.processId ? `进程 ${item.processId}` : ""))
+        ...result.items.map((item) => item.path || item.processName || (item.processId ? uiText.softwareActions.processItem(item.processId) : ""))
       ]).slice(0, 10)
     });
   }
@@ -503,7 +503,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         } catch (error) {
           if (isCurrentSoftwareDetailRequest(model, requestId)) {
             setSoftwareDetailNotice({
-              message: "进程历史记录失败，但策略仍可读取。",
+              message: uiText.softwareActions.processHistoryFailed,
               tone: "warning",
               details: []
             });
@@ -518,7 +518,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     } catch (error) {
       if (isCurrentSoftwareDetailRequest(model, requestId)) {
         setSoftwareDetailNotice({
-          message: "读取软件调度策略失败。",
+          message: uiText.softwareActions.policyReadFailed,
           tone: "error",
           details: []
         });
@@ -599,10 +599,10 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
           softwarePolicy: saved
         }
         : current);
-      setSoftwareDetailNotice({ message: "已保存软件级调度策略。", tone: "success" });
+      setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" });
     } catch (error) {
       setSoftwareDetailNotice({
-        message: "保存软件级调度策略失败。",
+        message: uiText.softwareActions.softwarePolicySaveFailed,
         tone: "error",
         details: []
       });
@@ -642,16 +642,16 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         || Boolean(saved.startupInterception?.requested && !saved.startupInterception.registered);
       setSoftwareDetailNotice({
         message: runtimePending
-          ? "已保存策略，但运行调度配置尚未完全应用。"
+          ? uiText.softwareActions.processPolicySavedRuntimePending
           : interceptionPending
-            ? "已保存策略，但启动拦截尚未生效。"
-            : "已保存进程级调度策略。",
+            ? uiText.softwareActions.processPolicySavedLaunchPending
+            : uiText.softwareActions.processPolicySaved,
         tone: runtimePending || interceptionPending ? "warning" : "success",
         details: undefined
       });
     } catch (error) {
       setSoftwareDetailNotice({
-        message: "保存进程级调度策略失败。",
+        message: uiText.softwareActions.processPolicySaveFailed,
         tone: "error",
         details: []
       });
@@ -664,7 +664,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     const purpose = componentPurpose(definition.id);
     const installRoot = textOrEmpty(component.installRoot);
     const state = isComponentInstalled(component)
-      ? "已安装"
+      ? uiText.softwareActions.installed
       : userFacingState(component.stateLabel || component.state);
     const roleLabel = managementRoleLabel(definition.managementRole);
     const rootPaths = uniqueTextValues([installRoot]).filter(pathLooksUsable);
@@ -688,32 +688,32 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       rootMigrationDisabledReason: rootMigrationPaths.length > 0
         ? ""
         : rootPaths.length > 0
-          ? "该目录已经是目标位置，或不适合迁移。"
-          : "没有已知软件根目录。",
+          ? uiText.softwareActions.directoryAlreadyTarget
+          : uiText.softwareActions.noKnownRoot,
       baseRows: [
-        ["名称", name],
-        ["关系", roleLabel],
-        ["状态", state],
-        ["供应商", definition.vendor],
-        ["分类", componentCategory(definition.id)],
-        ["用途", purpose]
+        [uiText.softwareActions.field.name, name],
+        [uiText.softwareActions.field.relation, roleLabel],
+        [uiText.softwareActions.field.state, state],
+        [uiText.softwareActions.field.vendor, definition.vendor],
+        [uiText.softwareActions.field.category, componentCategory(definition.id)],
+        [uiText.softwareActions.field.purpose, purpose]
       ],
       softwareIdentityId: "",
       metadataRows: [],
       pathRows: [
-        ["安装根目录", rootPaths],
-        ["来源页", definition.sourcePageUrl],
-        ["协议/条款", definition.externalTermsUrl]
+        [uiText.softwareActions.field.installRoot, rootPaths],
+        [uiText.softwareActions.field.sourcePage, definition.sourcePageUrl],
+        [uiText.softwareActions.field.terms, definition.externalTermsUrl]
       ],
       operationRows: [
-        ["下载安装", formatCapabilityFlags([
-          [component.canDownload, "可下载"],
-          [component.installerAvailable, "安装器已就绪"],
-          [component.canInstall, "可安装"],
-          [component.canVerify, "可验证"]
+        [uiText.softwareActions.field.downloadInstall, formatCapabilityFlags([
+          [component.canDownload, uiText.softwareActions.capability.downloadable],
+          [component.installerAvailable, uiText.softwareActions.capability.installerReady],
+          [component.canInstall, uiText.softwareActions.capability.installable],
+          [component.canVerify, uiText.softwareActions.capability.verifiable]
         ])],
-        ["需要提权", formatBoolean(definition.requiresElevation)],
-        ["需要外部协议确认", formatBoolean(definition.requiresExternalTermsAcknowledgement)]
+        [uiText.softwareActions.field.requiresElevation, formatBoolean(definition.requiresElevation)],
+        [uiText.softwareActions.field.requiresExternalTerms, formatBoolean(definition.requiresExternalTermsAcknowledgement)]
       ],
       capabilities: [],
       providers: []
@@ -746,26 +746,26 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       rootMigrationDisabledReason: rootMigrationPaths.length > 0
         ? ""
         : rootPaths.length > 0
-          ? "该目录已经是目标位置，或不适合迁移。"
-          : "没有找到可用的软件根目录。",
+          ? uiText.softwareActions.directoryAlreadyTarget
+          : uiText.softwareActions.noUsableRoot,
       baseRows: [
-        ["名称", name],
-        ["类型", displayKind],
-        ["状态", userFacingState(record.state)],
-        ["状态说明", userFacingMessage(record.message, displayKind)]
+        [uiText.softwareActions.field.name, name],
+        [uiText.softwareActions.field.type, displayKind],
+        [uiText.softwareActions.field.state, userFacingState(record.state)],
+        [uiText.softwareActions.field.stateDescription, userFacingMessage(record.message, displayKind)]
       ],
       softwareIdentityId: textOrEmpty(record.softwareIdentityId),
       metadataRows: [],
       pathRows: [
-        ["根目录", rootPaths],
-        ["待确认目录", record.requiresRootPathConfirmation ? record.suggestedRootPaths ?? [] : []],
-        ["可执行文件", record.executablePaths ?? []]
+        [uiText.softwareActions.field.rootDirectory, rootPaths],
+        [uiText.softwareActions.field.pendingDirectory, record.requiresRootPathConfirmation ? record.suggestedRootPaths ?? [] : []],
+        [uiText.softwareActions.field.executable, record.executablePaths ?? []]
       ],
       operationRows: [
-        ["卸载能力", operations.canUninstall
-          ? "可以卸载"
-          : userFacingMessage(operations.uninstallMessage, "当前不可卸载")],
-        ["卸载说明", userFacingMessage(operations.uninstallMessage, operations.canUninstall ? "可以使用软件提供的卸载方式" : "当前不可卸载")]
+        [uiText.softwareActions.field.uninstallCapability, operations.canUninstall
+          ? uiText.softwareActions.canUninstall
+          : userFacingMessage(operations.uninstallMessage, uiText.softwareActions.cannotUninstall)],
+        [uiText.softwareActions.field.uninstallDescription, userFacingMessage(operations.uninstallMessage, operations.canUninstall ? uiText.softwareActions.uninstallViaSoftware : uiText.softwareActions.cannotUninstall)]
       ],
       capabilities: [],
       providers: []
@@ -783,7 +783,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     try {
-      const selectedPath = await pickShellFolder("检查并选择软件根目录", detail.suggestedRootPaths[0]);
+      const selectedPath = await pickShellFolder(uiText.softwareActions.pickRootTitle, detail.suggestedRootPaths[0]);
       if (!selectedPath) {
         return;
       }
@@ -802,13 +802,13 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         }
       }
       setSoftwareDetailNotice({
-        message: userFacingMessage(result.message, "软件根目录已确认"),
+        message: userFacingMessage(result.message, uiText.softwareActions.rootConfirmed),
         tone: result.requiresRootPathConfirmation ? "warning" : "success",
         details: [result.rootPath]
       });
     } catch (error) {
       setSoftwareDetailNotice({
-        message: userFacingErrorMessage(error, "确认软件根目录失败"),
+        message: userFacingErrorMessage(error, uiText.softwareActions.rootConfirmFailed),
         tone: "error"
       });
     } finally {
@@ -822,10 +822,10 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     try {
-      const result = await postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path }, "打开路径失败");
-      setSoftwareDetailNotice({ message: userFacingMessage(result.message, "已打开路径"), tone: "success", details: [result.openedPath ?? path] });
+      const result = await postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path }, uiText.softwareActions.openPathFailed);
+      setSoftwareDetailNotice({ message: userFacingMessage(result.message, uiText.softwareActions.openedPath), tone: "success", details: [result.openedPath ?? path] });
     } catch (error) {
-      setSoftwareDetailNotice({ message: userFacingErrorMessage(error, "打开路径失败"), tone: "error", details: [path] });
+      setSoftwareDetailNotice({ message: userFacingErrorMessage(error, uiText.softwareActions.openPathFailed), tone: "error", details: [path] });
     }
   }
 
@@ -839,12 +839,12 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       return;
     }
 
-    await runSoftwareDetailAction("正在查找可迁移内容", async () => {
+    await runSoftwareDetailAction(uiText.softwareActions.findingMigratableContent, async () => {
       migration.setSoftwareName(detail.dataSearchName);
       await migration.findCandidates();
       const candidates = migration.candidates();
       if (!candidates.length) {
-        setSoftwareDetailNotice({ message: "没有发现可迁移内容。", tone: "warning" });
+        setSoftwareDetailNotice({ message: uiText.softwareActions.noMigratableContent, tone: "warning" });
         return;
       }
 
@@ -854,7 +854,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       migration.setKind(first.recommendedMigrationKind ?? "Data");
       migration.setTargetCategory(first.recommendedTargetCategory ?? "UserData");
       setSoftwareDetailNotice({
-        message: "已找到可迁移内容，并填入迁移设置。",
+        message: uiText.softwareActions.migratableContentFound,
         tone: "success",
         details: candidates.slice(0, 6).map((candidate) => candidate.path ?? candidate.name ?? "")
       });
@@ -874,7 +874,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     openManagementSubpage("Migration");
     migration.fillRootMigration(detail.name, detail.rootMigrationPaths);
     setSoftwareDetailNotice({
-      message: "已填入根目录迁移面板，请预览确认后执行。",
+      message: uiText.softwareActions.rootMigrationPrefilled,
       tone: "success",
       details: detail.rootMigrationPaths
     });
@@ -890,7 +890,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     try {
       await action();
     } catch (error) {
-      setSoftwareDetailNotice({ message: userFacingErrorMessage(error, "操作失败"), tone: "error" });
+      setSoftwareDetailNotice({ message: userFacingErrorMessage(error, uiText.softwareActions.actionFailed), tone: "error" });
     } finally {
       setSoftwareDetailActionInProgress(false);
     }
@@ -898,17 +898,17 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
   async function restoreSoftwareDetailMigrationRecord(record: SoftwareDataMigrationRecord) {
     if (!options.runtimeEffectsEnabled() || !await confirmDialog({
-      title: "恢复迁移",
-      message: "恢复会移除原位置的目录链接，并把当前数据复制回原位置。",
+      title: uiText.softwareActions.restoreMigrationTitle,
+      message: uiText.softwareActions.restoreMigrationMessage,
       tone: "warning"
     })) {
       return;
     }
 
-    await runSoftwareDetailAction("正在恢复迁移记录", async () => {
+    await runSoftwareDetailAction(uiText.softwareActions.restoringMigrationRecord, async () => {
       const result = await restoreMigrationRecord(record);
       setSoftwareDetailNotice({
-        message: userFacingMessage(operationResultText(result), "恢复完成"),
+        message: userFacingMessage(operationResultText(result), uiText.softwareActions.restoreDone),
         tone: "success",
         details: [textOrEmpty(record.sourcePath)].filter(Boolean)
       });
@@ -923,19 +923,19 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     const records = softwareDetailMigrationRecords().filter(isActiveMigrationRecord);
     if (records.length === 0) {
-      setSoftwareDetailNotice({ message: "当前软件没有可恢复的迁移记录。", tone: "warning" });
+      setSoftwareDetailNotice({ message: uiText.softwareActions.noRestorableRecord, tone: "warning" });
       return;
     }
 
     if (!await confirmDialog({
-      title: "恢复软件迁移记录",
-      message: `将恢复当前软件的 ${records.length} 条迁移记录，并把当前数据复制回原位置。`,
+      title: uiText.softwareActions.restoreSoftwareRecordsTitle,
+      message: uiText.softwareActions.restoreSoftwareRecordsMessage(records.length),
       tone: "warning"
     })) {
       return;
     }
 
-    await runSoftwareDetailAction("正在恢复软件迁移记录", async () => {
+    await runSoftwareDetailAction(uiText.softwareActions.restoringSoftwareRecords, async () => {
       const restoredPaths: string[] = [];
       for (const record of records) {
         await restoreMigrationRecord(record);
@@ -943,7 +943,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       }
 
       setSoftwareDetailNotice({
-        message: `已恢复 ${restoredPaths.length} 条迁移记录。`,
+        message: uiText.softwareActions.restoredRecords(restoredPaths.length),
         tone: "success",
         details: restoredPaths.filter(Boolean)
       });
@@ -960,8 +960,8 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     if (operation.state !== "succeeded") {
       throw new Error(operation.error
         ?? (operation.state === "stateUncertain"
-          ? "恢复结果不确定，请先检查实际状态。"
-          : "恢复失败"));
+          ? uiText.softwareActions.restoreUncertain
+          : uiText.softwareActions.restoreFailed));
     }
     return operation;
   }

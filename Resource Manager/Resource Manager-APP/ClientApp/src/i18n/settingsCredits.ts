@@ -1,4 +1,4 @@
-import type { CreditCatalogItem, CreditGroup, CreditItem, SettingsCopy } from "./settingsTypes";
+import type { CreditCatalogItem, CreditGroup, CreditItem, SettingsCopy } from "./settingsTypes.ts";
 
 const projectGitHubUrl = "https://github.com/BIOcanse/Resource-Manager";
 

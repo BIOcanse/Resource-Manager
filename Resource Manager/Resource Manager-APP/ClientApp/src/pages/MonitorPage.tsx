@@ -7,7 +7,7 @@ import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMen
 import { MonitorWorkRegion } from "../monitor/MonitorWorkRegion";
 import type { MonitorStore } from "../stores/monitorStore";
 import type { AppAnimationMode } from "../types";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import {
   ObservationStateBoundary,
   ObservationStateNotice
@@ -50,7 +50,7 @@ export function MonitorPage(props: MonitorPageProps) {
             class="secondary"
             classList={{ hidden: !monitor.editMode() }}
             type="button"
-            aria-label="添加监控卡片"
+            aria-label={uiText.monitorPage.addCardLabel}
             onClick={monitor.addCard}
           >
             添加卡片
@@ -62,7 +62,7 @@ export function MonitorPage(props: MonitorPageProps) {
             <button
               class="secondary"
               type="button"
-              aria-label="取消监控面板布局编辑"
+              aria-label={uiText.monitorPage.cancelEditLabel}
               disabled={monitor.dashboardSaveState() === "saving"}
               onClick={monitor.cancelDashboardEdit}
             >
@@ -73,43 +73,43 @@ export function MonitorPage(props: MonitorPageProps) {
             ref={dashboardEditButton}
             type="button"
             data-focus-key="monitor-dashboard-edit"
-            aria-label={monitor.editMode() ? "保存监控面板布局" : "编辑监控面板布局"}
-            title={!dashboardAvailable() ? "布局编辑暂不可用" : undefined}
+            aria-label={monitor.editMode() ? uiText.monitorPage.saveLayoutLabel : uiText.monitorPage.editLayoutLabel}
+            title={!dashboardAvailable() ? uiText.monitorPage.layoutEditUnavailable : undefined}
             disabled={!dashboardAvailable() || monitor.dashboardSaveState() === "saving"}
             onClick={() => monitor.editMode() ? void monitor.saveDraftAndLeaveEditMode() : monitor.enterEditMode()}
           >
             {monitor.editMode()
-              ? monitor.dashboardSaveState() === "saving" ? uiText.common.saving : "保存"
-              : "编辑"}
+              ? monitor.dashboardSaveState() === "saving" ? uiText.common.saving : uiText.monitorPage.save
+              : uiText.monitorPage.edit}
           </button>
         </div>
       </div>
       <Show when={monitor.editMode() && monitor.dashboardSettingsState() === "recovered"}>
         <div class="monitor-settings-state warning" role="status">
           {monitor.dashboardSettingsSource()?.recoveryDisposition === "recoveredDefaultsAfterCorruption"
-            ? "仪表盘配置已损坏并隔离，当前使用明确保存的安全默认配置。"
-            : "仪表盘配置已从最近一次有效副本恢复。"}
+            ? uiText.monitorPage.dashboardQuarantined
+            : uiText.monitorPage.dashboardRecovered}
         </div>
       </Show>
       <ObservationStateNotice
         state={monitor.catalogObservation()}
-        label="指标目录"
+        label={uiText.monitorPage.metricCatalog}
         presentation="blocking-only"
         onRetry={() => void monitor.refreshCatalog()}
       />
           <MonitorWorkRegion
-            label="实时指标"
+            label={uiText.monitorPage.liveMetrics}
           >
             <ObservationStateBoundary
               state={monitor.snapshotObservation()}
-              label="实时指标"
+              label={uiText.monitorPage.liveMetrics}
               presentation="blocking-only"
               renderWhenUnavailable
             >
               <div
                 ref={dashboardEditorRegion}
                 role={monitor.editMode() ? "group" : undefined}
-                aria-label={monitor.editMode() ? "监控面板布局编辑器" : undefined}
+                aria-label={monitor.editMode() ? uiText.monitorPage.layoutEditor : undefined}
               >
                 <Dashboard
                   cards={monitor.activeCards()}
@@ -126,11 +126,11 @@ export function MonitorPage(props: MonitorPageProps) {
             </ObservationStateBoundary>
           </MonitorWorkRegion>
           <MonitorWorkRegion
-            label="资源占用"
+            label={uiText.monitorPage.resourceUsage}
           >
             <ObservationStateBoundary
               state={monitor.resourceBarsObservation()}
-              label="资源占用"
+              label={uiText.monitorPage.resourceUsage}
               presentation="blocking-only"
               renderWhenUnavailable
             >
@@ -154,11 +154,11 @@ export function MonitorPage(props: MonitorPageProps) {
             </ObservationStateBoundary>
           </MonitorWorkRegion>
           <MonitorWorkRegion
-            label="资源列表"
+            label={uiText.monitorPage.resourceList}
           >
             <ObservationStateBoundary
               state={activeResourceTableObservation()}
-              label="资源列表"
+              label={uiText.monitorPage.resourceList}
               presentation="blocking-only"
               renderWhenUnavailable
             >

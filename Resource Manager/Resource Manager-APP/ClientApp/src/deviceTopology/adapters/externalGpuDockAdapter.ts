@@ -6,6 +6,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, ExternalGpuDockDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> = {
   id: "external-gpu-dock",
@@ -15,7 +16,7 @@ export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> =
     && hasAnyEvidence(port, /external gpu|eGPU|graphics adapter|display adapter|外置显卡|显卡扩展坞/i),
   createModel: (context) => {
     const interconnect = context.port.advancedInterconnect!;
-    const title = deviceTitle(context, "外置显卡扩展坞");
+    const title = deviceTitle(context, uiText.deviceAdapters.externalGpuDock);
     const connection = connectionFacts(context);
     const interconnectTechnology = displayValue(interconnect.technology);
     const gpuIdentity = displayValue(context.port.idResolution?.deviceName, context.port.displayName);
@@ -23,7 +24,7 @@ export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> =
     return {
       adapterId: "external-gpu-dock",
       kind: "external-gpu-dock",
-      deviceTypeLabel: "显卡扩展坞",
+      deviceTypeLabel: uiText.deviceAdapters.gpuDock,
       title,
       subtitle: `${interconnectTechnology} · ${gpuIdentity}`,
       badge: "eGPU",
@@ -33,13 +34,13 @@ export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> =
       gpuIdentity,
       relationEvidence,
       summaryFields: summaryFields(
-        ["设备类型", "显卡扩展坞"],
-        ["上游接口", connection.upstreamInterface],
-        ["互连技术", interconnectTechnology],
-        ["图形设备", gpuIdentity]
+        [uiText.deviceAdapters.label.deviceType, uiText.deviceAdapters.gpuDock],
+        [uiText.deviceAdapters.label.upstreamInterface, connection.upstreamInterface],
+        [uiText.deviceAdapters.label.interconnectTechnology, interconnectTechnology],
+        [uiText.deviceAdapters.label.graphicsDevice, gpuIdentity]
       ),
-      capabilityLabels: [interconnectTechnology, "外部图形设备"],
-      searchTerms: ["显卡扩展坞", "egpu", interconnectTechnology, gpuIdentity]
+      capabilityLabels: [interconnectTechnology, uiText.deviceAdapters.externalGraphicsDevice],
+      searchTerms: [uiText.deviceAdapters.gpuDock, "egpu", interconnectTechnology, gpuIdentity]
     };
   }
 };

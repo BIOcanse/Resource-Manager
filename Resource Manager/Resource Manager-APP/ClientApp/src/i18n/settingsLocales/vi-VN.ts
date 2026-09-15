@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("vi-VN", {
   sections: { performance: "Hiệu năng", appearance: "Giao diện", systemIntegration: "Tích hợp hệ thống", debug: "Gỡ lỗi", credits: "Lời cảm ơn" },

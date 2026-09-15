@@ -13,6 +13,7 @@ import type {
   InternalControllerDeviceModel,
   NetworkAdapterDeviceModel
 } from "./types";
+import { uiText } from "../../text.ts";
 
 export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
   id: "graphics-adapter",
@@ -22,7 +23,7 @@ export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
   createModel: (context) => {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context)!;
-    const title = deviceTitle(context, "图形适配器");
+    const title = deviceTitle(context, uiText.deviceAdapters.graphicsAdapter);
     const manufacturer = displayValue(context.port.manufacturer, context.port.idResolution?.vendorName ?? "--");
     const driverService = displayValue(context.port.service);
     const deviceStatus = displayValue(context.port.status);
@@ -30,7 +31,7 @@ export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
     return {
       adapterId: "graphics-adapter",
       kind: "graphics-adapter",
-      deviceTypeLabel: "图形适配器",
+      deviceTypeLabel: uiText.deviceAdapters.graphicsAdapter,
       title,
       subtitle: joinSummary(manufacturer === "--" ? undefined : manufacturer, facts.transport),
       badge: "GPU",
@@ -41,13 +42,13 @@ export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
       deviceStatus,
       busType,
       summaryFields: summaryFields(
-        ["厂商", manufacturer],
-        ["PCI 位置", facts.location],
-        ["驱动服务", driverService],
-        ["设备状态", deviceStatus]
+        [uiText.deviceAdapters.label.manufacturer, manufacturer],
+        [uiText.deviceAdapters.label.pciLocation, facts.location],
+        [uiText.deviceAdapters.label.driverService, driverService],
+        [uiText.deviceAdapters.label.deviceStatus, deviceStatus]
       ),
       capabilityLabels: [],
-      searchTerms: ["GPU", "图形适配器", "graphics adapter", manufacturer, driverService, busType]
+      searchTerms: ["GPU", uiText.deviceAdapters.graphicsAdapter, "graphics adapter", manufacturer, driverService, busType]
     };
   }
 };
@@ -59,7 +60,7 @@ export const networkAdapter: DeviceAdapter<NetworkAdapterDeviceModel> = {
   createModel: (context) => {
     const connection = connectionFacts(context);
     const network = context.port.network;
-    const title = deviceTitle(context, "网络适配器");
+    const title = deviceTitle(context, uiText.deviceAdapters.networkAdapter);
     const networkStandard = resolveNetworkStandard(context.port);
     const interfaceName = displayValue(network?.interfaceName);
     const connectionState = displayValue(network?.connectionState, context.port.status ?? "--");
@@ -70,10 +71,10 @@ export const networkAdapter: DeviceAdapter<NetworkAdapterDeviceModel> = {
     return {
       adapterId: "network-adapter",
       kind: "network-adapter",
-      deviceTypeLabel: "网络适配器",
+      deviceTypeLabel: uiText.deviceAdapters.networkAdapter,
       title,
       subtitle: joinSummary(networkStandard, connectionState, receiveSpeed === "--" ? undefined : receiveSpeed),
-      badge: "网络",
+      badge: uiText.deviceAdapters.networkBadge,
       iconKind: "network-adapter",
       ...connection,
       interfaceName,
@@ -83,13 +84,13 @@ export const networkAdapter: DeviceAdapter<NetworkAdapterDeviceModel> = {
       activeMtu,
       permanentAddress,
       summaryFields: summaryFields(
-        ["网络制式", networkStandard],
-        ["连接状态", connectionState],
-        ["接收链路", receiveSpeed],
-        ["发送链路", transmitSpeed]
+        [uiText.deviceAdapters.label.networkStandard, networkStandard],
+        [uiText.deviceAdapters.label.connectionState, connectionState],
+        [uiText.deviceAdapters.label.receiveLink, receiveSpeed],
+        [uiText.deviceAdapters.label.transmitLink, transmitSpeed]
       ),
       capabilityLabels: [],
-      searchTerms: ["网卡", "网络适配器", "network adapter", interfaceName, permanentAddress]
+      searchTerms: ["网卡", uiText.deviceAdapters.networkAdapter, "network adapter", interfaceName, permanentAddress]
     };
   }
 };
@@ -103,7 +104,7 @@ export const bluetoothAdapter: DeviceAdapter<BluetoothDeviceModel> = {
   createModel: (context) => {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context)!;
-    const title = deviceTitle(context, "Bluetooth 设备");
+    const title = deviceTitle(context, uiText.deviceAdapters.bluetoothDevice);
     const bluetoothRole = resolveBluetoothRole(context.port.deviceId, context.port.service, context.port.displayName);
     const protocol = resolveBluetoothTransport(context.port.service, facts.transport);
     const driverService = displayValue(context.port.service);
@@ -122,10 +123,10 @@ export const bluetoothAdapter: DeviceAdapter<BluetoothDeviceModel> = {
       driverService,
       deviceStatus,
       summaryFields: summaryFields(
-        ["设备角色", bluetoothRole],
-        ["内部传输", protocol],
-        [driverService === "--" ? "厂商" : "驱动服务", driverService === "--" ? facts.manufacturer : driverService],
-        ["设备状态", deviceStatus]
+        [uiText.deviceAdapters.label.deviceRole, bluetoothRole],
+        [uiText.deviceAdapters.label.internalTransport, protocol],
+        [driverService === "--" ? uiText.deviceAdapters.label.manufacturer : uiText.deviceAdapters.label.driverService, driverService === "--" ? facts.manufacturer : driverService],
+        [uiText.deviceAdapters.label.deviceStatus, deviceStatus]
       ),
       capabilityLabels: [],
       searchTerms: ["蓝牙", "Bluetooth", bluetoothRole, protocol, driverService]
@@ -139,7 +140,7 @@ export const internalControllerAdapter: DeviceAdapter<InternalControllerDeviceMo
   createModel: (context) => {
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context)!;
-    const title = deviceTitle(context, "内部控制器");
+    const title = deviceTitle(context, uiText.deviceAdapters.internalController);
     const controllerType = resolveControllerType(context.port);
     const interconnectTechnology = displayValue(
       context.port.advancedInterconnect?.technology,
@@ -150,10 +151,10 @@ export const internalControllerAdapter: DeviceAdapter<InternalControllerDeviceMo
     return {
       adapterId: "internal-controller",
       kind: "internal-controller",
-      deviceTypeLabel: "内部控制器",
+      deviceTypeLabel: uiText.deviceAdapters.internalController,
       title,
       subtitle: joinSummary(controllerType, interconnectTechnology),
-      badge: "控制器",
+      badge: uiText.deviceAdapters.controllerBadge,
       iconKind: "controller",
       ...connection,
       controllerType,
@@ -162,13 +163,13 @@ export const internalControllerAdapter: DeviceAdapter<InternalControllerDeviceMo
       deviceStatus,
       downstreamDeviceCount: context.downstreamInterfaceCount,
       summaryFields: summaryFields(
-        ["控制器类型", controllerType],
-        ["互连技术", interconnectTechnology],
-        ["直属设备", String(context.downstreamInterfaceCount)],
-        ["设备状态", deviceStatus]
+        [uiText.deviceAdapters.label.controllerType, controllerType],
+        [uiText.deviceAdapters.label.interconnectTechnology, interconnectTechnology],
+        [uiText.deviceAdapters.label.directDevices, String(context.downstreamInterfaceCount)],
+        [uiText.deviceAdapters.label.deviceStatus, deviceStatus]
       ),
       capabilityLabels: [],
-      searchTerms: ["控制器", "controller", controllerType, interconnectTechnology, driverService]
+      searchTerms: [uiText.deviceAdapters.controllerBadge, "controller", controllerType, interconnectTechnology, driverService]
     };
   }
 };
@@ -184,17 +185,17 @@ function isController(port: import("../../types").DeviceTopologyPort) {
 
 function resolveBluetoothRole(deviceId: string, service?: string | null, displayName?: string | null) {
   const evidence = `${deviceId} ${service ?? ""} ${displayName ?? ""}`;
-  if (/BTHUSB/i.test(service ?? "") || /adapter|适配器/i.test(displayName ?? "")) return "Bluetooth 适配器";
-  if (/BTHMODEM/i.test(evidence)) return "Bluetooth 串行端口";
+  if (/BTHUSB/i.test(service ?? "") || /adapter|适配器/i.test(displayName ?? "")) return uiText.deviceAdapters.bluetoothAdapter;
+  if (/BTHMODEM/i.test(evidence)) return uiText.deviceAdapters.bluetoothSerialPort;
   if (/RFCOMM/i.test(evidence)) return "Bluetooth RFCOMM";
-  if (/BTHLEDEVICE|UmPass/i.test(evidence)) return "Bluetooth LE GATT 服务";
-  if (/AVRCP/i.test(evidence)) return "Bluetooth AVRCP 传输";
-  if (/A2DP/i.test(evidence)) return "Bluetooth 立体声音频";
-  if (/HFAUD/i.test(evidence)) return "Bluetooth 免提音频";
-  if (/BTHENUM\\DEV_|BTHLE\\DEV_/i.test(deviceId)) return "Bluetooth 终端设备";
-  if (/MS_BTHLE/i.test(deviceId) || /^BthLEEnum$/i.test(service ?? "")) return "Bluetooth LE 枚举器";
-  if (/MS_BTHBRB/i.test(deviceId) || /^BthEnum$/i.test(service ?? "")) return "Bluetooth 经典枚举器";
-  return "Bluetooth 设备";
+  if (/BTHLEDEVICE|UmPass/i.test(evidence)) return uiText.deviceAdapters.bluetoothLeGatt;
+  if (/AVRCP/i.test(evidence)) return uiText.deviceAdapters.bluetoothAvrcp;
+  if (/A2DP/i.test(evidence)) return uiText.deviceAdapters.bluetoothStereoAudio;
+  if (/HFAUD/i.test(evidence)) return uiText.deviceAdapters.bluetoothHandsFreeAudio;
+  if (/BTHENUM\\DEV_|BTHLE\\DEV_/i.test(deviceId)) return uiText.deviceAdapters.bluetoothEndpoint;
+  if (/MS_BTHLE/i.test(deviceId) || /^BthLEEnum$/i.test(service ?? "")) return uiText.deviceAdapters.bluetoothLeEnumerator;
+  if (/MS_BTHBRB/i.test(deviceId) || /^BthEnum$/i.test(service ?? "")) return uiText.deviceAdapters.bluetoothClassicEnumerator;
+  return uiText.deviceAdapters.bluetoothDevice;
 }
 
 function resolveBluetoothTransport(service: string | null | undefined, transport: string) {
@@ -203,14 +204,14 @@ function resolveBluetoothTransport(service: string | null | undefined, transport
 
 function resolveControllerType(port: import("../../types").DeviceTopologyPort) {
   const service = port.service?.toLocaleLowerCase() ?? "";
-  if (service === "stornvme") return "NVMe 控制器";
-  if (service === "storahci") return "SATA AHCI 控制器";
-  if (service === "usbxhci") return "USB xHCI 主控制器";
-  if (service === "usbhub3" && /ROOT_HUB/i.test(port.deviceId)) return "USB 根集线器";
-  if (service.startsWith("ucmucsi")) return "USB-C 连接器管理器";
-  if (service.startsWith("usb4")) return "USB4 路由器";
+  if (service === "stornvme") return uiText.deviceAdapters.nvmeController;
+  if (service === "storahci") return uiText.deviceAdapters.sataAhciController;
+  if (service === "usbxhci") return uiText.deviceAdapters.usbXhciController;
+  if (service === "usbhub3" && /ROOT_HUB/i.test(port.deviceId)) return uiText.deviceAdapters.usbRootHub;
+  if (service.startsWith("ucmucsi")) return uiText.deviceAdapters.usbCConnectorManager;
+  if (service.startsWith("usb4")) return uiText.deviceAdapters.usb4Router;
   if (port.usb?.deviceIsHub) return "USB Hub";
-  return displayValue(port.hardwareKind, port.pnpClass ?? "内部控制器");
+  return displayValue(port.hardwareKind, port.pnpClass ?? uiText.deviceAdapters.internalController);
 }
 
 function resolveNetworkStandard(port: import("../../types").DeviceTopologyPort) {
@@ -221,5 +222,5 @@ function resolveNetworkStandard(port: import("../../types").DeviceTopologyPort) 
   if (/Wi-?Fi\s*5|802\.11ac/i.test(evidence)) return "Wi-Fi 5";
   if (/Wi-?Fi|Wireless|802\.11/i.test(evidence)) return "Wi-Fi";
   if (/Ethernet|以太网/i.test(evidence)) return "Ethernet";
-  return displayValue(port.protocol, "网络适配器");
+  return displayValue(port.protocol, uiText.deviceAdapters.networkAdapter);
 }

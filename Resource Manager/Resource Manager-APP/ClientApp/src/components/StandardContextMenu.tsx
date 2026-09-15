@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { uiText } from "../text.ts";
 
 export interface StandardContextMenuItem {
   id: string;
@@ -121,7 +122,7 @@ export function StandardContextMenu(props: {
             return;
           }
 
-          props.onUnavailable?.(model.unavailableReason ?? "当前项目没有可执行的操作。");
+          props.onUnavailable?.(model.unavailableReason ?? uiText.misc.noContextAction);
           closeMenu("return-focus");
         });
       }

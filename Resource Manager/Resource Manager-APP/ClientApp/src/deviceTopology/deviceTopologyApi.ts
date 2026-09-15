@@ -1,6 +1,7 @@
 import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
 import type { DeviceTopologySnapshotState } from "../types";
 import { deviceTopologyStateDecoder } from "./deviceTopologyStateDecoder.ts";
+import { uiText } from "../text.ts";
 
 type DeviceTopologyRequestClient = Pick<RequestClient, "request">;
 
@@ -18,7 +19,7 @@ export function getDeviceTopologyState(
   return requestClient.request({
     key: "device-topology.state",
     url: "/api/device-topology/state",
-    fallbackError: "设备拓扑读取失败，请稍后重试",
+    fallbackError: uiText.deviceTopologyState.readFailedRetry,
     decoder: deviceTopologyStateDecoder,
     signal,
     request: { method: "GET" }

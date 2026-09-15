@@ -12,6 +12,7 @@ import { PageBoundary } from "../ui/patterns/PageBoundary.tsx";
 import type {
   TaskCenterOperationState
 } from "../frontendRuntime/taskCenter/TaskCenterProjection.ts";
+import { uiText } from "../text.ts";
 
 interface AppShellProps {
   activePage: Accessor<PageId>;
@@ -35,7 +36,7 @@ export function AppShell(props: AppShellProps) {
     : props.activePage();
 
   createEffect(() => {
-    document.title = `${props.pageTitle()} · 资源管理器`;
+    document.title = uiText.shell.documentTitle(props.pageTitle(), uiText.shell.productName);
   });
 
   createEffect(on(routeIdentity, () => {
@@ -48,7 +49,7 @@ export function AppShell(props: AppShellProps) {
   return (
     <>
       <header class="window-shellbar">
-        <nav class="shell-pages" aria-label="页面切换">
+        <nav class="shell-pages" aria-label={uiText.shell.pageNav}>
           <button class="shell-page" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>监视控制台</button>
           <button class="shell-page" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>组件与软件</button>
           <Show when={props.runtimeCapabilities.optimizationEnabled()}>
@@ -73,8 +74,8 @@ export function AppShell(props: AppShellProps) {
             class="shell-task-button"
             type="button"
             aria-label={props.taskCenterActiveCount() > 0
-              ? `任务中心，${props.taskCenterActiveCount()} 项正在进行`
-              : "任务中心"}
+              ? uiText.shell.taskCenterActive(props.taskCenterActiveCount())
+              : uiText.shell.taskCenter}
             aria-haspopup="dialog"
             title={taskCenterTitle(props.taskCenterOperationState())}
             onClick={props.onTaskCenterOpen}
@@ -88,9 +89,9 @@ export function AppShell(props: AppShellProps) {
           </button>
         </div>
         <div class="window-actions">
-          <button class="window-button" type="button" aria-label="最小化" onClick={() => postShellMessage("window.minimize")}>−</button>
-          <button class="window-button" type="button" aria-label="最大化" onClick={() => postShellMessage("window.maximize")}>□</button>
-          <button id="windowCloseButton" class="window-button" type="button" aria-label="关闭" onClick={() => postShellMessage("window.close")}>×</button>
+          <button class="window-button" type="button" aria-label={uiText.shell.minimize} onClick={() => postShellMessage("window.minimize")}>−</button>
+          <button class="window-button" type="button" aria-label={uiText.shell.maximize} onClick={() => postShellMessage("window.maximize")}>□</button>
+          <button id="windowCloseButton" class="window-button" type="button" aria-label={uiText.shell.closeWindow} onClick={() => postShellMessage("window.close")}>×</button>
         </div>
       </header>
 
@@ -123,10 +124,10 @@ export function AppShell(props: AppShellProps) {
         </h1>
         <ObservationStateNotice
           state={props.runtimeCapabilities.observation()}
-          label="运行能力"
+          label={uiText.shell.runtimeCapability}
           onRetry={() => void props.runtimeCapabilities.refresh()}
         />
-        <PageBoundary name="当前页面" resetKey={props.activePage()}>
+        <PageBoundary name={uiText.shell.currentPage} resetKey={props.activePage()}>
           {props.children}
         </PageBoundary>
       </main>
@@ -137,13 +138,13 @@ export function AppShell(props: AppShellProps) {
 function taskCenterTitle(state: TaskCenterOperationState): string {
   switch (state) {
     case "loading":
-      return "任务中心 · 后端任务正在同步";
+      return uiText.shell.taskCenterSyncing;
     case "disconnected":
-      return "任务中心 · 本机服务正在重新同步";
+      return uiText.shell.taskCenterDisconnected;
     case "error":
-      return "任务中心 · 后端任务状态不可用";
+      return uiText.shell.taskCenterUnavailable;
     default:
-      return "任务中心";
+      return uiText.shell.taskCenter;
   }
 }
 

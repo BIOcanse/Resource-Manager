@@ -7,9 +7,10 @@ import {
   hotkeyKeyOptions,
   isSafeDestructiveHotkeyEncoding
 } from "../../settings/editableHotkeys";
-import type { SettingsTextBundle } from "../../text";
+import type { SettingsTextBundle } from "../../text.ts";
 import type { AppEditableHotkeySettings } from "../../types";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import { uiText } from "../../text.ts";
 
 const addKeyDefaults = [17, 18, 46, 123];
 
@@ -52,7 +53,7 @@ export function EditableHotkeyEditor(props: {
   const addKey = () => {
     const current = model();
     const fallback = addKeyDefaults.find((key) => !current.keys.includes(key))
-      ?? hotkeyKeyOptions.find((option) => !current.keys.includes(option.code))?.code;
+      ?? hotkeyKeyOptions().find((option) => !current.keys.includes(option.code))?.code;
     if (!fallback || current.keys.length >= 4) return;
     commit([...current.keys, fallback], [...current.relations, 0]);
   };
@@ -70,7 +71,7 @@ export function EditableHotkeyEditor(props: {
             aria-label={props.labels.forceTerminateTitle}
             checked={props.hotkey.enabled}
             disabled={!safeToEnable()}
-            title={safeToEnable() ? undefined : "必须同时包含 Ctrl、Alt 或 Win 修饰键以及一个非修饰键。"}
+            title={safeToEnable() ? undefined : uiText.hotkeyEditor.destructiveModifierRequired}
             onChange={(event) => commit(model().keys, model().relations, event.currentTarget.checked)}
           />
           <span />
@@ -105,8 +106,8 @@ export function EditableHotkeyEditor(props: {
                       value={String(key)}
                       ariaLabel={`${props.labels.hotkeyKeyLabel} ${index() + 1}`}
                       searchable
-                      searchPlaceholder="搜索按键"
-                      options={hotkeyKeyOptions.map((option) => ({
+                      searchPlaceholder={uiText.hotkeyEditor.searchKey}
+                      options={hotkeyKeyOptions().map((option) => ({
                         value: String(option.code),
                         label: option.label,
                         group: option.group,

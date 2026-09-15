@@ -4,7 +4,7 @@ import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
 } from "../../settings/editableHotkeys";
-import type { SettingsTextBundle } from "../../text";
+import type { SettingsTextBundle } from "../../text.ts";
 import type {
   AppAiModelServiceSettings,
   AppEditableHotkeySettings,
@@ -12,6 +12,7 @@ import type {
   AppSystemIntegrationSettings
 } from "../../types";
 import { EditableHotkeyEditor } from "./EditableHotkeyEditor";
+import { uiText } from "../../text.ts";
 
 interface SystemIntegrationSettingsSectionProps {
   settings: AppSystemIntegrationSettings | undefined;
@@ -102,7 +103,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
             aria-label={props.text.systemIntegration.publicServiceTitle}
             checked={publicService().enabled}
             disabled={!props.publicServicesAvailable}
-            title={!props.publicServicesAvailable ? "当前启动模式未启用公共服务" : undefined}
+            title={!props.publicServicesAvailable ? uiText.misc.publicServicesDisabled : undefined}
             onChange={(event) => props.onLocalPublicServiceChange(event.currentTarget.checked)}
           />
           <span />

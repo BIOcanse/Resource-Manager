@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ar-SA", {
   sections: { performance: "الأداء", appearance: "المظهر", systemIntegration: "تكامل النظام", debug: "التصحيح", credits: "الشكر" },

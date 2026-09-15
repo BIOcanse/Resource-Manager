@@ -7,6 +7,7 @@ import {
   type PerformancePoint,
   type PerformanceSeries
 } from "./resourcePerformanceHistory.ts";
+import { uiText } from "../text.ts";
 
 const palette = ["#0f8f7b", "#4f7fd8", "#d79429", "#8762c9", "#c64e64", "#5894a0", "#65922f", "#9a7130"];
 
@@ -86,7 +87,7 @@ export function ResourcePerformancePanel(props: {
         aria-live="polite"
       >
         <div class="resource-performance-summary-header">
-          <strong>{props.observation.status === "stale" ? "最近一次性能摘要" : "当前性能摘要"}</strong>
+          <strong>{props.observation.status === "stale" ? uiText.misc.lastPerformanceSummary : uiText.misc.currentPerformanceSummary}</strong>
           <Show when={latest()?.capturedAt}>
             {(capturedAt) => <time datetime={capturedAt()}>{formatCapturedAt(capturedAt())}</time>}
           </Show>
@@ -94,7 +95,7 @@ export function ResourcePerformancePanel(props: {
         <Show
           when={props.observation.status !== "error"
             && props.observation.status !== "profile-disabled"}
-          fallback={<p>{props.observation.lastError ?? "性能数据当前不可用。"}</p>}
+          fallback={<p>{props.observation.lastError ?? uiText.misc.performanceUnavailable}</p>}
         >
           <Show
             when={series().length > 0}

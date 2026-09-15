@@ -9,6 +9,7 @@ import {
   cpuResidencyDecoder,
   cpuTopologyDecoder
 } from "./cpuSourceDecoders.ts";
+import { uiText } from "../../text.ts";
 
 type CpuRequestClient = Pick<RequestClient, "request">;
 
@@ -29,7 +30,7 @@ export function getCpuTopologySource(
   return requestClient.request({
     key: "cpu.topology",
     url: "/api/cpu/topology",
-    fallbackError: "CPU 拓扑读取失败",
+    fallbackError: uiText.misc.cpuTopologyReadFailed,
     decoder: cpuTopologyDecoder,
     signal,
     request: { method: "GET" }
@@ -43,7 +44,7 @@ export function getCpuResidencySource(
   return requestClient.request({
     key: "cpu.residency",
     url: "/api/cpu/residency",
-    fallbackError: "CPU 驻留状态读取失败",
+    fallbackError: uiText.misc.cpuResidencyReadFailed,
     decoder: cpuResidencyDecoder,
     signal,
     request: { method: "GET" }
@@ -57,7 +58,7 @@ export function getCpuExclusiveBindingsSource(
   return requestClient.request({
     key: "cpu.exclusive-bindings",
     url: "/api/cpu/topology/exclusive-bindings",
-    fallbackError: "CPU 独占绑定读取失败",
+    fallbackError: uiText.misc.cpuExclusiveBindingReadFailed,
     decoder: cpuExclusiveBindingsDecoder,
     signal,
     request: { method: "GET" }

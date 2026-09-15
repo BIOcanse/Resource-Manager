@@ -4,13 +4,11 @@ import { CreditsSettingsSection } from "./settings/CreditsSettingsSection";
 import { DebugSettingsSection } from "./settings/DebugSettingsSection";
 import { PerformanceSettingsSection } from "./settings/PerformanceSettingsSection";
 import { SystemIntegrationSettingsSection } from "./settings/SystemIntegrationSettingsSection";
-import {
-  fallbackSettingsText,
+import { uiText, fallbackSettingsText,
   isRightToLeftLanguage,
   loadSettingsText,
-  normalizeLanguageMode
-} from "../text";
-import type { SettingsTextBundle } from "../text";
+  normalizeLanguageMode } from "../text.ts";
+import type { SettingsTextBundle } from "../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppBarColorMode,
@@ -182,7 +180,7 @@ export function SettingsPage(props: SettingsPageProps) {
                   class="secondary"
                   type="button"
                   disabled={props.saveState === "saving" || props.isDirty}
-                  title={props.isDirty ? "请先保存或还原当前修改，再重新加载设置。" : undefined}
+                  title={props.isDirty ? uiText.misc.saveOrRevertFirst : undefined}
                   onClick={props.onReload}
                 >
                   {text().actions.reload}

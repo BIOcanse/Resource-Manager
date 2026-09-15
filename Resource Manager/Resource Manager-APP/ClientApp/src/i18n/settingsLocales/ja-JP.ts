@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ja-JP", {
   sections: { performance: "パフォーマンス", appearance: "外観", systemIntegration: "システム統合", debug: "デバッグ", credits: "クレジット" },

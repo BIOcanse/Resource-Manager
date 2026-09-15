@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { ManualSoftwareKind, ManualSoftwareRequest, SoftwareRecord } from "../types";
-import { softwareDisplayKindLabel, uiText } from "../text";
+import { softwareDisplayKindLabel, uiText } from "../text.ts";
 import {
   DialogActions,
   DialogBody,
@@ -38,7 +38,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
   const usesManualRootEntry = createMemo(() => props.kind === "Other" || props.kind === "Adapted");
   const manualSubmitName = createMemo(() => {
     if (props.kind === "Adapted") {
-      return inferSoftwareNameFromRootPath(rootPathLines()[0]) ?? "手动适配软件";
+      return inferSoftwareNameFromRootPath(rootPathLines()[0]) ?? uiText.manualSoftwareModal.defaultName;
     }
 
     return textOrEmpty(manualName());
@@ -128,9 +128,9 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
                     <span>软件</span>
                     <StandardSelect
                       value={selectedSoftwareId()}
-                      ariaLabel="软件"
+                      ariaLabel={uiText.manualSoftwareModal.software}
                       searchable
-                      searchPlaceholder="搜索软件"
+                      searchPlaceholder={uiText.manualSoftwareModal.searchSoftware}
                       options={candidates().map((item) => ({
                         value: item.id,
                         label: `${item.name} · ${softwareDisplayKindLabel(item.kind, item.displayKind)}`
@@ -155,7 +155,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
                 <textarea
                   rows={5}
                   value={manualRootPaths()}
-                  placeholder="每行一个目录，例如 D:\\Tools\\App"
+                  placeholder={uiText.manualSoftwareModal.rootPlaceholder}
                   onInput={(event) => setManualRootPaths(event.currentTarget.value)}
                 />
               </label>
@@ -166,7 +166,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
             取消
           </button>
           <button type="submit" disabled={!canSubmit()}>
-            {props.actionInProgress ? "保存中" : "确定"}
+            {props.actionInProgress ? uiText.manualSoftwareModal.saving : uiText.metricPicker.confirm}
           </button>
         </DialogActions>
       </form>
@@ -198,7 +198,7 @@ function candidateMeta(item: SoftwareRecord) {
   const parts = [
     softwareDisplayKindLabel(item.kind, item.displayKind),
     roots.length > 0 ? roots[0] : null,
-    roots.length > 1 ? `另有 ${roots.length - 1} 个目录` : null
+    roots.length > 1 ? uiText.manualSoftwareModal.additionalRoots(roots.length - 1) : null
   ].filter(Boolean);
   return parts.join(" · ");
 }

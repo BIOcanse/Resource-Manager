@@ -6,7 +6,7 @@ import { userFacingLabel } from "../presentation/userFacingText";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "./SoftwareContextMenu";
 import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../types";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
 import type { ObservationState } from "../observation/observationState";
 import {
@@ -146,7 +146,7 @@ export function ResourceTable(props: ResourceTableProps) {
             <button
               class="secondary"
               type="button"
-              aria-label="取消资源列表列编辑"
+              aria-label={uiText.resourceTableView.cancelEditLabel}
               disabled={props.saveState === "saving"}
               onClick={props.onCancelEdit}
             >
@@ -159,7 +159,7 @@ export function ResourceTable(props: ResourceTableProps) {
               class="panel-refresh-button"
               type="button"
               data-focus-key="resource-table-edit"
-              aria-label={props.editMode ? "保存资源列表列" : "编辑资源列表列"}
+              aria-label={props.editMode ? uiText.resourceTableView.saveLabel : uiText.resourceTableView.editLabel}
               disabled={!props.editingAvailable || props.saveState === "saving"}
               onClick={props.onToggleEdit}
             >
@@ -228,8 +228,8 @@ function ResourceTableContentStateView(props: {
     return (
       <ContentState
         kind="empty"
-        title="没有匹配的资源"
-        detail="当前筛选条件未匹配任何软件或进程。"
+        title={uiText.resourceTableView.noMatchTitle}
+        detail={uiText.resourceTableView.noMatchDetail}
         actions={<button class="secondary" type="button" onClick={props.onClearSearch}>清除搜索</button>}
       />
     );
@@ -237,8 +237,8 @@ function ResourceTableContentStateView(props: {
   return (
     <ContentState
       kind="empty"
-      title="当前没有可显示的资源"
-      detail="当前视图中没有软件或进程记录。"
+      title={uiText.resourceTableView.emptyTitle}
+      detail={uiText.resourceTableView.emptyDetail}
     />
   );
 }
@@ -277,7 +277,7 @@ function ResourceTableColumnEditor(props: {
       ref={props.onElement}
       class="resource-table-column-editor"
       role="group"
-      aria-label="资源列表列编辑器"
+      aria-label={uiText.resourceTableView.columnEditorLabel}
     >
       <For each={resourceTableEditorColumns(props.columns, props.catalog, props.mode)}>
         {(column) => (
@@ -662,8 +662,8 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === 0}
-                      aria-label={`左移 ${column().label} 列`}
-                      title="左移"
+                      aria-label={uiText.resourceTableView.moveColumnLeft(column().label)}
+                      title={uiText.resourceTableView.moveLeftTitle}
                       onClick={() => {
                         const previous = columns()[columnIndex() - 1];
                         if (previous) {
@@ -677,8 +677,8 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === columns().length - 1}
-                      aria-label={`右移 ${column().label} 列`}
-                      title="右移"
+                      aria-label={uiText.resourceTableView.moveColumnRight(column().label)}
+                      title={uiText.resourceTableView.moveRightTitle}
                       onClick={() => {
                         const next = columns()[columnIndex() + 1];
                         if (next) {
@@ -695,7 +695,7 @@ function VirtualResourceTable(props: {
                   role="separator"
                   tabIndex={props.editMode ? 0 : -1}
                   aria-orientation="vertical"
-                  aria-label={`调整 ${column().label} 列宽`}
+                  aria-label={uiText.resourceTableView.resizeColumn(column().label)}
                   aria-valuemin={minColumnWidth}
                   aria-valuemax={maxColumnWidth}
                   aria-valuenow={Math.round(clampColumnWidth(column().width))}
@@ -1042,8 +1042,8 @@ function ResourceTableCell(props: {
             type="button"
             class="resource-row-actions"
             tabIndex={-1}
-            aria-label={`更多操作：${row()?.name ?? "当前项目"}`}
-            title="更多操作"
+            aria-label={uiText.resourceTableView.moreActions(row()?.name ?? uiText.resourceTableView.currentItem)}
+            title={uiText.resourceTableView.moreActionsTitle}
             data-focus-key={`resource-row-actions:${row()?.id ?? "unknown"}`}
             onClick={(event) => openRowActions(event.currentTarget)}
             onKeyDown={(event) => {
@@ -1065,7 +1065,7 @@ function ResourceTableCell(props: {
   }
 
   if (props.column.id === "status") {
-    const status = () => userFacingLabel(row()?.status, "状态未知");
+    const status = () => userFacingLabel(row()?.status, uiText.resourceTableView.unknownStatus);
     return (
       <div class="resource-table-cell status-cell" role="cell" aria-colindex={props.columnIndex + 1} title={status()}>
         {status()}
@@ -1089,7 +1089,11 @@ function ResourceTableCell(props: {
       classList={{ unavailable: value()?.availability === "Unavailable" }}
       style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
       title={value()?.sharedValue != null
-        ? `${props.column.label}: ${value()?.displayValue}\n自有 ${formatBytes((value()?.value ?? 0) - value()!.sharedValue!)} · 共享分摊 ${formatBytes(value()?.sharedValue)}`
+        ? uiText.resourceTableView.memoryBreakdown(
+          props.column.label,
+          String(value()?.displayValue),
+          formatBytes((value()?.value ?? 0) - value()!.sharedValue!),
+          formatBytes(value()?.sharedValue))
         : value() ? `${props.column.label}: ${value()?.displayValue}` : props.column.label}
     >
       {value()?.displayValue ?? "--"}

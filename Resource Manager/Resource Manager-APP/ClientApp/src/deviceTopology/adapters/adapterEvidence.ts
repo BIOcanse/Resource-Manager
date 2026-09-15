@@ -4,6 +4,7 @@ import type {
   SpecializedDeviceSummaryField,
   SpecializedInternalDeviceFacts
 } from "./types";
+import { uiText } from "../../text.ts";
 
 export function firstText(...values: Array<string | null | undefined>) {
   return values.map((value) => value?.trim()).find(Boolean);
@@ -24,7 +25,7 @@ export function meaningfulSpeed(port: DeviceTopologyPort) {
     : value;
 }
 
-export function deviceTitle(context: DeviceAdapterContext, fallback = "USB 设备") {
+export function deviceTitle(context: DeviceAdapterContext, fallback = uiText.deviceAdapters.usbDevice) {
   return firstText(
     context.port.usb?.productName,
     context.port.display?.monitorName,
@@ -148,9 +149,9 @@ function internalTransport(port: DeviceTopologyPort) {
   if (service === "stornvme") return "NVMe / PCI Express";
   if (service === "storahci") return "SATA / AHCI";
   if (port.storage?.busType) return port.storage.busType;
-  if (port.display?.internal) return displayValue(port.display.connectorTechnology, "内置显示");
+  if (port.display?.internal) return displayValue(port.display.connectorTechnology, uiText.deviceAdapters.internalDisplay);
   if (port.pnpClass?.toLocaleLowerCase() === "display" || deviceId.startsWith("PCI\\")) return "PCI Express";
-  if (port.busKind.toLocaleLowerCase() === "network") return displayValue(port.protocol, "内部网络总线");
+  if (port.busKind.toLocaleLowerCase() === "network") return displayValue(port.protocol, uiText.deviceAdapters.internalNetworkBus);
   if (port.busKind.toLocaleLowerCase() === "usb" || deviceId.startsWith("USB\\")) return "USB";
   if (deviceId.startsWith("HID\\") && /I2C/i.test(parent)) return "I2C HID";
   if (deviceId.startsWith("ACPI\\")) return "ACPI";

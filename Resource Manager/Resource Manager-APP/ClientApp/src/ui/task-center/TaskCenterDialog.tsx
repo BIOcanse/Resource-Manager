@@ -37,6 +37,7 @@ import {
   TabsRoot,
   TabsTrigger
 } from "../primitives/Tabs.tsx";
+import { uiText } from "../../text.ts";
 
 type TaskCenterTab = TaskCenterView | "diagnostics";
 
@@ -44,9 +45,9 @@ const taskCenterTabs: ReadonlyArray<{
   value: TaskCenterView;
   label: string;
 }> = [
-  { value: "active", label: "进行中" },
-  { value: "history", label: "历史" },
-  { value: "all", label: "全部" }
+  { value: "active", label: uiText.taskCenter.tabActive },
+  { value: "history", label: uiText.taskCenter.tabHistory },
+  { value: "all", label: uiText.taskCenter.tabAll }
 ];
 
 export function TaskCenterDialog(props: {
@@ -61,7 +62,7 @@ export function TaskCenterDialog(props: {
   const [cancelingIds, setCancelingIds] = createSignal<ReadonlySet<string>>(new Set());
   let closeButton: HTMLButtonElement | undefined;
   const visibleTabs = createMemo(() => props.diagnosticsEnabled
-    ? [...taskCenterTabs, { value: "diagnostics" as const, label: "诊断" }]
+    ? [...taskCenterTabs, { value: "diagnostics" as const, label: uiText.taskCenter.tabDiagnostics }]
     : taskCenterTabs);
 
   createEffect(() => {
@@ -103,15 +104,15 @@ export function TaskCenterDialog(props: {
       onDismiss={props.onClose}
     >
       <DialogHeader
-        title="任务中心"
+        title={uiText.taskCenter.title}
         titleId="taskCenterTitle"
         closeButtonRef={(element) => { closeButton = element; }}
         onDismiss={props.onClose}
       >
         <p id="taskCenterSummary" class="task-center-summary">
           {props.snapshot().activeUserCount > 0
-            ? `${props.snapshot().activeUserCount} 项正在进行`
-            : "当前没有进行中的任务"}
+            ? uiText.taskCenter.activeCount(props.snapshot().activeUserCount)
+            : uiText.taskCenter.noActiveTasks}
         </p>
       </DialogHeader>
       <DialogBody class="task-center-body">
@@ -139,7 +140,7 @@ export function TaskCenterDialog(props: {
           value={activeTab()}
           onChange={(value) => setActiveTab(value as TaskCenterTab)}
         >
-          <TabsList class="ui-tabs-list" ariaLabel="任务筛选">
+          <TabsList class="ui-tabs-list" ariaLabel={uiText.taskCenter.filterLabel}>
             <For each={visibleTabs()}>
               {(tab) => (
                 <TabsTrigger class="ui-tabs-trigger" value={tab.value}>
@@ -157,7 +158,7 @@ export function TaskCenterDialog(props: {
                 <TaskCenterList
                   items={itemsFor(tab.value)}
                   cancelingIds={cancelingIds()}
-                  emptyMessage="此筛选下没有任务"
+                  emptyMessage={uiText.taskCenter.noTasksInFilter}
                   onCancel={(item) => void cancel(item)}
                 />
               </TabsPanel>
@@ -206,7 +207,7 @@ function TaskCenterList(props: {
                   </span>
                 </div>
                 <div class="task-center-meta">
-                  <span>{item().source === "operation" ? "后端操作" : "界面任务"}</span>
+                  <span>{item().source === "operation" ? uiText.taskCenter.sourceOperation : uiText.taskCenter.sourceFrontend}</span>
                   <span>{taskKindLabel(item())}</span>
                   <span>{userFacingDateTime(item().updatedAt)}</span>
                 </div>
@@ -217,7 +218,7 @@ function TaskCenterList(props: {
                         <progress
                           max="100"
                           value={progress().percent ?? 0}
-                          aria-label={`${item().title}进度`}
+                          aria-label={uiText.taskCenter.progressLabel(item().title)}
                         />
                         <span>{formatPercent(progress().percent)}</span>
                       </Show>
@@ -233,14 +234,14 @@ function TaskCenterList(props: {
                 <Show when={item().errorSummary}>
                   {(error) => (
                     <p class="task-center-error" role="alert">
-                      {userFacingMessage(error(), "任务未完成")}
+                      {userFacingMessage(error(), uiText.taskCenter.taskFailed)}
                     </p>
                   )}
                 </Show>
                 <Show when={!item().errorSummary && item().resultSummary}>
                   {(result) => (
                     <p class="task-center-result">
-                      {userFacingMessage(result(), "任务已完成")}
+                      {userFacingMessage(result(), uiText.taskCenter.taskCompleted)}
                     </p>
                   )}
                 </Show>
@@ -264,8 +265,8 @@ function TaskCenterList(props: {
                   disabled={!item().cancelable || props.cancelingIds.has(itemId)}
                   aria-label={taskCancelLabel(item())}
                   title={props.cancelingIds.has(itemId)
-                    ? "正在取消"
-                    : item().actionBlockedReason ?? "取消任务"}
+                    ? uiText.taskCenter.canceling
+                    : item().actionBlockedReason ?? uiText.taskCenter.cancelTask}
                   onClick={() => props.onCancel(item())}
                 >
                   <Ban aria-hidden="true" size={17} />
@@ -300,22 +301,22 @@ function TaskStatusIcon(props: { readonly item: TaskCenterItem }) {
 
 function taskKindLabel(item: TaskCenterItem): string {
   const known: Record<string, string> = {
-    "component.download": "下载组件",
-    "component.install": "安装组件",
-    "dependency.download": "下载依赖",
-    "dependency.launch-installer": "安装依赖",
-    "software.uninstall": "卸载软件",
-    "migration.execute": "迁移软件数据",
-    "migration.restore": "恢复软件数据",
-    "discovery.start": "发现迁移数据",
-    "resource-breakdown.layout-settle": "资源布局过渡"
+    "component.download": uiText.taskCenter.operation.componentDownload,
+    "component.install": uiText.taskCenter.operation.componentInstall,
+    "dependency.download": uiText.taskCenter.operation.dependencyDownload,
+    "dependency.launch-installer": uiText.taskCenter.operation.dependencyLaunchInstaller,
+    "software.uninstall": uiText.taskCenter.operation.softwareUninstall,
+    "migration.execute": uiText.taskCenter.operation.migrationExecute,
+    "migration.restore": uiText.taskCenter.operation.migrationRestore,
+    "discovery.start": uiText.taskCenter.operation.discoveryStart,
+    "resource-breakdown.layout-settle": uiText.taskCenter.operation.resourceBreakdownLayoutSettle
   };
   return known[item.kind] ?? item.kind;
 }
 
 function taskCancelLabel(item: TaskCenterItem): string {
   const identity = item.domainKey?.trim() || shortTaskId(item.ownerId);
-  return `取消 ${item.title}（${identity}）`;
+  return uiText.taskCenter.cancelWithTitle(item.title, identity);
 }
 
 function shortTaskId(value: string): string {
@@ -324,20 +325,20 @@ function shortTaskId(value: string): string {
 
 function taskStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    queued: "等待中",
-    startPending: "正在启动",
-    running: "进行中",
-    cancelPending: "正在取消",
-    retryWait: "等待重试",
-    recoveryPending: "正在恢复",
-    succeeded: "已完成",
-    failed: "未完成",
-    canceled: "已取消",
-    cancelled: "已取消",
-    superseded: "已替换",
-    stateUncertain: "状态待确认"
+    queued: uiText.taskCenter.status.queued,
+    startPending: uiText.taskCenter.status.startPending,
+    running: uiText.taskCenter.tabActive,
+    cancelPending: uiText.taskCenter.canceling,
+    retryWait: uiText.taskCenter.status.retryWait,
+    recoveryPending: uiText.taskCenter.status.recoveryPending,
+    succeeded: uiText.taskCenter.status.succeeded,
+    failed: uiText.taskCenter.status.failed,
+    canceled: uiText.taskCenter.status.canceled,
+    cancelled: uiText.taskCenter.status.canceled,
+    superseded: uiText.taskCenter.status.superseded,
+    stateUncertain: uiText.taskCenter.status.stateUncertain
   };
-  return labels[status] ?? "状态未知";
+  return labels[status] ?? uiText.taskCenter.status.unknown;
 }
 
 function isErrorState(item: TaskCenterItem): boolean {

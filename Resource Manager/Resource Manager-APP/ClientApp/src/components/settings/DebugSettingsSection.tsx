@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
-import type { SettingsTextBundle } from "../../text";
+import type { SettingsTextBundle } from "../../text.ts";
 import type { AppSettings } from "../../types";
+import { uiText } from "../../text.ts";
 
 interface DebugSettingsSectionProps {
   settings: AppSettings["debug"] | undefined;
@@ -65,7 +66,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
                 aria-label={props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle}
                 checked={debug().hostManagerSmartCoordinatorPerformanceLogEnabled}
                 disabled={!props.optimizationRuntimeAvailable}
-                title={!props.optimizationRuntimeAvailable ? "当前启动模式未启用优化运行时" : undefined}
+                title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined}
                 onChange={(event) => props.onHostManagerSmartCoordinatorPerformanceLogChange(event.currentTarget.checked)}
               />
               <span />
@@ -83,7 +84,7 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
               aria-label={props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle}
               checked={debug().hostManagerSmartCoordinatorScoreOnlyEnabled}
               disabled={!props.optimizationRuntimeAvailable}
-              title={!props.optimizationRuntimeAvailable ? "当前启动模式未启用优化运行时" : undefined}
+              title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined}
               onChange={(event) => props.onHostManagerSmartCoordinatorScoreOnlyChange(event.currentTarget.checked)}
             />
             <span />

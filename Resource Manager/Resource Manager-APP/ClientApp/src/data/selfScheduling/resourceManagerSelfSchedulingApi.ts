@@ -3,6 +3,7 @@ import {
   resourceManagerSelfSchedulingDecoder,
   type ResourceManagerSelfSchedulingSnapshot
 } from "./resourceManagerSelfSchedulingDecoder.ts";
+import { uiText } from "../../text.ts";
 
 type ResourceManagerSelfSchedulingRequestClient = Pick<RequestClient, "request">;
 
@@ -13,7 +14,7 @@ export function getResourceManagerSelfScheduling(
   return requestClient.request({
     key: "resource-manager.self-scheduling",
     url: "/api/adapters/resource-manager/scheduling",
-    fallbackError: "读取资源管理器调度状态失败，请稍后重试",
+    fallbackError: uiText.misc.selfSchedulingReadFailed,
     decoder: resourceManagerSelfSchedulingDecoder,
     signal,
     request: { method: "GET" }

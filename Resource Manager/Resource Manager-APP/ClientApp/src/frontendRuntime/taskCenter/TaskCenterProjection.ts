@@ -5,6 +5,7 @@ import type {
 import { isTerminalOperation } from "../operations/operationMerge.ts";
 import type { TaskRegistryChange, TaskSnapshot } from "../task/TaskSnapshot.ts";
 import { isTerminalTaskStatus } from "../task/TaskSnapshot.ts";
+import { uiText } from "../../text.ts";
 
 export type TaskCenterItemSource = "frontend" | "operation";
 export type TaskCenterItemVisibility = "hidden" | "diagnostics" | "user";
@@ -126,7 +127,7 @@ export class TaskCenterProjection {
       return false;
     }
     if (!item.cancelable) {
-      throw new Error(item.actionBlockedReason ?? "当前任务不能取消。");
+      throw new Error(item.actionBlockedReason ?? uiText.taskCenter.blocked.cannotCancel);
     }
     if (item.source === "frontend") {
       return this.taskSource.cancel(
@@ -256,7 +257,7 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     resultSummary: null,
     errorSummary: unknownSummary(snapshot.error ?? snapshot.reason),
     cancelable: active,
-    actionBlockedReason: active ? null : "任务已经结束。",
+    actionBlockedReason: active ? null : uiText.taskCenter.blocked.taskFinished,
     backendDisconnected: false,
     stateUncertain: false
   });
@@ -302,12 +303,12 @@ function projectOperation(
     actionBlockedReason: cancelable
       ? null
       : disconnected
-        ? "本机服务会话尚未同步。"
+        ? uiText.taskCenter.blocked.sessionNotSynced
         : operation.cancelRequested || operation.state === "cancelPending"
-          ? "取消请求已经提交。"
+          ? uiText.taskCenter.blocked.cancelRequested
           : active
-            ? "当前操作不能取消。"
-            : "操作已经结束。",
+            ? uiText.taskCenter.blocked.operationCannotCancel
+            : uiText.taskCenter.blocked.operationFinished,
     backendDisconnected: disconnected,
     stateUncertain: operation.state === "stateUncertain"
   });

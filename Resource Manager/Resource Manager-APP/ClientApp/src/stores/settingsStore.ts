@@ -50,6 +50,7 @@ import type {
 import { postShellMessage } from "../utils.ts";
 import { normalizeEditableHotkeys } from "../settings/editableHotkeys.ts";
 import { applySettingsPatch, createSettingsPatch } from "../settings/settingsPatch.ts";
+import { uiText } from "../text.ts";
 
 const prebootAppearanceStorageKey = "resource-manager:appearance";
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
@@ -199,7 +200,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         changes);
       const outcome = classifySettingsApplicationOutcome(result.runtimeApplicationDisposition);
       if (outcome === "rejected") {
-        throw new Error("服务端未提交设置");
+        throw new Error(uiText.misc.settingsNotCommitted);
       }
       const newerEdits = createSettingsPatch(
         submittedDraft as unknown as Record<string, unknown>,

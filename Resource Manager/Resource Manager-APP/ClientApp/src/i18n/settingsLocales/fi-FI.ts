@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("fi-FI", {
   sections: { performance: "Suorituskyky", appearance: "Ulkoasu", systemIntegration: "Järjestelmäintegraatio", debug: "Virheenkorjaus", credits: "Kiitokset" },

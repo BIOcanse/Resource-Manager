@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("zh-TW", {
   sections: { performance: "效能", appearance: "外觀", systemIntegration: "系統整合", debug: "偵錯", credits: "致謝" },

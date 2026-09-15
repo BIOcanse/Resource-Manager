@@ -10,15 +10,19 @@ import {
   TabsRoot,
   TabsTrigger
 } from "../ui/primitives/Tabs.tsx";
+import { uiText } from "../text.ts";
 
 type DetailsTab = "device" | "gpu" | "cpu" | "report";
 
-const detailsTabs: Array<{ id: DetailsTab; label: string }> = [
-  { id: "device", label: "设备管理" },
-  { id: "gpu", label: "GPU 调度" },
-  { id: "cpu", label: "CPU 拓扑" },
-  { id: "report", label: "报告" }
-];
+// 文案按当前语言求值，不能在模块顶层固化。
+function detailsTabs(): Array<{ id: DetailsTab; label: string }> {
+  return [
+    { id: "device", label: uiText.misc.detailsTab.device },
+    { id: "gpu", label: uiText.misc.detailsTab.gpu },
+    { id: "cpu", label: uiText.misc.detailsTab.cpu },
+    { id: "report", label: uiText.misc.detailsTab.report }
+  ];
+}
 
 interface DetailsPageProps {
   runtimeCapabilities: RuntimeCapabilitiesStore;
@@ -28,7 +32,7 @@ interface DetailsPageProps {
 export function DetailsPage(props: DetailsPageProps) {
   const [activeTab, setActiveTab] = createSignal<DetailsTab>("device");
   const [deviceScope, setDeviceScope] = createSignal<"external" | "internal">("external");
-  const visibleTabs = createMemo(() => detailsTabs.filter((tab) =>
+  const visibleTabs = createMemo(() => detailsTabs().filter((tab) =>
     tab.id !== "report" || props.runtimeCapabilities.optimizationEnabled()));
 
   createEffect(() => {
@@ -43,7 +47,7 @@ export function DetailsPage(props: DetailsPageProps) {
         value={activeTab()}
         onChange={(value) => setActiveTab(value as DetailsTab)}
       >
-        <TabsList class="details-tabs" ariaLabel="详细信息分页">
+        <TabsList class="details-tabs" ariaLabel={uiText.misc.detailsTab.tabsLabel}>
           <For each={visibleTabs()}>
             {(tab) => (
               <TabsTrigger value={tab.id} class="details-tab">

@@ -46,7 +46,7 @@ assert.match(frontendSources, /canRetainStale:\s*\(\) => false/);
 assert.match(frontendSources, /selfScheduling:\s*new BackendPushValueSource/);
 assert.match(frontendSources, /localSystemStatus:\s*new BackendPushValueSource/);
 assert.doesNotMatch(appShell, /selfSchedulingObservation|localSystemObservation|自调度状态|运行时长不可用/);
-assert.match(appShell, /label="运行能力"/);
+assert.match(appShell, /label=\{uiText\.shell\.runtimeCapability\}/);
 assert.match(appShell, /runtimeCapabilities\.refresh\(\)/);
 
 // Read-only detail surfaces stay available while effectful reports and edits follow capabilities.

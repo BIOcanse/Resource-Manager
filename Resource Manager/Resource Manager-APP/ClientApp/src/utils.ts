@@ -1,5 +1,6 @@
 import type { ManagedComponent, MigrationRoots, SoftwareRecord } from "./types";
 import { getHostMessageTransport } from "./host/hostMessageTransport.ts";
+import { uiText } from "./text.ts";
 
 export type ShellHostMessage =
   | "host.visibility:visible"
@@ -14,7 +15,7 @@ export function postShellMessage(message: string) {
 export function pickShellFolder(title: string, initialPath?: string): Promise<string | null> {
   const transport = getHostMessageTransport();
   if (!transport?.canSubscribeMessages) {
-    return Promise.reject(new Error("此功能仅在 Resource Manager 桌面应用中可用。"));
+    return Promise.reject(new Error(uiText.shellBridge.desktopOnly));
   }
 
   const requestId = crypto.randomUUID();
@@ -22,7 +23,7 @@ export function pickShellFolder(title: string, initialPath?: string): Promise<st
     let unsubscribe: (() => void) | null = null;
     const timeout = window.setTimeout(() => {
       unsubscribe?.();
-      reject(new Error("文件夹选择窗口长时间没有响应，请重试。"));
+      reject(new Error(uiText.shellBridge.folderPickerTimeout));
     }, 120_000);
     const handler = (message: unknown) => {
       if (!isFolderPickerResponse(message, requestId)) {
@@ -36,7 +37,7 @@ export function pickShellFolder(title: string, initialPath?: string): Promise<st
     unsubscribe = transport.subscribeMessages(handler);
     if (!unsubscribe) {
       window.clearTimeout(timeout);
-      reject(new Error("当前应用窗口无法打开文件夹选择器，请重新打开 Resource Manager。"));
+      reject(new Error(uiText.shellBridge.folderPickerUnavailable));
       return;
     }
     transport.postMessage({ type: "shell.pickFolder", requestId, title, initialPath });
@@ -104,7 +105,7 @@ export function uniqueTextValues(values: unknown[]): string[] {
 }
 
 export function formatBoolean(value: unknown) {
-  return value ? "是" : "否";
+  return value ? uiText.shellBridge.yes : uiText.shellBridge.no;
 }
 
 export function formatPercent(value: unknown) {
@@ -205,5 +206,5 @@ export function isManagedResourceManagerPath(path: string, roots: MigrationRoots
 
 export function formatCapabilityFlags(flags: Array<[unknown, string]>) {
   const labels = flags.filter(([enabled]) => Boolean(enabled)).map(([, label]) => label);
-  return labels.length ? labels.join(" / ") : "无";
+  return labels.length ? labels.join(" / ") : uiText.shellBridge.none;
 }

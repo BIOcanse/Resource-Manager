@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("da-DK", {
   sections: { performance: "Ydeevne", appearance: "Udseende", systemIntegration: "Systemintegration", debug: "Fejlfinding", credits: "Tak" },

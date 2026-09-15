@@ -1,4 +1,5 @@
 import type { DeviceTopologyPort } from "../types";
+import { uiText } from "../text.ts";
 
 export type DeviceTopologyConnectionState = "connected" | "disconnected" | "unknown";
 
@@ -46,7 +47,7 @@ export function describeDeviceTopologyNode(port: DeviceTopologyPort): DeviceTopo
     return {
       title: port.displayName,
       subtitle: joinSummary(port.hardwareKind, meaningfulSpeed(port.speed)),
-      badge: isControllerNode(port) ? "控制器" : port.protocol
+      badge: isControllerNode(port) ? uiText.deviceInterface.controllerBadge : port.protocol
     };
   }
 
@@ -68,32 +69,32 @@ export function deviceTopologySummaryFields(port: DeviceTopologyPort): DeviceTop
   if (isExternalDeviceInterface(port)) {
     const presentation = describeDeviceTopologyNode(port);
     const fields: DeviceTopologySummaryField[] = [
-      { label: "接口类型", value: presentation.title },
-      { label: "连接状态", value: presentation.connectionLabel ?? "状态未知" },
-      { label: "协议", value: externalInterfaceProtocol(port) }
+      { label: uiText.deviceTopology.label.interfaceType, value: presentation.title },
+      { label: uiText.deviceTopology.label.connectionState, value: presentation.connectionLabel ?? uiText.deviceTopology.connectionState.unknown },
+      { label: uiText.deviceTopology.label.protocol, value: externalInterfaceProtocol(port) }
     ];
     if (port.display?.connectorInstance && port.display.connectorInstance > 0) {
-      fields.push({ label: "接口序号", value: String(port.display.connectorInstance) });
+      fields.push({ label: uiText.deviceInterface.interfaceIndex, value: String(port.display.connectorInstance) });
     } else if (!port.display) {
-      fields.push({ label: "当前接口速率", value: displayValue(port.speed) });
+      fields.push({ label: uiText.deviceTopology.label.currentInterfaceSpeed, value: displayValue(port.speed) });
     }
     return fields;
   }
 
   if (isControllerNode(port)) {
     return [
-      { label: "控制器类型", value: port.advancedInterconnect ? "系统互连控制节点" : displayValue(port.hardwareKind) },
-      { label: "设备状态", value: displayValue(port.status) },
-      { label: "驱动服务", value: displayValue(port.service) },
-      { label: "协议", value: displayValue(port.protocol) }
+      { label: uiText.deviceSpecialized.controllerType, value: port.advancedInterconnect ? uiText.deviceInterface.systemInterconnectNode : displayValue(port.hardwareKind) },
+      { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
+      { label: uiText.deviceTopology.label.driverService, value: displayValue(port.service) },
+      { label: uiText.deviceTopology.label.protocol, value: displayValue(port.protocol) }
     ];
   }
 
   return [
-    { label: "设备类型", value: displayValue(port.hardwareKind) },
-    { label: "设备状态", value: displayValue(port.status) },
-    { label: "总线", value: busLabel(port.busKind) },
-    { label: "协议", value: displayValue(port.protocol) }
+    { label: uiText.deviceTopology.label.deviceType, value: displayValue(port.hardwareKind) },
+    { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
+    { label: uiText.deviceTopology.label.bus, value: busLabel(port.busKind) },
+    { label: uiText.deviceTopology.label.protocol, value: displayValue(port.protocol) }
   ];
 }
 
@@ -161,11 +162,11 @@ function resolveConnectionTarget(port: DeviceTopologyPort) {
 function connectionStateLabel(state: DeviceTopologyConnectionState) {
   switch (state) {
     case "connected":
-      return "已连接";
+      return uiText.deviceTopology.connectionState.connected;
     case "disconnected":
-      return "未连接";
+      return uiText.deviceTopology.connectionState.disconnected;
     default:
-      return "状态未知";
+      return uiText.deviceTopology.connectionState.unknown;
   }
 }
 
@@ -180,31 +181,31 @@ function externalInterfaceProtocol(port: DeviceTopologyPort) {
 function externalInterfaceLabel(connectorKind: string) {
   switch (connectorKind.toLocaleLowerCase()) {
     case "usb-a":
-      return "USB-A 接口";
+      return uiText.deviceInterface.connector.usbA;
     case "usb-c":
-      return "USB-C 接口";
+      return uiText.deviceInterface.connector.usbC;
     case "thunderbolt":
-      return "Thunderbolt 接口";
+      return uiText.deviceInterface.connector.thunderbolt;
     case "hdmi":
-      return "HDMI 接口";
+      return uiText.deviceInterface.connector.hdmi;
     case "displayport":
-      return "DisplayPort 接口";
+      return uiText.deviceInterface.connector.displayPort;
     case "mini-displayport":
-      return "Mini DisplayPort 接口";
+      return uiText.deviceInterface.connector.miniDisplayPort;
     case "dvi":
-      return "DVI 接口";
+      return uiText.deviceInterface.connector.dvi;
     case "vga":
-      return "VGA 接口";
+      return uiText.deviceInterface.connector.vga;
     case "rj45":
-      return "RJ45 接口";
+      return uiText.deviceInterface.connector.rj45;
     case "audio":
-      return "音频接口";
+      return uiText.deviceInterface.connector.audio;
     case "power":
-      return "电源接口";
+      return uiText.deviceInterface.connector.power;
     case "sd-card":
-      return "SD 卡接口";
+      return uiText.deviceInterface.connector.sdCard;
     default:
-      return "外部接口";
+      return uiText.deviceInterface.connector.generic;
   }
 }
 
@@ -219,17 +220,17 @@ function busLabel(busKind: string) {
     case "pci":
       return "PCI / PCIe";
     case "display":
-      return "显示输出";
+      return uiText.deviceInterface.category.displayOutput;
     case "network":
-      return "网络";
+      return uiText.deviceInterface.category.network;
     case "audio":
-      return "音频";
+      return uiText.deviceInterface.category.audio;
     case "storage":
-      return "存储";
+      return uiText.deviceInterface.category.storage;
     case "bluetooth":
-      return "蓝牙";
+      return uiText.deviceInterface.category.bluetooth;
     case "system":
-      return "系统";
+      return uiText.deviceInterface.category.system;
     default:
       return displayValue(busKind);
   }

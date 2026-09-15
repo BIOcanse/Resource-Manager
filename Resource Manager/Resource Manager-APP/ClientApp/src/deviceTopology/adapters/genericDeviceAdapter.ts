@@ -11,6 +11,7 @@ import {
   usbSpecification
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, GenericDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
   id: "generic-device",
@@ -42,26 +43,26 @@ export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
       interfaceProtocols: protocols,
       summaryFields: internal
         ? summaryFields(
-          ["设备类型", typeLabel],
-          ["内部传输", facts?.transport],
-          ["驱动服务", facts?.driverService],
-          ["设备状态", facts?.deviceStatus]
+          [uiText.deviceAdapters.label.deviceType, typeLabel],
+          [uiText.deviceAdapters.label.internalTransport, facts?.transport],
+          [uiText.deviceAdapters.label.driverService, facts?.driverService],
+          [uiText.deviceAdapters.label.deviceStatus, facts?.deviceStatus]
         )
         : summaryFields(
-          ["设备类型", deviceClass],
-          ["上游接口", connection.upstreamInterface],
-          ["USB 规范", specification],
-          ["当前链路", connection.currentLink]
+          [uiText.deviceAdapters.label.deviceType, deviceClass],
+          [uiText.deviceAdapters.label.upstreamInterface, connection.upstreamInterface],
+          [uiText.deviceAdapters.label.usbSpecification, specification],
+          [uiText.deviceAdapters.label.currentLink, connection.currentLink]
         ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: [typeLabel, internal ? "内部设备" : "外接设备", "device", deviceClass, ...protocols]
+      searchTerms: [typeLabel, internal ? uiText.deviceAdapters.internalDevice : uiText.deviceAdapters.externalDevice, "device", deviceClass, ...protocols]
     };
   }
 };
 
 function resolveGenericType(port: import("../../types").DeviceTopologyPort, internal: boolean) {
-  if (!internal) return "外接设备";
-  if (/Composite/i.test(`${port.displayName} ${port.usb?.deviceClass ?? ""}`)) return "USB 复合设备";
-  if (port.pnpClass?.toLocaleLowerCase() === "ports") return "内部通信端口";
-  return "内部设备";
+  if (!internal) return uiText.deviceAdapters.externalDevice;
+  if (/Composite/i.test(`${port.displayName} ${port.usb?.deviceClass ?? ""}`)) return uiText.deviceAdapters.usbCompositeDevice;
+  if (port.pnpClass?.toLocaleLowerCase() === "ports") return uiText.deviceAdapters.internalCommunicationPort;
+  return uiText.deviceAdapters.internalDevice;
 }

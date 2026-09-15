@@ -61,6 +61,7 @@ import {
   readDashboardSlotBinding,
   writeDashboardSlot
 } from "./monitorConfig";
+import { uiText } from "../text.ts";
 
 export interface MetricModalTarget {
   cardId: string;
@@ -456,7 +457,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
           observationCanRender(previous)
             ? previous
             : readyObservation(source.capturedAt ?? undefined),
-          userFacingErrorMessage(source.error, "指标目录刷新失败")));
+          userFacingErrorMessage(source.error, uiText.stores.metricCatalogRefreshFailed)));
       } else if (source.status === "refreshing") {
         setCatalogObservation(refreshingObservation);
       } else {
@@ -469,7 +470,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       || source.status === "disposed") {
       setCatalogObservation((previous) => failedObservation(
         previous,
-        userFacingErrorMessage(source.error, "指标目录刷新失败")));
+        userFacingErrorMessage(source.error, uiText.stores.metricCatalogRefreshFailed)));
       return;
     }
     setCatalogObservation(loadingObservation());

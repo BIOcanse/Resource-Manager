@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("el-GR", {
   sections: { performance: "Απόδοση", appearance: "Εμφάνιση", systemIntegration: "Ενσωμάτωση συστήματος", debug: "Αποσφαλμάτωση", credits: "Ευχαριστίες" },

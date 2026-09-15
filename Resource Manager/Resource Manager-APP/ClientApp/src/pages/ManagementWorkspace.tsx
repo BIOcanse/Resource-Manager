@@ -20,6 +20,7 @@ import {
   ObservationStateBoundary,
   ObservationStateNotice
 } from "../components/ObservationStateNotice";
+import { uiText } from "../text.ts";
 
 const browserRuntimeDemandId = "management.browser-runtime";
 
@@ -55,21 +56,21 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
             <section
               id="migrationWorkbenchPage"
               class="page active-page"
-              aria-label="迁移工作台"
+              aria-label={uiText.workspace.migrationWorkbench}
             >
                 <ObservationStateNotice
                   state={migration.rootsObservation()}
-                  label="迁移根目录"
+                  label={uiText.workspace.migrationRoots}
                   onRetry={() => void migration.refreshRoots()}
                 />
                 <ObservationStateNotice
                   state={migration.recordsObservation()}
-                  label="迁移记录"
+                  label={uiText.workspace.migrationRecords}
                   onRetry={() => void migration.refreshRecords()}
                 />
                 <ObservationStateNotice
                   state={migration.sessionsObservation()}
-                  label="发现会话"
+                  label={uiText.workspace.discoverySessions}
                   onRetry={() => void migration.refreshSessions()}
                 />
                 <MigrationPanel
@@ -120,7 +121,7 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
               [browserRuntimeDemandId])}
             id="browserRuntimePage"
             class="page active-page browser-runtime-page"
-            aria-label="运行时管理"
+            aria-label={uiText.workspace.runtimeManagement}
           >
             <FrontendVisibilityDemandBinding
               demandId={browserRuntimeDemandId}
@@ -128,7 +129,7 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
             />
             <ObservationStateBoundary
               state={management.browserRuntimesObservation()}
-              label="浏览器运行时状态"
+              label={uiText.workspace.browserRuntimeState}
             >
               <BrowserRuntimePage
                 snapshot={management.browserRuntimes()}

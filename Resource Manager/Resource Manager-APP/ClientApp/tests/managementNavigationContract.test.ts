@@ -28,7 +28,8 @@ for (const kind of managementInventoryKinds) {
 
 const appShell = readSource("../src/app/AppShell.tsx");
 const managementPage = readSource("../src/components/ManagementPage.tsx");
-const text = readSource("../src/text.ts");
+// 文案已经移到语言包里，中文基底是这项断言的来源。
+const managementCopy = readSource("../src/i18n/copy/zh/software.ts");
 const workspace = readSource("../src/pages/ManagementWorkspace.tsx");
 const browserRuntimePage = readSource("../src/browserRuntimes/BrowserRuntimePage.tsx");
 const migrationStore = readSource("../src/stores/migrationStore.ts");
@@ -70,7 +71,7 @@ assert.match(responsiveCss, /body\[data-page="components"\] \.app-shell > #migra
 assert.match(managementPage, /createEffect\(on\(\(\) => props\.activeKind, \(\) => setSearchQuery\(""\)/);
 assert.match(managementPage, /normalizedSearchQuery\(\)[\s\S]*?uiText\.management\.noSearchResults/);
 assert.match(managementPage, /uiText\.management\.clearSearch/);
-assert.match(text, /noSearchResults: \(query: string\)/);
+assert.match(managementCopy, /noSearchResults: \(query: string\)/);
 
 function readSource(relativePath: string) {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");

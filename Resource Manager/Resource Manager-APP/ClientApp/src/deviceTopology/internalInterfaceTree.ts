@@ -8,6 +8,7 @@ import {
   filterDeviceTopologyTree,
   type DeviceTopologyTreeNode
 } from "./deviceTopologyTree.ts";
+import { uiText } from "../text.ts";
 
 export type InternalInterfaceNodeRole =
   | "internal-interface"
@@ -147,13 +148,13 @@ export function filterInternalInterfaceTree(
 export function internalInterfaceRoleLabel(role: InternalInterfaceNodeRole) {
   switch (role) {
     case "internal-interface":
-      return "内部接口";
+      return uiText.deviceTree.internalInterface;
     case "internal-controller":
-      return "控制器";
+      return uiText.deviceTree.controller;
     case "internal-function":
-      return "设备功能";
+      return uiText.deviceTree.deviceFunction;
     default:
-      return "连接设备";
+      return uiText.deviceTree.attachedDevice;
   }
 }
 
@@ -183,8 +184,8 @@ function createInterfaceNode(
     port: representativePort,
     role: "internal-interface",
     title,
-    subtitle: `${children.length} 个直属设备 · ${descriptor.protocol}`,
-    badge: "内部接口",
+    subtitle: uiText.deviceTree.directDeviceSummary(children.length, descriptor.protocol),
+    badge: uiText.deviceTree.internalInterface,
     connectorKind: descriptor.connectorKind,
     connectionState: "connected",
     children
@@ -383,35 +384,35 @@ function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescripto
       key: `display:${port.id}`,
       title: internalDisplayInterfaceTitle(port),
       connectorKind: "internal-display",
-      protocol: port.display.connectorTechnology || "内置显示"
+      protocol: port.display.connectorTechnology || uiText.deviceTree.internalDisplay
     };
   }
   if (/^HDAUDIO\\/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `hda:${parentIdentity}`, title: "HD Audio 内部接口", connectorKind: "audio", protocol: "HD Audio" };
+    return { key: `hda:${parentIdentity}`, title: uiText.deviceTree.hdAudioInterface, connectorKind: "audio", protocol: "HD Audio" };
   }
   if (port.busKind.toLocaleLowerCase() === "bluetooth" || /^BTH/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `bluetooth:${parentIdentity}`, title: "Bluetooth 内部接口", connectorKind: "bluetooth", protocol: "Bluetooth" };
+    return { key: `bluetooth:${parentIdentity}`, title: uiText.deviceTree.bluetoothInterface, connectorKind: "bluetooth", protocol: "Bluetooth" };
   }
   if (/^PCI\\/.test(normalizeDeviceId(port.deviceId)) || /^PCI\\/.test(parentIdentity)) {
-    return { key: `pcie:${parentIdentity}`, title: "PCIe 内部接口", connectorKind: "pcie", protocol: "PCI Express" };
+    return { key: `pcie:${parentIdentity}`, title: uiText.deviceTree.pcieInterface, connectorKind: "pcie", protocol: "PCI Express" };
   }
   if (port.busKind.toLocaleLowerCase() === "usb" || /^USB\\/.test(normalizeDeviceId(port.deviceId))) {
-    return { key: `usb:${parentIdentity}`, title: "内部 USB 接口", connectorKind: "usb-internal", protocol: "USB" };
+    return { key: `usb:${parentIdentity}`, title: uiText.deviceTree.internalUsbInterface, connectorKind: "usb-internal", protocol: "USB" };
   }
   if (/^ACPI\\/.test(normalizeDeviceId(port.deviceId)) || /^ACPI\\/.test(parentIdentity)) {
-    return { key: `acpi:${parentIdentity}`, title: "ACPI 内部接口", connectorKind: "acpi", protocol: "ACPI" };
+    return { key: `acpi:${parentIdentity}`, title: uiText.deviceTree.acpiInterface, connectorKind: "acpi", protocol: "ACPI" };
   }
   if (port.busKind.toLocaleLowerCase() === "storage") {
-    return { key: `storage:${parentIdentity}`, title: "存储内部接口", connectorKind: "storage", protocol: port.storage?.busType ?? port.protocol };
+    return { key: `storage:${parentIdentity}`, title: uiText.deviceTree.storageInterface, connectorKind: "storage", protocol: port.storage?.busType ?? port.protocol };
   }
-  return { key: `system:${parentIdentity}`, title: "系统内部接口", connectorKind: "internal", protocol: port.protocol };
+  return { key: `system:${parentIdentity}`, title: uiText.deviceTree.systemInterface, connectorKind: "internal", protocol: port.protocol };
 }
 
 function internalDisplayInterfaceTitle(port: DeviceTopologyPort) {
   const technology = port.display?.connectorTechnology?.trim().toLocaleLowerCase() ?? "";
   return technology.includes("displayport") || technology.includes("edp")
-    ? "eDP 内部接口"
-    : "内置显示接口";
+    ? uiText.deviceTree.embeddedDisplayPortInterface
+    : uiText.deviceTree.internalDisplayInterface;
 }
 
 function inferDeviceConnectorKind(port: DeviceTopologyPort) {

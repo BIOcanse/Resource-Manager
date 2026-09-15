@@ -1,4 +1,4 @@
-import type { ConcreteAppLanguageMode, SettingsCopy, SettingsCopyPatch, SettingsCopyPatchObject } from "./settingsTypes";
+import type { ConcreteAppLanguageMode, SettingsCopy, SettingsCopyPatch, SettingsCopyPatchObject } from "./settingsTypes.ts";
 
 const zhCnSettingsCopy: SettingsCopy = {
   navigationLabel: "设置分区",

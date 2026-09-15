@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("uk-UA", {
   sections: { performance: "Продуктивність", appearance: "Вигляд", systemIntegration: "Інтеграція із системою", debug: "Налагодження", credits: "Подяки" },

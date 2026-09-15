@@ -6,35 +6,36 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, PowerInputDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const powerInputAdapter: DeviceAdapter<PowerInputDeviceModel> = {
   id: "power-input",
   matches: ({ port }) => (port.connectorKind === "power" || port.usb?.portConnectorIsTypeC === true)
     && hasAnyEvidence(port, /power input|charging input|sink role|power sink|ac adapter input|PD input|供电输入|受电端/i),
   createModel: (context) => {
-    const title = deviceTitle(context, "电脑供电输入");
+    const title = deviceTitle(context, uiText.deviceAdapters.powerInput);
     const connection = connectionFacts(context);
     const interconnect = context.port.advancedInterconnect;
-    const inputRole = displayValue(interconnect?.role, "输入供电");
+    const inputRole = displayValue(interconnect?.role, uiText.deviceAdapters.powerInputRole);
     const relationEvidence = displayValue(interconnect?.evidence);
-    const negotiatedPower = "未报告";
+    const negotiatedPower = uiText.deviceAdapters.notReported;
     return {
       adapterId: "power-input",
       kind: "power-input",
-      deviceTypeLabel: "电脑供电输入",
+      deviceTypeLabel: uiText.deviceAdapters.powerInput,
       title,
       subtitle: `${inputRole} · ${negotiatedPower}`,
-      badge: "供电输入",
+      badge: uiText.deviceAdapters.powerInputBadge,
       iconKind: "power-input",
       ...connection,
       inputRole,
       negotiatedPower,
       relationEvidence,
       summaryFields: summaryFields(
-        ["设备类型", "电脑供电输入"],
-        ["输入接口", connection.upstreamInterface],
-        ["供电角色", inputRole],
-        ["协商功率", negotiatedPower]
+        [uiText.deviceAdapters.label.deviceType, uiText.deviceAdapters.powerInput],
+        [uiText.deviceAdapters.label.inputInterface, connection.upstreamInterface],
+        [uiText.deviceAdapters.label.powerRole, inputRole],
+        [uiText.deviceAdapters.label.negotiatedPower, negotiatedPower]
       ),
       capabilityLabels: [inputRole],
       searchTerms: ["电脑供电", "充电输入", "power input", inputRole]

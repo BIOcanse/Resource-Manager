@@ -1,3 +1,4 @@
+import { uiText } from "../text.ts";
 export type ApiRequestFailureKind =
   | "timeout"
   | "aborted"
@@ -63,7 +64,7 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
     controller.abort(error);
     rejectCancellation(error);
   };
-  const abortFromCaller = () => cancel(new ApiRequestError("请求已取消", {
+  const abortFromCaller = () => cancel(new ApiRequestError(uiText.misc.transportCanceled, {
     kind: "aborted",
     retryable: false
   }));
@@ -73,7 +74,7 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
     callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
   }
   const timeoutHandle = globalThis.setTimeout(() => cancel(new ApiRequestError(
-    "等待本机服务响应超时，请重试",
+    uiText.misc.transportTimeout,
     { kind: "timeout", retryable: true })), timeoutMs);
 
   try {
@@ -100,7 +101,7 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
       if (error instanceof ApiRequestError) {
         throw error;
       }
-      throw new ApiRequestError("本机服务返回的数据无法读取，请重试", {
+      throw new ApiRequestError(uiText.misc.transportUnreadable, {
         kind: "invalid-response",
         status: response.status,
         retryable: true
@@ -127,7 +128,7 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
     }
 
     if ((!text || invalidJson) && !allowEmptyResponse) {
-      throw new ApiRequestError("本机服务返回的数据无法读取，请重试", {
+      throw new ApiRequestError(uiText.misc.transportUnreadable, {
         kind: "invalid-response",
         status: response.status,
         retryable: true
@@ -164,6 +165,6 @@ function isRetryableHttpStatus(status: number) {
 }
 
 function fallbackMessage(value: string) {
-  const text = value.trim() || "操作失败，请稍后重试";
+  const text = value.trim() || uiText.request.actionFailed;
   return /[。！？.!?]$/.test(text) ? text : `${text}。`;
 }

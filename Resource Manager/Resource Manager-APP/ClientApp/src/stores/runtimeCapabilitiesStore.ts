@@ -10,6 +10,7 @@ import {
 } from "../observation/observationState";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import type { BackendStartupCapabilities } from "../types";
+import { uiText } from "../text.ts";
 
 const failClosedCapabilities: BackendStartupCapabilities = {
   profileId: "unavailable",
@@ -65,7 +66,7 @@ export function createRuntimeCapabilitiesStore(
       || snapshot.status === "disposed") {
       return failedObservation(
         loadingObservation(),
-        userFacingErrorMessage(snapshot.error, "无法读取当前启动配置的运行能力"));
+        userFacingErrorMessage(snapshot.error, uiText.misc.runtimeCapabilityReadFailed));
     }
     return loadingObservation();
   });

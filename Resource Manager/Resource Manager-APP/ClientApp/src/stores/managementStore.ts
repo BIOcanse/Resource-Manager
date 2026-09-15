@@ -16,7 +16,7 @@ import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback
 import { managementActionKey, managementActionKeyFromOperation } from "../components/ManagementPage";
 import type { ManagementSubpageId } from "../management/managementNavigation";
 import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../management/managementSnapshotCache";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import {
   cachedObservation,
   failedObservation,
@@ -107,7 +107,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     createSignal<ObservationState>(options.mutablePersistenceEnabled()
       ? cachedState
       : profileDisabledObservation(
-        "当前启动配置不加载可写软件登记。"));
+        uiText.stores.writableRegistryDisabled));
   const [browserRuntimes, setBrowserRuntimes] = createSignal<BrowserRuntimeSnapshot | null>(null);
   const [browserRuntimesObservation, setBrowserRuntimesObservation] =
     createSignal<ObservationState>(loadingObservation());
@@ -167,7 +167,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       setManualSoftwareKind(null);
       await refreshSoftware();
     } catch (error) {
-      showErrorToast(error, "添加软件失败");
+      showErrorToast(error, uiText.stores.addSoftwareFailed);
     } finally {
       setManualSoftwareActionInProgress(false);
     }
@@ -183,14 +183,14 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     } catch (error) {
       setComponentsObservation((previous) => failedObservation(
         previous,
-        userFacingErrorMessage(error, "组件目录刷新失败")));
+        userFacingErrorMessage(error, uiText.stores.componentCatalogRefreshFailed)));
     }
   }
 
   async function refreshSoftware(refreshPortableRegistrations = false) {
     if (!options.mutablePersistenceEnabled()) {
       setSoftwareObservation(profileDisabledObservation(
-        "当前启动配置不加载可写软件登记。"));
+        uiText.stores.writableRegistryDisabled));
       return;
     }
 
@@ -203,7 +203,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     } catch (error) {
       setSoftwareObservation((previous) => failedObservation(
         previous,
-        userFacingErrorMessage(error, "软件登记刷新失败")));
+        userFacingErrorMessage(error, uiText.stores.softwareRegistryRefreshFailed)));
       if (refreshPortableRegistrations) {
         throw error;
       }
@@ -224,7 +224,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     } catch (error) {
       setBrowserRuntimesObservation((previous) => failedObservation(
         previous,
-        userFacingErrorMessage(error, "浏览器运行时状态刷新失败")));
+        userFacingErrorMessage(error, uiText.stores.browserRuntimeRefreshFailed)));
     } finally {
       setBrowserRuntimeRefreshInProgress(false);
     }
@@ -242,12 +242,12 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
         refreshes.push(refreshSoftware(userInitiated));
       } else {
         setSoftwareObservation(profileDisabledObservation(
-          "当前启动配置不加载可写软件登记。"));
+          uiText.stores.writableRegistryDisabled));
       }
       await Promise.all(refreshes);
     } catch (error) {
       if (userInitiated) {
-        showErrorToast(error, "刷新失败");
+        showErrorToast(error, uiText.stores.refreshFailed);
       }
     } finally {
       setRefreshInProgress(false);
@@ -276,14 +276,14 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: "当前启动配置只提供组件状态查看，不执行安装操作。"
+        message: uiText.stores.installDisabled
       });
       return;
     }
 
     const id = component.definition?.id;
     if (!id) {
-      showErrorToast(new Error(uiText.componentAcquisition.componentMissingIdentity), "操作失败");
+      showErrorToast(new Error(uiText.stores.componentMissingIdentity), uiText.stores.actionFailed);
       return;
     }
 
@@ -348,7 +348,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       try {
         await openPath(installerDirectory);
       } catch (error) {
-        showErrorToast(error, uiText.componentAcquisition.openPathFailed);
+        showErrorToast(error, uiText.softwareActions.openPathFailed);
       }
     }
 
@@ -365,17 +365,17 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     const key = managementActionKey("component", id);
     try {
       if (!id) {
-        throw new Error(uiText.componentAcquisition.componentMissingIdentity);
+        throw new Error(uiText.stores.componentMissingIdentity);
       }
 
-      setActionLabel(key, "等待中");
+      setActionLabel(key, uiText.stores.waiting);
       const operation = await options.operations.submit(
         componentInstallCommand(id, true, versionChoice));
       setActionLabel(key, labelForOperation(operation));
       const completed = await options.operations.waitForTerminal(operation.id);
       showOperationResult(completed);
     } catch (error) {
-      showErrorToast(error, "操作失败");
+      showErrorToast(error, uiText.stores.actionFailed);
     } finally {
       clearActionLabel(key);
       const refreshes = [refreshComponents()];
@@ -394,20 +394,20 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: "当前启动配置不执行软件卸载操作。"
+        message: uiText.stores.uninstallDisabled
       });
       return;
     }
 
     const operations = softwareRecord.operations ?? {};
     if (!operations.canUninstall) {
-      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: userFacingMessage(operations.uninstallMessage, "该软件当前不可卸载") });
+      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: userFacingMessage(operations.uninstallMessage, uiText.stores.cannotUninstall) });
       return;
     }
 
     const actionText = operations.uninstallKind === "WindowsUninstaller"
-      ? "将打开该软件的卸载程序。未登记的软件目录不会被删除。"
-      : "将删除该软件目录中的文件。此操作无法撤销。";
+      ? uiText.stores.uninstallerWarning
+      : uiText.stores.deleteDirectoryWarning;
     if (!await options.confirmDialog({
       title: softwareRecord.name,
       message: actionText,
@@ -416,7 +416,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
-    setActionLabel(actionKey, "正在卸载");
+    setActionLabel(actionKey, uiText.stores.uninstalling);
     try {
       const operation = await options.operations.submit(
         softwareUninstallCommand(softwareRecord.id, true));
@@ -424,7 +424,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       const completed = await options.operations.waitForTerminal(operation.id);
       showOperationResult(completed);
     } catch (error) {
-      showErrorToast(error, "软件操作失败");
+      showErrorToast(error, uiText.stores.softwareActionFailed);
     } finally {
       clearActionLabel(actionKey);
       await Promise.all([refreshComponents(), refreshSoftware()]);
@@ -456,7 +456,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "success",
         title: uiText.feedback.success,
-        message: userFacingMessage(operationResultText(operation), "操作完成")
+        message: userFacingMessage(operationResultText(operation), uiText.stores.operationCompleted)
       });
       return;
     }
@@ -465,7 +465,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "warning",
         title: uiText.feedback.warning,
-        message: userFacingMessage(operation.error, "操作结果不确定，请检查实际状态后再重试。")
+        message: userFacingMessage(operation.error, uiText.stores.operationUncertain)
       });
       return;
     }
@@ -474,7 +474,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       options.showToast({
         tone: "error",
         title: uiText.feedback.error,
-        message: userFacingMessage(operation.error, "操作未能完成，请稍后重试。")
+        message: userFacingMessage(operation.error, uiText.stores.operationIncomplete)
       });
     }
   }
@@ -518,7 +518,7 @@ function isManualSoftwareKind(kind: ManagementKind): kind is ManualSoftwareKind 
 function labelForOperation(operation: OperationSnapshot) {
   const stage = operation.progress?.stage ?? "";
   if (operation.state === "queued" || operation.state === "startPending") {
-    return "等待中";
+    return uiText.stores.waiting;
   }
   if (operation.state === "running") {
     const percent = typeof operation.progress?.percent === "number"
@@ -529,31 +529,31 @@ function labelForOperation(operation: OperationSnapshot) {
       && compareUInt64Decimal(speedValue, "0") > 0
       ? ` ${formatUInt64Bytes(speedValue)}/s`
       : "";
-    return `${stage || "进行中"}${percent}${speed}`;
+    return `${stage || uiText.stores.progressRunning}${percent}${speed}`;
   }
   if (operation.state === "cancelPending") {
-    return "正在取消";
+    return uiText.stores.progressCanceling;
   }
   if (operation.state === "retryWait") {
-    return "等待重试";
+    return uiText.stores.progressRetryWait;
   }
   if (operation.state === "recoveryPending") {
-    return "正在恢复";
+    return uiText.stores.progressRecovering;
   }
   if (operation.state === "succeeded") {
-    return "已完成";
+    return uiText.stores.progressCompleted;
   }
   if (operation.state === "failed") {
-    return "失败";
+    return uiText.stores.progressFailed;
   }
   if (operation.state === "canceled") {
-    return "已取消";
+    return uiText.stores.progressCanceled;
   }
   if (operation.state === "stateUncertain") {
-    return "状态不确定";
+    return uiText.stores.progressUncertain;
   }
 
-  return stage || "处理中";
+  return stage || uiText.stores.progressWorking;
 }
 
 function operationResultText(operation: OperationSnapshot) {
@@ -566,7 +566,7 @@ function operationObservation(
 ): ObservationState {
   if (!enabled) {
     return profileDisabledObservation(
-      "当前启动配置不加载可执行操作状态。");
+      uiText.stores.operationStateDisabled);
   }
   if (snapshot.status === "ready") {
     return readyObservation(snapshot.capturedAt ?? undefined);
@@ -574,7 +574,7 @@ function operationObservation(
   if (snapshot.status === "disposed") {
     return failedObservation(
       loadingObservation(),
-      "操作状态已经停止");
+      uiText.stores.operationStateStopped);
   }
   return loadingObservation();
 }

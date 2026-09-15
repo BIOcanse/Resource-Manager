@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("nb-NO", {
   sections: { performance: "Ytelse", appearance: "Utseende", systemIntegration: "Systemintegrasjon", debug: "Feilsøking", credits: "Takk" },

@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("hi-IN", {
   sections: { performance: "प्रदर्शन", appearance: "रूप", systemIntegration: "सिस्टम एकीकरण", debug: "डिबग", credits: "आभार" },

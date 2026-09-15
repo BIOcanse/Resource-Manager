@@ -1,6 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import { pointerReorderProps } from "../interactions/pointerReorder";
 import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../types";
+import { uiText } from "../text.ts";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -38,7 +39,7 @@ export function Dashboard(props: DashboardProps) {
   };
 
   return (
-    <section class="dashboard" aria-label="监控面板">
+    <section class="dashboard" aria-label={uiText.dashboard.panel}>
       <For each={props.cards}>
         {(card, cardIndex) => {
           return (
@@ -147,10 +148,10 @@ function MetricSlot(props: {
   const key = () => slotKey(slotRef());
   const metricLabel = () => props.catalog.find((metric) => metric.id === props.metricId)?.label
     ?? props.metricId
-    ?? "空指标";
+    ?? uiText.dashboard.emptyMetric;
   const slotLabel = () => props.slot === "main"
-    ? `第 ${props.cardOrdinal} 张卡片主指标`
-    : `第 ${props.cardOrdinal} 张卡片明细指标 ${props.index + 1}`;
+    ? uiText.dashboard.primarySlot(props.cardOrdinal)
+    : uiText.dashboard.detailSlot(props.cardOrdinal, props.index + 1);
   return (
     <Show
       when={props.editMode}
@@ -185,9 +186,9 @@ function MetricSlot(props: {
             <button
               type="button"
               class="slot-add"
-              aria-label={`为${slotLabel()}添加指标`}
+              aria-label={uiText.dashboard.addMetric(slotLabel())}
               disabled={!props.metricSelectionAvailable}
-              title={!props.metricSelectionAvailable ? "指标目录暂不可用" : undefined}
+              title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : undefined}
               onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: null })}
             >
               +
@@ -198,9 +199,9 @@ function MetricSlot(props: {
           <button
             type="button"
             class="slot-change"
-            aria-label={`更换${slotLabel()}：${metricLabel()}`}
+            aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
             disabled={!props.metricSelectionAvailable}
-            title={!props.metricSelectionAvailable ? "指标目录暂不可用" : undefined}
+            title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : undefined}
             onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: props.metricId })}
           >
             +
@@ -208,7 +209,7 @@ function MetricSlot(props: {
           <button
             type="button"
             class="slot-delete"
-            aria-label={`删除${slotLabel()}：${metricLabel()}`}
+            aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
             onClick={() => props.onClearSlot(props.card.id, props.slot, props.index)}
           >
             ×
@@ -231,7 +232,7 @@ function MetricView(props: {
     const label = metric()?.label?.trim();
     return label && label !== props.metricId ? label : null;
   };
-  const label = () => definition()?.label ?? snapshotLabel() ?? (props.metricId ? "指标不可用" : "--");
+  const label = () => definition()?.label ?? snapshotLabel() ?? (props.metricId ? uiText.dashboard.metricUnavailable : "--");
   const value = () => metric()?.displayValue ?? (definition() ? "N/A" : "--");
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>

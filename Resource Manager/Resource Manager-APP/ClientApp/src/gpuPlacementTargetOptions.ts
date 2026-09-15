@@ -1,12 +1,16 @@
 import type { GpuPlacementExactTargetOption } from "./types";
+import { uiText } from "./text.ts";
 
 export type GpuPolicySelectOption = readonly [string, string, boolean?];
 
-const ordinarySystemTargetGpuOptions: readonly GpuPolicySelectOption[] = [
-  ["SystemDefaultGpu", "自动选择"],
-  ["HighPerformanceGpu", "高性能显卡"],
-  ["IntegratedGpu", "低功耗显卡"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function ordinarySystemTargetGpuOptions(): readonly GpuPolicySelectOption[] {
+  return [
+    ["SystemDefaultGpu", uiText.gpuTarget.systemDefault],
+    ["HighPerformanceGpu", uiText.gpuTarget.highPerformance],
+    ["IntegratedGpu", uiText.gpuTarget.integrated]
+  ] as const;
+}
 
 export function targetGpuOptionsForSoftwarePolicy(
   preciseGpuPlacementEnabled: boolean,
@@ -16,14 +20,14 @@ export function targetGpuOptionsForSoftwarePolicy(
   exactTargets: readonly GpuPlacementExactTargetOption[] = []): readonly GpuPolicySelectOption[] {
   if (preciseGpuPlacementEnabled && schedulingMode === "Precise" && runtimeSchedulingMode === "Precise") {
     return preserveUnavailableCurrentTarget(
-      [...ordinarySystemTargetGpuOptions, ...mapExactTargets(exactTargets), ["AutoIdleGpu", "自动选择空闲显卡"]],
+      [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets), ["AutoIdleGpu", uiText.gpuTarget.autoIdle]],
       currentTarget,
-      "当前不可用");
+      uiText.gpuTarget.unavailable);
   }
 
   return isOrdinarySystemGpuTarget(currentTarget)
-    ? ordinarySystemTargetGpuOptions
-    : [[currentTarget, `${formatGpuTarget(currentTarget)}（需要开启精确 GPU 选择）`, true], ...ordinarySystemTargetGpuOptions];
+    ? ordinarySystemTargetGpuOptions()
+    : [[currentTarget, uiText.gpuTarget.needsPreciseSelection(formatGpuTarget(currentTarget)), true], ...ordinarySystemTargetGpuOptions()];
 }
 
 export function startupTargetGpuOptionsForSoftwarePolicy(
@@ -33,21 +37,21 @@ export function startupTargetGpuOptionsForSoftwarePolicy(
   exactTargets: readonly GpuPlacementExactTargetOption[] = []): readonly GpuPolicySelectOption[] {
   if (isUnavailableStartupGpuTarget(currentTarget)) {
     const availableOptions = preciseGpuPlacementEnabled && schedulingMode === "Precise"
-      ? [...ordinarySystemTargetGpuOptions, ...mapExactTargets(exactTargets)]
-      : ordinarySystemTargetGpuOptions;
-    return [[currentTarget, `${formatGpuTarget(currentTarget)}（启动期暂不可用）`, true], ...availableOptions];
+      ? [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets)]
+      : ordinarySystemTargetGpuOptions();
+    return [[currentTarget, uiText.gpuTarget.startupUnavailable(formatGpuTarget(currentTarget)), true], ...availableOptions];
   }
 
   if (preciseGpuPlacementEnabled && schedulingMode === "Precise") {
     return preserveUnavailableCurrentTarget(
-      [...ordinarySystemTargetGpuOptions, ...mapExactTargets(exactTargets)],
+      [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets)],
       currentTarget,
-      "当前不可用");
+      uiText.gpuTarget.unavailable);
   }
 
   return isOrdinarySystemGpuTarget(currentTarget)
-    ? ordinarySystemTargetGpuOptions
-    : [[currentTarget, `${formatGpuTarget(currentTarget)}（需要开启精确 GPU 选择）`, true], ...ordinarySystemTargetGpuOptions];
+    ? ordinarySystemTargetGpuOptions()
+    : [[currentTarget, uiText.gpuTarget.needsPreciseSelection(formatGpuTarget(currentTarget)), true], ...ordinarySystemTargetGpuOptions()];
 }
 
 export function isOrdinarySystemGpuTarget(target: string) {
@@ -66,8 +70,8 @@ export function toOrdinarySystemGpuTarget(target: string | undefined | null) {
 
 function formatGpuTarget(target: string) {
   return target === "AutoIdleGpu"
-    ? "自动选择空闲显卡"
-    : target || "指定显卡";
+    ? uiText.gpuTarget.autoIdle
+    : target || uiText.gpuTarget.specificGpu;
 }
 
 function mapExactTargets(

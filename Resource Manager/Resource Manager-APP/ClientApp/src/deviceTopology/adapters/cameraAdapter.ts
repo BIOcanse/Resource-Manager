@@ -9,6 +9,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { CameraDeviceModel, DeviceAdapter } from "./types";
+import { uiText } from "../../text.ts";
 
 export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
   id: "camera",
@@ -16,9 +17,9 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
     || port.pnpClass?.toLocaleLowerCase() === "camera"
     || hasUsbInterface(port, /Video (?:Control|Streaming)|\[0e\/(?:01|02)\//i),
   createModel: (context) => {
-    const reportedTitle = deviceTitle(context, "USB 摄像头");
+    const reportedTitle = deviceTitle(context, uiText.deviceAdapters.usbCamera);
     const title = context.scope === "internal" && /^USB Composite Device$/i.test(reportedTitle)
-      ? "内置摄像头"
+      ? uiText.deviceAdapters.internalCamera
       : reportedTitle;
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
@@ -29,9 +30,9 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
     const nativeModes = context.port.camera?.nativeModes ?? [];
     const bestMode = formatCameraMode(context.port.camera?.bestMode);
     const functionOnly = context.scope === "internal" && context.port.camera == null && protocols.length === 0;
-    const typeLabel = functionOnly ? "摄像头视频功能" : "摄像头";
+    const typeLabel = functionOnly ? uiText.deviceAdapters.cameraVideoFunction : uiText.deviceAdapters.camera;
     const capabilitySource = context.port.camera?.capabilitySource
-      ?? (protocols.length > 0 ? "USB Video Class 接口描述符" : "Windows PnP 摄像头功能");
+      ?? (protocols.length > 0 ? uiText.deviceAdapters.uvcInterfaceDescriptor : uiText.deviceAdapters.windowsPnpCameraFunction);
     return {
       adapterId: "camera",
       kind: "camera",
@@ -40,7 +41,7 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
       subtitle: functionOnly
         ? joinSummary(typeLabel, facts?.transport)
         : joinSummary(bestMode === "--" ? undefined : bestMode, connection.currentLink),
-      badge: functionOnly ? "视频功能" : "摄像头",
+      badge: functionOnly ? uiText.deviceAdapters.videoFunctionBadge : uiText.deviceAdapters.camera,
       iconKind: "camera",
       ...connection,
       videoControl,
@@ -52,19 +53,19 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
       capabilitySource,
       summaryFields: functionOnly
         ? summaryFields(
-          ["设备角色", typeLabel],
-          ["内部传输", facts?.transport],
-          ["驱动服务", facts?.driverService],
-          ["设备状态", facts?.deviceStatus]
+          [uiText.deviceAdapters.label.deviceRole, typeLabel],
+          [uiText.deviceAdapters.label.internalTransport, facts?.transport],
+          [uiText.deviceAdapters.label.driverService, facts?.driverService],
+          [uiText.deviceAdapters.label.deviceStatus, facts?.deviceStatus]
         )
         : summaryFields(
-          ["最高原生模式", bestMode],
-          ["原生模式", nativeModes.length > 0 ? `${nativeModes.length} 组` : "未报告"],
-          ["伴随音频", audioCapable ? "支持" : "未报告"],
-          ["当前链路", connection.currentLink]
+          [uiText.deviceAdapters.label.highestNativeMode, bestMode],
+          [uiText.deviceAdapters.label.nativeModes, nativeModes.length > 0 ? uiText.deviceAdapters.modeGroupCount(nativeModes.length) : uiText.deviceAdapters.notReported],
+          [uiText.deviceAdapters.label.companionAudio, audioCapable ? uiText.deviceAdapters.supported : uiText.deviceAdapters.notReported],
+          [uiText.deviceAdapters.label.currentLink, connection.currentLink]
         ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: ["摄像头", "相机", "camera", "video", bestMode, ...protocols]
+      searchTerms: [uiText.deviceAdapters.camera, "相机", "camera", "video", bestMode, ...protocols]
     };
   }
 };

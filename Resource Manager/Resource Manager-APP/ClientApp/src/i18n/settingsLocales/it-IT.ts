@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("it-IT", {
   sections: { performance: "Prestazioni", appearance: "Aspetto", systemIntegration: "Integrazione di sistema", debug: "Debug", credits: "Ringraziamenti" },
