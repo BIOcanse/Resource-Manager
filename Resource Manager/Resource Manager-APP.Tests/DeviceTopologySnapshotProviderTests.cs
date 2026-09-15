@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using Resource_Manager_APP.Tests;
 
@@ -78,12 +79,18 @@ public sealed class DeviceTopologySnapshotProviderTests
                 "display-coordinator",
                 DeviceTopologySourceDiagnosticStatus.RequiredIncomplete,
                 "device-topology-display-coordinator-incomplete",
-                "显示协调器尚未提供完整快照：Warming"),
+                BackendMessage.Create(
+                    BackendMessageDomains.DeviceTopology,
+                    BackendMessageCodes.DeviceTopology.DisplayCoordinatorNotReady,
+                    "Warming")),
             new DeviceTopologySourceDiagnostic(
                 "storage-capabilities",
                 DeviceTopologySourceDiagnosticStatus.RequiredIncomplete,
                 "device-topology-storage-capabilities-incomplete",
-                "磁盘/分区/卷能力读取不完整：fixture")
+                BackendMessage.Create(
+                    BackendMessageDomains.DeviceTopology,
+                    BackendMessageCodes.DeviceTopology.StorageCapabilitiesIncomplete,
+                    "fixture"))
         };
         var reader = new FakeReader(
             snapshot,
@@ -255,7 +262,7 @@ public sealed class DeviceTopologySnapshotProviderTests
                 "Test Board Vendor",
                 "Test Board"),
             [],
-            ["stable note"]);
+            [BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.EnumerationOnly)]);
     }
 
     private sealed class FakeReader(params object[] results) : IDeviceTopologyReader

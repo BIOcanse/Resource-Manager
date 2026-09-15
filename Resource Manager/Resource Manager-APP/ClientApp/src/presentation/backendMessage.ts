@@ -12,7 +12,8 @@ export const backendMessageDomains = {
   dependency: 1,
   gpuPlacement: 2,
   metric: 3,
-  software: 4
+  software: 4,
+  deviceTopology: 5
 } as const;
 
 type Renderer = (args: readonly string[]) => string;
@@ -79,6 +80,52 @@ function gpuPlacementRenderers(): Record<number, Renderer> {
   };
 }
 
+function deviceTopologyRenderers(): Record<number, Renderer> {
+  const copy = uiText.backendMessage.deviceTopology;
+  return {
+    1: () => copy.enumerationOnly,
+    2: () => copy.noVisibleNodes,
+    3: (args) => copy.conflictingFacts(args[0] ?? ""),
+    4: () => copy.incompleteBrandModel,
+    5: () => copy.usbChainUnavailable,
+    6: (args) => copy.pnpEnumerationFailed(args[0] ?? ""),
+    7: (args) => copy.nativeDevicePropertiesFailed(args[0] ?? ""),
+    8: (args) => copy.usbHubIoctlFailed(args[0] ?? ""),
+    9: (args) => copy.networkAdapterPropertiesFailed(args[0] ?? ""),
+    10: (args) => copy.displayCoordinatorNotReady(args[0] ?? ""),
+    11: (args) => copy.displayCoordinatorReadFailed(args[0] ?? ""),
+    12: (args) => copy.storageCapabilitiesIncomplete(args[0] ?? ""),
+    13: (args) => copy.usbControllerEnumerationFailed(args[0] ?? ""),
+    14: (args) => copy.usbHubEnumerationFailed(args[0] ?? ""),
+    15: (args) => copy.usbControllerRelationshipFailed(args[0] ?? ""),
+    16: () => copy.confidenceUsbHubIoctl,
+    17: () => copy.confidenceWmiChainDeviceManager,
+    18: () => copy.confidenceWmiChainDeviceManagerNameInference,
+    19: () => copy.confidenceWmiChain,
+    20: () => copy.confidenceWmiChainNameInference,
+    21: () => copy.confidenceDeviceManager,
+    22: () => copy.confidenceDeviceManagerNameInference,
+    23: () => copy.confidenceNameInference,
+    24: () => copy.confidenceDeviceEnumeration,
+    25: () => copy.confidenceNetAdapter,
+    26: () => copy.confidencePnpServiceRole,
+    27: () => copy.confidenceUsbConnectorProperties,
+    28: () => copy.confidenceActiveDisplayPath,
+    29: () => copy.confidenceOemProfileDisplayTarget,
+    30: () => copy.sourceUsbIoctlWmiSetupApiPnp,
+    31: () => copy.sourceUsbIoctlSetupApiPnp,
+    32: () => copy.sourceWmiSetupApiPnp,
+    33: () => copy.sourceWmiPnp,
+    34: () => copy.sourceSetupApiPnp,
+    35: () => copy.sourcePnpEnumeration,
+    36: () => copy.sourceNetAdapterSetupApiPnp,
+    37: () => copy.sourcePnpServiceSetupApi,
+    38: () => copy.sourceUsbHubIoctl,
+    39: () => copy.sourceQueryDisplayConfig,
+    40: () => copy.sourceOemProfileQueryDisplayConfig
+  };
+}
+
 export function renderBackendMessage(
   message: BackendMessage | null | undefined,
   fallback?: string
@@ -87,16 +134,15 @@ export function renderBackendMessage(
     return fallback ?? "";
   }
 
-  const renderers = message.domain === backendMessageDomains.dependency
-    ? dependencyRenderers()
-    : message.domain === backendMessageDomains.gpuPlacement
-      ? gpuPlacementRenderers()
-      : message.domain === backendMessageDomains.metric
-        ? metricRenderers()
-        : message.domain === backendMessageDomains.software
-          ? softwareRenderers()
-          : null;
-  const renderer = renderers?.[message.code];
+  // 每个域一张表；表在这里按当前语言现取，所以切语言后不用重建任何缓存。
+  const renderersByDomain: Record<number, () => Record<number, Renderer>> = {
+    [backendMessageDomains.dependency]: dependencyRenderers,
+    [backendMessageDomains.gpuPlacement]: gpuPlacementRenderers,
+    [backendMessageDomains.metric]: metricRenderers,
+    [backendMessageDomains.software]: softwareRenderers,
+    [backendMessageDomains.deviceTopology]: deviceTopologyRenderers
+  };
+  const renderer = renderersByDomain[message.domain]?.()[message.code];
   if (!renderer) {
     console.warn(
       `[backend-message] 未知消息：域 ${message.domain} 码 ${message.code}`);

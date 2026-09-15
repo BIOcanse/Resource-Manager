@@ -1,3 +1,5 @@
+import type { BackendMessage } from "../../types.ts";
+
 export interface ResponseDecoder<T> {
   readonly id: string;
   decode(value: unknown): T;
@@ -118,6 +120,27 @@ export function requireOneOf<const T extends string>(
       allowed.map((item) => `'${item}'`).join(" or "));
   }
   return value as T;
+}
+
+/**
+ * 后端消息码的线上形状：`{ domain, code, args }`，域和码都是 byte。
+ * 措辞不在线上，前端按当前语言渲染，见 `presentation/backendMessage.ts`。
+ */
+export function requireBackendMessage(value: unknown, path: string): BackendMessage {
+  const record = requireRecord(value, path);
+  return {
+    domain: requireByte(record.domain, `${path}.domain`),
+    code: requireByte(record.code, `${path}.code`),
+    args: requireStringArray(record.args ?? [], `${path}.args`)
+  };
+}
+
+function requireByte(value: unknown, path: string): number {
+  const number = requireNonNegativeSafeInteger(value, path);
+  if (number > 255) {
+    throw new ResponseDecodeError(path, "byte (0-255)");
+  }
+  return number;
 }
 
 export function requireArray(value: unknown, path: string): unknown[] {

@@ -19,6 +19,9 @@ public static class BackendMessageDomains
 
     /// <summary>软件记录（卸载能力、来源说明等）。</summary>
     public const byte Software = 4;
+
+    /// <summary>设备拓扑快照（说明、数据源失败、端口可信度与来源）。</summary>
+    public const byte DeviceTopology = 5;
 }
 
 /// <summary>
@@ -151,5 +154,132 @@ public static class BackendMessageCodes
         /// <summary>这台机器只有一个显卡，GPU 调度没有可选目标。参数：无。</summary>
         public const byte SingleAdapter = 1;
 
+    }
+
+    /// <summary>
+    /// 设备拓扑。只覆盖我们自己写的措辞：快照说明、数据源失败、端口的可信度与来源。
+    /// Windows 或设备自报的名称（友好名、厂商、型号、EDID）不走这里，按原样透传。
+    /// </summary>
+    public static class DeviceTopology
+    {
+        /// <summary>拓扑来自 Windows 当前枚举，不代表机身物理位置。参数：无。</summary>
+        public const byte EnumerationOnly = 1;
+
+        /// <summary>本轮快照没有可展示的拓扑节点。参数：无。</summary>
+        public const byte NoVisibleNodes = 2;
+
+        /// <summary>同一设备返回了相互冲突的事实，本轮未发布。参数：1 = 设备 ID。</summary>
+        public const byte ConflictingFacts = 3;
+
+        /// <summary>SMBIOS / WMI 没有返回完整品牌型号。参数：无。</summary>
+        public const byte IncompleteBrandModel = 4;
+
+        /// <summary>USB 关系链不可用，只能显示设备枚举结果。参数：无。</summary>
+        public const byte UsbChainUnavailable = 5;
+
+        /// <summary>PnP 设备枚举失败。参数：1 = 原始错误。</summary>
+        public const byte PnpEnumerationFailed = 6;
+
+        /// <summary>SetupAPI / CfgMgr32 设备属性读取失败。参数：1 = 原始错误。</summary>
+        public const byte NativeDevicePropertiesFailed = 7;
+
+        /// <summary>USB Hub IOCTL 读取失败。参数：1 = 原始错误。</summary>
+        public const byte UsbHubIoctlFailed = 8;
+
+        /// <summary>网络接口属性读取失败。参数：1 = 原始错误。</summary>
+        public const byte NetworkAdapterPropertiesFailed = 9;
+
+        /// <summary>显示协调器尚未提供完整快照。参数：1 = 当前状态。</summary>
+        public const byte DisplayCoordinatorNotReady = 10;
+
+        /// <summary>显示协调器缓存读取失败。参数：1 = 原始错误。</summary>
+        public const byte DisplayCoordinatorReadFailed = 11;
+
+        /// <summary>磁盘/分区/卷能力读取不完整。参数：1 = 原始错误。</summary>
+        public const byte StorageCapabilitiesIncomplete = 12;
+
+        /// <summary>USB 控制器枚举失败。参数：1 = 原始错误。</summary>
+        public const byte UsbControllerEnumerationFailed = 13;
+
+        /// <summary>USB Hub 枚举失败。参数：1 = 原始错误。</summary>
+        public const byte UsbHubEnumerationFailed = 14;
+
+        /// <summary>USB 控制器关系链读取失败。参数：1 = 原始错误。</summary>
+        public const byte UsbControllerRelationshipFailed = 15;
+
+        /// <summary>可信度：USB Hub IOCTL + 设备管理器属性。参数：无。</summary>
+        public const byte ConfidenceUsbHubIoctl = 16;
+
+        /// <summary>可信度：WMI 关系链 + 设备管理器属性。参数：无。</summary>
+        public const byte ConfidenceWmiChainDeviceManager = 17;
+
+        /// <summary>可信度：WMI 关系链 + 设备管理器属性 + 名称推断。参数：无。</summary>
+        public const byte ConfidenceWmiChainDeviceManagerNameInference = 18;
+
+        /// <summary>可信度：WMI 关系链。参数：无。</summary>
+        public const byte ConfidenceWmiChain = 19;
+
+        /// <summary>可信度：WMI 关系链 + 名称推断。参数：无。</summary>
+        public const byte ConfidenceWmiChainNameInference = 20;
+
+        /// <summary>可信度：设备管理器属性。参数：无。</summary>
+        public const byte ConfidenceDeviceManager = 21;
+
+        /// <summary>可信度：设备管理器属性 + 名称推断。参数：无。</summary>
+        public const byte ConfidenceDeviceManagerNameInference = 22;
+
+        /// <summary>可信度：名称推断。参数：无。</summary>
+        public const byte ConfidenceNameInference = 23;
+
+        /// <summary>可信度：设备枚举。参数：无。</summary>
+        public const byte ConfidenceDeviceEnumeration = 24;
+
+        /// <summary>可信度：MSFT_NetAdapter + 设备管理器属性。参数：无。</summary>
+        public const byte ConfidenceNetAdapter = 25;
+
+        /// <summary>可信度：Windows PnP 服务角色 + 设备管理器属性。参数：无。</summary>
+        public const byte ConfidencePnpServiceRole = 26;
+
+        /// <summary>可信度：USB Hub IOCTL 连接器属性。参数：无。</summary>
+        public const byte ConfidenceUsbConnectorProperties = 27;
+
+        /// <summary>可信度：Windows 活动显示路径。参数：无。</summary>
+        public const byte ConfidenceActiveDisplayPath = 28;
+
+        /// <summary>可信度：机型接口档案 / Windows 显示目标。参数：无。</summary>
+        public const byte ConfidenceOemProfileDisplayTarget = 29;
+
+        /// <summary>来源：USB Hub IOCTL + WMI USB 关系链 + SetupAPI / CfgMgr32 + PnP。参数：无。</summary>
+        public const byte SourceUsbIoctlWmiSetupApiPnp = 30;
+
+        /// <summary>来源：USB Hub IOCTL + SetupAPI / CfgMgr32 + PnP。参数：无。</summary>
+        public const byte SourceUsbIoctlSetupApiPnp = 31;
+
+        /// <summary>来源：WMI USB 关系链 + SetupAPI / CfgMgr32 + PnP。参数：无。</summary>
+        public const byte SourceWmiSetupApiPnp = 32;
+
+        /// <summary>来源：WMI USB 关系链 + PnP。参数：无。</summary>
+        public const byte SourceWmiPnp = 33;
+
+        /// <summary>来源：SetupAPI / CfgMgr32 + PnP。参数：无。</summary>
+        public const byte SourceSetupApiPnp = 34;
+
+        /// <summary>来源：PnP 设备枚举。参数：无。</summary>
+        public const byte SourcePnpEnumeration = 35;
+
+        /// <summary>来源：MSFT_NetAdapter + SetupAPI / CfgMgr32 + PnP。参数：无。</summary>
+        public const byte SourceNetAdapterSetupApiPnp = 36;
+
+        /// <summary>来源：Windows PnP 服务 + SetupAPI / CfgMgr32。参数：无。</summary>
+        public const byte SourcePnpServiceSetupApi = 37;
+
+        /// <summary>来源：USB Hub IOCTL。参数：无。</summary>
+        public const byte SourceUsbHubIoctl = 38;
+
+        /// <summary>来源：QueryDisplayConfig + DisplayConfigGetDeviceInfo。参数：无。</summary>
+        public const byte SourceQueryDisplayConfig = 39;
+
+        /// <summary>来源：OEM 机型接口档案 + QueryDisplayConfig(QDC_ALL_PATHS)。参数：无。</summary>
+        public const byte SourceOemProfileQueryDisplayConfig = 40;
     }
 }

@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -51,7 +52,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             return Task.CompletedTask;
         }
 
-        var notes = new List<string>();
+        var notes = new List<BackendMessage>();
         DeviceTopologySystemIdentity system;
         try
         {

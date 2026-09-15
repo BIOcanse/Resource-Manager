@@ -792,7 +792,7 @@ export interface DeviceTopologySourceDiagnostic {
   sourceId: string;
   status: DeviceTopologySourceDiagnosticStatus;
   code: string;
-  message: string;
+  messageCode: BackendMessage;
 }
 
 export interface DeviceTopologySnapshotState {
@@ -812,7 +812,7 @@ export interface DeviceTopologySnapshot {
   capturedAt: string;
   system: DeviceTopologySystemIdentity;
   ports: DeviceTopologyPort[];
-  notes: string[];
+  notes: BackendMessage[];
 }
 
 export interface DeviceTopologySystemIdentity {
@@ -840,8 +840,8 @@ export interface DeviceTopologyPort {
   manufacturer?: string | null;
   service?: string | null;
   status?: string | null;
-  confidence: string;
-  source: string;
+  confidence: BackendMessage;
+  source: BackendMessage;
   upstreamDeviceId?: string | null;
   upstreamDisplayName?: string | null;
   topologyPath: string;

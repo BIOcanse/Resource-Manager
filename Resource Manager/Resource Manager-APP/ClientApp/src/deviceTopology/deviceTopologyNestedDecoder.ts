@@ -1,5 +1,6 @@
 import {
   requireArray,
+  requireBackendMessage,
   requireBoolean,
   requireNonEmptyString,
   requireNonNegativeFiniteNumber,
@@ -66,8 +67,8 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
     manufacturer: nullableString(record.manufacturer, `${path}.manufacturer`),
     service: nullableString(record.service, `${path}.service`),
     status: nullableString(record.status, `${path}.status`),
-    confidence: requireString(record.confidence, `${path}.confidence`),
-    source: requireString(record.source, `${path}.source`),
+    confidence: requireBackendMessage(record.confidence, `${path}.confidence`),
+    source: requireBackendMessage(record.source, `${path}.source`),
     upstreamDeviceId: nullableString(record.upstreamDeviceId, `${path}.upstreamDeviceId`),
     upstreamDisplayName: nullableString(
       record.upstreamDisplayName,

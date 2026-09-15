@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.Messages;
+
 namespace ResourceManager.App.Domain.DeviceTopology;
 
 public sealed record DeviceTopologySnapshotState(
@@ -12,7 +14,8 @@ public sealed record DeviceTopologySnapshotState(
     string? FailureCode,
     IReadOnlyList<DeviceTopologySourceDiagnostic> AttemptDiagnostics)
 {
-    public const string CurrentSchemaVersion = "3.0.0";
+    // 4.0.0：Notes 与来源诊断消息改成消息码，旧的中文文本快照不再可读。
+    public const string CurrentSchemaVersion = "4.0.0";
 
     public static DeviceTopologySnapshotState Warming { get; } = new(
         CurrentSchemaVersion,
@@ -31,7 +34,7 @@ public sealed record DeviceTopologySourceDiagnostic(
     string SourceId,
     string Status,
     string Code,
-    string Message);
+    BackendMessage MessageCode);
 
 public static class DeviceTopologySourceDiagnosticStatus
 {

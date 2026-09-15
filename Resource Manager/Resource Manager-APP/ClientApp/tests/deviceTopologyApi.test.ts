@@ -17,7 +17,7 @@ try {
   globalThis.fetch = (async (input) => {
     observedUrl = String(input);
     return new Response(JSON.stringify({
-      schemaVersion: "3.0.0",
+      schemaVersion: "4.0.0",
       state: "warming",
       snapshot: null,
       contentGeneration: 0,

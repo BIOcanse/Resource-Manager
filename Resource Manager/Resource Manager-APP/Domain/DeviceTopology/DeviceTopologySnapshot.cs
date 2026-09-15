@@ -1,10 +1,12 @@
+using ResourceManager.App.Domain.Messages;
+
 namespace ResourceManager.App.Domain.DeviceTopology;
 
 public sealed record DeviceTopologySnapshot(
     DateTimeOffset CapturedAt,
     DeviceTopologySystemIdentity System,
     IReadOnlyList<DeviceTopologyPort> Ports,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<BackendMessage> Notes);
 
 public sealed record DeviceTopologySystemIdentity(
     string Manufacturer,
@@ -29,8 +31,8 @@ public sealed record DeviceTopologyPort(
     string? Manufacturer,
     string? Service,
     string? Status,
-    string Confidence,
-    string Source,
+    BackendMessage Confidence,
+    BackendMessage Source,
     string? UpstreamDeviceId,
     string? UpstreamDisplayName,
     string TopologyPath,

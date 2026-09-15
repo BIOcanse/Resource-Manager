@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
@@ -17,7 +18,7 @@ public sealed class DeviceTopologySemanticComparer
                 .Select(NormalizePort)
                 .OrderBy(static port => port.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
-            Notes = NormalizeStrings(snapshot.Notes)
+            Notes = NormalizeNotes(snapshot.Notes)
         };
         var payload = JsonSerializer.SerializeToUtf8Bytes(normalized, JsonOptions);
         return Convert.ToHexString(SHA256.HashData(payload));
@@ -88,6 +89,17 @@ public sealed class DeviceTopologySemanticComparer
     internal static string ComputeCanonicalPortPayload(DeviceTopologyPort port)
     {
         return JsonSerializer.Serialize(NormalizePort(port), JsonOptions);
+    }
+
+    // 说明按「域/码/参数」排序去重，和字符串说明一样保证同一台机器两轮哈希一致。
+    private static IReadOnlyList<BackendMessage> NormalizeNotes(IEnumerable<BackendMessage> notes)
+    {
+        return notes
+            .DistinctBy(static note => (note.Domain, note.Code, string.Join('', note.Args)))
+            .OrderBy(static note => note.Domain)
+            .ThenBy(static note => note.Code)
+            .ThenBy(static note => string.Join('', note.Args), StringComparer.Ordinal)
+            .ToArray();
     }
 
     private static IReadOnlyList<string> NormalizeStrings(IEnumerable<string> values)

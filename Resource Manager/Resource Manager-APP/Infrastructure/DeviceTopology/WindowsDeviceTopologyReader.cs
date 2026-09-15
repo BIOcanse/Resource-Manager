@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
@@ -17,6 +18,8 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
     private static readonly Regex ExplicitUsb480MegabitRate = new(
         @"(?<![\d.])480\s*Mbps\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    private const string UnknownSpeed = "未知";
 
     private readonly DeviceIdCatalog deviceIdCatalog;
     private readonly HostManagerDisplayCoordinatorOwner displayCoordinator;
@@ -32,9 +35,9 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
     public DeviceTopologySnapshot ReadSnapshot()
     {
         var diagnostics = new List<DeviceTopologySourceDiagnostic>();
-        var notes = new List<string>
+        var notes = new List<BackendMessage>
         {
-            "设备拓扑数据来自 Windows 当前枚举，不表示机身物理位置。"
+            Note(BackendMessageCodes.DeviceTopology.EnumerationOnly)
         };
         var system = ReadSystemIdentity(notes);
         var pnp = DeviceTopologyWmiUtilities.QueryObjects(
@@ -48,7 +51,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "pnp-wmi",
                 "device-topology-pnp-wmi-incomplete",
-                "PnP 设备枚举失败",
+                BackendMessageCodes.DeviceTopology.PnpEnumerationFailed,
                 pnp.Error);
         }
 
@@ -60,7 +63,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "setupapi-cfgmgr32",
                 "device-topology-native-device-properties-incomplete",
-                "SetupAPI / CfgMgr32 设备属性读取失败",
+                BackendMessageCodes.DeviceTopology.NativeDevicePropertiesFailed,
                 nativeDevices.Error);
         }
 
@@ -72,7 +75,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "usb-hub-ioctl",
                 "device-topology-usb-hub-ioctl-incomplete",
-                "USB Hub IOCTL 读取失败",
+                BackendMessageCodes.DeviceTopology.UsbHubIoctlFailed,
                 usbPorts.Error);
         }
 
@@ -84,7 +87,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "network-adapters",
                 "device-topology-network-adapters-incomplete",
-                "网络接口属性读取失败",
+                BackendMessageCodes.DeviceTopology.NetworkAdapterPropertiesFailed,
                 networkAdapters.Error);
         }
 
@@ -99,7 +102,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                     notes,
                     "display-coordinator",
                     "device-topology-display-coordinator-incomplete",
-                    "显示协调器尚未提供完整快照",
+                    BackendMessageCodes.DeviceTopology.DisplayCoordinatorNotReady,
                     displaySnapshot.State.ToString());
             }
         }
@@ -110,7 +113,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "display-coordinator",
                 "device-topology-display-coordinator-read-failed",
-                "显示协调器缓存读取失败",
+                BackendMessageCodes.DeviceTopology.DisplayCoordinatorReadFailed,
                 ex.Message);
             displaySnapshot = new HostManagerDisplayCoordinatorReadModel(
                 HostManagerDisplayCoordinatorReadState.Warming,
@@ -127,7 +130,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "storage-capabilities",
                 "device-topology-storage-capabilities-incomplete",
-                "磁盘/分区/卷能力读取不完整",
+                BackendMessageCodes.DeviceTopology.StorageCapabilitiesIncomplete,
                 storageDevices.Error);
         }
 
@@ -177,7 +180,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
         if (ports.Length == 0)
         {
-            notes.Add("当前快照没有识别到可展示的设备拓扑节点。");
+            notes.Add(Note(BackendMessageCodes.DeviceTopology.NoVisibleNodes));
         }
         if (diagnostics.Count > 0)
         {
@@ -193,7 +196,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
     internal static IReadOnlyList<DeviceTopologyPort> ResolveDuplicateDeviceIds(
         IEnumerable<DeviceTopologyPort> candidates,
-        ICollection<string> notes)
+        ICollection<BackendMessage> notes)
     {
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(notes);
@@ -211,7 +214,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 .ToArray();
             if (canonical.Length != 1)
             {
-                notes.Add($"设备 {group.Key} 返回了相互冲突的拓扑事实，本轮未发布该设备。");
+                notes.Add(Note(BackendMessageCodes.DeviceTopology.ConflictingFacts, group.Key));
                 continue;
             }
 
@@ -221,7 +224,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return resolved;
     }
 
-    internal static DeviceTopologySystemIdentity ReadSystemIdentity(ICollection<string> notes)
+    internal static DeviceTopologySystemIdentity ReadSystemIdentity(ICollection<BackendMessage> notes)
     {
         var bios = FirstRow(DeviceTopologyWmiUtilities.QueryObjects(
             @"root\CIMV2",
@@ -247,7 +250,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         if (manufacturer.Equals("Unknown manufacturer", StringComparison.OrdinalIgnoreCase)
             || model.Equals("Unknown model", StringComparison.OrdinalIgnoreCase))
         {
-            notes.Add("SMBIOS / WMI 没有返回完整品牌型号。");
+            notes.Add(Note(BackendMessageCodes.DeviceTopology.IncompleteBrandModel));
         }
 
         return new DeviceTopologySystemIdentity(
@@ -268,7 +271,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
     private static UsbTopologyIndex ReadUsbTopologyIndex(
         IReadOnlyList<Dictionary<string, object?>> pnpRows,
-        ICollection<string> notes,
+        ICollection<BackendMessage> notes,
         ICollection<DeviceTopologySourceDiagnostic> diagnostics)
     {
         var devices = new Dictionary<string, UsbTopologyDevice>(StringComparer.OrdinalIgnoreCase);
@@ -292,7 +295,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "usb-controller-wmi",
                 "device-topology-usb-controller-wmi-incomplete",
-                "USB 控制器枚举失败",
+                BackendMessageCodes.DeviceTopology.UsbControllerEnumerationFailed,
                 controllers.Error);
         }
 
@@ -319,7 +322,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "usb-hub-wmi",
                 "device-topology-usb-hub-wmi-incomplete",
-                "USB Hub 枚举失败",
+                BackendMessageCodes.DeviceTopology.UsbHubEnumerationFailed,
                 hubs.Error);
         }
 
@@ -346,7 +349,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 notes,
                 "usb-association-wmi",
                 "device-topology-usb-association-wmi-incomplete",
-                "USB 控制器关系链读取失败",
+                BackendMessageCodes.DeviceTopology.UsbControllerRelationshipFailed,
                 associations.Error);
         }
 
@@ -374,21 +377,24 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
         if (associations.Error is null && associations.Rows.Count == 0)
         {
-            notes.Add("USB 关系链不可用，当前仅显示设备枚举。");
+            notes.Add(Note(BackendMessageCodes.DeviceTopology.UsbChainUnavailable));
         }
 
         return new UsbTopologyIndex(devices, upstreamByDeviceId);
     }
 
+    private static BackendMessage Note(byte code, params string[] args)
+        => BackendMessage.Create(BackendMessageDomains.DeviceTopology, code, args);
+
     private static void AddRequiredSourceFailure(
         ICollection<DeviceTopologySourceDiagnostic> diagnostics,
-        ICollection<string> notes,
+        ICollection<BackendMessage> notes,
         string sourceId,
         string code,
-        string summary,
+        byte messageCode,
         string detail)
     {
-        var message = $"{summary}：{detail}";
+        var message = Note(messageCode, detail);
         diagnostics.Add(new DeviceTopologySourceDiagnostic(
             sourceId,
             DeviceTopologySourceDiagnosticStatus.RequiredIncomplete,
@@ -483,7 +489,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 usbPort?.ConnectorProperties);
         var hardwareKind = advancedInterconnect?.Role ?? ResolveHardwareKind(searchText, pnpClass, busKind);
         var protocol = advancedInterconnect?.Technology ?? ResolveProtocol(searchText, pnpClass, busKind);
-        var inferredSpeed = advancedInterconnect is null ? ResolveSpeed(searchText, busKind) : "未知";
+        var inferredSpeed = advancedInterconnect is null ? ResolveSpeed(searchText, busKind) : UnknownSpeed;
         var speed = usbPort?.NegotiatedSpeed
             ?? (networkAdapter is null ? null : FormatNetworkLinkSpeed(networkAdapter))
             ?? inferredSpeed;
@@ -536,14 +542,14 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             effectiveService,
             Clean(DeviceTopologyWmiUtilities.ReadString(row, "Status")),
             networkAdapter is not null
-                ? "MSFT_NetAdapter / 设备管理器属性"
+                ? Note(BackendMessageCodes.DeviceTopology.ConfidenceNetAdapter)
                 : advancedInterconnect is not null
-                ? "Windows PnP 服务角色 / 设备管理器属性"
+                ? Note(BackendMessageCodes.DeviceTopology.ConfidencePnpServiceRole)
                 : ResolveConfidence(speed, busKind, topology.HasUsbRelationship, native is not null, hasUsbPort),
             networkAdapter is not null
-                ? "MSFT_NetAdapter + SetupAPI / CfgMgr32 + PnP"
+                ? Note(BackendMessageCodes.DeviceTopology.SourceNetAdapterSetupApiPnp)
                 : advancedInterconnect is not null
-                ? "Windows PnP 服务 + SetupAPI / CfgMgr32"
+                ? Note(BackendMessageCodes.DeviceTopology.SourcePnpServiceSetupApi)
                 : ResolveSource(topology.HasUsbRelationship, native is not null, hasUsbPort),
             topology.UpstreamDeviceId,
             topology.UpstreamDisplayName,
@@ -612,8 +618,8 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             port.Descriptor.ManufacturerName ?? idResolution?.VendorName,
             null,
             port.ConnectionStatus,
-            "USB Hub IOCTL 连接器属性",
-            "USB Hub IOCTL",
+            Note(BackendMessageCodes.DeviceTopology.ConfidenceUsbConnectorProperties),
+            Note(BackendMessageCodes.DeviceTopology.SourceUsbHubIoctl),
             null,
             null,
             $"USB Hub > 端口 {port.PortNumber}",
@@ -661,12 +667,12 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             ? resolution is null ? refreshRate : $"{resolution} @ {refreshRate}"
             : "未连接";
         var connectorTechnology = profile?.Protocol ?? technology;
-        var source = profile is null
-            ? "QueryDisplayConfig + DisplayConfigGetDeviceInfo"
-            : "OEM 机型接口档案 + QueryDisplayConfig(QDC_ALL_PATHS)";
-        var confidence = profile is null
-            ? "Windows 活动显示路径"
-            : "机型接口档案 / Windows 显示目标";
+        var source = Note(profile is null
+            ? BackendMessageCodes.DeviceTopology.SourceQueryDisplayConfig
+            : BackendMessageCodes.DeviceTopology.SourceOemProfileQueryDisplayConfig);
+        var confidence = Note(profile is null
+            ? BackendMessageCodes.DeviceTopology.ConfidenceActiveDisplayPath
+            : BackendMessageCodes.DeviceTopology.ConfidenceOemProfileDisplayTarget);
         var advancedColor = path.AdvancedColor;
         var edid = path.Edid;
 
@@ -1336,10 +1342,10 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             return "480Mbps";
         }
 
-        return "未知";
+        return UnknownSpeed;
     }
 
-    private static string ResolveConfidence(
+    private static BackendMessage ResolveConfidence(
         string speed,
         string busKind,
         bool hasUsbRelationship,
@@ -1348,55 +1354,61 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
     {
         if (hasUsbPortIoctl)
         {
-            return "USB Hub IOCTL / 设备管理器属性";
+            return Note(BackendMessageCodes.DeviceTopology.ConfidenceUsbHubIoctl);
         }
 
+        // 速度不是「未知」说明它是从名字里推出来的，可信度要单独标出来。
+        var inferredFromName = !speed.Equals(UnknownSpeed, StringComparison.OrdinalIgnoreCase);
         if (hasUsbRelationship)
         {
             if (hasNativeDeviceProperties)
             {
-                return speed.Equals("未知", StringComparison.OrdinalIgnoreCase)
-                    ? "WMI 关系链 / 设备管理器属性"
-                    : "WMI 关系链 / 设备管理器属性 / 名称推断";
+                return Note(inferredFromName
+                    ? BackendMessageCodes.DeviceTopology.ConfidenceWmiChainDeviceManagerNameInference
+                    : BackendMessageCodes.DeviceTopology.ConfidenceWmiChainDeviceManager);
             }
 
-            return speed.Equals("未知", StringComparison.OrdinalIgnoreCase) ? "WMI 关系链" : "WMI 关系链 / 名称推断";
+            return Note(inferredFromName
+                ? BackendMessageCodes.DeviceTopology.ConfidenceWmiChainNameInference
+                : BackendMessageCodes.DeviceTopology.ConfidenceWmiChain);
         }
 
         if (hasNativeDeviceProperties)
         {
-            return speed.Equals("未知", StringComparison.OrdinalIgnoreCase)
-                ? "设备管理器属性"
-                : "设备管理器属性 / 名称推断";
+            return Note(inferredFromName
+                ? BackendMessageCodes.DeviceTopology.ConfidenceDeviceManagerNameInference
+                : BackendMessageCodes.DeviceTopology.ConfidenceDeviceManager);
         }
 
         if (busKind is DeviceBusKinds.Usb or DeviceBusKinds.Usb4 or DeviceBusKinds.Thunderbolt)
         {
-            return speed.Equals("未知", StringComparison.OrdinalIgnoreCase) ? "设备枚举" : "名称推断";
+            return Note(inferredFromName
+                ? BackendMessageCodes.DeviceTopology.ConfidenceNameInference
+                : BackendMessageCodes.DeviceTopology.ConfidenceDeviceEnumeration);
         }
 
-        return "设备枚举";
+        return Note(BackendMessageCodes.DeviceTopology.ConfidenceDeviceEnumeration);
     }
 
-    private static string ResolveSource(
+    private static BackendMessage ResolveSource(
         bool hasUsbRelationship,
         bool hasNativeDeviceProperties,
         bool hasUsbPortIoctl)
     {
         if (hasUsbPortIoctl)
         {
-            return hasUsbRelationship
-                ? "USB Hub IOCTL + WMI USB 关系链 + SetupAPI / CfgMgr32 + PnP"
-                : "USB Hub IOCTL + SetupAPI / CfgMgr32 + PnP";
+            return Note(hasUsbRelationship
+                ? BackendMessageCodes.DeviceTopology.SourceUsbIoctlWmiSetupApiPnp
+                : BackendMessageCodes.DeviceTopology.SourceUsbIoctlSetupApiPnp);
         }
 
-        return (hasUsbRelationship, hasNativeDeviceProperties) switch
+        return Note((hasUsbRelationship, hasNativeDeviceProperties) switch
         {
-            (true, true) => "WMI USB 关系链 + SetupAPI / CfgMgr32 + PnP",
-            (true, false) => "WMI USB 关系链 + PnP",
-            (false, true) => "SetupAPI / CfgMgr32 + PnP",
-            _ => "PnP 设备枚举"
-        };
+            (true, true) => BackendMessageCodes.DeviceTopology.SourceWmiSetupApiPnp,
+            (true, false) => BackendMessageCodes.DeviceTopology.SourceWmiPnp,
+            (false, true) => BackendMessageCodes.DeviceTopology.SourceSetupApiPnp,
+            _ => BackendMessageCodes.DeviceTopology.SourcePnpEnumeration
+        });
     }
 
     private static string ResolveLogoText(string manufacturer, string model, string? family, string? sku)

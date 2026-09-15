@@ -17,8 +17,8 @@ const port = {
   manufacturer: "Example",
   service: "usb4",
   status: "OK",
-  confidence: "high",
-  source: "fixture",
+  confidence: { domain: 5, code: 24, args: [] },
+  source: { domain: 5, code: 35, args: [] },
   upstreamDeviceId: null,
   upstreamDisplayName: null,
   topologyPath: "root/port-1",
@@ -188,7 +188,7 @@ const port = {
 };
 
 const source = {
-  schemaVersion: "3.0.0",
+  schemaVersion: "4.0.0",
   state: "ready",
   snapshot: {
     capturedAt: "2026-08-22T15:20:30.000Z",
@@ -202,7 +202,7 @@ const source = {
       baseBoardProduct: null
     },
     ports: [port],
-    notes: ["fixture"]
+    notes: [{ domain: 5, code: 1, args: [] }]
   },
   contentGeneration: 4,
   stateRevision: 9,
@@ -215,7 +215,7 @@ const source = {
 };
 
 const decoded = deviceTopologyStateDecoder.decode(source);
-assert.equal(decoded.schemaVersion, "3.0.0");
+assert.equal(decoded.schemaVersion, "4.0.0");
 assert.equal(decoded.snapshot?.ports[0].usb?.endpoints?.[0].theoreticalReportRateHz, 8000);
 assert.equal(decoded.snapshot?.ports[0].storage?.partitions[0].volumes[0].driveLetter, "E:");
 assert.notEqual(decoded, source);
@@ -239,7 +239,7 @@ const invalidCases: Array<[unknown, string]> = [
       sourceId: "display-coordinator",
       status: "unknown",
       code: "device-topology-display-coordinator-incomplete",
-      message: "fixture"
+      messageCode: { domain: 5, code: 10, args: ["Warming"] }
     }]
   }, "$.attemptDiagnostics[0].status"],
   [{
@@ -280,7 +280,7 @@ for (const [value, expectedPath] of invalidCases) {
 }
 
 assert.deepEqual(deviceTopologyStateDecoder.decode({
-  schemaVersion: "3.0.0",
+  schemaVersion: "4.0.0",
   state: "warming",
   snapshot: null,
   contentGeneration: 0,
@@ -291,7 +291,7 @@ assert.deepEqual(deviceTopologyStateDecoder.decode({
   failureCode: null,
   attemptDiagnostics: []
 }), {
-  schemaVersion: "3.0.0",
+  schemaVersion: "4.0.0",
   state: "warming",
   snapshot: null,
   contentGeneration: 0,
