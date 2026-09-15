@@ -31,10 +31,13 @@ import {
 } from "./ObservationStateNotice";
 import { SoftwareIssueTagStrip } from "./SoftwareIssuePresentation";
 
-export const managementKinds: Array<{ id: ManagementKind; label: string }> = managementInventoryKinds.map((id) => ({
-  id,
-  label: managementKindLabel(id)
-}));
+// 分类名按当前语言求值，不能在模块顶层固化。
+export function managementKinds(): Array<{ id: ManagementKind; label: string }> {
+  return managementInventoryKinds.map((id) => ({
+    id,
+    label: managementKindLabel(id)
+  }));
+}
 
 export interface ManagementItem {
   type: "component" | "software";
@@ -71,7 +74,7 @@ interface ManagementSubpageBarProps {
 
 export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
   const countForKind = (kind: ManagementKind) => getManagementItems(kind, props.components, props.software).length;
-  const visibleKinds = () => managementKinds.filter((kind) =>
+  const visibleKinds = () => managementKinds().filter((kind) =>
     props.mutablePersistenceEnabled || kind.id === "Dependency" || kind.id === "Support");
   return (
     <nav class="management-tabs" aria-label={uiText.management.categoryNav}>
@@ -97,7 +100,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
         aria-current={props.activeSubpage === browserRuntimeManagementSubpageId ? "page" : undefined}
         onClick={() => props.onSubpageChange(browserRuntimeManagementSubpageId)}
       >
-        运行时管理
+        {uiText.managementPage.browserRuntimeTab}
       </button>
       <Show when={props.runtimeEffectsEnabled}>
         <button
@@ -108,7 +111,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
           aria-current={props.activeSubpage === migrationManagementSubpageId ? "page" : undefined}
           onClick={() => props.onSubpageChange(migrationManagementSubpageId)}
         >
-          迁移工作台
+          {uiText.managementPage.migrationTab}
         </button>
       </Show>
     </nav>
@@ -122,7 +125,10 @@ export function ManagementPage(props: ManagementPageProps) {
   const allItems = createMemo(() => getManagementItems(props.activeKind, props.components, props.software));
   const normalizedSearchQuery = createMemo(() => searchQuery().trim());
   const items = createMemo(() => filterManagementItems(allItems(), normalizedSearchQuery()));
-  const activeKind = () => managementKinds.find((kind) => kind.id === props.activeKind) ?? managementKinds[0];
+  const activeKind = () => {
+    const kinds = managementKinds();
+    return kinds.find((kind) => kind.id === props.activeKind) ?? kinds[0];
+  };
   createEffect(on(() => props.activeKind, () => setSearchQuery(""), { defer: true }));
   return (
     <section

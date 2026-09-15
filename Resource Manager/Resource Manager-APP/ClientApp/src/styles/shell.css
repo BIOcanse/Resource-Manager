@@ -57,6 +57,9 @@
   gap: 9px;
   color: var(--text);
   cursor: grab;
+  /* 产品名与页面名在别的语言里会明显变长：这里必须裁掉，
+     否则会换行并压到页面导航上。 */
+  overflow: hidden;
 }
 
 .window-drag-region:active {
@@ -66,12 +69,17 @@
 .window-drag-region strong {
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 #shellPageName {
   color: var(--muted);
   font-size: 13px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .window-actions {

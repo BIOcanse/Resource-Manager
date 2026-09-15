@@ -169,7 +169,7 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
             {(partition) => (
               <div class="device-storage-partition">
                 <header>
-                  <strong>分区 {partition.partitionNumber ?? "--"}</strong>
+                  <strong>{uiText.deviceSpecialized.partition(String(partition.partitionNumber ?? "--"))}</strong>
                   <span>{formatBytes(partition.capacityBytes)} · {partition.type ?? uiText.deviceSpecialized.formatNotReported}</span>
                 </header>
                 <Show when={partition.volumes.length > 0} fallback={<small>{uiText.deviceSpecialized.noMountedVolume}</small>}>
@@ -207,7 +207,7 @@ function InputDetails(props: { model: KeyboardDeviceModel | MouseDeviceModel; la
           <strong>{props.model.hidMode}</strong>
         </div>
         <Show when={props.model.deviceRevision !== "--"}>
-          <small>设备版本 {props.model.deviceRevision}</small>
+          <small>{uiText.deviceSpecialized.deviceRevisionInline(props.model.deviceRevision)}</small>
         </Show>
       </div>
       <Show when={hasInputMetrics(props.model, vendorMetric()[1])}>

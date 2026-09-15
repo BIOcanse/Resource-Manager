@@ -167,7 +167,7 @@ export function TaskCenterDialog(props: {
         </TabsRoot>
       </DialogBody>
       <DialogActions class="task-center-actions">
-        <span>{itemsFor(activeTab()).length} 项</span>
+        <span>{uiText.taskCenter.itemCount(itemsFor(activeTab()).length)}</span>
         <button class="secondary" type="button" onClick={props.onClose}>{uiText.taskCenter.close}</button>
       </DialogActions>
     </DialogRoot>

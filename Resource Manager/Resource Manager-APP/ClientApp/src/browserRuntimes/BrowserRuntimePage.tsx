@@ -99,7 +99,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
             <h3 id="browserCandidatesHeading">{uiText.browserRuntime.installedBrowsersTitle}</h3>
             <p>{uiText.browserRuntime.installedBrowsersDescription}</p>
           </div>
-          <span class="browser-runtime-count">{browsers().length} 项</span>
+          <span class="browser-runtime-count">{uiText.browserRuntime.itemCount(browsers().length)}</span>
         </div>
         <div class="browser-runtime-list">
           <Show
@@ -138,7 +138,7 @@ function RuntimeIdentity(props: {
     <article class="browser-runtime-row">
       <div class="browser-runtime-row-main">
         <strong>{props.runtime.name}</strong>
-        <span>版本 {props.runtime.version || uiText.browserRuntime.unknown}</span>
+        <span>{uiText.browserRuntime.version(props.runtime.version || uiText.browserRuntime.unknown)}</span>
       </div>
       <Show when={props.label}>
         <span class="browser-runtime-selection">{props.label}</span>
