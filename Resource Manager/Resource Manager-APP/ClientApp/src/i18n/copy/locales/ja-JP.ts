@@ -1944,6 +1944,20 @@ const jaJpAppCopy: AppCopy = {
       notExposed: "現在のハードウェアまたはプロバイダーはこの値を公開していません。",
       needsComponent: (value: string) => `現在のプロバイダーは有効な値を返しません。より完全な ${value}、または対応するハードウェア／OEM コンポーネントが必要です。`,
       noValidReading: "現在のハードウェアまたはプロバイダーは有効な値を返しません。"
+    },
+    software: {
+      hasUninstallEntry: "アンインストール項目あり",
+      missingUninstallEntry: "アンインストール項目なし",
+      uninstallAction: "アンインストール",
+      cannotUninstallAction: "アンインストール不可",
+      windowsUninstallerDescription: "Windows に登録された公式アンインストーラーを起動します。",
+      noUninstallUnknownRoot: "アンインストール項目がないため、手動で開いて処理するしかありません。Resource Manager は不明なソフトウェアのルートを削除しません。",
+      manualClassificationNoUninstall: "手動分類の項目自体はアンインストーラーではありません。ソフトウェア詳細または元のソフトウェアから処理してください。",
+      controlledNoUninstall: "受制御ソフトウェアには独自のアンインストールポリシー記録が必要です。現在はデータ移行の復元のみ対応しています。",
+      selfNoUninstall: "Resource Manager 自身をここからアンインストールまたは移行することはできません。",
+      adaptedNoUninstall: "適応ソフトウェアは、登録または manifest でアンインストールポリシーを宣言する必要があります。",
+      legacyControlledNoUninstall: "L0 受制御登録にはアンインストールポリシーがありません。",
+      portableNoUninstall: "ポータブルソフトウェアにアンインストーラーはありません。ファイルを削除して一覧を更新すると記録が消えます。"
     }
   }
 };
