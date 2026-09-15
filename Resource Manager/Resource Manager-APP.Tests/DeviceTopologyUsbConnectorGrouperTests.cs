@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 
 namespace Resource_Manager_APP.Tests;
@@ -77,8 +78,12 @@ public sealed class DeviceTopologyUsbConnectorGrouperTests
             HubDevicePath: hubPath,
             PortNumber: portNumber,
             DeviceConnected: connected,
-            ConnectionStatus: connected ? "已连接" : "未连接",
-            NegotiatedSpeed: connected ? "USB 2.0 High-Speed / 480Mbps" : "未连接",
+            ConnectionStatus: BackendMessage.Create(
+                BackendMessageDomains.DeviceTopology,
+                connected
+                    ? BackendMessageCodes.DeviceTopology.UsbConnected
+                    : BackendMessageCodes.DeviceTopology.UsbNotConnected),
+            NegotiatedSpeed: connected ? "USB 2.0 High-Speed / 480Mbps" : null,
             VendorId: 0,
             ProductId: 0,
             DeviceAddress: 0,

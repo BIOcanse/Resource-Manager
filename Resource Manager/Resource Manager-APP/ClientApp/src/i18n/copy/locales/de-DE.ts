@@ -2004,7 +2004,19 @@ const deDeAppCopy: AppCopy = {
       roleUcsiConnectorManager: "USB-Type-C-Anschlussmanager",
       roleUsb4HostRouter: "USB4-Hostrouter",
       roleUsb4DeviceRouter: "USB4-/Thunderbolt-3-Geräterouter",
-      roleUsb4P2PNetwork: "USB4-Host-zu-Host-Netzwerkadapter"
+      roleUsb4P2PNetwork: "USB4-Host-zu-Host-Netzwerkadapter",
+      usbNotConnected: "Nicht verbunden",
+      usbConnected: "Verbunden",
+      usbEnumerationFailed: "Enumeration fehlgeschlagen",
+      usbDeviceGeneralFailure: "Allgemeiner Gerätefehler",
+      usbDeviceCausedOvercurrent: "Gerät hat einen Überstrom verursacht",
+      usbInsufficientPower: "Nicht genug Strom",
+      usbInsufficientBandwidth: "Nicht genug Bandbreite",
+      usbHubNestedTooDeep: "Hubs zu tief verschachtelt",
+      usbDeviceInLegacyHub: "Gerät an einem Legacy-Hub",
+      usbEnumerating: "Wird enumeriert",
+      usbResetting: "Wird zurückgesetzt",
+      usbUnknownStatus: (status: string) => `Windows hat den unbekannten Status ${status} zurückgegeben`
     }
   }
 };

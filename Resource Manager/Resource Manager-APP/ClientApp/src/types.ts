@@ -833,7 +833,7 @@ export interface DeviceTopologyPort {
   busKind: string;
   hardwareKind: string;
   protocol: string;
-  speed: string;
+  speed: string | null;
   physicalMaximumSpeed?: string | null;
   deviceId: string;
   pnpClass?: string | null;
@@ -897,6 +897,7 @@ export interface DeviceTopologyDisplayConnection {
 
 export interface DeviceTopologyNetworkConnection {
   interfaceName?: string | null;
+  /** 后端给的状态 id，见 DeviceNetworkConnectionStates；措辞由前端出。 */
   connectionState: string;
   transmitLinkSpeed?: string | null;
   receiveLinkSpeed?: string | null;
@@ -925,8 +926,8 @@ export interface DeviceTopologyUsbConnection {
   hubDevicePath: string;
   portNumber: number;
   deviceConnected: boolean;
-  connectionStatus: string;
-  negotiatedSpeed: string;
+  connectionStatus: BackendMessage;
+  negotiatedSpeed: string | null;
   deviceAddress: number;
   vendorId?: string | null;
   productId?: string | null;
