@@ -1,3 +1,4 @@
+import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "../deviceTopology/deviceVocabulary.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   Bluetooth,
@@ -428,7 +429,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                                 <Show when={display().resolution}>
                                   {(value) => <DetailRow label={uiText.deviceTopology.label.activeResolution} value={value()} />}
                                 </Show>
-                                <DetailRow label={uiText.deviceTopology.label.activeRefreshRate} value={display().refreshRate} />
+                                <DetailRow label={uiText.deviceTopology.label.activeRefreshRate} value={display().refreshRate ?? notReportedValue()} />
                               </Show>
                               <DetailRow label={uiText.deviceTopology.label.connectionLocation} value={display().internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external} />
                               <Show when={display().connectorInstance > 0}>
@@ -524,7 +525,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </Show>
                       <div class="device-id-block">
                         <strong>{uiText.deviceTopology.group.relationChain}</strong>
-                        <code>{port().topologyPath}</code>
+                        <code>{renderBackendMessage(port().topologyPath)}</code>
                       </div>
                       <Show when={(port().locationPaths ?? []).length > 0}>
                         <div class="device-id-block">
@@ -685,8 +686,8 @@ function notReportedValue() {
 // 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。
 function hardwareKindLabel(port: DeviceTopologyPort) {
   return port.advancedInterconnect
-    ? renderBackendMessage(port.advancedInterconnect.role, port.hardwareKind)
-    : port.hardwareKind;
+    ? renderBackendMessage(port.advancedInterconnect.role, portHardwareKind(port))
+    : portHardwareKind(port);
 }
 
 function DetailRow(props: { label: string; value: string }) {
@@ -723,7 +724,9 @@ function interfaceProtocol(node: DeviceTopologyListNode, scope: DeviceTopologySc
     switch (node.connectorKind) {
       case "pcie": return "PCI Express";
       case "usb-internal": return "USB";
-      case "internal-display": return node.port.display?.connectorTechnology ?? uiText.deviceTopology.internalDisplay;
+      case "internal-display": return node.port.display
+        ? displayConnectorTechnology(node.port.display)
+        : uiText.deviceTopology.internalDisplay;
       case "audio": return "HD Audio";
       case "bluetooth": return "Bluetooth";
       case "acpi": return "ACPI";

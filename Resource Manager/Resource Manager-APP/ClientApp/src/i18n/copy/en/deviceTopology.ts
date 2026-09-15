@@ -144,6 +144,39 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
       notReady: "Not ready",
       unknown: "Unknown"
     },
+    outputTechnology: {
+      "other": "Other display connection",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "Composite video",
+      "component-video": "Component video",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "LVDS internal panel",
+      "d-jpn": "D-Terminal",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "Embedded DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "Embedded UDI",
+      "sdtv-dongle": "SDTV dongle",
+      "miracast": "Miracast",
+      "indirect-wired": "Indirect wired display",
+      "indirect-virtual": "Indirect virtual display",
+      "displayport-usb4-tunnel": "DisplayPort over USB4",
+      "internal": "Internal display connection",
+      "unknown": "Unknown display connection"
+    },
+    edidDigitalInterface: {
+      "analog": "Analog display input",
+      "undefined": "Undefined digital interface",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "Reserved digital interface"
+    },
     displayLocation: {
       internal: "Internal connection",
       external: "External connection"

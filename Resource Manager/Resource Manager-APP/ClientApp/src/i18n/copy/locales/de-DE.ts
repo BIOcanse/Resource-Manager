@@ -676,6 +676,39 @@ const deDeAppCopy: AppCopy = {
       notReady: "Nicht bereit",
       unknown: "Status unbekannt"
     },
+    outputTechnology: {
+      "other": "Andere Anzeigeverbindung",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "Composite-Video",
+      "component-video": "Component-Video",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "LVDS-Innenpanel",
+      "d-jpn": "D-Terminal",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "Integriertes DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "Integriertes UDI",
+      "sdtv-dongle": "SDTV-Dongle",
+      "miracast": "Miracast",
+      "indirect-wired": "Indirekte kabelgebundene Anzeige",
+      "indirect-virtual": "Indirekte virtuelle Anzeige",
+      "displayport-usb4-tunnel": "DisplayPort über USB4",
+      "internal": "Interne Anzeigeverbindung",
+      "unknown": "Unbekannte Anzeigeverbindung"
+    },
+    edidDigitalInterface: {
+      "analog": "Analoger Anzeigeeingang",
+      "undefined": "Nicht definierte digitale Schnittstelle",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "Reservierte digitale Schnittstelle"
+    },
     displayLocation: {
       internal: "Interne Verbindung",
       external: "Externe Verbindung"
@@ -2044,7 +2077,21 @@ const deDeAppCopy: AppCopy = {
       sourceUsbHidEndpointDescriptors: "USB-HID- und Endpunktdeskriptoren",
       sourceUsbVideoClassDescriptors: "USB-Video-Class-Konfigurationsdeskriptoren",
       sourceUsbDescriptorsAndWindows: "USB-Geräte- und Konfigurationsdeskriptoren + Windows PnP",
-      sourceWindowsWpdPnp: "Windows-WPD-/PnP-Eigenschaften"
+      sourceWindowsWpdPnp: "Windows-WPD-/PnP-Eigenschaften",
+      pathPnpEnumeration: "PnP-Geräteenumeration",
+      pathDeviceManagerProperties: "Geräte-Manager-Eigenschaften",
+      pathUsbHubPort: (port: string) => `USB-Hub > Port ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Windows-Anzeigepfad > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `OEM-Anschlussprofil > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `Gerät am ${connector}`,
+      nameIdleConnector: (connector: string) => `Freier ${connector}`,
+      nameInternalDisplayPanel: "Internes Anzeigepanel",
+      nameActiveMonitor: (technology: string) => `Aktiver ${technology}-Monitor`,
+      nameConnectorInterface: (connector: string) => `${connector}-Anschluss`,
+      kindPhysicalConnector: (connector: string) => `Physischer ${connector}-Anschluss`,
+      kindActiveDisplayPath: (technology: string) => `Aktiver ${technology}-Anzeigepfad`,
+      displayTechnologyAnalog: "Analoge Anzeige",
+      displayTechnologyDigital: (connection: string) => `Digitale Anzeige / ${connection}`
     }
   }
 };

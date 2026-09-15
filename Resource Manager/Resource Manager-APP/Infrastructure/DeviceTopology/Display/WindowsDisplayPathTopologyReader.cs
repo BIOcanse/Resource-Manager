@@ -31,7 +31,7 @@ internal static class WindowsDisplayPathTopologyReader
         return ReadSnapshot(
             QueryOnlyActivePaths,
             includeInactivePaths: false,
-            "活动显示路径");
+            "QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS)");
     }
 
     private static DeviceTopologyDisplayPathSnapshot ReadSnapshot(
@@ -41,7 +41,9 @@ internal static class WindowsDisplayPathTopologyReader
     {
         if (!OperatingSystem.IsWindows())
         {
-            return new DeviceTopologyDisplayPathSnapshot([], $"{operationName}仅支持 Windows。");
+            return new DeviceTopologyDisplayPathSnapshot(
+                [],
+                $"{operationName} is only supported on Windows.");
         }
 
         for (var attempt = 0; attempt < 3; attempt++)
@@ -95,7 +97,7 @@ internal static class WindowsDisplayPathTopologyReader
 
         return new DeviceTopologyDisplayPathSnapshot(
             [],
-            $"{operationName}在读取期间持续变化，QueryDisplayConfig 未能取得稳定快照。");
+            $"{operationName} kept changing while it was read; QueryDisplayConfig could not return a stable snapshot.");
     }
 
     private static DeviceTopologyDisplayPath CreatePath(
@@ -279,7 +281,7 @@ internal static class WindowsDisplayPathTopologyReader
             2 => "YCbCr 4:2:2",
             3 => "YCbCr 4:2:0",
             4 => "Intensity",
-            _ => $"颜色编码 {encoding}"
+            _ => null
         };
     }
 
@@ -297,31 +299,32 @@ internal static class WindowsDisplayPathTopologyReader
         return mode.InfoType == ModeInfoTypeSource ? mode.ModeInfo.SourceMode : null;
     }
 
+    /// <summary>返回 <see cref="DeviceDisplayOutputTechnologies"/> 里的取值，措辞由前端出。</summary>
     internal static string DescribeOutputTechnology(int technology)
     {
         return technology switch
         {
-            -1 => "其他显示连接",
-            0 => "VGA / HD15",
-            1 => "S-Video",
-            2 => "复合视频",
-            3 => "分量视频",
-            4 => "DVI",
-            5 => "HDMI",
-            6 => "LVDS 内屏",
-            8 => "D 端子",
-            9 => "SDI",
-            10 => "DisplayPort",
-            11 => "内置 DisplayPort",
-            12 => "UDI",
-            13 => "内置 UDI",
-            14 => "SDTV Dongle",
-            15 => "Miracast",
-            16 => "间接有线显示",
-            17 => "间接虚拟显示",
-            18 => "DisplayPort USB4 隧道",
-            unchecked((int)0x80000000) => "内置显示连接",
-            _ => $"显示连接 {unchecked((uint)technology)}"
+            -1 => DeviceDisplayOutputTechnologies.Other,
+            0 => DeviceDisplayOutputTechnologies.Vga,
+            1 => DeviceDisplayOutputTechnologies.SVideo,
+            2 => DeviceDisplayOutputTechnologies.CompositeVideo,
+            3 => DeviceDisplayOutputTechnologies.ComponentVideo,
+            4 => DeviceDisplayOutputTechnologies.Dvi,
+            5 => DeviceDisplayOutputTechnologies.Hdmi,
+            6 => DeviceDisplayOutputTechnologies.Lvds,
+            8 => DeviceDisplayOutputTechnologies.DJpn,
+            9 => DeviceDisplayOutputTechnologies.Sdi,
+            10 => DeviceDisplayOutputTechnologies.DisplayPortExternal,
+            11 => DeviceDisplayOutputTechnologies.DisplayPortEmbedded,
+            12 => DeviceDisplayOutputTechnologies.UdiExternal,
+            13 => DeviceDisplayOutputTechnologies.UdiEmbedded,
+            14 => DeviceDisplayOutputTechnologies.SdtvDongle,
+            15 => DeviceDisplayOutputTechnologies.Miracast,
+            16 => DeviceDisplayOutputTechnologies.IndirectWired,
+            17 => DeviceDisplayOutputTechnologies.IndirectVirtual,
+            18 => DeviceDisplayOutputTechnologies.DisplayPortUsb4Tunnel,
+            unchecked((int)0x80000000) => DeviceDisplayOutputTechnologies.Internal,
+            _ => DeviceDisplayOutputTechnologies.Unknown
         };
     }
 
@@ -349,11 +352,12 @@ internal static class WindowsDisplayPathTopologyReader
         return technology is 0 or 1 or 2 or 3 or 4 or 5 or 8 or 9 or 10 or 12 or 14 or 16 or 18;
     }
 
-    internal static string FormatRefreshRate(uint numerator, uint denominator)
+    /// <summary>读不出刷新率时返回 null，占位文案由前端出。</summary>
+    internal static string? FormatRefreshRate(uint numerator, uint denominator)
     {
         if (numerator == 0 || denominator == 0)
         {
-            return "未报告";
+            return null;
         }
 
         var value = numerator / (double)denominator;
@@ -402,7 +406,7 @@ internal static class WindowsDisplayPathTopologyReader
 
     private static string DescribeError(string operation, int result)
     {
-        return $"{operation} 失败：Win32 {result} ({new System.ComponentModel.Win32Exception(result).Message})";
+        return $"{operation} failed: Win32 {result} ({new System.ComponentModel.Win32Exception(result).Message})";
     }
 
     private static string? Clean(string? value)

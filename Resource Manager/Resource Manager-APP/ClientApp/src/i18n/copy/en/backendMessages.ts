@@ -112,7 +112,21 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       sourceUsbHidEndpointDescriptors: "USB HID and endpoint descriptors",
       sourceUsbVideoClassDescriptors: "USB Video Class configuration descriptors",
       sourceUsbDescriptorsAndWindows: "USB device and configuration descriptors + Windows PnP",
-      sourceWindowsWpdPnp: "Windows WPD / PnP properties"
+      sourceWindowsWpdPnp: "Windows WPD / PnP properties",
+      pathPnpEnumeration: "PnP device enumeration",
+      pathDeviceManagerProperties: "Device Manager properties",
+      pathUsbHubPort: (port: string) => `USB hub > port ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Windows display path > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `OEM connector profile > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `Device on the ${connector}`,
+      nameIdleConnector: (connector: string) => `Idle ${connector}`,
+      nameInternalDisplayPanel: "Internal display panel",
+      nameActiveMonitor: (technology: string) => `Active ${technology} monitor`,
+      nameConnectorInterface: (connector: string) => `${connector} port`,
+      kindPhysicalConnector: (connector: string) => `${connector} physical connector`,
+      kindActiveDisplayPath: (technology: string) => `Active ${technology} display path`,
+      displayTechnologyAnalog: "Analog display",
+      displayTechnologyDigital: (connection: string) => `Digital display / ${connection}`
     }
   }
 };

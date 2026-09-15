@@ -1,3 +1,4 @@
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -25,7 +26,7 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
       : "--";
     const colorEncoding = displayValue(display.colorEncoding);
     const colorSpace = displayValue(display.colorSpace);
-    const displayTechnology = displayValue(display.displayTechnology);
+    const displayTechnology = renderBackendMessage(display.displayTechnology, "--");
     const panelTechnology = displayValue(display.panelTechnology, uiText.deviceAdapters.edidNotReported);
     const sdrWhiteLevel = display.sdrWhiteLevelNits
       ? `${display.sdrWhiteLevelNits.toLocaleString()} nits`
@@ -66,7 +67,7 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
         [uiText.deviceAdapters.label.currentMode, joinSummary(resolution, refreshRate)],
         [uiText.deviceAdapters.label.hdrAdvancedColor, hdrState],
         [uiText.deviceAdapters.label.outputBitDepth, bitDepth],
-        [uiText.deviceAdapters.label.displayTechnology, display.panelTechnology ?? display.displayTechnology]
+        [uiText.deviceAdapters.label.displayTechnology, display.panelTechnology ?? displayTechnology]
       ),
       capabilityLabels: [display.hdrFormats, display.edidVersion, display.physicalSize]
         .filter((value): value is string => Boolean(value?.trim())),

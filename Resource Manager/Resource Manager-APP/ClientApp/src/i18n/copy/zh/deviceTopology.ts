@@ -142,6 +142,39 @@ export const zhDeviceTopologyCopy = {
       notReady: "未就绪",
       unknown: "状态未知"
     },
+    outputTechnology: {
+      "other": "其他显示连接",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "复合视频",
+      "component-video": "分量视频",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "LVDS 内屏",
+      "d-jpn": "D 端子",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "内置 DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "内置 UDI",
+      "sdtv-dongle": "SDTV Dongle",
+      "miracast": "Miracast",
+      "indirect-wired": "间接有线显示",
+      "indirect-virtual": "间接虚拟显示",
+      "displayport-usb4-tunnel": "DisplayPort USB4 隧道",
+      "internal": "内置显示连接",
+      "unknown": "未知显示连接"
+    },
+    edidDigitalInterface: {
+      "analog": "模拟显示输入",
+      "undefined": "未定义数字接口",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "保留数字接口"
+    },
     displayLocation: {
       internal: "机内连接",
       external: "外部连接"

@@ -1,3 +1,4 @@
+import { portDisplayName, portHardwareKind } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -20,7 +21,7 @@ export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
     const title = deviceTitle(context);
     const connection = connectionFacts(context);
     const protocols = interfaceProtocols(context.port);
-    const deviceClass = displayValue(context.port.usb?.deviceClass, context.port.hardwareKind);
+    const deviceClass = displayValue(context.port.usb?.deviceClass, portHardwareKind(context.port));
     const specification = usbSpecification(context.port);
     const revision = deviceRevision(context.port);
     const internal = context.scope === "internal";
@@ -62,7 +63,7 @@ export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
 
 function resolveGenericType(port: import("../../types").DeviceTopologyPort, internal: boolean) {
   if (!internal) return uiText.deviceAdapters.externalDevice;
-  if (/Composite/i.test(`${port.displayName} ${port.usb?.deviceClass ?? ""}`)) return uiText.deviceAdapters.usbCompositeDevice;
+  if (/Composite/i.test(`${portDisplayName(port)} ${port.usb?.deviceClass ?? ""}`)) return uiText.deviceAdapters.usbCompositeDevice;
   if (port.pnpClass?.toLocaleLowerCase() === "ports") return uiText.deviceAdapters.internalCommunicationPort;
   return uiText.deviceAdapters.internalDevice;
 }

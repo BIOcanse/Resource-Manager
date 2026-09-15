@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
@@ -8,9 +9,10 @@ internal static class DeviceTopologyOemDisplayConnectorCatalog
     [
         new(
             "mechrevo-jiaolong-x6dr55xx-b2-mini-displayport",
-            "Mini DisplayPort 2.1 接口",
+            "Mini DisplayPort 2.1",
+            Name(BackendMessageCodes.DeviceTopology.NameConnectorInterface, "Mini DisplayPort 2.1"),
             DeviceConnectorKinds.MiniDisplayPort,
-            "Mini DisplayPort 物理连接器",
+            Name(BackendMessageCodes.DeviceTopology.KindPhysicalConnector, "Mini DisplayPort"),
             "Mini DisplayPort 2.1",
             "UHBR20 / 80 Gbps",
             OutputTechnology: 10,
@@ -18,15 +20,19 @@ internal static class DeviceTopologyOemDisplayConnectorCatalog
             AllowAnyActiveAdapter: false),
         new(
             "mechrevo-jiaolong-x6dr55xx-b2-hdmi",
-            "HDMI 2.1 接口",
+            "HDMI 2.1",
+            Name(BackendMessageCodes.DeviceTopology.NameConnectorInterface, "HDMI 2.1"),
             DeviceConnectorKinds.Hdmi,
-            "HDMI 物理连接器",
+            Name(BackendMessageCodes.DeviceTopology.KindPhysicalConnector, "HDMI"),
             "HDMI 2.1",
             "48 Gbps",
             OutputTechnology: 5,
             PreferredAdapterHardwareIdToken: "VEN_1002",
             AllowAnyActiveAdapter: true)
     ];
+
+    private static BackendMessage Name(byte code, string connector)
+        => BackendMessage.Create(BackendMessageDomains.DeviceTopology, code, connector);
 
     public static IReadOnlyList<DeviceTopologyOemDisplayConnectorProfile> Resolve(
         DeviceTopologySystemIdentity system)
@@ -45,9 +51,11 @@ internal static class DeviceTopologyOemDisplayConnectorCatalog
 
 internal sealed record DeviceTopologyOemDisplayConnectorProfile(
     string Id,
-    string DisplayName,
+    /// <summary>接口的技术名，只给原生事实缓存与匹配用，不直接显示。</summary>
+    string CatalogName,
+    BackendMessage DisplayName,
     string ConnectorKind,
-    string HardwareKind,
+    BackendMessage HardwareKind,
     string Protocol,
     string PhysicalMaximumSpeed,
     int OutputTechnology,

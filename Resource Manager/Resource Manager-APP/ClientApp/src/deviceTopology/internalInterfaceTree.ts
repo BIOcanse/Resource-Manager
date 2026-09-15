@@ -1,3 +1,4 @@
+import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
@@ -164,8 +165,8 @@ function createDeviceNode(port: DeviceTopologyPort): PendingNode {
     id: deviceNodeId(port.id),
     port,
     role,
-    title: port.displayName,
-    subtitle: joinSummary(port.hardwareKind, meaningfulSpeed(port.speed)),
+    title: portDisplayName(port),
+    subtitle: joinSummary(portHardwareKind(port), meaningfulSpeed(port.speed)),
     badge: internalInterfaceRoleLabel(role),
     connectorKind: inferDeviceConnectorKind(port),
     connectionState: "connected",
@@ -338,7 +339,7 @@ function isInternalHardwareCandidate(port: DeviceTopologyPort) {
   const deviceId = normalizeDeviceId(port.deviceId);
   if (!deviceId
     || /^(SW|ROOT|HTREE|STORAGE\\VOLUME|\{)/.test(deviceId)
-    || /WI-FI DIRECT VIRTUAL|VHD|STREAMING PROXY/i.test(port.displayName)) {
+    || /WI-FI DIRECT VIRTUAL|VHD|STREAMING PROXY/i.test(port.displayName ?? "")) {
     return false;
   }
 
@@ -384,7 +385,7 @@ function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescripto
       key: `display:${port.id}`,
       title: internalDisplayInterfaceTitle(port),
       connectorKind: "internal-display",
-      protocol: port.display.connectorTechnology || uiText.deviceTree.internalDisplay
+      protocol: displayConnectorTechnology(port.display) || uiText.deviceTree.internalDisplay
     };
   }
   if (/^HDAUDIO\\/.test(normalizeDeviceId(port.deviceId))) {
@@ -409,7 +410,7 @@ function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescripto
 }
 
 function internalDisplayInterfaceTitle(port: DeviceTopologyPort) {
-  const technology = port.display?.connectorTechnology?.trim().toLocaleLowerCase() ?? "";
+  const technology = (port.display?.outputTechnology ?? "").trim().toLocaleLowerCase();
   return technology.includes("displayport") || technology.includes("edp")
     ? uiText.deviceTree.embeddedDisplayPortInterface
     : uiText.deviceTree.internalDisplayInterface;
@@ -472,7 +473,7 @@ function comparePendingNodes(left: PendingNode, right: PendingNode) {
 }
 
 function comparePorts(left: DeviceTopologyPort, right: DeviceTopologyPort) {
-  return left.displayName.localeCompare(right.displayName, undefined, { sensitivity: "base" })
+  return portDisplayName(left).localeCompare(portDisplayName(right), undefined, { sensitivity: "base" })
     || left.id.localeCompare(right.id);
 }
 

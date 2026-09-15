@@ -173,7 +173,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             .Concat(unrepresentedConnectors)
             .Concat(displayPorts)
             .OrderBy(GetConnectorSortKey)
-            .ThenBy(static port => port.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static port => port.DisplayName ?? port.DeviceId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         if (ports.Length == 0)
@@ -584,11 +584,16 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var idResolution = port.DeviceConnected
             ? deviceIdCatalog.ResolveUsb(port.VendorId, port.ProductId)
             : null;
-        var displayName = port.DeviceConnected
-            ? Clean(port.Descriptor.ProductName)
-                ?? idResolution?.DeviceName
-                ?? $"{connectorName} 已连接设备"
-            : $"空闲 {connectorName} 接口";
+        var reportedName = port.DeviceConnected
+            ? Clean(port.Descriptor.ProductName) ?? idResolution?.DeviceName
+            : null;
+        var generatedName = reportedName is not null
+            ? null
+            : Note(
+                port.DeviceConnected
+                    ? BackendMessageCodes.DeviceTopology.NameConnectedDeviceOnConnector
+                    : BackendMessageCodes.DeviceTopology.NameIdleConnector,
+                connectorName);
         var usbConnection = CreateUsbConnection(port);
         var hid = DeviceTopologySpecializedCapabilityProjector.CreateHid(
             port,
@@ -596,7 +601,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var camera = DeviceTopologySpecializedCapabilityProjector.CreateCamera(port);
         var smartDevice = DeviceTopologySpecializedCapabilityProjector.CreateSmartDevice(
             port,
-            displayName,
+            reportedName ?? connectorName,
             modelName: null,
             pnpClass: "USB",
             service: null,
@@ -605,10 +610,10 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return new DeviceTopologyPort(
             stableId,
             true,
-            displayName,
+            reportedName,
             connectorKind,
             DeviceBusKinds.Usb,
-            $"{connectorName} 物理连接器",
+            null,
             FormatUsbSupportedProtocols(port.Capability),
             port.NegotiatedSpeed,
             $"USBPORT\\{stableId.ToUpperInvariant()}",
@@ -620,7 +625,9 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             Note(BackendMessageCodes.DeviceTopology.SourceUsbHubIoctl),
             null,
             null,
-            $"USB Hub > 端口 {port.PortNumber}",
+            Note(
+                BackendMessageCodes.DeviceTopology.PathUsbHubPort,
+                port.PortNumber.ToString(CultureInfo.InvariantCulture)),
             null,
             null,
             null,
@@ -637,7 +644,9 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 group.Ports.Select(static member => member.Capability)),
             Hid: hid,
             Camera: camera,
-            SmartDevice: smartDevice);
+            SmartDevice: smartDevice,
+            DisplayNameCode: generatedName,
+            HardwareKindCode: Note(BackendMessageCodes.DeviceTopology.KindPhysicalConnector, connectorName));
     }
 
     private static DeviceTopologyPort CreateDisplayPathCandidate(DeviceTopologyResolvedDisplayPath resolved)
@@ -652,9 +661,13 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var refreshRate = WindowsDisplayPathTopologyReader.FormatRefreshRate(
             path.RefreshRateNumerator,
             path.RefreshRateDenominator);
-        var displayName = Clean(path.MonitorFriendlyName)
-            ?? profile?.DisplayName
-            ?? (internalOutput ? "内置显示面板" : $"{technology} 活动显示器");
+        var reportedName = Clean(path.MonitorFriendlyName);
+        var generatedName = reportedName is not null
+            ? null
+            : profile?.DisplayName
+                ?? (internalOutput
+                    ? Note(BackendMessageCodes.DeviceTopology.NameInternalDisplayPanel)
+                    : Note(BackendMessageCodes.DeviceTopology.NameActiveMonitor, technology));
         var normalizedDeviceId = WindowsDisplayPathTopologyReader.NormalizeMonitorDevicePath(path.MonitorDevicePath);
         var deviceId = normalizedDeviceId.Length > 0
             ? normalizedDeviceId
@@ -664,7 +677,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var speed = path.Active
             ? resolution is null ? refreshRate : $"{resolution} @ {refreshRate}"
             : null;
-        var connectorTechnology = profile?.Protocol ?? technology;
+        var connectorTechnology = profile?.Protocol;
         var source = Note(profile is null
             ? BackendMessageCodes.DeviceTopology.SourceQueryDisplayConfig
             : BackendMessageCodes.DeviceTopology.SourceOemProfileQueryDisplayConfig);
@@ -679,11 +692,11 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 ? CreateStableId($"DISPLAY-PATH|{path.AdapterHighPart:X8}|{path.AdapterLowPart:X8}|{path.TargetId}")
                 : CreateStableId($"OEM-DISPLAY-CONNECTOR|{profile.Id}"),
             WindowsDisplayPathTopologyReader.IsUserConnectableOutput(path.OutputTechnology),
-            displayName,
+            reportedName,
             connectorKind,
             DeviceBusKinds.Display,
-            profile?.HardwareKind ?? (internalOutput ? "内置显示面板" : $"{technology} 活动显示路径"),
-            connectorTechnology,
+            null,
+            connectorTechnology ?? technology,
             speed,
             deviceId,
             "Monitor",
@@ -695,8 +708,11 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             null,
             null,
             profile is null
-                ? $"Windows 显示路径 > {technology} > {displayName}"
-                : $"机型接口档案 > {profile.DisplayName}",
+                ? Note(
+                    BackendMessageCodes.DeviceTopology.PathWindowsDisplayPath,
+                    technology,
+                    reportedName ?? string.Empty)
+                : Note(BackendMessageCodes.DeviceTopology.PathOemProfile, profile.Id),
             null,
             null,
             null,
@@ -704,7 +720,8 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             null,
             new DeviceTopologyDisplayConnection(
                 connectorTechnology,
-                displayName,
+                technology,
+                reportedName ?? string.Empty,
                 resolution,
                 refreshRate,
                 path.Active,
@@ -738,7 +755,12 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             null,
             [],
             [],
-            PhysicalMaximumSpeed: profile?.PhysicalMaximumSpeed);
+            PhysicalMaximumSpeed: profile?.PhysicalMaximumSpeed,
+            DisplayNameCode: generatedName,
+            HardwareKindCode: profile?.HardwareKind
+                ?? (internalOutput
+                    ? Note(BackendMessageCodes.DeviceTopology.NameInternalDisplayPanel)
+                    : Note(BackendMessageCodes.DeviceTopology.KindActiveDisplayPath, technology)));
     }
 
     private static string? BuildDisplayColorCapabilitySource(
@@ -888,11 +910,12 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return inferredConnectorKind;
     }
 
-    private static string FormatUsbSupportedProtocols(DeviceTopologyUsbPortCapability? capability)
+    /// <summary>端口没有报告协议能力时返回 null，占位文案由前端出。</summary>
+    private static string? FormatUsbSupportedProtocols(DeviceTopologyUsbPortCapability? capability)
     {
         if (capability is null)
         {
-            return "未知";
+            return null;
         }
 
         var protocols = new List<string>(3);
@@ -911,7 +934,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             protocols.Add("USB 3.x");
         }
 
-        return protocols.Count == 0 ? "未报告" : string.Join(" / ", protocols);
+        return protocols.Count == 0 ? null : string.Join(" / ", protocols);
     }
 
     private static DeviceTopologyNativeDevice? FindNativeDevice(
@@ -939,7 +962,11 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var key = NormalizeDeviceId(deviceId);
         if (key.Length == 0 || usbTopology.UpstreamByDeviceId.Count == 0)
         {
-            return new DeviceTopologyRelationshipInfo(null, null, "PnP 设备枚举", false);
+            return new DeviceTopologyRelationshipInfo(
+                null,
+                null,
+                Note(BackendMessageCodes.DeviceTopology.PathPnpEnumeration),
+                false);
         }
 
         usbTopology.UpstreamByDeviceId.TryGetValue(key, out var upstreamKey);
@@ -949,7 +976,9 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return new DeviceTopologyRelationshipInfo(
             upstreamKey,
             upstreamDevice?.DisplayName,
-            chain.Count > 1 ? string.Join(" -> ", chain) : "PnP 设备枚举",
+            chain.Count > 1
+                ? Note(BackendMessageCodes.DeviceTopology.PathDeviceChain, string.Join(" -> ", chain))
+                : Note(BackendMessageCodes.DeviceTopology.PathPnpEnumeration),
             upstreamKey is not null);
     }
 
@@ -984,7 +1013,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return devices.TryGetValue(NormalizeDeviceId(deviceId), out var device) ? device : null;
     }
 
-    private static string ResolveNativePath(
+    private static BackendMessage ResolveNativePath(
         string deviceId,
         string displayName,
         IReadOnlyDictionary<string, DeviceTopologyNativeDevice> nativeDevices)
@@ -992,7 +1021,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var key = NormalizeDeviceId(deviceId);
         if (key.Length == 0 || nativeDevices.Count == 0)
         {
-            return "PnP 设备枚举";
+            return Note(BackendMessageCodes.DeviceTopology.PathPnpEnumeration);
         }
 
         var chain = new List<string>();
@@ -1011,7 +1040,9 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         }
 
         chain.Reverse();
-        return chain.Count > 1 ? string.Join(" -> ", chain) : "设备管理器属性";
+        return chain.Count > 1
+            ? Note(BackendMessageCodes.DeviceTopology.PathDeviceChain, string.Join(" -> ", chain))
+            : Note(BackendMessageCodes.DeviceTopology.PathDeviceManagerProperties);
     }
 
     private static string ExtractWmiDeviceReference(string? reference)
@@ -1611,6 +1642,6 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
     private sealed record DeviceTopologyRelationshipInfo(
         string? UpstreamDeviceId,
         string? UpstreamDisplayName,
-        string TopologyPath,
+        BackendMessage TopologyPath,
         bool HasUsbRelationship);
 }

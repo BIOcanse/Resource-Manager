@@ -37,7 +37,7 @@ internal static class WindowsUsbHubIoctlReader
             using var hub = OpenHub(hubPath);
             if (hub.IsInvalid)
             {
-                firstError ??= $"打开 USB Hub 失败：{new Win32Exception(Marshal.GetLastWin32Error()).Message}";
+                firstError ??= $"Opening the USB hub failed: {new Win32Exception(Marshal.GetLastWin32Error()).Message}";
                 continue;
             }
 

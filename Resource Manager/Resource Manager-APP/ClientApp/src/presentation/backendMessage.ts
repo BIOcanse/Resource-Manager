@@ -1,3 +1,7 @@
+import {
+  edidDigitalInterfaceLabel,
+  outputTechnologyLabel
+} from "../deviceTopology/deviceVocabulary.ts";
 import { uiText } from "../text.ts";
 import type { BackendMessage } from "../types.ts";
 
@@ -145,7 +149,25 @@ function deviceTopologyRenderers(): Record<number, Renderer> {
     60: () => copy.sourceUsbHidEndpointDescriptors,
     61: () => copy.sourceUsbVideoClassDescriptors,
     62: () => copy.sourceUsbDescriptorsAndWindows,
-    63: () => copy.sourceWindowsWpdPnp
+    63: () => copy.sourceWindowsWpdPnp,
+    // 64 的参数就是拼好的设备链，链上全是设备名，没有可翻译的措辞。
+    64: (args) => args[0] ?? "",
+    65: () => copy.pathPnpEnumeration,
+    66: () => copy.pathDeviceManagerProperties,
+    67: (args) => copy.pathUsbHubPort(args[0] ?? ""),
+    68: (args) => copy.pathWindowsDisplayPath(
+      outputTechnologyLabel(args[0]),
+      args[1] ?? ""),
+    69: (args) => copy.pathOemProfile(args[0] ?? ""),
+    70: (args) => copy.nameConnectedDeviceOnConnector(args[0] ?? ""),
+    71: (args) => copy.nameIdleConnector(args[0] ?? ""),
+    72: () => copy.nameInternalDisplayPanel,
+    73: (args) => copy.nameActiveMonitor(outputTechnologyLabel(args[0])),
+    74: (args) => copy.nameConnectorInterface(args[0] ?? ""),
+    75: (args) => copy.kindPhysicalConnector(args[0] ?? ""),
+    76: (args) => copy.kindActiveDisplayPath(outputTechnologyLabel(args[0])),
+    77: () => copy.displayTechnologyAnalog,
+    78: (args) => copy.displayTechnologyDigital(edidDigitalInterfaceLabel(args[0]))
   };
 }
 

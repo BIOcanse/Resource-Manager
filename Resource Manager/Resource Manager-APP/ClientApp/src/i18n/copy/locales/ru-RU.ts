@@ -676,6 +676,39 @@ const ruRuAppCopy: AppCopy = {
       notReady: "Не готово",
       unknown: "Состояние неизвестно"
     },
+    outputTechnology: {
+      "other": "Другое подключение дисплея",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "Композитное видео",
+      "component-video": "Компонентное видео",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "Внутренняя панель LVDS",
+      "d-jpn": "Разъём D",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "Встроенный DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "Встроенный UDI",
+      "sdtv-dongle": "Адаптер SDTV",
+      "miracast": "Miracast",
+      "indirect-wired": "Косвенный проводной дисплей",
+      "indirect-virtual": "Косвенный виртуальный дисплей",
+      "displayport-usb4-tunnel": "DisplayPort через USB4",
+      "internal": "Внутреннее подключение дисплея",
+      "unknown": "Неизвестное подключение дисплея"
+    },
+    edidDigitalInterface: {
+      "analog": "Аналоговый вход дисплея",
+      "undefined": "Неопределённый цифровой интерфейс",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "Зарезервированный цифровой интерфейс"
+    },
     displayLocation: {
       internal: "Внутреннее подключение",
       external: "Внешнее подключение"
@@ -2044,7 +2077,21 @@ const ruRuAppCopy: AppCopy = {
       sourceUsbHidEndpointDescriptors: "Дескрипторы USB HID и конечных точек",
       sourceUsbVideoClassDescriptors: "Дескрипторы конфигурации USB Video Class",
       sourceUsbDescriptorsAndWindows: "Дескрипторы устройства и конфигурации USB + PnP Windows",
-      sourceWindowsWpdPnp: "Свойства Windows WPD / PnP"
+      sourceWindowsWpdPnp: "Свойства Windows WPD / PnP",
+      pathPnpEnumeration: "Перечисление устройств PnP",
+      pathDeviceManagerProperties: "Свойства диспетчера устройств",
+      pathUsbHubPort: (port: string) => `Концентратор USB > порт ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Путь отображения Windows > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `Профиль разъёмов OEM > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `Устройство на ${connector}`,
+      nameIdleConnector: (connector: string) => `Свободный ${connector}`,
+      nameInternalDisplayPanel: "Внутренняя панель дисплея",
+      nameActiveMonitor: (technology: string) => `Активный монитор ${technology}`,
+      nameConnectorInterface: (connector: string) => `Порт ${connector}`,
+      kindPhysicalConnector: (connector: string) => `Физический разъём ${connector}`,
+      kindActiveDisplayPath: (technology: string) => `Активный путь отображения ${technology}`,
+      displayTechnologyAnalog: "Аналоговый дисплей",
+      displayTechnologyDigital: (connection: string) => `Цифровой дисплей / ${connection}`
     }
   }
 };
