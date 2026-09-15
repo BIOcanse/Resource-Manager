@@ -203,10 +203,8 @@ export function ManagementPage(props: ManagementPageProps) {
                   ? <ComponentCard
                       component={item.value as ManagedComponent}
                       actionLabels={props.actionLabels}
-                      software={props.software}
                       runtimeEffectsEnabled={props.runtimeEffectsEnabled}
                       onInstall={props.onInstallComponent}
-                      onUninstall={props.onUninstallSoftware}
                       onOpenDetail={(component) => props.onOpenDetail("component", component)}
                     />
                   : <SoftwareCard
@@ -229,10 +227,8 @@ export function ManagementPage(props: ManagementPageProps) {
 function ComponentCard(props: {
   component: ManagedComponent;
   actionLabels: Record<string, string>;
-  software: SoftwareRecord[];
   runtimeEffectsEnabled: boolean;
   onInstall: (component: ManagedComponent) => void;
-  onUninstall: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (component: ManagedComponent) => void;
 }) {
   const demandId = frontendVisibilityDemandId(
@@ -240,7 +236,6 @@ function ComponentCard(props: {
     props.component.definition?.id ?? props.component.definition?.name);
   const key = () => managementActionKey("component", props.component.definition?.id);
   const activeLabel = () => props.actionLabels[key()];
-  const dependencySoftware = () => findDependencySoftwareForComponent(props.component, props.software);
   return (
     <article
       {...frontendVisibilitySurface(`visible.${demandId}.surface`, [demandId])}
@@ -275,14 +270,8 @@ function ComponentCard(props: {
               </button>
             }
           >
-            <Show
-              when={dependencySoftware()?.operations?.canUninstall}
-              fallback={<button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>}
-            >
-              <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
-                {uiText.management.uninstall}
-              </button>
-            </Show>
+            {/* 组件只装不卸：已安装的组件不提供卸载入口。 */}
+            <button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>
           </Show>
         </Show>
         <DetailsButton
@@ -572,13 +561,3 @@ export function managementActionKeyFromOperation(operation: OperationSnapshot) {
   return null;
 }
 
-export function findDependencySoftwareForComponent(component: ManagedComponent, software: SoftwareRecord[]) {
-  if (component.definition?.managementRole !== "Dependency") {
-    return undefined;
-  }
-  const componentName = normalizeName(component.definition?.name);
-  const componentId = normalizeName(component.definition?.id);
-  return software.find((item) =>
-    item.managementRole === "Dependency"
-    && (normalizeName(item.name) === componentName || normalizeName(item.id).includes(componentId)));
-}
