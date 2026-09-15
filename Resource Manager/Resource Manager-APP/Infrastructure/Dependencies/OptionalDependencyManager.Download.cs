@@ -11,6 +11,7 @@ public sealed partial class OptionalDependencyManager
     public async Task<OptionalDependencyDownloadResult> DownloadAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken,
         IProgress<DependencyDownloadProgress>? progress = null)
     {
@@ -19,10 +20,12 @@ public sealed partial class OptionalDependencyManager
 
         EnsureTerms(definition, acknowledgeExternalTerms);
 
-        if (string.IsNullOrWhiteSpace(definition.DownloadUrl))
+        if (definition.InstallerSourceKind == DependencyInstallerSourceKinds.Manual)
         {
-            throw new InvalidOperationException("This dependency does not have a stable direct download URL.");
+            throw new InvalidOperationException("这个依赖没有可自动获取的安装器来源，请从来源页下载后放入安装器缓存目录。");
         }
+
+        var installerSource = await installerSourceResolver.ResolveAsync(definition, versionChoice, cancellationToken);
 
         var paths = GetPaths(definition);
         Directory.CreateDirectory(paths.InstallerDirectory);
@@ -39,7 +42,7 @@ public sealed partial class OptionalDependencyManager
         try
         {
             using var response = await httpClient.GetAsync(
-                definition.DownloadUrl,
+                installerSource.DownloadUrl,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -92,7 +95,9 @@ public sealed partial class OptionalDependencyManager
             "downloaded",
             destination,
             length,
-            "安装器已下载到托管依赖目录。",
+            installerSource.Version is null
+                ? "安装器已下载到托管依赖目录。"
+                : $"已下载 {installerSource.Version} 的安装器到托管依赖目录。",
             fileChanges);
     }
 }

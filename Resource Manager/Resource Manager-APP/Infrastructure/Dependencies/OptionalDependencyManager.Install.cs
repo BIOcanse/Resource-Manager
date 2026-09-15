@@ -10,6 +10,7 @@ public sealed partial class OptionalDependencyManager
     public async Task<OptionalDependencyLaunchResult> LaunchInstallerAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken)
     {
         var definition = OptionalDependencyCatalog.Find(id)

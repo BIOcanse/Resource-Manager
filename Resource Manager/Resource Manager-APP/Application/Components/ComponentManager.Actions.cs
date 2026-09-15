@@ -7,10 +7,11 @@ public sealed partial class ComponentManager
     public async Task<ComponentActionResult> DownloadAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken)
     {
         EnsureOptionalDependency(id);
-        var result = await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, cancellationToken);
+        var result = await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
         var status = await GetStatusAsync(id, cancellationToken);
         return new ComponentActionResult(
             id,
@@ -25,6 +26,7 @@ public sealed partial class ComponentManager
     public async Task<ComponentActionResult> InstallAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken)
     {
         EnsureOptionalDependency(id);
@@ -49,10 +51,10 @@ public sealed partial class ComponentManager
                 throw new FileNotFoundException("托管依赖目录中没有可用安装器，且该组件没有稳定官方下载地址。", statusBeforeInstall.InstallerPath);
             }
 
-            await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, cancellationToken);
+            await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
         }
 
-        var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, cancellationToken);
+        var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
         var status = await GetStatusAsync(id, cancellationToken);
         return new ComponentActionResult(
             id,

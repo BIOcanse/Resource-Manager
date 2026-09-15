@@ -16,6 +16,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
     private static IServiceCollection AddResourceManagerDependencies(this IServiceCollection services)
     {
+        services.AddHttpClient<IDependencyInstallerSourceResolver, DependencyInstallerSourceResolver>();
         services.AddHttpClient<IOptionalDependencyManager, OptionalDependencyManager>();
         return services;
     }

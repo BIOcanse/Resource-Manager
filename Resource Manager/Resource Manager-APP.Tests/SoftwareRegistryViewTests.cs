@@ -464,9 +464,15 @@ public sealed class SoftwareRegistryViewTests
             return Task.FromResult<OptionalDependencyStatus?>(null);
         }
 
+        public Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
         public Task<OptionalDependencyDownloadResult> DownloadAsync(
             string id,
             bool acknowledgeExternalTerms,
+            string? versionChoice,
             CancellationToken cancellationToken,
             IProgress<DependencyDownloadProgress>? progress = null)
         {
@@ -476,6 +482,7 @@ public sealed class SoftwareRegistryViewTests
         public Task<OptionalDependencyLaunchResult> LaunchInstallerAsync(
             string id,
             bool acknowledgeExternalTerms,
+            string? versionChoice,
             CancellationToken cancellationToken)
         {
             throw new NotSupportedException();

@@ -1,14 +1,17 @@
 import { Accessor, createMemo, createSignal, Setter } from "solid-js";
 import {
   addManualSoftware,
+  fetchComponentVersionOptions,
   getComponents,
   getSoftware,
+  openPath,
 } from "../api";
 import { getBrowserRuntimeSnapshot } from "../browserRuntimes/browserRuntimeApi";
 import {
   sharedBrowserRuntimeComponentId,
   type BrowserRuntimeSnapshot
 } from "../browserRuntimes/browserRuntimeTypes";
+import type { ComponentAcquisitionRequest } from "../components/ComponentAcquisitionDialog";
 import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
 import { managementActionKey, managementActionKeyFromOperation } from "../components/ManagementPage";
 import type { ManagementSubpageId } from "../management/managementNavigation";
@@ -81,6 +84,11 @@ export interface ManagementStore {
   refreshBrowserRuntimes: (forceRefresh?: boolean) => Promise<void>;
   refreshState: (userInitiated: boolean) => Promise<void>;
   installComponent: (component: ManagedComponent) => Promise<void>;
+  /** 当前打开的组件获取对话框（条款 + 版本选择）；null 表示没有打开。 */
+  acquisitionRequest: Accessor<ComponentAcquisitionRequest | null>;
+  cancelAcquisition: () => void;
+  confirmAcquisition: (versionChoice: string | null) => Promise<void>;
+  openAcquisitionLink: (url: string) => Promise<void>;
   uninstallSoftware: (software: SoftwareRecord, actionKey?: string) => Promise<void>;
   dispose: () => void;
 }
@@ -246,6 +254,23 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
+  // 组件获取：条款确认与版本选择由对话框一次收齐，之后才发命令。
+  // 对话框里的"同意"是这次操作的一次性授权，不做持久化。
+  const [acquisitionRequest, setAcquisitionRequest] =
+    createSignal<ComponentAcquisitionRequest | null>(null);
+
+  function componentSourceKind(component: ManagedComponent) {
+    return component.installerSourceKind ?? "manual";
+  }
+
+  function cancelAcquisition() {
+    setAcquisitionRequest(null);
+  }
+
+  async function openAcquisitionLink(url: string) {
+    window.open(url, "_blank", "noopener");
+  }
+
   async function installComponent(component: ManagedComponent) {
     if (!options.runtimeEffectsEnabled()) {
       options.showToast({
@@ -256,37 +281,99 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
-    if (component.definition?.requiresExternalTermsAcknowledgement && !await options.confirmDialog({
-      title: textOrEmpty(component.definition.name) || uiText.feedback.confirmTitle,
-      message: `${textOrEmpty(component.definition.name) || "该组件"} 需要接受外部厂商条款后继续。`,
-      tone: "warning"
-    })) {
+    const id = component.definition?.id;
+    if (!id) {
+      showErrorToast(new Error(uiText.componentAcquisition.componentMissingIdentity), "操作失败");
       return;
     }
 
+    // 安装器已经在缓存里：不需要联网，也没有版本可选，直接装。
+    if (component.installerAvailable && !component.installed) {
+      await runComponentInstall(component, null);
+      return;
+    }
+
+    const manual = componentSourceKind(component) === "manual";
+    setAcquisitionRequest({ component, versions: [], loading: !manual, manual });
+
+    if (manual) {
+      return;
+    }
+
+    try {
+      const versionOptions = await fetchComponentVersionOptions(id);
+      setAcquisitionRequest((current) => current && current.component.definition?.id === id
+        ? { ...current, versions: versionOptions.options ?? [], loading: false }
+        : current);
+    } catch (error) {
+      // 版本列表拿不到时不把对话框关掉：用户仍然可以读条款并按已验证版本继续。
+      const reason = userFacingErrorMessage(error, uiText.componentAcquisition.versionLookupFailed);
+      setAcquisitionRequest((current) => current && current.component.definition?.id === id
+        ? {
+          ...current,
+          loading: false,
+          versions: [
+            { choice: "verified", available: true, version: null, assetName: null, unavailableReason: null },
+            { choice: "latest", available: false, version: null, assetName: null, unavailableReason: reason }
+          ]
+        }
+        : current);
+    }
+  }
+
+  async function confirmAcquisition(versionChoice: string | null) {
+    const request = acquisitionRequest();
+    setAcquisitionRequest(null);
+    if (!request) {
+      return;
+    }
+
+    if (request.manual) {
+      await guideManualAcquisition(request.component);
+      return;
+    }
+
+    await runComponentInstall(request.component, versionChoice);
+  }
+
+  /** 手动获取：同时打开来源页和安装器缓存目录，并说清楚下一步做什么。 */
+  async function guideManualAcquisition(component: ManagedComponent) {
+    const sourcePageUrl = component.definition?.sourcePageUrl;
+    if (sourcePageUrl) {
+      window.open(sourcePageUrl, "_blank", "noopener");
+    }
+
+    const installerDirectory = component.installerDirectory;
+    if (installerDirectory) {
+      try {
+        await openPath(installerDirectory);
+      } catch (error) {
+        showErrorToast(error, uiText.componentAcquisition.openPathFailed);
+      }
+    }
+
+    options.showToast({
+      tone: "info",
+      title: uiText.feedback.info,
+      message: uiText.componentAcquisition.manualNextStep,
+      details: installerDirectory ? [installerDirectory] : undefined
+    });
+  }
+
+  async function runComponentInstall(component: ManagedComponent, versionChoice: string | null) {
     const id = component.definition?.id;
     const key = managementActionKey("component", id);
     try {
-      if (component.canInstall || component.installerAvailable || component.canDownload) {
-        if (!id) {
-          throw new Error("组件缺少稳定标识，无法创建安装操作。");
-        }
-        setActionLabel(key, "等待中");
-        const operation = await options.operations.submit(
-          componentInstallCommand(id, true));
-        setActionLabel(key, labelForOperation(operation));
-        const completed = await options.operations.waitForTerminal(operation.id);
-        showOperationResult(completed);
-        return;
+      if (!id) {
+        throw new Error(uiText.componentAcquisition.componentMissingIdentity);
       }
 
-      if (component.definition?.sourcePageUrl) {
-        setActionLabel(key, "正在安装");
-        window.open(component.definition.sourcePageUrl, "_blank", "noopener");
-        return;
-      }
-
-      throw new Error("该组件当前没有可用安装入口。");
+      setActionLabel(key, "等待中");
+      const operation = await options.operations.submit(
+        componentInstallCommand(id, true, versionChoice));
+      setActionLabel(key, labelForOperation(operation));
+      const completed = await options.operations.waitForTerminal(operation.id);
+      showOperationResult(completed);
     } catch (error) {
       showErrorToast(error, "操作失败");
     } finally {
@@ -415,6 +502,10 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     refreshBrowserRuntimes,
     refreshState,
     installComponent,
+    acquisitionRequest,
+    cancelAcquisition,
+    confirmAcquisition,
+    openAcquisitionLink,
     uninstallSoftware,
     dispose: unsubscribeOperations
   };

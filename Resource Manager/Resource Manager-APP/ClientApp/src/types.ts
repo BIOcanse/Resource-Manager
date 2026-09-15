@@ -513,8 +513,27 @@ export interface ComponentProviderState {
   [key: string]: unknown;
 }
 
+/** 安装器来源形态，由后端声明；界面据此标注按钮并决定要不要问版本。 */
+export type ComponentInstallerSourceKind = "direct" | "githubRelease" | "manual";
+
+/** 版本对话框里的一个选项。不可用时仍然出现在列表里，并带上原因。 */
+export interface ComponentVersionOption {
+  choice: "verified" | "latest";
+  available: boolean;
+  version?: string | null;
+  assetName?: string | null;
+  unavailableReason?: string | null;
+}
+
+export interface ComponentVersionOptions {
+  id: string;
+  sourceKind: ComponentInstallerSourceKind;
+  options: ComponentVersionOption[];
+}
+
 export interface ManagedComponent {
   definition?: ManagedComponentDefinition;
+  installerSourceKind?: ComponentInstallerSourceKind;
   state?: string;
   stateLabel?: string;
   message?: string;

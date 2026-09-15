@@ -32,18 +32,20 @@ internal sealed class ComponentOperationEffectExecutor(
         CancellationToken cancellationToken)
     {
         _ = progress;
-        var (id, acknowledge) =
-            HostManagerOperationRequestCodec.DecodeBooleanRequest(ticket.Request.Payload);
+        var (id, acknowledge, versionChoice) =
+            HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
         try
         {
             var result = IsInstall
                 ? await componentManager.InstallAsync(
                     id,
                     acknowledge,
+                    versionChoice,
                     cancellationToken).ConfigureAwait(false)
                 : await componentManager.DownloadAsync(
                     id,
                     acknowledge,
+                    versionChoice,
                     cancellationToken).ConfigureAwait(false);
             return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
         }
