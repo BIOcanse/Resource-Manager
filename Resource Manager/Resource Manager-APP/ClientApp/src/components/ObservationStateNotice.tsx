@@ -62,14 +62,14 @@ export function ObservationStateNotice(props: ObservationStateNoticeProps) {
       >
         <strong>{title()}</strong>
         <Show when={capturedAt()}>
-          {(value) => <span>采集于 {value()}</span>}
+          {(value) => <span>{uiText.observationNotice.capturedAt(value())}</span>}
         </Show>
         <Show when={detail()}>
           {(value) => <span>{value()}</span>}
         </Show>
         <Show when={props.state.status === "error" && props.onRetry}>
           <button class="secondary" type="button" onClick={() => props.onRetry?.()}>
-            重试
+            {uiText.observationNotice.retry}
           </button>
         </Show>
       </div>

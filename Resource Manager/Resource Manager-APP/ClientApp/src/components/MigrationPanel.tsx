@@ -172,7 +172,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
           <div class="discovery-item">
             <div>
               <strong>{session.softwareName || uiText.migrationPanel.unnamedSoftware}</strong>
-              <div class="discovery-meta">{migrationStateLabel(session.state)} · {session.observedWriteCount} 次变化</div>
+              <div class="discovery-meta">{migrationStateLabel(session.state)} · {uiText.migrationPanel.changeCount(session.observedWriteCount)}</div>
             </div>
             <button
               class="secondary details-button"
@@ -182,7 +182,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
                 sections: discoverySessionDetails(session)
               })}
             >
-              详细信息
+              {uiText.migrationPanel.details}
             </button>
           </div>
         )} />
@@ -195,7 +195,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
                 type="button"
                 onClick={() => setDetails({ title: uiText.migrationPanel.candidateDetailTitle, sections: migrationCandidateDetails(candidate) })}
               >
-                详细信息
+                {uiText.migrationPanel.details}
               </button>
               <button class="secondary" type="button" onClick={() => props.onUseCandidate(candidate)}>{uiText.migrationPanel.fill}</button>
               <button
@@ -203,7 +203,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
                 disabled={!props.workbenchAvailable || props.previewInProgress}
                 onClick={() => props.onMigrateCandidate(candidate)}
               >
-                迁移
+                {uiText.migrationPanel.migrate}
               </button>
             </div>
           </div>
@@ -236,7 +236,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
               type="button"
               onClick={() => setDetails({ title: uiText.migrationPanel.savedLocationTitle, sections: migrationRootDetails(roots()) })}
             >
-              查看保存位置
+              {uiText.migrationPanel.viewSavedLocation}
             </button>
           )}
         </Show>
@@ -256,7 +256,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
                       type="button"
                       onClick={() => setDetails({ title: uiText.migrationPanel.planItemDetailTitle, sections: migrationPlanItemDetails(item) })}
                     >
-                      详细信息
+                      {uiText.migrationPanel.details}
                     </button>
                   </div>
                 )}
@@ -267,7 +267,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
       </div>
       <div class="panel-header migration-record-header">
         <h2>{uiText.migrationPanel.restoreTitle}</h2>
-        <span id="migrationRecordCount">{props.records.length} 条记录</span>
+        <span id="migrationRecordCount">{uiText.migrationPanel.recordCount(props.records.length)}</span>
       </div>
       <ListBlock className="migration-records" items={props.records} empty="" render={(record) => (
         <div class="migration-record">
@@ -281,7 +281,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
               type="button"
               onClick={() => setDetails({ title: uiText.migrationPanel.recordDetailTitle, sections: migrationRecordDetails(record) })}
             >
-              详细信息
+              {uiText.migrationPanel.details}
             </button>
             <button
               class="secondary"

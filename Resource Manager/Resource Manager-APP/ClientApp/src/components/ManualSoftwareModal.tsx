@@ -163,7 +163,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
         </DialogBody>
         <DialogActions>
           <button class="secondary" type="button" disabled={props.actionInProgress} onClick={props.onClose}>
-            取消
+            {uiText.manualSoftwareModal.cancel}
           </button>
           <button type="submit" disabled={!canSubmit()}>
             {props.actionInProgress ? uiText.manualSoftwareModal.saving : uiText.metricPicker.confirm}

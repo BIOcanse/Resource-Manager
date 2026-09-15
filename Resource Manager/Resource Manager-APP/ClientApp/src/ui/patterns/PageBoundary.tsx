@@ -82,7 +82,7 @@ function PageBoundaryFallback(props: {
       tabIndex={-1}
     >
       <div class="page-boundary-message">
-        <strong>{props.name}暂时不可用</strong>
+        <strong>{uiText.misc.pageUnavailable(props.name)}</strong>
         <p>{message()}</p>
         <Show when={props.onRetry}>
           <button class="secondary icon-text-button" type="button" disabled={retrying()} onClick={() => void retry()}>

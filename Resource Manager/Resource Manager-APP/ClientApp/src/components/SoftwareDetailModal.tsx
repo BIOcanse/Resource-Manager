@@ -349,7 +349,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                 <strong>{notice().message}</strong>
                 <Show when={notice().details?.length}>
                   <button class="secondary details-button" type="button" onClick={() => setNoticeDetailsOpen(true)}>
-                    详细信息
+                    {uiText.softwareDetail.details}
                   </button>
                 </Show>
               </div>
@@ -372,7 +372,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                       </div>
                       <button type="button" disabled={props.actionInProgress} onClick={props.onConfirmPortableRoot}>
                         <FolderOpen aria-hidden="true" size={17} />
-                        选择文件夹
+                        {uiText.softwareDetail.chooseFolder}
                       </button>
                     </section>
                   </Show>
@@ -568,7 +568,7 @@ function GpuPlacementPolicySection(props: {
             disabled={props.loading || actionInProgress() || !props.settings}
             onClick={() => void restoreDefaultDraft()}
           >
-            恢复默认
+            {uiText.softwareDetail.restoreDefaults}
           </button>
           <button
             type="button"
@@ -584,7 +584,7 @@ function GpuPlacementPolicySection(props: {
           {(current) => (
             <>
               <Show when={localError()}>
-                {(message) => <p class="software-detail-hint error">策略操作失败：{message()}</p>}
+                {(message) => <p class="software-detail-hint error">{uiText.softwareDetail.policyActionFailed(message())}</p>}
               </Show>
               <div class="software-policy-grid">
                 <PolicyNumberInput
@@ -742,7 +742,7 @@ function GpuPlacementPolicySection(props: {
               </div>
               <Show when={current().runtimeHotSwitchEnabled !== false}>
                 <p class="gpu-runtime-compatibility-warning">
-                  运行时切换显卡可能导致黑屏、画面异常或软件崩溃。出现兼容问题时，请关闭此项并重启该软件。
+                  {uiText.softwareDetail.runtimeSwitchWarning}
                 </p>
               </Show>
               <CpuManualPlacementSection
@@ -751,21 +751,21 @@ function GpuPlacementPolicySection(props: {
                 onUpdate={updateDraft}
               />
               <p class="software-detail-hint">
-                软件基础分会作为所属进程的默认评分。核心独占会让其他软件避开所选核心；固定后，此软件只会使用所选核心。
+                {uiText.softwareDetail.baseScoreHint}
               </p>
               <Show when={current().schedulingMode === "Precise" && current().runtimeSchedulingMode === "Ordinary"}>
                 <p class="software-detail-hint">
-                  当前使用系统兼容调度：启动设置仍会保留，运行中不会移动显卡。
+                  {uiText.softwareDetail.ordinarySchedulingHint}
                 </p>
               </Show>
               <Show when={!props.preciseGpuPlacementEnabled}>
                 <p class="software-detail-hint">
-                  全局精确 GPU 选择当前关闭；软件偏好仍会保存，但只会应用 Windows 支持的显卡选择。
+                  {uiText.softwareDetail.preciseDisabledHint}
                 </p>
               </Show>
               <Show when={props.preciseGpuPlacementEnabled && !startupCapabilityAvailable() && !runtimeCapabilityAvailable()}>
                 <p class="software-detail-hint gpu-runtime-compatibility-warning">
-                  尚未发现兼容的原生 x64 进程。精确 Provider 仅影响之后创建或重建的 D3D11 设备；已保存的精确设置会保留但不会执行。
+                  {uiText.softwareDetail.noNativeProcessHint}
                 </p>
               </Show>
             </>
@@ -797,7 +797,7 @@ function CpuManualPlacementSection(props: {
           disabled={exclusiveIds().length === 0 && lockedIds().length === 0}
           onClick={() => props.onUpdate({ cpuManualExclusivePositionIds: [], cpuManualLockedPositionIds: [] })}
         >
-          清空
+          {uiText.softwareDetail.cpu.clear}
         </button>
       </div>
         <Show when={topology()} fallback={<p class="software-detail-empty">-</p>}>
@@ -807,10 +807,10 @@ function CpuManualPlacementSection(props: {
                 <span>{model().cpuName}</span>
                 <span>{model().physicalCoreCount}C / {model().logicalProcessorCount}T</span>
                 <span>{model().ccdCount} CCD</span>
-                <span>最大加速 {formatMhz(model().specification.maxClockSpeedMhz)}</span>
+                <span>{uiText.softwareDetail.cpu.maxBoost(formatMhz(model().specification.maxClockSpeedMhz))}</span>
                 <span>{uiText.softwareDetail.cpu.l1Cache}</span>
-                <span>L2 缓存 {formatCacheKb(model().specification.l2CacheSizeKb)}</span>
-                <span>L3 缓存 {formatCacheKb(model().specification.l3CacheSizeKb)}</span>
+                <span>{uiText.softwareDetail.cpu.l2Cache(formatCacheKb(model().specification.l2CacheSizeKb))}</span>
+                <span>{uiText.softwareDetail.cpu.l3Cache(formatCacheKb(model().specification.l3CacheSizeKb))}</span>
               </div>
               <div class="cpu-manual-ccd-grid">
                 <For each={model().ccds}>
@@ -819,7 +819,7 @@ function CpuManualPlacementSection(props: {
                       <div class="cpu-manual-ccd-header">
                         <div>
                           <strong>{ccd.label}</strong>
-                          <span>{ccd.physicalCoreIndexes.length} 个核心</span>
+                          <span>{uiText.softwareDetail.cpu.coreCount(ccd.physicalCoreIndexes.length)}</span>
                         </div>
                         <CpuManualPlacementToggles
                           id={ccd.id}
@@ -840,7 +840,7 @@ function CpuManualPlacementSection(props: {
                             <article class="cpu-manual-core">
                               <div>
                                 <strong>{core.label}</strong>
-                                <span>性能等级 {formatScoreValue(core.performanceScore)} · 逻辑处理器 {core.logicalProcessorIds.join(", ")}</span>
+                                <span>{uiText.softwareDetail.cpu.corePerformance(formatScoreValue(core.performanceScore), core.logicalProcessorIds.join(", "))}</span>
                               </div>
                               <CpuManualPlacementToggles
                                 id={core.id}
@@ -1144,7 +1144,7 @@ function GpuPlacementProcessSection(props: {
                     </div>
                     <Show when={!props.preciseGpuPlacementEnabled}>
                       <p class="software-detail-hint">
-                        全局精确 GPU 选择当前关闭；进程设置仍会保存，但当前只会应用 Windows 支持的显卡选择。
+                        {uiText.softwareDetail.processPreciseDisabledHint}
                       </p>
                     </Show>
                     <Show when={props.preciseGpuPlacementEnabled && selectedCapabilities()}>
@@ -1177,7 +1177,7 @@ function GpuPlacementProcessSection(props: {
                     <Show when={selectedInterception()?.recentLaunchResult}>
                       {(recent) => (
                         <p class="software-detail-hint">
-                          最近启动：{formatGpuLaunchOutcome(recent().outcome)} · {formatDateTime(recent().occurredAt)}
+                          {uiText.softwareDetail.startupGpuState.recentLaunch(formatGpuLaunchOutcome(recent().outcome), formatDateTime(recent().occurredAt))}
                           {recent().targetAdapterName ? ` · ${recent().targetAdapterName}` : ""}
                           {recent().processId ? ` · PID ${recent().processId}` : ""}
                         </p>
@@ -1315,7 +1315,7 @@ function PathLine(props: { label: string; path?: string | null; onOpenPath: (pat
         <span>{props.label}</span>
         <code>{path()}</code>
         <button class="software-detail-path-button secondary" type="button" onClick={() => props.onOpenPath(path())}>
-          打开
+          {uiText.softwareDetail.migration.open}
         </button>
       </div>
     </Show>
@@ -1396,7 +1396,7 @@ function ScalarDetailValue(props: { value: ScalarDetailValueType; onOpenPath?: (
           <div class="software-detail-path">
             <code>{text()}</code>
             <button class="software-detail-path-button secondary" type="button" onClick={() => props.onOpenPath?.(text())}>
-              打开
+              {uiText.softwareDetail.migration.open}
             </button>
           </div>
         </Show>

@@ -271,24 +271,24 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       <div class="panel-header gpu-scheduling-header">
         <div class="optimization-heading">
           <h2>{uiText.gpuScheduling.panel}</h2>
-          <span>{observationCanRender(observation()) ? positions().length : "--"} 张 GPU · GPU {gpuUsageFullPressurePercent}% / 显存 {gpuVramFullPressurePercent}% · {telemetryStatus()}</span>
+          <span>{uiText.gpuScheduling.summary(observationCanRender(observation()) ? String(positions().length) : "--", gpuUsageFullPressurePercent, gpuVramFullPressurePercent, telemetryStatus())}</span>
         </div>
         <div class="gpu-scheduling-actions">
           <Show when={editing()} fallback={
             <Show when={props.runtimeEffectsEnabled && observation().status === "ready"}>
               <button class="secondary" type="button" disabled={!model()} onClick={startEditing}>
-                编辑
+                {uiText.gpuScheduling.edit}
               </button>
             </Show>
           }>
             <button class="secondary" type="button" disabled={saving()} onClick={cancelEditing}>
-              取消
+              {uiText.gpuScheduling.cancel}
             </button>
             <button class="secondary" type="button" disabled={saving()} onClick={resetScores}>
-              重置
+              {uiText.gpuScheduling.reset}
             </button>
             <button type="button" disabled={saving()} onClick={saveScores}>
-              保存
+              {uiText.gpuScheduling.save}
             </button>
           </Show>
         </div>
@@ -320,9 +320,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                 <div class="gpu-position-meta">
                   <Show when={editing()} fallback={
                     <span>
-                      性能分 {formatScore(position.performanceScore)}
+                      {uiText.gpuScheduling.performanceScore(formatScore(position.performanceScore))}
                       <Show when={position.hasPerformanceOverride}>
-                        {" "}· 默认 {formatScore(position.defaultPerformanceScore)}
+                        {" "}· {uiText.gpuScheduling.defaultScore(formatScore(position.defaultPerformanceScore))}
                       </Show>
                     </span>
                   }>
@@ -337,18 +337,18 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                         onInput={(event) => updateScoreDraft(position.id, event.currentTarget.value)}
                       />
                       <small>
-                        默认 {formatScore(position.defaultPerformanceScore)}
-                        {" "}· 光栅 {formatScore(position.rasterPerformanceScore)}
+                        {uiText.gpuScheduling.defaultScore(formatScore(position.defaultPerformanceScore))}
+                        {" "}· {uiText.gpuScheduling.rasterScore(formatScore(position.rasterPerformanceScore))}
                         <Show when={position.generationBonusScore > 0}>
-                          {" "}+ 代际 {formatScore(position.generationBonusScore)}
+                          {" "}+ {uiText.gpuScheduling.generationBonus(formatScore(position.generationBonusScore))}
                         </Show>
                         <Show when={position.useCaseBonusScore > 0}>
-                          {" "}+ 用途 {formatScore(position.useCaseBonusScore)}
+                          {" "}+ {uiText.gpuScheduling.useCaseBonus(formatScore(position.useCaseBonusScore))}
                         </Show>
                       </small>
                     </label>
                   </Show>
-                  <span>基础分 {formatScore(position.softwareScoreTotal)}</span>
+                  <span>{uiText.gpuScheduling.softwareScoreTotal(formatScore(position.softwareScoreTotal))}</span>
                   <span>{formatProcessCount(position)}</span>
                   <span>{position.graphicsClockDisplay}</span>
                   <span>{position.memoryClockDisplay}</span>

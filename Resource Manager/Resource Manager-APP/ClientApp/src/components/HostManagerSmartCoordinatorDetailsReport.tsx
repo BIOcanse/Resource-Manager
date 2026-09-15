@@ -87,7 +87,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
                         {record.needsAttention ? uiText.smartReport.needsAttention : uiText.smartReport.completed}
                       </span>
                       <button class="secondary details-button" type="button" onClick={() => setSelectedRecord(record)}>
-                        详细信息
+                        {uiText.smartReport.details}
                       </button>
                     </div>
                   </article>
