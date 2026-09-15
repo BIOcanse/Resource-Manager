@@ -3,6 +3,15 @@ import type { AppCopy } from "../zh/index.ts";
 export const enMetricLabelsCopy: Pick<AppCopy, "metricLabel"> = {
   metricLabel: {
     "cpu.usage": "CPU utilization",
+    "disk.io": "Disk I/O",
+    "disk.read": "Disk read",
+    "disk.write": "Disk write",
+    "network.traffic": "Network traffic",
+    "network.receive": "Network receive",
+    "network.send": "Network send",
+    "network.raw.traffic": "Raw network traffic",
+    "network.raw.receive": "Raw network receive",
+    "network.raw.send": "Raw network send",
     "cpu.frequency": "CPU clock",
     "cpu.frequencyPercent": "CPU clock percent",
     "cpu.temperature": "CPU temperature",

@@ -29,8 +29,8 @@ public sealed partial class SoftwareRegistryView
         var projectedKind = ResolvePolicyProjectedKind(group) ?? record.Kind;
         var projectedDisplayKind = projectedKind switch
         {
-            SoftwareKinds.Game => SoftwareText.Game,
-            SoftwareKinds.HighPerformance => SoftwareText.HighPerformance,
+            SoftwareKinds.Game => SoftwareDisplayKinds.Game,
+            SoftwareKinds.HighPerformance => SoftwareDisplayKinds.HighPerformance,
             _ => record.DisplayKind
         };
         var roots = ResolvePolicyRootPaths(record.RootPaths, assignment.RootPaths, projectedKind);

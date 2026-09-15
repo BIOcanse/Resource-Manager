@@ -19,8 +19,9 @@ public sealed record RuntimeSoftwareAttribution(
 {
     public static RuntimeSoftwareAttribution Unattributed { get; } = new(
         RuntimeAttributionIds.Unattributed,
-        "未归属进程",
+        // 名字为空表示「没有可显示的软件名」，前端按 Kind 出「未归属进程」。
+        string.Empty,
         SoftwareKinds.Unattributed,
-        "未归属进程",
+        SoftwareDisplayKinds.Unattributed,
         []);
 }

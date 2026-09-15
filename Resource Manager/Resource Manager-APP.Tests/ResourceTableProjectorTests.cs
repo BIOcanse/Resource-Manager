@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -91,7 +92,8 @@ public sealed class ResourceTableProjectorTests
                 Assert.Equal((ulong)7, input.Generation);
                 Assert.Equal(ResourceBreakdownSamplingStatuses.Stale, input.Status);
             });
-        Assert.Equal("-", result.Rows[0].Status);
+        // 汇总行的状态装的是采样状态标识，措辞由前端出。
+        Assert.Equal(ResourceTableProjectionStatuses.Stale, result.Rows[0].Status);
     }
 
     [Fact]
@@ -114,7 +116,7 @@ public sealed class ResourceTableProjectorTests
         Assert.All(
             result.InputDatasets,
             input => Assert.Equal(ResourceBreakdownSamplingStatuses.Warming, input.Status));
-        Assert.Equal("-", result.Rows[0].Status);
+        Assert.Equal(ResourceTableProjectionStatuses.Warming, result.Rows[0].Status);
     }
 
     [Fact]
@@ -171,7 +173,7 @@ public sealed class ResourceTableProjectorTests
         var row = SingleDataRow(result);
         Assert.Equal(ResourceTableRowKinds.Process, row.Kind);
         Assert.Equal("worker.exe", row.Name);
-        Assert.Equal("运行中", row.Status);
+        Assert.Equal(ResourceTableProcessStates.Running, row.Status);
         Assert.Equal("4242", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
         Assert.Equal(@"TEST-PC\test-user", row.Values[ResourceTableColumnIds.User].DisplayValue);
         Assert.Equal("x64", row.Values[ResourceTableColumnIds.Architecture].DisplayValue);
@@ -322,7 +324,7 @@ public sealed class ResourceTableProjectorTests
             "resource-residual:virtualMemory.usage",
             "系统/驱动保留 · 虚拟内存占用",
             "WindowsSystem",
-            "系统/驱动保留",
+            SoftwareDisplayKinds.SystemResidual,
             2 * 1024 * 1024,
             10,
             "2 MB",
@@ -370,7 +372,7 @@ public sealed class ResourceTableProjectorTests
             "resource-residual:gpu.1.vram",
             "系统/驱动保留 · GPU1 显存占用",
             "WindowsSystem",
-            "系统/驱动保留",
+            SoftwareDisplayKinds.SystemResidual,
             512 * 1024 * 1024,
             12.5,
             "512 MB",
@@ -405,7 +407,7 @@ public sealed class ResourceTableProjectorTests
         var row = SingleDataRow(result);
         Assert.Equal(ResourceTableRowKinds.Process, row.Kind);
         Assert.Equal("GPU 驱动 / WDDM / 桌面合成保留（未细分）", row.Name);
-        Assert.Equal("系统/驱动保留", row.Status);
+        Assert.Equal(SoftwareDisplayKinds.SystemResidual, row.Status);
         Assert.Null(row.ProcessId);
         Assert.Equal("--", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
         Assert.Equal("512.0 MB", row.Values["gpu.1.vram"].DisplayValue);
@@ -429,7 +431,7 @@ public sealed class ResourceTableProjectorTests
             "resource-residual:gpu.1.vram",
             "系统/驱动保留 · GPU1 显存占用",
             "WindowsSystem",
-            "系统/驱动保留",
+            SoftwareDisplayKinds.SystemResidual,
             256 * 1024 * 1024,
             6.25,
             "256 MB",
@@ -642,7 +644,7 @@ public sealed class ResourceTableProjectorTests
             "software:test",
             "Test App",
             "Other",
-            "一般应用",
+            SoftwareDisplayKinds.General,
             30,
             30,
             "30.0%",
@@ -652,7 +654,7 @@ public sealed class ResourceTableProjectorTests
             "software:test",
             "Test App",
             "Other",
-            "一般应用",
+            SoftwareDisplayKinds.General,
             400,
             40,
             "400 B",
@@ -754,7 +756,7 @@ public sealed class ResourceTableProjectorTests
                     group.Key.SoftwareId,
                     group.Key.SoftwareName,
                     "Other",
-                    "一般应用",
+                    SoftwareDisplayKinds.General,
                     total,
                     total * 100 / capacity,
                     $"{total:0} B",

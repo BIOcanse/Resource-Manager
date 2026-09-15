@@ -780,7 +780,7 @@ function ResourceTableRowSlot(props: {
       role="row"
       data-resource-row-id={row()?.id}
       aria-rowindex={props.rowIndex() + 2}
-      aria-label={row()?.name}
+      aria-label={rowName(row())}
       aria-expanded={isExpandable()
         ? props.expandedSoftwareIds()[row()?.softwareId ?? ""] === true
           ? "true"
@@ -1037,13 +1037,13 @@ function ResourceTableCell(props: {
             {props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "▾" : "▸"}
           </button>
         </Show>
-        <span class="resource-row-name" title={row()?.name}>{row()?.name ?? ""}</span>
+        <span class="resource-row-name" title={rowName(row())}>{rowName(row())}</span>
         <Show when={props.onSoftwareContextMenu && (row()?.kind === "software" || row()?.kind === "process")}>
           <button
             type="button"
             class="resource-row-actions"
             tabIndex={-1}
-            aria-label={uiText.resourceTableView.moreActions(row()?.name ?? uiText.resourceTableView.currentItem)}
+            aria-label={uiText.resourceTableView.moreActions(rowName(row()) || uiText.resourceTableView.currentItem)}
             title={uiText.resourceTableView.moreActionsTitle}
             data-focus-key={`resource-row-actions:${row()?.id ?? "unknown"}`}
             onClick={(event) => openRowActions(event.currentTarget)}
@@ -1066,7 +1066,7 @@ function ResourceTableCell(props: {
   }
 
   if (props.column.id === "status") {
-    const status = () => userFacingLabel(row()?.status, uiText.resourceTableView.unknownStatus);
+    const status = () => rowStatus(row());
     return (
       <div class="resource-table-cell status-cell" role="cell" aria-colindex={props.columnIndex + 1} title={status()}>
         {status()}
@@ -1189,6 +1189,47 @@ function resourceTableColumnFlexWeight(columnId: string) {
   if (columnId === "memory" || columnId.endsWith(".vram")) return 1.2;
   if (columnId === "pid" || columnId === "architecture") return 0.7;
   return 1;
+}
+
+// 行名：汇总行用固定文案；软件与进程行用后端给的名字；
+// 没有名字的行（例如「未归属进程」）按它的分组标识出名。
+function rowName(row: ResourceTableRow | undefined) {
+  if (row?.kind === "summary") {
+    return uiText.resourceTable.summaryRow.name;
+  }
+
+  if (row?.softwareId === "resource-manager:self") {
+    return uiText.shell.productName;
+  }
+
+  const residualMetricId = /^resource-residual:(.+)$/.exec(row?.softwareId ?? "")?.[1];
+  if (residualMetricId) {
+    return uiText.resourceTable.systemResidualRow(localizedMetricLabel(residualMetricId));
+  }
+
+  return row?.name?.trim() || softwareGroupLabel(row?.status) || "";
+}
+
+// 状态列：汇总行装的是采样状态标识，软件行装的是分组标识，进程行装的是进程状态。
+function rowStatus(row: ResourceTableRow | undefined) {
+  const value = String(row?.status ?? "").trim();
+  if (row?.kind === "summary") {
+    const copy = uiText.resourceTable.summaryRow.status as Record<string, string | undefined>;
+    return copy[value] ?? uiText.resourceTableView.unknownStatus;
+  }
+
+  if (value === "running") {
+    return uiText.status.state.running;
+  }
+
+  return softwareGroupLabel(value)
+    ?? userFacingLabel(row?.status, uiText.resourceTableView.unknownStatus);
+}
+
+// 分组标识（后端 SoftwareDisplayKinds）转成当前语言的名字；不是分组标识就返回 undefined。
+function softwareGroupLabel(value?: string | null) {
+  const group = String(value ?? "").trim() as keyof typeof uiText.softwareKind;
+  return uiText.softwareKind[group];
 }
 
 function gpuMetricLabel(metricId: string, fallback: string) {

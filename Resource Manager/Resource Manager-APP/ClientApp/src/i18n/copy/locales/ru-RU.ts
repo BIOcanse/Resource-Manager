@@ -72,6 +72,7 @@ const ruRuAppCopy: AppCopy = {
     RuntimeProduct: "Обычные приложения",
     RuntimeRoot: "Обычные приложения",
     Unattributed: "Неотнесённые процессы",
+    SystemResidual: "Резерв системы и драйверов",
     Empty: "Свободно"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const ruRuAppCopy: AppCopy = {
       process: "По процессам",
       performance: "Производительность"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "Общая нагрузка",
+      status: {
+        warming: "Прогрев",
+        ready: "Текущая выборка",
+        stale: "Последняя выборка",
+        failed: "Сбой выборки"
+      }
+    },
+    systemResidualRow: (metric: string) => `Резерв системы и драйверов · ${metric}`,
     columns: {
       name: "Имя",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const ruRuAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "Загрузка ЦП",
+    "disk.io": "Ввод-вывод диска",
+    "disk.read": "Чтение с диска",
+    "disk.write": "Запись на диск",
+    "network.traffic": "Сетевой трафик",
+    "network.receive": "Приём по сети",
+    "network.send": "Передача по сети",
+    "network.raw.traffic": "Необработанный сетевой трафик",
+    "network.raw.receive": "Необработанный приём по сети",
+    "network.raw.send": "Необработанная передача по сети",
     "cpu.frequency": "Частота ЦП",
     "cpu.frequencyPercent": "Доля частоты ЦП",
     "cpu.temperature": "Температура ЦП",

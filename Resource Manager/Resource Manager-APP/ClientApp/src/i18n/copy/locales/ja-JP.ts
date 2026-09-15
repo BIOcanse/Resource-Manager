@@ -72,6 +72,7 @@ const jaJpAppCopy: AppCopy = {
     RuntimeProduct: "一般アプリケーション",
     RuntimeRoot: "一般アプリケーション",
     Unattributed: "帰属不明のプロセス",
+    SystemResidual: "システム／ドライバー予約",
     Empty: "空き"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const jaJpAppCopy: AppCopy = {
       process: "プロセス別",
       performance: "パフォーマンス"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "合計使用量",
+      status: {
+        warming: "ウォームアップ中",
+        ready: "現在のサンプル",
+        stale: "前回のサンプル",
+        failed: "サンプリング失敗"
+      }
+    },
+    systemResidualRow: (metric: string) => `システム／ドライバー予約 · ${metric}`,
     columns: {
       name: "名前",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const jaJpAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "CPU 使用率",
+    "disk.io": "ディスク I/O",
+    "disk.read": "ディスク読み取り",
+    "disk.write": "ディスク書き込み",
+    "network.traffic": "ネットワーク通信量",
+    "network.receive": "ネットワーク受信",
+    "network.send": "ネットワーク送信",
+    "network.raw.traffic": "ネットワーク生通信量",
+    "network.raw.receive": "ネットワーク生受信",
+    "network.raw.send": "ネットワーク生送信",
     "cpu.frequency": "CPU クロック",
     "cpu.frequencyPercent": "CPU クロックの割合",
     "cpu.temperature": "CPU 温度",

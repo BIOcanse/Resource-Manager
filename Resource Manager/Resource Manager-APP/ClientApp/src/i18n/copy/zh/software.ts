@@ -14,6 +14,7 @@ export const zhSoftwareCopy = {
     RuntimeProduct: "一般应用",
     RuntimeRoot: "一般应用",
     Unattributed: "未归属进程",
+    SystemResidual: "系统/驱动保留",
     Empty: "空余"
   },
   managementRole: {
