@@ -89,7 +89,12 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       sourcePnpServiceSetupApi: "Windows PnP service + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "OEM connector profile + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "OEM connector profile + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Windows PnP service: ${service}`,
+      roleUcsiConnectorManager: "USB Type-C connector manager",
+      roleUsb4HostRouter: "USB4 host router",
+      roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 device router",
+      roleUsb4P2PNetwork: "USB4 host-to-host network adapter"
     }
   }
 };

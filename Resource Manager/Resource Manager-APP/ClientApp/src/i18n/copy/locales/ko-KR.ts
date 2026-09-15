@@ -1999,7 +1999,12 @@ const koKrAppCopy: AppCopy = {
       sourcePnpServiceSetupApi: "Windows PnP 서비스 + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "OEM 기종별 커넥터 프로필 + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "OEM 기종별 커넥터 프로필 + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Windows PnP 서비스: ${service}`,
+      roleUcsiConnectorManager: "USB Type-C 커넥터 관리자",
+      roleUsb4HostRouter: "USB4 호스트 라우터",
+      roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 장치 라우터",
+      roleUsb4P2PNetwork: "USB4 호스트 간 네트워크 어댑터"
     }
   }
 };

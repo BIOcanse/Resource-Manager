@@ -1999,7 +1999,12 @@ const frFrAppCopy: AppCopy = {
       sourcePnpServiceSetupApi: "service PnP Windows + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "profil de connecteur OEM + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "profil de connecteur OEM + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Service PnP Windows : ${service}`,
+      roleUcsiConnectorManager: "Gestionnaire de connecteurs USB Type-C",
+      roleUsb4HostRouter: "Routeur hôte USB4",
+      roleUsb4DeviceRouter: "Routeur de périphérique USB4 / Thunderbolt 3",
+      roleUsb4P2PNetwork: "Adaptateur réseau hôte à hôte USB4"
     }
   }
 };

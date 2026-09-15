@@ -75,9 +75,9 @@ const port = {
   },
   advancedInterconnect: {
     kind: "usb4-host-router",
-    role: "host",
+    role: { domain: 5, code: 43, args: [] },
     technology: "USB4",
-    evidence: "fixture"
+    evidence: { domain: 5, code: 41, args: ["Usb4HostRouter"] }
   },
   usb: {
     hubDevicePath: "\\\\?\\usb#hub",

@@ -87,7 +87,12 @@ export const zhBackendMessagesCopy = {
       sourcePnpServiceSetupApi: "Windows PnP 服务 + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "OEM 机型接口档案 + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "OEM 机型接口档案 + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Windows PnP 服务：${service}`,
+      roleUcsiConnectorManager: "USB Type-C 连接器管理器",
+      roleUsb4HostRouter: "USB4 主机路由器",
+      roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 设备路由器",
+      roleUsb4P2PNetwork: "USB4 主机互联网络适配器"
     }
   }
 };
