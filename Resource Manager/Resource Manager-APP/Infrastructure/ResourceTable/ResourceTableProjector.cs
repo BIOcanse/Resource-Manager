@@ -104,14 +104,12 @@ public sealed partial class ResourceTableProjector(IEnumerable<IResourceTablePro
     {
         var normalizedViewMode = NormalizeViewMode(viewMode);
         var requested = NormalizeColumnIds(requestedColumnIds, normalizedViewMode);
-        var barLabels = breakdown.Bars
-            .ToDictionary(static bar => bar.MetricId, static bar => bar.Label, StringComparer.OrdinalIgnoreCase);
         var knownColumns = ResourceTableColumnCatalog.KnownColumns()
             .ToDictionary(static column => column.Id, StringComparer.OrdinalIgnoreCase);
         return requested
             .Select(id => knownColumns.TryGetValue(id, out var column)
                 ? column with { Visible = true }
-                : ResourceTableColumnCatalog.CreateGpuColumn(id, barLabels.GetValueOrDefault(id)))
+                : ResourceTableColumnCatalog.CreateGpuColumn(id))
             .ToArray();
     }
 

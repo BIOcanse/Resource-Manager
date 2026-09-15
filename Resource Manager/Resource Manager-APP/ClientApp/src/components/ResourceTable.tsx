@@ -1,4 +1,4 @@
-import { localizedMetricLabel } from "../presentation/metricLabels";
+import { localizedMetricLabel, resourceTableColumnLabel } from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
@@ -248,7 +248,8 @@ function ResourceTableModeSwitch(props: {
   mode: ResourceTableViewMode;
   onModeChange: (mode: ResourceTableViewMode) => void;
 }) {
-  const modes: Array<{ id: ResourceTableViewMode; label: string }> = [
+  // 必须每次读，不能在组件建立时固化，否则切语言后这三个标签不会更新。
+  const modes = (): Array<{ id: ResourceTableViewMode; label: string }> => [
     { id: "software", label: uiText.resourceTable.modes.software },
     { id: "process", label: uiText.resourceTable.modes.process },
     { id: "performance", label: uiText.resourceTable.modes.performance }
@@ -256,7 +257,7 @@ function ResourceTableModeSwitch(props: {
   return (
     <SegmentedControl
       value={props.mode}
-      options={modes}
+      options={modes()}
       ariaLabel={uiText.resourceTable.viewLabel}
       class="resource-table-mode-switch"
       itemClass="resource-table-mode-button"
@@ -289,7 +290,7 @@ function ResourceTableColumnEditor(props: {
               checked={byId().get(column.id)?.visible ?? column.visible}
               onChange={(event) => props.onToggle(column.id, event.currentTarget.checked)}
             />
-            <span>{column.label}</span>
+            <span>{resourceTableColumnLabel(column.id)}</span>
           </label>
         )}
       </For>
@@ -331,7 +332,6 @@ function VirtualResourceTable(props: {
     return source
       .map((column) => ({
         ...column,
-        label: gpuMetricLabel(column.id, column.label),
         width: columnSettingsById().get(column.id)?.width ?? column.width
       }))
       .sort((left, right) =>
@@ -652,7 +652,7 @@ function VirtualResourceTable(props: {
                   disabled={!column().sortable}
                   onClick={() => updateSort(column())}
                 >
-                  <span>{column().label}</span>
+                  <span>{resourceTableColumnLabel(column().id)}</span>
                   <Show when={props.sortColumnId === columnId}>
                     <small>{props.sortDirection === "asc" ? "↑" : "↓"}</small>
                   </Show>
@@ -663,7 +663,7 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === 0}
-                      aria-label={uiText.resourceTableView.moveColumnLeft(column().label)}
+                      aria-label={uiText.resourceTableView.moveColumnLeft(resourceTableColumnLabel(column().id))}
                       title={uiText.resourceTableView.moveLeftTitle}
                       onClick={() => {
                         const previous = columns()[columnIndex() - 1];
@@ -678,7 +678,7 @@ function VirtualResourceTable(props: {
                       class="resource-table-column-order-button"
                       type="button"
                       disabled={columnIndex() === columns().length - 1}
-                      aria-label={uiText.resourceTableView.moveColumnRight(column().label)}
+                      aria-label={uiText.resourceTableView.moveColumnRight(resourceTableColumnLabel(column().id))}
                       title={uiText.resourceTableView.moveRightTitle}
                       onClick={() => {
                         const next = columns()[columnIndex() + 1];
@@ -696,7 +696,7 @@ function VirtualResourceTable(props: {
                   role="separator"
                   tabIndex={props.editMode ? 0 : -1}
                   aria-orientation="vertical"
-                  aria-label={uiText.resourceTableView.resizeColumn(column().label)}
+                  aria-label={uiText.resourceTableView.resizeColumn(resourceTableColumnLabel(column().id))}
                   aria-valuemin={minColumnWidth}
                   aria-valuemax={maxColumnWidth}
                   aria-valuenow={Math.round(clampColumnWidth(column().width))}
@@ -1076,7 +1076,7 @@ function ResourceTableCell(props: {
 
   if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
     return (
-      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={value()?.displayValue ?? props.column.label}>
+      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={value()?.displayValue ?? resourceTableColumnLabel(props.column.id)}>
         {value()?.displayValue ?? "--"}
       </div>
     );
@@ -1091,11 +1091,13 @@ function ResourceTableCell(props: {
       style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
       title={value()?.sharedValue != null
         ? uiText.resourceTableView.memoryBreakdown(
-          props.column.label,
+          resourceTableColumnLabel(props.column.id),
           String(value()?.displayValue),
           formatBytes((value()?.value ?? 0) - value()!.sharedValue!),
           formatBytes(value()?.sharedValue))
-        : value() ? `${props.column.label}: ${value()?.displayValue}` : props.column.label}
+        : value()
+          ? `${resourceTableColumnLabel(props.column.id)}: ${value()?.displayValue}`
+          : resourceTableColumnLabel(props.column.id)}
     >
       {value()?.displayValue ?? "--"}
     </div>
@@ -1127,18 +1129,18 @@ function contextMenuEventForElement(element: HTMLElement) {
 function resourceTableColumnOptions(catalog: MetricDefinition[], mode: ResourceTableViewMode = "software"): ResourceTableColumn[] {
   const processMode = mode === "process";
   return [
-    { id: "name", label: uiText.resourceTable.columns.name, unit: "", visible: true, sortable: true, width: 260 },
-    ...(processMode ? [{ id: "pid", label: uiText.resourceTable.columns.pid, unit: "", visible: true, sortable: true, width: 76 }] : []),
-    { id: "status", label: uiText.resourceTable.columns.status, unit: "", visible: true, sortable: true, width: 92 },
+    { id: "name", unit: "", visible: true, sortable: true, width: 260 },
+    ...(processMode ? [{ id: "pid", unit: "", visible: true, sortable: true, width: 76 }] : []),
+    { id: "status", unit: "", visible: true, sortable: true, width: 92 },
     ...(processMode ? [
-      { id: "user", label: uiText.resourceTable.columns.user, unit: "", visible: true, sortable: true, width: 150 },
-      { id: "architecture", label: uiText.resourceTable.columns.architecture, unit: "", visible: true, sortable: true, width: 76 }
+      { id: "user", unit: "", visible: true, sortable: true, width: 150 },
+      { id: "architecture", unit: "", visible: true, sortable: true, width: 76 }
     ] : []),
-    { id: "cpu", label: uiText.resourceTable.columns.cpu, unit: "%", visible: true, sortable: true, width: 86 },
-    { id: "memory", label: uiText.resourceTable.columns.memory, unit: "B", visible: true, sortable: true, width: 110 },
+    { id: "cpu", unit: "%", visible: true, sortable: true, width: 86 },
+    { id: "memory", unit: "B", visible: true, sortable: true, width: 110 },
     ...gpuResourceTableColumns(catalog),
-    { id: "disk", label: uiText.resourceTable.columns.disk, unit: "B/s", visible: true, sortable: true, width: 106 },
-    { id: "network", label: uiText.resourceTable.columns.network, unit: "bps", visible: true, sortable: true, width: 106 }
+    { id: "disk", unit: "B/s", visible: true, sortable: true, width: 106 },
+    { id: "network", unit: "bps", visible: true, sortable: true, width: 106 }
   ];
 }
 
@@ -1148,7 +1150,6 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
     .sort((left, right) => gpuColumnOrder(left.id) - gpuColumnOrder(right.id))
     .map((metric) => ({
       id: metric.id,
-      label: localizedMetricLabel(metric.id, gpuMetricLabel(metric.id, metric.label)),
       unit: metric.id.endsWith(".vram") ? "B" : "%",
       visible: true,
       sortable: true,

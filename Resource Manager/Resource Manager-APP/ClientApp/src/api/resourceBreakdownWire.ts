@@ -257,7 +257,6 @@ function decodeTableColumn(value: unknown, path: string): ResourceTableColumn {
   const column = requireRecord(value, path);
   return {
     id: requireNonEmptyString(column.id, `${path}.id`),
-    label: requireNonEmptyString(column.label, `${path}.label`),
     unit: requireString(column.unit, `${path}.unit`),
     visible: requireBoolean(column.visible, `${path}.visible`),
     sortable: requireBoolean(column.sortable, `${path}.sortable`),

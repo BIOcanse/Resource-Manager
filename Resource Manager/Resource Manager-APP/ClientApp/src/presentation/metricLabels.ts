@@ -23,6 +23,32 @@ export function localizedMetricLabel(
   return fallbackLabel?.trim() || normalized;
 }
 
+/**
+ * 资源列表的表头。后端只发列 id，措辞全部在这里按当前语言取。
+ * GPU 列的 id 形如 `gpu.0.usage` / `gpu.1.vram`，走指标文案那一套。
+ */
+export function resourceTableColumnLabel(id: string | null | undefined): string {
+  const normalized = String(id ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  const columns = uiText.resourceTable.columns as Record<string, string | undefined>;
+  const known = columns[normalized];
+  if (known) {
+    return known;
+  }
+
+  const gpu = /^gpu\.(\d+)\.(usage|vram)$/i.exec(normalized);
+  if (gpu) {
+    return gpu[2].toLowerCase() === "vram"
+      ? uiText.resourceTable.gpuVramLabel(gpu[1])
+      : uiText.resourceTable.gpuUsageLabel(gpu[1]);
+  }
+
+  return localizedMetricLabel(normalized);
+}
+
 function normalizeMetricId(id: string): { pattern: string; index: string | null } {
   const segments = id.split(".");
   let index: string | null = null;

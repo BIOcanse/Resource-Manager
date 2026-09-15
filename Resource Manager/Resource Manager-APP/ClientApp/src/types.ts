@@ -395,8 +395,8 @@ export interface ResourceBreakdownSnapshot {
 }
 
 export interface ResourceTableColumn {
+  /** 列标识；表头措辞由 resourceTableColumnLabel 按当前语言给出。 */
   id: string;
-  label: string;
   unit: string;
   visible: boolean;
   sortable: boolean;

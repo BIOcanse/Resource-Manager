@@ -5,7 +5,6 @@ import type { ResourceTableColumn } from "../src/types.ts";
 
 const cpuColumn: ResourceTableColumn = {
   id: "cpu",
-  label: "CPU",
   unit: "%",
   visible: true,
   sortable: true,
@@ -13,7 +12,6 @@ const cpuColumn: ResourceTableColumn = {
 };
 const memoryColumn: ResourceTableColumn = {
   id: "memory",
-  label: "内存",
   unit: "B",
   visible: true,
   sortable: true,
@@ -27,7 +25,6 @@ assert.equal(resourceTableColumnsEqual(
 
 for (const [field, value] of [
   ["id", "cpu-next"],
-  ["label", "处理器"],
   ["unit", "ms"],
   ["visible", false],
   ["sortable", false],

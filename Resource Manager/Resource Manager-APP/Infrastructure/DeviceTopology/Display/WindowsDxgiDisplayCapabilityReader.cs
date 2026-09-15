@@ -149,7 +149,7 @@ internal static unsafe class WindowsDxgiDisplayCapabilityReader
             : null;
     }
 
-    internal static string DescribeColorSpace(int colorSpace)
+    internal static string? DescribeColorSpace(int colorSpace)
     {
         return colorSpace switch
         {
@@ -244,7 +244,7 @@ internal static unsafe class WindowsDxgiDisplayCapabilityReader
 
 internal sealed record DeviceTopologyDxgiDisplayCapabilities(
     uint? BitsPerColorChannel,
-    string ColorSpace,
+    string? ColorSpace,
     double? MinimumLuminanceNits,
     double? MaximumLuminanceNits,
     double? MaximumFullFrameLuminanceNits);

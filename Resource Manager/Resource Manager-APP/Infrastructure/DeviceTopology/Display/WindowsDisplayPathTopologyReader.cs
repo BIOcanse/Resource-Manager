@@ -272,7 +272,7 @@ internal static class WindowsDisplayPathTopologyReader
             : null;
     }
 
-    internal static string DescribeColorEncoding(int encoding)
+    internal static string? DescribeColorEncoding(int encoding)
     {
         return encoding switch
         {
@@ -625,7 +625,7 @@ internal sealed record DeviceTopologyDisplayAdvancedColor(
     bool AdvancedColorEnabled,
     bool WideColorEnforced,
     bool AdvancedColorForceDisabled,
-    string ColorEncoding,
+    string? ColorEncoding,
     uint? BitsPerColorChannel,
     bool HighDynamicRangeSupported = false,
     bool HighDynamicRangeUserEnabled = false,
