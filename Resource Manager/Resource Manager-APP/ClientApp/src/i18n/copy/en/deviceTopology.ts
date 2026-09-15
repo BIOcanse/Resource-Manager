@@ -122,6 +122,28 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
       disconnected: "Not connected",
       unknown: "State unknown"
     },
+    hidType: {
+      keyboard: "Keyboard",
+      mouse: "Mouse",
+      inputDevice: "HID input device"
+    },
+    portableDeviceType: {
+      phone: "Phone",
+      tablet: "Tablet",
+      camera: "Digital camera",
+      smartDevice: "Portable smart device"
+    },
+    storageHealth: {
+      healthy: "Healthy",
+      warning: "Warning",
+      unhealthy: "Unhealthy",
+      unknown: "Unknown"
+    },
+    mountState: {
+      mounted: "Mounted",
+      notReady: "Not ready",
+      unknown: "Unknown"
+    },
     displayLocation: {
       internal: "Internal connection",
       external: "External connection"

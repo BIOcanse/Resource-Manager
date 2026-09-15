@@ -1,3 +1,4 @@
+import { hidTypeLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -16,7 +17,7 @@ import { uiText } from "../../text.ts";
 
 export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
   id: "keyboard",
-  matches: ({ port }) => port.hid?.hidType.includes("键盘") === true
+  matches: ({ port }) => port.hid?.hidType === "keyboard"
     || port.pnpClass?.toLocaleLowerCase() === "keyboard"
     || port.service?.toLocaleLowerCase() === "kbdhid"
     || hasUsbInterface(port, /HID Boot Keyboard|\[03\/01\/01\]/i),
@@ -31,7 +32,8 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
     const scanRate = context.port.hid?.reportedScanRateHz
       ? formatRate(context.port.hid.reportedScanRateHz, "Hz")
       : uiText.deviceAdapters.standardHidNotReported;
-    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidKeyboard);
+    const inputProtocol = hidTypeLabel(context.port.hid?.hidType)
+      ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidKeyboard);
     const useInternalSummary = context.scope === "internal" && !hasInputTimingEvidence(context.port);
     return {
       adapterId: "keyboard",
@@ -66,7 +68,7 @@ export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
 
 export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
   id: "mouse",
-  matches: ({ port }) => port.hid?.hidType.includes("鼠标") === true
+  matches: ({ port }) => port.hid?.hidType === "mouse"
     || port.pnpClass?.toLocaleLowerCase() === "mouse"
     || port.service?.toLocaleLowerCase() === "mouhid"
     || hasUsbInterface(port, /HID Boot Mouse|\[03\/01\/02\]/i),
@@ -81,7 +83,8 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
     const dpi = context.port.hid?.reportedDpi
       ? `${context.port.hid.reportedDpi.toLocaleString()} DPI`
       : uiText.deviceAdapters.standardHidNotReported;
-    const inputProtocol = context.port.hid?.hidType ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidMouse);
+    const inputProtocol = hidTypeLabel(context.port.hid?.hidType)
+      ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidMouse);
     const useInternalSummary = context.scope === "internal" && !hasInputTimingEvidence(context.port);
     return {
       adapterId: "mouse",

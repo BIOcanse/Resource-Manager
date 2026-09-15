@@ -338,12 +338,13 @@ function decodeHidCapabilities(
     reportedScanRateHz: nullableInteger(
       record.reportedScanRateHz,
       `${path}.reportedScanRateHz`),
-    standardCapabilitySource: requireString(
+    standardCapabilitySource: requireBackendMessage(
       record.standardCapabilitySource,
       `${path}.standardCapabilitySource`),
-    vendorCapabilitySource: nullableString(
-      record.vendorCapabilitySource,
-      `${path}.vendorCapabilitySource`)
+    vendorCapabilitySource: requireNullable(
+      record.vendorCapabilitySource ?? null,
+      `${path}.vendorCapabilitySource`,
+      requireBackendMessage)
   };
 }
 
@@ -353,7 +354,7 @@ function decodeCameraCapabilities(
 ): DeviceTopologyCameraCapabilities {
   const record = requireRecord(value, path);
   return {
-    capabilitySource: requireString(record.capabilitySource, `${path}.capabilitySource`),
+    capabilitySource: requireBackendMessage(record.capabilitySource, `${path}.capabilitySource`),
     bestMode: nullableObject(record.bestMode, `${path}.bestMode`, decodeCameraMode),
     nativeModes: requireArray(record.nativeModes, `${path}.nativeModes`)
       .map((item, index) => decodeCameraMode(item, `${path}.nativeModes[${index}]`))
@@ -388,7 +389,7 @@ function decodeSmartDeviceCapabilities(
     batteryPercent: nullableInteger(record.batteryPercent, `${path}.batteryPercent`),
     storages: requireArray(record.storages, `${path}.storages`)
       .map((item, index) => decodeSmartDeviceStorage(item, `${path}.storages[${index}]`)),
-    source: requireString(record.source, `${path}.source`)
+    source: requireBackendMessage(record.source, `${path}.source`)
   };
 }
 
@@ -423,7 +424,7 @@ function decodeStorageDevice(value: unknown, path: string): DeviceTopologyStorag
     healthStatus: nullableString(record.healthStatus, `${path}.healthStatus`),
     partitions: requireArray(record.partitions, `${path}.partitions`)
       .map((item, index) => decodeStoragePartition(item, `${path}.partitions[${index}]`)),
-    source: requireString(record.source, `${path}.source`)
+    source: requireBackendMessage(record.source, `${path}.source`)
   };
 }
 

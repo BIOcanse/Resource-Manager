@@ -131,11 +131,11 @@ const port = {
     theoreticalReportRateHz: 8000,
     reportedDpi: 1600,
     reportedScanRateHz: 8000,
-    standardCapabilitySource: "descriptor",
+    standardCapabilitySource: { domain: 5, code: 60, args: [] },
     vendorCapabilitySource: null
   },
   camera: {
-    capabilitySource: "media-foundation",
+    capabilitySource: { domain: 5, code: 61, args: [] },
     bestMode: { width: 1920, height: 1080, maximumFrameRate: 60, pixelFormat: "NV12" },
     nativeModes: [{ width: 1280, height: 720, maximumFrameRate: 120, pixelFormat: "NV12" }]
   },
@@ -149,7 +149,7 @@ const port = {
     transport: "USB",
     batteryPercent: 80,
     storages: [{ name: "Internal", capacityBytes: 128_000_000_000, freeBytes: 64_000_000_000, fileSystem: null }],
-    source: "fixture"
+    source: { domain: 5, code: 63, args: [] }
   },
   storage: {
     physicalDeviceId: "\\\\.\\PHYSICALDRIVE1",
@@ -182,7 +182,7 @@ const port = {
         volumeSerialNumber: null
       }]
     }],
-    source: "fixture"
+    source: { domain: 5, code: 59, args: [] }
   },
   ignored: true
 };

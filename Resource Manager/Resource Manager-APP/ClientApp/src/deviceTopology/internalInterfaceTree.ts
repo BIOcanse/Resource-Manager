@@ -419,8 +419,8 @@ function inferDeviceConnectorKind(port: DeviceTopologyPort) {
   if (port.display?.internal) return "monitor";
   if (port.storage) return "hard-drive";
   if (port.camera) return "camera";
-  if (port.hid?.hidType.includes("键盘")) return "keyboard";
-  if (port.hid?.hidType.includes("鼠标")) return "mouse";
+  if (port.hid?.hidType === "keyboard") return "keyboard";
+  if (port.hid?.hidType === "mouse") return "mouse";
   if (port.busKind === "display") return "pcie";
   if (port.busKind === "network") return "network-adapter";
   if (port.busKind === "bluetooth") return "bluetooth";

@@ -1,3 +1,4 @@
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -31,8 +32,11 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
     const bestMode = formatCameraMode(context.port.camera?.bestMode);
     const functionOnly = context.scope === "internal" && context.port.camera == null && protocols.length === 0;
     const typeLabel = functionOnly ? uiText.deviceAdapters.cameraVideoFunction : uiText.deviceAdapters.camera;
-    const capabilitySource = context.port.camera?.capabilitySource
-      ?? (protocols.length > 0 ? uiText.deviceAdapters.uvcInterfaceDescriptor : uiText.deviceAdapters.windowsPnpCameraFunction);
+    const capabilitySource = renderBackendMessage(
+      context.port.camera?.capabilitySource,
+      protocols.length > 0
+        ? uiText.deviceAdapters.uvcInterfaceDescriptor
+        : uiText.deviceAdapters.windowsPnpCameraFunction);
     return {
       adapterId: "camera",
       kind: "camera",

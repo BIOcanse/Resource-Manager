@@ -1,5 +1,7 @@
 using System.Text;
+using System.Globalization;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
@@ -172,9 +174,11 @@ internal static class WindowsStorageDeviceCapabilityReader
                     DeviceTopologyWmiUtilities.ReadUInt32(storageRow, "HealthStatus"),
                     Clean(DeviceTopologyWmiUtilities.ReadString(row, "Status"))),
                 partitionModels,
-                storageRow is null
-                    ? "Win32_DiskDrive / DiskPartition / LogicalDisk"
-                    : "MSFT_Disk + Win32 磁盘/分区/卷关联");
+                BackendMessage.Create(
+                    BackendMessageDomains.DeviceTopology,
+                    storageRow is null
+                        ? BackendMessageCodes.DeviceTopology.SourceWin32DiskAssociations
+                        : BackendMessageCodes.DeviceTopology.SourceMsftDiskAssociations));
             result.Add(new DeviceTopologyStorageBinding(NormalizeDeviceId(pnpDeviceId), model));
         }
 
@@ -203,7 +207,8 @@ internal static class WindowsStorageDeviceCapabilityReader
             .Select(logicalId => CreateVolume(logicalRows[logicalId]))
             .ToArray();
         return new DeviceTopologyStoragePartition(
-            Clean(DeviceTopologyWmiUtilities.ReadString(row, "DeviceID")) ?? "未知分区",
+            Clean(DeviceTopologyWmiUtilities.ReadString(row, "DeviceID"))
+                ?? $"PARTITION#{index?.ToString(CultureInfo.InvariantCulture) ?? "?"}",
             index is null ? null : index.Value + 1,
             Clean(DeviceTopologyWmiUtilities.ReadString(row, "Type")),
             DeviceTopologyWmiUtilities.ReadUInt64(row, "Size"),
@@ -220,13 +225,15 @@ internal static class WindowsStorageDeviceCapabilityReader
         var fileSystem = Clean(DeviceTopologyWmiUtilities.ReadString(row, "FileSystem"));
         var size = DeviceTopologyWmiUtilities.ReadUInt64(row, "Size");
         var free = DeviceTopologyWmiUtilities.ReadUInt64(row, "FreeSpace");
-        var mountState = "已挂载";
+        var mountState = DeviceStorageMountStates.Mounted;
         if (driveLetter is not null)
         {
             try
             {
                 var drive = new DriveInfo($"{driveLetter}\\");
-                mountState = drive.IsReady ? "已挂载" : "未就绪";
+                mountState = drive.IsReady
+                    ? DeviceStorageMountStates.Mounted
+                    : DeviceStorageMountStates.NotReady;
                 if (drive.IsReady)
                 {
                     fileSystem = Clean(drive.DriveFormat) ?? fileSystem;
@@ -236,7 +243,7 @@ internal static class WindowsStorageDeviceCapabilityReader
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                mountState = "状态未知";
+                mountState = DeviceStorageMountStates.Unknown;
             }
         }
 
@@ -364,8 +371,8 @@ internal static class WindowsStorageDeviceCapabilityReader
             11 => "SATA",
             12 => "SD",
             13 => "MMC",
-            14 => "虚拟磁盘",
-            15 => "文件支持虚拟磁盘",
+            14 => "Virtual Disk",
+            15 => "File Backed Virtual Disk",
             16 => "Storage Spaces",
             17 => "NVMe",
             18 => "SCM",
@@ -390,10 +397,10 @@ internal static class WindowsStorageDeviceCapabilityReader
     {
         return value switch
         {
-            0 => "正常",
-            1 => "警告",
-            2 => "异常",
-            5 => "未知",
+            0 => DeviceStorageHealthStates.Healthy,
+            1 => DeviceStorageHealthStates.Warning,
+            2 => DeviceStorageHealthStates.Unhealthy,
+            5 => DeviceStorageHealthStates.Unknown,
             _ => fallback
         };
     }

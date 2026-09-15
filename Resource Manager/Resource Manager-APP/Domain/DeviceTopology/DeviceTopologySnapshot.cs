@@ -144,7 +144,9 @@ public sealed record DeviceTopologyUsbEndpoint(
     byte AlternateSetting,
     string InterfaceProtocol,
     byte EndpointAddress,
+    /// <summary>取值见 <see cref="DeviceEndpointDirections"/>。</summary>
     string Direction,
+    /// <summary>取值见 <see cref="DeviceEndpointTransferTypes"/>。</summary>
     string TransferType,
     ushort MaximumPacketSize,
     byte Interval,
@@ -152,17 +154,18 @@ public sealed record DeviceTopologyUsbEndpoint(
     double? TheoreticalReportRateHz);
 
 public sealed record DeviceTopologyHidCapabilities(
+    /// <summary>取值见 <see cref="DeviceHidTypes"/>。</summary>
     string HidType,
     string? HidSpecification,
     double? InputPollingIntervalMicroseconds,
     double? TheoreticalReportRateHz,
     uint? ReportedDpi,
     uint? ReportedScanRateHz,
-    string StandardCapabilitySource,
-    string? VendorCapabilitySource);
+    BackendMessage StandardCapabilitySource,
+    BackendMessage? VendorCapabilitySource);
 
 public sealed record DeviceTopologyCameraCapabilities(
-    string CapabilitySource,
+    BackendMessage CapabilitySource,
     DeviceTopologyCameraMode? BestMode,
     IReadOnlyList<DeviceTopologyCameraMode> NativeModes);
 
@@ -173,6 +176,7 @@ public sealed record DeviceTopologyCameraMode(
     string PixelFormat);
 
 public sealed record DeviceTopologySmartDeviceCapabilities(
+    /// <summary>取值见 <see cref="DevicePortableDeviceTypes"/>。</summary>
     string DeviceType,
     string? Manufacturer,
     string? Model,
@@ -182,7 +186,7 @@ public sealed record DeviceTopologySmartDeviceCapabilities(
     string? Transport,
     uint? BatteryPercent,
     IReadOnlyList<DeviceTopologySmartDeviceStorage> Storages,
-    string Source);
+    BackendMessage Source);
 
 public sealed record DeviceTopologySmartDeviceStorage(
     string Name,
@@ -201,9 +205,10 @@ public sealed record DeviceTopologyStorageDevice(
     ulong? CapacityBytes,
     uint? BytesPerSector,
     string? PartitionStyle,
+    /// <summary>取值见 <see cref="DeviceStorageHealthStates"/>。</summary>
     string? HealthStatus,
     IReadOnlyList<DeviceTopologyStoragePartition> Partitions,
-    string Source);
+    BackendMessage Source);
 
 public sealed record DeviceTopologyStoragePartition(
     string DeviceId,
@@ -222,6 +227,7 @@ public sealed record DeviceTopologyStorageVolume(
     string? FileSystem,
     ulong? CapacityBytes,
     ulong? FreeBytes,
+    /// <summary>取值见 <see cref="DeviceStorageMountStates"/>。</summary>
     string MountState,
     string? VolumeSerialNumber);
 
@@ -263,6 +269,57 @@ public static class DeviceBusKinds
     public const string Storage = "storage";
     public const string Bluetooth = "bluetooth";
     public const string System = "system";
+    public const string Unknown = "unknown";
+}
+
+/// <summary>HID 设备的类别。只有类别，没有措辞。</summary>
+public static class DeviceHidTypes
+{
+    public const string Keyboard = "keyboard";
+    public const string Mouse = "mouse";
+    public const string InputDevice = "input-device";
+}
+
+/// <summary>USB 端点方向。</summary>
+public static class DeviceEndpointDirections
+{
+    public const string Input = "input";
+    public const string Output = "output";
+}
+
+/// <summary>USB 端点传输类型。</summary>
+public static class DeviceEndpointTransferTypes
+{
+    public const string Control = "control";
+    public const string Isochronous = "isochronous";
+    public const string Bulk = "bulk";
+    public const string Interrupt = "interrupt";
+    public const string Unknown = "unknown";
+}
+
+/// <summary>便携智能设备的类别。</summary>
+public static class DevicePortableDeviceTypes
+{
+    public const string Phone = "phone";
+    public const string Tablet = "tablet";
+    public const string Camera = "camera";
+    public const string SmartDevice = "smart-device";
+}
+
+/// <summary>卷的挂载状态。</summary>
+public static class DeviceStorageMountStates
+{
+    public const string Mounted = "mounted";
+    public const string NotReady = "not-ready";
+    public const string Unknown = "unknown";
+}
+
+/// <summary>磁盘的健康状态。</summary>
+public static class DeviceStorageHealthStates
+{
+    public const string Healthy = "healthy";
+    public const string Warning = "warning";
+    public const string Unhealthy = "unhealthy";
     public const string Unknown = "unknown";
 }
 

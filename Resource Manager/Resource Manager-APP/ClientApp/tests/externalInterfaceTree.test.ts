@@ -31,11 +31,11 @@ const dockPorts = [
     productName: "Gaming Mouse",
     interfaceProtocols: ["HID Boot Mouse [03/01/02]"],
     hid: {
-      hidType: "鼠标",
+      hidType: "mouse",
       hidSpecification: "HID 1.11",
       inputPollingIntervalMicroseconds: 1_000,
       theoreticalReportRateHz: 1_000,
-      standardCapabilitySource: "USB HID + endpoint descriptor"
+      standardCapabilitySource: { domain: 5, code: 60, args: [] }
     }
   }),
   usbPort({
@@ -55,8 +55,8 @@ const dockPorts = [
       capacityBytes: 1_000_204_886_016,
       bytesPerSector: 512,
       partitionStyle: "GPT",
-      healthStatus: "正常",
-      source: "MSFT_Disk + Win32 磁盘/分区/卷关联",
+      healthStatus: "healthy",
+      source: { domain: 5, code: 59, args: [] },
       partitions: [{
         deviceId: "Disk #1, Partition #0",
         partitionNumber: 1,
@@ -70,7 +70,7 @@ const dockPorts = [
           fileSystem: "exFAT",
           capacityBytes: 1_000_185_827_328,
           freeBytes: 750_000_000_000,
-          mountState: "已挂载"
+          mountState: "mounted"
         }]
       }]
     }
@@ -119,9 +119,9 @@ const internalDisk = usbPort({
     busType: "NVMe",
     capacityBytes: 1_024_000_000_000,
     partitionStyle: "GPT",
-    healthStatus: "正常",
+    healthStatus: "healthy",
     partitions: [],
-    source: "MSFT_Disk"
+    source: { domain: 5, code: 59, args: [] }
   }
 });
 internalDisk.usb = undefined;
@@ -196,11 +196,11 @@ const classifiedTree = buildExternalInterfaceTree([
     productName: "HERO 99 HE",
     interfaceProtocols: ["HID Boot Keyboard [03/01/01]", "HID [03/00/00]"],
     hid: {
-      hidType: "键盘",
+      hidType: "keyboard",
       hidSpecification: "HID 1.11",
       inputPollingIntervalMicroseconds: 1_000,
       theoreticalReportRateHz: 1_000,
-      standardCapabilitySource: "USB HID + endpoint descriptor"
+      standardCapabilitySource: { domain: 5, code: 60, args: [] }
     }
   }),
   usbPort({
@@ -218,7 +218,7 @@ const classifiedTree = buildExternalInterfaceTree([
       "Audio Streaming [01/02/00]"
     ],
     camera: {
-      capabilitySource: "USB Video Class native descriptors",
+      capabilitySource: { domain: 5, code: 61, args: [] },
       bestMode: { width: 2560, height: 1440, maximumFrameRate: 30, pixelFormat: "MJPEG" },
       nativeModes: [
         { width: 2560, height: 1440, maximumFrameRate: 30, pixelFormat: "MJPEG" },
@@ -246,13 +246,13 @@ const classifiedTree = buildExternalInterfaceTree([
     productName: "SAMSUNG_Android",
     interfaceProtocols: ["Still Image [06/01/01]", "CDC Control [02/02/01]", "CDC Data [0A/00/00]"],
     smartDevice: {
-      deviceType: "手机",
+      deviceType: "phone",
       manufacturer: "Samsung",
       model: "SM-N981U",
       protocol: "MTP",
       transport: "USB",
       storages: [],
-      source: "Windows Portable Devices / MTP"
+      source: { domain: 5, code: 63, args: [] }
     }
   }),
   usbPort({

@@ -1,3 +1,4 @@
+import { mountStateLabel } from "../../deviceTopology/deviceVocabulary.ts";
 import { For, Match, Show, Switch } from "solid-js";
 import type {
   AudioDeviceModel,
@@ -410,14 +411,7 @@ function formatVolumeCapacity(capacity?: number | null, free?: number | null) {
 }
 
 function formatVolumeMountState(value: string) {
-  switch (value.trim().toLocaleLowerCase()) {
-    case "mounted":
-    case "online":
-    case "available": return uiText.deviceSpecialized.volumeAvailable;
-    case "unmounted":
-    case "offline": return uiText.deviceSpecialized.volumeNotMounted;
-    default: return value || uiText.deviceSpecialized.volumeStateUnknown;
-  }
+  return mountStateLabel(value.trim()) ?? uiText.deviceSpecialized.volumeStateUnknown;
 }
 
 function asKind<T extends SpecializedDeviceModel>(model: SpecializedDeviceModel, kind: T["kind"]) {

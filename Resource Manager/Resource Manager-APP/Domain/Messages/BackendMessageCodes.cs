@@ -332,5 +332,23 @@ public static class BackendMessageCodes
 
         /// <summary>USB 端口连接状态：Windows 返回了未定义的状态值。参数：1 = 原始状态号。</summary>
         public const byte UsbUnknownStatus = 57;
+
+        /// <summary>能力来源：Win32_DiskDrive / DiskPartition / LogicalDisk 关联。参数：无。</summary>
+        public const byte SourceWin32DiskAssociations = 58;
+
+        /// <summary>能力来源：MSFT_Disk 加 Win32 的磁盘/分区/卷关联。参数：无。</summary>
+        public const byte SourceMsftDiskAssociations = 59;
+
+        /// <summary>能力来源：USB HID 描述符与端点描述符。参数：无。</summary>
+        public const byte SourceUsbHidEndpointDescriptors = 60;
+
+        /// <summary>能力来源：USB Video Class 配置描述符。参数：无。</summary>
+        public const byte SourceUsbVideoClassDescriptors = 61;
+
+        /// <summary>能力来源：USB 设备/配置描述符加 Windows WPD / PnP 属性。参数：无。</summary>
+        public const byte SourceUsbDescriptorsAndWindows = 62;
+
+        /// <summary>能力来源：Windows WPD / PnP 属性。参数：无。</summary>
+        public const byte SourceWindowsWpdPnp = 63;
     }
 }

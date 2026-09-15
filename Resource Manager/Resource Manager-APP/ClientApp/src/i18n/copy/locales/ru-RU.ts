@@ -654,6 +654,28 @@ const ruRuAppCopy: AppCopy = {
       disconnected: "Не подключено",
       unknown: "Состояние неизвестно"
     },
+    hidType: {
+      keyboard: "Клавиатура",
+      mouse: "Мышь",
+      inputDevice: "Устройство ввода HID"
+    },
+    portableDeviceType: {
+      phone: "Телефон",
+      tablet: "Планшет",
+      camera: "Цифровая камера",
+      smartDevice: "Портативное умное устройство"
+    },
+    storageHealth: {
+      healthy: "Исправно",
+      warning: "Предупреждение",
+      unhealthy: "Неисправно",
+      unknown: "Неизвестно"
+    },
+    mountState: {
+      mounted: "Подключено",
+      notReady: "Не готово",
+      unknown: "Состояние неизвестно"
+    },
     displayLocation: {
       internal: "Внутреннее подключение",
       external: "Внешнее подключение"
@@ -2016,7 +2038,13 @@ const ruRuAppCopy: AppCopy = {
       usbDeviceInLegacyHub: "Устройство на устаревшем концентраторе",
       usbEnumerating: "Перечисление",
       usbResetting: "Сброс",
-      usbUnknownStatus: (status: string) => `Windows вернула неизвестное состояние ${status}`
+      usbUnknownStatus: (status: string) => `Windows вернула неизвестное состояние ${status}`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk и связи дисков, разделов и томов Win32",
+      sourceUsbHidEndpointDescriptors: "Дескрипторы USB HID и конечных точек",
+      sourceUsbVideoClassDescriptors: "Дескрипторы конфигурации USB Video Class",
+      sourceUsbDescriptorsAndWindows: "Дескрипторы устройства и конфигурации USB + PnP Windows",
+      sourceWindowsWpdPnp: "Свойства Windows WPD / PnP"
     }
   }
 };

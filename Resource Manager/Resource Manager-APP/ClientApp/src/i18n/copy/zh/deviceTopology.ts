@@ -120,6 +120,28 @@ export const zhDeviceTopologyCopy = {
       disconnected: "未连接",
       unknown: "状态未知"
     },
+    hidType: {
+      keyboard: "键盘",
+      mouse: "鼠标",
+      inputDevice: "HID 输入设备"
+    },
+    portableDeviceType: {
+      phone: "手机",
+      tablet: "平板",
+      camera: "数码相机",
+      smartDevice: "便携智能设备"
+    },
+    storageHealth: {
+      healthy: "正常",
+      warning: "警告",
+      unhealthy: "异常",
+      unknown: "未知"
+    },
+    mountState: {
+      mounted: "已挂载",
+      notReady: "未就绪",
+      unknown: "状态未知"
+    },
     displayLocation: {
       internal: "机内连接",
       external: "外部连接"

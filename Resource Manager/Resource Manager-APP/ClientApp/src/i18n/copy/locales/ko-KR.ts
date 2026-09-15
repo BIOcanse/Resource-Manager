@@ -654,6 +654,28 @@ const koKrAppCopy: AppCopy = {
       disconnected: "연결되지 않음",
       unknown: "상태 알 수 없음"
     },
+    hidType: {
+      keyboard: "키보드",
+      mouse: "마우스",
+      inputDevice: "HID 입력 장치"
+    },
+    portableDeviceType: {
+      phone: "휴대폰",
+      tablet: "태블릿",
+      camera: "디지털 카메라",
+      smartDevice: "휴대용 스마트 장치"
+    },
+    storageHealth: {
+      healthy: "정상",
+      warning: "경고",
+      unhealthy: "비정상",
+      unknown: "알 수 없음"
+    },
+    mountState: {
+      mounted: "마운트됨",
+      notReady: "준비되지 않음",
+      unknown: "상태를 알 수 없음"
+    },
     displayLocation: {
       internal: "내부 연결",
       external: "외부 연결"
@@ -2016,7 +2038,13 @@ const koKrAppCopy: AppCopy = {
       usbDeviceInLegacyHub: "레거시 허브의 장치",
       usbEnumerating: "열거 중",
       usbResetting: "재설정 중",
-      usbUnknownStatus: (status: string) => `Windows가 알 수 없는 상태 ${status}을(를) 반환했습니다`
+      usbUnknownStatus: (status: string) => `Windows가 알 수 없는 상태 ${status}을(를) 반환했습니다`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk 및 Win32 디스크/파티션/볼륨 연결",
+      sourceUsbHidEndpointDescriptors: "USB HID 및 엔드포인트 디스크립터",
+      sourceUsbVideoClassDescriptors: "USB Video Class 구성 디스크립터",
+      sourceUsbDescriptorsAndWindows: "USB 장치/구성 디스크립터 + Windows PnP",
+      sourceWindowsWpdPnp: "Windows WPD / PnP 속성"
     }
   }
 };

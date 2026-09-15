@@ -1,3 +1,4 @@
+import { storageHealthLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -35,7 +36,7 @@ export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> =
     const busType = displayValue(storage?.busType);
     const mediaType = displayValue(storage?.mediaType);
     const partitionStyle = displayValue(storage?.partitionStyle);
-    const healthStatus = displayValue(storage?.healthStatus);
+    const healthStatus = displayValue(storageHealthLabel(storage?.healthStatus));
     const partitions = storage?.partitions ?? [];
     return {
       adapterId: "external-storage",

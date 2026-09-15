@@ -654,6 +654,28 @@ const jaJpAppCopy: AppCopy = {
       disconnected: "未接続",
       unknown: "状態不明"
     },
+    hidType: {
+      keyboard: "キーボード",
+      mouse: "マウス",
+      inputDevice: "HID 入力デバイス"
+    },
+    portableDeviceType: {
+      phone: "スマートフォン",
+      tablet: "タブレット",
+      camera: "デジタルカメラ",
+      smartDevice: "携帯型スマートデバイス"
+    },
+    storageHealth: {
+      healthy: "正常",
+      warning: "警告",
+      unhealthy: "異常",
+      unknown: "不明"
+    },
+    mountState: {
+      mounted: "マウント済み",
+      notReady: "準備ができていません",
+      unknown: "状態不明"
+    },
     displayLocation: {
       internal: "内部接続",
       external: "外部接続"
@@ -2016,7 +2038,13 @@ const jaJpAppCopy: AppCopy = {
       usbDeviceInLegacyHub: "レガシーハブ上のデバイス",
       usbEnumerating: "列挙中",
       usbResetting: "リセット中",
-      usbUnknownStatus: (status: string) => `Windows が不明な状態 ${status} を返しました`
+      usbUnknownStatus: (status: string) => `Windows が不明な状態 ${status} を返しました`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk と Win32 のディスク／パーティション／ボリューム関連",
+      sourceUsbHidEndpointDescriptors: "USB HID・エンドポイント記述子",
+      sourceUsbVideoClassDescriptors: "USB Video Class コンフィグレーション記述子",
+      sourceUsbDescriptorsAndWindows: "USB デバイス／コンフィグレーション記述子 + Windows PnP",
+      sourceWindowsWpdPnp: "Windows WPD / PnP プロパティ"
     }
   }
 };

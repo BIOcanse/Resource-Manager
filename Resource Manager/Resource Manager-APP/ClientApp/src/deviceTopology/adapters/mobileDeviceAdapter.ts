@@ -1,3 +1,4 @@
+import { portableDeviceTypeLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -25,7 +26,7 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
     const dataConnection = protocols.some((value) => /CDC|\[(?:02|0a)\//i.test(value));
     const vendorChannel = protocols.some((value) => /Vendor Specific|\[ff\//i.test(value));
     const smart = context.port.smartDevice;
-    const deviceType = displayValue(smart?.deviceType, uiText.deviceAdapters.mobileDevice);
+    const deviceType = portableDeviceTypeLabel(smart?.deviceType) ?? uiText.deviceAdapters.mobileDevice;
     const manufacturer = displayValue(smart?.manufacturer, context.port.manufacturer ?? undefined);
     const model = displayValue(smart?.model, context.port.displayName);
     const firmwareVersion = displayValue(smart?.firmwareVersion, uiText.deviceAdapters.deviceNotReported);
@@ -40,7 +41,7 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
       title,
       subtitle: joinSummary(manufacturer === "--" ? undefined : manufacturer, model, protocol),
       badge: deviceType,
-      iconKind: resolveSmartDeviceIcon(deviceType),
+      iconKind: resolveSmartDeviceIcon(smart?.deviceType),
       ...connection,
       mediaTransfer,
       dataConnection,
@@ -65,9 +66,11 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
   }
 };
 
-function resolveSmartDeviceIcon(deviceType: string): MobileDeviceModel["iconKind"] {
-  if (deviceType.includes("平板")) return "tablet";
-  if (deviceType.includes("电脑")) return "laptop";
-  if (deviceType.includes("相机")) return "camera";
-  return "smartphone";
+// 后端给的是 DevicePortableDeviceTypes 里的 id，图标按 id 选。
+function resolveSmartDeviceIcon(deviceType?: string | null): MobileDeviceModel["iconKind"] {
+  switch (deviceType) {
+    case "tablet": return "tablet";
+    case "camera": return "camera";
+    default: return "smartphone";
+  }
 }
