@@ -11,11 +11,13 @@ public interface IComponentManager
     Task<ComponentActionResult> DownloadAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken);
 
     Task<ComponentActionResult> InstallAsync(
         string id,
         bool acknowledgeExternalTerms,
+        string? versionChoice,
         CancellationToken cancellationToken);
 
     Task<ComponentActionResult> VerifyAsync(

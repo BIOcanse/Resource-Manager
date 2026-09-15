@@ -142,6 +142,7 @@ public sealed partial class ComponentManager
             !effectiveInstalled && (dependencyStatus.CanLaunchInstaller || dependencyStatus.CanDownload),
             true,
             providerStatus,
-            message);
+            message,
+            dependencyStatus.InstallerSourceKind);
     }
 }

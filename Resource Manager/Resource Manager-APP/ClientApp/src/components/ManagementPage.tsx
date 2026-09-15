@@ -271,7 +271,7 @@ function ComponentCard(props: {
                 title={props.runtimeEffectsEnabled ? undefined : "当前启动配置只提供查看。"}
                 onClick={() => props.onInstall(props.component)}
               >
-                {uiText.management.install}
+                {componentInstallLabel(props.component)}
               </button>
             }
           >
@@ -414,6 +414,20 @@ function contextMenuEventForElement(element: HTMLElement) {
     bubbles: false,
     cancelable: true
   });
+}
+
+/**
+ * 按钮文案如实反映这次点下去会发生什么：缓存里有安装器就是"安装"，
+ * 能自动获取就是"下载并安装"，只能人工获取就是"获取安装器"。
+ */
+function componentInstallLabel(component: ManagedComponent) {
+  if (component.installerAvailable) {
+    return uiText.management.install;
+  }
+  if ((component.installerSourceKind ?? "manual") === "manual") {
+    return uiText.management.obtainInstaller;
+  }
+  return uiText.management.downloadAndInstall;
 }
 
 function componentCanInstall(component: ManagedComponent) {

@@ -11,17 +11,20 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     private readonly HttpClient httpClient;
     private readonly IFileChangeTracker fileChangeTracker;
     private readonly IInstalledSoftwareInventory installedSoftwareInventory;
+    private readonly IDependencyInstallerSourceResolver installerSourceResolver;
     private readonly string packageRoot;
 
     public OptionalDependencyManager(
         HttpClient httpClient,
         IHostEnvironment environment,
         IFileChangeTracker fileChangeTracker,
-        IInstalledSoftwareInventory installedSoftwareInventory)
+        IInstalledSoftwareInventory installedSoftwareInventory,
+        IDependencyInstallerSourceResolver installerSourceResolver)
     {
         this.httpClient = httpClient;
         this.fileChangeTracker = fileChangeTracker;
         this.installedSoftwareInventory = installedSoftwareInventory;
+        this.installerSourceResolver = installerSourceResolver;
         packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
     }
 
@@ -49,5 +52,12 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
 
         var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
         return BuildStatus(definition, installedSoftware);
+    }
+
+    public Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken)
+    {
+        var definition = OptionalDependencyCatalog.Find(id)
+            ?? throw new InvalidOperationException($"Unknown dependency: {id}");
+        return installerSourceResolver.GetVersionOptionsAsync(definition, cancellationToken);
     }
 }

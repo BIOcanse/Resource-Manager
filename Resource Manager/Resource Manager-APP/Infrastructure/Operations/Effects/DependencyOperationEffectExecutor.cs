@@ -16,8 +16,8 @@ internal sealed class DependencyOperationEffectExecutor(
         IHostManagerOperationProgressSink progress,
         CancellationToken cancellationToken)
     {
-        var (id, acknowledge) =
-            HostManagerOperationRequestCodec.DecodeBooleanRequest(ticket.Request.Payload);
+        var (id, acknowledge, versionChoice) =
+            HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
         try
         {
             if (launchInstaller)
@@ -25,6 +25,7 @@ internal sealed class DependencyOperationEffectExecutor(
                 var result = await dependencyManager.LaunchInstallerAsync(
                     id,
                     acknowledge,
+                    versionChoice,
                     cancellationToken).ConfigureAwait(false);
                 return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
             }
@@ -36,6 +37,7 @@ internal sealed class DependencyOperationEffectExecutor(
             var download = await dependencyManager.DownloadAsync(
                 id,
                 acknowledge,
+                versionChoice,
                 cancellationToken,
                 progressAdapter).ConfigureAwait(false);
             return new(HostManagerOperationEffectOutcome.Succeeded, download.Message);

@@ -181,3 +181,46 @@
   height: min(780px, calc(100vh - var(--modal-viewport-top) - 36px));
   max-height: calc(100vh - var(--modal-viewport-top) - 36px);
 }
+
+/* 组件获取对话框：条款/来源页链接按钮 + 版本选择。 */
+.component-acquisition-vendor {
+  opacity: 0.85;
+}
+
+.component-acquisition-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.component-acquisition-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+}
+
+.component-acquisition-versions legend {
+  padding: 0 6px;
+  opacity: 0.85;
+}
+
+.component-acquisition-version {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.component-acquisition-version small {
+  grid-column: 2;
+  opacity: 0.7;
+}
+
+.component-acquisition-version[aria-disabled="true"] {
+  opacity: 0.6;
+}

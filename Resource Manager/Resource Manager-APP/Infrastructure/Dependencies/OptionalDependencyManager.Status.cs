@@ -19,7 +19,8 @@ public sealed partial class OptionalDependencyManager
         var installed = managedInstalled || externalInstall is not null;
         var effectiveInstallDirectory = externalInstall?.InstallDirectory ?? paths.InstallDirectory;
         var detectionSource = managedInstalled ? "ManagedDependencies" : externalInstall?.Source ?? "None";
-        var canDownload = !string.IsNullOrWhiteSpace(definition.DownloadUrl);
+        var sourceKind = definition.InstallerSourceKind;
+        var canDownload = sourceKind != DependencyInstallerSourceKinds.Manual;
         var state = installed
             ? "installed"
             : installerAvailable
@@ -31,7 +32,9 @@ public sealed partial class OptionalDependencyManager
         {
             "installed" => "已安装在 Dependencies 软件根目录。",
             "readyToInstall" => "安装器已在 Misc 安装器缓存中，可安装到 Dependencies。",
-            "downloadable" => "可从官方来源下载安装器。",
+            "downloadable" => sourceKind == DependencyInstallerSourceKinds.GitHubRelease
+                ? "可从官方发布页下载安装器，可选已验证版本或最新版本。"
+                : "可从官方来源下载安装器。",
             _ => "打开官方来源页，并将安装器放入 Misc 安装器缓存。"
         };
         if (externalInstall is not null)
@@ -53,6 +56,7 @@ public sealed partial class OptionalDependencyManager
             effectiveInstallDirectory,
             externalInstall?.InstallDirectory,
             detectionSource,
-            message);
+            message,
+            sourceKind);
     }
 }

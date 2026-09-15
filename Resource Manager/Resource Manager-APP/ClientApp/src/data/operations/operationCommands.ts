@@ -4,12 +4,13 @@ import type {
 
 export function componentInstallCommand(
   id: string,
-  acknowledgeExternalTerms: boolean
+  acknowledgeExternalTerms: boolean,
+  versionChoice?: string | null
 ): OperationCommandDescriptor {
   return {
     key: `component.install:${id}`,
     url: `/api/components/${encodeURIComponent(id)}/install`,
-    body: { acknowledgeExternalTerms },
+    body: { acknowledgeExternalTerms, versionChoice: versionChoice ?? null },
     fallbackError: "安装操作启动失败"
   };
 }

@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { BrowserRuntimePage } from "../browserRuntimes/BrowserRuntimePage";
 import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
+import { ComponentAcquisitionDialog } from "../components/ComponentAcquisitionDialog";
 import { ManagementPage, managementActionKey } from "../components/ManagementPage";
 import { MigrationPanel } from "../components/MigrationPanel";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
@@ -146,7 +147,8 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
       )}
     >
       {(activeKind) => (
-        <ManagementPage
+        <>
+          <ManagementPage
             activeKind={activeKind()}
             components={management.components()}
             software={management.software()}
@@ -163,7 +165,14 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
             onUninstallSoftware={(softwareRecord, actionKey) => void management.uninstallSoftware(softwareRecord, actionKey)}
             onOpenDetail={props.onOpenSoftwareDetail}
             onSoftwareContextMenu={props.onManagementSoftwareContextMenu}
-        />
+          />
+          <ComponentAcquisitionDialog
+            request={management.acquisitionRequest()}
+            onOpenLink={(url) => void management.openAcquisitionLink(url)}
+            onCancel={management.cancelAcquisition}
+            onConfirm={(versionChoice) => void management.confirmAcquisition(versionChoice)}
+          />
+        </>
       )}
     </Show>
   );

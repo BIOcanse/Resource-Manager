@@ -39,10 +39,12 @@ internal static class HostManagerOperationRequestSchemas
     public const uint KindName = 0x0001;
     public const uint DomainKey = 0x0002;
     public const uint UserTitle = 0x0003;
-    public const uint ComponentDownload = 0x0101;
-    public const uint ComponentInstall = 0x0102;
-    public const uint DependencyDownload = 0x0201;
-    public const uint DependencyInstaller = 0x0202;
+    // 0x01x1 / 0x02x1 是只带"是否确认条款"的旧载荷；0x01x2 / 0x02x2 在其后追加了版本选择。
+    // 载荷格式按 schema id 区分，其余动作仍用布尔载荷，不受影响。
+    public const uint ComponentDownload = 0x0111;
+    public const uint ComponentInstall = 0x0112;
+    public const uint DependencyDownload = 0x0211;
+    public const uint DependencyInstaller = 0x0212;
     public const uint SoftwareUninstall = 0x0301;
     public const uint MigrationExecute = 0x0401;
     public const uint MigrationRestore = 0x0402;
@@ -66,46 +68,50 @@ internal static class HostManagerOperationRequestCodec
     internal static HostManagerOperationSubmitCommand ComponentDownload(
         string id,
         ComponentActionRequest request)
-        => CreateBooleanRequest(
+        => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentDownload,
             $"下载组件 {ValidateText(id, nameof(id))}",
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentDownload,
             id,
-            request.AcknowledgeExternalTerms);
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice);
 
     internal static HostManagerOperationSubmitCommand ComponentInstall(
         string id,
         ComponentActionRequest request)
-        => CreateBooleanRequest(
+        => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentInstall,
             $"安装组件 {ValidateText(id, nameof(id))}",
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentInstall,
             id,
-            request.AcknowledgeExternalTerms);
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice);
 
     internal static HostManagerOperationSubmitCommand DependencyDownload(
         string id,
         OptionalDependencyDownloadRequest request)
-        => CreateBooleanRequest(
+        => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyDownload,
             $"下载依赖 {ValidateText(id, nameof(id))}",
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyDownload,
             id,
-            request.AcknowledgeExternalTerms);
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice);
 
     internal static HostManagerOperationSubmitCommand DependencyInstaller(
         string id,
         OptionalDependencyInstallRequest request)
-        => CreateBooleanRequest(
+        => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyLaunchInstaller,
             $"启动依赖安装器 {ValidateText(id, nameof(id))}",
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyInstaller,
             id,
-            request.AcknowledgeExternalTerms);
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice);
 
     internal static HostManagerOperationSubmitCommand SoftwareUninstall(
         SoftwareOperationRequest request)
@@ -169,6 +175,18 @@ internal static class HostManagerOperationRequestCodec
             HostManagerOperationRequestSchemas.DiscoveryStart,
             HostManagerOperationRequestSchemas.Version,
             payload);
+    }
+
+    internal static (string Id, bool Confirm, string? VersionChoice) DecodeAcquisitionRequest(
+        ReadOnlySpan<byte> payload)
+    {
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var id = ReadString(reader);
+        var confirm = reader.ReadBoolean();
+        var versionChoice = ReadString(reader);
+        RequireEnd(stream);
+        return (id, confirm, string.IsNullOrWhiteSpace(versionChoice) ? null : versionChoice);
     }
 
     internal static (string Id, bool Confirm) DecodeBooleanRequest(
@@ -253,6 +271,28 @@ internal static class HostManagerOperationRequestCodec
         RequireEnd(stream);
         return result;
     }
+
+    /// <summary>组件与依赖的获取动作：除了条款确认，还带用户选择的版本（null 表示已验证版本）。</summary>
+    private static HostManagerOperationSubmitCommand CreateAcquisitionRequest(
+        string kind,
+        string title,
+        string domainKey,
+        uint schemaId,
+        string id,
+        bool value,
+        string? versionChoice)
+        => new(
+            kind,
+            title,
+            domainKey,
+            schemaId,
+            HostManagerOperationRequestSchemas.Version,
+            Encode(writer =>
+            {
+                WriteString(writer, id);
+                writer.Write(value);
+                WriteString(writer, versionChoice ?? string.Empty);
+            }));
 
     private static HostManagerOperationSubmitCommand CreateBooleanRequest(
         string kind,

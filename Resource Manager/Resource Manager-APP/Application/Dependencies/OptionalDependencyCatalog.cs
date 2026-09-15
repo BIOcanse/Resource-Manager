@@ -30,7 +30,7 @@ public static class OptionalDependencyCatalog
             Vendor: "namazso / AMD SMU",
             Category: "CPU telemetry provider",
             SourcePageUrl: "https://pawnio.eu/",
-            DownloadUrl: "https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe",
+            DownloadUrl: null,
             ExternalTermsUrl: "https://pawnio.eu/",
             InstallerFileName: "PawnIO_setup.exe",
             InstallerFilePatterns:
@@ -42,7 +42,13 @@ public static class OptionalDependencyCatalog
             RequiresExternalTermsAcknowledgement: true,
             RequiresElevation: true,
             InstalledProbeRelativePaths: [],
-            InstallNote: "安装官方签名 PawnIO 驱动；AMD SMU Provider 后续通过 PawnIO 设备和 RyzenSMU 模块读取 PM table。该驱动必须显式安装和验证，不随基础包静默启用。"),
+            InstallNote: "安装官方签名 PawnIO 驱动；AMD SMU Provider 后续通过 PawnIO 设备和 RyzenSMU 模块读取 PM table。该驱动必须显式安装和验证，不随基础包静默启用。",
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "namazso",
+                Repository: "PawnIO.Setup",
+                VerifiedTag: "2.2.0",
+                VerifiedAssetName: "PawnIO_setup.exe",
+                AssetPatterns: ["PawnIO_setup*.exe", "PawnIO*.exe"])),
         new OptionalDependencyDefinition(
             Id: "msi-afterburner",
             Name: "MSI Afterburner",
@@ -109,7 +115,14 @@ public static class OptionalDependencyCatalog
             [
                 "LibreHardwareMonitor.exe"
             ],
-            InstallNote: "通用硬件监控桥；用于 CPU/系统风扇、内存温度、主板/电压等传感缺口。运行时可通过 WMI 暴露传感器；涉及驱动/管理员权限时必须显式确认。"),
+            InstallNote: "通用硬件监控桥；用于 CPU/系统风扇、内存温度、主板/电压等传感缺口。运行时可通过 WMI 暴露传感器；涉及驱动/管理员权限时必须显式确认。",
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "LibreHardwareMonitor",
+                Repository: "LibreHardwareMonitor",
+                VerifiedTag: "v0.9.6",
+                VerifiedAssetName: "LibreHardwareMonitor.zip",
+                // 顺序即偏好：先取随 Windows 自带运行时即可跑的那份，再退到其他 zip。
+                AssetPatterns: ["LibreHardwareMonitor.zip", "LibreHardwareMonitor*.zip"])),
         new OptionalDependencyDefinition(
             Id: "notebook-fancontrol-provider",
             Name: "Notebook FanControl Provider",
@@ -130,7 +143,13 @@ public static class OptionalDependencyCatalog
             RequiresExternalTermsAcknowledgement: true,
             RequiresElevation: true,
             InstalledProbeRelativePaths: [],
-            InstallNote: "笔记本 EC 风扇路线；依赖机型配置，用于显卡驱动和通用硬件监控都不暴露风扇时的候选 Provider。不能静默启用或自动写 EC。"),
+            InstallNote: "笔记本 EC 风扇路线；依赖机型配置，用于显卡驱动和通用硬件监控都不暴露风扇时的候选 Provider。不能静默启用或自动写 EC。",
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "hirschmann",
+                Repository: "nbfc",
+                VerifiedTag: "1.6.3",
+                VerifiedAssetName: "NoteBookFanControl.1.6.3.setup.exe",
+                AssetPatterns: ["NoteBookFanControl*.setup.exe", "NBFC*.exe"])),
         new OptionalDependencyDefinition(
             Id: "windows-performance-toolkit",
             Name: "Windows Performance Toolkit",

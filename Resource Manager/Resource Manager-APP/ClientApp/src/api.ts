@@ -2,6 +2,7 @@ import type {
   AiGatewayCompatibilityProfile,
   AiGatewayCredentialCreatedView,
   AiGatewayCredentialView,
+  ComponentVersionOptions,
   CpuCorePerformanceOverrideRequest,
   CpuCorePerformanceOverrideResult,
   CpuExclusiveBindingSnapshot,
@@ -183,6 +184,11 @@ export async function deleteJson<T>(url: string, fallbackError: string): Promise
 
 export async function searchOnline(query: string) {
   return postJson<LocalOnlineSearchResult>("/api/system/search-online", { query }, "在线搜索失败");
+}
+
+/** 版本对话框的数据源：已验证版本 + 最新版本。最新版本解析失败时该项带原因返回。 */
+export async function fetchComponentVersionOptions(id: string) {
+  return getJson<ComponentVersionOptions>(`/api/components/${encodeURIComponent(id)}/versions`);
 }
 
 export async function openPath(path: string, select = false) {

@@ -11,6 +11,21 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class OptionalDependencyManagerReadOnlyTests : IDisposable
 {
+    /// <summary>只读状态查询不应该解析安装器来源，更不应该联网。</summary>
+    private sealed class UnexpectedInstallerSourceResolver : IDependencyInstallerSourceResolver
+    {
+        public Task<ResourceManager.App.Domain.Dependencies.DependencyVersionOptions> GetVersionOptionsAsync(
+            ResourceManager.App.Domain.Dependencies.OptionalDependencyDefinition definition,
+            CancellationToken cancellationToken)
+            => throw new InvalidOperationException("状态查询不应解析安装器来源。");
+
+        public Task<ResourceManager.App.Domain.Dependencies.ResolvedInstallerSource> ResolveAsync(
+            ResourceManager.App.Domain.Dependencies.OptionalDependencyDefinition definition,
+            string? versionChoice,
+            CancellationToken cancellationToken)
+            => throw new InvalidOperationException("状态查询不应解析安装器来源。");
+    }
+
     private readonly string testRoot = Path.Combine(
         Path.GetTempPath(),
         $"resource-manager-dependency-read-{Guid.NewGuid():N}");
@@ -24,7 +39,8 @@ public sealed class OptionalDependencyManagerReadOnlyTests : IDisposable
             new HttpClient(),
             new TestHostEnvironment(testRoot),
             new UnexpectedFileChangeTracker(),
-            new EmptyInstalledSoftwareInventory());
+            new EmptyInstalledSoftwareInventory(),
+            new UnexpectedInstallerSourceResolver());
 
         var statuses = await manager.GetStatusesAsync(CancellationToken.None);
         var status = await manager.GetStatusAsync(

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Domain.Components;
@@ -46,9 +47,14 @@ public sealed record ComponentStatus(
     bool CanInstall,
     bool CanVerify,
     IReadOnlyList<ComponentProviderStatus> Providers,
-    string Message);
+    string Message,
+    /// <summary>安装器来源形态，界面据此如实标注按钮并决定要不要问版本。</summary>
+    string InstallerSourceKind = DependencyInstallerSourceKinds.Manual);
 
-public sealed record ComponentActionRequest(bool AcknowledgeExternalTerms);
+/// <summary>组件获取动作请求。<c>VersionChoice</c> 为 null 时按已验证版本处理。</summary>
+public sealed record ComponentActionRequest(
+    bool AcknowledgeExternalTerms,
+    string? VersionChoice = null);
 
 public sealed record ComponentActionResult(
     string Id,

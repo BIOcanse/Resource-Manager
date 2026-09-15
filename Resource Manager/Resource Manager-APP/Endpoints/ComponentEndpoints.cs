@@ -55,6 +55,23 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return status is null ? Results.NotFound() : Results.Ok(status);
         }).AllowAnonymous();
 
+        // 版本对话框的数据源：已验证版本 + 最新版本。最新版本解析失败时该项带原因返回，
+        // 不会让整个请求失败，界面仍然可以选已验证版本。
+        app.MapGet("/api/components/{id}/versions", async (
+            string id,
+            IOptionalDependencyManager dependencyManager,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await dependencyManager.GetVersionOptionsAsync(id, cancellationToken));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+        }).AllowAnonymous();
+
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
             app.MapPost("/api/components/{id}/download", async (
