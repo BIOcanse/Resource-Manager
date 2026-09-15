@@ -186,7 +186,7 @@ UserData/
 
 Resource Manager is licensed under the **[Apache License 2.0](LICENSE)**. Third-party components retain their own licenses.
 
-This project would not be possible without the work of Microsoft, the .NET Foundation, and the many upstream authors and maintainers behind its dependencies. We are deeply grateful for their work 🙏. Full acknowledgements and license information are available in the application's Credits page and in the [Third-Party Notices](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices).
+This project would not be possible without the work of Microsoft, the .NET Foundation, and the many upstream authors and maintainers behind its dependencies. We are deeply grateful for their work 🙏. Full acknowledgements and license information are available in the application's Credits page and in the [Third-Party Notices](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md).
 
 ---
 
