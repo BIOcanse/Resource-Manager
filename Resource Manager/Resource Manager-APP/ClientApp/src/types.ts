@@ -89,7 +89,7 @@ export interface MetricDefinition {
   requiredComponentId?: string | null;
   requiredComponentName?: string | null;
   selectable?: boolean;
-  disabledReason?: string | null;
+  disabledReason?: BackendMessage | null;
   scopeKind?: string | null;
   scopeKey?: string | null;
 }

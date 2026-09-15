@@ -29,6 +29,11 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
     },
     gpuPlacement: {
       singleAdapter: "This machine has a single GPU, so GPU scheduling has no target to choose."
+    },
+    metric: {
+      notExposed: "The current hardware or provider does not expose this reading.",
+      needsComponent: (value: string) => `The current provider returns no valid reading; a more complete ${value} or the matching hardware or OEM component is needed.`,
+      noValidReading: "The current hardware or provider returns no valid reading."
     }
   }
 };
