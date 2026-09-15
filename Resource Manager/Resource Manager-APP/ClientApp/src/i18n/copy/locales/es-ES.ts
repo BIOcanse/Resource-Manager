@@ -654,6 +654,28 @@ const esEsAppCopy: AppCopy = {
       disconnected: "No conectado",
       unknown: "Estado desconocido"
     },
+    hidType: {
+      keyboard: "Teclado",
+      mouse: "Ratón",
+      inputDevice: "Dispositivo de entrada HID"
+    },
+    portableDeviceType: {
+      phone: "Teléfono",
+      tablet: "Tableta",
+      camera: "Cámara digital",
+      smartDevice: "Dispositivo inteligente portátil"
+    },
+    storageHealth: {
+      healthy: "Correcto",
+      warning: "Advertencia",
+      unhealthy: "Con errores",
+      unknown: "Desconocido"
+    },
+    mountState: {
+      mounted: "Montado",
+      notReady: "No preparado",
+      unknown: "Estado desconocido"
+    },
     displayLocation: {
       internal: "Conexión interna",
       external: "Conexión externa"
@@ -2016,7 +2038,13 @@ const esEsAppCopy: AppCopy = {
       usbDeviceInLegacyHub: "Dispositivo en un concentrador heredado",
       usbEnumerating: "Enumerando",
       usbResetting: "Restableciendo",
-      usbUnknownStatus: (status: string) => `Windows devolvió el estado desconocido ${status}`
+      usbUnknownStatus: (status: string) => `Windows devolvió el estado desconocido ${status}`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk + asociaciones de discos, particiones y volúmenes de Win32",
+      sourceUsbHidEndpointDescriptors: "Descriptores USB HID y de extremo",
+      sourceUsbVideoClassDescriptors: "Descriptores de configuración de USB Video Class",
+      sourceUsbDescriptorsAndWindows: "Descriptores de dispositivo y configuración USB + PnP de Windows",
+      sourceWindowsWpdPnp: "Propiedades WPD / PnP de Windows"
     }
   }
 };

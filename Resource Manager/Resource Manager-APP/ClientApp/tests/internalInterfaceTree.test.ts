@@ -165,9 +165,9 @@ const nvmeDisk = port({
     busType: "NVMe",
     capacityBytes: 1_024_000_000_000,
     partitionStyle: "GPT",
-    healthStatus: "正常",
+    healthStatus: "healthy",
     partitions: [],
-    source: "MSFT_Disk"
+    source: { domain: 5, code: 59, args: [] }
   }
 });
 

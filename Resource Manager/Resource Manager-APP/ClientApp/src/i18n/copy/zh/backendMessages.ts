@@ -104,7 +104,13 @@ export const zhBackendMessagesCopy = {
       usbDeviceInLegacyHub: "设备位于旧版 Hub",
       usbEnumerating: "枚举中",
       usbResetting: "重置中",
-      usbUnknownStatus: (status: string) => `Windows 返回了未知状态 ${status}`
+      usbUnknownStatus: (status: string) => `Windows 返回了未知状态 ${status}`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk + Win32 磁盘/分区/卷关联",
+      sourceUsbHidEndpointDescriptors: "USB HID / 端点描述符",
+      sourceUsbVideoClassDescriptors: "USB Video Class 配置描述符",
+      sourceUsbDescriptorsAndWindows: "USB 设备/配置描述符 + Windows PnP",
+      sourceWindowsWpdPnp: "Windows WPD / PnP 属性"
     }
   }
 };

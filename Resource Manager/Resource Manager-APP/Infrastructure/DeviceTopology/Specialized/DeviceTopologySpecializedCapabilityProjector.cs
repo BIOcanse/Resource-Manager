@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
@@ -28,7 +29,9 @@ internal static class DeviceTopologySpecializedCapabilityProjector
                         endpoint.InterfaceSubClass,
                         endpoint.InterfaceProtocol),
                     endpoint.EndpointAddress,
-                    (endpoint.EndpointAddress & 0x80) != 0 ? "输入" : "输出",
+                    (endpoint.EndpointAddress & 0x80) != 0
+                        ? DeviceEndpointDirections.Input
+                        : DeviceEndpointDirections.Output,
                     DescribeTransferType(endpoint.TransferType),
                     endpoint.MaximumPacketSize,
                     endpoint.Interval,
@@ -51,13 +54,13 @@ internal static class DeviceTopologySpecializedCapabilityProjector
 
         var descriptors = port.Descriptor.HidDescriptors;
         var type = descriptors.Any(static value => value.InterfaceProtocol == 1)
-            ? "HID 键盘"
+            ? DeviceHidTypes.Keyboard
             : descriptors.Any(static value => value.InterfaceProtocol == 2)
-                ? "HID 鼠标"
-                : "HID 输入设备";
+                ? DeviceHidTypes.Mouse
+                : DeviceHidTypes.InputDevice;
         var fastestInput = endpoints
-            .Where(static endpoint => endpoint.Direction == "输入"
-                && endpoint.TransferType == "中断"
+            .Where(static endpoint => endpoint.Direction == DeviceEndpointDirections.Input
+                && endpoint.TransferType == DeviceEndpointTransferTypes.Interrupt
                 && endpoint.ServiceIntervalMicroseconds is > 0)
             .OrderBy(static endpoint => endpoint.ServiceIntervalMicroseconds)
             .FirstOrDefault();
@@ -76,7 +79,7 @@ internal static class DeviceTopologySpecializedCapabilityProjector
             fastestInput?.TheoreticalReportRateHz,
             ReportedDpi: null,
             ReportedScanRateHz: null,
-            StandardCapabilitySource: "USB HID / 端点描述符",
+            StandardCapabilitySource: Source(BackendMessageCodes.DeviceTopology.SourceUsbHidEndpointDescriptors),
             VendorCapabilitySource: null);
     }
 
@@ -95,7 +98,7 @@ internal static class DeviceTopologySpecializedCapabilityProjector
                 mode.PixelFormat))
             .ToArray();
         return new DeviceTopologyCameraCapabilities(
-            "USB Video Class 配置描述符",
+            Source(BackendMessageCodes.DeviceTopology.SourceUsbVideoClassDescriptors),
             modes.FirstOrDefault(),
             modes);
     }
@@ -137,8 +140,8 @@ internal static class DeviceTopologySpecializedCapabilityProjector
             BatteryPercent: null,
             Storages: [],
             Source: descriptorPortableDevice
-                ? "USB 设备/配置描述符 + Windows PnP"
-                : "Windows WPD / PnP 属性");
+                ? Source(BackendMessageCodes.DeviceTopology.SourceUsbDescriptorsAndWindows)
+                : Source(BackendMessageCodes.DeviceTopology.SourceWindowsWpdPnp));
     }
 
     internal static double? CalculateServiceIntervalMicroseconds(
@@ -160,13 +163,16 @@ internal static class DeviceTopologySpecializedCapabilityProjector
     {
         return transferType switch
         {
-            0 => "控制",
-            1 => "等时",
-            2 => "批量",
-            3 => "中断",
-            _ => "未知"
+            0 => DeviceEndpointTransferTypes.Control,
+            1 => DeviceEndpointTransferTypes.Isochronous,
+            2 => DeviceEndpointTransferTypes.Bulk,
+            3 => DeviceEndpointTransferTypes.Interrupt,
+            _ => DeviceEndpointTransferTypes.Unknown
         };
     }
+
+    private static BackendMessage Source(byte code)
+        => BackendMessage.Create(BackendMessageDomains.DeviceTopology, code);
 
     private static string ResolvePortableDeviceType(string displayName)
     {
@@ -175,23 +181,23 @@ internal static class DeviceTopologySpecializedCapabilityProjector
             || displayName.Contains("iphone", StringComparison.OrdinalIgnoreCase)
             || displayName.Contains("手机", StringComparison.OrdinalIgnoreCase))
         {
-            return "手机";
+            return DevicePortableDeviceTypes.Phone;
         }
 
         if (displayName.Contains("tablet", StringComparison.OrdinalIgnoreCase)
             || displayName.Contains("ipad", StringComparison.OrdinalIgnoreCase)
             || displayName.Contains("平板", StringComparison.OrdinalIgnoreCase))
         {
-            return "平板";
+            return DevicePortableDeviceTypes.Tablet;
         }
 
         if (displayName.Contains("camera", StringComparison.OrdinalIgnoreCase)
             || displayName.Contains("相机", StringComparison.OrdinalIgnoreCase))
         {
-            return "数码相机";
+            return DevicePortableDeviceTypes.Camera;
         }
 
-        return "便携智能设备";
+        return DevicePortableDeviceTypes.SmartDevice;
     }
 
     private static string? CleanModelName(string? value)

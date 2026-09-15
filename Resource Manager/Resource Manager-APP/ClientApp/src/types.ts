@@ -973,12 +973,12 @@ export interface DeviceTopologyHidCapabilities {
   theoreticalReportRateHz?: number | null;
   reportedDpi?: number | null;
   reportedScanRateHz?: number | null;
-  standardCapabilitySource: string;
-  vendorCapabilitySource?: string | null;
+  standardCapabilitySource: BackendMessage;
+  vendorCapabilitySource?: BackendMessage | null;
 }
 
 export interface DeviceTopologyCameraCapabilities {
-  capabilitySource: string;
+  capabilitySource: BackendMessage;
   bestMode?: DeviceTopologyCameraMode | null;
   nativeModes: DeviceTopologyCameraMode[];
 }
@@ -1000,7 +1000,7 @@ export interface DeviceTopologySmartDeviceCapabilities {
   transport?: string | null;
   batteryPercent?: number | null;
   storages: DeviceTopologySmartDeviceStorage[];
-  source: string;
+  source: BackendMessage;
 }
 
 export interface DeviceTopologySmartDeviceStorage {
@@ -1023,7 +1023,7 @@ export interface DeviceTopologyStorageDevice {
   partitionStyle?: string | null;
   healthStatus?: string | null;
   partitions: DeviceTopologyStoragePartition[];
-  source: string;
+  source: BackendMessage;
 }
 
 export interface DeviceTopologyStoragePartition {
