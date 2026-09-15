@@ -1999,7 +1999,12 @@ const ruRuAppCopy: AppCopy = {
       sourcePnpServiceSetupApi: "служба PnP Windows + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "профиль разъёмов OEM + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "профиль разъёмов OEM + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Служба PnP Windows: ${service}`,
+      roleUcsiConnectorManager: "Диспетчер разъёмов USB Type-C",
+      roleUsb4HostRouter: "Хост-маршрутизатор USB4",
+      roleUsb4DeviceRouter: "Маршрутизатор устройства USB4 / Thunderbolt 3",
+      roleUsb4P2PNetwork: "Сетевой адаптер связи хостов USB4"
     }
   }
 };

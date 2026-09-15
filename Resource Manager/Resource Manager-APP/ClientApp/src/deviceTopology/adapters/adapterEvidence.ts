@@ -54,9 +54,7 @@ export function hasAnyEvidence(port: DeviceTopologyPort, pattern: RegExp) {
     port.usb?.deviceClass,
     port.usb?.productName,
     port.advancedInterconnect?.kind,
-    port.advancedInterconnect?.role,
     port.advancedInterconnect?.technology,
-    port.advancedInterconnect?.evidence,
     ...port.hardwareIds,
     ...port.compatibleIds,
     ...interfaceProtocols(port)

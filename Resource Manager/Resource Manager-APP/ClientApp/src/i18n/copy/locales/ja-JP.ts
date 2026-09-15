@@ -1999,7 +1999,12 @@ const jaJpAppCopy: AppCopy = {
       sourcePnpServiceSetupApi: "Windows PnP サービス + SetupAPI / CfgMgr32",
       sourceUsbHubIoctl: "USB Hub IOCTL",
       sourceQueryDisplayConfig: "QueryDisplayConfig + DisplayConfigGetDeviceInfo",
-      sourceOemProfileQueryDisplayConfig: "OEM 機種別コネクタープロファイル + QueryDisplayConfig(QDC_ALL_PATHS)"
+      sourceOemProfileQueryDisplayConfig: "OEM 機種別コネクタープロファイル + QueryDisplayConfig(QDC_ALL_PATHS)",
+      interconnectEvidencePnpService: (service: string) => `Windows PnP サービス：${service}`,
+      roleUcsiConnectorManager: "USB Type-C コネクターマネージャー",
+      roleUsb4HostRouter: "USB4 ホストルーター",
+      roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 デバイスルーター",
+      roleUsb4P2PNetwork: "USB4 ホスト間ネットワークアダプター"
     }
   }
 };

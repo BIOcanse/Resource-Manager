@@ -104,9 +104,9 @@ public sealed record DeviceTopologyIdResolution(
 
 public sealed record DeviceTopologyAdvancedInterconnect(
     string Kind,
-    string Role,
+    BackendMessage Role,
     string Technology,
-    string Evidence);
+    BackendMessage Evidence);
 
 public sealed record DeviceTopologyUsbConnection(
     string HubDevicePath,

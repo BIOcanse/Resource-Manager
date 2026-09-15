@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
@@ -11,22 +12,22 @@ internal static class DeviceTopologyInterconnectClassifier
         {
             "UCMUCSIACPICLIENT" => Create(
                 DeviceInterconnectKinds.UcsiConnectorManager,
-                "USB Type-C 连接器管理器",
+                BackendMessageCodes.DeviceTopology.RoleUcsiConnectorManager,
                 "UCSI",
                 "UcmUcsiAcpiClient"),
             "USB4HOSTROUTER" => Create(
                 DeviceInterconnectKinds.Usb4HostRouter,
-                "USB4 主机路由器",
+                BackendMessageCodes.DeviceTopology.RoleUsb4HostRouter,
                 "USB4",
                 "Usb4HostRouter"),
             "USB4DEVICEROUTER" => Create(
                 DeviceInterconnectKinds.Usb4DeviceRouter,
-                "USB4 / Thunderbolt 3 设备路由器",
+                BackendMessageCodes.DeviceTopology.RoleUsb4DeviceRouter,
                 "USB4 / Thunderbolt 3",
                 "Usb4DeviceRouter"),
             "USB4P2PNETADAPTER" => Create(
                 DeviceInterconnectKinds.Usb4P2PNetwork,
-                "USB4 主机互联网络适配器",
+                BackendMessageCodes.DeviceTopology.RoleUsb4P2PNetwork,
                 "USB4NET",
                 "Usb4P2PNetAdapter"),
             _ => null
@@ -35,15 +36,18 @@ internal static class DeviceTopologyInterconnectClassifier
 
     private static DeviceTopologyAdvancedInterconnect Create(
         string kind,
-        string role,
+        byte roleCode,
         string technology,
         string service)
     {
         return new DeviceTopologyAdvancedInterconnect(
             kind,
-            role,
+            BackendMessage.Create(BackendMessageDomains.DeviceTopology, roleCode),
             technology,
-            $"Windows PnP 服务：{service}");
+            BackendMessage.Create(
+                BackendMessageDomains.DeviceTopology,
+                BackendMessageCodes.DeviceTopology.InterconnectEvidencePnpService,
+                service));
     }
 
     private static string NormalizeServiceName(string? service)

@@ -209,9 +209,9 @@ function decodeAdvancedInterconnect(
   const record = requireRecord(value, path);
   return {
     kind: requireString(record.kind, `${path}.kind`),
-    role: requireString(record.role, `${path}.role`),
+    role: requireBackendMessage(record.role, `${path}.role`),
     technology: requireString(record.technology, `${path}.technology`),
-    evidence: requireString(record.evidence, `${path}.evidence`)
+    evidence: requireBackendMessage(record.evidence, `${path}.evidence`)
   };
 }
 

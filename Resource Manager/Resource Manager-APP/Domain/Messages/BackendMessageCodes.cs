@@ -281,5 +281,20 @@ public static class BackendMessageCodes
 
         /// <summary>来源：OEM 机型接口档案 + QueryDisplayConfig(QDC_ALL_PATHS)。参数：无。</summary>
         public const byte SourceOemProfileQueryDisplayConfig = 40;
+
+        /// <summary>高级互联的判定依据是某个 Windows PnP 服务。参数：1 = 服务名。</summary>
+        public const byte InterconnectEvidencePnpService = 41;
+
+        /// <summary>互联角色：USB Type-C 连接器管理器。参数：无。</summary>
+        public const byte RoleUcsiConnectorManager = 42;
+
+        /// <summary>互联角色：USB4 主机路由器。参数：无。</summary>
+        public const byte RoleUsb4HostRouter = 43;
+
+        /// <summary>互联角色：USB4 / Thunderbolt 3 设备路由器。参数：无。</summary>
+        public const byte RoleUsb4DeviceRouter = 44;
+
+        /// <summary>互联角色：USB4 主机互联网络适配器。参数：无。</summary>
+        public const byte RoleUsb4P2PNetwork = 45;
     }
 }
