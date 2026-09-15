@@ -217,7 +217,7 @@ export function MetricModal(props: MetricModalProps) {
               </button>
             </Show>
           </label>
-          <span class="metric-picker-count" role="status">{filteredMetrics().length} 个监控项</span>
+          <span class="metric-picker-count" role="status">{uiText.metricPicker.count(filteredMetrics().length)}</span>
         </div>
         <div
           ref={listbox}

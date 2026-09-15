@@ -88,7 +88,7 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
       />
       <Show when={!props.publicServicesAvailable}>
         <div class="settings-capability-notice" role="status">
-          当前启动配置未运行公共服务。以下项目显示已保存配置，不表示对应服务正在运行。
+          {uiText.misc.publicServicesNotRunning}
         </div>
       </Show>
       <div class="settings-row">

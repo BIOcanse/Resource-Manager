@@ -97,7 +97,7 @@ assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(se
 assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused"\]/);
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
 assert.match(resourcePaintPlane, /presentation\.barColor !== "distinct"/);
-assert.match(systemIntegrationSettings, /以下项目显示已保存配置，不表示对应服务正在运行/);
+assert.match(systemIntegrationSettings, /uiText\.misc\.publicServicesNotRunning/);
 
 // Monitor actions and copy must reflect actual available behavior.
 assert.match(resourceTable, /<Show when=\{props\.mode !== "performance"\}>[\s\S]*?onClick=\{props\.onToggleEdit\}/);

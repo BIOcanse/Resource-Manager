@@ -340,7 +340,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         {(model) => <DeviceSpecializedSummary model={model()} />}
                       </Show>
                       <button class="secondary details-button device-details-button" type="button" onClick={() => setDetailsOpen(true)}>
-                        详细信息
+                        {uiText.deviceTopology.details}
                       </button>
                       <Show when={false}>
                       <Show when={selectedNode()?.specializedDevice}>
@@ -506,7 +506,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           <For each={port().usb?.companionPorts ?? []}>
                             {(companion) => (
                               <code>
-                                #{companion.companionIndex} · Hub 端口 {companion.portNumber}
+                                #{companion.companionIndex} · {uiText.deviceTopology.label.hubPort} {companion.portNumber}
                                 {companion.hubSymbolicLinkName ? ` · ${companion.hubSymbolicLinkName}` : ""}
                               </code>
                             )}

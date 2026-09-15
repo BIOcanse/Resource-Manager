@@ -53,7 +53,7 @@ export function MonitorPage(props: MonitorPageProps) {
             aria-label={uiText.monitorPage.addCardLabel}
             onClick={monitor.addCard}
           >
-            添加卡片
+            {uiText.monitorPage.addCard}
           </button>
           <Show when={monitor.dashboardSaveState() === "error"}>
             <span class="save-state error">{uiText.common.saveFailed}</span>
@@ -66,7 +66,7 @@ export function MonitorPage(props: MonitorPageProps) {
               disabled={monitor.dashboardSaveState() === "saving"}
               onClick={monitor.cancelDashboardEdit}
             >
-              取消
+              {uiText.monitorPage.cancel}
             </button>
           </Show>
           <button

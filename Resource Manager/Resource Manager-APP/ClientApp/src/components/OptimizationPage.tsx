@@ -201,7 +201,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                         <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewDevice}</button>
                       </Show>
                       <button class="secondary details-button" type="button" onClick={() => setDetailReport(report)}>
-                        详细信息
+                        {uiText.optimization.details}
                       </button>
                       <Show
                         when={!isTrustedReport(report)}
@@ -217,7 +217,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                               }
                             }}
                           >
-                            移出信任
+                            {uiText.optimization.removeTrust}
                           </button>
                         }
                       >
@@ -227,7 +227,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                           disabled={!reportActionsAvailable() || props.actionId === report.id}
                           onClick={() => props.onDismiss(report)}
                         >
-                          忽略
+                          {uiText.optimization.dismiss}
                         </button>
                       </Show>
                     </div>

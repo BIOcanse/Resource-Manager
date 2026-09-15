@@ -74,7 +74,7 @@ export function ToastHost(props: {
                         props.onDismiss(item.id);
                       }}
                     >
-                      详细信息
+                      {uiText.misc.details}
                     </button>
                   </div>
                 </Show>

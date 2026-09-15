@@ -158,23 +158,23 @@ export function CpuTopologyDiagram(props: {
               <Show when={editing()} fallback={
                 <>
                   <button class="secondary" type="button" onClick={() => openDetails(model())}>
-                    详细信息
+                    {uiText.cpuTopology.details}
                   </button>
                   <Show when={props.runtimeEffectsEnabled}>
                     <button class="secondary" type="button" onClick={() => startEditing(model())}>
-                      编辑
+                      {uiText.cpuTopology.edit}
                     </button>
                   </Show>
                 </>
               }>
                 <button class="secondary" type="button" disabled={saving()} onClick={() => cancelEditing(model())}>
-                  取消
+                  {uiText.cpuTopology.cancel}
                 </button>
                 <button class="secondary" type="button" disabled={saving()} onClick={() => resetScores(model())}>
-                  重置
+                  {uiText.cpuTopology.reset}
                 </button>
                 <button type="button" disabled={saving()} onClick={() => saveScores(model())}>
-                  保存
+                  {uiText.cpuTopology.save}
                 </button>
               </Show>
             </div>
@@ -245,7 +245,7 @@ export function CpuTopologyDiagram(props: {
                                           title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
                                           onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
                                         >
-                                          <span>逻辑处理器 {logical.id}</span>
+                                          <span>{uiText.cpuTopology.logicalProcessor(logical.id)}</span>
                                           <small>{formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}</small>
                                         </button>
                                       );
@@ -271,7 +271,7 @@ export function CpuTopologyDiagram(props: {
                       onClick={() => toggleSelection(setSelected, "ccd", model().ccds[0]?.id ?? "")}
                     >
                       <span>{uiText.cpuTopology.ringBus}</span>
-                      <small>{model().physicalCoreCount} 核心</small>
+                      <small>{uiText.cpuTopology.coreCount(model().physicalCoreCount)}</small>
                     </button>
                   </div>
                   <div class="cpu-ring-stage">
@@ -346,10 +346,10 @@ export function CpuTopologyDiagram(props: {
 
             <Show when={selected().length > 0}>
               <div class="cpu-selection-summary">
-                <span>已选 {selected().length} 项</span>
-                <span>逻辑处理器：{selectedLogicalIds().length > 0 ? selectedLogicalIds().join(", ") : "--"}</span>
+                <span>{uiText.cpuTopology.selectedCount(selected().length)}</span>
+                <span>{uiText.cpuTopology.logicalProcessors}：{selectedLogicalIds().length > 0 ? selectedLogicalIds().join(", ") : "--"}</span>
                 <button class="secondary" type="button" onClick={() => setSelected([])}>
-                  清空
+                  {uiText.cpuTopology.clear}
                 </button>
               </div>
             </Show>
@@ -464,7 +464,7 @@ function CpuCoreSelectionButton(props: {
     >
       <span>{props.core.label}</span>
       <strong>{usage()}</strong>
-      <small>性能 {performance()}</small>
+      <small>{uiText.cpuTopology.corePerformance(performance())}</small>
       <small>{uiText.cpuTopology.coreExecutionTime(executionTime())}</small>
       <Show when={props.variant === "grid"}>
         <span class="cpu-core-meter" aria-hidden="true">
@@ -567,11 +567,11 @@ function CpuTopologyDetailsDialog(props: {
                             <article class="cpu-exclusive-binding-item">
                               <div>
                                 <strong>{binding.softwareName}</strong>
-                                <span>独占声明：{formatRequestedCpuPositions(props.model, binding.requestedExclusivePositionIds)}</span>
-                                <span>实际独占核心：{formatPhysicalCoreIds(props.model, binding.expandedExclusivePhysicalCoreIds)}</span>
+                                <span>{uiText.cpuTopology.exclusiveClaim(formatRequestedCpuPositions(props.model, binding.requestedExclusivePositionIds))}</span>
+                                <span>{uiText.cpuTopology.exclusiveCores(formatPhysicalCoreIds(props.model, binding.expandedExclusivePhysicalCoreIds))}</span>
                                 <Show when={binding.requestedLockedPositionIds.length > 0}>
-                                  <span>锁定声明：{formatRequestedCpuPositions(props.model, binding.requestedLockedPositionIds)}</span>
-                                  <span>实际锁定核心：{formatPhysicalCoreIds(props.model, binding.expandedLockedPhysicalCoreIds)}</span>
+                                  <span>{uiText.cpuTopology.lockedClaim(formatRequestedCpuPositions(props.model, binding.requestedLockedPositionIds))}</span>
+                                  <span>{uiText.cpuTopology.lockedCores(formatPhysicalCoreIds(props.model, binding.expandedLockedPhysicalCoreIds))}</span>
                                 </Show>
                               </div>
                               <button
@@ -579,7 +579,7 @@ function CpuTopologyDetailsDialog(props: {
                                 class="secondary"
                                 onClick={() => props.onOpenSoftwareSettings(binding.softwareId, binding.softwareName)}
                               >
-                                打开软件设置
+                                {uiText.cpuTopology.openSoftwareSettings}
                               </button>
                             </article>
                           )}

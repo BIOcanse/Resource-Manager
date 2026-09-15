@@ -120,7 +120,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
               disabled={props.saveState === "saving"}
               onClick={props.onCancelEdit}
             >
-              取消
+              {uiText.resourceBreakdownView.cancel}
             </button>
           </Show>
           <button

@@ -151,7 +151,7 @@ export function ResourceTable(props: ResourceTableProps) {
               disabled={props.saveState === "saving"}
               onClick={props.onCancelEdit}
             >
-              取消
+              {uiText.resourceTableView.cancel}
             </button>
           </Show>
           <Show when={props.mode !== "performance"}>
