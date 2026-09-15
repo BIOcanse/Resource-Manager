@@ -1,4 +1,4 @@
-import { localizedMetricLabel } from "../presentation/metricLabels";
+import { localizedMetricLabel, softwareDisplayName } from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../frontendRuntime/task/useTaskScope";
@@ -592,7 +592,7 @@ function ResourceProcessPanel(props: {
   return (
     <div class="resource-process-panel" data-resource-tooltip-boundary>
       <div class="resource-process-header">
-        <strong>{props.software.name}</strong>
+        <strong>{softwareDisplayName(props.software)}</strong>
         <span>{hasResidualCategories() ? uiText.resourceBreakdown.categoryCount(props.software.processes.length) : uiText.resourceBreakdown.processCount(props.software.processCount)}</span>
       </div>
       <div
@@ -601,7 +601,7 @@ function ResourceProcessPanel(props: {
         ref={trackGeometry.observeTrack}
         tabIndex={hasProcesses() ? 0 : -1}
         role={hasProcesses() ? "listbox" : undefined}
-        aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(props.software.name) : undefined}
+        aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software)) : undefined}
         aria-activedescendant={activeProcessOptionId()}
         onPointerMove={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
@@ -826,9 +826,14 @@ function resourceEmptyCapacitySegment(bar: ResourceBreakdownBar): ResourceEmptyS
   };
 }
 
+// 空白段的名字是前端自己造的，直接用；软件段按共用规则出名。
+function segmentLabel(segment: ResourceSelectableSegment) {
+  return segment.kind === "Empty" ? segment.name : softwareDisplayName(segment);
+}
+
 function resourceSegmentTooltip(bar: ResourceBreakdownBar, segment: ResourceSelectableSegment) {
   const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
-  return `${segment.name}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${formatResourceBarValue(bar, segment.value)}`;
+  return `${segmentLabel(segment)}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${formatResourceBarValue(bar, segment.value)}`;
 }
 
 function formatResourceBarValue(bar: ResourceBreakdownBar, value: number) {
@@ -867,7 +872,7 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
     right: item.right,
     color: resourceSegmentPaintColor(item.segment, "type"),
     distinctColor: resourceSegmentPaintColor(item.segment, "distinct"),
-    label: item.width >= 8 ? item.segment.name : undefined,
+    label: item.width >= 8 ? segmentLabel(item.segment) : undefined,
     labelColor: resourceSegmentPaintTextColor(item.segment, "type"),
     distinctLabelColor: resourceSegmentPaintTextColor(item.segment, "distinct")
   }));

@@ -38,12 +38,21 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
         }
 
         var normalizedPath = NormalizeExistingPath(request.Path);
-        Process.Start(new ProcessStartInfo
+        // 「属性」这个谓词必须走 ShellExecuteEx 并带上 SEE_MASK_INVOKEIDLIST。
+        // Process.Start 不会设这个标志，所以用它调 properties 一定失败。
+        var info = new NativeMethods.ShellExecuteInfo
         {
-            FileName = normalizedPath,
+            Size = Marshal.SizeOf<NativeMethods.ShellExecuteInfo>(),
+            Mask = NativeMethods.SeeMaskInvokeIdList | NativeMethods.SeeMaskFlagNoUi,
             Verb = "properties",
-            UseShellExecute = true
-        });
+            File = normalizedPath,
+            Show = 1
+        };
+        if (!NativeMethods.ShellExecuteEx(ref info))
+        {
+            throw new InvalidOperationException(
+                $"打开属性窗口失败：{new Win32Exception(Marshal.GetLastWin32Error()).Message}");
+        }
 
         return new LocalPathOpenResult(
             normalizedPath,

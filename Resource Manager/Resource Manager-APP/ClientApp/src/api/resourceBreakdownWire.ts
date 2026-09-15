@@ -135,7 +135,9 @@ function decodeSoftwareIdentity(value: unknown, path: string): SoftwareIdentityR
   const row = requireTuple(value, path, 4);
   return [
     requireNonEmptyString(row[0], `${path}[0]`),
-    requireNonEmptyString(row[1], `${path}[1]`),
+    // 只代表一个分组的行（Windows 系统、Windows 服务、未归属进程…）没有软件名，
+    // 名字由前端按分组标识出，所以这里允许空串。
+    requireString(row[1], `${path}[1]`),
     requireNonEmptyString(row[2], `${path}[2]`),
     requireNonEmptyString(row[3], `${path}[3]`)
   ];

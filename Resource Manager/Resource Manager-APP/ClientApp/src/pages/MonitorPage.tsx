@@ -19,6 +19,8 @@ interface MonitorPageProps {
   monitor: MonitorStore;
   highlightedSoftwareId: Accessor<string | null>;
   onResourceTableSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
+  /** 有右键菜单打开时，被右键的那一行钉住不动。 */
+  contextMenuOpen: boolean;
 }
 
 export function MonitorPage(props: MonitorPageProps) {
@@ -184,6 +186,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 onColumnWidthChange={monitor.updateResourceTableColumnWidth}
                 onToggleExpand={monitor.toggleResourceTableExpand}
                 onSoftwareContextMenu={props.onResourceTableSoftwareContextMenu}
+                contextMenuOpen={props.contextMenuOpen}
                 onReorderColumn={monitor.reorderResourceTableColumns}
               />
             </ObservationStateBoundary>

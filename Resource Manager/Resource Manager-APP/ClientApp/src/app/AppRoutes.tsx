@@ -27,6 +27,8 @@ interface AppRoutesProps {
   runtimeCapabilities: RuntimeCapabilitiesStore;
   highlightedSoftwareId: Accessor<string | null>;
   onResourceTableSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
+  /** 有右键菜单打开时，被右键的那一行钉住不动。 */
+  contextMenuOpen: boolean;
   onManagementSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
   onOpenSoftwareDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onOpenSoftwareSettingsById: (softwareId: string, softwareName: string) => void;
