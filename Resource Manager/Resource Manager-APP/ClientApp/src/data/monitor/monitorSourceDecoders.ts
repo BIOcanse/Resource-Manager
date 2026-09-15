@@ -10,6 +10,7 @@ import {
   ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
+  BackendMessage,
   DashboardSettingsResult,
   MetricDefinition,
   MetricSnapshot,
@@ -63,7 +64,7 @@ function decodeMetricDefinition(value: unknown, path: string): MetricDefinition 
       record.requiredComponentName,
       `${path}.requiredComponentName`),
     selectable: optionalBoolean(record.selectable, `${path}.selectable`),
-    disabledReason: optionalNullableString(record.disabledReason, `${path}.disabledReason`),
+    disabledReason: optionalBackendMessage(record.disabledReason, `${path}.disabledReason`),
     scopeKind: optionalNullableString(record.scopeKind, `${path}.scopeKind`),
     scopeKey: optionalNullableString(record.scopeKey, `${path}.scopeKey`)
   };
@@ -95,6 +96,24 @@ function optionalNullableString(
   path: string
 ): string | null | undefined {
   return value === null ? null : optionalString(value, path);
+}
+
+// 后端的消息码：域/码是 byte，参数只放事实。认不出形状就当没有，界面回落到通用说明。
+function optionalBackendMessage(
+  value: unknown,
+  path: string
+): BackendMessage | null | undefined {
+  if (value === null || value === undefined) {
+    return value as null | undefined;
+  }
+
+  const record = requireRecord(value, path);
+  return {
+    domain: requireSafeInteger(record.domain, `${path}.domain`),
+    code: requireSafeInteger(record.code, `${path}.code`),
+    args: requireArray(record.args ?? [], `${path}.args`)
+      .map((item, index) => requireString(item, `${path}.args[${index}]`))
+  };
 }
 
 function optionalBoolean(value: unknown, path: string): boolean | undefined {

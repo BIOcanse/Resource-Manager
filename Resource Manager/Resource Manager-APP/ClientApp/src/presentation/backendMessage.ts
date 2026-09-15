@@ -44,6 +44,15 @@ function dependencyRenderers(): Record<number, Renderer> {
   };
 }
 
+function metricRenderers(): Record<number, Renderer> {
+  const copy = uiText.backendMessage.metric;
+  return {
+    1: () => copy.notExposed,
+    2: (args) => copy.needsComponent(args[0] ?? ""),
+    3: () => copy.noValidReading
+  };
+}
+
 function gpuPlacementRenderers(): Record<number, Renderer> {
   const copy = uiText.backendMessage.gpuPlacement;
   return {
@@ -63,7 +72,9 @@ export function renderBackendMessage(
     ? dependencyRenderers()
     : message.domain === backendMessageDomains.gpuPlacement
       ? gpuPlacementRenderers()
-      : null;
+      : message.domain === backendMessageDomains.metric
+        ? metricRenderers()
+        : null;
   const renderer = renderers?.[message.code];
   if (!renderer) {
     console.warn(

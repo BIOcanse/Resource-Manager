@@ -1939,6 +1939,11 @@ const deDeAppCopy: AppCopy = {
     },
     gpuPlacement: {
       singleAdapter: "Dieser Rechner hat nur eine GPU, daher gibt es für die GPU-Planung kein Ziel zur Auswahl."
+    },
+    metric: {
+      notExposed: "Die aktuelle Hardware oder der Provider gibt diesen Messwert nicht aus.",
+      needsComponent: (value: string) => `Der aktuelle Provider liefert keinen gültigen Messwert; ein vollständigeres ${value} oder die passende Hardware- bzw. OEM-Komponente wird benötigt.`,
+      noValidReading: "Die aktuelle Hardware oder der Provider liefert keinen gültigen Messwert."
     }
   }
 };

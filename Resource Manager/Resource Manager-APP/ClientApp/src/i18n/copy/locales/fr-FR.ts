@@ -1939,6 +1939,11 @@ const frFrAppCopy: AppCopy = {
     },
     gpuPlacement: {
       singleAdapter: "Cette machine n'a qu'un seul GPU : l'ordonnancement GPU n'a aucune cible à choisir."
+    },
+    metric: {
+      notExposed: "Le matériel ou le fournisseur actuel n'expose pas ce relevé.",
+      needsComponent: (value: string) => `Le fournisseur actuel ne renvoie aucun relevé valide ; un ${value} plus complet ou le matériel ou composant OEM correspondant est nécessaire.`,
+      noValidReading: "Le matériel ou le fournisseur actuel ne renvoie aucun relevé valide."
     }
   }
 };

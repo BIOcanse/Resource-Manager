@@ -1939,6 +1939,11 @@ const koKrAppCopy: AppCopy = {
     },
     gpuPlacement: {
       singleAdapter: "이 컴퓨터에는 GPU가 하나뿐이어서 GPU 스케줄링에 선택할 대상이 없습니다."
+    },
+    metric: {
+      notExposed: "현재 하드웨어 또는 공급자가 이 값을 제공하지 않습니다.",
+      needsComponent: (value: string) => `현재 공급자가 유효한 값을 반환하지 않습니다. 더 완전한 ${value} 또는 해당 하드웨어/OEM 구성 요소가 필요합니다.`,
+      noValidReading: "현재 하드웨어 또는 공급자가 유효한 값을 반환하지 않습니다."
     }
   }
 };

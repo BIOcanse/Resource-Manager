@@ -1,5 +1,6 @@
 import { uiText } from "../text.ts";
-import type { SoftwareDataMigrationRecord } from "../types";
+import { renderBackendMessage } from "./backendMessage.ts";
+import type { BackendMessage, SoftwareDataMigrationRecord } from "../types";
 import type { UserDetailSection } from "./userDetails";
 import {
   compactUserDetailSections,
@@ -175,11 +176,10 @@ export function userFacingMetricGroup(value: unknown) {
 // 只有后端没给理由时才退回这两句通用说明，不要因为指标声明过组件就断言是缺组件。
 export function userFacingMetricUnavailableReason(
   requiredComponentName?: string | null,
-  disabledReason?: string | null
+  disabledReason?: BackendMessage | null
 ) {
-  const reported = disabledReason?.trim();
-  if (reported) {
-    return userFacingMessage(reported, uiText.status.metricUnavailable.deviceNotProvided);
+  if (disabledReason) {
+    return renderBackendMessage(disabledReason);
   }
 
   return requiredComponentName

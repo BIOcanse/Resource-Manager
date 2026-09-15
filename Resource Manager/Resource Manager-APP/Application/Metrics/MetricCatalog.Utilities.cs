@@ -1,4 +1,6 @@
-using ResourceManager.App.Domain.Metrics;
+﻿using ResourceManager.App.Domain.Metrics;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Metrics;
 
@@ -88,19 +90,26 @@ public static partial class MetricCatalog
             && !item.DisplayValue.Equals("--", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string DisabledReason(MetricValue? item, string? requiredComponentName)
+    private static BackendMessage DisabledReason(MetricValue? item, string? requiredComponentName)
     {
         if (item is null)
         {
-            return "当前硬件或 Provider 未暴露这个读数。";
+            return BackendMessage.Create(
+                BackendMessageDomains.Metric,
+                BackendMessageCodes.Metric.NotExposed);
         }
 
         if (!string.IsNullOrWhiteSpace(requiredComponentName))
         {
-            return $"当前 Provider 未返回有效读数，需要更完整的 {requiredComponentName} 或对应硬件/OEM 组件。";
+            return BackendMessage.Create(
+                BackendMessageDomains.Metric,
+                BackendMessageCodes.Metric.NeedsComponent,
+                requiredComponentName);
         }
 
-        return "当前硬件或 Provider 未返回有效读数。";
+        return BackendMessage.Create(
+            BackendMessageDomains.Metric,
+            BackendMessageCodes.Metric.NoValidReading);
     }
 
     private static string? RequiredComponentWhenUnavailable(
