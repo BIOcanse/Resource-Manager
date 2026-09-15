@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.App.Domain.Software;
 using System.Text;
 using System.Text.Json;
 using ResourceManager.App.Domain.Metrics;
@@ -219,7 +221,7 @@ public sealed class ResourceMonitorProjectionTests
         Assert.Equal("software:b", softwareBIdentity[0].GetString());
         Assert.Equal("App B", softwareBIdentity[1].GetString());
         Assert.Equal("Other", softwareBIdentity[2].GetString());
-        Assert.Equal("一般应用", softwareBIdentity[3].GetString());
+        Assert.Equal(SoftwareDisplayKinds.General, softwareBIdentity[3].GetString());
 
         var softwareBValue = root.GetProperty("bars")[0].GetProperty("software")[1];
         Assert.Equal(7, softwareBValue.GetArrayLength());
@@ -268,7 +270,7 @@ public sealed class ResourceMonitorProjectionTests
                 $"software:{index:D3}",
                 $"Software {index:D3}",
                 "Other",
-                "一般应用",
+                SoftwareDisplayKinds.General,
                 index + 1,
                 (index + 1) / 10d,
                 $"{index + 1} MB",
@@ -367,7 +369,7 @@ public sealed class ResourceMonitorProjectionTests
         {
             ProcessStartKey = checked(processId * 1000L)
         };
-        return new ResourceSoftwareSegment(id, name, "Other", "一般应用", 1, 1, "1 B", 1, [process]);
+        return new ResourceSoftwareSegment(id, name, "Other", SoftwareDisplayKinds.General, 1, 1, "1 B", 1, [process]);
     }
 
     private static ResourceBreakdownDatasetSamplingState CurrentDataset(

@@ -1,7 +1,8 @@
-﻿using ResourceManager.App.Application.ResourceTable;
+using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.ResourceTable;
 
@@ -164,10 +165,11 @@ public sealed partial class ResourceTableProjector
     {
         if (IsSystemResidual(process))
         {
-            return "系统/驱动保留";
+            return SoftwareDisplayKinds.SystemResidual;
         }
 
-        return IsEtwResidualProcess(process) ? "DXGKrnl/VidMm" : "运行中";
+        // DXGKrnl/VidMm 是 Windows 的组件名，各语言都用原名；其余进程给状态标识。
+        return IsEtwResidualProcess(process) ? "DXGKrnl/VidMm" : ResourceTableProcessStates.Running;
     }
 
     private static int? ProcessIdOrNull(ResourceProcessSegment process)

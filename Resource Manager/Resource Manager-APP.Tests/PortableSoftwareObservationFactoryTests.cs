@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
@@ -14,7 +15,7 @@ public sealed class PortableSoftwareObservationFactoryTests
             "catalog:game-skyrim-special-edition",
             "The Elder Scrolls V: Skyrim Special Edition",
             SoftwareKinds.Game,
-            "游戏",
+            SoftwareDisplayKinds.Game,
             [@"F:\Portable\Skyrim"]);
 
         var observation = PortableSoftwareObservationFactory.TryCreate(process, attribution);
@@ -37,7 +38,7 @@ public sealed class PortableSoftwareObservationFactoryTests
             softwareId,
             "Skyrim",
             SoftwareKinds.Game,
-            "游戏",
+            SoftwareDisplayKinds.Game,
             []);
 
         Assert.Null(PortableSoftwareObservationFactory.TryCreate(process, attribution));

@@ -142,19 +142,13 @@ export function pathLooksUsable(value: unknown) {
 }
 
 export function normalizeSoftwareKind(software: SoftwareRecord): "Adapted" | "Controlled" | "Game" | "HighPerformance" | "Other" {
+  // kind 与 displayKind 现在都是标识，直接比标识，不再认措辞。
   const kind = software.kind ?? "";
   const displayKind = software.displayKind ?? "";
-  if (kind === "Adapted" || displayKind === "适配软件") {
-    return "Adapted";
-  }
-  if (kind === "Controlled" || displayKind === "受控软件") {
-    return "Controlled";
-  }
-  if (kind === "Game" || displayKind === "游戏") {
-    return "Game";
-  }
-  if (kind === "HighPerformance" || displayKind === "高性能软件") {
-    return "HighPerformance";
+  for (const candidate of ["Adapted", "Controlled", "Game", "HighPerformance"] as const) {
+    if (kind === candidate || displayKind === candidate) {
+      return candidate;
+    }
   }
 
   return "Other";

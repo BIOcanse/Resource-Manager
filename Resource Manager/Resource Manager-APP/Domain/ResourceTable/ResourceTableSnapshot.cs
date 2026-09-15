@@ -16,6 +16,12 @@ public static class ResourceTableColumnIds
     public const string Network = "network";
 }
 
+/// <summary>进程行的状态取值。只有状态，没有措辞。</summary>
+public static class ResourceTableProcessStates
+{
+    public const string Running = "running";
+}
+
 public static class ResourceTableRowKinds
 {
     public const string Summary = "summary";

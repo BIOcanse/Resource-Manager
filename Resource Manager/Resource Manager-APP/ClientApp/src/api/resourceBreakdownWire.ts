@@ -277,7 +277,8 @@ function decodeTableRow(value: unknown, path: string): ResourceTableRow {
     parentId: optionalNullableString(row.parentId, `${path}.parentId`),
     depth: requireSafeInteger(row.depth, `${path}.depth`),
     kind: requireNonEmptyString(row.kind, `${path}.kind`),
-    name: requireNonEmptyString(row.name, `${path}.name`),
+    // 汇总行与「未归属进程」这类行没有软件名，名字由前端按行类别或分组标识出。
+    name: requireString(row.name, `${path}.name`),
     status: requireString(row.status, `${path}.status`),
     softwareName: optionalNullableString(row.softwareName, `${path}.softwareName`),
     softwareId: optionalNullableString(row.softwareId, `${path}.softwareId`),

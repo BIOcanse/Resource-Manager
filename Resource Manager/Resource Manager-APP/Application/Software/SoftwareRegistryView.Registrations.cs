@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Adaptation;
+using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
 
@@ -16,7 +16,7 @@ public sealed partial class SoftwareRegistryView
                 RuntimeAttributionIds.ResourceManagerSelf,
                 ResourceManagerSelfDescriptor.DisplayName,
                 SoftwareKinds.Adapted,
-                SoftwareText.Adapted,
+                SoftwareDisplayKinds.Adapted,
                 "active",
                 ["内置适配", "本地资源自管"],
                 ResourceManagerSelfDescriptor.ResolveRootPaths(),
@@ -32,7 +32,7 @@ public sealed partial class SoftwareRegistryView
                 registration.Id,
                 registration.DisplayName,
                 SoftwareKinds.Adapted,
-                SoftwareText.Adapted,
+                SoftwareDisplayKinds.Adapted,
                 registration.State,
                 ["适配注册", "适配控制端点"],
                 registration.ProgramRootPaths,
@@ -66,7 +66,7 @@ public sealed partial class SoftwareRegistryView
                 $"controlled-registration:{registration.Id}",
                 name,
                 SoftwareKinds.Controlled,
-                SoftwareText.Controlled,
+                SoftwareDisplayKinds.Controlled,
                 registration.Status,
                 ["L0注册"],
                 registration.ProgramRootPaths,

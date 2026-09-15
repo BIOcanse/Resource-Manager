@@ -2,6 +2,15 @@
 export const zhMetricLabelsCopy = {
   metricLabel: {
     "cpu.usage": "CPU 占用率",
+    "disk.io": "磁盘 I/O",
+    "disk.read": "磁盘读取",
+    "disk.write": "磁盘写入",
+    "network.traffic": "网络流量",
+    "network.receive": "网络接收",
+    "network.send": "网络发送",
+    "network.raw.traffic": "网络原始流量",
+    "network.raw.receive": "网络原始接收",
+    "network.raw.send": "网络原始发送",
     "cpu.frequency": "CPU 频率",
     "cpu.frequencyPercent": "CPU 频率百分比",
     "cpu.temperature": "CPU 温度",

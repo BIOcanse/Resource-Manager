@@ -72,6 +72,7 @@ const koKrAppCopy: AppCopy = {
     RuntimeProduct: "일반 애플리케이션",
     RuntimeRoot: "일반 애플리케이션",
     Unattributed: "귀속되지 않은 프로세스",
+    SystemResidual: "시스템/드라이버 예약",
     Empty: "여유"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const koKrAppCopy: AppCopy = {
       process: "프로세스별",
       performance: "성능"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "총 사용량",
+      status: {
+        warming: "준비 중",
+        ready: "현재 샘플",
+        stale: "마지막 샘플",
+        failed: "샘플링 실패"
+      }
+    },
+    systemResidualRow: (metric: string) => `시스템/드라이버 예약 · ${metric}`,
     columns: {
       name: "이름",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const koKrAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "CPU 사용률",
+    "disk.io": "디스크 I/O",
+    "disk.read": "디스크 읽기",
+    "disk.write": "디스크 쓰기",
+    "network.traffic": "네트워크 트래픽",
+    "network.receive": "네트워크 수신",
+    "network.send": "네트워크 송신",
+    "network.raw.traffic": "원시 네트워크 트래픽",
+    "network.raw.receive": "원시 네트워크 수신",
+    "network.raw.send": "원시 네트워크 송신",
     "cpu.frequency": "CPU 클록",
     "cpu.frequencyPercent": "CPU 클록 비율",
     "cpu.temperature": "CPU 온도",

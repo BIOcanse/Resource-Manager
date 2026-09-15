@@ -164,7 +164,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
         var kind = NormalizeKind(request.Kind);
         if (!IsAllowedKind(kind))
         {
-            throw new InvalidOperationException($"手动软件分类只支持{SoftwareText.Adapted}、{SoftwareText.Game}、{SoftwareText.HighPerformance}和{SoftwareText.General}。");
+            throw new InvalidOperationException($"手动软件分类只支持{SoftwareDisplayKinds.Adapted}、{SoftwareDisplayKinds.Game}、{SoftwareDisplayKinds.HighPerformance}和{SoftwareDisplayKinds.General}。");
         }
 
         var roots = NormalizeRootPaths(request.RootPaths);
@@ -177,7 +177,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
         if ((kind == SoftwareKinds.Adapted || kind == SoftwareKinds.Other) && roots.Count == 0)
         {
-            throw new InvalidOperationException($"手动补录{SoftwareText.Adapted}或{SoftwareText.General}至少需要一个根目录。");
+            throw new InvalidOperationException($"手动补录{SoftwareDisplayKinds.Adapted}或{SoftwareDisplayKinds.General}至少需要一个根目录。");
         }
 
         return new ManualSoftwareRequest(name, kind, roots, CleanText(request.SourceSoftwareId));
@@ -267,10 +267,10 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
     {
         return kind switch
         {
-            SoftwareKinds.Adapted => SoftwareText.Adapted,
-            SoftwareKinds.Game => SoftwareText.Game,
-            SoftwareKinds.HighPerformance => SoftwareText.HighPerformance,
-            _ => SoftwareText.General
+            SoftwareKinds.Adapted => SoftwareDisplayKinds.Adapted,
+            SoftwareKinds.Game => SoftwareDisplayKinds.Game,
+            SoftwareKinds.HighPerformance => SoftwareDisplayKinds.HighPerformance,
+            _ => SoftwareDisplayKinds.General
         };
     }
 

@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -514,7 +516,7 @@ public sealed class HostedResourcePublicationStateTests
                     "software:test",
                     "Test",
                     "Other",
-                    "一般应用",
+                    SoftwareDisplayKinds.General,
                     100,
                     SchedulingProcessMetricMask.CpuUsage,
                     cpuUsage,

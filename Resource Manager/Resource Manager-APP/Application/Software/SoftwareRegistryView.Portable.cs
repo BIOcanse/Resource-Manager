@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.SoftwareDiscovery;
 
 using ResourceManager.App.Domain.Messages;
@@ -17,7 +17,7 @@ public sealed partial class SoftwareRegistryView
             registration.SoftwareId,
             registration.Name,
             projectedKind,
-            SoftwareText.DisplayKind(projectedKind),
+            SoftwareDisplayKinds.Project(projectedKind),
             registration.RequiresRootPathConfirmation ? "RootConfirmationRequired" : "portable",
             [registration.IdentityConfirmed ? "运行时便携软件确认" : "运行时便携软件候选", $"软件身份目录 {softwareIdentityCatalog.Version}"],
             registration.RootPaths,

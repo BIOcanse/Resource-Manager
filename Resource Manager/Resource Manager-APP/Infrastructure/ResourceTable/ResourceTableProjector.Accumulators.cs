@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Application.ResourceTable;
+using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceTable;
@@ -64,10 +64,9 @@ public sealed partial class ResourceTableProjector
             null,
             0,
             ResourceTableRowKinds.Summary,
-            "总占用",
-            projectionStatus == ResourceTableProjectionStatuses.Ready
-                ? "当前采样"
-                : "-",
+            // 汇总行的名字与状态是措辞，由前端按行类别和采样状态出。
+            string.Empty,
+            projectionStatus,
             null,
             null,
             0,

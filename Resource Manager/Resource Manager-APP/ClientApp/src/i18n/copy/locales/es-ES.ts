@@ -72,6 +72,7 @@ const esEsAppCopy: AppCopy = {
     RuntimeProduct: "Aplicaciones generales",
     RuntimeRoot: "Aplicaciones generales",
     Unattributed: "Procesos sin atribuir",
+    SystemResidual: "Reservado por sistema/controlador",
     Empty: "Libre"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const esEsAppCopy: AppCopy = {
       process: "Por proceso",
       performance: "Rendimiento"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "Uso total",
+      status: {
+        warming: "Calentando",
+        ready: "Muestra actual",
+        stale: "Última muestra",
+        failed: "Error de muestreo"
+      }
+    },
+    systemResidualRow: (metric: string) => `Reservado por sistema/controlador · ${metric}`,
     columns: {
       name: "Nombre",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const esEsAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "Uso de la CPU",
+    "disk.io": "E/S de disco",
+    "disk.read": "Lectura de disco",
+    "disk.write": "Escritura de disco",
+    "network.traffic": "Tráfico de red",
+    "network.receive": "Recepción de red",
+    "network.send": "Envío de red",
+    "network.raw.traffic": "Tráfico de red sin procesar",
+    "network.raw.receive": "Recepción de red sin procesar",
+    "network.raw.send": "Envío de red sin procesar",
     "cpu.frequency": "Frecuencia de la CPU",
     "cpu.frequencyPercent": "Porcentaje de frecuencia de la CPU",
     "cpu.temperature": "Temperatura de la CPU",

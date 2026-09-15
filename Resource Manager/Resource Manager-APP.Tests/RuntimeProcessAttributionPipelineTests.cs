@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Domain.Controlled;
@@ -23,7 +24,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             confirmedRoot ? [@"D:\Software\WPS Office"] : []) with
         {
             Kind = kind,
-            DisplayKind = SoftwareText.DisplayKind(kind)
+            DisplayKind = SoftwareDisplayKinds.Project(kind)
         };
         using var pipeline = CreatePipeline([software], identityCatalog: catalog);
         var result = pipeline.Match(new RuntimeProcessIdentity(
@@ -152,7 +153,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         Assert.StartsWith("runtime-game:", attribution.Id, StringComparison.Ordinal);
         Assert.Equal("star rail game", attribution.Name);
         Assert.Equal(SoftwareKinds.Game, attribution.Kind);
-        Assert.Equal(SoftwareText.Game, attribution.DisplayKind);
+        Assert.Equal(SoftwareDisplayKinds.Game, attribution.DisplayKind);
         Assert.Equal(
             "d:/games/mihoyo launcher/games/star rail game",
             Assert.Single(attribution.RootPaths));
@@ -208,7 +209,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         Assert.NotNull(attribution);
         Assert.Equal(RuntimeAttributionIds.ResourceManagerSelf, attribution.Id);
         Assert.Equal(SoftwareKinds.Adapted, attribution.Kind);
-        Assert.Equal("适配软件", attribution.DisplayKind);
+        Assert.Equal(SoftwareDisplayKinds.Adapted, attribution.DisplayKind);
     }
 
     [Fact]
@@ -246,7 +247,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         Assert.NotNull(attribution);
         Assert.Equal("adapter:word-memory", attribution.Id);
         Assert.Equal(SoftwareKinds.Adapted, attribution.Kind);
-        Assert.Equal("适配软件", attribution.DisplayKind);
+        Assert.Equal(SoftwareDisplayKinds.Adapted, attribution.DisplayKind);
     }
 
     [Fact]

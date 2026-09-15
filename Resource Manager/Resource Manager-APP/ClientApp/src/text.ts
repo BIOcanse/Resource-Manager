@@ -9,14 +9,11 @@ export function softwareKindLabel(kind: string | null | undefined) {
   return uiText.softwareKind[key] ?? uiText.softwareKind.Other;
 }
 
+// displayKind 是后端把若干 kind 合并后的展示分组标识（见后端 SoftwareDisplayKinds），
+// 不是措辞；认不出时回落到 kind 自己的文案。
 export function softwareDisplayKindLabel(kind: string | null | undefined, displayKind?: string | null) {
-  const kindLabel = softwareKindLabel(kind);
-  const displayText = displayKind?.trim();
-  if (displayText === "其他软件" || displayText === "其他应用" || displayText === "运行中软件") {
-    return uiText.softwareKind.Other;
-  }
-
-  return displayText || kindLabel;
+  const group = (displayKind ?? "").trim() as keyof typeof uiText.softwareKind;
+  return uiText.softwareKind[group] ?? softwareKindLabel(kind);
 }
 
 export function managementKindLabel(kind: ManagementKind) {

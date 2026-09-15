@@ -10,16 +10,17 @@ public sealed class WindowsSystemProcessClassifier : IRuntimeSystemProcessClassi
 
     private static readonly RuntimeSoftwareAttribution WindowsSystem = new(
         RuntimeAttributionIds.WindowsSystem,
-        "Windows 系统",
+        // 名字为空：前端按分组标识出「Windows 系统」。
+        string.Empty,
         SoftwareKinds.WindowsSystem,
-        "Windows 系统",
+        SoftwareDisplayKinds.WindowsSystem,
         [WindowsRoot]);
 
     private static readonly RuntimeSoftwareAttribution WindowsComponent = new(
         RuntimeAttributionIds.WindowsComponent,
-        "Windows 应用/组件",
+        string.Empty,
         SoftwareKinds.WindowsComponent,
-        "Windows 应用/组件",
+        SoftwareDisplayKinds.WindowsComponent,
         [Path.Combine(WindowsRoot, "SystemApps")]);
 
     private static readonly HashSet<string> CoreSystemProcessNames = new(StringComparer.OrdinalIgnoreCase)

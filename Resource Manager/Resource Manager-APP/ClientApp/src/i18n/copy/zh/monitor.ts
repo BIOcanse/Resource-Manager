@@ -65,6 +65,16 @@ export const zhMonitorCopy = {
       process: "进程级",
       performance: "性能"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "总占用",
+      status: {
+        warming: "正在预热",
+        ready: "当前采样",
+        stale: "上一次采样",
+        failed: "采样失败"
+      }
+    },
+    systemResidualRow: (metric: string) => `系统/驱动保留 · ${metric}`,
     columns: {
       name: "名称",
       pid: "PID",

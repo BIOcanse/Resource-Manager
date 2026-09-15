@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Software;
@@ -13,7 +13,7 @@ public sealed partial class SoftwareRegistryView
             $"dependency:{status.Definition.Id}",
             status.Definition.Name,
             SoftwareKinds.Managed,
-            SoftwareText.Managed,
+            SoftwareDisplayKinds.Managed,
             status.State,
             ["组件依赖"],
             [status.EffectiveInstallDirectory],
@@ -47,7 +47,7 @@ public sealed partial class SoftwareRegistryView
                     $"managed:migration:{NormalizeId(group.Key)}",
                     group.Key,
                     SoftwareKinds.Controlled,
-                    SoftwareText.Controlled,
+                    SoftwareDisplayKinds.Controlled,
                     "migrated",
                     ["数据迁移"],
                     records.Select(static record => record.DestinationPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -65,7 +65,7 @@ public sealed partial class SoftwareRegistryView
             record.Id,
             record.Name,
             record.Kind,
-            record.DisplayKind,
+            SoftwareDisplayKinds.Project(record.Kind),
             record.State,
             record.Sources,
             record.RootPaths,
@@ -82,7 +82,7 @@ public sealed partial class SoftwareRegistryView
             entry.Id,
             entry.Name,
             SoftwareKinds.Other,
-            SoftwareText.General,
+            SoftwareDisplayKinds.General,
             "installed",
             ["Windows卸载注册表"],
             entry.RootPaths,

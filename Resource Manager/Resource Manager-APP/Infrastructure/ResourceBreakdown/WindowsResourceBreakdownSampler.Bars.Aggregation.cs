@@ -242,7 +242,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
         var systemPercent = capacityValue > 0 ? totalValue * 100 / capacityValue : 0;
-        var name = $"系统/驱动保留 · {NormalizeResidualMetricLabel(metricId, label)}";
         var displayValue = FormatValue(totalValue, capacityValue, isBytes, isBytesPerSecond);
         var categories = residualBreakdownProvider.CreateResidualSegments(new ResourceResidualBreakdownRequest(
             metricId,
@@ -253,10 +252,11 @@ public sealed partial class WindowsResourceBreakdownSampler
             displayValue,
             knownProcessIds));
         return new ResourceSoftwareSegment(
+            // 名字为空：前端按这个 id 里的度量名出「系统/驱动保留 · 某度量」。
             $"resource-residual:{metricId}",
-            name,
+            string.Empty,
             SoftwareKinds.WindowsSystem,
-            "系统/驱动保留",
+            SoftwareDisplayKinds.SystemResidual,
             totalValue,
             SanitizePercent(systemPercent),
             displayValue,
