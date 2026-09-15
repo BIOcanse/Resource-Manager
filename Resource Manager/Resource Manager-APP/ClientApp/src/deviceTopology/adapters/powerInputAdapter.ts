@@ -6,6 +6,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, PowerInputDeviceModel } from "./types";
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import { uiText } from "../../text.ts";
 
 export const powerInputAdapter: DeviceAdapter<PowerInputDeviceModel> = {
@@ -16,8 +17,8 @@ export const powerInputAdapter: DeviceAdapter<PowerInputDeviceModel> = {
     const title = deviceTitle(context, uiText.deviceAdapters.powerInput);
     const connection = connectionFacts(context);
     const interconnect = context.port.advancedInterconnect;
-    const inputRole = displayValue(interconnect?.role, uiText.deviceAdapters.powerInputRole);
-    const relationEvidence = displayValue(interconnect?.evidence);
+    const inputRole = renderBackendMessage(interconnect?.role, uiText.deviceAdapters.powerInputRole);
+    const relationEvidence = renderBackendMessage(interconnect?.evidence);
     const negotiatedPower = uiText.deviceAdapters.notReported;
     return {
       adapterId: "power-input",

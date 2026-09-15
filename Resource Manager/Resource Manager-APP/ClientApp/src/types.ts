@@ -916,9 +916,9 @@ export interface DeviceTopologyIdResolution {
 
 export interface DeviceTopologyAdvancedInterconnect {
   kind: string;
-  role: string;
+  role: BackendMessage;
   technology: string;
-  evidence: string;
+  evidence: BackendMessage;
 }
 
 export interface DeviceTopologyUsbConnection {

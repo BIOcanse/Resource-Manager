@@ -6,6 +6,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, ExternalGpuDockDeviceModel } from "./types";
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import { uiText } from "../../text.ts";
 
 export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> = {
@@ -20,7 +21,7 @@ export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> =
     const connection = connectionFacts(context);
     const interconnectTechnology = displayValue(interconnect.technology);
     const gpuIdentity = displayValue(context.port.idResolution?.deviceName, context.port.displayName);
-    const relationEvidence = displayValue(interconnect.evidence);
+    const relationEvidence = renderBackendMessage(interconnect.evidence);
     return {
       adapterId: "external-gpu-dock",
       kind: "external-gpu-dock",

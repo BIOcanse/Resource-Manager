@@ -363,7 +363,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <DetailRow
                           label={selectedNodeIsDevice() ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType}
                           value={selectedNodeIsDevice()
-                            ? selectedNode()?.specializedDevice?.deviceTypeLabel ?? port().hardwareKind
+                            ? selectedNode()?.specializedDevice?.deviceTypeLabel ?? hardwareKindLabel(port())
                             : props.scope === "external"
                               ? connectorLabel(port().connectorKind)
                               : selectedNode()?.title ?? uiText.deviceTopology.internalScope}
@@ -389,9 +389,9 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <Show when={port().advancedInterconnect}>
                           {(interconnect) => (
                             <>
-                              <DetailRow label={uiText.deviceTopology.label.interconnectRole} value={interconnect().role} />
+                              <DetailRow label={uiText.deviceTopology.label.interconnectRole} value={renderBackendMessage(interconnect().role)} />
                               <DetailRow label={uiText.deviceTopology.label.interconnectTechnology} value={interconnect().technology} />
-                              <DetailRow label={uiText.deviceTopology.label.interconnectEvidence} value={interconnect().evidence} />
+                              <DetailRow label={uiText.deviceTopology.label.interconnectEvidence} value={renderBackendMessage(interconnect().evidence)} />
                             </>
                           )}
                         </Show>
@@ -611,7 +611,7 @@ function deviceUserDetailSections(
         .map((field) => userDetailItem(field.label, field.value)),
       userDetailItem(uiText.deviceTopology.label.category, isDevice ? uiText.deviceTopology.connectedDevice : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope),
       userDetailItem(isDevice ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType, isDevice
-        ? node.specializedDevice?.deviceTypeLabel ?? port.hardwareKind
+        ? node.specializedDevice?.deviceTypeLabel ?? hardwareKindLabel(port)
         : connectorLabel(port.connectorKind)),
       userDetailItem(uiText.deviceTopology.label.connectionState, connectionStateLabel(node.connectionState)),
       parent ? userDetailItem(uiText.deviceTopology.label.connectedTo, parent.title) : null,
@@ -683,6 +683,13 @@ function userFacingUsbState(value?: string | null) {
   if (state.includes("no") || state.includes("not") || state.includes("disconnect") || state.includes("empty") || state.includes("none")) return uiText.deviceTopology.connectionState.disconnected;
   if (state.includes("connected")) return uiText.deviceTopology.connectionState.connected;
   return uiText.deviceTopology.connectionState.unknown;
+}
+
+// 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。
+function hardwareKindLabel(port: DeviceTopologyPort) {
+  return port.advancedInterconnect
+    ? renderBackendMessage(port.advancedInterconnect.role, port.hardwareKind)
+    : port.hardwareKind;
 }
 
 function DetailRow(props: { label: string; value: string }) {

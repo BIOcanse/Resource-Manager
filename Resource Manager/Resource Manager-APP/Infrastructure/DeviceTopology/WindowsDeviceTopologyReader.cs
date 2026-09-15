@@ -487,7 +487,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             : RefineUsbConnectorKind(
                 ResolveConnectorKind(searchText, pnpClass, busKind),
                 usbPort?.ConnectorProperties);
-        var hardwareKind = advancedInterconnect?.Role ?? ResolveHardwareKind(searchText, pnpClass, busKind);
+        var hardwareKind = ResolveHardwareKind(searchText, pnpClass, busKind);
         var protocol = advancedInterconnect?.Technology ?? ResolveProtocol(searchText, pnpClass, busKind);
         var inferredSpeed = advancedInterconnect is null ? ResolveSpeed(searchText, busKind) : UnknownSpeed;
         var speed = usbPort?.NegotiatedSpeed

@@ -122,7 +122,12 @@ function deviceTopologyRenderers(): Record<number, Renderer> {
     37: () => copy.sourcePnpServiceSetupApi,
     38: () => copy.sourceUsbHubIoctl,
     39: () => copy.sourceQueryDisplayConfig,
-    40: () => copy.sourceOemProfileQueryDisplayConfig
+    40: () => copy.sourceOemProfileQueryDisplayConfig,
+    41: (args) => copy.interconnectEvidencePnpService(args[0] ?? ""),
+    42: () => copy.roleUcsiConnectorManager,
+    43: () => copy.roleUsb4HostRouter,
+    44: () => copy.roleUsb4DeviceRouter,
+    45: () => copy.roleUsb4P2PNetwork
   };
 }
 
