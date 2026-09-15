@@ -2,7 +2,6 @@ export const zhRuntimeAndReportsCopy = {
   smartReport: {
     panel: "智能调度报告",
     loading: "正在读取",
-    updated: "智能调度状态已更新",
     unavailable: "状态不可用",
     refresh: "刷新",
     completed: "已完成",

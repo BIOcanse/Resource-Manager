@@ -273,47 +273,6 @@ export function safeUserFact(value: unknown) {
   return text;
 }
 
-function resourceDataSourceLabel(id: string) {
-  const resourceData = uiText.status.resourceData;
-  const value = id.toLocaleLowerCase();
-  if (value.includes("cpu")) return resourceData.sourceCpu;
-  if (value.includes("disk")) return resourceData.sourceDisk;
-  if (value.includes("network")) return resourceData.sourceNetwork;
-  if (value.includes("gpu") || value.includes("vidmm") || value.includes("dxg")) {
-    return resourceData.sourceGpuMemory;
-  }
-  return resourceData.sourceGeneric;
-}
-
-function resourceDataStateLabel(state: string) {
-  const resourceData = uiText.status.resourceData;
-  if (isUnavailableState(state)) return resourceData.stateUnavailable;
-  if (isPreparingState(state)) return resourceData.statePreparing;
-  if (["frozen", "notrequested", "idle", "stopped"].includes(state.toLocaleLowerCase())) {
-    return resourceData.stateIdle;
-  }
-  return resourceData.stateNormal;
-}
-
-function resourceDataMessageFallback(state: string) {
-  const resourceData = uiText.status.resourceData;
-  if (isUnavailableState(state)) {
-    return resourceData.messageUnavailable;
-  }
-  if (isPreparingState(state)) {
-    return resourceData.messagePreparing;
-  }
-  return resourceData.messageGeneric;
-}
-
-function isUnavailableState(state: string) {
-  return ["failed", "unavailable", "error"].includes(state.toLocaleLowerCase());
-}
-
-function isPreparingState(state: string) {
-  return ["starting", "warming", "refreshing", "pending"].includes(state.toLocaleLowerCase());
-}
-
 function looksLikeRawCode(text: string) {
   return /^[A-Za-z][A-Za-z0-9_.:-]{2,}$/.test(text)
     || /(?:[A-Z][a-z]+){2,}/.test(text)

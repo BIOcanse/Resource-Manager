@@ -13,13 +13,11 @@ export const zhRuntimeErrorsCopy = {
     openPropertiesFailed: "打开属性失败",
     terminateFailed: "结束任务失败",
     dumpFailed: "创建内存转储文件失败",
-    updateViewportFailed: "更新资源管理器可视区域失败",
     addSoftwareFailed: "添加软件失败",
     confirmRootFailed: "确认软件根目录失败",
     saveGpuSoftwarePolicyFailed: "保存 GPU 调度软件策略失败",
     saveGpuProcessPolicyFailed: "保存 GPU 调度进程策略失败",
     recordGpuProcessHistoryFailed: "记录 GPU 调度进程历史失败",
-    refreshOptimizationReportFailed: "刷新性能优化报告失败",
     readGpuScoreOverridesFailed: "读取 GPU 分数覆盖失败",
     readGpuScoresFailed: "读取 GPU 性能分失败",
     readOptimizationReportsFailed: "读取性能优化报告失败",
@@ -28,7 +26,6 @@ export const zhRuntimeErrorsCopy = {
     removeTrustFailed: "取消信任失败"
   },
   session: {
-    noVerifiedSession: "尚未建立可验证的本机服务会话",
     notReady: "本机服务尚未就绪",
     sessionChanged: "本机服务会话已经改变",
     noTrustedHost: "当前页面没有受信任的本机宿主",
@@ -36,7 +33,6 @@ export const zhRuntimeErrorsCopy = {
     hostCannotSubscribe: "当前宿主不能订阅后端会话状态",
     frontendClosed: "前端运行时已关闭",
     sessionUnavailable: (reason: string) => `本机服务会话不可用：${reason}`,
-    identityConflict: "本机服务会话身份冲突",
     hostCannotRerequest: "当前宿主不能重新请求后端会话状态",
     waitTimeout: "等待本机服务会话超时",
     requestFailed: (message: string) => `无法请求本机服务会话：${message}`,
@@ -52,14 +48,9 @@ export const zhRuntimeErrorsCopy = {
     actionFailed: "操作失败，请稍后重试"
   },
   operationRegistry: {
-    backendOperationsDisabled: "当前启动配置不提供后端操作。",
-    notSynced: "后台操作状态尚未与当前本机服务会话同步。",
-    staleSessionResponse: "后台操作响应来自已经失效的本机服务会话。",
     noCurrentValue: "后台操作状态尚未收到当前值。",
     cancelFailed: "取消操作失败",
     removedFromCurrentValue: (operationId: string) => `后台操作已经从当前值中移除：${operationId}`,
-    notFound: (operationId: string) => `后台操作不存在：${operationId}`,
-    removedFromAuthority: (operationId: string) => `后台操作已经从权威状态中移除：${operationId}`,
     canceled: "操作已取消"
   },
   gpuTarget: {
@@ -70,9 +61,7 @@ export const zhRuntimeErrorsCopy = {
     unavailable: "当前不可用",
     specificGpu: "指定显卡",
     needsPreciseSelection: (target: string) => `${target}（需要开启精确 GPU 选择）`,
-    startupUnavailable: (target: string) => `${target}（启动期暂不可用）`,
-    withReason: (target: string, reason: string) => `${target}（${reason}）`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target}（启动期暂不可用）`
   },
   shellBridge: {
     desktopOnly: "此功能仅在 Resource Manager 桌面应用中可用。",
@@ -165,8 +154,6 @@ export const zhRuntimeErrorsCopy = {
     relatedInfo: "相关信息",
     content: "内容",
     infoIndex: (index: number) => `信息 ${index}`,
-    selfSchedulingRefreshFailed: "资源管理器自调度状态刷新失败",
-    localStatusRefreshFailed: "本机运行状态刷新失败",
     search: "搜索",
     searchOptions: "搜索选项",
     noMatchingOption: "没有匹配项",

@@ -14,8 +14,6 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
     cancel: "Cancel",
     reset: "Reset",
     save: "Save",
-    observationLabel: "CPU topology and residency",
-    noTopology: "No CPU topology read yet.",
     setCoreScore: (core: string) => `Set the performance score for ${core}`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `Logical processor ${id}, execution time ${executionTime}`,
@@ -25,7 +23,6 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
     ringBus: "Ring bus",
     coreCount: (count: number) => `${count} cores`,
     selectedCount: (count: number) => `${count} selected`,
-    selectedLogical: (ids: string) => `Logical processors: ${ids}`,
     clear: "Clear",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, usage ${usage}, performance ${performance}, execution time ${executionTime}`,
@@ -57,23 +54,14 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
       `${level} cache ${size} · ${scope} · logical processors ${logicalIds}`,
     residency: {
       readFailed: "Thread activity read failed",
-      reading: "Reading thread activity",
       loading: "Loading thread activity",
       window: (window: string) => `Thread activity ${window}`,
-      paused: "Thread activity paused",
       unavailable: "Thread activity temporarily unavailable",
-      idle: "Thread activity idle",
       preparing: "Preparing thread activity"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "Reading the metric catalog failed.",
-    overridesReadFailed: "Reading GPU score overrides failed.",
-    scoresReadFailed: "Reading GPU performance scores failed.",
     dataReadFailed: "Reading the GPU scheduling data failed.",
-    metricsReadFailed: "Reading GPU metrics failed.",
-    specializedTelemetryReadFailed: "Reading specialized GPU telemetry failed.",
-    processAttributionReadFailed: "Reading GPU process attribution failed.",
     telemetryLive: "Live hardware / process attribution",
     telemetryStale: "Stale hardware / process attribution",
     telemetryUnavailable: "Data unavailable",
@@ -116,8 +104,6 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
     cdnaUsage: "CDNA usage",
     gpuFull: "GPU saturated",
     vramFull: "VRAM saturated",
-    noProcessAttribution: "No process attribution",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `${softwareCount} software · ${processCount} processes`
+    noProcessAttribution: "No process attribution"
   }
 };

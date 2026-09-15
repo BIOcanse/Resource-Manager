@@ -7,7 +7,6 @@ const deDeAppCopy: AppCopy = {
     saveFailed: "Speichern fehlgeschlagen"
   },
   feedback: {
-    confirmTitle: "Aktion bestätigen",
     confirm: "Bestätigen",
     cancel: "Abbrechen",
     close: "Schließen",
@@ -29,7 +28,6 @@ const deDeAppCopy: AppCopy = {
     pageNav: "Seitennavigation",
     currentPage: "Aktuelle Seite",
     runtimeCapability: "Laufzeitfunktionen",
-    selfSchedulingState: "Status der Eigenplanung",
     taskCenter: "Aufgabencenter",
     taskCenterActive: (count: number) => `Aufgabencenter, ${count} laufend`,
     taskCenterSyncing: "Aufgabencenter · Dienstaufgaben werden synchronisiert",
@@ -37,15 +35,7 @@ const deDeAppCopy: AppCopy = {
     taskCenterUnavailable: "Aufgabencenter · Status der Dienstaufgaben nicht verfügbar",
     minimize: "Minimieren",
     maximize: "Maximieren",
-    closeWindow: "Schließen",
-    uptimeLoading: "Laufzeit wird geladen",
-    uptimeStale: (uptime: string) => `${uptime} · nicht live`,
-    uptimeUnavailable: "Laufzeit nicht verfügbar",
-    uptimeDisabled: "Laufzeit deaktiviert",
-    observationLoading: (label: string) => `${label} wird geladen`,
-    observationStale: (label: string) => `${label} nicht live`,
-    observationUnavailable: (label: string) => `${label} nicht verfügbar`,
-    observationDisabled: (label: string) => `${label} deaktiviert`
+    closeWindow: "Schließen"
   },
   managementPage: {
     browserRuntimeTab: "Runtime-Verwaltung",
@@ -54,7 +44,6 @@ const deDeAppCopy: AppCopy = {
     searchLabel: (kind: string) => `${kind} durchsuchen`,
     search: "Suchen",
     itemCount: (count: number) => `${count} Einträge`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "Ergänzungen der Softwareregistrierung",
     softwareRegistrySupplementDisabled: "Dieses Startprofil zeigt nur den Komponentenkatalog und lädt keine Ergänzungen der Softwareregistrierung.",
     operationState: "Vorgangsstatus",
@@ -128,10 +117,6 @@ const deDeAppCopy: AppCopy = {
     layoutEditor: "Dashboard-Layout-Editor",
     dashboardQuarantined: "Die Dashboard-Konfiguration war beschädigt und wurde in Quarantäne verschoben; es wird eine gespeicherte sichere Standardkonfiguration verwendet.",
     dashboardRecovered: "Die Dashboard-Konfiguration wurde aus der letzten gültigen Kopie wiederhergestellt.",
-    dashboardLoading: "Dashboard-Konfiguration wird geladen…",
-    dashboardUnavailable: "Dashboard-Konfiguration nicht verfügbar",
-    dashboardUnavailableDetail: "Die Live-Ressourcendaten werden weiterhin aktualisiert; die Layoutbearbeitung ist derzeit nicht verfügbar.",
-    retryLayout: "Layout erneut versuchen",
     metricCatalog: "Metrikkatalog",
     liveMetrics: "Live-Metriken",
     resourceUsage: "Ressourcennutzung",
@@ -146,8 +131,7 @@ const deDeAppCopy: AppCopy = {
     replaceMetric: (slot: string, metric: string) => `${slot} ersetzen: ${metric}`,
     removeMetric: (slot: string, metric: string) => `${slot} entfernen: ${metric}`,
     catalogUnavailable: "Metrikkatalog nicht verfügbar",
-    metricUnavailable: "Metrik nicht verfügbar",
-    valueUnavailable: "--"
+    metricUnavailable: "Metrik nicht verfügbar"
   },
   resourceBreakdown: {
     panel: "Ressourcennutzung nach Software",
@@ -210,12 +194,10 @@ const deDeAppCopy: AppCopy = {
     noDataDetail: "Es sind noch keine anzeigbaren Daten eingetroffen; die Anzeige wird automatisch aktualisiert, sobald die Datenquelle bereit ist.",
     editorLabel: "Editor für Einträge zur Ressourcennutzung",
     scaleModeLabel: (metric: string) => `Skalenmodus für ${metric}`,
-    attributionUnavailable: " · Zuordnung nicht verfügbar",
     moveUp: (label: string) => `${label} nach oben verschieben`,
     moveUpTitle: "Nach oben verschieben",
     moveDown: (label: string) => `${label} nach unten verschieben`,
     moveDownTitle: "Nach unten verschieben",
-    barUnavailable: (label: string) => `${label} nicht verfügbar`,
     unavailable: "Nicht verfügbar",
     processUsage: (name: string) => `Prozessnutzung von ${name}`,
     metric: {
@@ -236,13 +218,6 @@ const deDeAppCopy: AppCopy = {
     cancel: "Abbrechen",
     saveLabel: "Spalten der Ressourcenliste speichern",
     editLabel: "Spalten der Ressourcenliste bearbeiten",
-    dataStateTitle: "Status der Ressourcendaten",
-    refreshData: "Daten aktualisieren",
-    partialUnavailableTitle: "Einige Ressourcendaten sind vorübergehend nicht verfügbar",
-    partialUnavailableDetail: "Der Datenanbieter konnte die Abtastung nicht abschließen; prüfen Sie den Grund und versuchen Sie es erneut.",
-    viewDetails: "Details anzeigen",
-    preparingTitle: "Ressourcendaten werden vorbereitet",
-    preparingDetail: "Der Datenanbieter wird initialisiert; die Details zeigen den aktuellen Status.",
     noMatchTitle: "Keine passenden Ressourcen",
     noMatchDetail: "Der aktuelle Filter trifft auf keine Software und keinen Prozess zu.",
     clearSearch: "Suche löschen",
@@ -285,12 +260,10 @@ const deDeAppCopy: AppCopy = {
     searchPlaceholder: "Nach Name oder Kategorie suchen",
     searchLabel: "Überwachungselemente suchen",
     clearSearchLabel: "Suche nach Überwachungselementen löschen",
-    clearSearchTitle: "Suche löschen",
     count: (count: number) => `${count} Überwachungselemente`,
     listLabel: "Überwachungselemente",
     empty: "Kein passendes Überwachungselement",
     needsInstall: (name: string) => `Installation erforderlich: ${name}`,
-    componentState: (name: string, state: string) => `${name} · ${state}`,
     cancel: "Abbrechen",
     confirm: "Bestätigen"
   },
@@ -299,13 +272,11 @@ const deDeAppCopy: AppCopy = {
     noCandidates: "Es steht keine Software zum Hinzufügen zur Verfügung. Aktualisieren Sie zuerst die Softwareliste.",
     software: "Software",
     searchSoftware: "Software suchen",
-    optionLabel: (name: string, kind: string) => `${name} · ${kind}`,
     name: "Name",
     rootDirectory: "Stammverzeichnis",
     rootPlaceholder: "Ein Verzeichnis pro Zeile, zum Beispiel D:\\Tools\\App",
     cancel: "Abbrechen",
     saving: "Wird gespeichert",
-    confirm: "Bestätigen",
     additionalRoots: (count: number) => `${count} weitere Verzeichnisse`
   },
   observationNotice: {
@@ -429,21 +400,6 @@ const deDeAppCopy: AppCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "CPU-Prozessstatistik",
-      sourceDisk: "Datenträger-Prozessstatistik",
-      sourceNetwork: "Netzwerk-Prozessstatistik",
-      sourceGpuMemory: "VRAM-Prozessstatistik",
-      sourceGeneric: "Prozess-Ressourcenstatistik",
-      stateUnavailable: "Vorübergehend nicht verfügbar",
-      statePreparing: "Wird vorbereitet",
-      stateIdle: "Nicht in Verwendung",
-      stateNormal: "Normal",
-      messageUnavailable: "Die Datenquelle hat keine anzeigbare Fehlerbeschreibung geliefert.",
-      messagePreparing: "Die Datenquelle wird initialisiert und hat noch keine weitere Beschreibung.",
-      messageGeneric: "Die Datenquelle hat keine weitere Beschreibung geliefert.",
-      summaryHealthy: "Die Daten sind normal",
-      summaryUnavailable: "Einige Daten sind vorübergehend nicht verfügbar",
-      summaryPreparing: "Einige Daten werden noch vorbereitet"
     },
     detail: {
       status: "Status",
@@ -473,18 +429,13 @@ const deDeAppCopy: AppCopy = {
     smartSchedulerStopped: "Intelligente Planung gestoppt",
     pendingChanges: (count: number) => `${count} Änderungen warten auf Bestätigung`,
     appliedTargets: (count: number) => `${count} Einträge optimiert`,
-    statusSeparator: " · ",
     search: "Suchen",
     searchLabel: "Optimierungsberichte durchsuchen",
     reportPanel: "Optimierungsberichte",
-    reportStateUnavailable: "Berichtsstatus nicht verfügbar",
-    monitoring: (count: number) => `Überwachung · ${count} Einträge`,
-    monitoringNotStarted: "Die Überwachung wurde nicht gestartet",
     filterLabel: "Berichtsfilter",
     filterUntrusted: (count: string) => `Nicht vertrauenswürdig ${count}`,
     filterAll: (count: string) => `Alle ${count}`,
     filterTrusted: (count: string) => `Vertrauenswürdig ${count}`,
-    countUnavailable: "--",
     refresh: "Aktualisieren",
     refreshing: "Wird aktualisiert",
     noSearchResults: "Keine passenden Ergebnisse.",
@@ -568,13 +519,11 @@ const deDeAppCopy: AppCopy = {
       observationScope: "Beobachtungsbereich",
       foregroundSoftware: "Software im Vordergrund",
       relatedProcesses: "Zugehörige Prozesse",
-      processSeparator: ", ",
       firstObserved: "Zuerst gesehen",
       lastObserved: "Zuletzt gesehen",
       duration: "Dauer",
       occurrences: "Beobachtungen",
-      occurrenceTimes: (count: number) => `${count} Mal`,
-      occurrenceCount: (count: number) => `${count}-mal`
+      occurrenceTimes: (count: number) => `${count} Mal`
     },
     duration: {
       days: (value: number) => `${value} T`,
@@ -614,8 +563,6 @@ const deDeAppCopy: AppCopy = {
     detailTitle: (name: string) => `Details zu ${name}`,
     fallbackDeviceName: "Gerät",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "Verbundenes Gerät",
     section: {
       overview: "Überblick",
@@ -701,7 +648,6 @@ const deDeAppCopy: AppCopy = {
       downstreamHubPath: "Pfad des untergeordneten Hubs",
       displayDevicePath: "Pfad des Anzeigegeräts"
     },
-    companion: (index: number, port: number) => `#${index} · Hub-Port ${port}`,
     connectionState: {
       connected: "Verbunden",
       disconnected: "Nicht verbunden",
@@ -946,7 +892,6 @@ const deDeAppCopy: AppCopy = {
     hdrOn: "Ein",
     advancedColorSupported: "Erweiterte Farben unterstützt",
     hdrCurrentlyOff: "Derzeit aus",
-    hdrUnavailable: "Im System derzeit nicht verfügbar",
     hdrFormatUnavailable: (format: string) => `${format} · derzeit auf diesem System nicht verfügbar`,
     advancedColorUnsupported: "Erweiterte Farben nicht unterstützt",
     bitsPerChannel: (bits: string) => `${bits} Bit / Farbkanal`,
@@ -970,7 +915,6 @@ const deDeAppCopy: AppCopy = {
     powerInputRole: "Stromverbraucher",
     powerInputBadge: "Stromeingang",
     dock: "Anschlussdock",
-    usbHub: "USB-Hub",
     dockBadge: "Dock",
     hubSummary: (total: number, connected: number) =>
       `${total} nachgelagerte Ports · ${connected} verbunden`,
@@ -983,8 +927,7 @@ const deDeAppCopy: AppCopy = {
     disk: "Datenträger",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "USB-Gerät",
-    internalDisplay: "Integriertes Display",
-    ethernet: "Ethernet"
+    internalDisplay: "Integriertes Display"
   },
   deviceTree: {
     downstreamPort: (port: number) => `Nachgelagerter Port ${port}`,
@@ -1033,8 +976,6 @@ const deDeAppCopy: AppCopy = {
     cancel: "Abbrechen",
     reset: "Zurücksetzen",
     save: "Speichern",
-    observationLabel: "Prozessortopologie und Auslastung",
-    noTopology: "Es wurde noch keine Prozessortopologie gelesen.",
     setCoreScore: (core: string) => `Leistungsbewertung für ${core} festlegen`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `Logischer Prozessor ${id}, Ausführungszeit ${executionTime}`,
@@ -1044,7 +985,6 @@ const deDeAppCopy: AppCopy = {
     ringBus: "Ringbus",
     coreCount: (count: number) => `${count} Kerne`,
     selectedCount: (count: number) => `${count} ausgewählt`,
-    selectedLogical: (ids: string) => `Logische Prozessoren: ${ids}`,
     clear: "Leeren",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, Auslastung ${usage}, Leistung ${performance}, Ausführungszeit ${executionTime}`,
@@ -1076,23 +1016,14 @@ const deDeAppCopy: AppCopy = {
       `${level}-Cache ${size} · ${scope} · logische Prozessoren ${logicalIds}`,
     residency: {
       readFailed: "Die Threadaktivität konnte nicht gelesen werden",
-      reading: "Threadaktivität wird gelesen",
       loading: "Threadaktivität wird geladen",
       window: (window: string) => `Threadaktivität ${window}`,
-      paused: "Threadaktivität angehalten",
       unavailable: "Threadaktivität vorübergehend nicht verfügbar",
-      idle: "Threadaktivität im Leerlauf",
       preparing: "Threadaktivität wird vorbereitet"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "Der Metrikkatalog konnte nicht gelesen werden.",
-    overridesReadFailed: "Die Überschreibungen der GPU-Bewertung konnten nicht gelesen werden.",
-    scoresReadFailed: "Die GPU-Leistungsbewertungen konnten nicht gelesen werden.",
     dataReadFailed: "Das Lesen der GPU-Planungsdaten ist fehlgeschlagen.",
-    metricsReadFailed: "Die GPU-Metriken konnten nicht gelesen werden.",
-    specializedTelemetryReadFailed: "Die Telemetrie der spezialisierten GPU-Einheiten konnte nicht gelesen werden.",
-    processAttributionReadFailed: "Die GPU-Prozesszuordnung konnte nicht gelesen werden.",
     telemetryLive: "Live-Zuordnung von Hardware / Prozessen",
     telemetryStale: "Veraltete Zuordnung von Hardware / Prozessen",
     telemetryUnavailable: "Daten nicht verfügbar",
@@ -1135,9 +1066,7 @@ const deDeAppCopy: AppCopy = {
     cdnaUsage: "CDNA-Auslastung",
     gpuFull: "GPU ausgelastet",
     vramFull: "VRAM ausgelastet",
-    noProcessAttribution: "Keine Prozesszuordnung",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `${softwareCount} Software · ${processCount} Prozesse`
+    noProcessAttribution: "Keine Prozesszuordnung"
   },
   softwareDetail: {
     tab: {
@@ -1230,8 +1159,6 @@ const deDeAppCopy: AppCopy = {
       title: "Zuweisung der Prozessorkerne",
       description: "„Reservieren“ sorgt dafür, dass andere Software diese Kerne meidet; „Anheften“ beschränkt diese Software auf sie.",
       clear: "Leeren",
-      loadingTopology: "Prozessortopologie wird gelesen.",
-      noTopology: "Noch keine Daten zur Prozessortopologie vorhanden.",
       maxBoost: (value: string) => `Max. Boost ${value}`,
       l1Cache: "L1-Cache --",
       l2Cache: (value: string) => `L2-Cache ${value}`,
@@ -1276,8 +1203,7 @@ const deDeAppCopy: AppCopy = {
       unsupported: "nicht unterstützt",
       unknown: "unbekannt",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "Der präzise Anbieter für den Start ist nicht verfügbar; die Einstellung bleibt erhalten, wird aber nicht ausgeführt.",
@@ -1448,7 +1374,6 @@ const deDeAppCopy: AppCopy = {
       observedChanges: "Beobachtete Änderungen",
       changeTimes: (count: number) => `${count}-mal`,
       observedProcesses: "Überwachte Prozesse",
-      processSeparator: ", ",
       observationScope: "Beobachtungsbereich",
       directory: (index: number) => `Verzeichnis ${index}`,
       migratableContent: "Migrierbarer Inhalt",
@@ -1458,8 +1383,6 @@ const deDeAppCopy: AppCopy = {
       lastObserved: "Zuletzt beobachtet",
       relatedProcesses: "Zugehörige Prozesse",
       savedLocations: "Speicherorte",
-      userData: "Benutzerdaten",
-      miscData: "Sonstige Daten",
       softwareRoot: "Stammverzeichnis der Software",
       migrationJudgement: "Bewertung der Migration",
       risk: "Risiko",
@@ -1511,15 +1434,7 @@ const deDeAppCopy: AppCopy = {
   },
   hotkeyGroup: {
     mouse: "Maus",
-    character: "Zeichen",
-    modifier: "Modifikatoren",
-    functionKey: "Funktionstasten",
-    navigation: "Navigation",
-    numpad: "Ziffernblock",
-    symbol: "Symbole",
-    system: "Systemtasten",
-    media: "Medientasten",
-    ime: "IME"
+    system: "Systemtasten"
   },
   hotkeyEditor: {
     searchKey: "Tasten suchen",
@@ -1537,7 +1452,6 @@ const deDeAppCopy: AppCopy = {
     backendResyncing: "Der lokale Dienst synchronisiert erneut; Dienstaufgaben können derzeit nicht geändert werden.",
     backendUnavailable: "Der Status der Dienstaufgaben kann nicht gelesen werden; Aufgaben der Oberfläche funktionieren weiterhin.",
     filterLabel: "Aufgabenfilter",
-    noBackendTasks: "Dieses Startprofil stellt keine Dienstvorgänge bereit; Aufgaben der Oberfläche erscheinen trotzdem hier",
     noTasksInFilter: "Keine Aufgaben in diesem Filter",
     itemCount: (count: number) => `${count} Einträge`,
     close: "Schließen",
@@ -1571,7 +1485,6 @@ const deDeAppCopy: AppCopy = {
       queued: "Wartend",
       startPending: "Wird gestartet",
       running: "Wird ausgeführt",
-      cancelPending: "Wird abgebrochen",
       retryWait: "Wartet auf Wiederholung",
       recoveryPending: "Wird wiederhergestellt",
       succeeded: "Abgeschlossen",
@@ -1593,7 +1506,6 @@ const deDeAppCopy: AppCopy = {
   smartReport: {
     panel: "Bericht der intelligenten Planung",
     loading: "Wird geladen",
-    updated: "Status der intelligenten Planung aktualisiert",
     unavailable: "Status nicht verfügbar",
     refresh: "Aktualisieren",
     completed: "Abgeschlossen",
@@ -1699,11 +1611,8 @@ const deDeAppCopy: AppCopy = {
     refreshFailed: "Aktualisierung fehlgeschlagen",
     installDisabled: "Dieses Startprofil zeigt nur den Komponentenstatus und führt keine Installationen aus.",
     fallbackComponentName: "Diese Komponente",
-    externalTermsRequired: (name: string) => `Für ${name} müssen Sie die Bedingungen des Anbieters akzeptieren, um fortzufahren.`,
     componentMissingIdentity: "Die Komponente hat keine stabile Identität, daher kann kein Installationsvorgang erstellt werden.",
     waiting: "Wartend",
-    installing: "Wird installiert",
-    noInstallEntry: "Für diese Komponente ist derzeit kein Installationseintrag verfügbar.",
     actionFailed: "Die Aktion ist fehlgeschlagen",
     uninstallDisabled: "Dieses Startprofil führt keine Softwaredeinstallation aus.",
     cannotUninstall: "Diese Software kann derzeit nicht deinstalliert werden",
@@ -1723,9 +1632,7 @@ const deDeAppCopy: AppCopy = {
     progressCanceled: "Abgebrochen",
     progressUncertain: "Status unsicher",
     progressWorking: "Wird bearbeitet",
-    progressSummary: (stage: string, percent: string, speed: string) => `${stage}${percent}${speed}`,
     operationStateDisabled: "Dieses Startprofil lädt keinen Status ausführbarer Vorgänge.",
-    operationStateRefreshFailed: "Das Aktualisieren des Vorgangsstatus ist fehlgeschlagen",
     operationStateStopped: "Der Vorgangsstatus wurde angehalten",
     migrationRuntimeDisabled: "Dieses Startprofil aktiviert die Migrations-Runtime nicht.",
     notPreviewed: "Noch keine Vorschau",
@@ -1754,7 +1661,6 @@ const deDeAppCopy: AppCopy = {
     restoreStartFailed: "Das Starten der Wiederherstellung ist fehlgeschlagen",
     restoreCompleted: "Wiederherstellung abgeschlossen",
     restoreFailed: "Das Wiederherstellen der Migration ist fehlgeschlagen",
-    taskTitle: (action: string, name: string) => `${action}: ${name}`,
     resultUncertain: "Das Ergebnis des Vorgangs ist unsicher; prüfen Sie zuerst den tatsächlichen Zustand.",
     resultIncomplete: "Der Vorgang wurde nicht abgeschlossen.",
     optimizationReportDisabled: "Dieses Startprofil aktiviert keine Optimierungsberichte.",
@@ -1762,10 +1668,7 @@ const deDeAppCopy: AppCopy = {
     smartModeSwitchFailed: "Das Umschalten des intelligenten Optimierungsmodus ist fehlgeschlagen",
     optimizationReportRefreshFailed: "Das Aktualisieren der Leistungsoptimierungsberichte ist fehlgeschlagen",
     optimizationScheduleRefreshFailed: "Das Aktualisieren des Status der Optimierungsplanung ist fehlgeschlagen",
-    resourceBreakdownRefreshFailed: "Das Aktualisieren der Ressourcennutzung ist fehlgeschlagen",
-    resourceTableRefreshFailed: "Das Aktualisieren der Ressourcenliste ist fehlgeschlagen",
-    metricCatalogRefreshFailed: "Das Aktualisieren des Metrikkatalogs ist fehlgeschlagen",
-    resourceMonitorRefreshFailed: "Das Aktualisieren der Ressourcenüberwachung ist fehlgeschlagen"
+    metricCatalogRefreshFailed: "Das Aktualisieren des Metrikkatalogs ist fehlgeschlagen"
   },
   apiError: {
     readFailed: "Das Lesen der Daten ist fehlgeschlagen, versuchen Sie es später erneut",
@@ -1781,13 +1684,11 @@ const deDeAppCopy: AppCopy = {
     openPropertiesFailed: "Das Öffnen der Eigenschaften ist fehlgeschlagen",
     terminateFailed: "Das Beenden des Tasks ist fehlgeschlagen",
     dumpFailed: "Das Erstellen der Speicherabbilddatei ist fehlgeschlagen",
-    updateViewportFailed: "Das Aktualisieren des Anzeigebereichs des Ressourcen-Managers ist fehlgeschlagen",
     addSoftwareFailed: "Das Hinzufügen der Software ist fehlgeschlagen",
     confirmRootFailed: "Das Bestätigen des Stammverzeichnisses der Software ist fehlgeschlagen",
     saveGpuSoftwarePolicyFailed: "Das Speichern der Softwarerichtlinie für die GPU-Planung ist fehlgeschlagen",
     saveGpuProcessPolicyFailed: "Das Speichern der Prozessrichtlinie für die GPU-Planung ist fehlgeschlagen",
     recordGpuProcessHistoryFailed: "Das Aufzeichnen des Prozessverlaufs der GPU-Planung ist fehlgeschlagen",
-    refreshOptimizationReportFailed: "Das Aktualisieren der Leistungsoptimierungsberichte ist fehlgeschlagen",
     readGpuScoreOverridesFailed: "Das Lesen der GPU-Score-Überschreibungen ist fehlgeschlagen",
     readGpuScoresFailed: "Das Lesen der GPU-Leistungswerte ist fehlgeschlagen",
     readOptimizationReportsFailed: "Das Lesen der Optimierungsberichte ist fehlgeschlagen",
@@ -1796,7 +1697,6 @@ const deDeAppCopy: AppCopy = {
     removeTrustFailed: "Das Entfernen des Vertrauens ist fehlgeschlagen"
   },
   session: {
-    noVerifiedSession: "Noch keine überprüfbare Sitzung des lokalen Diensts",
     notReady: "Der lokale Dienst ist noch nicht bereit",
     sessionChanged: "Die Sitzung des lokalen Diensts hat sich geändert",
     noTrustedHost: "Diese Seite hat keinen vertrauenswürdigen lokalen Host",
@@ -1804,7 +1704,6 @@ const deDeAppCopy: AppCopy = {
     hostCannotSubscribe: "Dieser Host kann den Status der Dienstsitzung nicht abonnieren",
     frontendClosed: "Die Frontend-Runtime ist geschlossen",
     sessionUnavailable: (reason: string) => `Sitzung des lokalen Diensts nicht verfügbar: ${reason}`,
-    identityConflict: "Identitätskonflikt der Sitzung des lokalen Diensts",
     hostCannotRerequest: "Dieser Host kann den Status der Dienstsitzung nicht erneut anfordern",
     waitTimeout: "Zeitüberschreitung beim Warten auf die Sitzung des lokalen Diensts",
     requestFailed: (message: string) => `Die Sitzung des lokalen Diensts konnte nicht angefordert werden: ${message}`,
@@ -1820,15 +1719,9 @@ const deDeAppCopy: AppCopy = {
     actionFailed: "Die Aktion ist fehlgeschlagen, versuchen Sie es später erneut"
   },
   operationRegistry: {
-    backendOperationsDisabled: "Dieses Startprofil stellt keine Dienstvorgänge bereit.",
-    notSynced: "Der Status der Hintergrundvorgänge ist noch nicht mit der aktuellen Sitzung des lokalen Diensts synchronisiert.",
-    staleSessionResponse: "Die Antwort des Hintergrundvorgangs stammt aus einer abgelaufenen Sitzung des lokalen Diensts.",
     noCurrentValue: "Für den Status der Hintergrundvorgänge ist noch kein aktueller Wert eingetroffen.",
     cancelFailed: "Das Abbrechen des Vorgangs ist fehlgeschlagen",
     removedFromCurrentValue: (operationId: string) => `Der Hintergrundvorgang wurde aus dem aktuellen Wert entfernt: ${operationId}`,
-    notFound: (operationId: string) => `Hintergrundvorgang nicht gefunden: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `Der Hintergrundvorgang wurde aus dem maßgeblichen Status entfernt: ${operationId}`,
     canceled: "Der Vorgang wurde abgebrochen"
   },
   gpuTarget: {
@@ -1839,9 +1732,7 @@ const deDeAppCopy: AppCopy = {
     unavailable: "Derzeit nicht verfügbar",
     specificGpu: "Bestimmte GPU",
     needsPreciseSelection: (target: string) => `${target} (erfordert präzise GPU-Auswahl)`,
-    startupUnavailable: (target: string) => `${target} (beim Start nicht verfügbar)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (beim Start nicht verfügbar)`
   },
   shellBridge: {
     desktopOnly: "Diese Funktion ist nur in der Desktop-App des Ressourcen-Managers verfügbar.",
@@ -1934,8 +1825,6 @@ const deDeAppCopy: AppCopy = {
     relatedInfo: "Zugehörige Informationen",
     content: "Inhalt",
     infoIndex: (index: number) => `Info ${index}`,
-    selfSchedulingRefreshFailed: "Das Aktualisieren des Eigenplanungsstatus des Ressourcen-Managers ist fehlgeschlagen",
-    localStatusRefreshFailed: "Das Aktualisieren des Status der lokalen Runtime ist fehlgeschlagen",
     search: "Suchen",
     searchOptions: "Suchoptionen",
     noMatchingOption: "Keine passende Option",

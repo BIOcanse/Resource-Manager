@@ -7,7 +7,6 @@ const jaJpAppCopy: AppCopy = {
     saveFailed: "保存に失敗しました"
   },
   feedback: {
-    confirmTitle: "操作の確認",
     confirm: "確認",
     cancel: "キャンセル",
     close: "閉じる",
@@ -29,7 +28,6 @@ const jaJpAppCopy: AppCopy = {
     pageNav: "ページ ナビゲーション",
     currentPage: "現在のページ",
     runtimeCapability: "ランタイム機能",
-    selfSchedulingState: "自己スケジューリングの状態",
     taskCenter: "タスク センター",
     taskCenterActive: (count: number) => `タスク センター、進行中 ${count} 件`,
     taskCenterSyncing: "タスク センター · バックエンド タスクを同期中",
@@ -37,15 +35,7 @@ const jaJpAppCopy: AppCopy = {
     taskCenterUnavailable: "タスク センター · バックエンド タスクの状態を取得できません",
     minimize: "最小化",
     maximize: "最大化",
-    closeWindow: "閉じる",
-    uptimeLoading: "稼働時間を読み込み中",
-    uptimeStale: (uptime: string) => `${uptime} · 最新ではありません`,
-    uptimeUnavailable: "稼働時間を取得できません",
-    uptimeDisabled: "稼働時間はオフです",
-    observationLoading: (label: string) => `${label}を読み込み中`,
-    observationStale: (label: string) => `${label}は最新ではありません`,
-    observationUnavailable: (label: string) => `${label}を取得できません`,
-    observationDisabled: (label: string) => `${label}はオフです`
+    closeWindow: "閉じる"
   },
   managementPage: {
     browserRuntimeTab: "ランタイム管理",
@@ -54,7 +44,6 @@ const jaJpAppCopy: AppCopy = {
     searchLabel: (kind: string) => `${kind}を検索`,
     search: "検索",
     itemCount: (count: number) => `${count} 件`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "ソフトウェア レジストリの追加分",
     softwareRegistrySupplementDisabled: "この起動プロファイルはコンポーネント カタログのみを表示し、ソフトウェア レジストリの追加分は読み込みません。",
     operationState: "操作の状態",
@@ -128,10 +117,6 @@ const jaJpAppCopy: AppCopy = {
     layoutEditor: "ダッシュボード レイアウト エディター",
     dashboardQuarantined: "ダッシュボードの構成が破損したため隔離しました。保存済みの安全な既定値を使用しています。",
     dashboardRecovered: "ダッシュボードの構成を最後に有効だったコピーから復元しました。",
-    dashboardLoading: "ダッシュボードの構成を読み込み中…",
-    dashboardUnavailable: "ダッシュボードの構成を取得できません",
-    dashboardUnavailableDetail: "リソースのライブ データは更新され続けます。レイアウトの編集は現在できません。",
-    retryLayout: "レイアウトを再試行",
     metricCatalog: "メトリック カタログ",
     liveMetrics: "ライブ メトリック",
     resourceUsage: "リソース使用量",
@@ -146,8 +131,7 @@ const jaJpAppCopy: AppCopy = {
     replaceMetric: (slot: string, metric: string) => `${slot}を置き換え: ${metric}`,
     removeMetric: (slot: string, metric: string) => `${slot}を削除: ${metric}`,
     catalogUnavailable: "メトリック カタログを取得できません",
-    metricUnavailable: "メトリックを取得できません",
-    valueUnavailable: "--"
+    metricUnavailable: "メトリックを取得できません"
   },
   resourceBreakdown: {
     panel: "ソフトウェアのリソース使用量",
@@ -210,12 +194,10 @@ const jaJpAppCopy: AppCopy = {
     noDataDetail: "表示できるデータがまだ届いていません。データ ソースの準備ができ次第、自動的に更新されます。",
     editorLabel: "リソース使用量項目のエディター",
     scaleModeLabel: (metric: string) => `${metric}のスケール モード`,
-    attributionUnavailable: " · 帰属情報を取得できません",
     moveUp: (label: string) => `${label}を上へ移動`,
     moveUpTitle: "上へ移動",
     moveDown: (label: string) => `${label}を下へ移動`,
     moveDownTitle: "下へ移動",
-    barUnavailable: (label: string) => `${label}を取得できません`,
     unavailable: "取得できません",
     processUsage: (name: string) => `${name} のプロセス使用量`,
     metric: {
@@ -236,13 +218,6 @@ const jaJpAppCopy: AppCopy = {
     cancel: "キャンセル",
     saveLabel: "リソース一覧の列を保存",
     editLabel: "リソース一覧の列を編集",
-    dataStateTitle: "リソース データの状態",
-    refreshData: "データを更新",
-    partialUnavailableTitle: "一部のリソース データを一時的に取得できません",
-    partialUnavailableDetail: "データ プロバイダーがサンプリングを完了できませんでした。理由を確認して再試行してください。",
-    viewDetails: "詳細を表示",
-    preparingTitle: "リソース データを準備中です",
-    preparingDetail: "データ プロバイダーを初期化しています。詳細に現在の状態が表示されます。",
     noMatchTitle: "一致するリソースがありません",
     noMatchDetail: "現在のフィルターに一致するソフトウェアやプロセスはありません。",
     clearSearch: "検索をクリア",
@@ -285,12 +260,10 @@ const jaJpAppCopy: AppCopy = {
     searchPlaceholder: "名前または分類で検索",
     searchLabel: "監視項目を検索",
     clearSearchLabel: "監視項目の検索をクリア",
-    clearSearchTitle: "検索をクリア",
     count: (count: number) => `監視項目 ${count} 件`,
     listLabel: "監視項目",
     empty: "一致する監視項目はありません",
     needsInstall: (name: string) => `インストールが必要: ${name}`,
-    componentState: (name: string, state: string) => `${name} · ${state}`,
     cancel: "キャンセル",
     confirm: "確認"
   },
@@ -299,13 +272,11 @@ const jaJpAppCopy: AppCopy = {
     noCandidates: "追加できるソフトウェアがありません。先にソフトウェア一覧を更新してください。",
     software: "ソフトウェア",
     searchSoftware: "ソフトウェアを検索",
-    optionLabel: (name: string, kind: string) => `${name} · ${kind}`,
     name: "名前",
     rootDirectory: "ルート ディレクトリ",
     rootPlaceholder: "1 行に 1 つのディレクトリ。例: D:\\Tools\\App",
     cancel: "キャンセル",
     saving: "保存中",
-    confirm: "確認",
     additionalRoots: (count: number) => `他に ${count} 個のディレクトリ`
   },
   observationNotice: {
@@ -429,21 +400,6 @@ const jaJpAppCopy: AppCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "CPU プロセス統計",
-      sourceDisk: "ディスク プロセス統計",
-      sourceNetwork: "ネットワーク プロセス統計",
-      sourceGpuMemory: "VRAM プロセス統計",
-      sourceGeneric: "プロセス リソース統計",
-      stateUnavailable: "一時的に利用できません",
-      statePreparing: "準備中",
-      stateIdle: "未使用",
-      stateNormal: "正常",
-      messageUnavailable: "データ ソースは表示できる失敗の説明を提供しませんでした。",
-      messagePreparing: "データ ソースは初期化中で、まだ詳しい説明はありません。",
-      messageGeneric: "データ ソースは詳しい説明を提供しませんでした。",
-      summaryHealthy: "データは正常です",
-      summaryUnavailable: "一部のデータを一時的に取得できません",
-      summaryPreparing: "一部のデータはまだ準備中です"
     },
     detail: {
       status: "状態",
@@ -473,18 +429,13 @@ const jaJpAppCopy: AppCopy = {
     smartSchedulerStopped: "スマート スケジューリング停止",
     pendingChanges: (count: number) => `確認待ちの変更 ${count} 件`,
     appliedTargets: (count: number) => `最適化済み ${count} 件`,
-    statusSeparator: " · ",
     search: "検索",
     searchLabel: "最適化レポートを検索",
     reportPanel: "最適化レポート",
-    reportStateUnavailable: "レポートの状態を取得できません",
-    monitoring: (count: number) => `監視中 · ${count} 件`,
-    monitoringNotStarted: "監視はまだ開始していません",
     filterLabel: "レポートのフィルター",
     filterUntrusted: (count: string) => `未信頼 ${count}`,
     filterAll: (count: string) => `すべて ${count}`,
     filterTrusted: (count: string) => `信頼済み ${count}`,
-    countUnavailable: "--",
     refresh: "更新",
     refreshing: "更新中",
     noSearchResults: "一致する結果はありません。",
@@ -568,13 +519,11 @@ const jaJpAppCopy: AppCopy = {
       observationScope: "観測範囲",
       foregroundSoftware: "フォアグラウンド ソフトウェア",
       relatedProcesses: "関連プロセス",
-      processSeparator: "、",
       firstObserved: "初回検出",
       lastObserved: "最終検出",
       duration: "継続時間",
       occurrences: "検出回数",
-      occurrenceTimes: (count: number) => `${count} 回`,
-      occurrenceCount: (count: number) => `${count} 回`
+      occurrenceTimes: (count: number) => `${count} 回`
     },
     duration: {
       days: (value: number) => `${value} 日`,
@@ -614,8 +563,6 @@ const jaJpAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} の詳細`,
     fallbackDeviceName: "デバイス",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "接続されたデバイス",
     section: {
       overview: "概要",
@@ -701,7 +648,6 @@ const jaJpAppCopy: AppCopy = {
       downstreamHubPath: "下位ハブ パス",
       displayDevicePath: "ディスプレイ デバイス パス"
     },
-    companion: (index: number, port: number) => `#${index} · ハブ ポート ${port}`,
     connectionState: {
       connected: "接続済み",
       disconnected: "未接続",
@@ -946,7 +892,6 @@ const jaJpAppCopy: AppCopy = {
     hdrOn: "オン",
     advancedColorSupported: "高度な色に対応",
     hdrCurrentlyOff: "現在オフ",
-    hdrUnavailable: "現在システムで利用できません",
     hdrFormatUnavailable: (format: string) => `${format} · 現在このシステムでは利用できません`,
     advancedColorUnsupported: "高度な色に非対応",
     bitsPerChannel: (bits: string) => `${bits} ビット / 色チャネル`,
@@ -970,7 +915,6 @@ const jaJpAppCopy: AppCopy = {
     powerInputRole: "電力シンク",
     powerInputBadge: "電源入力",
     dock: "ポート ドック",
-    usbHub: "USB ハブ",
     dockBadge: "ドック",
     hubSummary: (total: number, connected: number) =>
       `下位ポート ${total} · 接続済み ${connected}`,
@@ -983,8 +927,7 @@ const jaJpAppCopy: AppCopy = {
     disk: "ディスク",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "USB デバイス",
-    internalDisplay: "内蔵ディスプレイ",
-    ethernet: "イーサネット"
+    internalDisplay: "内蔵ディスプレイ"
   },
   deviceTree: {
     downstreamPort: (port: number) => `下位ポート ${port}`,
@@ -1033,8 +976,6 @@ const jaJpAppCopy: AppCopy = {
     cancel: "キャンセル",
     reset: "リセット",
     save: "保存",
-    observationLabel: "CPU トポロジと稼働状況",
-    noTopology: "CPU トポロジはまだ読み取られていません。",
     setCoreScore: (core: string) => `${core}のパフォーマンス スコアを設定`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `論理プロセッサ ${id}、実行時間 ${executionTime}`,
@@ -1044,7 +985,6 @@ const jaJpAppCopy: AppCopy = {
     ringBus: "リング バス",
     coreCount: (count: number) => `${count} コア`,
     selectedCount: (count: number) => `${count} 件選択中`,
-    selectedLogical: (ids: string) => `論理プロセッサ: ${ids}`,
     clear: "クリア",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}、使用率 ${usage}、パフォーマンス ${performance}、実行時間 ${executionTime}`,
@@ -1076,23 +1016,14 @@ const jaJpAppCopy: AppCopy = {
       `${level} キャッシュ ${size} · ${scope} · 論理プロセッサ ${logicalIds}`,
     residency: {
       readFailed: "スレッド活動の読み取りに失敗しました",
-      reading: "スレッド活動を読み取り中",
       loading: "スレッド活動を読み込み中",
       window: (window: string) => `スレッド活動 ${window}`,
-      paused: "スレッド活動を一時停止中",
       unavailable: "スレッド活動を一時的に取得できません",
-      idle: "スレッド活動はアイドルです",
       preparing: "スレッド活動を準備中"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "メトリック カタログの読み取りに失敗しました。",
-    overridesReadFailed: "GPU スコアの上書き設定の読み取りに失敗しました。",
-    scoresReadFailed: "GPU のパフォーマンス スコアの読み取りに失敗しました。",
     dataReadFailed: "GPU スケジューリングデータの読み取りに失敗しました。",
-    metricsReadFailed: "GPU メトリックの読み取りに失敗しました。",
-    specializedTelemetryReadFailed: "GPU の専用ユニット テレメトリの読み取りに失敗しました。",
-    processAttributionReadFailed: "GPU のプロセス帰属情報の読み取りに失敗しました。",
     telemetryLive: "ライブのハードウェア / プロセス帰属",
     telemetryStale: "古いハードウェア / プロセス帰属",
     telemetryUnavailable: "データを取得できません",
@@ -1135,9 +1066,7 @@ const jaJpAppCopy: AppCopy = {
     cdnaUsage: "CDNA 使用率",
     gpuFull: "GPU 飽和",
     vramFull: "VRAM 飽和",
-    noProcessAttribution: "プロセス帰属情報なし",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `ソフトウェア ${softwareCount} · プロセス ${processCount}`
+    noProcessAttribution: "プロセス帰属情報なし"
   },
   softwareDetail: {
     tab: {
@@ -1230,8 +1159,6 @@ const jaJpAppCopy: AppCopy = {
       title: "CPU コアの割り当て",
       description: "「専有」は他のソフトウェアがこれらのコアを避けるようにし、「固定」はこのソフトウェアをそのコアに限定します。",
       clear: "クリア",
-      loadingTopology: "CPU トポロジを読み取り中です。",
-      noTopology: "CPU トポロジのデータはまだありません。",
       maxBoost: (value: string) => `最大ブースト ${value}`,
       l1Cache: "L1 キャッシュ --",
       l2Cache: (value: string) => `L2 キャッシュ ${value}`,
@@ -1276,8 +1203,7 @@ const jaJpAppCopy: AppCopy = {
       unsupported: "非対応",
       unknown: "不明",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "起動時の精密プロバイダーを利用できません。設定は保持されますが実行されません。",
@@ -1448,7 +1374,6 @@ const jaJpAppCopy: AppCopy = {
       observedChanges: "観測された変更",
       changeTimes: (count: number) => `${count} 回`,
       observedProcesses: "監視したプロセス",
-      processSeparator: "、",
       observationScope: "観測範囲",
       directory: (index: number) => `ディレクトリ ${index}`,
       migratableContent: "移行できる内容",
@@ -1458,8 +1383,6 @@ const jaJpAppCopy: AppCopy = {
       lastObserved: "最終観測",
       relatedProcesses: "関連プロセス",
       savedLocations: "保存場所",
-      userData: "ユーザー データ",
-      miscData: "その他のデータ",
       softwareRoot: "ソフトウェアのルート ディレクトリ",
       migrationJudgement: "移行の判定",
       risk: "リスク",
@@ -1511,15 +1434,7 @@ const jaJpAppCopy: AppCopy = {
   },
   hotkeyGroup: {
     mouse: "マウス",
-    character: "文字",
-    modifier: "修飾キー",
-    functionKey: "ファンクション キー",
-    navigation: "ナビゲーション",
-    numpad: "テンキー",
-    symbol: "記号",
-    system: "システム キー",
-    media: "メディア キー",
-    ime: "IME"
+    system: "システム キー"
   },
   hotkeyEditor: {
     searchKey: "キーを検索",
@@ -1537,7 +1452,6 @@ const jaJpAppCopy: AppCopy = {
     backendResyncing: "ローカル サービスが再同期中のため、バックエンド タスクは今変更できません。",
     backendUnavailable: "バックエンド タスクの状態を読み取れません。インターフェイスのタスクは引き続き動作します。",
     filterLabel: "タスクのフィルター",
-    noBackendTasks: "この起動プロファイルはバックエンド操作タスクを提供しません。インターフェイスのタスクはここに表示されます",
     noTasksInFilter: "このフィルターに該当するタスクはありません",
     itemCount: (count: number) => `${count} 件`,
     close: "閉じる",
@@ -1571,7 +1485,6 @@ const jaJpAppCopy: AppCopy = {
       queued: "待機中",
       startPending: "開始中",
       running: "実行中",
-      cancelPending: "キャンセル中",
       retryWait: "再試行待ち",
       recoveryPending: "回復中",
       succeeded: "完了",
@@ -1593,7 +1506,6 @@ const jaJpAppCopy: AppCopy = {
   smartReport: {
     panel: "スマート スケジューリング レポート",
     loading: "読み込み中",
-    updated: "スマート スケジューリングの状態を更新しました",
     unavailable: "状態を取得できません",
     refresh: "更新",
     completed: "完了",
@@ -1699,11 +1611,8 @@ const jaJpAppCopy: AppCopy = {
     refreshFailed: "更新に失敗しました",
     installDisabled: "この起動プロファイルはコンポーネントの状態のみを表示し、インストールは実行しません。",
     fallbackComponentName: "このコンポーネント",
-    externalTermsRequired: (name: string) => `${name} を続けるには、ベンダーの利用規約に同意する必要があります。`,
     componentMissingIdentity: "このコンポーネントには安定した識別子がないため、インストール操作を作成できません。",
     waiting: "待機中",
-    installing: "インストール中",
-    noInstallEntry: "このコンポーネントには現在利用できるインストール エントリがありません。",
     actionFailed: "操作に失敗しました",
     uninstallDisabled: "この起動プロファイルはソフトウェアのアンインストールを実行しません。",
     cannotUninstall: "このソフトウェアは現在アンインストールできません",
@@ -1723,9 +1632,7 @@ const jaJpAppCopy: AppCopy = {
     progressCanceled: "キャンセル済み",
     progressUncertain: "状態が不確実",
     progressWorking: "処理中",
-    progressSummary: (stage: string, percent: string, speed: string) => `${stage}${percent}${speed}`,
     operationStateDisabled: "この起動プロファイルは実行可能な操作の状態を読み込みません。",
-    operationStateRefreshFailed: "操作の状態の更新に失敗しました",
     operationStateStopped: "操作状態は停止しました",
     migrationRuntimeDisabled: "この起動プロファイルは移行ランタイムを有効にしません。",
     notPreviewed: "まだプレビューしていません",
@@ -1754,7 +1661,6 @@ const jaJpAppCopy: AppCopy = {
     restoreStartFailed: "復元の開始に失敗しました",
     restoreCompleted: "復元が完了しました",
     restoreFailed: "移行の復元に失敗しました",
-    taskTitle: (action: string, name: string) => `${action}: ${name}`,
     resultUncertain: "操作の結果が不確実です。先に実際の状態を確認してください。",
     resultIncomplete: "操作は完了しませんでした。",
     optimizationReportDisabled: "この起動プロファイルは最適化レポートを有効にしません。",
@@ -1762,10 +1668,7 @@ const jaJpAppCopy: AppCopy = {
     smartModeSwitchFailed: "スマート最適化モードの切り替えに失敗しました",
     optimizationReportRefreshFailed: "パフォーマンス最適化レポートの更新に失敗しました",
     optimizationScheduleRefreshFailed: "最適化スケジューリングの状態の更新に失敗しました",
-    resourceBreakdownRefreshFailed: "リソース使用量の更新に失敗しました",
-    resourceTableRefreshFailed: "リソース一覧の更新に失敗しました",
-    metricCatalogRefreshFailed: "メトリック カタログの更新に失敗しました",
-    resourceMonitorRefreshFailed: "リソース監視の更新に失敗しました"
+    metricCatalogRefreshFailed: "メトリック カタログの更新に失敗しました"
   },
   apiError: {
     readFailed: "データの読み取りに失敗しました。しばらくしてから再試行してください",
@@ -1781,13 +1684,11 @@ const jaJpAppCopy: AppCopy = {
     openPropertiesFailed: "プロパティを開けませんでした",
     terminateFailed: "タスクの終了に失敗しました",
     dumpFailed: "メモリ ダンプ ファイルの作成に失敗しました",
-    updateViewportFailed: "リソース マネージャーのビューポートの更新に失敗しました",
     addSoftwareFailed: "ソフトウェアの追加に失敗しました",
     confirmRootFailed: "ソフトウェアのルート ディレクトリの確定に失敗しました",
     saveGpuSoftwarePolicyFailed: "GPU スケジューリングのソフトウェア ポリシーの保存に失敗しました",
     saveGpuProcessPolicyFailed: "GPU スケジューリングのプロセス ポリシーの保存に失敗しました",
     recordGpuProcessHistoryFailed: "GPU スケジューリングのプロセス履歴の記録に失敗しました",
-    refreshOptimizationReportFailed: "パフォーマンス最適化レポートの更新に失敗しました",
     readGpuScoreOverridesFailed: "GPU スコアの上書き設定の読み取りに失敗しました",
     readGpuScoresFailed: "GPU パフォーマンススコアの読み取りに失敗しました",
     readOptimizationReportsFailed: "パフォーマンス最適化レポートの読み取りに失敗しました",
@@ -1796,7 +1697,6 @@ const jaJpAppCopy: AppCopy = {
     removeTrustFailed: "信頼の解除に失敗しました"
   },
   session: {
-    noVerifiedSession: "検証可能なローカル サービス セッションがまだありません",
     notReady: "ローカルサービスはまだ準備できていません",
     sessionChanged: "ローカル サービスのセッションが変わりました",
     noTrustedHost: "このページには信頼されたローカル ホストがありません",
@@ -1804,7 +1704,6 @@ const jaJpAppCopy: AppCopy = {
     hostCannotSubscribe: "このホストはバックエンド セッションの状態を購読できません",
     frontendClosed: "フロントエンドのランタイムは閉じられています",
     sessionUnavailable: (reason: string) => `ローカル サービス セッションを利用できません: ${reason}`,
-    identityConflict: "ローカル サービス セッションの識別情報が競合しています",
     hostCannotRerequest: "このホストはバックエンド セッションの状態を再要求できません",
     waitTimeout: "ローカル サービス セッションの待機がタイムアウトしました",
     requestFailed: (message: string) => `ローカル サービス セッションを要求できませんでした: ${message}`,
@@ -1820,15 +1719,9 @@ const jaJpAppCopy: AppCopy = {
     actionFailed: "操作に失敗しました。しばらくしてから再試行してください"
   },
   operationRegistry: {
-    backendOperationsDisabled: "この起動プロファイルはバックエンド操作を提供しません。",
-    notSynced: "バックグラウンド操作の状態は、現在のローカル サービス セッションとまだ同期されていません。",
-    staleSessionResponse: "バックグラウンド操作の応答は期限切れのローカル サービス セッションからのものです。",
     noCurrentValue: "バックグラウンド操作状態の現在値がまだ届いていません。",
     cancelFailed: "操作のキャンセルに失敗しました",
     removedFromCurrentValue: (operationId: string) => `バックグラウンド操作は現在値から削除されました：${operationId}`,
-    notFound: (operationId: string) => `バックグラウンド操作が見つかりません: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `バックグラウンド操作が権威ある状態から削除されました: ${operationId}`,
     canceled: "操作はキャンセルされました"
   },
   gpuTarget: {
@@ -1839,9 +1732,7 @@ const jaJpAppCopy: AppCopy = {
     unavailable: "現在利用できません",
     specificGpu: "特定の GPU",
     needsPreciseSelection: (target: string) => `${target} (精密な GPU 選択が必要)`,
-    startupUnavailable: (target: string) => `${target} (起動時は利用できません)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (起動時は利用できません)`
   },
   shellBridge: {
     desktopOnly: "この機能はリソース マネージャーのデスクトップ アプリでのみ利用できます。",
@@ -1934,8 +1825,6 @@ const jaJpAppCopy: AppCopy = {
     relatedInfo: "関連情報",
     content: "内容",
     infoIndex: (index: number) => `情報 ${index}`,
-    selfSchedulingRefreshFailed: "リソース マネージャーの自己スケジューリング状態の更新に失敗しました",
-    localStatusRefreshFailed: "ローカル ランタイムの状態の更新に失敗しました",
     search: "検索",
     searchOptions: "検索オプション",
     noMatchingOption: "一致する選択肢はありません",
