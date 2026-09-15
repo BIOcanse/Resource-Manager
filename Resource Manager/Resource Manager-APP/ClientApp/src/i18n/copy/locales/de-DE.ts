@@ -1944,6 +1944,20 @@ const deDeAppCopy: AppCopy = {
       notExposed: "Die aktuelle Hardware oder der Provider gibt diesen Messwert nicht aus.",
       needsComponent: (value: string) => `Der aktuelle Provider liefert keinen gültigen Messwert; ein vollständigeres ${value} oder die passende Hardware- bzw. OEM-Komponente wird benötigt.`,
       noValidReading: "Die aktuelle Hardware oder der Provider liefert keinen gültigen Messwert."
+    },
+    software: {
+      hasUninstallEntry: "Deinstallationseintrag vorhanden",
+      missingUninstallEntry: "Kein Deinstallationseintrag",
+      uninstallAction: "Deinstallieren",
+      cannotUninstallAction: "Nicht deinstallierbar",
+      windowsUninstallerDescription: "Startet das offizielle, in Windows registrierte Deinstallationsprogramm.",
+      noUninstallUnknownRoot: "Es gibt keinen Deinstallationseintrag; das lässt sich nur manuell erledigen. Resource Manager löscht keine unbekannten Softwarestämme.",
+      manualClassificationNoUninstall: "Ein manueller Klassifizierungseintrag ist selbst kein Deinstallationsprogramm; behandeln Sie ihn über die Softwaredetails oder die ursprüngliche Software.",
+      controlledNoUninstall: "Kontrollierte Software braucht einen eigenen Deinstallationsrichtlinien-Eintrag; derzeit wird nur die Wiederherstellung der Datenmigration unterstützt.",
+      selfNoUninstall: "Resource Manager kann sich hier nicht selbst deinstallieren oder migrieren.",
+      adaptedNoUninstall: "Angepasste Software muss eine Deinstallationsrichtlinie in ihrer Registrierung oder ihrem Manifest deklarieren.",
+      legacyControlledNoUninstall: "L0-kontrollierte Registrierungen haben keine Deinstallationsrichtlinie.",
+      portableNoUninstall: "Portable Software hat kein Deinstallationsprogramm; löschen Sie die Dateien und aktualisieren Sie die Liste, um den Eintrag zu entfernen."
     }
   }
 };

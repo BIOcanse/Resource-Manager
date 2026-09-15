@@ -34,6 +34,20 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       notExposed: "The current hardware or provider does not expose this reading.",
       needsComponent: (value: string) => `The current provider returns no valid reading; a more complete ${value} or the matching hardware or OEM component is needed.`,
       noValidReading: "The current hardware or provider returns no valid reading."
+    },
+    software: {
+      hasUninstallEntry: "Has an uninstall entry",
+      missingUninstallEntry: "No uninstall entry",
+      uninstallAction: "Uninstall",
+      cannotUninstallAction: "Cannot be uninstalled",
+      windowsUninstallerDescription: "Starts the official uninstaller registered with Windows.",
+      noUninstallUnknownRoot: "There is no uninstall entry, so this can only be opened or handled manually; Resource Manager does not delete unknown software roots.",
+      manualClassificationNoUninstall: "A manual classification entry does not itself represent an uninstaller; handle it from the software details or the original software entry.",
+      controlledNoUninstall: "Controlled software needs its own uninstall policy record; only data migration restore is supported for now.",
+      selfNoUninstall: "Resource Manager cannot uninstall or migrate itself from here.",
+      adaptedNoUninstall: "Adapted software must declare an uninstall policy in its registration or manifest before Resource Manager can run it.",
+      legacyControlledNoUninstall: "L0 controlled registrations have no uninstall policy.",
+      portableNoUninstall: "Portable software has no uninstaller; delete the files and refresh the software list to drop the record."
     }
   }
 };

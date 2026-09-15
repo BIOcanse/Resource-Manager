@@ -1944,6 +1944,20 @@ const frFrAppCopy: AppCopy = {
       notExposed: "Le matériel ou le fournisseur actuel n'expose pas ce relevé.",
       needsComponent: (value: string) => `Le fournisseur actuel ne renvoie aucun relevé valide ; un ${value} plus complet ou le matériel ou composant OEM correspondant est nécessaire.`,
       noValidReading: "Le matériel ou le fournisseur actuel ne renvoie aucun relevé valide."
+    },
+    software: {
+      hasUninstallEntry: "Entrée de désinstallation présente",
+      missingUninstallEntry: "Aucune entrée de désinstallation",
+      uninstallAction: "Désinstaller",
+      cannotUninstallAction: "Non désinstallable",
+      windowsUninstallerDescription: "Lance le désinstalleur officiel enregistré dans Windows.",
+      noUninstallUnknownRoot: "Il n'y a pas d'entrée de désinstallation : cela ne peut être traité que manuellement ; Resource Manager ne supprime pas les racines de logiciels inconnus.",
+      manualClassificationNoUninstall: "Une entrée de classement manuel ne représente pas un désinstalleur ; traitez-la depuis les détails du logiciel ou le logiciel d'origine.",
+      controlledNoUninstall: "Les logiciels contrôlés nécessitent leur propre politique de désinstallation ; seule la restauration de migration de données est prise en charge pour l'instant.",
+      selfNoUninstall: "Resource Manager ne peut pas se désinstaller ni se migrer lui-même ici.",
+      adaptedNoUninstall: "Les logiciels adaptés doivent déclarer une politique de désinstallation dans leur enregistrement ou leur manifeste.",
+      legacyControlledNoUninstall: "Les enregistrements contrôlés L0 n'ont pas de politique de désinstallation.",
+      portableNoUninstall: "Les logiciels portables n'ont pas de désinstalleur ; supprimez les fichiers puis actualisez la liste pour retirer l'entrée."
     }
   }
 };

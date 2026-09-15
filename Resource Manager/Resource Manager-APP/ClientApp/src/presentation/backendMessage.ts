@@ -11,7 +11,8 @@ import type { BackendMessage } from "../types.ts";
 export const backendMessageDomains = {
   dependency: 1,
   gpuPlacement: 2,
-  metric: 3
+  metric: 3,
+  software: 4
 } as const;
 
 type Renderer = (args: readonly string[]) => string;
@@ -41,6 +42,24 @@ function dependencyRenderers(): Record<number, Renderer> {
     20: (args) => copy.installerDownloadedVersion(args[0] ?? ""),
     21: () => copy.sharedRuntimeInstalled,
     22: () => copy.installerLaunched
+  };
+}
+
+function softwareRenderers(): Record<number, Renderer> {
+  const copy = uiText.backendMessage.software;
+  return {
+    1: () => copy.hasUninstallEntry,
+    2: () => copy.missingUninstallEntry,
+    3: () => copy.uninstallAction,
+    4: () => copy.cannotUninstallAction,
+    5: () => copy.windowsUninstallerDescription,
+    6: () => copy.noUninstallUnknownRoot,
+    7: () => copy.manualClassificationNoUninstall,
+    8: () => copy.controlledNoUninstall,
+    9: () => copy.selfNoUninstall,
+    10: () => copy.adaptedNoUninstall,
+    11: () => copy.legacyControlledNoUninstall,
+    12: () => copy.portableNoUninstall
   };
 }
 
@@ -74,7 +93,9 @@ export function renderBackendMessage(
       ? gpuPlacementRenderers()
       : message.domain === backendMessageDomains.metric
         ? metricRenderers()
-        : null;
+        : message.domain === backendMessageDomains.software
+          ? softwareRenderers()
+          : null;
   const renderer = renderers?.[message.code];
   if (!renderer) {
     console.warn(

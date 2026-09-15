@@ -336,7 +336,7 @@ function SoftwareCard(props: {
         <SoftwareIssueTagStrip issues={props.software.issues} />
         <div class="management-card-purpose">
           {props.software.messageCode
-            ? renderBackendMessage(props.software.messageCode)
+            ? softwareSummary(props.software)
             : userFacingMessage(
               props.software.message,
               softwareDisplayKindLabel(props.software.kind, props.software.displayKind))}
@@ -533,6 +533,14 @@ function matchesComponentSearch(component: ManagedComponent, query: string) {
     ]));
 }
 
+// 事实（发布者、版本）与消息码渲染出的短语按同一个分隔符拼成一句描述。
+export function softwareSummary(software: SoftwareRecord) {
+  return [software.publisher, software.version, renderBackendMessage(software.messageCode)]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
   return matchesSearch(query,
     software.id,
@@ -543,7 +551,7 @@ function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
     softwareDisplayKindLabel(software.kind, software.displayKind),
     software.state,
     software.message,
-    renderBackendMessage(software.messageCode),
+    softwareSummary(software),
     ...(software.issues ?? []).flatMap((issue) => [
       issue.kind,
       issue.label,
