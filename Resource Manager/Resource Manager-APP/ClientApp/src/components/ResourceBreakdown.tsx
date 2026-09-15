@@ -1,3 +1,4 @@
+import { localizedMetricLabel } from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../frontendRuntime/task/useTaskScope";
@@ -237,12 +238,12 @@ function ResourceBarEditor(props: {
                 onChange={(event) => props.onToggleBar(metric.id, event.currentTarget.checked)}
               />
               <span class="resource-bar-option-copy">
-                <span>{metric.label}</span>
+                <span>{localizedMetricLabel(metric.id, metric.label)}</span>
               </span>
               <StandardSelect<"capacity" | "active">
                 value={normalizeResourceBarScaleMode(metric.id, bar()?.scaleMode)}
                 disabled={!bar() || !supportsCapacity}
-                ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(metric.label)}
+                ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(localizedMetricLabel(metric.id, metric.label))}
                 options={[
                   ...(supportsCapacity ? [{ value: "capacity" as const, label: uiText.resourceBreakdown.scaleCapacity }] : []),
                   { value: "active" as const, label: uiText.resourceBreakdown.scaleActive }
@@ -715,7 +716,7 @@ function resourceBarOptions(catalog: MetricDefinition[]) {
 function resourceBreakdownLabel(bar: ResourceBreakdownBar) {
   const match = /^gpu\.(\d+)\.(usage|vram)$/i.exec(bar.metricId);
   if (!match) {
-    return bar.label;
+    return localizedMetricLabel(bar.metricId, bar.label);
   }
 
   return match[2].toLowerCase() === "vram"
