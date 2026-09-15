@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using System.Text;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
@@ -16,7 +18,7 @@ internal static class EdidParser
 
         var digital = (edid[20] & 0x80) != 0;
         var bitsPerColor = digital ? DecodeBitsPerColor(edid[20]) : null;
-        var digitalInterface = digital ? DecodeDigitalInterface(edid[20]) : "模拟显示输入";
+        var digitalInterface = digital ? DecodeDigitalInterface(edid[20]) : DeviceEdidDigitalInterfaces.Analog;
         var productName = ReadTextDescriptor(edid, 0xFC);
         var serialText = ReadTextDescriptor(edid, 0xFF);
         var numericSerial = BinaryPrimitives.ReadUInt32LittleEndian(edid.Slice(12, sizeof(uint)));
@@ -33,7 +35,12 @@ internal static class EdidParser
             HdrFormats: hdrFormats.Count == 0 ? null : string.Join(" / ", hdrFormats),
             WidthMillimeters: widthMillimeters,
             HeightMillimeters: heightMillimeters,
-            DisplayTechnology: digital ? $"数字显示 / {digitalInterface}" : "模拟显示",
+            DisplayTechnology: digital
+                ? BackendMessage.Create(
+                    BackendMessageDomains.DeviceTopology,
+                    BackendMessageCodes.DeviceTopology.DisplayTechnologyDigital,
+                    digitalInterface)
+                : BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.DisplayTechnologyAnalog),
             PanelTechnology: null);
     }
 
@@ -55,13 +62,13 @@ internal static class EdidParser
     {
         return (videoInputDefinition & 0x0F) switch
         {
-            0 => "未定义数字接口",
-            1 => "DVI",
-            2 => "HDMI Type-A",
-            3 => "HDMI Type-B",
-            4 => "MDDI",
-            5 => "DisplayPort",
-            _ => "保留数字接口"
+            0 => DeviceEdidDigitalInterfaces.Undefined,
+            1 => DeviceEdidDigitalInterfaces.Dvi,
+            2 => DeviceEdidDigitalInterfaces.HdmiTypeA,
+            3 => DeviceEdidDigitalInterfaces.HdmiTypeB,
+            4 => DeviceEdidDigitalInterfaces.Mddi,
+            5 => DeviceEdidDigitalInterfaces.DisplayPort,
+            _ => DeviceEdidDigitalInterfaces.Reserved
         };
     }
 
@@ -125,7 +132,7 @@ internal static class EdidParser
     {
         if ((flags & 0x02) != 0)
         {
-            result.Add("传统 HDR");
+            result.Add("Traditional HDR");
         }
         if ((flags & 0x04) != 0)
         {
@@ -143,9 +150,10 @@ internal sealed record DeviceTopologyEdidCapabilities(
     string? ProductName,
     string? SerialNumber,
     uint? BitsPerColorChannel,
+    /// <summary>取值见 <see cref="DeviceEdidDigitalInterfaces"/>。</summary>
     string DigitalInterface,
     string? HdrFormats,
     uint? WidthMillimeters,
     uint? HeightMillimeters,
-    string DisplayTechnology,
+    BackendMessage DisplayTechnology,
     string? PanelTechnology);

@@ -16,7 +16,9 @@ internal static class WindowsStorageDeviceCapabilityReader
     {
         if (!OperatingSystem.IsWindows())
         {
-            return new DeviceTopologyStorageSnapshot([], "存储能力枚举仅支持 Windows。");
+            return new DeviceTopologyStorageSnapshot(
+                [],
+                "Storage capability enumeration is only supported on Windows.");
         }
 
         lock (Gate)

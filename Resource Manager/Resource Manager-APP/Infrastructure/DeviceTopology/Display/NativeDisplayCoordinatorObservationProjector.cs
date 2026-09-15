@@ -168,7 +168,7 @@ internal static class NativeDisplayCoordinatorObservationProjector
                 OutputTechnology = checked((uint)profile.OutputTechnology),
                 FriendlyNameTextIndex = builder.AddText(
                     NativeDisplayTextKind.FriendlyName,
-                    profile.DisplayName),
+                    profile.CatalogName),
                 SourceObjectKey = StableKey(profile.Id),
                 PayloadHandle = payloads.AddOemProfile(profile),
                 ObservedAtUtcMilliseconds = observedAt,

@@ -350,5 +350,50 @@ public static class BackendMessageCodes
 
         /// <summary>能力来源：Windows WPD / PnP 属性。参数：无。</summary>
         public const byte SourceWindowsWpdPnp = 63;
+
+        /// <summary>拓扑路径就是一条设备链，链上每一段都是设备名。参数：1 = 已拼好的链。</summary>
+        public const byte PathDeviceChain = 64;
+
+        /// <summary>没有关系链可用，只能说明它来自 PnP 设备枚举。参数：无。</summary>
+        public const byte PathPnpEnumeration = 65;
+
+        /// <summary>没有关系链可用，只能说明它来自设备管理器属性。参数：无。</summary>
+        public const byte PathDeviceManagerProperties = 66;
+
+        /// <summary>拓扑路径：USB Hub 上的某个端口。参数：1 = 端口号。</summary>
+        public const byte PathUsbHubPort = 67;
+
+        /// <summary>拓扑路径：Windows 显示路径上的某个输出。参数：1 = 输出技术 id，2 = 显示器名。</summary>
+        public const byte PathWindowsDisplayPath = 68;
+
+        /// <summary>拓扑路径：机型接口档案里的某个接口。参数：1 = 接口名。</summary>
+        public const byte PathOemProfile = 69;
+
+        /// <summary>节点名：某个连接器上已连接的设备。参数：1 = 连接器名。</summary>
+        public const byte NameConnectedDeviceOnConnector = 70;
+
+        /// <summary>节点名：空闲的连接器。参数：1 = 连接器名。</summary>
+        public const byte NameIdleConnector = 71;
+
+        /// <summary>节点名或硬件类别：内置显示面板。参数：无。</summary>
+        public const byte NameInternalDisplayPanel = 72;
+
+        /// <summary>节点名：某种输出技术上的活动显示器。参数：1 = 输出技术 id。</summary>
+        public const byte NameActiveMonitor = 73;
+
+        /// <summary>节点名：机型接口档案里的接口。参数：1 = 接口名（含版本）。</summary>
+        public const byte NameConnectorInterface = 74;
+
+        /// <summary>硬件类别：某个连接器的物理接口。参数：1 = 连接器名。</summary>
+        public const byte KindPhysicalConnector = 75;
+
+        /// <summary>硬件类别：某种输出技术上的活动显示路径。参数：1 = 输出技术 id。</summary>
+        public const byte KindActiveDisplayPath = 76;
+
+        /// <summary>EDID：模拟显示。参数：无。</summary>
+        public const byte DisplayTechnologyAnalog = 77;
+
+        /// <summary>EDID：数字显示，接口是某一种。参数：1 = 数字接口 id。</summary>
+        public const byte DisplayTechnologyDigital = 78;
     }
 }

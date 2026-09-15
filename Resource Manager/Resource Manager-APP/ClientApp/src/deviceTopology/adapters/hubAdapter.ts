@@ -1,3 +1,4 @@
+import { portDisplayName } from "../deviceVocabulary.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -20,7 +21,7 @@ export const dockAdapter: DeviceAdapter<DockDeviceModel> = {
     && /dock|docking|扩展坞/i.test(deviceTitle({
       scope: context.scope,
       port: context.port,
-      fallbackTitle: context.port.displayName,
+      fallbackTitle: portDisplayName(context.port),
       downstreamInterfaceCount: 0,
       connectedDownstreamInterfaceCount: 0
     })),

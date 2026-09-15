@@ -212,6 +212,7 @@ const panel = port({
   pnpClass: "Monitor",
   display: {
     connectorTechnology: "Embedded DisplayPort",
+    outputTechnology: "displayport-embedded",
     monitorName: "Internal Panel",
     resolution: "2560 x 1600",
     refreshRate: "240 Hz",
@@ -321,7 +322,7 @@ function port(options: Omit<Partial<DeviceTopologyPort>, "id" | "displayName" | 
     source: { domain: 5, code: 35, args: [] },
     upstreamDeviceId: options.upstreamDeviceId,
     upstreamDisplayName: options.upstreamDisplayName,
-    topologyPath: "test",
+    topologyPath: { domain: 5, code: 65, args: [] },
     nativeParentDeviceId: options.nativeParentDeviceId,
     nativeParentDisplayName: options.nativeParentDisplayName,
     locationInfo: options.locationInfo,

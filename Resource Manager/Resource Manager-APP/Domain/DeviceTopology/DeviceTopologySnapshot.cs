@@ -20,10 +20,12 @@ public sealed record DeviceTopologySystemIdentity(
 public sealed record DeviceTopologyPort(
     string Id,
     bool IsPhysicalConnector,
-    string DisplayName,
+    /// <summary>设备自报的名字；我们自己生成名字时为 null，改由 <see cref="DisplayNameCode"/> 给出。</summary>
+    string? DisplayName,
     string ConnectorKind,
     string BusKind,
-    string HardwareKind,
+    /// <summary>硬件类别的技术名（USB Hub、Ethernet 一类）；描述性名字走 <see cref="HardwareKindCode"/>。</summary>
+    string? HardwareKind,
     string Protocol,
     string? Speed,
     string DeviceId,
@@ -35,7 +37,7 @@ public sealed record DeviceTopologyPort(
     BackendMessage Source,
     string? UpstreamDeviceId,
     string? UpstreamDisplayName,
-    string TopologyPath,
+    BackendMessage TopologyPath,
     string? NativeParentDeviceId,
     string? NativeParentDisplayName,
     string? LocationInfo,
@@ -54,10 +56,15 @@ public sealed record DeviceTopologyPort(
     DeviceTopologyHidCapabilities? Hid = null,
     DeviceTopologyCameraCapabilities? Camera = null,
     DeviceTopologySmartDeviceCapabilities? SmartDevice = null,
-    DeviceTopologyStorageDevice? Storage = null);
+    DeviceTopologyStorageDevice? Storage = null,
+    BackendMessage? DisplayNameCode = null,
+    BackendMessage? HardwareKindCode = null);
 
 public sealed record DeviceTopologyDisplayConnection(
-    string ConnectorTechnology,
+    /// <summary>机型接口档案给的接口名（「HDMI 2.1」一类）；没有档案时为 null。</summary>
+    string? ConnectorTechnology,
+    /// <summary>Windows 输出技术，取值见 <see cref="DeviceDisplayOutputTechnologies"/>。</summary>
+    string OutputTechnology,
     string MonitorName,
     string? Resolution,
     string RefreshRate,
@@ -73,7 +80,7 @@ public sealed record DeviceTopologyDisplayConnection(
     bool? WideColorEnforced = null,
     double? SdrWhiteLevelNits = null,
     string? HdrFormats = null,
-    string? DisplayTechnology = null,
+    BackendMessage? DisplayTechnology = null,
     string? PanelTechnology = null,
     string? EdidVersion = null,
     string? EdidProductName = null,
@@ -270,6 +277,47 @@ public static class DeviceBusKinds
     public const string Bluetooth = "bluetooth";
     public const string System = "system";
     public const string Unknown = "unknown";
+}
+
+/// <summary>
+/// Windows DISPLAYCONFIG_OUTPUT_TECHNOLOGY 的取值。措辞在前端，这里只有标识。
+/// </summary>
+public static class DeviceDisplayOutputTechnologies
+{
+    public const string Other = "other";
+    public const string Vga = "vga";
+    public const string SVideo = "s-video";
+    public const string CompositeVideo = "composite-video";
+    public const string ComponentVideo = "component-video";
+    public const string Dvi = "dvi";
+    public const string Hdmi = "hdmi";
+    public const string Lvds = "lvds";
+    public const string DJpn = "d-jpn";
+    public const string Sdi = "sdi";
+    public const string DisplayPortExternal = "displayport-external";
+    public const string DisplayPortEmbedded = "displayport-embedded";
+    public const string UdiExternal = "udi-external";
+    public const string UdiEmbedded = "udi-embedded";
+    public const string SdtvDongle = "sdtv-dongle";
+    public const string Miracast = "miracast";
+    public const string IndirectWired = "indirect-wired";
+    public const string IndirectVirtual = "indirect-virtual";
+    public const string DisplayPortUsb4Tunnel = "displayport-usb4-tunnel";
+    public const string Internal = "internal";
+    public const string Unknown = "unknown";
+}
+
+/// <summary>EDID 视频输入定义里的数字接口取值。</summary>
+public static class DeviceEdidDigitalInterfaces
+{
+    public const string Analog = "analog";
+    public const string Undefined = "undefined";
+    public const string Dvi = "dvi";
+    public const string HdmiTypeA = "hdmi-type-a";
+    public const string HdmiTypeB = "hdmi-type-b";
+    public const string Mddi = "mddi";
+    public const string DisplayPort = "displayport";
+    public const string Reserved = "reserved";
 }
 
 /// <summary>HID 设备的类别。只有类别，没有措辞。</summary>

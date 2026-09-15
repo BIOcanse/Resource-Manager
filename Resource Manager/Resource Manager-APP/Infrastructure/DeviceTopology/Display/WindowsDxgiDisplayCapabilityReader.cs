@@ -171,7 +171,7 @@ internal static unsafe class WindowsDxgiDisplayCapabilityReader
             19 => "YCbCr full / HLG / BT.2020",
             20 => "RGB studio / gamma 2.4 / BT.709",
             21 => "RGB studio / gamma 2.4 / BT.2020",
-            _ => $"DXGI 色彩空间 {colorSpace}"
+            _ => null
         };
     }
 

@@ -676,6 +676,39 @@ const jaJpAppCopy: AppCopy = {
       notReady: "準備ができていません",
       unknown: "状態不明"
     },
+    outputTechnology: {
+      "other": "その他の表示接続",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "コンポジット映像",
+      "component-video": "コンポーネント映像",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "LVDS 内蔵パネル",
+      "d-jpn": "D 端子",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "内蔵 DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "内蔵 UDI",
+      "sdtv-dongle": "SDTV ドングル",
+      "miracast": "Miracast",
+      "indirect-wired": "間接有線ディスプレイ",
+      "indirect-virtual": "間接仮想ディスプレイ",
+      "displayport-usb4-tunnel": "USB4 経由の DisplayPort",
+      "internal": "内蔵表示接続",
+      "unknown": "不明な表示接続"
+    },
+    edidDigitalInterface: {
+      "analog": "アナログ表示入力",
+      "undefined": "未定義のデジタルインターフェイス",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "予約済みデジタルインターフェイス"
+    },
     displayLocation: {
       internal: "内部接続",
       external: "外部接続"
@@ -2044,7 +2077,21 @@ const jaJpAppCopy: AppCopy = {
       sourceUsbHidEndpointDescriptors: "USB HID・エンドポイント記述子",
       sourceUsbVideoClassDescriptors: "USB Video Class コンフィグレーション記述子",
       sourceUsbDescriptorsAndWindows: "USB デバイス／コンフィグレーション記述子 + Windows PnP",
-      sourceWindowsWpdPnp: "Windows WPD / PnP プロパティ"
+      sourceWindowsWpdPnp: "Windows WPD / PnP プロパティ",
+      pathPnpEnumeration: "PnP デバイス列挙",
+      pathDeviceManagerProperties: "デバイスマネージャーのプロパティ",
+      pathUsbHubPort: (port: string) => `USB Hub > ポート ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Windows 表示パス > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `機種別コネクタープロファイル > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `${connector} に接続されたデバイス`,
+      nameIdleConnector: (connector: string) => `空き ${connector}`,
+      nameInternalDisplayPanel: "内蔵ディスプレイパネル",
+      nameActiveMonitor: (technology: string) => `${technology} のアクティブモニター`,
+      nameConnectorInterface: (connector: string) => `${connector} ポート`,
+      kindPhysicalConnector: (connector: string) => `${connector} 物理コネクター`,
+      kindActiveDisplayPath: (technology: string) => `${technology} のアクティブ表示パス`,
+      displayTechnologyAnalog: "アナログ表示",
+      displayTechnologyDigital: (connection: string) => `デジタル表示 / ${connection}`
     }
   }
 };

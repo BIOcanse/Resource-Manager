@@ -1,3 +1,4 @@
+import { displayConnectorTechnology } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
@@ -320,7 +321,7 @@ function createSearchText(node: PendingNode, path: readonly string[]) {
     port.protocol,
     port.speed,
     port.deviceId,
-    port.display?.connectorTechnology,
+    port.display ? displayConnectorTechnology(port.display) : undefined,
     isDevice ? port.displayName : undefined,
     isDevice ? port.hardwareKind : undefined,
     isDevice ? port.manufacturer : undefined,

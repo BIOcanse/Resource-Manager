@@ -1,3 +1,4 @@
+import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../types";
 import { uiText } from "../text.ts";
 
@@ -45,8 +46,8 @@ const controllerServices = new Set([
 export function describeDeviceTopologyNode(port: DeviceTopologyPort): DeviceTopologyNodePresentation {
   if (!isExternalDeviceInterface(port)) {
     return {
-      title: port.displayName,
-      subtitle: joinSummary(port.hardwareKind, meaningfulSpeed(port.speed)),
+      title: portDisplayName(port),
+      subtitle: joinSummary(portHardwareKind(port), meaningfulSpeed(port.speed)),
       badge: isControllerNode(port) ? uiText.deviceInterface.controllerBadge : port.protocol
     };
   }
@@ -170,7 +171,7 @@ function connectionStateLabel(state: DeviceTopologyConnectionState) {
 function externalInterfaceProtocol(port: DeviceTopologyPort) {
   return displayValue(
     port.usb?.supportedProtocols
-      ?? port.display?.connectorTechnology
+      ?? (port.display ? displayConnectorTechnology(port.display) : undefined)
       ?? port.protocol
   );
 }

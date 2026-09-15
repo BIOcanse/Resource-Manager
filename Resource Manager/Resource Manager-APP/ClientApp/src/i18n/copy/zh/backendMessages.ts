@@ -110,7 +110,21 @@ export const zhBackendMessagesCopy = {
       sourceUsbHidEndpointDescriptors: "USB HID / 端点描述符",
       sourceUsbVideoClassDescriptors: "USB Video Class 配置描述符",
       sourceUsbDescriptorsAndWindows: "USB 设备/配置描述符 + Windows PnP",
-      sourceWindowsWpdPnp: "Windows WPD / PnP 属性"
+      sourceWindowsWpdPnp: "Windows WPD / PnP 属性",
+      pathPnpEnumeration: "PnP 设备枚举",
+      pathDeviceManagerProperties: "设备管理器属性",
+      pathUsbHubPort: (port: string) => `USB Hub > 端口 ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Windows 显示路径 > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `机型接口档案 > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `${connector} 已连接设备`,
+      nameIdleConnector: (connector: string) => `空闲 ${connector} 接口`,
+      nameInternalDisplayPanel: "内置显示面板",
+      nameActiveMonitor: (technology: string) => `${technology} 活动显示器`,
+      nameConnectorInterface: (connector: string) => `${connector} 接口`,
+      kindPhysicalConnector: (connector: string) => `${connector} 物理连接器`,
+      kindActiveDisplayPath: (technology: string) => `${technology} 活动显示路径`,
+      displayTechnologyAnalog: "模拟显示",
+      displayTechnologyDigital: (connection: string) => `数字显示 / ${connection}`
     }
   }
 };

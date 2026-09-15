@@ -1,3 +1,4 @@
+import { portDisplayName } from "../deviceVocabulary.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -20,7 +21,7 @@ export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> =
     const title = deviceTitle(context, uiText.deviceAdapters.externalGpuDock);
     const connection = connectionFacts(context);
     const interconnectTechnology = displayValue(interconnect.technology);
-    const gpuIdentity = displayValue(context.port.idResolution?.deviceName, context.port.displayName);
+    const gpuIdentity = displayValue(context.port.idResolution?.deviceName, portDisplayName(context.port));
     const relationEvidence = renderBackendMessage(interconnect.evidence);
     return {
       adapterId: "external-gpu-dock",
