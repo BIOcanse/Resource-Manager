@@ -1,4 +1,4 @@
-namespace ResourceManager.App.Domain.Settings;
+﻿namespace ResourceManager.App.Domain.Settings;
 
 public static class AppThemeModes
 {
@@ -193,6 +193,8 @@ public sealed record AppPerformanceSettings(
     IReadOnlyList<string> GpuPerformanceUseCases,
     string SmartMonitoringMode,
     string FrontendHiddenRefreshMode,
+    // 自动：只有这台机器不止一个显卡才调度；始终开启/关闭由用户直接决定。
+    string GpuSchedulingMode,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,
     AppPresetNumericSetting ManagementRefreshIntervalMs,

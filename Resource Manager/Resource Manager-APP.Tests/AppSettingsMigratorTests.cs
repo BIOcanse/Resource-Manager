@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Optimization;
@@ -12,9 +12,10 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.17", true)]
     [InlineData("1.0.22", true)]
     [InlineData("1.0.23", true)]
+    [InlineData("1.0.24", true)]
     [InlineData("1.0.16", false)]
-    [InlineData("1.0.24", false)]
-    [InlineData("1.0.23.0", false)]
+    [InlineData("1.0.25", false)]
+    [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
         string sourceVersion,
@@ -267,7 +268,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.23\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -284,7 +285,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.23\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -304,7 +305,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.23\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -406,7 +407,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.23",
+          "version": "1.0.24",
           "performance": {
             "smartMonitoringEnabled": true,
             "monitoringIdleSeconds": 5,
@@ -418,6 +419,7 @@ public sealed class AppSettingsMigratorTests
             "gpuPerformanceUseCases": ["general"],
             "smartMonitoringMode": "auto",
             "frontendHiddenRefreshMode": "auto",
+            "gpuSchedulingMode": "auto",
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "managementRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 10000 },
