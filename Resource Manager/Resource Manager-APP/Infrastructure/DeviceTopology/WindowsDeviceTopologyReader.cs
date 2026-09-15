@@ -19,8 +19,6 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         @"(?<![\d.])480\s*Mbps\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    private const string UnknownSpeed = "未知";
-
     private readonly DeviceIdCatalog deviceIdCatalog;
     private readonly HostManagerDisplayCoordinatorOwner displayCoordinator;
 
@@ -489,7 +487,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 usbPort?.ConnectorProperties);
         var hardwareKind = ResolveHardwareKind(searchText, pnpClass, busKind);
         var protocol = advancedInterconnect?.Technology ?? ResolveProtocol(searchText, pnpClass, busKind);
-        var inferredSpeed = advancedInterconnect is null ? ResolveSpeed(searchText, busKind) : UnknownSpeed;
+        var inferredSpeed = advancedInterconnect is null ? ResolveSpeed(searchText, busKind) : null;
         var speed = usbPort?.NegotiatedSpeed
             ?? (networkAdapter is null ? null : FormatNetworkLinkSpeed(networkAdapter))
             ?? inferredSpeed;
@@ -617,7 +615,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             "USB",
             port.Descriptor.ManufacturerName ?? idResolution?.VendorName,
             null,
-            port.ConnectionStatus,
+            null,
             Note(BackendMessageCodes.DeviceTopology.ConfidenceUsbConnectorProperties),
             Note(BackendMessageCodes.DeviceTopology.SourceUsbHubIoctl),
             null,
@@ -665,7 +663,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 : $"DISPLAYPATH\\{path.AdapterHighPart:X8}_{path.AdapterLowPart:X8}_{path.TargetId}";
         var speed = path.Active
             ? resolution is null ? refreshRate : $"{resolution} @ {refreshRate}"
-            : "未连接";
+            : null;
         var connectorTechnology = profile?.Protocol ?? technology;
         var source = Note(profile is null
             ? BackendMessageCodes.DeviceTopology.SourceQueryDisplayConfig
@@ -691,7 +689,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             "Monitor",
             null,
             null,
-            path.Active ? "活动" : "未连接",
+            null,
             confidence,
             source,
             null,
@@ -773,32 +771,25 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             adapter.ConnectorPresent);
     }
 
-    internal static string FormatNetworkLinkSpeed(DeviceTopologyNetworkAdapter adapter)
+    /// <summary>收发速率不同时前端会分行显示两者，这里只给较高的那个；都没有则返回 null。</summary>
+    internal static string? FormatNetworkLinkSpeed(DeviceTopologyNetworkAdapter adapter)
     {
         var transmit = adapter.TransmitLinkSpeedBitsPerSecond ?? 0;
         var receive = adapter.ReceiveLinkSpeedBitsPerSecond ?? 0;
-        if (transmit == 0 && receive == 0)
-        {
-            return adapter.MediaConnectState == 2 ? "未连接" : "未报告";
-        }
-
-        if (transmit == receive || transmit == 0 || receive == 0)
-        {
-            return FormatBitsPerSecond(Math.Max(transmit, receive)) ?? "未报告";
-        }
-
-        return $"接收 {FormatBitsPerSecond(receive)} / 发送 {FormatBitsPerSecond(transmit)}";
+        return transmit == 0 && receive == 0
+            ? null
+            : FormatBitsPerSecond(Math.Max(transmit, receive));
     }
 
     internal static string DescribeNetworkConnectionState(uint? state)
     {
         return state switch
         {
-            1 => "已连接",
-            2 => "未连接",
-            0 => "未知",
-            null => "未报告",
-            _ => $"状态 {state}"
+            1 => DeviceNetworkConnectionStates.Connected,
+            2 => DeviceNetworkConnectionStates.Disconnected,
+            0 => DeviceNetworkConnectionStates.Unknown,
+            null => DeviceNetworkConnectionStates.NotReported,
+            _ => DeviceNetworkConnectionStates.Unknown
         };
     }
 
@@ -1321,11 +1312,12 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return string.IsNullOrWhiteSpace(pnpClass) ? "Unknown" : pnpClass!;
     }
 
-    internal static string ResolveSpeed(string searchText, string busKind)
+    /// <summary>读不出速率时返回 null，占位文案由前端按当前语言出。</summary>
+    internal static string? ResolveSpeed(string searchText, string busKind)
     {
         if (busKind is not (DeviceBusKinds.Usb or DeviceBusKinds.Usb4 or DeviceBusKinds.Thunderbolt))
         {
-            return "不适用";
+            return null;
         }
 
         var reportedRates = ExplicitUsbGigabitRate.Matches(searchText)
@@ -1342,11 +1334,11 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             return "480Mbps";
         }
 
-        return UnknownSpeed;
+        return null;
     }
 
     private static BackendMessage ResolveConfidence(
-        string speed,
+        string? speed,
         string busKind,
         bool hasUsbRelationship,
         bool hasNativeDeviceProperties,
@@ -1357,8 +1349,8 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             return Note(BackendMessageCodes.DeviceTopology.ConfidenceUsbHubIoctl);
         }
 
-        // 速度不是「未知」说明它是从名字里推出来的，可信度要单独标出来。
-        var inferredFromName = !speed.Equals(UnknownSpeed, StringComparison.OrdinalIgnoreCase);
+        // 有速度说明它是从名字里推出来的，可信度要单独标出来。
+        var inferredFromName = speed is not null;
         if (hasUsbRelationship)
         {
             if (hasNativeDeviceProperties)

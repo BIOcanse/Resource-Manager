@@ -2004,7 +2004,19 @@ const koKrAppCopy: AppCopy = {
       roleUcsiConnectorManager: "USB Type-C 커넥터 관리자",
       roleUsb4HostRouter: "USB4 호스트 라우터",
       roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 장치 라우터",
-      roleUsb4P2PNetwork: "USB4 호스트 간 네트워크 어댑터"
+      roleUsb4P2PNetwork: "USB4 호스트 간 네트워크 어댑터",
+      usbNotConnected: "연결되지 않음",
+      usbConnected: "연결됨",
+      usbEnumerationFailed: "열거 실패",
+      usbDeviceGeneralFailure: "장치 일반 오류",
+      usbDeviceCausedOvercurrent: "장치가 과전류를 유발함",
+      usbInsufficientPower: "전력 부족",
+      usbInsufficientBandwidth: "대역폭 부족",
+      usbHubNestedTooDeep: "허브 중첩이 너무 깊음",
+      usbDeviceInLegacyHub: "레거시 허브의 장치",
+      usbEnumerating: "열거 중",
+      usbResetting: "재설정 중",
+      usbUnknownStatus: (status: string) => `Windows가 알 수 없는 상태 ${status}을(를) 반환했습니다`
     }
   }
 };

@@ -127,7 +127,19 @@ function deviceTopologyRenderers(): Record<number, Renderer> {
     42: () => copy.roleUcsiConnectorManager,
     43: () => copy.roleUsb4HostRouter,
     44: () => copy.roleUsb4DeviceRouter,
-    45: () => copy.roleUsb4P2PNetwork
+    45: () => copy.roleUsb4P2PNetwork,
+    46: () => copy.usbNotConnected,
+    47: () => copy.usbConnected,
+    48: () => copy.usbEnumerationFailed,
+    49: () => copy.usbDeviceGeneralFailure,
+    50: () => copy.usbDeviceCausedOvercurrent,
+    51: () => copy.usbInsufficientPower,
+    52: () => copy.usbInsufficientBandwidth,
+    53: () => copy.usbHubNestedTooDeep,
+    54: () => copy.usbDeviceInLegacyHub,
+    55: () => copy.usbEnumerating,
+    56: () => copy.usbResetting,
+    57: (args) => copy.usbUnknownStatus(args[0] ?? "")
   };
 }
 

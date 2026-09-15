@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.Messages;
+
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
 internal sealed record DeviceTopologyUsbPortSnapshot(
@@ -9,8 +11,8 @@ internal sealed record DeviceTopologyUsbPort(
     string HubDevicePath,
     uint PortNumber,
     bool DeviceConnected,
-    string ConnectionStatus,
-    string NegotiatedSpeed,
+    BackendMessage ConnectionStatus,
+    string? NegotiatedSpeed,
     ushort VendorId,
     ushort ProductId,
     ushort DeviceAddress,

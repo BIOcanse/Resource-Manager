@@ -8,16 +8,16 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsDeviceTopologyReaderTests
 {
     [Theory]
-    [InlineData("USB4 Host Router", DeviceBusKinds.Usb4, "未知")]
-    [InlineData("Thunderbolt 4 Controller", DeviceBusKinds.Thunderbolt, "未知")]
-    [InlineData("USB 3.2 xHCI Controller", DeviceBusKinds.Usb, "未知")]
+    [InlineData("USB4 Host Router", DeviceBusKinds.Usb4, null)]
+    [InlineData("Thunderbolt 4 Controller", DeviceBusKinds.Thunderbolt, null)]
+    [InlineData("USB 3.2 xHCI Controller", DeviceBusKinds.Usb, null)]
     [InlineData("USB4 Dock 40 Gbps", DeviceBusKinds.Usb4, "40Gbps")]
-    [InlineData("USB Ethernet 2.5Gbps", DeviceBusKinds.Usb, "未知")]
-    [InlineData("Network Adapter 40Gbps", DeviceBusKinds.Network, "不适用")]
+    [InlineData("USB Ethernet 2.5Gbps", DeviceBusKinds.Usb, null)]
+    [InlineData("Network Adapter 40Gbps", DeviceBusKinds.Network, null)]
     public void ResolveSpeed_RequiresExplicitApplicableRateEvidence(
         string searchText,
         string busKind,
-        string expected)
+        string? expected)
     {
         Assert.Equal(expected, WindowsDeviceTopologyReader.ResolveSpeed(searchText, busKind));
     }
@@ -46,11 +46,11 @@ public sealed class WindowsDeviceTopologyReaderTests
     }
 
     [Theory]
-    [InlineData(0u, 0, "未连接")]
-    [InlineData(2u, 0, "未协商")]
+    [InlineData(0u, 0, null)]
+    [InlineData(2u, 0, null)]
     [InlineData(1u, 0, "USB Low-Speed / 1.5Mbps")]
     [InlineData(1u, 2, "USB 2.0 High-Speed / 480Mbps")]
-    public void DescribeNegotiatedUsbSpeed_RequiresConnectedState(uint status, byte speed, string expected)
+    public void DescribeNegotiatedUsbSpeed_RequiresConnectedState(uint status, byte speed, string? expected)
     {
         Assert.Equal(expected, WindowsUsbHubIoctlReader.DescribeNegotiatedUsbSpeed(status, speed, null));
     }
@@ -76,8 +76,7 @@ public sealed class WindowsDeviceTopologyReaderTests
         Assert.Equal(
             "USB SuperSpeedPlus / 10Gbps+",
             WindowsUsbHubIoctlReader.DescribeMaximumUsbSpeed([usb2, usb10Gbps]));
-        Assert.Equal(
-            "未知",
+        Assert.Null(
             WindowsUsbHubIoctlReader.DescribeMaximumUsbSpeed([]));
     }
 
@@ -108,10 +107,10 @@ public sealed class WindowsDeviceTopologyReaderTests
     }
 
     [Theory]
-    [InlineData(0u, "未知")]
-    [InlineData(1u, "已连接")]
-    [InlineData(2u, "未连接")]
-    [InlineData(null, "未报告")]
+    [InlineData(0u, DeviceNetworkConnectionStates.Unknown)]
+    [InlineData(1u, DeviceNetworkConnectionStates.Connected)]
+    [InlineData(2u, DeviceNetworkConnectionStates.Disconnected)]
+    [InlineData(null, DeviceNetworkConnectionStates.NotReported)]
     public void DescribeNetworkConnectionState_MapsDocumentedValues(uint? state, string expected)
     {
         Assert.Equal(expected, WindowsDeviceTopologyReader.DescribeNetworkConnectionState(state));
@@ -123,12 +122,11 @@ public sealed class WindowsDeviceTopologyReaderTests
         Assert.Equal(
             "2.5 Gbps",
             WindowsDeviceTopologyReader.FormatNetworkLinkSpeed(NetworkAdapter(1, 2_500_000_000, 2_500_000_000)));
+        // 收发不同时只报较高的那个，两者的明细由网络分区单独给出。
         Assert.Equal(
-            "接收 2.5 Gbps / 发送 1 Gbps",
+            "2.5 Gbps",
             WindowsDeviceTopologyReader.FormatNetworkLinkSpeed(NetworkAdapter(1, 1_000_000_000, 2_500_000_000)));
-        Assert.Equal(
-            "未连接",
-            WindowsDeviceTopologyReader.FormatNetworkLinkSpeed(NetworkAdapter(2, 0, 0)));
+        Assert.Null(WindowsDeviceTopologyReader.FormatNetworkLinkSpeed(NetworkAdapter(2, 0, 0)));
     }
 
     [Fact]
