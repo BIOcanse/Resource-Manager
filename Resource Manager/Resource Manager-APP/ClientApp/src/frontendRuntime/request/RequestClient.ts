@@ -16,6 +16,7 @@ import {
   type RequestAttemptMetadata,
   type RequestProblemKind
 } from "./RequestProblem.ts";
+import { uiText } from "../../text.ts";
 
 export interface RequestDescriptor<T> {
   readonly key: string;
@@ -133,7 +134,7 @@ export class RequestClient {
       try {
         value = descriptor.decoder.decode(payload);
       } catch (error) {
-        throw new RequestProblem("本机服务返回的数据格式不正确，请重试。", {
+        throw new RequestProblem(uiText.request.invalidFormat, {
           kind: "invalid-response",
           retryable: true,
           attempt: this.finishAttempt(
@@ -186,7 +187,7 @@ export class RequestClient {
     startedAt: number
   ): RequestProblem {
     if (cancellationCause === "timeout") {
-      return new RequestProblem("等待本机服务响应超时，请重试。", {
+      return new RequestProblem(uiText.request.timeout, {
         kind: "timeout",
         retryable: true,
         attempt: this.finishAttempt(
@@ -200,7 +201,7 @@ export class RequestClient {
       });
     }
     if (cancellationCause === "caller") {
-      return new RequestProblem("请求已取消", {
+      return new RequestProblem(uiText.request.canceled, {
         kind: "aborted",
         retryable: false,
         attempt: this.finishAttempt(
@@ -215,7 +216,7 @@ export class RequestClient {
     }
     if (cancellationCause === "backend-session"
       || error instanceof BackendSessionChangedError) {
-      return new RequestProblem("本机服务会话已经改变，请重试。", {
+      return new RequestProblem(uiText.request.sessionChanged, {
         kind: "backend-session-changed",
         retryable: true,
         attempt: this.finishAttempt(
@@ -229,7 +230,7 @@ export class RequestClient {
       });
     }
     if (error instanceof BackendSessionUnavailableError) {
-      return new RequestProblem("本机服务当前不可用，请稍后重试。", {
+      return new RequestProblem(uiText.request.unavailable, {
         kind: "backend-unavailable",
         retryable: true,
         attempt: this.finishAttempt(
@@ -316,7 +317,7 @@ function defaultMonotonicNow(): number {
 }
 
 function normalizeFallback(value: string): string {
-  const text = value.trim() || "操作失败，请稍后重试";
+  const text = value.trim() || uiText.request.actionFailed;
   return /[。！？.!?]$/.test(text) ? text : `${text}。`;
 }
 

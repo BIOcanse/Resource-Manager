@@ -8,6 +8,7 @@ import type {
   SoftwareMetadataLookupResult,
   SoftwareMetadataView
 } from "./softwareMetadataDecoder.ts";
+import { uiText } from "../text.ts";
 
 export function projectSoftwareMetadataDetail(
   current: SoftwareDetailModel | null,
@@ -35,12 +36,12 @@ export function createSoftwareMetadataRows(
   metadata: SoftwareMetadataView
 ): SoftwareDetailModel["metadataRows"] {
   return [
-    ["软件简介", metadata.summary],
-    ["详细说明", metadata.description],
-    ["发布者", metadata.publisher],
-    ["官方网站", metadata.homepageUrl],
-    ["支持网站", metadata.supportUrl],
-    ["许可证", metadata.licenseName],
-    ["许可证链接", metadata.licenseUrl]
+    [uiText.softwareMetadata.summary, metadata.summary],
+    [uiText.softwareMetadata.description, metadata.description],
+    [uiText.softwareMetadata.publisher, metadata.publisher],
+    [uiText.softwareMetadata.homepage, metadata.homepageUrl],
+    [uiText.softwareMetadata.supportSite, metadata.supportUrl],
+    [uiText.softwareMetadata.license, metadata.licenseName],
+    [uiText.softwareMetadata.licenseUrl, metadata.licenseUrl]
   ];
 }

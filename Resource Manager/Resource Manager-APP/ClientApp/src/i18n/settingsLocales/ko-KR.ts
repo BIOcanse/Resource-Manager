@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ko-KR", {
   sections: { performance: "성능", appearance: "모양", systemIntegration: "시스템 통합", debug: "디버그", credits: "감사의 글" },

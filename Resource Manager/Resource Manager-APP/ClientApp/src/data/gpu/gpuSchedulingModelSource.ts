@@ -1,3 +1,4 @@
+import { uiText } from "../../text.ts";
 import type { RequestClient } from
   "../../frontendRuntime/request/RequestClient.ts";
 import {
@@ -95,7 +96,7 @@ export async function getGpuSchedulingModelSource(
     requestClient.execute({
       key: "details.gpu.score-overrides",
       url: "/api/gpu/performance-overrides",
-      fallbackError: "GPU 分数覆盖读取失败",
+      fallbackError: uiText.apiError.readGpuScoreOverridesFailed,
       decoder: gpuPerformanceScoreOverrideDecoder,
       signal,
       request: { method: "GET" }
@@ -103,7 +104,7 @@ export async function getGpuSchedulingModelSource(
     requestClient.execute({
       key: "details.gpu.performance-scores",
       url: "/api/gpu/performance-scores",
-      fallbackError: "GPU 性能分读取失败",
+      fallbackError: uiText.apiError.readGpuScoresFailed,
       decoder: gpuPerformanceScoreSnapshotDecoder,
       signal,
       request: { method: "GET" }

@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Search } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { uiText } from "../text.ts";
 
 export interface StandardSelectOption<T extends string = string> {
   value: T;
@@ -301,8 +302,8 @@ export function StandardSelect<T extends string>(props: {
                   ref={searchInput}
                   role="combobox"
                   value={query()}
-                  placeholder={props.searchPlaceholder ?? "搜索"}
-                  aria-label={props.searchPlaceholder ?? "搜索选项"}
+                  placeholder={props.searchPlaceholder ?? uiText.misc.search}
+                  aria-label={props.searchPlaceholder ?? uiText.misc.searchOptions}
                   aria-expanded="true"
                   aria-autocomplete="list"
                   aria-controls={listboxId}

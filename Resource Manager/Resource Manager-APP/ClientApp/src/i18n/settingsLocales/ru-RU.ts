@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ru-RU", {
   sections: { performance: "Производительность", appearance: "Внешний вид", systemIntegration: "Интеграция с системой", debug: "Отладка", credits: "Благодарности" },

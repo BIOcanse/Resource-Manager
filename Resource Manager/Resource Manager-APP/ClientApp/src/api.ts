@@ -46,6 +46,7 @@ import {
 } from "./api/resourceBreakdownWire";
 import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
+import { uiText } from "./text.ts";
 
 export async function getJson<T>(
   url: string,
@@ -53,7 +54,7 @@ export async function getJson<T>(
 ): Promise<T> {
   return requestJson<T>(url, {
     cache: "no-store",
-    fallbackError: "读取数据失败，请稍后重试",
+    fallbackError: uiText.apiError.readFailed,
     ...options
   });
 }
@@ -87,7 +88,7 @@ export async function saveDashboardSettings(settings: DashboardSettings) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
-    fallbackError: "保存设置失败"
+    fallbackError: uiText.apiError.saveSettingsFailed
   });
 }
 
@@ -102,13 +103,13 @@ export async function createAiGatewayCredential(
   return postJson<AiGatewayCredentialCreatedView>(
     "/api/ai-gateway/credentials",
     { compatibilityProfile, displayName },
-    "生成本地 AI 密钥失败");
+    uiText.apiError.generateAiKeyFailed);
 }
 
 export async function revokeAiGatewayCredential(credentialId: string) {
   return deleteJson<{ revoked: boolean }>(
     `/api/ai-gateway/credentials/${encodeURIComponent(credentialId)}`,
-    "撤销本地 AI 密钥失败");
+    uiText.apiError.revokeAiKeyFailed);
 }
 
 export async function getGpuSpecializedTelemetry(counterIds: string[] | null = null) {
@@ -137,7 +138,7 @@ export async function saveCpuCorePerformanceOverrides(request: CpuCorePerformanc
   return putJson<CpuCorePerformanceOverrideResult>(
     "/api/cpu/topology/performance-overrides",
     request,
-    "保存 CPU 核心性能分失败");
+    uiText.apiError.saveCpuCoreScoreFailed);
 }
 
 export async function resetCpuCorePerformanceOverrides(cpuName: string) {
@@ -145,7 +146,7 @@ export async function resetCpuCorePerformanceOverrides(cpuName: string) {
   params.set("cpuName", cpuName);
   return deleteJson<CpuCorePerformanceOverrideResult>(
     `/api/cpu/topology/performance-overrides?${params.toString()}`,
-    "重置 CPU 核心性能分失败");
+    uiText.apiError.resetCpuCoreScoreFailed);
 }
 
 export async function getGpuPerformanceScoreOverrides() {
@@ -160,13 +161,13 @@ export async function saveGpuPerformanceScoreOverrides(request: GpuPerformanceSc
   return putJson<GpuPerformanceScoreOverrideResult>(
     "/api/gpu/performance-overrides",
     request,
-    "保存 GPU 性能分失败");
+    uiText.apiError.saveGpuScoreFailed);
 }
 
 export async function resetGpuPerformanceScoreOverrides() {
   return deleteJson<GpuPerformanceScoreOverrideResult>(
     "/api/gpu/performance-overrides",
-    "重置 GPU 性能分失败");
+    uiText.apiError.resetGpuScoreFailed);
 }
 
 export async function putJson<T>(url: string, body: unknown, fallbackError: string): Promise<T> {
@@ -183,7 +184,7 @@ export async function deleteJson<T>(url: string, fallbackError: string): Promise
 }
 
 export async function searchOnline(query: string) {
-  return postJson<LocalOnlineSearchResult>("/api/system/search-online", { query }, "在线搜索失败");
+  return postJson<LocalOnlineSearchResult>("/api/system/search-online", { query }, uiText.apiError.onlineSearchFailed);
 }
 
 /** 版本对话框的数据源：已验证版本 + 最新版本。最新版本解析失败时该项带原因返回。 */
@@ -192,19 +193,19 @@ export async function fetchComponentVersionOptions(id: string) {
 }
 
 export async function openPath(path: string, select = false) {
-  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path, select }, "打开路径失败");
+  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-path", { path, select }, uiText.apiError.openPathFailed);
 }
 
 export async function openProperties(path: string) {
-  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-properties", { path }, "打开属性失败");
+  return postJson<{ message?: string; openedPath?: string }>("/api/system/open-properties", { path }, uiText.apiError.openPropertiesFailed);
 }
 
 export async function terminateProcesses(targets: SystemProcessIdentity[]) {
-  return postJson<SystemProcessOperationResult>("/api/system/processes/terminate", { targets }, "结束任务失败");
+  return postJson<SystemProcessOperationResult>("/api/system/processes/terminate", { targets }, uiText.apiError.terminateFailed);
 }
 
 export async function createProcessDumps(targets: SystemProcessIdentity[]) {
-  return postJson<SystemProcessOperationResult>("/api/system/processes/dump", { targets }, "创建内存转储文件失败");
+  return postJson<SystemProcessOperationResult>("/api/system/processes/dump", { targets }, uiText.apiError.dumpFailed);
 }
 
 export async function getResourceBreakdown(
@@ -281,14 +282,14 @@ export async function getSoftware(refresh = false) {
 }
 
 export async function addManualSoftware(request: ManualSoftwareRequest) {
-  return postJson<unknown>("/api/software/manual", request, "添加软件失败");
+  return postJson<unknown>("/api/software/manual", request, uiText.apiError.addSoftwareFailed);
 }
 
 export async function confirmPortableSoftwareRoot(softwareId: string, rootPath: string) {
   return postJson<PortableSoftwareRootConfirmationResult>(
     "/api/software/portable/root",
     { softwareId, rootPath },
-    "确认软件根目录失败");
+    uiText.apiError.confirmRootFailed);
 }
 
 export async function getGpuPlacementSoftwareSettings(softwareId: string, softwareName: string, softwareKind?: string) {
@@ -316,7 +317,7 @@ export async function saveGpuPlacementSoftwarePolicy(policy: GpuPlacementSoftwar
   return putJson<GpuPlacementSoftwarePolicy>(
     `/api/gpu-placement/software/${encodeURIComponent(policy.softwareId)}/policy`,
     policy,
-    "保存 GPU 调度软件策略失败");
+    uiText.apiError.saveGpuSoftwarePolicyFailed);
 }
 
 export async function saveGpuPlacementProcessPolicy(policy: GpuPlacementProcessPolicy) {
@@ -325,7 +326,7 @@ export async function saveGpuPlacementProcessPolicy(policy: GpuPlacementProcessP
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(policy),
-      fallbackError: "保存 GPU 调度进程策略失败"
+      fallbackError: uiText.apiError.saveGpuProcessPolicyFailed
     });
   } catch (error) {
     const payload = error instanceof ApiRequestError
@@ -345,7 +346,7 @@ export async function observeGpuPlacementProcesses(request: GpuPlacementProcessO
   return postJson<GpuPlacementSoftwareProcessHistory>(
     "/api/gpu-placement/process-history/observe",
     request,
-    "记录 GPU 调度进程历史失败");
+    uiText.apiError.recordGpuProcessHistoryFailed);
 }
 
 export async function getHostManagerSmartCoordinatorStatus() {
@@ -361,19 +362,19 @@ export async function setHostManagerSmartCoordinatorMode(mode: AppOptimizationMo
   return postJson<HostManagerSmartCoordinatorStatus>(
     "/api/optimization/smart/mode",
     { mode },
-    "切换智能优化模式失败");
+    uiText.apiError.switchSmartModeFailed);
 }
 
 export async function dismissOptimizationReport(id: string) {
   return postJson<TrustedOptimizationTarget>(
     `/api/optimization/reports/${encodeURIComponent(id)}/dismiss`,
     {},
-    "忽略报告失败");
+    uiText.apiError.dismissReportFailed);
 }
 
 export async function removeOptimizationTrust(id: string) {
   await requestNoContent(`/api/optimization/trust/${encodeURIComponent(id)}`, {
     method: "DELETE",
-    fallbackError: "取消信任失败"
+    fallbackError: uiText.apiError.removeTrustFailed
   });
 }

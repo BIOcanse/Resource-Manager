@@ -29,7 +29,7 @@ import {
   refreshingObservation,
   type ObservationState
 } from "../observation/observationState";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import { userFacingErrorMessage, userFacingMessage } from "../presentation/userFacingText";
 import type {
   DiscoverySession,
@@ -130,7 +130,7 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
   const [discoveryProcessNames, setDiscoveryProcessNames] = createSignal("");
   const [allowMediumRisk, setAllowMediumRisk] = createSignal(false);
   const [plan, setPlan] = createSignal<MigrationPlan | null>(null);
-  const [status, setStatus] = createSignal("尚未预览");
+  const [status, setStatus] = createSignal(uiText.stores.notPreviewed);
   const [taskRevision, setTaskRevision] = createSignal(0);
   const unsubscribeOperations = options.operations.subscribe(setOperationProjection);
   const unsubscribeTasks = options.tasks.subscribe(() => {
@@ -159,12 +159,12 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
 
   function resetPlan() {
     setPlan(null);
-    setStatus("尚未预览");
+    setStatus(uiText.stores.notPreviewed);
   }
 
   async function refreshRoots() {
     if (!options.enabled()) {
-      setRootsObservation(profileDisabledObservation("当前启动配置未启用迁移运行时。"));
+      setRootsObservation(profileDisabledObservation(uiText.stores.migrationRuntimeDisabled));
       return;
     }
 
@@ -175,13 +175,13 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     } catch (error) {
       setRootsObservation(failedObservation(
         rootsObservation(),
-        userFacingErrorMessage(error, "迁移根目录读取失败")));
+        userFacingErrorMessage(error, uiText.stores.migrationRootReadFailed)));
     }
   }
 
   async function refreshRecords() {
     if (!options.enabled()) {
-      setRecordsObservation(profileDisabledObservation("当前启动配置未启用迁移运行时。"));
+      setRecordsObservation(profileDisabledObservation(uiText.stores.migrationRuntimeDisabled));
       return;
     }
 
@@ -192,13 +192,13 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     } catch (error) {
       setRecordsObservation(failedObservation(
         recordsObservation(),
-        userFacingErrorMessage(error, "迁移记录读取失败")));
+        userFacingErrorMessage(error, uiText.stores.migrationRecordReadFailed)));
     }
   }
 
   async function refreshSessions() {
     if (!options.enabled()) {
-      setSessionsObservation(profileDisabledObservation("当前启动配置未启用迁移运行时。"));
+      setSessionsObservation(profileDisabledObservation(uiText.stores.migrationRuntimeDisabled));
       return;
     }
 
@@ -211,7 +211,7 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     } catch (error) {
       setSessionsObservation(failedObservation(
         sessionsObservation(),
-        userFacingErrorMessage(error, "发现会话读取失败")));
+        userFacingErrorMessage(error, uiText.stores.discoverySessionReadFailed)));
     }
   }
 
@@ -222,7 +222,7 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     const request = buildRequest(false);
     await runFrontendTask({
       key: migrationPreviewTaskKey,
-      title: migrationTaskTitle("预览迁移", request.softwareName),
+      title: migrationTaskTitle(uiText.stores.previewMigration, request.softwareName),
       durability: "transient",
       visibility: "user",
       concurrency: "replace"
@@ -230,15 +230,15 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
       const nextPlan = await postJson<MigrationPlan>(
         "/api/migrations/preview",
         request,
-        "迁移预览失败",
+        uiText.stores.migrationPreviewFailed,
         false,
         { signal: context.signal });
       context.commit(() => {
         setPlan(nextPlan);
-        setStatus(nextPlan.canExecute ? "可以执行" : "需要处理");
+        setStatus(nextPlan.canExecute ? uiText.stores.canExecute : uiText.stores.needsAttention);
       });
       return nextPlan;
-    }, "迁移预览失败");
+    }, uiText.stores.migrationPreviewFailed);
   }
 
   async function execute() {
@@ -247,8 +247,8 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     }
 
     const confirmed = await options.confirmDialog({
-      title: "执行迁移",
-      message: "迁移会复制目录、保留原数据备份，并在原位置创建目录链接。请先关闭相关软件。",
+      title: uiText.stores.executeMigration,
+      message: uiText.stores.executeMigrationWarning,
       tone: "warning"
     });
     if (!confirmed || !options.enabled() || executeInProgress() || !plan()?.canExecute) {
@@ -258,20 +258,20 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     const request = buildRequest(true);
     const operation = await submitOperationTask({
       key: migrationExecuteSubmitTaskKey,
-      title: migrationTaskTitle("提交迁移", request.softwareName),
+      title: migrationTaskTitle(uiText.stores.submitMigration, request.softwareName),
       durability: "transient",
       visibility: "diagnostics",
       concurrency: "coalesce"
-    }, (signal) => ({ ...migrationExecuteCommand(request), signal }), "迁移操作启动失败");
+    }, (signal) => ({ ...migrationExecuteCommand(request), signal }), uiText.stores.migrationStartFailed);
     if (!operation) {
       return;
     }
     await reportOperationFailure(async () => {
       await requireOperationSuccess(operation);
-      setStatus("迁移完成");
-      options.showToast({ tone: "success", title: uiText.feedback.success, message: "迁移完成" });
+      setStatus(uiText.stores.migrationCompleted);
+      options.showToast({ tone: "success", title: uiText.feedback.success, message: uiText.stores.migrationCompleted });
       await Promise.all([refreshRecords(), options.refreshSoftware()]);
-    }, "迁移操作失败");
+    }, uiText.stores.migrationFailed);
   }
 
   function buildRequest(confirmExecution: boolean) {
@@ -294,7 +294,7 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     const name = softwareName().trim();
     await runFrontendTask({
       key: migrationCandidateLookupTaskKey,
-      title: migrationTaskTitle("查找可迁移内容", name),
+      title: migrationTaskTitle(uiText.stores.findMigratableContent, name),
       durability: "transient",
       visibility: "user",
       concurrency: "replace"
@@ -302,12 +302,12 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
       const loaded = await postJson<MigrationCandidate[]>(
         "/api/migrations/discovery/candidates",
         { softwareName: name },
-        "查找可迁移内容失败",
+        uiText.stores.findMigratableContentFailed,
         false,
         { signal: context.signal });
       context.commit(() => setCandidates(loaded));
       return loaded;
-    }, "查找可迁移内容失败");
+    }, uiText.stores.findMigratableContentFailed);
   }
 
   async function startSession() {
@@ -322,18 +322,18 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     };
     const operation = await submitOperationTask({
       key: migrationDiscoveryStartSubmitTaskKey,
-      title: migrationTaskTitle("开始迁移内容监控", request.softwareName),
+      title: migrationTaskTitle(uiText.stores.startDiscovery, request.softwareName),
       durability: "transient",
       visibility: "diagnostics",
       concurrency: "coalesce"
-    }, (signal) => ({ ...migrationDiscoveryStartCommand(request), signal }), "发现操作启动失败");
+    }, (signal) => ({ ...migrationDiscoveryStartCommand(request), signal }), uiText.stores.discoveryStartFailed);
     if (!operation) {
       return;
     }
     if (isTerminalOperation(operation)) {
       await reportOperationFailure(async () => {
         requireSucceededOperation(operation);
-      }, "发现操作启动失败");
+      }, uiText.stores.discoveryStartFailed);
       return;
     }
     await refreshSessions();
@@ -354,18 +354,18 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     }
     const operation = await runFrontendTask({
       key: migrationDiscoveryStopTaskKey(id),
-      title: "停止迁移内容监控",
+      title: uiText.stores.stopDiscovery,
       durability: "transient",
       visibility: "diagnostics",
       concurrency: "coalesce"
-    }, ({ signal }) => options.operations.cancel(id, signal), "停止监控失败");
+    }, ({ signal }) => options.operations.cancel(id, signal), uiText.stores.stopDiscoveryFailed);
     if (!operation) {
       return;
     }
     await reportOperationFailure(async () => {
       await requireOperationTerminal(operation);
       await refreshSessions();
-    }, "停止监控失败");
+    }, uiText.stores.stopDiscoveryFailed);
   }
 
   function useCandidate(candidate: MigrationCandidate) {
@@ -392,8 +392,8 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     }
 
     const confirmed = await options.confirmDialog({
-      title: "恢复迁移",
-      message: "恢复会移除原位置的目录链接，并把当前数据复制回原位置。",
+      title: uiText.stores.restoreMigration,
+      message: uiText.stores.restoreMigrationWarning,
       tone: "warning"
     });
     if (!confirmed || !options.enabled() || isRestoreInProgress(record.id)) {
@@ -401,11 +401,11 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
     }
     const operation = await submitOperationTask({
       key: migrationRestoreSubmitTaskKey(record.id),
-      title: migrationTaskTitle("提交迁移恢复", record.softwareName),
+      title: migrationTaskTitle(uiText.stores.submitRestore, record.softwareName),
       durability: "transient",
       visibility: "diagnostics",
       concurrency: "coalesce"
-    }, (signal) => ({ ...migrationRestoreCommand(record.id, true), signal }), "恢复操作启动失败");
+    }, (signal) => ({ ...migrationRestoreCommand(record.id, true), signal }), uiText.stores.restoreStartFailed);
     if (!operation) {
       return;
     }
@@ -414,10 +414,10 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
       options.showToast({
         tone: "success",
         title: uiText.feedback.success,
-        message: userFacingMessage(operationResultText(completed), "恢复完成")
+        message: userFacingMessage(operationResultText(completed), uiText.stores.restoreCompleted)
       });
       await refreshRecords();
-    }, "恢复迁移失败");
+    }, uiText.stores.restoreFailed);
   }
 
   function fillDataMigration(nextSoftwareName: string, nextSourcePaths: string[] = []) {
@@ -627,8 +627,8 @@ function requireSucceededOperation(operation: OperationSnapshot) {
 
   throw new Error(operation.error
     ?? (operation.state === "stateUncertain"
-      ? "操作结果不确定，请先检查实际状态。"
-      : "操作未能完成。"));
+      ? uiText.stores.resultUncertain
+      : uiText.stores.resultIncomplete));
 }
 
 function operationResultText(operation: OperationSnapshot) {

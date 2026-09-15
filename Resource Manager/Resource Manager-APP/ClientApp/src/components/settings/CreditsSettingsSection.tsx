@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import type { SettingsTextBundle } from "../../text";
+import type { SettingsTextBundle } from "../../text.ts";
 import { dependencyAcknowledgements } from "../../i18n/dependencyAcknowledgements";
 
 export function CreditsSettingsSection(props: { text: SettingsTextBundle }) {

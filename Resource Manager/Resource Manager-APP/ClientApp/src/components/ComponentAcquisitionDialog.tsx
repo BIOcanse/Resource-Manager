@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogRoot
 } from "../ui/primitives/Dialog";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import type { ComponentVersionOption, ManagedComponent } from "../types";
 
 /**
@@ -71,7 +71,7 @@ export function ComponentAcquisitionDialog(props: {
           onDismiss={props.onCancel}
         >
           <DialogHeader
-            title={request.component.definition?.name ?? uiText.componentAcquisition.fallbackComponentName}
+            title={request.component.definition?.name ?? uiText.stores.fallbackComponentName}
             titleId="componentAcquisitionTitle"
             closeLabel={uiText.feedback.close}
             onDismiss={props.onCancel}

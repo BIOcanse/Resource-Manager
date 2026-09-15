@@ -53,6 +53,7 @@ import { DeviceSpecializedSummary } from "./deviceTopology/DeviceSpecializedSumm
 import { ObservationStateNotice } from "./ObservationStateNotice";
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl";
+import { uiText } from "../text.ts";
 
 interface DeviceTopologyListNode {
   id: string;
@@ -145,10 +146,10 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       selectedNodeChildCount(),
       selectedPortSummary());
   });
-  const scopeTitle = () => props.scope === "external" ? "外部接口" : "内部接口";
+  const scopeTitle = () => props.scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope;
   const scopeStatistics = () => props.scope === "external"
-    ? `${externalTree().hostInterfaceCount} 本机 · ${externalTree().downstreamInterfaceCount} 扩展`
-    : `${internalTree().interfaceCount} 接口 · ${internalTree().controllerCount} 控制器 · ${internalTree().attachedDeviceCount} 设备`;
+    ? uiText.deviceTopology.externalSummary(externalTree().hostInterfaceCount, externalTree().downstreamInterfaceCount)
+    : uiText.deviceTopology.internalSummary(internalTree().interfaceCount, internalTree().controllerCount, internalTree().attachedDeviceCount);
 
   createEffect(() => {
     const requested = topology.requestedPortId();
@@ -188,45 +189,45 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
     >
       <SegmentedControl
         value={props.scope}
-        ariaLabel="设备管理分类"
+        ariaLabel={uiText.deviceTopology.scopeNav}
         class="device-scope-tabs"
         itemClass="device-scope-tab"
         options={[
-          { id: "external", label: "外部接口" },
-          { id: "internal", label: "内部接口" }
+          { id: "external", label: uiText.deviceTopology.externalScope },
+          { id: "internal", label: uiText.deviceTopology.internalScope }
         ]}
         onChange={(scope) => props.onScopeRequested?.(scope)}
       />
       <header class="device-topology-header">
         <div>
           <h2>设备拓扑</h2>
-          <span>{snapshot()?.system.brandDisplayName ?? "读取中"}</span>
+          <span>{snapshot()?.system.brandDisplayName ?? uiText.deviceTopology.brandLoading}</span>
         </div>
       </header>
 
       <ObservationStateNotice
         state={topology.observation()}
-        label="设备拓扑"
+        label={uiText.deviceTopology.panel}
       />
 
       <Show
         when={snapshot()}
         fallback={
           <div class="device-topology-loading">
-            {topology.state().state === "failed" ? "设备拓扑不可用" : "读取设备拓扑..."}
+            {topology.state().state === "failed" ? uiText.deviceTopology.unavailable : uiText.deviceTopology.loading}
           </div>
         }
       >
         {(data) => (
             <div class="device-topology-layout">
-              <aside class="device-port-list" aria-label={`${scopeTitle()}清单`}>
+              <aside class="device-port-list" aria-label={uiText.deviceTopology.listLabel(scopeTitle())}>
                 <div class="device-port-list-title">
                   <strong>{scopeTitle()}</strong>
                   <span>
                     {!searchQuery().trim()
                       ? scopeStatistics()
                       : visibleNodes().length === sectionNodes().length
-                        ? `${sectionNodes().length} 项`
+                        ? uiText.deviceTopology.itemCount(sectionNodes().length)
                         : `${visibleNodes().length} / ${sectionNodes().length}`}
                   </span>
                 </div>
@@ -235,12 +236,12 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                   type="search"
                   value={searchQuery()}
                   onInput={(event) => setSearchQuery(event.currentTarget.value)}
-                  placeholder={`搜索${scopeTitle()}`}
-                  aria-label={`搜索${scopeTitle()}`}
+                  placeholder={uiText.deviceTopology.searchPlaceholder(scopeTitle())}
+                  aria-label={uiText.deviceTopology.searchPlaceholder(scopeTitle())}
                 />
                 <Show
                   when={visibleNodes().length > 0}
-                  fallback={<p class="device-topology-empty">{sectionNodes().length > 0 ? "没有匹配项。" : `未识别到${scopeTitle()}。`}</p>}
+                  fallback={<p class="device-topology-empty">{sectionNodes().length > 0 ? uiText.deviceTopology.noMatch : uiText.deviceTopology.noneFound(scopeTitle())}</p>}
                 >
                   <For each={visibleNodes()}>
                     {(node) => (
@@ -278,7 +279,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                 </Show>
               </aside>
 
-              <div class="device-top-view" aria-label="电脑俯视图">
+              <div class="device-top-view" aria-label={uiText.deviceTopology.topView}>
                 <div class="device-laptop">
                   <div class="device-laptop-lid">
                     <span class="device-brand-logo">{data().system.brandLogoText}</span>
@@ -294,13 +295,13 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                   </div>
                 </div>
                 <div class="device-system-meta">
-                  <span>{data().system.baseBoardManufacturer ?? "主板厂商未知"}</span>
-                  <span>{data().system.baseBoardProduct ?? "主板型号未知"}</span>
-                  <span>{data().system.biosVersion ?? "BIOS 未知"}</span>
+                  <span>{data().system.baseBoardManufacturer ?? uiText.deviceTopology.baseBoardManufacturerUnknown}</span>
+                  <span>{data().system.baseBoardProduct ?? uiText.deviceTopology.baseBoardProductUnknown}</span>
+                  <span>{data().system.biosVersion ?? uiText.deviceTopology.biosUnknown}</span>
                 </div>
               </div>
 
-              <aside class="device-port-detail" aria-label="拓扑详情">
+              <aside class="device-port-detail" aria-label={uiText.deviceTopology.detailPane}>
                 <Show
                   when={selectedPort()}
                   fallback={<p class="device-topology-empty">选择一个项目查看详情。</p>}
@@ -315,7 +316,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           </div>
                       </div>
                       <Show when={selectedNode()?.path && (selectedNode()?.path?.length ?? 0) > 1}>
-                        <div class="device-relation-path" aria-label="连接关系">
+                        <div class="device-relation-path" aria-label={uiText.deviceTopology.relationPath}>
                           <For each={selectedNode()?.path ?? []}>
                             {(segment) => <span>{segment}</span>}
                           </For>
@@ -324,7 +325,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       <Show
                         when={selectedNode()?.specializedDevice}
                         fallback={
-                          <div class="device-detail-summary" aria-label="关键信息">
+                          <div class="device-detail-summary" aria-label={uiText.deviceTopology.keyFacts}>
                             <For each={selectedPortSummary()}>
                               {(field) => (
                                 <div class="device-detail-summary-item">
@@ -350,87 +351,87 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </div>
                       <div class="device-detail-grid">
                         <DetailRow
-                          label="分类"
+                          label={uiText.deviceTopology.label.category}
                           value={selectedNodeIsDevice()
-                            ? "连接设备"
+                            ? uiText.deviceTopology.connectedDevice
                             : scopeTitle()}
                         />
                         <Show when={selectedNode()?.role}>
-                          {(role) => <DetailRow label="节点角色" value={topologyRoleLabel(role())} />}
+                          {(role) => <DetailRow label={uiText.deviceTopology.label.nodeRole} value={topologyRoleLabel(role())} />}
                         </Show>
                         <DetailRow
-                          label={selectedNodeIsDevice() ? "设备类型" : "接口类型"}
+                          label={selectedNodeIsDevice() ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType}
                           value={selectedNodeIsDevice()
                             ? selectedNode()?.specializedDevice?.deviceTypeLabel ?? port().hardwareKind
                             : props.scope === "external"
                               ? connectorLabel(port().connectorKind)
-                              : selectedNode()?.title ?? "内部接口"}
+                              : selectedNode()?.title ?? uiText.deviceTopology.internalScope}
                         />
-                        <DetailRow label="连接状态" value={connectionStateLabel(selectedNode()?.connectionState)} />
+                        <DetailRow label={uiText.deviceTopology.label.connectionState} value={connectionStateLabel(selectedNode()?.connectionState)} />
                         <Show when={selectedNodeIsDevice() && selectedParentNode()?.title}>
-                          {(value) => <DetailRow label="上游节点" value={value()} />}
+                          {(value) => <DetailRow label={uiText.deviceTopology.label.upstreamNode} value={value()} />}
                         </Show>
                         <Show when={selectedNodeIsInterface()}>
-                          <DetailRow label="直属节点" value={`${selectedNodeChildCount()} 个`} />
+                          <DetailRow label={uiText.deviceTopology.label.directChildren} value={uiText.deviceTopology.countSuffix(selectedNodeChildCount())} />
                         </Show>
-                        <DetailRow label="总线" value={busLabel(port().busKind)} />
+                        <DetailRow label={uiText.deviceTopology.label.bus} value={busLabel(port().busKind)} />
                         <Show when={!port().display}>
                           <DetailRow
-                            label={selectedNodeIsDevice() ? "当前连接速率" : "当前接口速率"}
+                            label={selectedNodeIsDevice() ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed}
                             value={port().speed}
                           />
                         </Show>
                         <Show when={!port().display || port().physicalMaximumSpeed}>
-                          <DetailRow label="物理最大速率" value={port().physicalMaximumSpeed ?? "--"} />
+                          <DetailRow label={uiText.deviceTopology.label.physicalMaxSpeed} value={port().physicalMaximumSpeed ?? "--"} />
                         </Show>
-                        <DetailRow label="协议" value={selectedNodeIsInterface() ? interfaceProtocol(selectedNode()!, props.scope) : port().protocol} />
+                        <DetailRow label={uiText.deviceTopology.label.protocol} value={selectedNodeIsInterface() ? interfaceProtocol(selectedNode()!, props.scope) : port().protocol} />
                         <Show when={port().advancedInterconnect}>
                           {(interconnect) => (
                             <>
-                              <DetailRow label="互连角色" value={interconnect().role} />
-                              <DetailRow label="互连技术" value={interconnect().technology} />
-                              <DetailRow label="角色证据" value={interconnect().evidence} />
+                              <DetailRow label={uiText.deviceTopology.label.interconnectRole} value={interconnect().role} />
+                              <DetailRow label={uiText.deviceTopology.label.interconnectTechnology} value={interconnect().technology} />
+                              <DetailRow label={uiText.deviceTopology.label.interconnectEvidence} value={interconnect().evidence} />
                             </>
                           )}
                         </Show>
                         <Show when={!selectedNodeIsInterface()}>
-                          <DetailRow label="PnP 类" value={port().pnpClass ?? "--"} />
-                          <DetailRow label="厂商" value={port().manufacturer ?? "--"} />
+                          <DetailRow label={uiText.deviceTopology.label.pnpClass} value={port().pnpClass ?? "--"} />
+                          <DetailRow label={uiText.deviceTopology.label.manufacturer} value={port().manufacturer ?? "--"} />
                           <Show when={port().idResolution}>
                             {(identity) => (
                               <>
-                                <DetailRow label="ID 数据库" value={`${identity().database} · ${identity().version}`} />
+                                <DetailRow label={uiText.deviceTopology.label.idDatabase} value={`${identity().database} · ${identity().version}`} />
                                 <Show when={distinctText(identity().vendorName, port().manufacturer)}>
-                                  {(value) => <DetailRow label="数据库厂商" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseVendor} value={value()} />}
                                 </Show>
                                 <Show when={distinctText(identity().deviceName, port().displayName)}>
-                                  {(value) => <DetailRow label="数据库设备" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseDevice} value={value()} />}
                                 </Show>
                                 <Show when={identity().subsystemName}>
-                                  {(value) => <DetailRow label="数据库子系统" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseSubsystem} value={value()} />}
                                 </Show>
                               </>
                             )}
                           </Show>
-                          <DetailRow label="驱动服务" value={port().service ?? "--"} />
-                          <DetailRow label="设备状态" value={port().status ?? "--"} />
+                          <DetailRow label={uiText.deviceTopology.label.driverService} value={port().service ?? "--"} />
+                          <DetailRow label={uiText.deviceTopology.label.deviceStatus} value={port().status ?? "--"} />
                           <Show when={port().problemCode && port().problemCode !== 0}>
-                            {(value) => <DetailRow label="设备问题码" value={String(value())} />}
+                            {(value) => <DetailRow label={uiText.deviceTopology.label.deviceProblemCode} value={String(value())} />}
                           </Show>
                         </Show>
                         <Show when={port().display}>
                           {(display) => (
                             <>
                               <Show when={selectedNodeIsDevice()}>
-                                <DetailRow label="设备名称" value={display().monitorName} />
+                                <DetailRow label={uiText.deviceTopology.label.deviceName} value={display().monitorName} />
                                 <Show when={display().resolution}>
-                                  {(value) => <DetailRow label="活动分辨率" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.activeResolution} value={value()} />}
                                 </Show>
-                                <DetailRow label="活动刷新率" value={display().refreshRate} />
+                                <DetailRow label={uiText.deviceTopology.label.activeRefreshRate} value={display().refreshRate} />
                               </Show>
-                              <DetailRow label="连接位置" value={display().internal ? "机内连接" : "外部连接"} />
+                              <DetailRow label={uiText.deviceTopology.label.connectionLocation} value={display().internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external} />
                               <Show when={display().connectorInstance > 0}>
-                                <DetailRow label="连接器序号" value={String(display().connectorInstance)} />
+                                <DetailRow label={uiText.deviceTopology.label.connectorInstance} value={String(display().connectorInstance)} />
                               </Show>
                             </>
                           )}
@@ -438,17 +439,17 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <Show when={port().network}>
                           {(network) => (
                             <>
-                              <DetailRow label="网络接口" value={network().interfaceName ?? "--"} />
-                              <DetailRow label="连接状态" value={network().connectionState} />
+                              <DetailRow label={uiText.deviceTopology.label.networkInterface} value={network().interfaceName ?? "--"} />
+                              <DetailRow label={uiText.deviceTopology.label.connectionState} value={network().connectionState} />
                               <Show when={network().transmitLinkSpeed && network().receiveLinkSpeed && network().transmitLinkSpeed !== network().receiveLinkSpeed}>
-                                <DetailRow label="发送速率" value={network().transmitLinkSpeed ?? "--"} />
-                                <DetailRow label="接收速率" value={network().receiveLinkSpeed ?? "--"} />
+                                <DetailRow label={uiText.deviceTopology.label.transmitSpeed} value={network().transmitLinkSpeed ?? "--"} />
+                                <DetailRow label={uiText.deviceTopology.label.receiveSpeed} value={network().receiveLinkSpeed ?? "--"} />
                               </Show>
                               <Show when={network().activeMtuBytes}>
-                                {(value) => <DetailRow label="活动 MTU" value={`${value()} B`} />}
+                                {(value) => <DetailRow label={uiText.deviceTopology.label.activeMtu} value={`${value()} B`} />}
                               </Show>
                               <Show when={network().permanentAddress}>
-                                {(value) => <DetailRow label="MAC 地址" value={value()} />}
+                                {(value) => <DetailRow label={uiText.deviceTopology.label.macAddress} value={value()} />}
                               </Show>
                             </>
                           )}
@@ -456,40 +457,40 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <Show when={port().usb}>
                           {(usb) => (
                             <>
-                              <DetailRow label={selectedNodeIsDevice() ? "上游 Hub 端口" : "Hub 端口"} value={formatUsbPort(usb())} />
+                              <DetailRow label={selectedNodeIsDevice() ? uiText.deviceTopology.label.upstreamHubPort : uiText.deviceTopology.label.hubPort} value={formatUsbPort(usb())} />
                               <Show when={props.scope === "internal"}>
-                                <DetailRow label="USB 连接" value={usb().connectionStatus} />
+                                <DetailRow label={uiText.deviceTopology.label.usbConnection} value={usb().connectionStatus} />
                               </Show>
                               <Show when={!selectedNodeIsDevice()}>
-                                <DetailRow label="连接器" value={formatUsbConnector(usb())} />
-                                <DetailRow label="端口支持" value={usb().supportedProtocols} />
-                                <DetailRow label="端口能力" value={formatUsbCapability(usb())} />
+                                <DetailRow label={uiText.deviceTopology.label.connector} value={formatUsbConnector(usb())} />
+                                <DetailRow label={uiText.deviceTopology.label.portProtocols} value={usb().supportedProtocols} />
+                                <DetailRow label={uiText.deviceTopology.label.portCapability} value={formatUsbCapability(usb())} />
                                 <Show when={usb().portIsDebugCapable === true}>
-                                  <DetailRow label="USB 调试" value="支持" />
+                                  <DetailRow label={uiText.deviceTopology.label.usbDebug} value={uiText.deviceTopology.label.supported} />
                                 </Show>
                               </Show>
                               <Show when={selectedNodeIsDevice() && usb().deviceConnected}>
-                                <DetailRow label="设备规范" value={usb().deviceSpecification} />
-                                <DetailRow label="设备版本" value={usb().deviceRevision} />
-                                <DetailRow label="USB 类" value={usb().deviceClass} />
+                                <DetailRow label={uiText.deviceTopology.label.deviceSpecification} value={usb().deviceSpecification} />
+                                <DetailRow label={uiText.deviceTopology.label.deviceRevision} value={usb().deviceRevision} />
+                                <DetailRow label={uiText.deviceTopology.label.usbClass} value={usb().deviceClass} />
                                 <DetailRow label="USB VID/PID" value={formatUsbVidPid(usb())} />
-                                <DetailRow label="设备地址" value={String(usb().deviceAddress)} />
+                                <DetailRow label={uiText.deviceTopology.label.deviceAddress} value={String(usb().deviceAddress)} />
                                 <Show when={distinctText(usb().manufacturerName, port().manufacturer)}>
-                                  {(value) => <DetailRow label="描述符厂商" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.descriptorVendor} value={value()} />}
                                 </Show>
                                 <Show when={distinctText(usb().productName, port().displayName)}>
-                                  {(value) => <DetailRow label="描述符产品" value={value()} />}
+                                  {(value) => <DetailRow label={uiText.deviceTopology.label.descriptorProduct} value={value()} />}
                                 </Show>
                               </Show>
                             </>
                           )}
                         </Show>
-                        <DetailRow label="可信度" value={port().confidence} />
-                        <DetailRow label="来源" value={port().source} />
-                        <DetailRow label="上级设备" value={port().upstreamDisplayName ?? "--"} />
-                        <DetailRow label="设备父级" value={port().nativeParentDisplayName ?? "--"} />
-                        <DetailRow label="位置文本" value={port().locationInfo ?? "--"} />
-                        <DetailRow label="类 GUID" value={port().classGuid ?? "--"} />
+                        <DetailRow label={uiText.deviceTopology.label.confidence} value={port().confidence} />
+                        <DetailRow label={uiText.deviceTopology.label.source} value={port().source} />
+                        <DetailRow label={uiText.deviceTopology.label.upstreamDevice} value={port().upstreamDisplayName ?? "--"} />
+                        <DetailRow label={uiText.deviceTopology.label.deviceParent} value={port().nativeParentDisplayName ?? "--"} />
+                        <DetailRow label={uiText.deviceTopology.label.locationText} value={port().locationInfo ?? "--"} />
+                        <DetailRow label={uiText.deviceTopology.label.classGuid} value={port().classGuid ?? "--"} />
                       </div>
                       <Show when={!selectedNodeIsInterface() && (port().usb?.interfaceProtocols ?? []).length > 0}>
                         <div class="device-id-block">
@@ -556,7 +557,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </Show>
                       <Show when={selectedNodeIsDevice()}>
                         <div class="device-id-block">
-                          <strong>{selectedNodeIsDevice() ? "设备标识" : "硬件 ID"}</strong>
+                          <strong>{selectedNodeIsDevice() ? uiText.deviceTopology.section.deviceIdentity : uiText.deviceTopology.label.hardwareId}</strong>
                           <code>{port().deviceId}</code>
                         </div>
                       </Show>
@@ -576,7 +577,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       </Show>
       <UserDetailsDialog
         open={detailsOpen() && Boolean(selectedPort())}
-        title={`${selectedNode()?.title ?? "设备"}详细信息`}
+        title={uiText.deviceTopology.detailTitle(selectedNode()?.title ?? uiText.deviceTopology.fallbackDeviceName)}
         sections={selectedDetailSections()}
         onClose={() => setDetailsOpen(false)}
       >
@@ -603,56 +604,56 @@ function deviceUserDetailSections(
   const usb = port.usb;
 
   return compactUserDetailSections([
-    userDetailSection("概览", [
+    userDetailSection(uiText.deviceTopology.section.overview, [
       ...summary
         .filter((field) => isReportedDeviceValue(field.value))
         .map((field) => userDetailItem(field.label, field.value)),
-      userDetailItem("分类", isDevice ? "连接设备" : scope === "external" ? "外部接口" : "内部接口"),
-      userDetailItem(isDevice ? "设备类型" : "接口类型", isDevice
+      userDetailItem(uiText.deviceTopology.label.category, isDevice ? uiText.deviceTopology.connectedDevice : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope),
+      userDetailItem(isDevice ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType, isDevice
         ? node.specializedDevice?.deviceTypeLabel ?? port.hardwareKind
         : connectorLabel(port.connectorKind)),
-      userDetailItem("连接状态", connectionStateLabel(node.connectionState)),
-      parent ? userDetailItem("连接到", parent.title) : null,
-      isInterface ? userDetailItem("直属项目", `${childCount} 个`) : null
+      userDetailItem(uiText.deviceTopology.label.connectionState, connectionStateLabel(node.connectionState)),
+      parent ? userDetailItem(uiText.deviceTopology.label.connectedTo, parent.title) : null,
+      isInterface ? userDetailItem(uiText.deviceTopology.label.directItems, uiText.deviceTopology.countSuffix(childCount)) : null
     ]),
-    userDetailSection("连接", [
-      userDetailItem("总线", reportedDeviceValue(busLabel(port.busKind))),
-      userDetailItem("当前速率", reportedDeviceValue(port.speed)),
-      userDetailItem("最高速率", reportedDeviceValue(port.physicalMaximumSpeed)),
-      userDetailItem("协议", reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : port.protocol)),
-      userDetailItem("厂商", reportedDeviceValue(port.manufacturer)),
+    userDetailSection(uiText.deviceTopology.section.connection, [
+      userDetailItem(uiText.deviceTopology.label.bus, reportedDeviceValue(busLabel(port.busKind))),
+      userDetailItem(uiText.deviceTopology.label.currentSpeed, reportedDeviceValue(port.speed)),
+      userDetailItem(uiText.deviceTopology.label.maxSpeed, reportedDeviceValue(port.physicalMaximumSpeed)),
+      userDetailItem(uiText.deviceTopology.label.protocol, reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : port.protocol)),
+      userDetailItem(uiText.deviceTopology.label.manufacturer, reportedDeviceValue(port.manufacturer)),
       port.advancedInterconnect
-        ? userDetailItem("互连技术", reportedDeviceValue(port.advancedInterconnect.technology))
+        ? userDetailItem(uiText.deviceTopology.label.interconnectTechnology, reportedDeviceValue(port.advancedInterconnect.technology))
         : null
     ]),
-    display ? userDetailSection("显示", [
-      userDetailItem("设备名称", reportedDeviceValue(display.monitorName)),
-      userDetailItem("活动分辨率", reportedDeviceValue(display.resolution)),
-      userDetailItem("刷新率", reportedDeviceValue(display.refreshRate)),
-      userDetailItem("连接位置", display.internal ? "机内连接" : "外部连接")
+    display ? userDetailSection(uiText.deviceTopology.section.display, [
+      userDetailItem(uiText.deviceTopology.label.deviceName, reportedDeviceValue(display.monitorName)),
+      userDetailItem(uiText.deviceTopology.label.activeResolution, reportedDeviceValue(display.resolution)),
+      userDetailItem(uiText.deviceTopology.label.refreshRate, reportedDeviceValue(display.refreshRate)),
+      userDetailItem(uiText.deviceTopology.label.connectionLocation, display.internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external)
     ]) : null,
-    network ? userDetailSection("网络", [
-      userDetailItem("网络接口", reportedDeviceValue(network.interfaceName)),
-      userDetailItem("连接状态", userFacingNetworkState(network.connectionState)),
-      userDetailItem("发送速率", reportedDeviceValue(network.transmitLinkSpeed)),
-      userDetailItem("接收速率", reportedDeviceValue(network.receiveLinkSpeed)),
+    network ? userDetailSection(uiText.deviceTopology.section.network, [
+      userDetailItem(uiText.deviceTopology.label.networkInterface, reportedDeviceValue(network.interfaceName)),
+      userDetailItem(uiText.deviceTopology.label.connectionState, userFacingNetworkState(network.connectionState)),
+      userDetailItem(uiText.deviceTopology.label.transmitSpeed, reportedDeviceValue(network.transmitLinkSpeed)),
+      userDetailItem(uiText.deviceTopology.label.receiveSpeed, reportedDeviceValue(network.receiveLinkSpeed)),
       network.activeMtuBytes ? userDetailItem("MTU", `${network.activeMtuBytes} B`) : null,
-      userDetailItem("MAC 地址", reportedDeviceValue(network.permanentAddress))
+      userDetailItem(uiText.deviceTopology.label.macAddress, reportedDeviceValue(network.permanentAddress))
     ]) : null,
     usb ? userDetailSection("USB", [
-      userDetailItem("端口", formatUsbPort(usb)),
-      userDetailItem("连接状态", userFacingUsbState(usb.connectionStatus)),
-      userDetailItem("连接器", formatUsbConnector(usb)),
-      userDetailItem("支持协议", reportedDeviceValue(usb.supportedProtocols)),
-      userDetailItem("端口能力", reportedDeviceValue(formatUsbCapability(usb))),
-      userDetailItem("设备规范", reportedDeviceValue(usb.deviceSpecification)),
-      userDetailItem("设备版本", reportedDeviceValue(usb.deviceRevision)),
-      userDetailItem("设备类型", reportedDeviceValue(usb.deviceClass)),
+      userDetailItem(uiText.deviceTopology.label.port, formatUsbPort(usb)),
+      userDetailItem(uiText.deviceTopology.label.connectionState, userFacingUsbState(usb.connectionStatus)),
+      userDetailItem(uiText.deviceTopology.label.connector, formatUsbConnector(usb)),
+      userDetailItem(uiText.deviceTopology.label.supportedProtocols, reportedDeviceValue(usb.supportedProtocols)),
+      userDetailItem(uiText.deviceTopology.label.portCapability, reportedDeviceValue(formatUsbCapability(usb))),
+      userDetailItem(uiText.deviceTopology.label.deviceSpecification, reportedDeviceValue(usb.deviceSpecification)),
+      userDetailItem(uiText.deviceTopology.label.deviceRevision, reportedDeviceValue(usb.deviceRevision)),
+      userDetailItem(uiText.deviceTopology.label.deviceType, reportedDeviceValue(usb.deviceClass)),
       userDetailItem("VID / PID", reportedDeviceValue(formatUsbVidPid(usb))),
-      userDetailItem("序列号", reportedDeviceValue(usb.serialNumber))
+      userDetailItem(uiText.deviceTopology.label.serialNumber, reportedDeviceValue(usb.serialNumber))
     ]) : null,
-    isDevice ? userDetailSection("设备标识", [
-      userDetailItem("硬件标识", reportedDeviceValue(port.deviceId))
+    isDevice ? userDetailSection(uiText.deviceTopology.section.deviceIdentity, [
+      userDetailItem(uiText.deviceTopology.label.hardwareIdentity, reportedDeviceValue(port.deviceId))
     ]) : null
   ]);
 }
@@ -663,24 +664,24 @@ function reportedDeviceValue(value?: string | null) {
 
 function isReportedDeviceValue(value?: string | null) {
   const text = String(value ?? "").trim();
-  return Boolean(text && text !== "--" && text.toLocaleLowerCase() !== "unknown" && !text.includes("未报告"));
+  return Boolean(text && text !== "--" && text.toLocaleLowerCase() !== "unknown" && !text.includes(uiText.deviceTopology.notReportedMarker));
 }
 
 function userFacingNetworkState(value?: string | null) {
   switch (String(value ?? "").trim().toLocaleLowerCase()) {
     case "up":
-    case "connected": return "已连接";
+    case "connected": return uiText.deviceTopology.connectionState.connected;
     case "down":
-    case "disconnected": return "未连接";
-    default: return "状态未知";
+    case "disconnected": return uiText.deviceTopology.connectionState.disconnected;
+    default: return uiText.deviceTopology.connectionState.unknown;
   }
 }
 
 function userFacingUsbState(value?: string | null) {
   const state = String(value ?? "").trim().toLocaleLowerCase();
-  if (state.includes("no") || state.includes("not") || state.includes("disconnect") || state.includes("empty") || state.includes("none")) return "未连接";
-  if (state.includes("connected")) return "已连接";
-  return "状态未知";
+  if (state.includes("no") || state.includes("not") || state.includes("disconnect") || state.includes("empty") || state.includes("none")) return uiText.deviceTopology.connectionState.disconnected;
+  if (state.includes("connected")) return uiText.deviceTopology.connectionState.connected;
+  return uiText.deviceTopology.connectionState.unknown;
 }
 
 function DetailRow(props: { label: string; value: string }) {
@@ -717,7 +718,7 @@ function interfaceProtocol(node: DeviceTopologyListNode, scope: DeviceTopologySc
     switch (node.connectorKind) {
       case "pcie": return "PCI Express";
       case "usb-internal": return "USB";
-      case "internal-display": return node.port.display?.connectorTechnology ?? "内置显示";
+      case "internal-display": return node.port.display?.connectorTechnology ?? uiText.deviceTopology.internalDisplay;
       case "audio": return "HD Audio";
       case "bluetooth": return "Bluetooth";
       case "acpi": return "ACPI";
@@ -735,17 +736,17 @@ function interfaceSummaryFields(node: DeviceTopologyListNode, childCount: number
     return deviceTopologySummaryFields(node.port);
   }
   return [
-    { label: "接口类型", value: node.title },
-    { label: "连接状态", value: connectionStateLabel(node.connectionState) },
-    { label: "直属节点", value: `${childCount} 个` },
-    { label: "协议", value: interfaceProtocol(node, scope) }
+    { label: uiText.deviceTopology.label.interfaceType, value: node.title },
+    { label: uiText.deviceTopology.label.connectionState, value: connectionStateLabel(node.connectionState) },
+    { label: uiText.deviceTopology.label.directChildren, value: uiText.deviceTopology.countSuffix(childCount) },
+    { label: uiText.deviceTopology.label.protocol, value: interfaceProtocol(node, scope) }
   ];
 }
 
 function connectionStateLabel(state?: "connected" | "disconnected" | "unknown") {
-  if (state === "connected") return "已连接";
-  if (state === "disconnected") return "未连接";
-  return "状态未知";
+  if (state === "connected") return uiText.deviceTopology.connectionState.connected;
+  if (state === "disconnected") return uiText.deviceTopology.connectionState.disconnected;
+  return uiText.deviceTopology.connectionState.unknown;
 }
 
 function DeviceConnectorIcon(props: { kind: string; large?: boolean }) {
@@ -844,23 +845,23 @@ function formatUsbVidPid(usb: DeviceTopologyUsbConnection) {
 
 function formatUsbCapability(usb: DeviceTopologyUsbConnection) {
   if (usb.operatingAtSuperSpeedPlusOrHigher) {
-    return "当前 SuperSpeedPlus 或更高";
+    return uiText.deviceTopology.usbCapability.currentSuperSpeedPlus;
   }
 
   if (usb.operatingAtSuperSpeedOrHigher) {
-    return "当前 SuperSpeed 或更高";
+    return uiText.deviceTopology.usbCapability.currentSuperSpeed;
   }
 
   if (usb.superSpeedPlusCapableOrHigher) {
-    return "支持 SuperSpeedPlus 或更高";
+    return uiText.deviceTopology.usbCapability.supportsSuperSpeedPlus;
   }
 
   if (usb.superSpeedCapableOrHigher) {
-    return "支持 SuperSpeed 或更高";
+    return uiText.deviceTopology.usbCapability.supportsSuperSpeed;
   }
 
   if (usb.superSpeedCapableOrHigher === false || usb.superSpeedPlusCapableOrHigher === false) {
-    return "未报告 SuperSpeed 能力";
+    return uiText.deviceTopology.usbCapability.notReported;
   }
 
   return "--";
@@ -869,11 +870,11 @@ function formatUsbCapability(usb: DeviceTopologyUsbConnection) {
 function formatUsbConnector(usb: DeviceTopologyUsbConnection) {
   const connector = usb.portConnectorIsTypeC ? "USB-C" : "USB";
   if (usb.portIsUserConnectable === true) {
-    return `${connector} · 用户可插拔`;
+    return uiText.deviceTopology.connectorSuffix.userPluggable(connector);
   }
 
   if (usb.portIsUserConnectable === false) {
-    return `${connector} · 内部连接`;
+    return uiText.deviceTopology.connectorSuffix.internal(connector);
   }
 
   return usb.portConnectorIsTypeC ? connector : "--";
@@ -891,7 +892,7 @@ function distinctText(value?: string | null, reference?: string | null) {
 function connectorLabel(kind: string) {
   switch (kind) {
     case "usb-a":
-      return "USB-A / USB 连接";
+      return uiText.deviceTopology.usbGenericConnector;
     case "usb-c":
       return "USB-C / Type-C";
     case "thunderbolt":
@@ -907,21 +908,21 @@ function connectorLabel(kind: string) {
     case "vga":
       return "VGA / HD15";
     case "internal-display":
-      return "内置显示面板";
+      return uiText.deviceTopology.deviceCategory.internalDisplayPanel;
     case "wireless-display":
-      return "无线 / 虚拟显示";
+      return uiText.deviceTopology.deviceCategory.wirelessDisplay;
     case "rj45":
       return "RJ45 / Ethernet";
     case "audio":
-      return "音频";
+      return uiText.deviceTopology.deviceCategory.audio;
     case "sd-card":
-      return "SD / 读卡器";
+      return uiText.deviceTopology.deviceCategory.cardReader;
     case "pcie":
       return "PCIe";
     case "bluetooth":
       return "Bluetooth";
     default:
-      return "通用设备";
+      return uiText.deviceTopology.deviceCategory.generic;
   }
 }
 
@@ -936,18 +937,18 @@ function busLabel(kind: string) {
     case "pci":
       return "PCI / PCIe";
     case "display":
-      return "显示";
+      return uiText.deviceTopology.deviceCategory.display;
     case "network":
-      return "网络";
+      return uiText.deviceTopology.deviceCategory.network;
     case "audio":
-      return "音频";
+      return uiText.deviceTopology.deviceCategory.audio;
     case "storage":
-      return "存储";
+      return uiText.deviceTopology.deviceCategory.storage;
     case "bluetooth":
-      return "蓝牙";
+      return uiText.deviceTopology.deviceCategory.bluetooth;
     case "system":
-      return "系统 / 固件";
+      return uiText.deviceTopology.deviceCategory.systemFirmware;
     default:
-      return "未知";
+      return uiText.deviceTopology.deviceCategory.unknown;
   }
 }

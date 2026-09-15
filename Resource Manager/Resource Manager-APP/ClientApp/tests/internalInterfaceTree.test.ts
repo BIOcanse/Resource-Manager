@@ -286,11 +286,11 @@ const controllerSearch = filterInternalInterfaceTree(tree.nodes, "Standard NVM E
 assert.ok(controllerSearch.some((node) => node.title === "Internal NVMe"));
 
 const detailsPageSource = readFileSync(new URL("../src/components/DetailsPage.tsx", import.meta.url), "utf8");
-assert.match(detailsPageSource, /\{ id: "device", label: "设备管理" \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
-assert.doesNotMatch(detailsPageSource, /\{ id: "external", label: "外部接口" \}|\{ id: "internal", label: "内部接口" \}/);
+assert.match(detailsPageSource, /\{ id: "device", label: uiText\.[\w.]+ \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
+assert.doesNotMatch(detailsPageSource, /\{ id: "external", label: uiText\.deviceTopology\.externalScope \}|\{ id: "internal", label: uiText\.deviceTopology\.internalScope \}/);
 const topologyViewSource = readFileSync(new URL("../src/components/DeviceTopologyView.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(topologyViewSource, /device-port-section-tabs/);
-assert.match(topologyViewSource, /device-scope-tabs[\s\S]*外部接口[\s\S]*内部接口/);
+assert.match(topologyViewSource, /device-scope-tabs[\s\S]*uiText\.deviceTopology\.externalScope[\s\S]*uiText\.deviceTopology\.internalScope/);
 
 function requiredNode(portId: string) {
   const node = tree.nodes.find((candidate) => candidate.port.id === portId && candidate.role !== "internal-interface");

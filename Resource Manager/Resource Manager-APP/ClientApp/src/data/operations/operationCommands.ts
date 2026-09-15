@@ -1,6 +1,7 @@
 import type {
   OperationCommandDescriptor
 } from "../../frontendRuntime/operations/OperationRegistry.ts";
+import { uiText } from "../../text.ts";
 
 export function componentInstallCommand(
   id: string,
@@ -11,7 +12,7 @@ export function componentInstallCommand(
     key: `component.install:${id}`,
     url: `/api/components/${encodeURIComponent(id)}/install`,
     body: { acknowledgeExternalTerms, versionChoice: versionChoice ?? null },
-    fallbackError: "安装操作启动失败"
+    fallbackError: uiText.misc.installStartFailed
   };
 }
 
@@ -23,7 +24,7 @@ export function softwareUninstallCommand(
     key: `software.uninstall:${id}`,
     url: "/api/software/uninstall",
     body: { id, confirmOperation },
-    fallbackError: "卸载操作启动失败"
+    fallbackError: uiText.misc.uninstallStartFailed
   };
 }
 
@@ -34,7 +35,7 @@ export function migrationExecuteCommand(
     key: "migration.execute",
     url: "/api/migrations/execute",
     body: request,
-    fallbackError: "迁移操作启动失败"
+    fallbackError: uiText.misc.migrationStartFailed
   };
 }
 
@@ -46,7 +47,7 @@ export function migrationRestoreCommand(
     key: `migration.restore:${id}`,
     url: "/api/migrations/restore",
     body: { id, confirmExecution },
-    fallbackError: "恢复操作启动失败"
+    fallbackError: uiText.misc.restoreStartFailed
   };
 }
 
@@ -57,6 +58,6 @@ export function migrationDiscoveryStartCommand(
     key: "discovery.start",
     url: "/api/migrations/discovery/start",
     body: request,
-    fallbackError: "发现操作启动失败"
+    fallbackError: uiText.misc.discoveryStartFailed
   };
 }

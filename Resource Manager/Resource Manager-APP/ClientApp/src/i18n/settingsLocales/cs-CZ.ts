@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("cs-CZ", {
   sections: { performance: "Výkon", appearance: "Vzhled", systemIntegration: "Integrace se systémem", debug: "Ladění", credits: "Poděkování" },

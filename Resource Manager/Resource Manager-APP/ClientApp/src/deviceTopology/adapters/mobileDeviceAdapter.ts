@@ -9,6 +9,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MobileDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
   id: "mobile-device",
@@ -17,20 +18,20 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
     || (hasUsbInterface(port, /Still Image|\[06\/01\/01\]/i)
       && hasUsbInterface(port, /CDC|Vendor Specific|\[(?:02|0a|ff)\//i)),
   createModel: (context) => {
-    const title = deviceTitle(context, "移动设备");
+    const title = deviceTitle(context, uiText.deviceAdapters.mobileDevice);
     const connection = connectionFacts(context);
     const protocols = interfaceProtocols(context.port);
     const mediaTransfer = protocols.some((value) => /MTP|Still Image|\[06\/01\/01\]/i.test(value));
     const dataConnection = protocols.some((value) => /CDC|\[(?:02|0a)\//i.test(value));
     const vendorChannel = protocols.some((value) => /Vendor Specific|\[ff\//i.test(value));
     const smart = context.port.smartDevice;
-    const deviceType = displayValue(smart?.deviceType, "移动设备");
+    const deviceType = displayValue(smart?.deviceType, uiText.deviceAdapters.mobileDevice);
     const manufacturer = displayValue(smart?.manufacturer, context.port.manufacturer ?? undefined);
     const model = displayValue(smart?.model, context.port.displayName);
-    const firmwareVersion = displayValue(smart?.firmwareVersion, "设备未报告");
+    const firmwareVersion = displayValue(smart?.firmwareVersion, uiText.deviceAdapters.deviceNotReported);
     const protocol = displayValue(smart?.protocol, mediaTransfer ? "MTP / PTP" : undefined);
     const transport = displayValue(smart?.transport, connection.currentLink);
-    const battery = typeof smart?.batteryPercent === "number" ? `${smart.batteryPercent}%` : "设备未报告";
+    const battery = typeof smart?.batteryPercent === "number" ? `${smart.batteryPercent}%` : uiText.deviceAdapters.deviceNotReported;
     const storages = smart?.storages ?? [];
     return {
       adapterId: "mobile-device",
@@ -53,13 +54,13 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
       battery,
       storages,
       summaryFields: summaryFields(
-        ["设备类型", deviceType],
-        ["制造商 / 型号", joinSummary(manufacturer === "--" ? undefined : manufacturer, model)],
-        ["设备协议", protocol],
-        ["连接传输", transport]
+        [uiText.deviceAdapters.label.deviceType, deviceType],
+        [uiText.deviceAdapters.label.manufacturerModel, joinSummary(manufacturer === "--" ? undefined : manufacturer, model)],
+        [uiText.deviceAdapters.label.deviceProtocol, protocol],
+        [uiText.deviceAdapters.label.connectionTransport, transport]
       ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: ["移动设备", "手机", "平板", "电脑", "mobile", "mtp", manufacturer, model, ...protocols]
+      searchTerms: [uiText.deviceAdapters.mobileDevice, "手机", "平板", "电脑", "mobile", "mtp", manufacturer, model, ...protocols]
     };
   }
 };

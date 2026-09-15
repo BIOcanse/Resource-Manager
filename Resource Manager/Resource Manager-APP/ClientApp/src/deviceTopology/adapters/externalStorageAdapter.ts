@@ -12,6 +12,7 @@ import {
   usbSpecification
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, ExternalStorageDeviceModel } from "./types";
+import { uiText } from "../../text.ts";
 
 export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> = {
   id: "external-storage",
@@ -20,11 +21,11 @@ export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> =
     || (scope === "external" && hasAnyEvidence(port, /USBSTOR|UASPSTOR/i)),
   createModel: (context) => {
     const storage = context.port.storage;
-    const title = storage?.model?.trim() || deviceTitle(context, "外置存储设备");
+    const title = storage?.model?.trim() || deviceTitle(context, uiText.deviceAdapters.externalStorageDevice);
     const connection = connectionFacts(context);
     const protocols = interfaceProtocols(context.port);
     const external = isExternalStorage(context.port.storage?.busType, context.port.usb != null);
-    const deviceTypeLabel = external ? "外置存储" : "磁盘";
+    const deviceTypeLabel = external ? uiText.deviceAdapters.externalStorage : uiText.deviceAdapters.disk;
     const transportMode = protocols.length > 0
       ? resolveStorageTransport(protocols)
       : displayValue(storage?.busType, context.port.protocol);
@@ -56,13 +57,13 @@ export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> =
       healthStatus,
       partitions,
       summaryFields: summaryFields(
-        ["整盘容量", capacity],
-        ["总线 / 传输", [busType, transportMode].filter((value) => value !== "--").join(" / ")],
-        ["分区", partitions.length > 0 ? `${partitions.length} 个` : "未报告"],
-        ["健康状态", healthStatus]
+        [uiText.deviceAdapters.label.driveCapacity, capacity],
+        [uiText.deviceAdapters.label.busAndTransport, [busType, transportMode].filter((value) => value !== "--").join(" / ")],
+        [uiText.deviceAdapters.label.partitions, partitions.length > 0 ? uiText.deviceAdapters.partitionCount(partitions.length) : uiText.deviceAdapters.notReported],
+        [uiText.deviceAdapters.label.healthState, healthStatus]
       ),
       capabilityLabels: capabilityLabels(context.port),
-      searchTerms: ["磁盘", "存储", "外置存储", "移动硬盘", "disk", "external storage", capacity, busType, transportMode, ...protocols]
+      searchTerms: [uiText.deviceAdapters.disk, "存储", uiText.deviceAdapters.externalStorage, "移动硬盘", "disk", "external storage", capacity, busType, transportMode, ...protocols]
     };
   }
 };

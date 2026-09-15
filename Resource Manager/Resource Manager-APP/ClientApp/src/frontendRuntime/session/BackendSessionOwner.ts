@@ -8,9 +8,10 @@ import type {
   BackendSessionSnapshot,
   HostBackendSessionMessage
 } from "./backendSessionTypes.ts";
+import { uiText } from "../../text.ts";
 
 export class BackendSessionUnavailableError extends Error {
-  constructor(message = "本机服务尚未就绪") {
+  constructor(message = uiText.session.notReady) {
     super(message);
     this.name = "BackendSessionUnavailableError";
   }
@@ -18,7 +19,7 @@ export class BackendSessionUnavailableError extends Error {
 
 export class BackendSessionChangedError extends Error {
   constructor() {
-    super("本机服务会话已经改变");
+    super(uiText.session.sessionChanged);
     this.name = "BackendSessionChangedError";
   }
 }
@@ -63,7 +64,7 @@ export class BackendSessionOwner {
       : options.transport;
     if (!this.transport) {
       if (options.allowStandalone !== true) {
-        this.setUnavailable("当前页面没有受信任的本机宿主");
+        this.setUnavailable(uiText.session.noTrustedHost);
         return;
       }
       const epoch = normalizeStandaloneEpoch(
@@ -76,14 +77,14 @@ export class BackendSessionOwner {
     }
 
     if (!this.transport.canSubscribeMessages) {
-      this.setUnavailable("当前宿主不能发布后端会话状态");
+      this.setUnavailable(uiText.session.hostCannotPublish);
       return;
     }
 
     this.unsubscribeHostMessages = this.transport.subscribeMessages(
       (message) => this.handleHostMessage(message));
     if (!this.unsubscribeHostMessages) {
-      this.setUnavailable("当前宿主不能订阅后端会话状态");
+      this.setUnavailable(uiText.session.hostCannotSubscribe);
       return;
     }
 
@@ -186,7 +187,7 @@ export class BackendSessionOwner {
     this.publish({
       status: "disposed",
       session: null,
-      reason: "前端运行时已关闭",
+      reason: uiText.session.frontendClosed,
       publicationRevision: this.snapshotValue.publicationRevision,
       revision: this.snapshotValue.revision + 1
     });
@@ -212,7 +213,7 @@ export class BackendSessionOwner {
 
     if (message.state === "unavailable") {
       this.setUnavailable(
-        `本机服务会话不可用：${message.reasonCode}`,
+        uiText.session.sessionUnavailable(message.reasonCode),
         message.publicationRevision);
       return;
     }
@@ -292,7 +293,7 @@ export class BackendSessionOwner {
       return;
     }
     if (!this.transport || !this.unsubscribeHostMessages) {
-      this.setUnavailable("当前宿主不能重新请求后端会话状态");
+      this.setUnavailable(uiText.session.hostCannotRerequest);
       return;
     }
 
@@ -313,7 +314,7 @@ export class BackendSessionOwner {
     this.waitingTimer = this.schedule(() => {
       this.waitingTimer = null;
       if (this.snapshotValue.status === "waiting") {
-        this.setUnavailable("等待本机服务会话超时");
+        this.setUnavailable(uiText.session.waitTimeout);
       }
     }, this.waitingTimeoutMs);
 
@@ -321,7 +322,7 @@ export class BackendSessionOwner {
       this.transport.postMessage({ type: "host.backend-session.request" });
     } catch (error: unknown) {
       this.setUnavailable(
-        `无法请求本机服务会话：${errorMessage(error)}`);
+        uiText.session.requestFailed(errorMessage(error)));
     }
   }
 
@@ -433,11 +434,11 @@ function normalizeWaitingTimeout(value: number | undefined): number {
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
     ? error.message
-    : "未知错误";
+    : uiText.session.unknownError;
 }
 
 function abortReason(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
-    : new Error("操作已取消");
+    : new Error(uiText.session.operationCanceled);
 }

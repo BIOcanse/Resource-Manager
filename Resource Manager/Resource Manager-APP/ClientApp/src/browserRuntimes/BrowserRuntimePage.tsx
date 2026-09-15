@@ -3,6 +3,7 @@ import { Download, ExternalLink, Info, RefreshCw } from "lucide-solid";
 import { UserDetailsDialog } from "../components/UserDetailsDialog";
 import type { ManagedComponent } from "../types";
 import type { BrowserRuntimeEntry, BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
+import { uiText } from "../text.ts";
 
 interface BrowserRuntimePageProps {
   snapshot: BrowserRuntimeSnapshot | null;
@@ -38,7 +39,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
               onClick={() => props.installComponent && props.onInstall(props.installComponent)}
             >
               <Download size={16} aria-hidden="true" />
-              <span>{props.actionLabel || "下载共享运行时"}</span>
+              <span>{props.actionLabel || uiText.browserRuntime.downloadShared}</span>
             </button>
           </Show>
           <button
@@ -48,7 +49,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
             onClick={props.onRefresh}
           >
             <RefreshCw size={16} aria-hidden="true" />
-            <span>{props.refreshInProgress ? "正在刷新" : "刷新"}</span>
+            <span>{props.refreshInProgress ? uiText.browserRuntime.refreshing : uiText.browserRuntime.refresh}</span>
           </button>
         </div>
       </header>
@@ -64,8 +65,8 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
               <button
                 class="secondary icon-button"
                 type="button"
-                title="打开官方来源"
-                aria-label="打开官方来源"
+                title={uiText.browserRuntime.openOfficialSource}
+                aria-label={uiText.browserRuntime.openOfficialSource}
                 onClick={() => window.open(String(url()), "_blank", "noopener")}
               >
                 <ExternalLink size={16} aria-hidden="true" />
@@ -85,7 +86,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
           {(runtime) => (
             <RuntimeIdentity
               runtime={runtime()}
-              label="正在使用"
+              label={uiText.browserRuntime.inUse}
               onShowDetails={() => setSelectedRuntime(runtime())}
             />
           )}
@@ -109,7 +110,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
               {(browser) => (
                 <RuntimeIdentity
                   runtime={browser}
-                  label={props.snapshot?.browserFallback?.id === browser.id ? "当前备用" : undefined}
+                  label={props.snapshot?.browserFallback?.id === browser.id ? uiText.browserRuntime.currentFallback : undefined}
                   onShowDetails={() => setSelectedRuntime(browser)}
                 />
               )}
@@ -119,7 +120,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
       </section>
       <UserDetailsDialog
         open={selectedRuntime() !== null}
-        title={`${selectedRuntime()?.name ?? "运行时"}详细信息`}
+        title={uiText.browserRuntime.detailTitle(selectedRuntime()?.name ?? uiText.browserRuntime.fallbackRuntimeName)}
         summary={runtimeSummary(selectedRuntime())}
         sections={runtimeDetailSections(selectedRuntime())}
         onClose={() => setSelectedRuntime(null)}
@@ -137,7 +138,7 @@ function RuntimeIdentity(props: {
     <article class="browser-runtime-row">
       <div class="browser-runtime-row-main">
         <strong>{props.runtime.name}</strong>
-        <span>版本 {props.runtime.version || "未知"}</span>
+        <span>版本 {props.runtime.version || uiText.browserRuntime.unknown}</span>
       </div>
       <Show when={props.label}>
         <span class="browser-runtime-selection">{props.label}</span>
@@ -145,8 +146,8 @@ function RuntimeIdentity(props: {
       <button
         class="secondary icon-button browser-runtime-details-button"
         type="button"
-        title="详细信息"
-        aria-label={`${props.runtime.name}详细信息`}
+        title={uiText.browserRuntime.details}
+        aria-label={uiText.browserRuntime.detailsOf(props.runtime.name)}
         onClick={props.onShowDetails}
       >
         <Info size={16} aria-hidden="true" />
@@ -161,12 +162,12 @@ function runtimeSummary(runtime: BrowserRuntimeEntry | null) {
   }
 
   if (runtime.kind === "WebView2Runtime") {
-    return "供本机 WebView2 软件共同使用的共享界面运行时。";
+    return uiText.browserRuntime.sharedRuntimePurpose;
   }
 
   return runtime.kind === "GeckoBrowser"
-    ? "供支持外部浏览器的软件打开 Web 界面；不能作为 WebView2 嵌入运行时。"
-    : "供支持外部 Chromium 浏览器的软件复用。";
+    ? uiText.browserRuntime.externalBrowserPurpose
+    : uiText.browserRuntime.chromiumReusePurpose;
 }
 
 function runtimeDetailSections(runtime: BrowserRuntimeEntry | null) {
@@ -175,32 +176,32 @@ function runtimeDetailSections(runtime: BrowserRuntimeEntry | null) {
   }
 
   return [{
-    title: "运行时信息",
+    title: uiText.browserRuntime.runtimeInfoTitle,
     items: [
-      { label: "类型", value: runtimeKindLabel(runtime.kind) },
-      { label: "版本", value: runtime.version || "未知" },
-      { label: "状态", value: runtime.selected ? "正在使用" : "可用" },
-      { label: "来源", value: runtimeSourceLabel(runtime.source) },
-      { label: "运行目录", value: runtime.runtimeDirectory },
-      { label: "可执行文件", value: runtime.executablePath }
+      { label: uiText.browserRuntime.field.kind, value: runtimeKindLabel(runtime.kind) },
+      { label: uiText.browserRuntime.field.version, value: runtime.version || uiText.browserRuntime.unknown },
+      { label: uiText.browserRuntime.field.state, value: runtime.selected ? uiText.browserRuntime.inUse : uiText.browserRuntime.available },
+      { label: uiText.browserRuntime.field.source, value: runtimeSourceLabel(runtime.source) },
+      { label: uiText.browserRuntime.field.runtimeDirectory, value: runtime.runtimeDirectory },
+      { label: uiText.browserRuntime.field.executable, value: runtime.executablePath }
     ]
   }];
 }
 
 function runtimeKindLabel(kind: BrowserRuntimeEntry["kind"]) {
   return ({
-    WebView2Runtime: "共享 WebView2 运行时",
-    ChromiumBrowser: "Chromium 浏览器",
-    GeckoBrowser: "Gecko 浏览器"
+    WebView2Runtime: uiText.browserRuntime.kind.webView2Runtime,
+    ChromiumBrowser: uiText.browserRuntime.kind.chromiumBrowser,
+    GeckoBrowser: uiText.browserRuntime.kind.geckoBrowser
   } as const)[kind];
 }
 
 function runtimeSourceLabel(source: string) {
   return ({
-    SystemMachine: "系统（全机）",
-    SystemUser: "系统（当前用户）",
-    Managed: "资源管理器下载",
-    BrowserRegistration: "系统浏览器注册",
-    KnownInstall: "本机安装目录"
-  } as Record<string, string>)[source] ?? "本机";
+    SystemMachine: uiText.browserRuntime.source.systemMachine,
+    SystemUser: uiText.browserRuntime.source.systemUser,
+    Managed: uiText.browserRuntime.source.managed,
+    BrowserRegistration: uiText.browserRuntime.source.browserRegistration,
+    KnownInstall: uiText.browserRuntime.source.knownInstall
+  } as Record<string, string>)[source] ?? uiText.browserRuntime.source.local;
 }

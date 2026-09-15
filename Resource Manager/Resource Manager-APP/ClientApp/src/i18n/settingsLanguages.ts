@@ -1,6 +1,9 @@
-import type { AppLanguageMode } from "../types";
-import type { ConcreteAppLanguageMode, LanguageOption } from "./settingsTypes";
+import type { AppLanguageMode } from "../types.ts";
+import type { ConcreteAppLanguageMode, LanguageOption } from "./settingsTypes.ts";
 
+// 可选界面语言 = 已经有完整文案包的语言。`AppLanguageMode` 仍保留全部 31 个 id
+// （它是与后端一致的持久化取值域），这里只列出当前交付的语言；其余语言的文案包
+// 完成后，把对应行加回来并在 copy/appCopyLoader.ts 注册即可，不需要改其他地方。
 export const languageOptions: LanguageOption[] = [
   { id: "system", label: "System language", nativeLabel: "跟随系统 / System" },
   { id: "zh-CN", label: "Simplified Chinese", nativeLabel: "简体中文" },
@@ -11,29 +14,7 @@ export const languageOptions: LanguageOption[] = [
   { id: "fr-FR", label: "French", nativeLabel: "Français" },
   { id: "de-DE", label: "German", nativeLabel: "Deutsch" },
   { id: "es-ES", label: "Spanish", nativeLabel: "Español" },
-  { id: "es-MX", label: "Spanish (Mexico)", nativeLabel: "Español (México)" },
-  { id: "pt-BR", label: "Portuguese (Brazil)", nativeLabel: "Português (Brasil)" },
-  { id: "pt-PT", label: "Portuguese (Portugal)", nativeLabel: "Português (Portugal)" },
-  { id: "ru-RU", label: "Russian", nativeLabel: "Русский" },
-  { id: "uk-UA", label: "Ukrainian", nativeLabel: "Українська" },
-  { id: "pl-PL", label: "Polish", nativeLabel: "Polski" },
-  { id: "tr-TR", label: "Turkish", nativeLabel: "Türkçe" },
-  { id: "it-IT", label: "Italian", nativeLabel: "Italiano" },
-  { id: "nl-NL", label: "Dutch", nativeLabel: "Nederlands" },
-  { id: "sv-SE", label: "Swedish", nativeLabel: "Svenska" },
-  { id: "fi-FI", label: "Finnish", nativeLabel: "Suomi" },
-  { id: "da-DK", label: "Danish", nativeLabel: "Dansk" },
-  { id: "nb-NO", label: "Norwegian Bokmal", nativeLabel: "Norsk bokmål" },
-  { id: "cs-CZ", label: "Czech", nativeLabel: "Čeština" },
-  { id: "hu-HU", label: "Hungarian", nativeLabel: "Magyar" },
-  { id: "ro-RO", label: "Romanian", nativeLabel: "Română" },
-  { id: "el-GR", label: "Greek", nativeLabel: "Ελληνικά" },
-  { id: "he-IL", label: "Hebrew", nativeLabel: "עברית" },
-  { id: "ar-SA", label: "Arabic", nativeLabel: "العربية" },
-  { id: "hi-IN", label: "Hindi", nativeLabel: "हिन्दी" },
-  { id: "id-ID", label: "Indonesian", nativeLabel: "Bahasa Indonesia" },
-  { id: "vi-VN", label: "Vietnamese", nativeLabel: "Tiếng Việt" },
-  { id: "th-TH", label: "Thai", nativeLabel: "ไทย" }
+  { id: "ru-RU", label: "Russian", nativeLabel: "Русский" }
 ];
 
 export const supportedLanguageIds = new Set<AppLanguageMode>(languageOptions.map((option) => option.id));
@@ -88,49 +69,32 @@ function matchLanguage(language: string): ConcreteAppLanguageMode | null {
       return "de-DE";
     case "es":
       return "es-ES";
-    case "pt":
-      return "pt-BR";
     case "ru":
       return "ru-RU";
+    // 这些语言的完整文案包还没做（见 global_interface_language 的 S4），系统语言是它们时
+    // 落到英文基底而不是中文，避免给非中文用户显示中文。放开某个语言时把它移到上面即可。
+    case "pt":
     case "uk":
-      return "uk-UA";
     case "pl":
-      return "pl-PL";
     case "tr":
-      return "tr-TR";
     case "it":
-      return "it-IT";
     case "nl":
-      return "nl-NL";
     case "sv":
-      return "sv-SE";
     case "fi":
-      return "fi-FI";
     case "da":
-      return "da-DK";
     case "nb":
     case "no":
-      return "nb-NO";
     case "cs":
-      return "cs-CZ";
     case "hu":
-      return "hu-HU";
     case "ro":
-      return "ro-RO";
     case "el":
-      return "el-GR";
     case "he":
-      return "he-IL";
     case "ar":
-      return "ar-SA";
     case "hi":
-      return "hi-IN";
     case "id":
-      return "id-ID";
     case "vi":
-      return "vi-VN";
     case "th":
-      return "th-TH";
+      return "en-US";
     default:
       return null;
   }

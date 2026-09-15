@@ -18,6 +18,7 @@ import {
   resolveActiveDescendantTarget
 } from "../ui/primitives/activeDescendantListbox.ts";
 import { isComponentInstalled, textOrEmpty } from "../utils";
+import { uiText } from "../text.ts";
 
 interface MetricModalProps {
   open: boolean;
@@ -88,7 +89,7 @@ export function MetricModal(props: MetricModalProps) {
       return {
         componentId,
         name,
-        stateLabel: "尚未读取",
+        stateLabel: uiText.metricPicker.notRead,
         message: "",
         missing: true
       };
@@ -176,7 +177,7 @@ export function MetricModal(props: MetricModalProps) {
       onDismiss={props.onClose}
     >
       <DialogHeader
-        title="选择监控项"
+        title={uiText.metricPicker.title}
         titleId="metricModalTitle"
         onDismiss={props.onClose}
       />
@@ -189,8 +190,8 @@ export function MetricModal(props: MetricModalProps) {
               type="search"
               role="combobox"
               value={query()}
-              placeholder="搜索名称或分类"
-              aria-label="搜索监控项"
+              placeholder={uiText.metricPicker.searchPlaceholder}
+              aria-label={uiText.metricPicker.searchLabel}
               aria-expanded="true"
               aria-autocomplete="list"
               aria-controls={listboxId}
@@ -204,8 +205,8 @@ export function MetricModal(props: MetricModalProps) {
               <button
                 class="icon-button metric-picker-clear"
                 type="button"
-                aria-label="清除监控项搜索"
-                title="清除搜索"
+                aria-label={uiText.metricPicker.clearSearchLabel}
+                title={uiText.resourceTableView.clearSearch}
                 onClick={() => {
                   setQuery("");
                   searchInput?.focus();
@@ -222,7 +223,7 @@ export function MetricModal(props: MetricModalProps) {
           id={listboxId}
           class="metric-options"
           role="listbox"
-          aria-label="监控项"
+          aria-label={uiText.metricPicker.listLabel}
         >
           <For each={groupedMetrics()} fallback={<div class="metric-picker-empty">没有匹配的监控项</div>}>
             {(group, groupIndex) => {
@@ -264,7 +265,7 @@ export function MetricModal(props: MetricModalProps) {
                                 {(state) => (
                                   <small class={state().missing ? "metric-dependency missing" : "metric-dependency"}>
                                     {state().missing
-                                      ? `需要安装：${state().name}`
+                                      ? uiText.metricPicker.needsInstall(state().name)
                                       : `${state().name} · ${state().stateLabel}`}
                                   </small>
                                 )}

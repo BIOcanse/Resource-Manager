@@ -11,6 +11,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { AudioDeviceModel, DeviceAdapter } from "./types";
+import { uiText } from "../../text.ts";
 
 export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
   id: "audio-device",
@@ -18,7 +19,7 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
     || (scope === "internal" && (port.busKind === "audio" || port.pnpClass?.toLocaleLowerCase() === "media")),
   createModel: (context) => {
     const internal = context.scope === "internal";
-    const title = deviceTitle(context, internal ? "内部音频设备" : "USB 音频设备");
+    const title = deviceTitle(context, internal ? uiText.deviceAdapters.internalAudioDevice : uiText.deviceAdapters.usbAudioDevice);
     const connection = connectionFacts(context);
     const facts = internalDeviceFacts(context);
     const protocols = interfaceProtocols(context.port);
@@ -26,23 +27,23 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
     const audioStreaming = protocols.some((value) => /Audio Streaming|\[01\/02\//i.test(value));
     const hidControls = protocols.some((value) => /HID|\[03\//i.test(value));
     const capabilities = activeCapabilities([
-      ["音频控制", audioControl],
-      ["音频流", audioStreaming],
-      ["HID 控制", hidControls]
+      [uiText.deviceAdapters.label.audioControl, audioControl],
+      [uiText.deviceAdapters.label.audioStreaming, audioStreaming],
+      [uiText.deviceAdapters.label.hidControls, hidControls]
     ]);
     const typeLabel = resolveAudioType(title, context);
     const summary = internal
       ? summaryFields(
-        ["音频角色", typeLabel],
-        ["内部传输", facts?.transport],
-        ["驱动服务", facts?.driverService],
-        ["设备状态", facts?.deviceStatus]
+        [uiText.deviceAdapters.label.audioRole, typeLabel],
+        [uiText.deviceAdapters.label.internalTransport, facts?.transport],
+        [uiText.deviceAdapters.label.driverService, facts?.driverService],
+        [uiText.deviceAdapters.label.deviceStatus, facts?.deviceStatus]
       )
       : summaryFields(
-        ["设备类型", typeLabel],
-        ["上游接口", connection.upstreamInterface],
-        ["音频能力", capabilities.join(" / ")],
-        ["当前链路", connection.currentLink]
+        [uiText.deviceAdapters.label.deviceType, typeLabel],
+        [uiText.deviceAdapters.label.upstreamInterface, connection.upstreamInterface],
+        [uiText.deviceAdapters.label.audioCapability, capabilities.join(" / ")],
+        [uiText.deviceAdapters.label.currentLink, connection.currentLink]
       );
     return {
       adapterId: "audio-device",
@@ -63,7 +64,7 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
       capabilityLabels: capabilityLabels(context.port),
       searchTerms: [
         "音频",
-        "耳机",
+        uiText.deviceAdapters.headset,
         "audio",
         typeLabel,
         displayValue(facts?.transport),
@@ -75,12 +76,12 @@ export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
 };
 
 function resolveAudioType(title: string, context: import("./types").DeviceAdapterContext) {
-  if (/headset|headphone|耳机/i.test(title)) return "耳机";
-  if (/microphone|麦克风|话筒/i.test(title)) return "麦克风";
-  if (/speaker|音箱|扬声器/i.test(title)) return "音箱";
-  if (/^BthA2dp$/i.test(context.port.service ?? "")) return "Bluetooth 立体声音频";
-  if (/^BthHFAud$/i.test(context.port.service ?? "")) return "Bluetooth 免提音频";
-  if (/^(NVHDA|AtiHDAudioService)$/i.test(context.port.service ?? "")) return "显示音频设备";
-  if (context.scope === "internal" && /^HDAUDIO\\/i.test(context.port.deviceId)) return "内置音频编解码器";
-  return context.scope === "internal" ? "内部音频设备" : "USB 音频设备";
+  if (/headset|headphone|耳机/i.test(title)) return uiText.deviceAdapters.headset;
+  if (/microphone|麦克风|话筒/i.test(title)) return uiText.deviceAdapters.microphone;
+  if (/speaker|音箱|扬声器/i.test(title)) return uiText.deviceAdapters.speaker;
+  if (/^BthA2dp$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.bluetoothStereoAudio;
+  if (/^BthHFAud$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.bluetoothHandsFreeAudio;
+  if (/^(NVHDA|AtiHDAudioService)$/i.test(context.port.service ?? "")) return uiText.deviceAdapters.displayAudioDevice;
+  if (context.scope === "internal" && /^HDAUDIO\\/i.test(context.port.deviceId)) return uiText.deviceAdapters.internalAudioCodec;
+  return context.scope === "internal" ? uiText.deviceAdapters.internalAudioDevice : uiText.deviceAdapters.usbAudioDevice;
 }

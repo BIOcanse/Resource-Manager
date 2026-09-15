@@ -1,6 +1,6 @@
 import { StandardSelect } from "../StandardSelect";
-import { languageOptions, normalizeLanguageMode } from "../../text";
-import type { SettingsTextBundle } from "../../text";
+import { languageOptions, normalizeLanguageMode } from "../../text.ts";
+import type { SettingsTextBundle } from "../../text.ts";
 import type {
   AppBarColorMode,
   AppLanguageMode,

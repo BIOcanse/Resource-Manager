@@ -3,6 +3,7 @@ import {
   operationsStateDecoder,
   type HostManagerOperationsState
 } from "./operationsStateDecoder.ts";
+import { uiText } from "../../text.ts";
 
 type OperationsRequestClient = Pick<RequestClient, "request">;
 
@@ -13,7 +14,7 @@ export function getOperationsState(
   return requestClient.request({
     key: "host-manager.operations.state",
     url: "/api/operations",
-    fallbackError: "读取后台操作状态失败，请稍后重试",
+    fallbackError: uiText.misc.operationStateReadFailed,
     decoder: operationsStateDecoder,
     signal,
     request: { method: "GET" }

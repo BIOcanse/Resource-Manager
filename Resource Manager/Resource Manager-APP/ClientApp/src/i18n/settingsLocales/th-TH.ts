@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("th-TH", {
   sections: { performance: "ประสิทธิภาพ", appearance: "รูปลักษณ์", systemIntegration: "การผสานระบบ", debug: "ดีบัก", credits: "ขอบคุณ" },

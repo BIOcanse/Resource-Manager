@@ -6,6 +6,7 @@ import {
   type ObservationState
 } from "../observation/observationState.ts";
 import type { DeviceTopologySnapshotState } from "../types";
+import { uiText } from "../text.ts";
 
 export function projectDeviceTopologyObservation(
   previous: ObservationState,
@@ -19,12 +20,12 @@ export function projectDeviceTopologyObservation(
 
   if (state.state === "ready") {
     if (!hasSnapshot) {
-      return failedObservation(previous, "设备拓扑响应未包含可用快照。");
+      return failedObservation(previous, uiText.deviceTopologyState.snapshotMissing);
     }
     if (state.source === "persisted") {
       return {
         ...cachedObservation(capturedAt),
-        lastError: "正在等待实时设备拓扑，以下内容来自持久化快照。"
+        lastError: uiText.deviceTopologyState.waitingForLive
       };
     }
     return readyObservation(capturedAt);
@@ -34,7 +35,7 @@ export function projectDeviceTopologyObservation(
     const diagnosticMessage = state.attemptDiagnostics[0]?.message;
     return failedObservation(
       hasSnapshot ? lastGoodObservation(state, capturedAt) : loadingObservation(),
-      diagnosticMessage ?? "设备拓扑采集失败。");
+      diagnosticMessage ?? uiText.deviceTopologyState.collectionFailed);
   }
 
   if (!hasSnapshot) {
@@ -45,8 +46,8 @@ export function projectDeviceTopologyObservation(
     ...lastGoodObservation(state, capturedAt),
     status: "stale",
     lastError: state.state === "refreshing"
-      ? "设备拓扑正在刷新，以下内容为最近一次采集结果。"
-      : "设备拓扑正在准备，以下内容为最近一次采集结果。"
+      ? uiText.deviceTopologyState.refreshing
+      : uiText.deviceTopologyState.preparing
   };
 }
 

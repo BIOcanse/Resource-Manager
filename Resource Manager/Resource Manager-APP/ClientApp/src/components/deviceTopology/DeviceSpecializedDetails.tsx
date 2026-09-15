@@ -20,10 +20,11 @@ import type {
 } from "../../deviceTopology/adapters/types";
 import { formatBytes } from "../../deviceTopology/adapters/adapterEvidence";
 import "./specialized-device-details.css";
+import { uiText } from "../../text.ts";
 
 export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel }) {
   return (
-    <section class={`device-specialized-details kind-${props.model.kind}`} aria-label={`${props.model.deviceTypeLabel}专属信息`}>
+    <section class={`device-specialized-details kind-${props.model.kind}`} aria-label={uiText.deviceSpecialized.sectionLabel(props.model.deviceTypeLabel)}>
       <Switch>
         <Match when={asKind<MonitorDeviceModel>(props.model, "monitor")}>
           {(model) => <MonitorDetails model={model()} />}
@@ -41,10 +42,10 @@ export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel 
           {(model) => <StorageDetails model={model()} />}
         </Match>
         <Match when={asKind<KeyboardDeviceModel>(props.model, "keyboard")}>
-          {(model) => <InputDetails model={model()} label="键盘输入" />}
+          {(model) => <InputDetails model={model()} label={uiText.deviceSpecialized.keyboardInput} />}
         </Match>
         <Match when={asKind<MouseDeviceModel>(props.model, "mouse")}>
-          {(model) => <InputDetails model={model()} label="指针输入" />}
+          {(model) => <InputDetails model={model()} label={uiText.deviceSpecialized.pointerInput} />}
         </Match>
         <Match when={asKind<AudioDeviceModel>(props.model, "audio-device")}>
           {(model) => <AudioDetails model={model()} />}
@@ -101,15 +102,15 @@ function MonitorDetails(props: { model: MonitorDeviceModel }) {
         </div>
       </div>
       <FactRows fields={[
-        ["显示技术", props.model.displayTechnology],
-        ["面板类型", props.model.panelTechnology],
-        ["颜色编码", props.model.colorEncoding],
-        ["色彩空间", props.model.colorSpace],
-        ["SDR 白电平", props.model.sdrWhiteLevel],
-        ["峰值亮度", props.model.peakLuminance],
-        ["全屏亮度", props.model.fullFrameLuminance],
-        ["物理尺寸", props.model.physicalSize],
-        ["图像接口", props.model.connectorTechnology]
+        [uiText.deviceSpecialized.displayTechnology, props.model.displayTechnology],
+        [uiText.deviceSpecialized.panelTechnology, props.model.panelTechnology],
+        [uiText.deviceSpecialized.colorEncoding, props.model.colorEncoding],
+        [uiText.deviceSpecialized.colorSpace, props.model.colorSpace],
+        [uiText.deviceSpecialized.sdrWhiteLevel, props.model.sdrWhiteLevel],
+        [uiText.deviceSpecialized.peakLuminance, props.model.peakLuminance],
+        [uiText.deviceSpecialized.fullFrameLuminance, props.model.fullFrameLuminance],
+        [uiText.deviceSpecialized.physicalSize, props.model.physicalSize],
+        [uiText.deviceSpecialized.imageConnector, props.model.connectorTechnology]
       ]} />
     </>
   );
@@ -118,8 +119,8 @@ function MonitorDetails(props: { model: MonitorDeviceModel }) {
 function ExternalGpuDetails(props: { model: ExternalGpuDockDeviceModel }) {
   return (
     <FactRows fields={[
-      ["互连技术", props.model.interconnectTechnology],
-      ["图形设备", props.model.gpuIdentity]
+      [uiText.deviceSpecialized.interconnectTechnology, props.model.interconnectTechnology],
+      [uiText.deviceSpecialized.graphicsDevice, props.model.gpuIdentity]
     ]} />
   );
 }
@@ -128,13 +129,13 @@ function HubDetails(props: { model: DockDeviceModel | UsbHubDeviceModel }) {
   return (
     <>
       <div class="device-hub-stats">
-        <Stat value={props.model.downstreamInterfaceCount} label="下游接口" />
-        <Stat value={props.model.connectedDownstreamInterfaceCount} label="已连接" />
-        <Stat value={props.model.idleDownstreamInterfaceCount} label="空闲" />
+        <Stat value={props.model.downstreamInterfaceCount} label={uiText.deviceSpecialized.downstreamInterfaces} />
+        <Stat value={props.model.connectedDownstreamInterfaceCount} label={uiText.deviceSpecialized.connected} />
+        <Stat value={props.model.idleDownstreamInterfaceCount} label={uiText.deviceSpecialized.idle} />
       </div>
       <FactRows fields={[
-        ["当前链路", props.model.currentLink],
-        ["设备规范", props.model.usbSpecification]
+        [uiText.deviceSpecialized.currentLink, props.model.currentLink],
+        [uiText.deviceSpecialized.deviceSpecification, props.model.usbSpecification]
       ]} />
     </>
   );
@@ -154,30 +155,30 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
         </div>
       </div>
       <FactRows fields={reportedFacts([
-        ["总线类型", props.model.busType],
-        ["介质类型", props.model.mediaType],
-        ["分区样式", props.model.partitionStyle],
-        ["存储传输", props.model.transportMode],
-        ["当前链路", props.model.currentLink],
-        ["USB 规范", props.model.usbSpecification],
-        ["设备版本", props.model.deviceRevision]
+        [uiText.deviceSpecialized.busType, props.model.busType],
+        [uiText.deviceSpecialized.mediaType, props.model.mediaType],
+        [uiText.deviceSpecialized.partitionStyle, props.model.partitionStyle],
+        [uiText.deviceSpecialized.storageTransport, props.model.transportMode],
+        [uiText.deviceSpecialized.currentLink, props.model.currentLink],
+        [uiText.deviceSpecialized.usbSpecification, props.model.usbSpecification],
+        [uiText.deviceSpecialized.deviceRevision, props.model.deviceRevision]
       ])} />
       <Show when={props.model.partitions.length > 0}>
-        <div class="device-storage-partitions" aria-label="磁盘分区和卷">
+        <div class="device-storage-partitions" aria-label={uiText.deviceSpecialized.partitionsAndVolumes}>
           <For each={props.model.partitions}>
             {(partition) => (
               <div class="device-storage-partition">
                 <header>
                   <strong>分区 {partition.partitionNumber ?? "--"}</strong>
-                  <span>{formatBytes(partition.capacityBytes)} · {partition.type ?? "格式未报告"}</span>
+                  <span>{formatBytes(partition.capacityBytes)} · {partition.type ?? uiText.deviceSpecialized.formatNotReported}</span>
                 </header>
                 <Show when={partition.volumes.length > 0} fallback={<small>未挂载卷</small>}>
                   <For each={partition.volumes}>
                     {(volume) => (
                       <div class="device-storage-volume">
                         <div>
-                          <strong>{volume.driveLetter ?? volume.label ?? "无盘符卷"}</strong>
-                          <span>{volume.fileSystem ?? "文件系统未报告"} · {formatVolumeMountState(volume.mountState)}</span>
+                          <strong>{volume.driveLetter ?? volume.label ?? uiText.deviceSpecialized.volumeWithoutLetter}</strong>
+                          <span>{volume.fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeMountState(volume.mountState)}</span>
                         </div>
                         <small>{formatVolumeCapacity(volume.capacityBytes, volume.freeBytes)}</small>
                         <VolumeUsage capacity={volume.capacityBytes} free={volume.freeBytes} />
@@ -196,7 +197,7 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
 
 function InputDetails(props: { model: KeyboardDeviceModel | MouseDeviceModel; label: string }) {
   const vendorMetric = () => props.model.kind === "keyboard"
-    ? ["内部扫描率", props.model.scanRate] as const
+    ? [uiText.deviceSpecialized.internalScanRate, props.model.scanRate] as const
     : ["DPI", props.model.dpi] as const;
   return (
     <>
@@ -211,8 +212,8 @@ function InputDetails(props: { model: KeyboardDeviceModel | MouseDeviceModel; la
       </div>
       <Show when={hasInputMetrics(props.model, vendorMetric()[1])}>
         <div class="device-input-metrics">
-          <Metric label="USB 轮询周期" value={props.model.pollingInterval} />
-          <Metric label="理论报告率" value={props.model.reportRate} />
+          <Metric label={uiText.deviceSpecialized.usbPollingInterval} value={props.model.pollingInterval} />
+          <Metric label={uiText.deviceSpecialized.theoreticalReportRate} value={props.model.reportRate} />
           <Metric label={vendorMetric()[0]} value={vendorMetric()[1]} />
         </div>
       </Show>
@@ -224,9 +225,9 @@ function AudioDetails(props: { model: AudioDeviceModel }) {
   return (
     <Show when={props.model.interfaceProtocols.length > 0}>
       <StatusStrip values={[
-        ["音频控制", props.model.audioControl],
-        ["音频流", props.model.audioStreaming],
-        ["HID 控制", props.model.hidControls]
+        [uiText.deviceSpecialized.audioControl, props.model.audioControl],
+        [uiText.deviceSpecialized.audioStreaming, props.model.audioStreaming],
+        [uiText.deviceSpecialized.hidControls, props.model.hidControls]
       ]} />
     </Show>
   );
@@ -242,7 +243,7 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
         </div>
       </Show>
       <Show when={props.model.nativeModes.length > 0}>
-        <div class="device-camera-modes" aria-label="摄像头原生模式">
+        <div class="device-camera-modes" aria-label={uiText.deviceSpecialized.cameraNativeModes}>
           <For each={props.model.nativeModes}>
             {(mode) => (
               <span>{mode.width} x {mode.height} @ {mode.maximumFrameRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} fps · {mode.pixelFormat}</span>
@@ -252,9 +253,9 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
       </Show>
       <Show when={props.model.interfaceProtocols.length > 0}>
         <StatusStrip values={[
-          ["视频控制", props.model.videoControl],
-          ["视频流", props.model.videoStreaming],
-          ["伴随音频", props.model.audioCapable]
+          [uiText.deviceSpecialized.videoControl, props.model.videoControl],
+          [uiText.deviceSpecialized.videoStreaming, props.model.videoStreaming],
+          [uiText.deviceSpecialized.companionAudio, props.model.audioCapable]
         ]} />
       </Show>
     </>
@@ -265,17 +266,17 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
   return (
     <>
       <FactRows fields={[
-        ["制造商", props.model.manufacturer],
-        ["型号", props.model.model],
-        ["设备协议", props.model.protocol],
-        ["连接传输", props.model.transport],
-        ["固件版本", props.model.firmwareVersion],
-        ["电量", props.model.battery]
+        [uiText.deviceSpecialized.manufacturer, props.model.manufacturer],
+        [uiText.deviceSpecialized.model, props.model.model],
+        [uiText.deviceSpecialized.deviceProtocol, props.model.protocol],
+        [uiText.deviceSpecialized.connectionTransport, props.model.transport],
+        [uiText.deviceSpecialized.firmwareVersion, props.model.firmwareVersion],
+        [uiText.deviceSpecialized.battery, props.model.battery]
       ]} />
       <StatusStrip values={[
-        ["媒体传输", props.model.mediaTransfer],
-        ["数据连接", props.model.dataConnection],
-        ["厂商通道", props.model.vendorChannel]
+        [uiText.deviceSpecialized.mediaTransfer, props.model.mediaTransfer],
+        [uiText.deviceSpecialized.dataConnection, props.model.dataConnection],
+        [uiText.deviceSpecialized.vendorChannel, props.model.vendorChannel]
       ]} />
       <Show when={props.model.storages.length > 0}>
         <div class="device-smart-storage">
@@ -283,7 +284,7 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
             {(storage) => (
               <div>
                 <strong>{storage.name}</strong>
-                <span>{storage.fileSystem ?? "文件系统未报告"} · {formatVolumeCapacity(storage.capacityBytes, storage.freeBytes)}</span>
+                <span>{storage.fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeCapacity(storage.capacityBytes, storage.freeBytes)}</span>
               </div>
             )}
           </For>
@@ -295,55 +296,55 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
 
 function PowerInputDetails(props: { model: PowerInputDeviceModel }) {
   return <FactRows fields={[
-    ["供电角色", props.model.inputRole],
-    ["协商功率", props.model.negotiatedPower]
+    [uiText.deviceSpecialized.powerRole, props.model.inputRole],
+    [uiText.deviceSpecialized.negotiatedPower, props.model.negotiatedPower]
   ]} />;
 }
 
 function GraphicsAdapterDetails(props: { model: GraphicsAdapterDeviceModel }) {
   return <FactRows fields={reportedFacts([
-    ["图形总线", props.model.busType]
+    [uiText.deviceSpecialized.graphicsBus, props.model.busType]
   ])} />;
 }
 
 function NetworkAdapterDetails(props: { model: NetworkAdapterDeviceModel }) {
   return <FactRows fields={reportedFacts([
-    ["网络接口", props.model.interfaceName],
-    ["连接状态", props.model.connectionState],
-    ["发送链路", props.model.transmitSpeed],
-    ["接收链路", props.model.receiveSpeed],
-    ["活动 MTU", props.model.activeMtu],
-    ["MAC 地址", props.model.permanentAddress]
+    [uiText.deviceSpecialized.networkInterface, props.model.interfaceName],
+    [uiText.deviceSpecialized.connectionState, props.model.connectionState],
+    [uiText.deviceSpecialized.transmitLink, props.model.transmitSpeed],
+    [uiText.deviceSpecialized.receiveLink, props.model.receiveSpeed],
+    [uiText.deviceSpecialized.activeMtu, props.model.activeMtu],
+    [uiText.deviceSpecialized.macAddress, props.model.permanentAddress]
   ])} />;
 }
 
 function BluetoothDetails(props: { model: BluetoothDeviceModel }) {
   return <FactRows fields={reportedFacts([
-    ["设备角色", props.model.bluetoothRole],
-    ["传输协议", props.model.protocol]
+    [uiText.deviceSpecialized.deviceRole, props.model.bluetoothRole],
+    [uiText.deviceSpecialized.transportProtocol, props.model.protocol]
   ])} />;
 }
 
 function InternalControllerDetails(props: { model: InternalControllerDeviceModel }) {
   return <FactRows fields={reportedFacts([
-    ["控制器类型", props.model.controllerType],
-    ["互连技术", props.model.interconnectTechnology],
-    ["下游设备", String(props.model.downstreamDeviceCount)]
+    [uiText.deviceSpecialized.controllerType, props.model.controllerType],
+    [uiText.deviceSpecialized.interconnectTechnology, props.model.interconnectTechnology],
+    [uiText.deviceSpecialized.downstreamDevices, String(props.model.downstreamDeviceCount)]
   ])} />;
 }
 
 function GenericDetails(props: { model: GenericDeviceModel }) {
   return <FactRows fields={reportedFacts([
-    ["设备类", props.model.deviceClass],
-    ["USB 规范", props.model.usbSpecification],
-    ["设备版本", props.model.deviceRevision]
+    [uiText.deviceSpecialized.deviceClass, props.model.deviceClass],
+    [uiText.deviceSpecialized.usbSpecification, props.model.usbSpecification],
+    [uiText.deviceSpecialized.deviceRevision, props.model.deviceRevision]
   ])} />;
 }
 
 function hasInputMetrics(model: KeyboardDeviceModel | MouseDeviceModel, vendorMetric: string) {
   return model.pollingInterval !== "--"
     || model.reportRate !== "--"
-    || (vendorMetric !== "--" && !vendorMetric.includes("未报告"));
+    || (vendorMetric !== "--" && !vendorMetric.includes(uiText.deviceSpecialized.notReported));
 }
 
 function FactRows(props: { fields: Array<[string, string]> }) {
@@ -367,7 +368,7 @@ function StatusStrip(props: { values: Array<[string, boolean]> }) {
         {([label, active]) => (
           <div classList={{ active }}>
             <span>{label}</span>
-            <strong>{active ? "支持" : "未报告"}</strong>
+            <strong>{active ? uiText.deviceSpecialized.supported : uiText.deviceSpecialized.notReported}</strong>
           </div>
         )}
       </For>
@@ -378,7 +379,7 @@ function StatusStrip(props: { values: Array<[string, boolean]> }) {
 function CapabilityList(props: { values: string[] }) {
   return (
     <Show when={props.values.length > 0}>
-      <div class="device-capability-list" aria-label="设备能力">
+      <div class="device-capability-list" aria-label={uiText.deviceSpecialized.deviceCapabilities}>
         <For each={props.values}>{(value) => <span>{value}</span>}</For>
       </div>
     </Show>
@@ -398,13 +399,13 @@ function VolumeUsage(props: { capacity?: number | null; free?: number | null }) 
     if (!props.capacity || typeof props.free !== "number") return 0;
     return Math.max(0, Math.min(100, ((props.capacity - props.free) / props.capacity) * 100));
   };
-  return <div class="device-storage-usage" aria-label={`已用 ${usedPercent().toFixed(1)}%`}><span style={{ width: `${usedPercent()}%` }} /></div>;
+  return <div class="device-storage-usage" aria-label={uiText.deviceSpecialized.usedPercent(usedPercent().toFixed(1))}><span style={{ width: `${usedPercent()}%` }} /></div>;
 }
 
 function formatVolumeCapacity(capacity?: number | null, free?: number | null) {
-  if (typeof capacity !== "number") return "容量未报告";
+  if (typeof capacity !== "number") return uiText.deviceSpecialized.capacityNotReported;
   return typeof free === "number"
-    ? `${formatBytes(capacity - free)} 已用 / ${formatBytes(capacity)}`
+    ? uiText.deviceSpecialized.usedOfTotal(formatBytes(capacity - free), formatBytes(capacity))
     : formatBytes(capacity);
 }
 
@@ -412,10 +413,10 @@ function formatVolumeMountState(value: string) {
   switch (value.trim().toLocaleLowerCase()) {
     case "mounted":
     case "online":
-    case "available": return "可用";
+    case "available": return uiText.deviceSpecialized.volumeAvailable;
     case "unmounted":
-    case "offline": return "未挂载";
-    default: return value || "状态未知";
+    case "offline": return uiText.deviceSpecialized.volumeNotMounted;
+    default: return value || uiText.deviceSpecialized.volumeStateUnknown;
   }
 }
 

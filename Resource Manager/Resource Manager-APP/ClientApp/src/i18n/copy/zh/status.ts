@@ -1,0 +1,145 @@
+export const zhStatusCopy = {
+  status: {
+    sentenceEnd: "。",
+    actionFailed: "操作失败，请稍后重试",
+    stateUpdated: "状态已更新",
+    unknownState: "状态未知",
+    noData: "暂无数据",
+    unknownTime: "时间未知",
+    systemGraphicsUsage: "系统图形占用",
+    // 后端状态值统一映射到这些用户状态
+    state: {
+      available: "可用",
+      installed: "已安装",
+      installedUnverified: "已安装，等待确认",
+      readyToInstall: "可安装",
+      downloadable: "可下载",
+      manualDownload: "需要手动下载",
+      notInstalled: "未安装",
+      running: "运行中",
+      stopped: "已停止",
+      starting: "正在启动",
+      ready: "已就绪",
+      refreshing: "正在刷新",
+      warming: "正在准备",
+      failed: "操作失败",
+      unavailable: "暂时不可用",
+      disabled: "已关闭",
+      enabled: "已开启",
+      queued: "等待中",
+      canceling: "正在取消",
+      canceled: "已取消",
+      completed: "已完成",
+      restored: "已恢复",
+      missing: "未找到",
+      unknown: "状态未知"
+    },
+    risk: {
+      low: "低风险",
+      medium: "中等风险",
+      high: "高风险",
+      root: "根目录迁移",
+      blocked: "禁止迁移",
+      unknown: "风险待确认"
+    },
+    migration: {
+      kindRoot: "软件根目录",
+      kindData: "软件数据",
+      targetMisc: "其他数据",
+      targetUser: "用户数据",
+      classificationApplicationRoot: "软件根目录",
+      classificationUserAppData: "用户应用数据",
+      classificationProgramData: "共享应用数据",
+      classificationDirectory: "普通目录",
+      classificationFile: "文件",
+      classificationMissing: "源位置不存在",
+      classificationUnknown: "待确认数据",
+      stateRunning: "监控中",
+      stateStopped: "已停止",
+      stateCompleted: "已完成",
+      stateRestored: "已恢复",
+      stateFailed: "未完成",
+      stateUnknown: "状态未知"
+    },
+    metricGroup: {
+      cpu: "处理器",
+      gpu: "图形处理器",
+      memory: "内存",
+      virtualMemory: "虚拟内存",
+      disk: "磁盘",
+      network: "网络",
+      motherboard: "主板",
+      fan: "风扇",
+      hardwareMonitor: "硬件传感器",
+      system: "系统"
+    },
+    metricUnavailable: {
+      needsComponent: "需要安装并启用对应的硬件支持组件。",
+      deviceNotProvided: "当前设备没有提供这项数据。"
+    },
+    component: {
+      nameFallback: "硬件支持组件",
+      purposeFallback: "为资源管理器补充硬件信息和相关功能。",
+      names: {
+        amdSmuPawnIo: "AMD 处理器传感支持",
+        amdRyzenMaster: "AMD Ryzen 监控支持",
+        msiAfterburner: "MSI Afterburner",
+        libreHardwareMonitor: "通用硬件传感支持",
+        notebookFanControl: "笔记本风扇监控支持",
+        notebookOemFan: "笔记本厂商风扇支持",
+        windowsPerformanceToolkit: "Windows 性能分析工具",
+        latencyMon: "LatencyMon",
+        nvidiaNvml: "NVIDIA 显卡监控支持",
+        nvidiaNvapi: "NVIDIA 显卡扩展监控支持",
+        amdAdlx: "AMD 显卡监控支持",
+        intelPcm: "Intel 处理器监控支持"
+      },
+      purposes: {
+        amdCpuSensors: "补充 AMD 处理器的功耗、温度、电压和频率信息。",
+        gpuOptionalMonitoring: "提供可选的显卡监控信息。",
+        generalHardwareSensors: "补充风扇、温度、电压和主板等硬件信息。",
+        notebookFan: "补充笔记本风扇转速和运行状态。",
+        latencyAnalysis: "用于进一步分析系统延迟和性能问题。",
+        nvidiaGpu: "补充 NVIDIA 显卡的频率、温度、功耗和风扇信息。",
+        amdGpu: "补充 AMD 显卡的频率、温度、功耗和风扇信息。",
+        intelCpu: "补充 Intel 处理器的功耗、频率和温度信息。"
+      },
+      categories: {
+        performanceAnalysis: "性能分析工具",
+        helperTool: "辅助工具",
+        hardwareMonitoring: "硬件监控"
+      }
+    },
+    resourceData: {
+      sourceCpu: "CPU 进程统计",
+      sourceDisk: "磁盘进程统计",
+      sourceNetwork: "网络进程统计",
+      sourceGpuMemory: "显存进程统计",
+      sourceGeneric: "进程资源统计",
+      stateUnavailable: "暂时不可用",
+      statePreparing: "正在准备",
+      stateIdle: "当前未使用",
+      stateNormal: "正常",
+      messageUnavailable: "数据源未提供可公开显示的故障说明。",
+      messagePreparing: "数据源正在初始化，尚未提供更多说明。",
+      messageGeneric: "数据源未提供更多说明。",
+      summaryHealthy: "数据正常",
+      summaryUnavailable: "部分数据暂时不可用",
+      summaryPreparing: "部分数据正在准备"
+    },
+    detail: {
+      status: "状态",
+      description: "说明",
+      software: "软件",
+      unnamedSoftware: "未命名软件",
+      content: "内容",
+      savedLocation: "保存位置",
+      createdAt: "创建时间",
+      restoredAt: "恢复时间",
+      migrationContent: "迁移内容",
+      location: "位置",
+      sourcePath: "原位置",
+      destinationPath: "迁移后位置"
+    }
+  }
+};

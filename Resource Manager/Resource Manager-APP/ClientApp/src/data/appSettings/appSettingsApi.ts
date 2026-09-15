@@ -5,6 +5,7 @@ import {
   readSettingsFailureDisposition,
   type CommittedAppSettingsResult
 } from "./appSettingsResultDecoder.ts";
+import { uiText } from "../../text.ts";
 
 type AppSettingsRequestClient = Pick<RequestClient, "request">;
 
@@ -12,7 +13,7 @@ export class AppSettingsRevisionConflictError extends Error {
   readonly result: CommittedAppSettingsResult;
 
   constructor(result: CommittedAppSettingsResult) {
-    super("设置已被其他操作更新，请重新加载后再保存");
+    super(uiText.misc.settingsConflict);
     this.name = "AppSettingsRevisionConflictError";
     this.result = result;
   }
@@ -25,7 +26,7 @@ export function getAppSettings(
   return requestClient.request({
     key: "app.settings.get",
     url: "/api/settings/app",
-    fallbackError: "读取设置失败",
+    fallbackError: uiText.misc.readSettingsFailed,
     decoder: appSettingsResultDecoder,
     signal,
     request: { method: "GET" }
@@ -42,7 +43,7 @@ export async function saveAppSettingsPatch(
     return await requestClient.request({
       key: "app.settings.patch",
       url: "/api/settings/app",
-      fallbackError: "保存设置失败",
+      fallbackError: uiText.misc.saveSettingsFailed,
       decoder: appSettingsResultDecoder,
       signal,
       request: {
@@ -63,7 +64,7 @@ export function reapplyAppSettings(
   return requestClient.request({
     key: "app.settings.reapply",
     url: "/api/settings/app/reapply",
-    fallbackError: "重新应用设置失败",
+    fallbackError: uiText.misc.reapplySettingsFailed,
     decoder: appSettingsResultDecoder,
     signal,
     request: { method: "POST" }
@@ -84,7 +85,7 @@ function throwSettingsFailure(error: unknown): never {
       }
     }
     if (disposition === "savedNotApplied") {
-      throw new Error("设置已保存，但运行配置未应用", { cause: error });
+      throw new Error(uiText.misc.settingsSavedNotApplied, { cause: error });
     }
   }
   throw error;

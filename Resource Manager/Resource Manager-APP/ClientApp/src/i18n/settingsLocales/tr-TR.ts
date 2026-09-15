@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("tr-TR", {
   sections: { performance: "Performans", appearance: "Görünüm", systemIntegration: "Sistem entegrasyonu", debug: "Hata ayıklama", credits: "Teşekkürler" },

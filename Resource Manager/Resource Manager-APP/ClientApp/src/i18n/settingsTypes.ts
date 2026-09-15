@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppThemeMode, SettingsSection } from "../types";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppThemeMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 

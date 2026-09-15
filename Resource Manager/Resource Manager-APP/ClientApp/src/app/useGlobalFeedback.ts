@@ -6,7 +6,7 @@ import type {
   ToastItem,
   ToastTone
 } from "../components/AppFeedback";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import { userFacingErrorMessage, userFacingMessage } from "../presentation/userFacingText";
 
 export function useGlobalFeedback() {

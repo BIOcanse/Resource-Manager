@@ -7,6 +7,7 @@ import {
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MonitorDeviceModel } from "./types";
 import type { DeviceTopologyDisplayConnection } from "../../types";
+import { uiText } from "../../text.ts";
 
 export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
   id: "monitor",
@@ -14,18 +15,18 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
     && port.display.targetAvailable === true,
   createModel: (context) => {
     const display = context.port.display!;
-    const title = deviceTitle(context, "外接显示器");
+    const title = deviceTitle(context, uiText.deviceAdapters.externalMonitor);
     const resolution = displayValue(display.resolution);
     const refreshRate = displayValue(display.refreshRate);
     const connectorTechnology = displayValue(display.connectorTechnology, context.port.protocol);
     const hdrState = resolveHdrState(display);
     const bitDepth = display.bitsPerColorChannel
-      ? `${display.bitsPerColorChannel} bit / 色通道`
+      ? uiText.deviceAdapters.bitsPerChannel(String(display.bitsPerColorChannel))
       : "--";
     const colorEncoding = displayValue(display.colorEncoding);
     const colorSpace = displayValue(display.colorSpace);
     const displayTechnology = displayValue(display.displayTechnology);
-    const panelTechnology = displayValue(display.panelTechnology, "EDID 未报告");
+    const panelTechnology = displayValue(display.panelTechnology, uiText.deviceAdapters.edidNotReported);
     const sdrWhiteLevel = display.sdrWhiteLevelNits
       ? `${display.sdrWhiteLevelNits.toLocaleString()} nits`
       : "--";
@@ -37,20 +38,20 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
       : "--";
     const physicalSize = displayValue(display.physicalSize);
     const connection = connectionFacts(context);
-    const deviceType = display.internal ? "内置显示面板" : "显示器";
+    const deviceType = display.internal ? uiText.deviceAdapters.internalDisplayPanel : uiText.deviceAdapters.monitor;
     return {
       adapterId: "monitor",
       kind: "monitor",
       deviceTypeLabel: deviceType,
       title,
       subtitle: joinSummary(resolution, refreshRate, hdrState === "--" ? undefined : hdrState),
-      badge: display.internal ? "内屏" : "显示器",
+      badge: display.internal ? uiText.deviceAdapters.internalPanelBadge : uiText.deviceAdapters.monitor,
       iconKind: "monitor",
       ...connection,
       resolution,
       refreshRate,
       connectorTechnology,
-      displayState: "活动显示目标",
+      displayState: uiText.deviceAdapters.activeDisplayTarget,
       hdrState,
       bitDepth,
       colorEncoding,
@@ -62,14 +63,14 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
       fullFrameLuminance,
       physicalSize,
       summaryFields: summaryFields(
-        ["当前模式", joinSummary(resolution, refreshRate)],
-        ["HDR / 高级颜色", hdrState],
-        ["输出位深", bitDepth],
-        ["显示技术", display.panelTechnology ?? display.displayTechnology]
+        [uiText.deviceAdapters.label.currentMode, joinSummary(resolution, refreshRate)],
+        [uiText.deviceAdapters.label.hdrAdvancedColor, hdrState],
+        [uiText.deviceAdapters.label.outputBitDepth, bitDepth],
+        [uiText.deviceAdapters.label.displayTechnology, display.panelTechnology ?? display.displayTechnology]
       ),
       capabilityLabels: [display.hdrFormats, display.edidVersion, display.physicalSize]
         .filter((value): value is string => Boolean(value?.trim())),
-      searchTerms: ["显示器", "monitor", resolution, refreshRate, connectorTechnology, hdrState, bitDepth]
+      searchTerms: [uiText.deviceAdapters.monitor, "monitor", resolution, refreshRate, connectorTechnology, hdrState, bitDepth]
     };
   }
 };
@@ -77,13 +78,13 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
 function resolveHdrState(display: DeviceTopologyDisplayConnection) {
   const format = display.hdrFormats?.trim();
   if (display.advancedColorEnabled === true) {
-    return joinSummary(format, "已开启");
+    return joinSummary(format, uiText.deviceAdapters.hdrOn);
   }
   if (display.advancedColorSupported === true) {
-    return joinSummary(format ?? "支持高级颜色", "当前关闭");
+    return joinSummary(format ?? uiText.deviceAdapters.advancedColorSupported, uiText.deviceAdapters.hdrCurrentlyOff);
   }
   if (display.advancedColorSupported === false) {
-    return format ? `${format} · 系统当前不可用` : "不支持高级颜色";
+    return format ? uiText.deviceAdapters.hdrFormatUnavailable(format) : uiText.deviceAdapters.advancedColorUnsupported;
   }
   return format ?? "--";
 }

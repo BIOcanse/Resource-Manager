@@ -28,7 +28,7 @@ import { createResourceTrackGeometry } from "../resourceBreakdown/useResourceTra
 import {
   createResourceLayoutSettleController
 } from "../resourceBreakdown/resourceLayoutSettleTransition";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import { formatBytes, formatPercent } from "../utils";
 import { StandardSelect } from "./StandardSelect";
 import { ContentState } from "../ui/patterns/ContentState.tsx";
@@ -109,13 +109,13 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
             <span class="save-state error">{uiText.common.saveFailed}</span>
           </Show>
           <span id="resourceBreakdownStatus">
-            {props.snapshotBars.length > 0 ? `${props.snapshotBars.length} 个项目` : uiText.resourceBreakdown.statusFallback}
+            {props.snapshotBars.length > 0 ? uiText.resourceBreakdownView.itemCount(props.snapshotBars.length) : uiText.resourceBreakdown.statusFallback}
           </span>
           <Show when={props.editMode}>
             <button
               class="secondary"
               type="button"
-              aria-label="取消资源占用条目编辑"
+              aria-label={uiText.resourceBreakdownView.cancelEditLabel}
               disabled={props.saveState === "saving"}
               onClick={props.onCancelEdit}
             >
@@ -127,7 +127,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
             class="secondary panel-refresh-button"
             type="button"
             data-focus-key="resource-breakdown-edit"
-            aria-label={props.editMode ? "保存资源占用条目" : "编辑资源占用条目"}
+            aria-label={props.editMode ? uiText.resourceBreakdownView.saveLabel : uiText.resourceBreakdownView.editLabel}
             disabled={!props.editingAvailable || props.saveState === "saving"}
             onClick={props.onToggleEdit}
           >
@@ -152,11 +152,11 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
           <ContentState
             kind="empty"
             title={props.bars.length === 0
-              ? "尚未配置资源占用条目"
-              : "当前没有可显示的资源占用数据"}
+              ? uiText.resourceBreakdownView.emptyTitle
+              : uiText.resourceBreakdownView.noDataTitle}
             detail={props.bars.length === 0
-              ? "进入编辑模式后可选择需要显示的资源指标。"
-              : "当前没有进程或软件占用记录。"}
+              ? uiText.resourceBreakdownView.emptyDetail
+              : uiText.resourceBreakdownView.noDataDetail}
           />
         }
       >
@@ -223,7 +223,7 @@ function ResourceBarEditor(props: {
       ref={props.onElement}
       class="resource-bar-editor"
       role="group"
-      aria-label="资源占用条目编辑器"
+      aria-label={uiText.resourceBreakdownView.editorLabel}
     >
       <For each={resourceBarOptions(props.catalog)}>
         {(metric) => {
@@ -242,7 +242,7 @@ function ResourceBarEditor(props: {
               <StandardSelect<"capacity" | "active">
                 value={normalizeResourceBarScaleMode(metric.id, bar()?.scaleMode)}
                 disabled={!bar() || !supportsCapacity}
-                ariaLabel={`${metric.label} 缩放模式`}
+                ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(metric.label)}
                 options={[
                   ...(supportsCapacity ? [{ value: "capacity" as const, label: uiText.resourceBreakdown.scaleCapacity }] : []),
                   { value: "active" as const, label: uiText.resourceBreakdown.scaleActive }
@@ -416,8 +416,8 @@ function ResourceBreakdownItem(props: {
               class="icon-button secondary"
               type="button"
               disabled={!props.canMoveBefore}
-              aria-label={`上移 ${label()}`}
-              title="上移"
+              aria-label={uiText.resourceBreakdownView.moveUp(label())}
+              title={uiText.resourceBreakdownView.moveUpTitle}
               onClick={props.onMoveBefore}
             >
               <ArrowUp aria-hidden="true" size={15} />
@@ -426,8 +426,8 @@ function ResourceBreakdownItem(props: {
               class="icon-button secondary"
               type="button"
               disabled={!props.canMoveAfter}
-              aria-label={`下移 ${label()}`}
-              title="下移"
+              aria-label={uiText.resourceBreakdownView.moveDown(label())}
+              title={uiText.resourceBreakdownView.moveDownTitle}
               onClick={props.onMoveAfter}
             >
               <ArrowDown aria-hidden="true" size={15} />
@@ -600,7 +600,7 @@ function ResourceProcessPanel(props: {
         ref={trackGeometry.observeTrack}
         tabIndex={hasProcesses() ? 0 : -1}
         role={hasProcesses() ? "listbox" : undefined}
-        aria-label={hasProcesses() ? `${props.software.name} 进程占用` : undefined}
+        aria-label={hasProcesses() ? uiText.resourceBreakdownView.processUsage(props.software.name) : undefined}
         aria-activedescendant={activeProcessOptionId()}
         onPointerMove={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
@@ -760,16 +760,16 @@ function resourceBarSort(metricId: string) {
 function resourceOnlyMetricOptions(catalog: MetricDefinition[]): MetricDefinition[] {
   const existing = new Set(catalog.map((metric) => metric.id));
   return [
-    resourceMetric("virtualMemory.usage", "虚拟内存占用", "Memory", "B"),
-    resourceMetric("disk.io", "磁盘 I/O", "Disk", "B/s"),
-    resourceMetric("disk.read", "磁盘读取", "Disk", "B/s"),
-    resourceMetric("disk.write", "磁盘写入", "Disk", "B/s"),
-    resourceMetric("network.traffic", "外部网络流量", "Network", "B/s"),
-    resourceMetric("network.receive", "外部网络接收", "Network", "B/s"),
-    resourceMetric("network.send", "外部网络发送", "Network", "B/s"),
-    resourceMetric("network.raw.traffic", "普通网络流量", "Network", "B/s"),
-    resourceMetric("network.raw.receive", "普通网络接收", "Network", "B/s"),
-    resourceMetric("network.raw.send", "普通网络发送", "Network", "B/s")
+    resourceMetric("virtualMemory.usage", uiText.resourceBreakdownView.metric.virtualMemoryUsage, "Memory", "B"),
+    resourceMetric("disk.io", uiText.resourceBreakdownView.metric.diskIo, "Disk", "B/s"),
+    resourceMetric("disk.read", uiText.resourceBreakdownView.metric.diskRead, "Disk", "B/s"),
+    resourceMetric("disk.write", uiText.resourceBreakdownView.metric.diskWrite, "Disk", "B/s"),
+    resourceMetric("network.traffic", uiText.resourceBreakdownView.metric.networkTraffic, "Network", "B/s"),
+    resourceMetric("network.receive", uiText.resourceBreakdownView.metric.networkReceive, "Network", "B/s"),
+    resourceMetric("network.send", uiText.resourceBreakdownView.metric.networkSend, "Network", "B/s"),
+    resourceMetric("network.raw.traffic", uiText.resourceBreakdownView.metric.rawNetworkTraffic, "Network", "B/s"),
+    resourceMetric("network.raw.receive", uiText.resourceBreakdownView.metric.rawNetworkReceive, "Network", "B/s"),
+    resourceMetric("network.raw.send", uiText.resourceBreakdownView.metric.rawNetworkSend, "Network", "B/s")
   ].filter((metric) => !existing.has(metric.id));
 }
 

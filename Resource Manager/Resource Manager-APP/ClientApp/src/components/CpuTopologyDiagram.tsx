@@ -28,6 +28,7 @@ import type {
   CpuTopologySnapshot
 } from "../types";
 import { UserDetailsDialog } from "./UserDetailsDialog";
+import { uiText } from "../text.ts";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 
@@ -140,7 +141,7 @@ export function CpuTopologyDiagram(props: {
     <section
       {...frontendVisibilitySurface("visible.details.cpu-model.surface", [demandId])}
       class="cpu-topology-panel"
-      aria-label="CPU 拓扑模型"
+      aria-label={uiText.cpuTopology.modelLabel}
     >
       <div class="panel-header cpu-topology-header">
         <div class="optimization-heading">
@@ -224,7 +225,7 @@ export function CpuTopologyDiagram(props: {
                                     type="number"
                                     min="0"
                                     step="any"
-                                    aria-label={`设置${core.label}性能分`}
+                                    aria-label={uiText.cpuTopology.setCoreScore(core.label)}
                                     value={scoreDraft()[core.index] ?? formatScore(core.performanceScore)}
                                     onInput={(event) => updateScoreDraft(core.index, event.currentTarget.value)}
                                   />
@@ -240,8 +241,8 @@ export function CpuTopologyDiagram(props: {
                                           type="button"
                                           disabled={!logical.affinitySelectable}
                                           aria-pressed={isSelected(selected(), "logical", String(logical.id))}
-                                          aria-label={`逻辑处理器 ${logical.id}，执行时长 ${formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}`}
-                                          title={`处理器组 ${logical.processorGroup} / 逻辑处理器 ${logical.groupRelativeIndex} · 执行时长 ${formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}`}
+                                          aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                          title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
                                           onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
                                         >
                                           <span>逻辑处理器 {logical.id}</span>
@@ -305,7 +306,7 @@ export function CpuTopologyDiagram(props: {
                                   type="number"
                                   min="0"
                                   step="any"
-                                  aria-label={`设置${core.label}性能分`}
+                                  aria-label={uiText.cpuTopology.setCoreScore(core.label)}
                                   value={scoreDraft()[core.index] ?? formatScore(core.performanceScore)}
                                   onInput={(event) => updateScoreDraft(core.index, event.currentTarget.value)}
                                 />
@@ -321,8 +322,8 @@ export function CpuTopologyDiagram(props: {
                                         type="button"
                                         disabled={!logical.affinitySelectable}
                                         aria-pressed={isSelected(selected(), "logical", String(logical.id))}
-                                        aria-label={`逻辑处理器 ${logical.id}，执行时长 ${formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}`}
-                                        title={`处理器组 ${logical.processorGroup} / 逻辑处理器 ${logical.groupRelativeIndex} · 执行时长 ${formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}`}
+                                        aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                        title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
                                         onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
                                       >
                                         <span>{logical.id}</span>
@@ -416,7 +417,7 @@ export function CpuTopologyDiagram(props: {
       });
       setEditing(false);
     } catch (error) {
-      setCommandError(userFacingErrorMessage(error, "CPU 性能分保存失败"));
+      setCommandError(userFacingErrorMessage(error, uiText.apiError.saveCpuCoreScoreFailed));
     } finally {
       setSaving(false);
     }
@@ -432,7 +433,7 @@ export function CpuTopologyDiagram(props: {
       await resetCpuCorePerformanceOverrides(model.cpuName);
       setEditing(false);
     } catch (error) {
-      setCommandError(userFacingErrorMessage(error, "CPU 性能分重置失败"));
+      setCommandError(userFacingErrorMessage(error, uiText.apiError.resetCpuCoreScoreFailed));
     } finally {
       setSaving(false);
     }
@@ -458,7 +459,7 @@ function CpuCoreSelectionButton(props: {
       class={props.variant === "ring" ? "cpu-ring-core-main" : "cpu-core-main"}
       type="button"
       aria-pressed={props.selected}
-      aria-label={`${props.core.label}，使用率 ${usage()}，性能 ${performance()}，执行时长 ${executionTime()}`}
+      aria-label={uiText.cpuTopology.coreAriaLabel(props.core.label, usage(), performance(), executionTime())}
       onClick={props.onToggle}
     >
       <span>{props.core.label}</span>
@@ -509,13 +510,13 @@ function CpuTopologyDetailsDialog(props: {
   return (
     <UserDetailsDialog
       open={props.open}
-      title="CPU 核心详细信息"
-      summary="这里统一显示实际展开后的软件级独占与锁定范围。修改请进入对应软件设置。"
+      title={uiText.cpuTopology.coreDetailTitle}
+      summary={uiText.cpuTopology.coreDetailSummary}
       className="cpu-core-details-modal"
       onClose={props.onClose}
     >
       <div class="cpu-core-details-layout">
-        <nav class="cpu-core-details-list" aria-label="物理核心">
+        <nav class="cpu-core-details-list" aria-label={uiText.cpuTopology.physicalCoreList}>
           <For each={props.model.physicalCores}>
             {(item) => (
               <button
@@ -541,7 +542,7 @@ function CpuTopologyDetailsDialog(props: {
                     <div class="user-details-row"><dt>CCD</dt><dd>{ccd()?.label ?? current().ccdId}</dd></div>
                     <div class="user-details-row"><dt>使用率</dt><dd>{formatUsage(current().usagePercent)}</dd></div>
                     <div class="user-details-row"><dt>性能分</dt><dd>{formatScore(current().performanceScore)}</dd></div>
-                    <div class="user-details-row"><dt>逻辑处理器</dt><dd>{logical().map((item) => item.id).join(", ") || "--"}</dd></div>
+                    <div class="user-details-row"><dt>{uiText.cpuTopology.logicalProcessors}</dt><dd>{logical().map((item) => item.id).join(", ") || "--"}</dd></div>
                     <div class="user-details-row"><dt>缓存</dt><dd>{formatCoreCacheLevels(current().cacheLevels)}</dd></div>
                     <div class="user-details-row">
                       <dt>执行时长</dt>
@@ -624,7 +625,7 @@ function resolveDetailCoreId(
 function formatCoreCacheLevels(levels: CpuCoreCacheLevelModel[]) {
   return levels.length > 0
     ? levels
-        .map((level) => `L${level.level} ${level.sizeKb === null ? "未知" : formatCacheSize(level.sizeKb)}`)
+        .map((level) => `L${level.level} ${level.sizeKb === null ? uiText.cpuTopology.cacheUnknownSize : formatCacheSize(level.sizeKb)}`)
         .join(" · ")
     : "--";
 }
@@ -1231,14 +1232,14 @@ function firstCoreIndex(partition: CpuCachePartition) {
 
 function formatCacheGroupLabel(group: CpuCacheGroup) {
   const size = formatCacheSize(group.sizeKb);
-  return size ? `${group.level}缓 ${size}` : `${group.level}缓`;
+  return size ? uiText.cpuTopology.cacheLevel(String(group.level), size) : uiText.cpuTopology.cacheLevelShort(String(group.level));
 }
 
 function formatCacheGroupTitle(group: CpuCacheGroup) {
-  const size = formatCacheSize(group.sizeKb) || "容量未读取";
-  const scope = group.coreIds.length > 1 ? `${group.coreIds.length} 个物理核心共享` : "单物理核心";
+  const size = formatCacheSize(group.sizeKb) || uiText.cpuTopology.cacheCapacityUnknown;
+  const scope = group.coreIds.length > 1 ? uiText.cpuTopology.cacheSharedBy(group.coreIds.length) : uiText.cpuTopology.cacheSingleCore;
   const logicalIds = group.logicalProcessorIds.length > 0 ? group.logicalProcessorIds.join(", ") : "--";
-  return `${group.level}级缓存 ${size} · ${scope} · 逻辑处理器 ${logicalIds}`;
+  return uiText.cpuTopology.cacheDetail(String(group.level), size, scope, logicalIds);
 }
 
 function clampRange(

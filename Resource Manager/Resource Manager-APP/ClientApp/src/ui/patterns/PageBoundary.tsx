@@ -8,6 +8,7 @@ import {
 } from "solid-js";
 import { RotateCcw } from "lucide-solid";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
+import { uiText } from "../../text.ts";
 
 export function PageBoundary(props: {
   readonly name: string;
@@ -54,7 +55,7 @@ function PageBoundaryFallback(props: {
   const [retrying, setRetrying] = createSignal(false);
   const [retryError, setRetryError] = createSignal<string | null>(null);
   const message = () => retryError()
-    ?? userFacingErrorMessage(props.error, `${props.name}暂时不可用`);
+    ?? userFacingErrorMessage(props.error, uiText.misc.pageUnavailable(props.name));
 
   const retry = async () => {
     if (retrying()) {
@@ -66,7 +67,7 @@ function PageBoundaryFallback(props: {
       await props.onRetry?.();
       props.reset();
     } catch (error) {
-      setRetryError(userFacingErrorMessage(error, `${props.name}重试失败`));
+      setRetryError(userFacingErrorMessage(error, uiText.misc.pageRetryFailed(props.name)));
     } finally {
       setRetrying(false);
     }
@@ -86,12 +87,12 @@ function PageBoundaryFallback(props: {
         <Show when={props.onRetry}>
           <button class="secondary icon-text-button" type="button" disabled={retrying()} onClick={() => void retry()}>
             <RotateCcw aria-hidden="true" size={16} />
-            <span>{retrying() ? "正在重试" : "重试"}</span>
+            <span>{retrying() ? uiText.misc.retrying : uiText.misc.retry}</span>
           </button>
         </Show>
       </div>
       <Show when={props.lastGood}>
-        <div class="page-boundary-last-good" aria-label={`${props.name}上次可用内容`}>
+        <div class="page-boundary-last-good" aria-label={uiText.misc.lastGoodContent(props.name)}>
           {props.lastGood}
         </div>
       </Show>

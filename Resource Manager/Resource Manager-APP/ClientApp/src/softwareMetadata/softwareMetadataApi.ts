@@ -6,6 +6,7 @@ import {
   softwareMetadataLookupDecoder,
   type SoftwareMetadataLookupResult
 } from "./softwareMetadataDecoder.ts";
+import { uiText } from "../text.ts";
 
 type SoftwareMetadataRequestClient = Pick<RequestClient, "request">;
 
@@ -24,7 +25,7 @@ export async function getSoftwareMetadata(
   const result = await requestClient.request({
     key: `software-metadata.${normalized.softwareIdentityId}.${normalized.language}`,
     url: `/api/software/metadata/${encodeURIComponent(normalized.softwareIdentityId)}?${params.toString()}`,
-    fallbackError: "读取软件说明失败，请稍后重试",
+    fallbackError: uiText.misc.softwareMetadataReadFailed,
     decoder: softwareMetadataLookupDecoder,
     signal,
     request: { method: "GET" }

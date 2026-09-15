@@ -10,6 +10,7 @@ import type {
   ResourceScaleMode,
   ResourceTableViewMode
 } from "../../types.ts";
+import { uiText } from "../../text.ts";
 
 type ResourceMonitorRequestClient = Pick<RequestClient, "request">;
 
@@ -48,7 +49,7 @@ export function getResourceBreakdownState(
   return requestClient.request({
     key: "resource-breakdown.snapshot",
     url: buildResourceBreakdownUrl(query),
-    fallbackError: "资源占用读取失败，请稍后重试",
+    fallbackError: uiText.misc.resourceBreakdownReadFailed,
     decoder: resourceBreakdownDecoder,
     signal,
     request: { method: "GET" }
@@ -63,7 +64,7 @@ export function getResourceMonitorState(
   return requestClient.request({
     key: "resource-monitor.snapshot",
     url: buildResourceMonitorUrl(query),
-    fallbackError: "资源监控读取失败，请稍后重试",
+    fallbackError: uiText.misc.resourceMonitorReadFailed,
     decoder: resourceMonitorDecoder,
     signal,
     request: { method: "GET" }

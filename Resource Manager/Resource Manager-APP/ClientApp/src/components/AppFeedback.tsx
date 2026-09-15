@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { X } from "lucide-solid";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import type { UserDetailSection } from "../presentation/userDetails";
 import {
   ConfirmDialog,
@@ -88,7 +88,7 @@ export function ToastHost(props: {
       </div>
       <UserDetailsDialog
         open={selectedDetails() !== null}
-        title={`${selectedDetails()?.title ?? "操作"}详情`}
+        title={uiText.misc.operationDetailTitle(selectedDetails()?.title ?? uiText.misc.fallbackOperation)}
         summary={selectedDetails()?.message}
         sections={toastDetailSections(selectedDetails())}
         onClose={() => setSelectedDetails(null)}
@@ -107,9 +107,9 @@ function toastDetailSections(item: ToastItem | null): UserDetailSection[] {
   }
 
   return [{
-    title: "相关信息",
+    title: uiText.misc.relatedInfo,
     items: values.map((value, index) => ({
-      label: values.length === 1 ? "内容" : `信息 ${index + 1}`,
+      label: values.length === 1 ? uiText.misc.content : uiText.misc.infoIndex(index + 1),
       value
     }))
   }];

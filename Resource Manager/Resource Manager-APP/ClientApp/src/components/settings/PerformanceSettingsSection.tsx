@@ -6,7 +6,7 @@ import {
   logicRefreshIntervalKeys,
   normalizeLogicRefreshIntervalSetting
 } from "../../stores/settingsStore";
-import type { SettingsTextBundle } from "../../text";
+import type { SettingsTextBundle } from "../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppFrontendHiddenRefreshMode,
@@ -18,6 +18,7 @@ import type {
   AppPresetNumericSettingMode
 } from "../../types";
 import { NumberField, SegmentedControl } from "./SettingsControls";
+import { uiText } from "../../text.ts";
 
 type GpuSchedulingMode = "basic" | "precise";
 
@@ -148,7 +149,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           options={gpuSchedulingModeOptions()}
           ariaLabel={props.text.performance.preciseGpuPlacementTitle}
           disabled={!props.preciseGpuPlacementAvailable}
-          disabledTitle="当前启动模式未启用精确 GPU 放置"
+          disabledTitle={uiText.misc.precisePlacementDisabled}
           onChange={(mode) => props.onPreciseGpuPlacementChange(mode === "precise")}
         />
       </div>

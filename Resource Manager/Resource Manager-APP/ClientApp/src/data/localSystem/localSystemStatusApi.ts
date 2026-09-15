@@ -3,6 +3,7 @@ import {
   localSystemStatusDecoder,
   type LocalSystemStatus
 } from "./localSystemStatusDecoder.ts";
+import { uiText } from "../../text.ts";
 
 type LocalSystemRequestClient = Pick<RequestClient, "request">;
 
@@ -13,7 +14,7 @@ export function getLocalSystemStatus(
   return requestClient.request({
     key: "local-system.status",
     url: "/api/local-system/status",
-    fallbackError: "读取数据失败，请稍后重试",
+    fallbackError: uiText.misc.apiReadFailed,
     decoder: localSystemStatusDecoder,
     signal,
     request: { method: "GET" }

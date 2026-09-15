@@ -4,6 +4,7 @@ import { createAiGatewayCredential, getAiGatewayCredentials, revokeAiGatewayCred
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../types";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
+import { uiText } from "../text.ts";
 
 interface AiGatewayKeyManagerLabels {
   aiGatewayTitle: string;
@@ -52,7 +53,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
       setDisplayName("");
       await refetch();
     } catch (reason) {
-      setError(userFacingErrorMessage(reason, "生成访问密钥失败"));
+      setError(userFacingErrorMessage(reason, uiText.misc.generateKeyFailed));
     } finally {
       setBusy(false);
     }
@@ -72,7 +73,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
       }
       await refetch();
     } catch (reason) {
-      setError(userFacingErrorMessage(reason, "撤销访问密钥失败"));
+      setError(userFacingErrorMessage(reason, uiText.misc.revokeKeyFailed));
     } finally {
       setBusy(false);
     }
@@ -84,7 +85,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
       setCopiedField(field);
       window.setTimeout(() => setCopiedField((current) => current === field ? null : current), 1200);
     } catch (reason) {
-      setError(userFacingErrorMessage(reason, "复制失败，请手动选择内容"));
+      setError(userFacingErrorMessage(reason, uiText.misc.copyFailed));
     }
   };
 

@@ -17,7 +17,7 @@ import {
   type SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot.ts";
 import type { ToastInput } from "../components/AppFeedback";
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
   failedObservation,
@@ -82,7 +82,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     createSignal<ObservationState>(options.enabled()
       ? loadingObservation()
       : profileDisabledObservation(
-        "当前启动配置未启用优化调度。"));
+        uiText.stores.optimizationSchedulingDisabled));
   const optimizationMode = createMemo<AppOptimizationMode>(() =>
     hostManagerStatus()?.mode ?? "normal");
   const [loading, setLoading] = createSignal(false);
@@ -128,7 +128,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
       setHostManagerObservation(readyObservation());
       await refreshReports(false);
     } catch (error) {
-      showErrorToast(error, "智能优化模式切换失败");
+      showErrorToast(error, uiText.stores.smartModeSwitchFailed);
     } finally {
       setActionId(null);
     }
@@ -198,7 +198,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
       }
     } catch (error) {
       if (userInitiated) {
-        showErrorToast(error, "性能优化报告刷新失败");
+        showErrorToast(error, uiText.stores.optimizationReportRefreshFailed);
       }
     } finally {
       setLoading(false);
@@ -210,7 +210,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
       clearPendingOptimizationMode();
       setHostManagerStatus(null);
       setHostManagerObservation(profileDisabledObservation(
-        "当前启动配置未启用优化调度。"));
+        uiText.stores.optimizationSchedulingDisabled));
       return;
     }
 
@@ -225,7 +225,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     } catch (error) {
       setHostManagerObservation((previous) => failedObservation(
         previous,
-        userFacingErrorMessage(error, "优化调度状态刷新失败")));
+        userFacingErrorMessage(error, uiText.stores.optimizationScheduleRefreshFailed)));
     }
   }
 
@@ -252,7 +252,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     try {
       await action();
     } catch (error) {
-      showErrorToast(error, "操作失败");
+      showErrorToast(error, uiText.stores.actionFailed);
     } finally {
       setActionId(null);
     }
@@ -296,7 +296,7 @@ function reportSourceObservation(
   snapshot: SourceSnapshot<OptimizationReportOverview>
 ): ObservationState {
   if (!enabled) {
-    return profileDisabledObservation("当前启动配置未启用优化报告。");
+    return profileDisabledObservation(uiText.stores.optimizationReportDisabled);
   }
   if ((snapshot.status === "ready" || snapshot.status === "refreshing")
     && snapshot.data) {
@@ -305,14 +305,14 @@ function reportSourceObservation(
   if (snapshot.status === "stale" && snapshot.data) {
     return failedObservation(
       readyObservation(snapshot.capturedAt ?? snapshot.data.capturedAt),
-      userFacingErrorMessage(snapshot.error, "性能优化报告刷新失败"));
+      userFacingErrorMessage(snapshot.error, uiText.stores.optimizationReportRefreshFailed));
   }
   if (snapshot.status === "error"
     || snapshot.status === "unavailable"
     || snapshot.status === "disposed") {
     return failedObservation(
       loadingObservation(),
-      userFacingErrorMessage(snapshot.error, "性能优化报告刷新失败"));
+      userFacingErrorMessage(snapshot.error, uiText.stores.optimizationReportRefreshFailed));
   }
   return loadingObservation();
 }

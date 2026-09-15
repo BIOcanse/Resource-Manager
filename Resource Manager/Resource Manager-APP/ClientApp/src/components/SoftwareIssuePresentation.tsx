@@ -1,3 +1,4 @@
+import { uiText } from "../text.ts";
 import { For, Show } from "solid-js";
 import { AlertTriangle } from "lucide-solid";
 import type { SoftwareIssueTag } from "../types";
@@ -7,7 +8,7 @@ export function SoftwareIssueTagStrip(props: {
 }) {
   return (
     <Show when={(props.issues?.length ?? 0) > 0}>
-      <div class="software-issue-tag-strip" aria-label="软件问题">
+      <div class="software-issue-tag-strip" aria-label={uiText.management.issueStrip}>
         <For each={props.issues ?? []}>
           {(issue) => (
             <span
@@ -39,12 +40,12 @@ export function SoftwareIssueDetailSection(props: {
                     {issue.label}
                   </span>
                   <span class="software-issue-source">
-                    {issue.dynamic ? "当前报告" : "已知问题目录"}
+                    {issue.dynamic ? uiText.management.issueCurrentReport : uiText.management.issueKnownCatalog}
                   </span>
                 </div>
                 <p>{issue.message}</p>
                 <Show when={(issue.references?.length ?? 0) > 0}>
-                  <div class="software-issue-references" aria-label={`${issue.label}参考资料`}>
+                  <div class="software-issue-references" aria-label={uiText.management.issueReferences(issue.label)}>
                     <For each={issue.references ?? []}>
                       {(reference) => (
                         <a href={reference.url} target="_blank" rel="noreferrer">

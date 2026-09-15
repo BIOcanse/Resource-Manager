@@ -26,6 +26,7 @@ import {
   ObservationStateNotice
 } from "./ObservationStateNotice";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
+import { uiText } from "../text.ts";
 
 type ReportFilter = "untrusted" | "all" | "trusted";
 
@@ -77,18 +78,18 @@ export function OptimizationPage(props: OptimizationPageProps) {
   const hostManagerAvailable = () => props.hostManagerObservation.status === "ready";
   const hostManagerStatusText = () => {
     if (props.pendingOptimizationMode) {
-      return `${Math.max(1, props.optimizationModeApplyRemainingSeconds)}秒后应用：${optimizationModeLabel(props.pendingOptimizationMode)}`;
+      return uiText.optimization.modeApplyCountdown(Math.max(1, props.optimizationModeApplyRemainingSeconds), optimizationModeLabel(props.pendingOptimizationMode));
     }
 
     const state = props.hostManagerStatus;
     if (!state) {
-      return "调度状态未知";
+      return uiText.optimization.scheduleStateUnknown;
     }
 
     return [
-      state.schedulerRunning ? "智能调度运行中" : "智能调度未运行",
-      state.pendingChangeCount > 0 ? `${state.pendingChangeCount} 项调整待确认` : "",
-      state.appliedTargetCount > 0 ? `${state.appliedTargetCount} 个对象已优化` : ""
+      state.schedulerRunning ? uiText.optimization.smartSchedulerRunning : uiText.optimization.smartSchedulerStopped,
+      state.pendingChangeCount > 0 ? uiText.optimization.pendingChanges(state.pendingChangeCount) : "",
+      state.appliedTargetCount > 0 ? uiText.optimization.appliedTargets(state.appliedTargetCount) : ""
     ].filter(Boolean).join(" · ");
   };
 
@@ -96,23 +97,23 @@ export function OptimizationPage(props: OptimizationPageProps) {
     <section id="optimizationPage" class="page active-page">
       <ObservationStateNotice
         state={props.hostManagerObservation}
-        label="优化调度状态"
+        label={uiText.optimization.scheduleStateLabel}
       />
       <nav
         {...frontendVisibilitySurface(
           "visible.optimization.mode-status.surface",
           [modeDemandId])}
         class="optimization-modebar"
-        aria-label="性能优化模式"
+        aria-label={uiText.optimization.modeBar}
       >
         <SegmentedControl
           value={selectedOptimizationMode()}
           options={[
-            { id: "normal", label: "普通模式", classList: { pending: props.pendingOptimizationMode === "normal" } },
-            { id: "limited", label: "仅内存管理", classList: { pending: props.pendingOptimizationMode === "limited" } },
-            { id: "smart", label: "智能优化", classList: { pending: props.pendingOptimizationMode === "smart" } }
+            { id: "normal", label: uiText.optimization.modeNormal, classList: { pending: props.pendingOptimizationMode === "normal" } },
+            { id: "limited", label: uiText.optimization.modeLimited, classList: { pending: props.pendingOptimizationMode === "limited" } },
+            { id: "smart", label: uiText.optimization.modeSmart, classList: { pending: props.pendingOptimizationMode === "smart" } }
           ] satisfies Array<{ id: AppOptimizationMode; label: string; classList: { pending: boolean } }>}
-          ariaLabel="性能优化模式"
+          ariaLabel={uiText.optimization.modeBar}
           class="optimization-mode-group"
           itemClass="optimization-mode"
           disabled={!hostManagerAvailable() || props.actionId === "smart-mode"}
@@ -122,14 +123,14 @@ export function OptimizationPage(props: OptimizationPageProps) {
           <label class="toolbar-search">
             <input
               type="search"
-              placeholder="搜索"
-              aria-label="性能优化搜索"
+              placeholder={uiText.optimization.search}
+              aria-label={uiText.optimization.searchLabel}
               value={searchQuery()}
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
             />
           </label>
           <span class="optimization-mode-status">
-            {props.actionId === "smart-mode" ? "切换中" : hostManagerStatusText()}
+            {props.actionId === "smart-mode" ? uiText.optimization.modeSwitching : hostManagerStatusText()}
           </span>
         </div>
       </nav>
@@ -148,27 +149,27 @@ export function OptimizationPage(props: OptimizationPageProps) {
             <SegmentedControl
               value={reportFilter()}
               options={[
-                { id: "untrusted", label: `未信任 ${reportsAvailable() ? untrustedReports().length : "--"}` },
-                { id: "all", label: `全部 ${reportsAvailable() ? allReports().length : "--"}` },
-                { id: "trusted", label: `已信任 ${reportsAvailable() ? trustedReports().length : "--"}` }
+                { id: "untrusted", label: uiText.optimization.filterUntrusted(String(reportsAvailable() ? untrustedReports().length : "--")) },
+                { id: "all", label: uiText.optimization.filterAll(String(reportsAvailable() ? allReports().length : "--")) },
+                { id: "trusted", label: uiText.optimization.filterTrusted(String(reportsAvailable() ? trustedReports().length : "--")) }
               ] satisfies Array<{ id: ReportFilter; label: string }>}
-              ariaLabel="报告筛选"
+              ariaLabel={uiText.optimization.filterLabel}
               class="optimization-report-filter"
               onChange={setReportFilter}
             />
             <button class="secondary" type="button" disabled={props.loading} onClick={props.onRefresh}>
-              {props.loading ? "刷新中" : "刷新"}
+              {props.loading ? uiText.optimization.refreshing : uiText.optimization.refresh}
             </button>
           </div>
         </div>
 
         <ObservationStateBoundary
           state={props.reportsObservation}
-          label="优化报告"
+          label={uiText.optimization.reportPanel}
         >
           <Show
             when={visibleReports().length > 0}
-            fallback={<div class="optimization-empty">{reports().length > 0 ? "没有匹配结果。" : "暂时没有需要处理的报告。"}</div>}
+            fallback={<div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div>}
           >
             <div class="optimization-report-list">
               <For each={visibleReports()}>
@@ -240,7 +241,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
       </section>
       <UserDetailsDialog
         open={Boolean(detailReport())}
-        title={detailReport() ? presentOptimizationReport(detailReport()!).title : "优化详情"}
+        title={detailReport() ? presentOptimizationReport(detailReport()!).title : uiText.optimization.detailTitle}
         summary={detailReport() ? presentOptimizationReport(detailReport()!).summary : undefined}
         sections={detailReport() ? presentOptimizationReport(detailReport()!).details : []}
         onClose={() => setDetailReport(null)}
@@ -284,10 +285,10 @@ function advisoryTrustScope(reportType: string) {
 
 function optimizationModeLabel(mode: AppOptimizationMode) {
   if (mode === "limited") {
-    return "仅内存管理";
+    return uiText.optimization.modeLimited;
   }
 
-  return mode === "smart" ? "智能优化" : "普通模式";
+  return mode === "smart" ? uiText.optimization.modeSmart : uiText.optimization.modeNormal;
 }
 
 function filterOptimizationReports(

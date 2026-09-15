@@ -5,6 +5,7 @@ import {
   type DeviceTopologyTreeConnectionState,
   type DeviceTopologyTreeNode
 } from "./deviceTopologyTree.ts";
+import { uiText } from "../text.ts";
 
 export type ExternalInterfaceNodeRole =
   | "host-interface"
@@ -178,8 +179,8 @@ function createUsbConnectorNode(
     parentId,
     title: `${externalInterfaceLabel(port.connectorKind)}${portSuffix}`,
     subtitle: joinSummary(
-      role === "downstream-interface" && port.usb?.portNumber ? `下游端口 ${port.usb.portNumber}` : undefined,
-      state === "connected" ? "已连接" : "未连接",
+      role === "downstream-interface" && port.usb?.portNumber ? uiText.deviceTree.downstreamPort(port.usb.portNumber) : undefined,
+      state === "connected" ? uiText.deviceTopology.connectionState.connected : uiText.deviceTopology.connectionState.disconnected,
       meaningfulSpeed(port.speed)
     ),
     badge: roleLabel(role),
@@ -191,7 +192,7 @@ function createUsbConnectorNode(
 
 function createAttachedDeviceNode(port: DeviceTopologyPort, parentId: string): PendingNode {
   const role: ExternalInterfaceNodeRole = port.usb?.deviceIsHub ? "external-hub" : "attached-device";
-  const title = firstText(port.usb?.productName, port.displayName) ?? "USB 设备";
+  const title = firstText(port.usb?.productName, port.displayName) ?? uiText.deviceTree.usbDevice;
   return {
     id: deviceNodeId(port.id),
     port,
@@ -199,7 +200,7 @@ function createAttachedDeviceNode(port: DeviceTopologyPort, parentId: string): P
     parentId,
     title,
     subtitle: joinSummary(port.manufacturer, port.usb?.deviceClass, meaningfulSpeed(port.speed)),
-    badge: port.usb?.deviceIsHub && /dock|docking|扩展坞/i.test(title) ? "扩展坞" : roleLabel(role),
+    badge: port.usb?.deviceIsHub && /dock|docking|扩展坞/i.test(title) ? uiText.deviceTree.dockBadge : roleLabel(role),
     connectorKind: port.usb?.deviceIsHub ? "cable" : port.connectorKind,
     connectionState: "connected",
     children: []
@@ -233,9 +234,9 @@ function createAttachedDisplayNode(port: DeviceTopologyPort, parentId: string): 
     port,
     role: "attached-device",
     parentId,
-    title: firstText(display.monitorName) ?? "外接显示器",
+    title: firstText(display.monitorName) ?? uiText.deviceTree.externalMonitor,
     subtitle: joinSummary(display.resolution, display.refreshRate),
-    badge: "显示器",
+    badge: uiText.deviceTree.monitorBadge,
     connectorKind: port.connectorKind,
     connectionState: "connected",
     children: []
@@ -389,28 +390,28 @@ function normalizeHubPath(value?: string | null) {
 
 function externalInterfaceLabel(connectorKind: string) {
   switch (connectorKind.toLocaleLowerCase()) {
-    case "usb-a": return "USB-A 接口";
-    case "usb-c": return "USB-C 接口";
-    case "thunderbolt": return "Thunderbolt 接口";
-    case "hdmi": return "HDMI 接口";
-    case "displayport": return "DisplayPort 接口";
-    case "mini-displayport": return "Mini DisplayPort 接口";
-    case "dvi": return "DVI 接口";
-    case "vga": return "VGA 接口";
-    case "rj45": return "RJ45 接口";
-    case "audio": return "音频接口";
-    case "power": return "电源接口";
-    case "sd-card": return "SD 卡接口";
-    default: return "USB 接口";
+    case "usb-a": return uiText.deviceInterface.connector.usbA;
+    case "usb-c": return uiText.deviceInterface.connector.usbC;
+    case "thunderbolt": return uiText.deviceInterface.connector.thunderbolt;
+    case "hdmi": return uiText.deviceInterface.connector.hdmi;
+    case "displayport": return uiText.deviceInterface.connector.displayPort;
+    case "mini-displayport": return uiText.deviceInterface.connector.miniDisplayPort;
+    case "dvi": return uiText.deviceInterface.connector.dvi;
+    case "vga": return uiText.deviceInterface.connector.vga;
+    case "rj45": return uiText.deviceInterface.connector.rj45;
+    case "audio": return uiText.deviceInterface.connector.audio;
+    case "power": return uiText.deviceInterface.connector.power;
+    case "sd-card": return uiText.deviceInterface.connector.sdCard;
+    default: return uiText.deviceTree.usbPortGeneric;
   }
 }
 
 function roleLabel(role: ExternalInterfaceNodeRole) {
   switch (role) {
-    case "host-interface": return "本机接口";
+    case "host-interface": return uiText.deviceTree.hostInterface;
     case "external-hub": return "USB Hub";
-    case "downstream-interface": return "扩展接口";
-    case "attached-device": return "连接设备";
+    case "downstream-interface": return uiText.deviceTree.downstreamInterface;
+    case "attached-device": return uiText.deviceTree.attachedDevice;
   }
 }
 
@@ -428,7 +429,7 @@ function resolveNonUsbConnectionState(port: DeviceTopologyPort): ExternalInterfa
 
 function resolveNonUsbStateLabel(port: DeviceTopologyPort) {
   const state = resolveNonUsbConnectionState(port);
-  return state === "connected" ? "已连接" : state === "disconnected" ? "未连接" : "状态未知";
+  return state === "connected" ? uiText.deviceTopology.connectionState.connected : state === "disconnected" ? uiText.deviceTopology.connectionState.disconnected : uiText.deviceTopology.connectionState.unknown;
 }
 
 function meaningfulSpeed(value?: string | null) {

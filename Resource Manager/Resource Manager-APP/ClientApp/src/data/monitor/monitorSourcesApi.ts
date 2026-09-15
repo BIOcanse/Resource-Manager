@@ -9,6 +9,7 @@ import {
   metricCatalogDecoder,
   metricSnapshotDecoder
 } from "./monitorSourceDecoders.ts";
+import { uiText } from "../../text.ts";
 
 type MonitorRequestClient = Pick<RequestClient, "request">;
 
@@ -35,7 +36,7 @@ export function getMetricCatalogSource(
   return requestClient.request({
     key: "monitor.metric-catalog",
     url: "/api/metrics/catalog",
-    fallbackError: "指标目录刷新失败",
+    fallbackError: uiText.misc.metricCatalogRefreshFailed,
     decoder: metricCatalogDecoder,
     signal,
     request: { method: "GET" }
@@ -49,7 +50,7 @@ export function getDashboardSettingsSource(
   return requestClient.request({
     key: "monitor.dashboard-settings",
     url: "/api/settings/dashboard",
-    fallbackError: "仪表盘配置读取失败",
+    fallbackError: uiText.misc.dashboardSettingsReadFailed,
     decoder: dashboardSettingsDecoder,
     signal,
     request: { method: "GET" }
@@ -68,7 +69,7 @@ export function getMetricSnapshotSource(
   return requestClient.request({
     key: "monitor.metric-snapshot",
     url: `/api/metrics/snapshot${suffix}`,
-    fallbackError: "实时指标刷新失败",
+    fallbackError: uiText.misc.liveMetricRefreshFailed,
     decoder: metricSnapshotDecoder,
     signal,
     request: { method: "GET" }

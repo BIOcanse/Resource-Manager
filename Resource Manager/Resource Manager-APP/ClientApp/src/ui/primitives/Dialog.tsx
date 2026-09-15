@@ -1,6 +1,7 @@
 import { Show, type JSX } from "solid-js";
 import { X } from "lucide-solid";
 import { useModalFocus } from "../../interactions/modalFocus.ts";
+import { uiText } from "../../text.ts";
 
 export interface DialogRootProps {
   readonly open: boolean;
@@ -75,8 +76,8 @@ export function DialogHeader(props: {
         ref={props.closeButtonRef}
         class="icon-button secondary"
         type="button"
-        aria-label={props.closeLabel ?? "关闭"}
-        title={props.closeLabel ?? "关闭"}
+        aria-label={props.closeLabel ?? uiText.misc.close}
+        title={props.closeLabel ?? uiText.misc.close}
         onClick={props.onDismiss}
       >
         <X aria-hidden="true" size={18} strokeWidth={2} />

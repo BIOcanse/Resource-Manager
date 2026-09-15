@@ -184,9 +184,9 @@ internal static class HostManagerOperationRequestCodec
         using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
         var id = ReadString(reader);
         var confirm = reader.ReadBoolean();
-        var versionChoice = ReadString(reader);
+        var versionChoice = reader.ReadBoolean() ? ReadString(reader) : null;
         RequireEnd(stream);
-        return (id, confirm, string.IsNullOrWhiteSpace(versionChoice) ? null : versionChoice);
+        return (id, confirm, versionChoice);
     }
 
     internal static (string Id, bool Confirm) DecodeBooleanRequest(
@@ -291,7 +291,13 @@ internal static class HostManagerOperationRequestCodec
             {
                 WriteString(writer, id);
                 writer.Write(value);
-                WriteString(writer, versionChoice ?? string.Empty);
+                // 版本是可选字段：请求里要么没有这一项（已验证版本），要么是一段非空文本。
+                // 载荷里的字符串一律不允许为空，所以用一个存在位来表达「没有选择」。
+                writer.Write(versionChoice is not null);
+                if (versionChoice is not null)
+                {
+                    WriteString(writer, versionChoice);
+                }
             }));
 
     private static HostManagerOperationSubmitCommand CreateBooleanRequest(

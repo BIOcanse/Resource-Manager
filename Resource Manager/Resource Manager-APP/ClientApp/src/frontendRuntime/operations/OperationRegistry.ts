@@ -6,6 +6,7 @@ import {
 import type { RequestClient } from "../request/RequestClient.ts";
 import type { CurrentValueSource } from "../push/PushValueSourceFamily.ts";
 import { isTerminalOperation } from "./operationMerge.ts";
+import { uiText } from "../../text.ts";
 
 export type OperationRegistryStatus =
   | "loading"
@@ -125,7 +126,7 @@ export class OperationRegistry {
   async submit(descriptor: OperationCommandDescriptor): Promise<OperationSnapshot> {
     this.throwIfDisposed();
     if (!this.snapshotValue.actionsEnabled) {
-      throw new Error("后台操作状态尚未收到当前值。");
+      throw new Error(uiText.operationRegistry.noCurrentValue);
     }
     const outcome = await this.requestClient.execute({
       key: descriptor.key,
@@ -148,7 +149,7 @@ export class OperationRegistry {
       key: `host-manager.operation.cancel:${operationId}`,
       url: `/api/operations/${encodeURIComponent(operationId)}/cancel`,
       body: {},
-      fallbackError: "取消操作失败",
+      fallbackError: uiText.operationRegistry.cancelFailed,
       signal
     });
   }
@@ -192,7 +193,7 @@ export class OperationRegistry {
         if (snapshot.status === "disposed") {
           finish(() => reject(new Error("OperationRegistry disposed.")));
         } else if (seen && snapshot.status === "ready") {
-          finish(() => reject(new Error(`后台操作已经从当前值中移除：${operationId}`)));
+          finish(() => reject(new Error(uiText.operationRegistry.removedFromCurrentValue(operationId))));
         }
       });
       signal?.addEventListener("abort", handleAbort, { once: true });
@@ -336,7 +337,7 @@ function normalizeOperationId(value: string): string {
 function abortReason(signal: AbortSignal): Error {
   return signal.reason instanceof Error
     ? signal.reason
-    : new Error("操作已取消");
+    : new Error(uiText.session.operationCanceled);
 }
 
 function invalidationTargets(

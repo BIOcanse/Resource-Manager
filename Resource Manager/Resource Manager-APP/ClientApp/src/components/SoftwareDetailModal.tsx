@@ -50,6 +50,7 @@ import type { UserDetailSection } from "../presentation/userDetails";
 import { isHttpUrl, pathLooksUsable, textOrEmpty, uniqueTextValues } from "../utils";
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SoftwareIssueDetailSection } from "./SoftwareIssuePresentation";
+import { uiText } from "../text.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
 type DetailTabId = "overview" | "policy" | "processes" | "migration";
@@ -76,67 +77,100 @@ interface SoftwareDetailModalProps {
   onSaveGpuPlacementProcessPolicy: (policy: GpuPlacementProcessPolicy) => void;
 }
 
-const detailTabLabels: Record<DetailTabId, string> = {
-  overview: "概览",
-  policy: "策略",
-  processes: "进程",
-  migration: "迁移"
-};
+// 文案按当前语言求值，不能在模块顶层固化。
+function detailTabLabels(): Record<DetailTabId, string> {
+  return {
+    overview: uiText.softwareDetail.tab.overview,
+    policy: uiText.softwareDetail.tab.policy,
+    processes: uiText.softwareDetail.tab.processes,
+    migration: uiText.softwareDetail.tab.migration
+  };
+}
 
-const policyModeOptions = [
-  ["Inherit", "使用默认设置"],
-  ["Disabled", "关闭"],
-  ["Preview", "仅提示"],
-  ["Auto", "自动"],
-  ["Manual", "手动"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function policyModeOptions() {
+  return [
+    ["Inherit", uiText.softwareDetail.option.useDefault],
+    ["Disabled", uiText.softwareDetail.option.disabled],
+    ["Preview", uiText.softwareDetail.option.previewOnly],
+    ["Auto", uiText.softwareDetail.option.auto],
+    ["Manual", uiText.softwareDetail.option.manual]
+  ] as const;
+}
 
-const riskOptions = [
-  ["Low", "仅低风险调整"],
-  ["Medium", "允许中等风险调整"],
-  ["High", "允许高风险调整"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function riskOptions() {
+  return [
+    ["Low", uiText.softwareDetail.option.lowRiskOnly],
+    ["Medium", uiText.softwareDetail.option.allowMediumRisk],
+    ["High", uiText.softwareDetail.option.allowHighRisk]
+  ] as const;
+}
 
-const schedulingModeOptions = [
-  ["Precise", "精确调度"],
-  ["Ordinary", "系统兼容调度"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function schedulingModeOptions() {
+  return [
+    ["Precise", uiText.softwareDetail.option.preciseScheduling],
+    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
+  ] as const;
+}
 
-const ordinaryOnlySchedulingModeOptions: readonly GpuPolicySelectOption[] = [
-  ["Ordinary", "系统兼容调度"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function ordinaryOnlySchedulingModeOptions(): readonly GpuPolicySelectOption[] {
+  return [
+    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
+  ] as const;
+}
 
-const runtimeSchedulingModeOptions = [
-  ["Precise", "精确调度"],
-  ["Ordinary", "系统兼容调度"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function runtimeSchedulingModeOptions() {
+  return [
+    ["Precise", uiText.softwareDetail.option.preciseScheduling],
+    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
+  ] as const;
+}
 
-const ordinaryOnlyRuntimeSchedulingModeOptions: readonly GpuPolicySelectOption[] = [
-  ["Ordinary", "系统兼容调度"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function ordinaryOnlyRuntimeSchedulingModeOptions(): readonly GpuPolicySelectOption[] {
+  return [
+    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
+  ] as const;
+}
 
-const unavailableSchedulingModeOptions: readonly GpuPolicySelectOption[] = [
-  ["Precise", "精确调度（当前不可用）", true],
-  ["Ordinary", "系统兼容调度"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function unavailableSchedulingModeOptions(): readonly GpuPolicySelectOption[] {
+  return [
+    ["Precise", uiText.softwareDetail.option.preciseSchedulingUnavailable, true],
+    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
+  ] as const;
+}
 
-const explicitSelectionOptions = [
-  ["DefaultSkip", "尊重软件选择"],
-  ["PreviewOnly", "仅提示"],
-  ["AllowLow", "允许低风险调整"],
-  ["AllowMedium", "允许中等风险调整"],
-  ["AllowHigh", "允许高风险调整"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function explicitSelectionOptions() {
+  return [
+    ["DefaultSkip", uiText.softwareDetail.option.respectSoftwareChoice],
+    ["PreviewOnly", uiText.softwareDetail.option.previewOnly],
+    ["AllowLow", uiText.softwareDetail.option.allowLowRisk],
+    ["AllowMedium", uiText.softwareDetail.option.allowMediumRisk],
+    ["AllowHigh", uiText.softwareDetail.option.allowHighRisk]
+  ] as const;
+}
 
-const runtimeSwitchMethodOptions = [
-  ["FutureFrameTakeover", "后续画面切换"],
-  ["WindowRerender", "重新加载窗口画面"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function runtimeSwitchMethodOptions() {
+  return [
+    ["FutureFrameTakeover", uiText.softwareDetail.option.futureFrameTakeover],
+    ["WindowRerender", uiText.softwareDetail.option.windowRerender]
+  ] as const;
+}
 
-const cpuMaximumOccupancyOptions = [
-  ["SingleCcd", "单 CCD"],
-  ["AllCores", "全核心"]
-] as const;
+// 文案按当前语言求值，不能在模块顶层固化。
+function cpuMaximumOccupancyOptions() {
+  return [
+    ["SingleCcd", uiText.softwareDetail.option.singleCcd],
+    ["AllCores", uiText.softwareDetail.option.allCores]
+  ] as const;
+}
 
 
 function normalizeSoftwarePolicyForProvider(
@@ -281,7 +315,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
         onDismiss={props.onClose}
       >
         <DialogHeader
-          title={detail()?.name ?? "软件详情"}
+          title={detail()?.name ?? uiText.softwareDetail.fallbackTitle}
           titleId="softwareDetailTitle"
           class="detail-modal-header"
           headingClass="detail-modal-heading"
@@ -297,11 +331,11 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
           onChange={(value) => setActiveTab(value as DetailTabId)}
         >
           <Show when={detail()}>
-            <TabsList class="software-detail-tabs" ariaLabel="软件详情分页">
+            <TabsList class="software-detail-tabs" ariaLabel={uiText.softwareDetail.tabsLabel}>
               <For each={tabs()}>
                 {(tab) => (
                   <TabsTrigger value={tab}>
-                    {detailTabLabels[tab]}
+                    {detailTabLabels()[tab]}
                   </TabsTrigger>
                 )}
               </For>
@@ -327,9 +361,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
               <>
                 <TabsPanel value="overview" class="software-detail-tab-panel">
                   <SoftwareIssueDetailSection issues={model().issues} />
-                  <DetailSection title="基础信息" rows={model().baseRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
-                  <DetailSection title="软件信息" rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
-                  <DetailSection title="路径和来源" rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <DetailSection title={uiText.softwareDetail.section.basic} rows={model().baseRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <DetailSection title={uiText.softwareDetail.section.metadata} rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <DetailSection title={uiText.softwareDetail.section.paths} rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.mutablePersistenceEnabled && model().type === "software" && model().requiresRootPathConfirmation}>
                     <section class="software-detail-section portable-root-warning">
                       <div>
@@ -342,7 +376,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                       </button>
                     </section>
                   </Show>
-                  <DetailSection title="操作能力" rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.gpuPlacementEnabled && model().type === "software" && !props.preciseGpuPlacementEnabled}>
                     <section class="software-detail-section">
                       <h3>GPU 调度</h3>
@@ -400,11 +434,11 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
           <Show when={activeTab() === "migration"}>
             <Show when={activeMigrationRecords().length > 0}>
               <button type="button" disabled={props.actionInProgress} onClick={props.onRestoreAll}>
-                {props.actionInProgress ? "处理中" : "一键恢复"}
+                {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.restoreAll}
               </button>
             </Show>
             <button class="secondary" type="button" disabled={props.actionInProgress || !detail()?.dataSearchName} onClick={props.onMigrateData}>
-              {props.actionInProgress ? "处理中" : "一键迁移数据"}
+              {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.migrateData}
             </button>
             <button
               type="button"
@@ -412,7 +446,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
               title={(detail()?.rootMigrationPaths.length ?? 0) === 0 ? detail()?.rootMigrationDisabledReason ?? "" : ""}
               onClick={props.onMigrateRoot}
             >
-              {props.actionInProgress ? "处理中" : "一键迁移整个软件"}
+              {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.migrateWholeSoftware}
             </button>
           </Show>
           <button class="secondary" type="button" onClick={props.onClose}>关闭</button>
@@ -420,7 +454,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
       </DialogRoot>
       <UserDetailsDialog
         open={noticeDetailsOpen()}
-        title="操作详情"
+        title={uiText.softwareDetail.operationDetailTitle}
         summary={props.notice?.message}
         sections={noticeDetailSections(props.notice?.details)}
         onClose={() => setNoticeDetailsOpen(false)}
@@ -439,9 +473,9 @@ function noticeDetailSections(details?: readonly string[] | null): UserDetailSec
   }
 
   return [{
-    title: "相关信息",
+    title: uiText.softwareDetail.section.relatedInfo,
     items: values.map((value, index) => ({
-      label: values.length === 1 ? "内容" : `信息 ${index + 1}`,
+      label: values.length === 1 ? uiText.softwareDetail.contentLabel : uiText.softwareDetail.infoLabel(index + 1),
       value
     }))
   }];
@@ -491,7 +525,7 @@ function GpuPlacementPolicySection(props: {
         props.preciseGpuPlacementEnabled,
         current)));
     } catch (error) {
-      setLocalError(userFacingErrorMessage(error, "保存失败，请稍后重试"));
+      setLocalError(userFacingErrorMessage(error, uiText.softwareDetail.saveFailed));
     } finally {
       setActionInProgress(false);
     }
@@ -511,7 +545,7 @@ function GpuPlacementPolicySection(props: {
         props.softwareKind);
       setDraft(normalizeSoftwarePolicyForProvider(props.preciseGpuPlacementEnabled, defaultPolicy));
     } catch (error) {
-      setLocalError(userFacingErrorMessage(error, "恢复默认设置失败，请稍后重试"));
+      setLocalError(userFacingErrorMessage(error, uiText.softwareDetail.restoreDefaultsFailed));
     } finally {
       setActionInProgress(false);
     }
@@ -541,7 +575,7 @@ function GpuPlacementPolicySection(props: {
             disabled={props.loading || actionInProgress() || !dirty()}
             onClick={() => void saveDraft()}
           >
-            {actionInProgress() ? "处理中" : "保存"}
+            {actionInProgress() ? uiText.softwareDetail.processing : uiText.softwareDetail.save}
           </button>
         </div>
       </div>
@@ -554,31 +588,31 @@ function GpuPlacementPolicySection(props: {
               </Show>
               <div class="software-policy-grid">
                 <PolicyNumberInput
-                  label="软件基础分"
+                  label={uiText.softwareDetail.label.softwareBaseScore}
                   value={current().baseScoreOverride}
-                  placeholder="按软件类型默认"
+                  placeholder={uiText.softwareDetail.label.softwareBaseScorePlaceholder}
                   onChange={(baseScoreOverride) => updateDraft({ baseScoreOverride })}
                 />
                 <PolicySelect
-                  label="GPU 选择策略"
+                  label={uiText.softwareDetail.label.gpuSelectionPolicy}
                   value={current().enabledMode}
-                  options={policyModeOptions}
+                  options={policyModeOptions()}
                   onChange={(value) => updateDraft({ enabledMode: value as GpuPlacementSoftwarePolicy["enabledMode"] })}
                 />
                 <PolicySelect
-                  label="允许调整范围"
+                  label={uiText.softwareDetail.label.allowedAdjustmentRange}
                   value={current().maxRisk}
-                  options={riskOptions}
+                  options={riskOptions()}
                   onChange={(value) => updateDraft({ maxRisk: value as GpuPlacementSoftwarePolicy["maxRisk"] })}
                 />
                 <PolicySelect
-                  label="显卡选择方式"
+                  label={uiText.softwareDetail.label.gpuSelectionMethod}
                   value={props.preciseGpuPlacementEnabled ? current().schedulingMode : "Ordinary"}
                   options={props.preciseGpuPlacementEnabled && preciseCapabilityAvailable()
-                    ? schedulingModeOptions
+                    ? schedulingModeOptions()
                     : current().schedulingMode === "Precise"
-                      ? unavailableSchedulingModeOptions
-                      : ordinaryOnlySchedulingModeOptions}
+                      ? unavailableSchedulingModeOptions()
+                      : ordinaryOnlySchedulingModeOptions()}
                   onChange={(value) => {
                     const schedulingMode = value as GpuPlacementSchedulingMode;
                     updateDraft({
@@ -596,7 +630,7 @@ function GpuPlacementPolicySection(props: {
                   }}
                 />
                 <PolicySelect
-                  label="启动时 GPU"
+                  label={uiText.softwareDetail.label.startupGpu}
                   value={current().startupTargetGpu}
                   options={startupTargetGpuOptionsForSoftwarePolicy(
                     props.preciseGpuPlacementEnabled && startupCapabilityAvailable(),
@@ -606,13 +640,13 @@ function GpuPlacementPolicySection(props: {
                   onChange={(value) => updateDraft({ startupTargetGpu: value })}
                 />
                 <PolicySelect
-                  label="运行时选择方式"
+                  label={uiText.softwareDetail.label.runtimeSelectionMethod}
                   value={props.preciseGpuPlacementEnabled ? current().runtimeSchedulingMode : "Ordinary"}
                   options={props.preciseGpuPlacementEnabled && runtimeCapabilityAvailable()
-                    ? runtimeSchedulingModeOptions
+                    ? runtimeSchedulingModeOptions()
                     : current().runtimeSchedulingMode === "Precise"
-                      ? unavailableSchedulingModeOptions
-                      : ordinaryOnlyRuntimeSchedulingModeOptions}
+                      ? unavailableSchedulingModeOptions()
+                      : ordinaryOnlyRuntimeSchedulingModeOptions()}
                   onChange={(value) => {
                     const runtimeSchedulingMode = value as GpuPlacementRuntimeSchedulingMode;
                     updateDraft({
@@ -624,7 +658,7 @@ function GpuPlacementPolicySection(props: {
                   }}
                 />
                 <PolicySelect
-                  label="运行时目标 GPU"
+                  label={uiText.softwareDetail.label.runtimeTargetGpu}
                   value={props.preciseGpuPlacementEnabled
                     ? current().targetGpu
                     : toOrdinarySystemGpuTarget(current().targetGpu)}
@@ -639,9 +673,9 @@ function GpuPlacementPolicySection(props: {
                   onChange={(value) => updateDraft({ targetGpu: value })}
                 />
                 <PolicySelect
-                  label="软件已选显卡时"
+                  label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
                   value={current().explicitSelectionMode}
-                  options={explicitSelectionOptions}
+                  options={explicitSelectionOptions()}
                   onChange={(value) => updateDraft({ explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
                 />
                 <label class="policy-field policy-toggle-field">
@@ -663,9 +697,9 @@ function GpuPlacementPolicySection(props: {
                   />
                 </label>
                 <PolicySelect
-                  label="显卡切换方式"
+                  label={uiText.softwareDetail.label.gpuSwitchMethod}
                   value={current().preferredRuntimeSwitchMethod}
-                  options={runtimeSwitchMethodOptions}
+                  options={runtimeSwitchMethodOptions()}
                   disabled={!props.preciseGpuPlacementEnabled || !runtimeCapabilityAvailable()}
                   onChange={(value) => updateDraft({ preferredRuntimeSwitchMethod: value as GpuPlacementRuntimeSwitchMethod })}
                 />
@@ -678,9 +712,9 @@ function GpuPlacementPolicySection(props: {
                   />
                 </label>
                 <PolicySelect
-                  label="CPU 使用范围"
+                  label={uiText.softwareDetail.label.cpuUsageRange}
                   value={resolveCpuMaximumOccupancyMode(current())}
-                  options={cpuMaximumOccupancyOptions}
+                  options={cpuMaximumOccupancyOptions()}
                   onChange={(value) => {
                     const cpuMaximumOccupancyMode = value as CpuMaximumOccupancyMode;
                     updateDraft({
@@ -847,7 +881,7 @@ function CpuManualPlacementToggles(props: {
     <div class="cpu-manual-toggles">
       <label
         classList={{ disabled: props.exclusiveDisabled === true }}
-        title={props.exclusiveDisabled === true ? "不能独占全部核心或全部 CCD" : undefined}
+        title={props.exclusiveDisabled === true ? uiText.softwareDetail.cpu.exclusiveDisabled : undefined}
       >
         <input
           type="checkbox"
@@ -1005,7 +1039,7 @@ function GpuPlacementProcessSection(props: {
       <Show when={!props.loading} fallback={<p class="software-detail-empty">正在加载进程历史...</p>}>
         <Show when={processes().length > 0} fallback={<p class="software-detail-empty">暂无历史进程。打开软件运行一段时间后会逐步记录。</p>}>
           <div class="process-policy-layout">
-            <div class="process-policy-list" role="listbox" aria-label="历史进程">
+            <div class="process-policy-list" role="listbox" aria-label={uiText.softwareDetail.process.listLabel}>
               <For each={processes()}>
                 {(process) => (
                   <button
@@ -1016,7 +1050,7 @@ function GpuPlacementProcessSection(props: {
                     onClick={() => props.onSelectProcess(process.processKey)}
                   >
                     <strong>{process.processName}</strong>
-                    <span>{process.executablePath || "无路径"}</span>
+                    <span>{process.executablePath || uiText.softwareDetail.process.noPath}</span>
                     <em>{formatProcessMeta(process)}</em>
                   </button>
                 )}
@@ -1030,14 +1064,14 @@ function GpuPlacementProcessSection(props: {
                   <div class="process-policy-editor">
                     <h4>{process().processName}</h4>
                     <DetailSection
-                      title="进程信息"
+                      title={uiText.softwareDetail.process.detailTitle}
                       rows={[
-                        ["路径", process().executablePath],
-                        ["架构", process().architecture],
-                        ["最近 PID", process().lastProcessId],
-                        ["观察次数", process().observationCount],
-                        ["首次观察", formatDateTime(process().firstObservedAt)],
-                        ["最后观察", formatDateTime(process().lastObservedAt)]
+                        [uiText.softwareDetail.process.path, process().executablePath],
+                        [uiText.softwareDetail.process.architecture, process().architecture],
+                        [uiText.softwareDetail.process.lastPid, process().lastProcessId],
+                        [uiText.softwareDetail.process.observationCount, process().observationCount],
+                        [uiText.softwareDetail.process.firstObserved, formatDateTime(process().firstObservedAt)],
+                        [uiText.softwareDetail.process.lastObserved, formatDateTime(process().lastObservedAt)]
                       ]}
                       onOpenPath={() => undefined}
                     />
@@ -1054,26 +1088,26 @@ function GpuPlacementProcessSection(props: {
                         />
                       </label>
                       <PolicyNumberInput
-                        label="进程基础分"
+                        label={uiText.softwareDetail.label.processBaseScore}
                         value={policy().baseScoreOverride}
-                        placeholder="继承软件基础分"
+                        placeholder={uiText.softwareDetail.label.processBaseScorePlaceholder}
                         disabled={policy().inherit}
                         onChange={(baseScoreOverride) => props.onUpdateProcess(process(), { baseScoreOverride })}
                       />
                       <PolicySelect
-                        label="GPU 选择策略"
+                        label={uiText.softwareDetail.label.gpuSelectionPolicy}
                         value={policy().enabledMode}
-                        options={policyModeOptions}
+                        options={policyModeOptions()}
                         onChange={(value) => props.onUpdateProcess(process(), { enabledMode: value as GpuPlacementProcessPolicy["enabledMode"] })}
                       />
                       <PolicySelect
-                        label="允许调整范围"
+                        label={uiText.softwareDetail.label.allowedAdjustmentRange}
                         value={policy().maxRisk}
-                        options={riskOptions}
+                        options={riskOptions()}
                         onChange={(value) => props.onUpdateProcess(process(), { maxRisk: value as GpuPlacementProcessPolicy["maxRisk"] })}
                       />
                       <PolicySelect
-                        label="运行时目标 GPU"
+                        label={uiText.softwareDetail.label.runtimeTargetGpu}
                         value={props.preciseGpuPlacementEnabled
                           ? policy().targetGpu
                           : toOrdinarySystemGpuTarget(policy().targetGpu)}
@@ -1088,9 +1122,9 @@ function GpuPlacementProcessSection(props: {
                         onChange={(value) => props.onUpdateProcess(process(), { targetGpu: value })}
                       />
                       <PolicySelect
-                        label="软件已选显卡时"
+                        label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
                         value={policy().explicitSelectionMode}
-                        options={explicitSelectionOptions}
+                        options={explicitSelectionOptions()}
                         onChange={(value) => props.onUpdateProcess(process(), { explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
                       />
                       <label class="policy-field policy-toggle-field">
@@ -1120,8 +1154,8 @@ function GpuPlacementProcessSection(props: {
                           "gpu-runtime-compatibility-warning": capabilities().startup.state !== "supported"
                             || capabilities().runtime.state !== "supported"
                         }}>
-                          {formatProviderCapability("启动", capabilities().startup)}；
-                          {formatProviderCapability("运行", capabilities().runtime)}
+                          {formatProviderCapability(uiText.softwareDetail.providerPhase.startup, capabilities().startup)}；
+                          {formatProviderCapability(uiText.softwareDetail.providerPhase.runtime, capabilities().runtime)}
                         </p>
                       )}
                     </Show>
@@ -1132,12 +1166,12 @@ function GpuPlacementProcessSection(props: {
                           || selectedInterception()?.registered !== true
                       }}>
                         {selectedCapabilities()?.startup.state !== "supported"
-                          ? "启动期精确 Provider 当前不可用；设置已保留但不会执行。"
+                          ? uiText.softwareDetail.startupGpuState.providerUnavailable
                           : isUnavailableStartupGpuTarget(softwarePolicy()?.startupTargetGpu)
-                          ? "当前启动目标不可执行；下次启动将保持系统默认显卡。"
+                          ? uiText.softwareDetail.startupGpuState.targetNotExecutable
                           : selectedInterception()?.registered
-                            ? "已就绪，将在下次启动时应用启动显卡设置。"
-                            : "正在准备启动显卡设置。"}
+                            ? uiText.softwareDetail.startupGpuState.ready
+                            : uiText.softwareDetail.startupGpuState.preparing}
                       </p>
                     </Show>
                     <Show when={selectedInterception()?.recentLaunchResult}>
@@ -1185,10 +1219,10 @@ function formatProviderCapability(
   phase: string,
   capability: GpuPlacementProviderCapability) {
   const state = capability.state === "supported"
-    ? "可用"
+    ? uiText.softwareDetail.providerPhase.available
     : capability.state === "unsupported"
-      ? "不支持"
-      : "未知";
+      ? uiText.softwareDetail.providerPhase.unsupported
+      : uiText.softwareDetail.providerPhase.unknown;
   const architecture = capability.architecture ? ` / ${capability.architecture}` : "";
   return `${phase} ${state}（${capability.graphicsApi}${architecture}）：${capability.reason}`;
 }
@@ -1252,8 +1286,8 @@ function MigrationRecordsSection(props: {
                     <span>{formatMigrationRecordMeta(record)}</span>
                   </div>
                   <div class="software-detail-migration-paths">
-                    <PathLine label="原路径" path={record.sourcePath} onOpenPath={props.onOpenPath} />
-                    <PathLine label="托管路径" path={record.destinationPath} onOpenPath={props.onOpenPath} />
+                    <PathLine label={uiText.softwareDetail.migration.sourcePath} path={record.sourcePath} onOpenPath={props.onOpenPath} />
+                    <PathLine label={uiText.softwareDetail.migration.managedPath} path={record.destinationPath} onOpenPath={props.onOpenPath} />
                   </div>
                   <button
                     class="secondary"
@@ -1261,7 +1295,7 @@ function MigrationRecordsSection(props: {
                     disabled={props.actionInProgress || restored()}
                     onClick={() => props.onRestoreRecord(record)}
                   >
-                    {restored() ? "已恢复" : "恢复"}
+                    {restored() ? uiText.softwareDetail.migration.restored : uiText.softwareDetail.migration.restore}
                   </button>
                 </article>
               );
@@ -1289,16 +1323,16 @@ function PathLine(props: { label: string; path?: string | null; onOpenPath: (pat
 }
 
 function formatMigrationRecordTitle(record: SoftwareDataMigrationRecord) {
-  const kind = record.migrationKind === "Root" ? "整个软件" : "数据";
-  const state = isActiveMigrationRecord(record) ? "已迁移" : "已恢复";
+  const kind = record.migrationKind === "Root" ? uiText.softwareDetail.migration.wholeSoftware : uiText.softwareDetail.migration.data;
+  const state = isActiveMigrationRecord(record) ? uiText.softwareDetail.migration.migrated : uiText.softwareDetail.migration.restored;
   return `${kind} · ${state}`;
 }
 
 function formatMigrationRecordMeta(record: SoftwareDataMigrationRecord) {
   return [
     migrationTargetCategoryLabel(record.targetCategory),
-    record.createdAt ? `迁移于 ${new Date(record.createdAt).toLocaleString()}` : "",
-    record.restoredAt ? `恢复于 ${new Date(record.restoredAt).toLocaleString()}` : ""
+    record.createdAt ? uiText.softwareDetail.migration.migratedAt(new Date(record.createdAt).toLocaleString()) : "",
+    record.restoredAt ? uiText.softwareDetail.migration.restoredAt(new Date(record.restoredAt).toLocaleString()) : ""
   ].filter(Boolean).join(" · ");
 }
 
@@ -1409,8 +1443,8 @@ function formatProcessMeta(process: GpuPlacementObservedProcess) {
   return [
     process.lastProcessId ? `PID ${process.lastProcessId}` : "",
     process.architecture,
-    `观察 ${process.observationCount} 次`,
-    process.lastObservedAt ? `最后 ${formatDateTime(process.lastObservedAt)}` : ""
+    uiText.softwareDetail.process.observedTimes(process.observationCount),
+    process.lastObservedAt ? uiText.softwareDetail.process.lastSeen(formatDateTime(process.lastObservedAt)) : ""
   ].filter(Boolean).join(" · ");
 }
 
@@ -1421,22 +1455,22 @@ function formatDateTime(value?: string | null) {
 function formatGpuLaunchOutcome(outcome: string) {
   switch (outcome) {
     case "provider-ready":
-      return "显卡设置已就绪";
+      return uiText.softwareDetail.gpuLaunchOutcome.ready;
     case "pass-through-started":
-      return "使用系统默认设置";
+      return uiText.softwareDetail.gpuLaunchOutcome.systemDefault;
     case "provider-unavailable-fallback":
-      return "已改用系统默认设置";
+      return uiText.softwareDetail.gpuLaunchOutcome.switchedToSystemDefault;
     case "bootstrap-failed-fallback":
-      return "已改用系统默认设置";
+      return uiText.softwareDetail.gpuLaunchOutcome.switchedToSystemDefault;
     case "provider-timeout":
-      return "准备超时，已改用系统默认设置";
+      return uiText.softwareDetail.gpuLaunchOutcome.prepareTimeout;
     case "debugger-detach-failed":
-      return "启动设置未能完成";
+      return uiText.softwareDetail.gpuLaunchOutcome.startupIncomplete;
     case "recursion-blocked":
-      return "已停止重复启动";
+      return uiText.softwareDetail.gpuLaunchOutcome.repeatedLaunchStopped;
     case "launch-failed":
-      return "软件启动失败";
+      return uiText.softwareDetail.gpuLaunchOutcome.launchFailed;
     default:
-      return "启动结果未知";
+      return uiText.softwareDetail.gpuLaunchOutcome.unknown;
   }
 }

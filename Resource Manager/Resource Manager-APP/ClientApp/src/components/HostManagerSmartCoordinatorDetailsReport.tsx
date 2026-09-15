@@ -8,6 +8,7 @@ import { userFacingDateTime } from "../presentation/userFacingText";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "../presentation/userDetails";
 import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../types";
 import { UserDetailsDialog } from "./UserDetailsDialog";
+import { uiText } from "../text.ts";
 
 const smartStateSubscriptionIntervalMilliseconds = 3_000;
 
@@ -50,7 +51,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
     <section
       {...frontendVisibilitySurface("visible.details.smart-report.surface", [demandId])}
       class="smart-details-report"
-      aria-label="智能调度报告"
+      aria-label={uiText.smartReport.panel}
     >
       <div class="panel-header smart-details-header">
         <div class="optimization-heading">
@@ -64,10 +65,10 @@ export function HostManagerSmartCoordinatorDetailsReport() {
         {(current) => (
           <>
           <div class="smart-details-summary">
-            <SummaryTile label="已完成" value={formatNumber(current().appliedPlacements.length)} />
-            <SummaryTile label="需要关注" value={formatNumber(attentionCount())} tone={attentionCount() > 0 ? "danger" : "normal"} />
-            <SummaryTile label="内存释放" value={formatBytes(releasedMemoryBytes())} />
-            <SummaryTile label="显存释放" value={formatBytes(releasedVramBytes())} />
+            <SummaryTile label={uiText.smartReport.completed} value={formatNumber(current().appliedPlacements.length)} />
+            <SummaryTile label={uiText.smartReport.needsAttention} value={formatNumber(attentionCount())} tone={attentionCount() > 0 ? "danger" : "normal"} />
+            <SummaryTile label={uiText.smartReport.releasedMemory} value={formatBytes(releasedMemoryBytes())} />
+            <SummaryTile label={uiText.smartReport.releasedVram} value={formatBytes(releasedVramBytes())} />
           </div>
           <Show
             when={records().length > 0}
@@ -83,7 +84,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
                     </div>
                     <div class="smart-details-record-metrics">
                       <span classList={{ danger: record.needsAttention }}>
-                        {record.needsAttention ? "需要关注" : "已完成"}
+                        {record.needsAttention ? uiText.smartReport.needsAttention : uiText.smartReport.completed}
                       </span>
                       <button class="secondary details-button" type="button" onClick={() => setSelectedRecord(record)}>
                         详细信息
@@ -99,7 +100,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
       </Show>
       <UserDetailsDialog
         open={Boolean(selectedRecord())}
-        title={`${selectedRecord()?.target ?? "调度"}详细信息`}
+        title={uiText.smartReport.detailTitle(selectedRecord()?.target ?? uiText.smartReport.fallbackTarget)}
         sections={selectedRecord() ? detailRecordSections(selectedRecord()!) : []}
         onClose={() => setSelectedRecord(null)}
       />
@@ -152,19 +153,19 @@ function createDetailRecord(
 
 function detailRecordSections(record: DetailRecord) {
   return compactUserDetailSections([
-    userDetailSection("调度结果", [
-      userDetailItem("对象", record.target),
-      userDetailItem("调整内容", formatRecordKind(record.kind)),
-      userDetailItem("影响资源", formatResourceKind(record.resourceKind)),
-      userDetailItem("状态", record.needsAttention ? "需要关注" : "已完成"),
-      userDetailItem("更新时间", userFacingDateTime(record.updatedAt))
+    userDetailSection(uiText.smartReport.section.result, [
+      userDetailItem(uiText.smartReport.field.target, record.target),
+      userDetailItem(uiText.smartReport.field.change, formatRecordKind(record.kind)),
+      userDetailItem(uiText.smartReport.field.affectedResource, formatResourceKind(record.resourceKind)),
+      userDetailItem(uiText.smartReport.field.state, record.needsAttention ? uiText.smartReport.needsAttention : uiText.smartReport.completed),
+      userDetailItem(uiText.smartReport.field.updatedAt, userFacingDateTime(record.updatedAt))
     ]),
-    userDetailSection("执行情况", [
-      userDetailItem("成功", `${record.acceptedCount} 项`),
-      record.timedOutCount > 0 ? userDetailItem("超时", `${record.timedOutCount} 项`) : null,
-      record.rejectedCount > 0 ? userDetailItem("未执行", `${record.rejectedCount} 项`) : null,
-      record.releasedMemoryBytes > 0 ? userDetailItem("已释放内存", formatBytes(record.releasedMemoryBytes)) : null,
-      record.releasedVramBytes > 0 ? userDetailItem("已释放显存", formatBytes(record.releasedVramBytes)) : null
+    userDetailSection(uiText.smartReport.section.execution, [
+      userDetailItem(uiText.smartReport.field.accepted, uiText.smartReport.itemCount(record.acceptedCount)),
+      record.timedOutCount > 0 ? userDetailItem(uiText.smartReport.field.timedOut, uiText.smartReport.itemCount(record.timedOutCount)) : null,
+      record.rejectedCount > 0 ? userDetailItem(uiText.smartReport.field.rejected, uiText.smartReport.itemCount(record.rejectedCount)) : null,
+      record.releasedMemoryBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedMemory, formatBytes(record.releasedMemoryBytes)) : null,
+      record.releasedVramBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedVram, formatBytes(record.releasedVramBytes)) : null
     ])
   ]);
 }
@@ -197,32 +198,32 @@ function formatBytes(value: number) {
 function formatRecordKind(kind: string) {
   switch (kind) {
     case "AdapterPolicy":
-      return "软件资源设置";
+      return uiText.smartReport.kind.softwareResourceSettings;
     case "GpuPreference":
-      return "显卡选择";
+      return uiText.smartReport.kind.gpuSelection;
     case "GpuRuntimeRebuildTrigger":
-      return "运行时显卡切换";
+      return uiText.smartReport.kind.runtimeGpuSwitch;
     case "CpuAffinity":
-      return "CPU 核心分配";
+      return uiText.smartReport.kind.cpuCoreAllocation;
     case "A1":
     case "Level1":
     case "Level2":
     case "Level3":
     case "Level4":
-      return "资源优化";
+      return uiText.smartReport.kind.resourceOptimization;
     default:
-      return "调度调整";
+      return uiText.smartReport.kind.schedulingAdjustment;
   }
 }
 
 function formatResourceKind(kind: string) {
   switch (kind.trim().toLocaleLowerCase()) {
-    case "cpu": return "处理器";
-    case "gpu": return "图形处理器";
-    case "memory": return "内存";
-    case "vram": return "显存";
-    case "disk": return "磁盘";
-    case "network": return "网络";
-    default: return "软件资源";
+    case "cpu": return uiText.smartReport.resource.cpu;
+    case "gpu": return uiText.smartReport.resource.gpu;
+    case "memory": return uiText.smartReport.resource.memory;
+    case "vram": return uiText.smartReport.resource.vram;
+    case "disk": return uiText.smartReport.resource.disk;
+    case "network": return uiText.smartReport.resource.network;
+    default: return uiText.smartReport.resource.software;
   }
 }

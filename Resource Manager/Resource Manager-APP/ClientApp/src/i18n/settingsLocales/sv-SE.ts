@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("sv-SE", {
   sections: { performance: "Prestanda", appearance: "Utseende", systemIntegration: "Systemintegration", debug: "Felsökning", credits: "Tack" },

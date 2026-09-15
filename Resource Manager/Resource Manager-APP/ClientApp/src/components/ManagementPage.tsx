@@ -19,7 +19,7 @@ import {
   type ManagementSubpageId
 } from "../management/managementNavigation";
 import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../types";
-import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../text";
+import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../text.ts";
 import { isComponentInstalled, normalizeName, normalizeSoftwareKind } from "../utils";
 import {
   observationCanRender,
@@ -74,7 +74,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
   const visibleKinds = () => managementKinds.filter((kind) =>
     props.mutablePersistenceEnabled || kind.id === "Dependency" || kind.id === "Support");
   return (
-    <nav class="management-tabs" aria-label="组件与软件分类">
+    <nav class="management-tabs" aria-label={uiText.management.categoryNav}>
       <For each={visibleKinds()}>
         {(kind) => (
           <button
@@ -128,7 +128,7 @@ export function ManagementPage(props: ManagementPageProps) {
     <section
       id="componentsPage"
       class="page active-page"
-      aria-label={`${activeKind().label}管理`}
+      aria-label={uiText.managementPage.pageLabel(activeKind().label)}
     >
       <section class="management-surface">
         <div
@@ -142,8 +142,8 @@ export function ManagementPage(props: ManagementPageProps) {
             <label class="toolbar-search">
               <input
                 type="search"
-                placeholder="搜索"
-                aria-label={`${activeKind().label}搜索`}
+                placeholder={uiText.managementPage.search}
+                aria-label={uiText.managementPage.searchLabel(activeKind().label)}
                 value={searchQuery()}
                 onInput={(event) => setSearchQuery(event.currentTarget.value)}
               />
@@ -157,28 +157,28 @@ export function ManagementPage(props: ManagementPageProps) {
               {props.refreshInProgress ? uiText.management.refreshing : uiText.management.refresh}
             </button>
             <span id="managementCount">
-              {observationCanRender(props.observation) ? `${items().length} 项` : "--"}
+              {observationCanRender(props.observation) ? uiText.managementPage.itemCount(items().length) : "--"}
             </span>
           </div>
         </div>
         <Show when={props.activeKind === "Dependency" || props.activeKind === "Support"}>
           <ObservationStateNotice
             state={props.softwareObservation}
-            label="软件登记补充项"
-            profileDisabledMessage="当前启动配置仅显示组件目录，不加载软件登记补充项。"
+            label={uiText.managementPage.softwareRegistrySupplement}
+            profileDisabledMessage={uiText.managementPage.softwareRegistrySupplementDisabled}
           />
         </Show>
         <Show when={props.runtimeEffectsEnabled}>
           <ObservationStateNotice
             state={props.operationsObservation}
-            label="操作状态"
+            label={uiText.managementPage.operationState}
           />
         </Show>
         <ObservationStateBoundary
           state={props.observation}
           label={props.activeKind === "Dependency" || props.activeKind === "Support"
-            ? "组件目录"
-            : "软件登记"}
+            ? uiText.managementPage.componentCatalog
+            : uiText.managementPage.softwareRegistry}
         >
           <div class="management-list">
             <Show
@@ -268,7 +268,7 @@ function ComponentCard(props: {
                 class="management-action-button"
                 type="button"
                 disabled={!props.runtimeEffectsEnabled || !componentCanInstall(props.component)}
-                title={props.runtimeEffectsEnabled ? undefined : "当前启动配置只提供查看。"}
+                title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly}
                 onClick={() => props.onInstall(props.component)}
               >
                 {componentInstallLabel(props.component)}
@@ -279,14 +279,14 @@ function ComponentCard(props: {
               when={dependencySoftware()?.operations?.canUninstall}
               fallback={<button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>}
             >
-              <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : "当前启动配置只提供查看。"} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
+              <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
                 {uiText.management.uninstall}
               </button>
             </Show>
           </Show>
         </Show>
         <DetailsButton
-          label={`详细信息：${componentDisplayName(props.component.definition?.id, props.component.definition?.name)}`}
+          label={uiText.managementPage.detailsOf(componentDisplayName(props.component.definition?.id, props.component.definition?.name))}
           onClick={() => props.onOpenDetail(props.component)}
         />
       </div>
@@ -322,7 +322,7 @@ function SoftwareCard(props: {
             <AlertTriangle
               class="management-root-warning-icon"
               size={18}
-              aria-label="根目录需要检查"
+              aria-label={uiText.managementPage.rootNeedsCheck}
             />
           </Show>
         </div>
@@ -342,14 +342,14 @@ function SoftwareCard(props: {
             when={props.software.operations?.canUninstall}
             fallback={<button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>}
           >
-            <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : "当前启动配置只提供查看。"} onClick={() => props.onUninstall(props.software, key())}>
+            <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(props.software, key())}>
               {uiText.management.uninstall}
             </button>
           </Show>
         </Show>
         <SettingsButton onClick={() => props.onOpenDetail(props.software)} />
         <MoreActionsButton
-          label={`更多操作：${props.software.name ?? "当前软件"}`}
+          label={uiText.managementPage.moreActionsOf(props.software.name ?? uiText.managementPage.currentSoftware)}
           focusKey={`management-software-actions:${props.software.id}`}
           onOpen={(event) => props.onContextMenu(event, props.software)}
         />
@@ -371,7 +371,7 @@ function DetailsButton(props: { label: string; onClick: () => void }) {
     <button
       class="management-settings-button"
       type="button"
-      title="详细信息"
+      title={uiText.managementPage.details}
       aria-label={props.label}
       onClick={props.onClick}
     >
@@ -390,7 +390,7 @@ function MoreActionsButton(props: {
     <button
       class="management-settings-button"
       type="button"
-      title="更多操作"
+      title={uiText.managementPage.moreActions}
       aria-label={props.label}
       data-focus-key={props.focusKey}
       onClick={(event) => open(event.currentTarget)}

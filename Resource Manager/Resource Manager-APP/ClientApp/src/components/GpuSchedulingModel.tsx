@@ -37,6 +37,7 @@ import type {
   ResourceSoftwareSegment
 } from "../types";
 import { ObservationStateBoundary } from "./ObservationStateNotice";
+import { uiText } from "../text.ts";
 
 interface GpuSchedulingPosition {
   id: string;
@@ -211,7 +212,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
           loadingObservation(),
           failed.error instanceof Error
             ? failed.error.message
-            : "GPU 调度数据读取失败。")
+            : uiText.gpuScheduling.dataReadFailed)
       : loadingObservation();
   });
   const processLoads = createMemo(() =>
@@ -232,13 +233,13 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   const telemetryStatus = createMemo(() => {
     switch (observation().status) {
       case "ready":
-        return "实时硬件 / 进程归因";
+        return uiText.gpuScheduling.telemetryLive;
       case "stale":
-        return "非实时硬件 / 进程归因";
+        return uiText.gpuScheduling.telemetryStale;
       case "error":
-        return "数据不可用";
+        return uiText.gpuScheduling.telemetryUnavailable;
       default:
-        return "读取中";
+        return uiText.gpuScheduling.telemetryLoading;
     }
   });
   const [editing, setEditing] = createSignal(false);
@@ -262,7 +263,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   return (
     <section
       class="gpu-scheduling-panel"
-      aria-label="GPU 调度模型"
+      aria-label={uiText.gpuScheduling.modelLabel}
       {...frontendVisibilitySurface(
         "visible.details.gpu-model.surface",
         [demandId])}
@@ -295,7 +296,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
 
       <ObservationStateBoundary
         state={observation()}
-        label="GPU 调度数据"
+        label={uiText.gpuScheduling.observationLabel}
         onRetry={refreshAll}
       >
         <Show when={positions().length > 0} fallback={<div class="optimization-empty">未识别到 GPU 调度位置。</div>}>
@@ -313,7 +314,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                     <strong>{position.name}</strong>
                     <span>{position.label}</span>
                   </div>
-                  <em>{position.full ? position.fullReason : "可调度"}</em>
+                  <em>{position.full ? position.fullReason : uiText.gpuScheduling.schedulable}</em>
                 </div>
 
                 <div class="gpu-position-meta">
@@ -357,9 +358,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                 <div class="gpu-pressure-grid">
                   <PressureMeter label="GPU" value={position.usagePercent} />
                   <PressureMeter
-                    label="显存"
+                    label={uiText.gpuScheduling.vram}
                     value={position.hasDedicatedMemoryMetrics ? position.vramPercent : null}
-                    emptyLabel={position.hasDedicatedMemoryMetrics ? "暂无数据" : "共享"}
+                    emptyLabel={position.hasDedicatedMemoryMetrics ? uiText.gpuScheduling.noData : uiText.gpuScheduling.shared}
                   />
                 </div>
 
@@ -439,7 +440,7 @@ function PressureMeter(props: { label: string; value?: number | null; emptyLabel
     <div class="gpu-pressure-meter">
       <div>
         <span>{props.label}</span>
-        <strong>{value() === null ? props.emptyLabel ?? "暂无数据" : formatPercent(value())}</strong>
+        <strong>{value() === null ? props.emptyLabel ?? uiText.gpuScheduling.noData : formatPercent(value())}</strong>
       </div>
       <span class="gpu-pressure-track" aria-hidden="true">
         <span style={{ width: `${value() ?? 0}%` }} />
@@ -450,11 +451,11 @@ function PressureMeter(props: { label: string; value?: number | null; emptyLabel
 
 function SpecializedUsageStrip(props: { usages: GpuSpecializedUsage[] }) {
   return (
-    <div class="gpu-specialized-strip" aria-label="专用核心占用">
+    <div class="gpu-specialized-strip" aria-label={uiText.gpuScheduling.specializedStrip}>
       <For each={props.usages} fallback={
         <SpecializedUsageMeter usage={{
           counterId: "gpu.specialized.none",
-          label: "专用占用",
+          label: uiText.gpuScheduling.specializedUsage,
           value: null,
           unit: "%",
           providerId: "",
@@ -478,7 +479,7 @@ function SpecializedUsageMeter(props: { usage: GpuSpecializedUsage }) {
     <div class="gpu-specialized-meter" title={title()}>
       <div>
         <span>{props.usage.label}</span>
-        <strong>{value() === null ? "暂无数据" : formatPercent(value())}</strong>
+        <strong>{value() === null ? uiText.gpuScheduling.noData : formatPercent(value())}</strong>
       </div>
       <span class="gpu-specialized-track" aria-hidden="true">
         <span style={{ width: `${value() ?? 0}%` }} />
@@ -541,13 +542,13 @@ function buildGpuPositions(
       hasPerformanceOverride: scoreItem?.hasPerformanceOverride ?? fallbackOverrideScore !== null,
       usagePercent,
       vramPercent: usedVramPercent,
-      vramDisplay: vram?.displayValue ?? (dedicatedMemory ? "显存暂无数据" : "共享内存"),
-      graphicsClockDisplay: graphicsClock?.displayValue ? `频率 ${graphicsClock.displayValue}` : "频率暂无数据",
-      memoryClockDisplay: memoryClock?.displayValue ? `显存频率 ${memoryClock.displayValue}` : "显存频率暂无数据",
+      vramDisplay: vram?.displayValue ?? (dedicatedMemory ? uiText.gpuScheduling.vramNoData : uiText.gpuScheduling.sharedMemory),
+      graphicsClockDisplay: graphicsClock?.displayValue ? uiText.gpuScheduling.clock(graphicsClock.displayValue) : uiText.gpuScheduling.clockNoData,
+      memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : uiText.gpuScheduling.memoryClockNoData,
       scoreSource: scoreItem?.source ?? "unknown",
       matchedPreset: scoreItem?.matchedPreset,
       full: fullReason !== "",
-      fullReason: fullReason || "可调度",
+      fullReason: fullReason || uiText.gpuScheduling.schedulable,
       hasDedicatedMemoryMetrics: dedicatedMemory,
       processKeys: processLoad?.processKeys ?? [],
       softwareIds: processLoad?.softwareIds ?? [],
@@ -610,25 +611,25 @@ function specializedCounterOrder(counterId: string) {
 function labelForSpecializedCounter(counterId: string) {
   const normalized = counterId.toLowerCase();
   if (normalized.includes(".nvidia.rt.")) {
-    return "RT 占用";
+    return uiText.gpuScheduling.rtUsage;
   }
   if (normalized.includes(".nvidia.cuda.")) {
-    return "CUDA 占用";
+    return uiText.gpuScheduling.cudaUsage;
   }
   if (normalized.includes(".nvidia.tensor.")) {
-    return "Tensor 占用";
+    return uiText.gpuScheduling.tensorUsage;
   }
   if (normalized.includes(".amd.gcn.")) {
-    return "GCN 占用";
+    return uiText.gpuScheduling.gcnUsage;
   }
   if (normalized.includes(".amd.rdna.")) {
-    return "RDNA 占用";
+    return uiText.gpuScheduling.rdnaUsage;
   }
   if (normalized.includes(".amd.cdna.")) {
-    return "CDNA 占用";
+    return uiText.gpuScheduling.cdnaUsage;
   }
 
-  return "专用占用";
+  return uiText.gpuScheduling.specializedUsage;
 }
 
 function compareGpuPositions(
@@ -738,8 +739,8 @@ function defaultBaseScoreForKind(kind?: string | null) {
 
 function fullReasonFor(usagePercent: number | null, vramPercent: number | null) {
   const reasons = [
-    usagePercent !== null && usagePercent >= gpuUsageFullPressurePercent ? "GPU 爆满" : "",
-    vramPercent !== null && vramPercent >= gpuVramFullPressurePercent ? "显存爆满" : ""
+    usagePercent !== null && usagePercent >= gpuUsageFullPressurePercent ? uiText.gpuScheduling.gpuFull : "",
+    vramPercent !== null && vramPercent >= gpuVramFullPressurePercent ? uiText.gpuScheduling.vramFull : ""
   ].filter(Boolean);
   return reasons.join(" / ");
 }
@@ -756,17 +757,17 @@ function sanitizePercent(value?: number | null) {
 }
 
 function formatPercent(value: number | null) {
-  return value === null ? "暂无数据" : `${value.toFixed(1)}%`;
+  return value === null ? uiText.gpuScheduling.noData : `${value.toFixed(1)}%`;
 }
 
 function formatProcessCount(position: GpuSchedulingPosition) {
   const processCount = position.processKeys.length;
   const softwareCount = position.softwareIds.length;
   if (processCount === 0 && softwareCount === 0) {
-    return "无进程归因";
+    return uiText.gpuScheduling.noProcessAttribution;
   }
 
-  return `${softwareCount} 软件 · ${processCount} 进程`;
+  return uiText.gpuScheduling.positionSummary(softwareCount, processCount);
 }
 
 function formatScore(value: number) {

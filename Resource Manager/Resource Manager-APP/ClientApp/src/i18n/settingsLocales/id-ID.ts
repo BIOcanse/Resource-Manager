@@ -1,4 +1,4 @@
-import { createSettingsLocale } from "../settingsLocaleFactory";
+import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("id-ID", {
   sections: { performance: "Kinerja", appearance: "Tampilan", systemIntegration: "Integrasi sistem", debug: "Debug", credits: "Kredit" },

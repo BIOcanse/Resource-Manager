@@ -4,6 +4,7 @@ import {
   type ObservationState
 } from "../observation/observationState";
 import { formatObservationTimestamp } from "../presentation/observationTimestamp.ts";
+import { uiText } from "../text.ts";
 
 interface ObservationStateNoticeProps {
   state: ObservationState;
@@ -25,13 +26,13 @@ export function ObservationStateNotice(props: ObservationStateNoticeProps) {
   const title = () => {
     switch (props.state.status) {
       case "loading":
-        return `正在加载${props.label}`;
+        return uiText.observationNotice.loading(props.label);
       case "stale":
-        return `正在显示最近一次${props.label}`;
+        return uiText.observationNotice.stale(props.label);
       case "error":
-        return `${props.label}暂不可用`;
+        return uiText.observationNotice.unavailable(props.label);
       case "profile-disabled":
-        return `${props.label}在当前启动配置中不可用`;
+        return uiText.observationNotice.profileDisabled(props.label);
       default:
         return "";
     }
@@ -40,13 +41,13 @@ export function ObservationStateNotice(props: ObservationStateNoticeProps) {
     if (props.state.status === "profile-disabled") {
       return props.profileDisabledMessage
         ?? props.state.lastError
-        ?? "当前启动配置未提供该数据源。";
+        ?? uiText.observationNotice.profileDisabledDetail;
     }
     if (props.state.lastError) {
       return props.state.lastError;
     }
     if (props.state.status === "stale") {
-      return "实时刷新失败，以下内容不是当前状态。";
+      return uiText.observationNotice.staleDetail;
     }
     return "";
   };

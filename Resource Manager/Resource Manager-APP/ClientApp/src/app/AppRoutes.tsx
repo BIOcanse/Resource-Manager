@@ -14,6 +14,7 @@ import type { OptimizationStore } from "../stores/optimizationStore";
 import type { SettingsStore } from "../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
+import { uiText } from "../text.ts";
 
 interface AppRoutesProps {
   animationMode: Exclude<AppAnimationMode, "auto">;
@@ -46,18 +47,18 @@ export function AppRoutes(props: AppRoutesProps) {
                 <Show
                   when={props.activePage() === "optimization"}
                   fallback={(
-                    <PageBoundary name="监视控制台">
+                    <PageBoundary name={uiText.page.monitor}>
                       <MonitorPage {...props} />
                     </PageBoundary>
                   )}
                 >
-                  <PageBoundary name="性能优化">
+                  <PageBoundary name={uiText.page.optimization}>
                     <OptimizationWorkspace {...props} />
                   </PageBoundary>
                 </Show>
               }
             >
-              <PageBoundary name="详细信息">
+              <PageBoundary name={uiText.page.details}>
                 <DetailsPage
                   runtimeCapabilities={props.runtimeCapabilities}
                   onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
@@ -66,7 +67,7 @@ export function AppRoutes(props: AppRoutesProps) {
             </Show>
           }
         >
-          <PageBoundary name="设置">
+          <PageBoundary name={uiText.page.settings}>
             <SettingsWorkspace
               settings={props.settings}
               runtimeCapabilities={props.runtimeCapabilities}
@@ -75,7 +76,7 @@ export function AppRoutes(props: AppRoutesProps) {
         </Show>
       }
     >
-      <PageBoundary name="组件与软件">
+      <PageBoundary name={uiText.page.components}>
         <ManagementWorkspace {...props} />
       </PageBoundary>
     </Show>

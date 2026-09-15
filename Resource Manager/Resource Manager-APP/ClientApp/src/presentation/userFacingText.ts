@@ -1,48 +1,52 @@
+import { uiText } from "../text.ts";
 import type { SoftwareDataMigrationRecord } from "../types";
-import type { UserDetailSection } from "./userDetails.ts";
+import type { UserDetailSection } from "./userDetails";
 import {
   compactUserDetailSections,
   userDetailItem,
   userDetailSection
-} from "./userDetails.ts";
+} from "./userDetails";
 
 const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
 
-const commonStateLabels: Record<string, string> = {
-  active: "可用",
-  installed: "已安装",
-  installedunverified: "已安装，等待确认",
-  readytoinstall: "可安装",
-  runtimeavailable: "可用",
-  running: "运行中",
-  stopped: "已停止",
-  starting: "正在启动",
-  ready: "已就绪",
-  refreshing: "正在刷新",
-  warming: "正在准备",
-  failed: "操作失败",
-  unavailable: "暂时不可用",
-  disabled: "已关闭",
-  enabled: "已开启",
-  queued: "等待中",
-  canceling: "正在取消",
-  canceled: "已取消",
-  succeeded: "已完成",
-  completed: "已完成",
-  restored: "已恢复",
-  missing: "未找到",
-  unknown: "状态未知",
-  "已激活": "可用",
-  "已安装": "已安装",
-  "已安装待验证": "已安装，等待确认",
-  "可安装": "可安装",
-  "可下载": "可下载",
-  "需手动下载": "需要手动下载",
-  "provider 未接入": "暂时不可用",
-  "未安装": "未安装",
-  "可用": "可用",
-  "运行中": "运行中",
-  "已停止": "已停止"
+// 后端状态值 -> 用户状态键；文字本身由当前语言的文案包提供。
+type UserStateKey = keyof typeof uiText.status.state;
+
+const commonStateKeys: Record<string, UserStateKey> = {
+  active: "available",
+  installed: "installed",
+  installedunverified: "installedUnverified",
+  readytoinstall: "readyToInstall",
+  runtimeavailable: "available",
+  running: "running",
+  stopped: "stopped",
+  starting: "starting",
+  ready: "ready",
+  refreshing: "refreshing",
+  warming: "warming",
+  failed: "failed",
+  unavailable: "unavailable",
+  disabled: "disabled",
+  enabled: "enabled",
+  queued: "queued",
+  canceling: "canceling",
+  canceled: "canceled",
+  succeeded: "completed",
+  completed: "completed",
+  restored: "restored",
+  missing: "missing",
+  unknown: "unknown",
+  "已激活": "available",
+  "已安装": "installed",
+  "已安装待验证": "installedUnverified",
+  "可安装": "readyToInstall",
+  "可下载": "downloadable",
+  "需手动下载": "manualDownload",
+  "provider 未接入": "unavailable",
+  "未安装": "notInstalled",
+  "可用": "available",
+  "运行中": "running",
+  "已停止": "stopped"
 };
 
 export function userFacingErrorMessage(error: unknown, fallback: string) {
@@ -50,41 +54,42 @@ export function userFacingErrorMessage(error: unknown, fallback: string) {
     && (error.kind === "timeout" || error.kind === "invalid-response" || error.kind === "aborted")) {
     return sentence(safeFallback(error.userMessage, fallback));
   }
-  return sentence(safeFallback(fallback, "操作失败，请稍后重试"));
+  return sentence(safeFallback(fallback, uiText.status.actionFailed));
 }
 
 export function userFacingMessage(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
   if (!text || internalImplementationPattern.test(text) || looksLikeRawCode(text)) {
-    return sentence(safeFallback(fallback, "状态已更新"));
+    return sentence(safeFallback(fallback, uiText.status.stateUpdated));
   }
 
   return sentence(text);
 }
 
-export function userFacingLabel(value: unknown, fallback = "状态未知") {
+export function userFacingLabel(value: unknown, fallback = uiText.status.unknownState) {
   const text = String(value ?? "").trim();
   if (text.toLocaleLowerCase() === "dxgkrnl/vidmm") {
-    return "系统图形占用";
+    return uiText.status.systemGraphicsUsage;
   }
 
   if (!text || internalImplementationPattern.test(text) || looksLikeRawCode(text)) {
-    return safeFallback(fallback, "状态未知");
+    return safeFallback(fallback, uiText.status.unknownState);
   }
 
   return text;
 }
 
-export function userFacingState(value: unknown, fallback = "状态未知") {
+export function userFacingState(value: unknown, fallback = uiText.status.unknownState) {
   const text = String(value ?? "").trim();
   if (!text) {
     return fallback;
   }
 
-  return commonStateLabels[text.toLocaleLowerCase()] ?? fallback;
+  const key = commonStateKeys[text.toLocaleLowerCase()];
+  return key ? uiText.status.state[key] : fallback;
 }
 
-export function userFacingOptionalValue(value: unknown, fallback = "暂无数据") {
+export function userFacingOptionalValue(value: unknown, fallback = uiText.status.noData) {
   const text = String(value ?? "").trim();
   return !text || text === "--" || text.toLocaleUpperCase() === "N/A" || text === "Unknown"
     ? fallback
@@ -92,48 +97,55 @@ export function userFacingOptionalValue(value: unknown, fallback = "暂无数据
 }
 
 export function userFacingRisk(value: unknown) {
+  const risk = uiText.status.risk;
   switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "low": return "低风险";
-    case "medium": return "中等风险";
-    case "high": return "高风险";
-    case "root": return "根目录迁移";
-    case "blocked": return "禁止迁移";
-    default: return "风险待确认";
+    case "low": return risk.low;
+    case "medium": return risk.medium;
+    case "high": return risk.high;
+    case "root": return risk.root;
+    case "blocked": return risk.blocked;
+    default: return risk.unknown;
   }
 }
 
 export function migrationKindLabel(value: unknown) {
-  return String(value ?? "").toLocaleLowerCase() === "root" ? "软件根目录" : "软件数据";
+  return String(value ?? "").toLocaleLowerCase() === "root"
+    ? uiText.status.migration.kindRoot
+    : uiText.status.migration.kindData;
 }
 
 export function migrationTargetCategoryLabel(value: unknown) {
-  return String(value ?? "").toLocaleLowerCase() === "misc" ? "其他数据" : "用户数据";
+  return String(value ?? "").toLocaleLowerCase() === "misc"
+    ? uiText.status.migration.targetMisc
+    : uiText.status.migration.targetUser;
 }
 
 export function migrationClassificationLabel(value: unknown) {
+  const migration = uiText.status.migration;
   switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "applicationroot": return "软件根目录";
-    case "userappdata": return "用户应用数据";
-    case "programdata": return "共享应用数据";
-    case "directory": return "普通目录";
-    case "file": return "文件";
-    case "missing": return "源位置不存在";
-    default: return "待确认数据";
+    case "applicationroot": return migration.classificationApplicationRoot;
+    case "userappdata": return migration.classificationUserAppData;
+    case "programdata": return migration.classificationProgramData;
+    case "directory": return migration.classificationDirectory;
+    case "file": return migration.classificationFile;
+    case "missing": return migration.classificationMissing;
+    default: return migration.classificationUnknown;
   }
 }
 
 export function migrationStateLabel(value: unknown) {
+  const migration = uiText.status.migration;
   switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "running": return "监控中";
-    case "stopped": return "已停止";
-    case "completed": return "已完成";
-    case "restored": return "已恢复";
-    case "failed": return "未完成";
-    default: return "状态未知";
+    case "running": return migration.stateRunning;
+    case "stopped": return migration.stateStopped;
+    case "completed": return migration.stateCompleted;
+    case "restored": return migration.stateRestored;
+    case "failed": return migration.stateFailed;
+    default: return migration.stateUnknown;
   }
 }
 
-export function userFacingDateTime(value: unknown, fallback = "时间未知") {
+export function userFacingDateTime(value: unknown, fallback = uiText.status.unknownTime) {
   const text = String(value ?? "").trim();
   if (!text) {
     return fallback;
@@ -144,96 +156,101 @@ export function userFacingDateTime(value: unknown, fallback = "时间未知") {
 }
 
 export function userFacingMetricGroup(value: unknown) {
+  const group = uiText.status.metricGroup;
   switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "cpu": return "处理器";
-    case "gpu": return "图形处理器";
-    case "memory": return "内存";
-    case "virtual memory": return "虚拟内存";
-    case "disk": return "磁盘";
-    case "network": return "网络";
-    case "motherboard": return "主板";
-    case "fan": return "风扇";
-    case "hardwaremonitor": return "硬件传感器";
-    default: return "系统";
+    case "cpu": return group.cpu;
+    case "gpu": return group.gpu;
+    case "memory": return group.memory;
+    case "virtual memory": return group.virtualMemory;
+    case "disk": return group.disk;
+    case "network": return group.network;
+    case "motherboard": return group.motherboard;
+    case "fan": return group.fan;
+    case "hardwaremonitor": return group.hardwareMonitor;
+    default: return group.system;
   }
 }
 
 export function userFacingMetricUnavailableReason(requiredComponentName?: string | null) {
   return requiredComponentName
-    ? "需要安装并启用对应的硬件支持组件。"
-    : "当前设备没有提供这项数据。";
+    ? uiText.status.metricUnavailable.needsComponent
+    : uiText.status.metricUnavailable.deviceNotProvided;
 }
 
 export function componentDisplayName(componentId: unknown, fallback?: unknown) {
+  const names = uiText.status.component.names;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
-    case "amd-smu-pawnio-provider": return "AMD 处理器传感支持";
-    case "amd-ryzen-master-monitoring-sdk": return "AMD Ryzen 监控支持";
-    case "msi-afterburner": return "MSI Afterburner";
-    case "librehardwaremonitor-provider": return "通用硬件传感支持";
-    case "notebook-fancontrol-provider": return "笔记本风扇监控支持";
-    case "notebook-oem-fan-provider": return "笔记本厂商风扇支持";
-    case "windows-performance-toolkit": return "Windows 性能分析工具";
-    case "latencymon": return "LatencyMon";
-    case "nvidia-nvml-provider": return "NVIDIA 显卡监控支持";
-    case "nvidia-nvapi-provider": return "NVIDIA 显卡扩展监控支持";
-    case "amd-adlx-provider": return "AMD 显卡监控支持";
-    case "intel-pcm-provider": return "Intel 处理器监控支持";
-    default: return safeUserFact(fallback) || "硬件支持组件";
+    case "amd-smu-pawnio-provider": return names.amdSmuPawnIo;
+    case "amd-ryzen-master-monitoring-sdk": return names.amdRyzenMaster;
+    case "msi-afterburner": return names.msiAfterburner;
+    case "librehardwaremonitor-provider": return names.libreHardwareMonitor;
+    case "notebook-fancontrol-provider": return names.notebookFanControl;
+    case "notebook-oem-fan-provider": return names.notebookOemFan;
+    case "windows-performance-toolkit": return names.windowsPerformanceToolkit;
+    case "latencymon": return names.latencyMon;
+    case "nvidia-nvml-provider": return names.nvidiaNvml;
+    case "nvidia-nvapi-provider": return names.nvidiaNvapi;
+    case "amd-adlx-provider": return names.amdAdlx;
+    case "intel-pcm-provider": return names.intelPcm;
+    default: return safeUserFact(fallback) || uiText.status.component.nameFallback;
   }
 }
 
 export function componentPurpose(componentId: unknown) {
+  const purposes = uiText.status.component.purposes;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
     case "amd-smu-pawnio-provider":
     case "amd-ryzen-master-monitoring-sdk":
-      return "补充 AMD 处理器的功耗、温度、电压和频率信息。";
+      return purposes.amdCpuSensors;
     case "msi-afterburner":
-      return "提供可选的显卡监控信息。";
+      return purposes.gpuOptionalMonitoring;
     case "librehardwaremonitor-provider":
-      return "补充风扇、温度、电压和主板等硬件信息。";
+      return purposes.generalHardwareSensors;
     case "notebook-fancontrol-provider":
     case "notebook-oem-fan-provider":
-      return "补充笔记本风扇转速和运行状态。";
+      return purposes.notebookFan;
     case "windows-performance-toolkit":
     case "latencymon":
-      return "用于进一步分析系统延迟和性能问题。";
+      return purposes.latencyAnalysis;
     case "nvidia-nvml-provider":
     case "nvidia-nvapi-provider":
-      return "补充 NVIDIA 显卡的频率、温度、功耗和风扇信息。";
+      return purposes.nvidiaGpu;
     case "amd-adlx-provider":
-      return "补充 AMD 显卡的频率、温度、功耗和风扇信息。";
+      return purposes.amdGpu;
     case "intel-pcm-provider":
-      return "补充 Intel 处理器的功耗、频率和温度信息。";
+      return purposes.intelCpu;
     default:
-      return "为资源管理器补充硬件信息和相关功能。";
+      return uiText.status.component.purposeFallback;
   }
 }
 
 export function componentCategory(componentId: unknown) {
+  const categories = uiText.status.component.categories;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
     case "windows-performance-toolkit":
     case "latencymon":
-      return "性能分析工具";
+      return categories.performanceAnalysis;
     case "msi-afterburner":
-      return "辅助工具";
+      return categories.helperTool;
     default:
-      return "硬件监控";
+      return categories.hardwareMonitoring;
   }
 }
 
 export function migrationRecordDetails(record: SoftwareDataMigrationRecord): UserDetailSection[] {
+  const detail = uiText.status.detail;
   return compactUserDetailSections([
-    userDetailSection("迁移内容", [
-      userDetailItem("软件", record.softwareName || "未命名软件"),
-      userDetailItem("内容", migrationKindLabel(record.migrationKind)),
-      userDetailItem("保存位置", migrationTargetCategoryLabel(record.targetCategory)),
-      userDetailItem("状态", migrationStateLabel(record.state)),
-      userDetailItem("创建时间", userFacingDateTime(record.createdAt)),
-      record.restoredAt ? userDetailItem("恢复时间", userFacingDateTime(record.restoredAt)) : null
+    userDetailSection(detail.migrationContent, [
+      userDetailItem(detail.software, record.softwareName || detail.unnamedSoftware),
+      userDetailItem(detail.content, migrationKindLabel(record.migrationKind)),
+      userDetailItem(detail.savedLocation, migrationTargetCategoryLabel(record.targetCategory)),
+      userDetailItem(detail.status, migrationStateLabel(record.state)),
+      userDetailItem(detail.createdAt, userFacingDateTime(record.createdAt)),
+      record.restoredAt ? userDetailItem(detail.restoredAt, userFacingDateTime(record.restoredAt)) : null
     ]),
-    userDetailSection("位置", [
-      userDetailItem("原位置", record.sourcePath),
-      userDetailItem("迁移后位置", record.destinationPath)
+    userDetailSection(detail.location, [
+      userDetailItem(detail.sourcePath, record.sourcePath),
+      userDetailItem(detail.destinationPath, record.destinationPath)
     ])
   ]);
 }
@@ -244,6 +261,47 @@ export function safeUserFact(value: unknown) {
     return "";
   }
   return text;
+}
+
+function resourceDataSourceLabel(id: string) {
+  const resourceData = uiText.status.resourceData;
+  const value = id.toLocaleLowerCase();
+  if (value.includes("cpu")) return resourceData.sourceCpu;
+  if (value.includes("disk")) return resourceData.sourceDisk;
+  if (value.includes("network")) return resourceData.sourceNetwork;
+  if (value.includes("gpu") || value.includes("vidmm") || value.includes("dxg")) {
+    return resourceData.sourceGpuMemory;
+  }
+  return resourceData.sourceGeneric;
+}
+
+function resourceDataStateLabel(state: string) {
+  const resourceData = uiText.status.resourceData;
+  if (isUnavailableState(state)) return resourceData.stateUnavailable;
+  if (isPreparingState(state)) return resourceData.statePreparing;
+  if (["frozen", "notrequested", "idle", "stopped"].includes(state.toLocaleLowerCase())) {
+    return resourceData.stateIdle;
+  }
+  return resourceData.stateNormal;
+}
+
+function resourceDataMessageFallback(state: string) {
+  const resourceData = uiText.status.resourceData;
+  if (isUnavailableState(state)) {
+    return resourceData.messageUnavailable;
+  }
+  if (isPreparingState(state)) {
+    return resourceData.messagePreparing;
+  }
+  return resourceData.messageGeneric;
+}
+
+function isUnavailableState(state: string) {
+  return ["failed", "unavailable", "error"].includes(state.toLocaleLowerCase());
+}
+
+function isPreparingState(state: string) {
+  return ["starting", "warming", "refreshing", "pending"].includes(state.toLocaleLowerCase());
 }
 
 function looksLikeRawCode(text: string) {
@@ -276,5 +334,5 @@ function safeFallback(value: unknown, fallback: string) {
 
 function sentence(value: string) {
   const text = value.trim();
-  return text && !/[。！？.!?]$/.test(text) ? `${text}。` : text;
+  return text && !/[。！？.!?]$/.test(text) ? `${text}${uiText.status.sentenceEnd}` : text;
 }
