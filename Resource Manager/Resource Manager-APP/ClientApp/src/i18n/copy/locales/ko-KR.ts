@@ -374,6 +374,7 @@ const koKrAppCopy: AppCopy = {
         amdRyzenMaster: "AMD Ryzen 모니터링 지원",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "일반 하드웨어 센서 지원",
+        sharedWebView2Runtime: "공유 WebView2 런타임",
         notebookFanControl: "노트북 팬 모니터링 지원",
         notebookOemFan: "노트북 제조사 팬 지원",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const koKrAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `GPU${index} VRAM 사용량`,
     "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM 비율`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} VRAM 클록`
+  },
+  backendMessage: {
+    unknown: "상태가 업데이트되었습니다.",
+    dependency: {
+      managedRootRemovable: "이 종속 항목의 관리되는 Dependencies 루트를 삭제합니다.",
+      managedRootEmpty: "이 종속 항목에는 정리할 관리 설치가 없습니다.",
+      categoryTag: "구성 요소 종속 항목",
+      uninstallAction: "제거",
+      installedInManagedRoot: "Dependencies 소프트웨어 루트에 설치되어 있습니다.",
+      installerCached: "설치 프로그램이 Misc 캐시에 있어 Dependencies에 설치할 수 있습니다.",
+      downloadableWithVersionChoice: "공식 릴리스 페이지에서 설치 프로그램을 받을 수 있으며 검증된 버전 또는 최신 버전을 고를 수 있습니다.",
+      downloadable: "공식 출처에서 설치 프로그램을 내려받을 수 있습니다.",
+      manualAcquisition: "공식 출처 페이지를 열고 설치 프로그램을 Misc 캐시에 넣으세요.",
+      reusingExternalInstall: (value: string) => `시스템에 이미 설치된 항목을 찾아 그대로 사용합니다: ${value}`,
+      providerVerified: "공급자가 실시간 지표로 검증되었습니다.",
+      providerRuntimeUnverified: "시스템에 설치된 공급자 런타임을 찾았지만 아직 실시간 판독으로 검증되지 않았습니다.",
+      componentFilesUnverified: "구성 요소 파일은 준비되었지만 공급자가 아직 실시간 판독으로 검증되지 않았습니다.",
+      runtimeAvailableBridgePending: "런타임은 사용할 수 있지만 공급자 브리지 또는 실시간 판독 검증이 끝나지 않았습니다.",
+      providerBridgeMissing: "공급자 브리지가 연결되지 않았거나 현재 하드웨어 또는 드라이버가 검증 가능한 값을 반환하지 않습니다.",
+      bundledVerified: "기본 포함 구성 요소가 실시간 지표로 검증되었습니다.",
+      bundledUnverified: "기본 포함 구성 요소가 설치되어 있지만 현재 하드웨어 또는 OEM 런타임이 검증 가능한 값을 반환하지 않습니다.",
+      alreadyInstalledReuse: "구성 요소가 이미 설치되어 있어 기존 설치를 그대로 사용합니다.",
+      installerDownloaded: "설치 프로그램을 관리되는 종속 항목 디렉터리에 내려받았습니다.",
+      installerDownloadedVersion: (value: string) => `${value} 설치 프로그램을 관리되는 종속 항목 디렉터리에 내려받았습니다.`,
+      sharedRuntimeInstalled: "공유 WebView2 런타임이 설치되고 감지되었습니다.",
+      installerLaunched: "설치 프로그램이 표시되었습니다. 이 공급자를 사용하기 전에 공급업체 설치 안내를 완료하세요."
+    },
+    gpuPlacement: {
+      singleAdapter: "이 컴퓨터에는 GPU가 하나뿐이어서 GPU 스케줄링에 선택할 대상이 없습니다."
+    }
   }
 };
 

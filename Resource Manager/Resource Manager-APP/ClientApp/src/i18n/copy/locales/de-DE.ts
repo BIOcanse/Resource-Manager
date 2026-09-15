@@ -374,6 +374,7 @@ const deDeAppCopy: AppCopy = {
         amdRyzenMaster: "Überwachungsunterstützung für AMD Ryzen",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "Allgemeine Hardware-Sensorunterstützung",
+        sharedWebView2Runtime: "Gemeinsame WebView2-Laufzeit",
         notebookFanControl: "Lüfterüberwachung für Notebooks",
         notebookOemFan: "Lüfterunterstützung des Notebook-Herstellers",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const deDeAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `GPU${index}-VRAM-Nutzung`,
     "gpu.{index}.vramPercent": (index: string) => `GPU${index}-VRAM-Anteil`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index}-VRAM-Takt`
+  },
+  backendMessage: {
+    unknown: "Der Status wurde aktualisiert.",
+    dependency: {
+      managedRootRemovable: "Löscht das verwaltete Dependencies-Stammverzeichnis dieser Abhängigkeit.",
+      managedRootEmpty: "Diese Abhängigkeit hat keine verwaltete Installation zum Aufräumen.",
+      categoryTag: "Komponentenabhängigkeit",
+      uninstallAction: "Deinstallieren",
+      installedInManagedRoot: "Im Dependencies-Softwarestamm installiert.",
+      installerCached: "Das Installationsprogramm liegt im Misc-Cache und kann nach Dependencies installiert werden.",
+      downloadableWithVersionChoice: "Das Installationsprogramm kann von der offiziellen Release-Seite geladen werden, als geprüfte oder neueste Version.",
+      downloadable: "Das Installationsprogramm kann von der offiziellen Quelle geladen werden.",
+      manualAcquisition: "Öffnen Sie die offizielle Quellseite und legen Sie das Installationsprogramm in den Misc-Cache.",
+      reusingExternalInstall: (value: string) => `Eine vorhandene Systeminstallation wurde gefunden und wird weiterverwendet: ${value}`,
+      providerVerified: "Der Provider ist durch Live-Messwerte bestätigt.",
+      providerRuntimeUnverified: "Eine auf diesem System installierte Provider-Laufzeit wurde gefunden, ist aber noch nicht durch Live-Messwerte bestätigt.",
+      componentFilesUnverified: "Die Komponentendateien liegen bereit, der Provider ist aber noch nicht durch Live-Messwerte bestätigt.",
+      runtimeAvailableBridgePending: "Die Laufzeit ist verfügbar, die Provider-Brücke oder die Bestätigung durch Live-Messwerte ist aber nicht abgeschlossen.",
+      providerBridgeMissing: "Die Provider-Brücke ist nicht angebunden, oder die aktuelle Hardware bzw. der Treiber liefert keine überprüfbaren Messwerte.",
+      bundledVerified: "Die mitgelieferte Komponente ist durch Live-Messwerte bestätigt.",
+      bundledUnverified: "Die mitgelieferte Komponente ist installiert; die aktuelle Hardware oder OEM-Laufzeit liefert keine überprüfbaren Messwerte.",
+      alreadyInstalledReuse: "Die Komponente ist bereits installiert; die vorhandene Installation wird weiterverwendet.",
+      installerDownloaded: "Das Installationsprogramm wurde in das verwaltete Abhängigkeitsverzeichnis geladen.",
+      installerDownloadedVersion: (value: string) => `Das Installationsprogramm für ${value} wurde in das verwaltete Abhängigkeitsverzeichnis geladen.`,
+      sharedRuntimeInstalled: "Die gemeinsame WebView2-Laufzeit ist installiert und wird erkannt.",
+      installerLaunched: "Das Installationsprogramm wurde sichtbar gestartet. Schließen Sie die Installationsschritte des Anbieters ab, bevor Sie diesen Provider verwenden."
+    },
+    gpuPlacement: {
+      singleAdapter: "Dieser Rechner hat nur eine GPU, daher gibt es für die GPU-Planung kein Ziel zur Auswahl."
+    }
   }
 };
 

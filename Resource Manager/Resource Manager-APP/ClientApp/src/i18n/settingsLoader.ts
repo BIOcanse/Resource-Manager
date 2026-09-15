@@ -62,8 +62,9 @@ export const loadingSettingsText: SettingsTextBundle = {
     adaptiveBooleanModeOptions: [],
     gpuPerformanceUseCasesTitle: "",
     gpuPerformanceUseCasesDescription: "",
-    gpuSchedulingTitle: "",
-    gpuSchedulingDescription: "",
+    automaticSchedulingOptimizationsTitle: "",
+    automaticSchedulingOptimizationsDescription: "",
+    onOffOptions: [],
     preciseGpuPlacementTitle: "",
     preciseGpuPlacementDescription: "",
     preciseGpuPlacementModeOptions: {

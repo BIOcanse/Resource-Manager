@@ -42,7 +42,7 @@ public static class AppSettingsDefaults
                 GpuPerformanceUseCases: [AppGpuPerformanceUseCases.General],
                 SmartMonitoringMode: AppAdaptiveBooleanModes.Auto,
                 FrontendHiddenRefreshMode: AppFrontendHiddenRefreshModes.Auto,
-                GpuSchedulingMode: AppAdaptiveBooleanModes.Auto,
+                AutomaticSchedulingOptimizationsEnabled: true,
                 MonitorRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
                     AppLogicRefreshIntervalPresets.Responsive,
                     MonitorRefreshResponsiveIntervalMs),

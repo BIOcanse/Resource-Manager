@@ -1,3 +1,4 @@
+import { enBackendMessagesCopy } from "./backendMessages.ts";
 import { enDetailsCopy } from "./details.ts";
 import { enDeviceAdaptersCopy } from "./deviceAdapters.ts";
 import { enDeviceDetailsCopy } from "./deviceDetails.ts";
@@ -30,6 +31,7 @@ export const enAppCopy: AppCopy = {
   ...enDeviceTopologyCopy,
   ...enDeviceDetailsCopy,
   ...enDeviceAdaptersCopy,
+  ...enBackendMessagesCopy,
   ...enDetailsCopy,
   ...enSoftwareDetailCopy,
   ...enSoftwareActionsCopy,

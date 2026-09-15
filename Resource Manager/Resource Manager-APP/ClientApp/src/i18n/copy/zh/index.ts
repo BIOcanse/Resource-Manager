@@ -1,3 +1,4 @@
+import { zhBackendMessagesCopy } from "./backendMessages.ts";
 import { zhDetailsCopy } from "./details.ts";
 import { zhDeviceAdaptersCopy } from "./deviceAdapters.ts";
 import { zhDeviceDetailsCopy } from "./deviceDetails.ts";
@@ -29,6 +30,7 @@ export const zhAppCopy = {
   ...zhDeviceTopologyCopy,
   ...zhDeviceDetailsCopy,
   ...zhDeviceAdaptersCopy,
+  ...zhBackendMessagesCopy,
   ...zhDetailsCopy,
   ...zhSoftwareDetailCopy,
   ...zhSoftwareActionsCopy,

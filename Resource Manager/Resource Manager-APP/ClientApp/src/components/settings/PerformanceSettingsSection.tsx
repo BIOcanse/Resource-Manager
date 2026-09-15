@@ -27,7 +27,7 @@ interface PerformanceSettingsSectionProps {
   text: SettingsTextBundle;
   preciseGpuPlacementAvailable: boolean;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
-  onGpuSchedulingModeChange: (mode: AppAdaptiveBooleanMode) => void;
+  onAutomaticSchedulingOptimizationsChange: (enabled: boolean) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -51,7 +51,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     virtualMemoryOptimizationTargetUsagePercent: 70,
     gpuPerformanceUseCases: ["general"],
     smartMonitoringMode: "auto",
-    gpuSchedulingMode: "auto" as const,
+    automaticSchedulingOptimizationsEnabled: true,
     frontendHiddenRefreshMode: "auto",
     monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
     resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -143,14 +143,14 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
       </div>
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.performance.gpuSchedulingTitle}</strong>
-          <span>{props.text.performance.gpuSchedulingDescription}</span>
+          <strong>{props.text.performance.automaticSchedulingOptimizationsTitle}</strong>
+          <span>{props.text.performance.automaticSchedulingOptimizationsDescription}</span>
         </div>
         <SegmentedControl
-          value={performance().gpuSchedulingMode ?? "auto"}
-          options={props.text.performance.adaptiveBooleanModeOptions}
-          ariaLabel={props.text.performance.gpuSchedulingTitle}
-          onChange={props.onGpuSchedulingModeChange}
+          value={performance().automaticSchedulingOptimizationsEnabled === false ? "off" : "on"}
+          options={props.text.performance.onOffOptions}
+          ariaLabel={props.text.performance.automaticSchedulingOptimizationsTitle}
+          onChange={(value) => props.onAutomaticSchedulingOptimizationsChange(value === "on")}
         />
       </div>
       <div class="settings-row">

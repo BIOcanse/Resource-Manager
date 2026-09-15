@@ -1,4 +1,5 @@
-using ResourceManager.App.Domain.Dependencies;
+﻿using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Software;
 
@@ -16,15 +17,22 @@ public sealed partial class SoftwareRegistryView
             status.State,
             ["组件依赖"],
             [status.EffectiveInstallDirectory],
-            status.Message,
+            string.Empty,
             new SoftwareOperationCapabilities(
                 DirectoryHasContent(status.InstallDirectory),
                 "ManagedRootCleanup",
-                "卸载",
-                DirectoryHasContent(status.InstallDirectory)
-                    ? "删除该依赖的受管 Dependencies 根目录。"
-                    : "该依赖当前没有可清理的受管安装内容。"),
-            SoftwareManagementRoles.Dependency);
+                string.Empty,
+                string.Empty,
+                BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.UninstallAction),
+                BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    DirectoryHasContent(status.InstallDirectory)
+                        ? BackendMessageCodes.Dependency.ManagedRootRemovable
+                        : BackendMessageCodes.Dependency.ManagedRootEmpty)),
+            SoftwareManagementRoles.Dependency,
+            MessageCode: status.Message);
     }
 
     private static IEnumerable<SoftwareRecord> ToControlledMigrationRecords(IReadOnlyList<SoftwareDataMigrationRecord> migrationRecords)

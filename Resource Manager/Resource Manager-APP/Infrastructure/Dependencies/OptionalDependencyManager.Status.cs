@@ -1,4 +1,5 @@
-using ResourceManager.App.Domain.Dependencies;
+﻿using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
@@ -28,19 +29,21 @@ public sealed partial class OptionalDependencyManager
                 : canDownload
                     ? "downloadable"
                     : "manualDownloadRequired";
-        var message = state switch
+        var messageCode = state switch
         {
-            "installed" => "已安装在 Dependencies 软件根目录。",
-            "readyToInstall" => "安装器已在 Misc 安装器缓存中，可安装到 Dependencies。",
+            "installed" => BackendMessageCodes.Dependency.InstalledInManagedRoot,
+            "readyToInstall" => BackendMessageCodes.Dependency.InstallerCached,
             "downloadable" => sourceKind == DependencyInstallerSourceKinds.GitHubRelease
-                ? "可从官方发布页下载安装器，可选已验证版本或最新版本。"
-                : "可从官方来源下载安装器。",
-            _ => "打开官方来源页，并将安装器放入 Misc 安装器缓存。"
+                ? BackendMessageCodes.Dependency.DownloadableWithVersionChoice
+                : BackendMessageCodes.Dependency.Downloadable,
+            _ => BackendMessageCodes.Dependency.ManualAcquisition
         };
-        if (externalInstall is not null)
-        {
-            message = $"检测到系统已有安装，直接复用：{externalInstall.InstallDirectory}";
-        }
+        var message = externalInstall is null
+            ? BackendMessage.Create(BackendMessageDomains.Dependency, messageCode)
+            : BackendMessage.Create(
+                BackendMessageDomains.Dependency,
+                BackendMessageCodes.Dependency.ReusingExternalInstall,
+                externalInstall.InstallDirectory);
 
         return new OptionalDependencyStatus(
             definition,

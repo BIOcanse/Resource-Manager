@@ -1,6 +1,8 @@
-using ResourceManager.App.Domain.Components;
+﻿using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Metrics;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Components;
 
@@ -56,11 +58,13 @@ public sealed partial class ComponentManager
             false,
             true,
             providerStatus,
-            providerActive
-                ? "Provider 已通过实时指标验证。"
-                : providerRuntimeAvailable
-                    ? "运行库可用，但 Provider 桥接或实时读数验证尚未完成。"
-                    : "Provider 桥接尚未接入，或当前硬件/驱动未返回可验证读数。");
+            BackendMessage.Create(
+                BackendMessageDomains.Dependency,
+                providerActive
+                    ? BackendMessageCodes.Dependency.ProviderVerified
+                    : providerRuntimeAvailable
+                        ? BackendMessageCodes.Dependency.RuntimeAvailableBridgePending
+                        : BackendMessageCodes.Dependency.ProviderBridgeMissing));
     }
 
     private static ComponentStatus BuildBundledComponentStatus(
@@ -90,11 +94,11 @@ public sealed partial class ComponentManager
             false,
             true,
             providerStatus,
-            providerActive
-                ? "内置组件已通过实时指标验证。"
-                : string.IsNullOrWhiteSpace(providerMessage)
-                    ? "内置组件已安装；当前硬件或 OEM 运行库未返回可验证读数。"
-                    : providerMessage);
+            BackendMessage.Create(
+                BackendMessageDomains.Dependency,
+                providerActive
+                    ? BackendMessageCodes.Dependency.BundledVerified
+                    : BackendMessageCodes.Dependency.BundledUnverified));
     }
 
     private static ComponentStatus BuildOptionalDependencyStatus(
@@ -117,14 +121,18 @@ public sealed partial class ComponentManager
                     _ => dependencyStatus.State
                 };
         var message = providerActive
-            ? "Provider 已通过实时指标验证。"
+            ? BackendMessage.Create(
+                BackendMessageDomains.Dependency,
+                BackendMessageCodes.Dependency.ProviderVerified)
             : providerRuntimeAvailable
-                ? "检测到系统已安装的 Provider 运行库，但还没有通过实时读数验证。"
-            : state == "InstalledUnverified"
-                ? "组件文件已就绪，但 Provider 还没有通过实时读数验证。"
-            : state == "Installed"
-                ? dependencyStatus.Message
-                : dependencyStatus.Message;
+                ? BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.ProviderRuntimeUnverified)
+                : state == "InstalledUnverified"
+                    ? BackendMessage.Create(
+                        BackendMessageDomains.Dependency,
+                        BackendMessageCodes.Dependency.ComponentFilesUnverified)
+                    : dependencyStatus.Message;
 
         var effectiveInstalled = dependencyStatus.Installed || providerRuntimeAvailable;
 
