@@ -47,7 +47,6 @@ export const zhSoftwareCopy = {
     searchLabel: (kind: string) => `${kind}搜索`,
     search: "搜索",
     itemCount: (count: number) => `${count} 项`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "软件登记补充项",
     softwareRegistrySupplementDisabled: "当前启动配置仅显示组件目录，不加载软件登记补充项。",
     operationState: "操作状态",

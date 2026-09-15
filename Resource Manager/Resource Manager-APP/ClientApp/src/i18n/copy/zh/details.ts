@@ -12,8 +12,6 @@ export const zhDetailsCopy = {
     cancel: "取消",
     reset: "重置",
     save: "保存",
-    observationLabel: "CPU 拓扑与驻留状态",
-    noTopology: "未读取到 CPU 拓扑。",
     setCoreScore: (core: string) => `设置${core}性能分`,
     logicalProcessorLabel: (id: number, executionTime: string) => `逻辑处理器 ${id}，执行时长 ${executionTime}`,
     logicalProcessorTitle: (group: number, index: number, executionTime: string) =>
@@ -22,7 +20,6 @@ export const zhDetailsCopy = {
     ringBus: "环形总线",
     coreCount: (count: number) => `${count} 核心`,
     selectedCount: (count: number) => `已选 ${count} 项`,
-    selectedLogical: (ids: string) => `逻辑处理器：${ids}`,
     clear: "清空",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}，使用率 ${usage}，性能 ${performance}，执行时长 ${executionTime}`,
@@ -54,23 +51,14 @@ export const zhDetailsCopy = {
       `${level}级缓存 ${size} · ${scope} · 逻辑处理器 ${logicalIds}`,
     residency: {
       readFailed: "线程活动读取失败",
-      reading: "线程活动读取中",
       loading: "正在读取线程活动",
       window: (window: string) => `线程活动 ${window}`,
-      paused: "线程活动已暂停",
       unavailable: "线程活动暂时不可用",
-      idle: "线程活动待机",
       preparing: "线程活动准备中"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "指标目录读取失败。",
-    overridesReadFailed: "GPU 分数覆盖读取失败。",
-    scoresReadFailed: "GPU 性能分读取失败。",
     dataReadFailed: "GPU 调度数据读取失败。",
-    metricsReadFailed: "GPU 指标读取失败。",
-    specializedTelemetryReadFailed: "GPU 专用遥测读取失败。",
-    processAttributionReadFailed: "GPU 进程归因读取失败。",
     telemetryLive: "实时硬件 / 进程归因",
     telemetryStale: "非实时硬件 / 进程归因",
     telemetryUnavailable: "数据不可用",
@@ -113,8 +101,6 @@ export const zhDetailsCopy = {
     cdnaUsage: "CDNA 占用",
     gpuFull: "GPU 爆满",
     vramFull: "显存爆满",
-    noProcessAttribution: "无进程归因",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `${softwareCount} 软件 · ${processCount} 进程`
+    noProcessAttribution: "无进程归因"
   }
 };

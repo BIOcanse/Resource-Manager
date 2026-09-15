@@ -7,7 +7,6 @@ const koKrAppCopy: AppCopy = {
     saveFailed: "저장하지 못했습니다"
   },
   feedback: {
-    confirmTitle: "작업 확인",
     confirm: "확인",
     cancel: "취소",
     close: "닫기",
@@ -29,7 +28,6 @@ const koKrAppCopy: AppCopy = {
     pageNav: "페이지 탐색",
     currentPage: "현재 페이지",
     runtimeCapability: "런타임 기능",
-    selfSchedulingState: "자체 스케줄링 상태",
     taskCenter: "작업 센터",
     taskCenterActive: (count: number) => `작업 센터, 진행 중 ${count}개`,
     taskCenterSyncing: "작업 센터 · 백엔드 작업을 동기화하는 중",
@@ -37,15 +35,7 @@ const koKrAppCopy: AppCopy = {
     taskCenterUnavailable: "작업 센터 · 백엔드 작업 상태를 사용할 수 없음",
     minimize: "최소화",
     maximize: "최대화",
-    closeWindow: "닫기",
-    uptimeLoading: "가동 시간을 불러오는 중",
-    uptimeStale: (uptime: string) => `${uptime} · 최신 아님`,
-    uptimeUnavailable: "가동 시간을 사용할 수 없음",
-    uptimeDisabled: "가동 시간 꺼짐",
-    observationLoading: (label: string) => `${label} 불러오는 중`,
-    observationStale: (label: string) => `${label} 최신 아님`,
-    observationUnavailable: (label: string) => `${label} 사용할 수 없음`,
-    observationDisabled: (label: string) => `${label} 꺼짐`
+    closeWindow: "닫기"
   },
   managementPage: {
     browserRuntimeTab: "런타임 관리",
@@ -54,7 +44,6 @@ const koKrAppCopy: AppCopy = {
     searchLabel: (kind: string) => `${kind} 검색`,
     search: "검색",
     itemCount: (count: number) => `${count}개 항목`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "소프트웨어 레지스트리 추가 항목",
     softwareRegistrySupplementDisabled: "이 시작 프로필은 구성 요소 카탈로그만 표시하며 소프트웨어 레지스트리 추가 항목은 불러오지 않습니다.",
     operationState: "작업 상태",
@@ -128,10 +117,6 @@ const koKrAppCopy: AppCopy = {
     layoutEditor: "대시보드 레이아웃 편집기",
     dashboardQuarantined: "대시보드 구성이 손상되어 격리했습니다. 저장된 안전한 기본값을 사용합니다.",
     dashboardRecovered: "대시보드 구성을 마지막으로 유효했던 복사본에서 복원했습니다.",
-    dashboardLoading: "대시보드 구성을 불러오는 중…",
-    dashboardUnavailable: "대시보드 구성을 사용할 수 없음",
-    dashboardUnavailableDetail: "리소스 실시간 데이터는 계속 갱신됩니다. 지금은 레이아웃을 편집할 수 없습니다.",
-    retryLayout: "레이아웃 다시 시도",
     metricCatalog: "메트릭 카탈로그",
     liveMetrics: "실시간 메트릭",
     resourceUsage: "리소스 사용량",
@@ -146,8 +131,7 @@ const koKrAppCopy: AppCopy = {
     replaceMetric: (slot: string, metric: string) => `${slot} 교체: ${metric}`,
     removeMetric: (slot: string, metric: string) => `${slot} 제거: ${metric}`,
     catalogUnavailable: "메트릭 카탈로그를 사용할 수 없음",
-    metricUnavailable: "메트릭을 사용할 수 없음",
-    valueUnavailable: "--"
+    metricUnavailable: "메트릭을 사용할 수 없음"
   },
   resourceBreakdown: {
     panel: "소프트웨어 리소스 사용량",
@@ -210,12 +194,10 @@ const koKrAppCopy: AppCopy = {
     noDataDetail: "표시할 데이터가 아직 도착하지 않았습니다. 데이터 원본이 준비되면 자동으로 갱신됩니다.",
     editorLabel: "리소스 사용량 항목 편집기",
     scaleModeLabel: (metric: string) => `${metric} 눈금 모드`,
-    attributionUnavailable: " · 귀속 정보를 사용할 수 없음",
     moveUp: (label: string) => `${label} 위로 이동`,
     moveUpTitle: "위로 이동",
     moveDown: (label: string) => `${label} 아래로 이동`,
     moveDownTitle: "아래로 이동",
-    barUnavailable: (label: string) => `${label} 사용할 수 없음`,
     unavailable: "사용할 수 없음",
     processUsage: (name: string) => `${name} 프로세스 사용량`,
     metric: {
@@ -236,13 +218,6 @@ const koKrAppCopy: AppCopy = {
     cancel: "취소",
     saveLabel: "리소스 목록 열 저장",
     editLabel: "리소스 목록 열 편집",
-    dataStateTitle: "리소스 데이터 상태",
-    refreshData: "데이터 새로 고침",
-    partialUnavailableTitle: "일부 리소스 데이터를 일시적으로 사용할 수 없습니다",
-    partialUnavailableDetail: "데이터 공급자가 샘플링을 완료하지 못했습니다. 이유를 확인하고 다시 시도하세요.",
-    viewDetails: "자세히 보기",
-    preparingTitle: "리소스 데이터를 준비하는 중입니다",
-    preparingDetail: "데이터 공급자를 초기화하는 중입니다. 자세히 보기에 현재 상태가 표시됩니다.",
     noMatchTitle: "일치하는 리소스가 없습니다",
     noMatchDetail: "현재 필터와 일치하는 소프트웨어나 프로세스가 없습니다.",
     clearSearch: "검색 지우기",
@@ -285,12 +260,10 @@ const koKrAppCopy: AppCopy = {
     searchPlaceholder: "이름 또는 범주로 검색",
     searchLabel: "모니터링 항목 검색",
     clearSearchLabel: "모니터링 항목 검색 지우기",
-    clearSearchTitle: "검색 지우기",
     count: (count: number) => `모니터링 항목 ${count}개`,
     listLabel: "모니터링 항목",
     empty: "일치하는 모니터링 항목이 없습니다",
     needsInstall: (name: string) => `설치 필요: ${name}`,
-    componentState: (name: string, state: string) => `${name} · ${state}`,
     cancel: "취소",
     confirm: "확인"
   },
@@ -299,13 +272,11 @@ const koKrAppCopy: AppCopy = {
     noCandidates: "추가할 수 있는 소프트웨어가 없습니다. 먼저 소프트웨어 목록을 새로 고치세요.",
     software: "소프트웨어",
     searchSoftware: "소프트웨어 검색",
-    optionLabel: (name: string, kind: string) => `${name} · ${kind}`,
     name: "이름",
     rootDirectory: "루트 디렉터리",
     rootPlaceholder: "한 줄에 디렉터리 하나, 예: D:\\Tools\\App",
     cancel: "취소",
     saving: "저장 중",
-    confirm: "확인",
     additionalRoots: (count: number) => `디렉터리 ${count}개 더`
   },
   observationNotice: {
@@ -429,21 +400,6 @@ const koKrAppCopy: AppCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "CPU 프로세스 통계",
-      sourceDisk: "디스크 프로세스 통계",
-      sourceNetwork: "네트워크 프로세스 통계",
-      sourceGpuMemory: "VRAM 프로세스 통계",
-      sourceGeneric: "프로세스 리소스 통계",
-      stateUnavailable: "일시적으로 사용할 수 없음",
-      statePreparing: "준비 중",
-      stateIdle: "사용 중이 아님",
-      stateNormal: "정상",
-      messageUnavailable: "데이터 원본이 표시할 수 있는 실패 설명을 제공하지 않았습니다.",
-      messagePreparing: "데이터 원본이 초기화 중이며 아직 자세한 설명이 없습니다.",
-      messageGeneric: "데이터 원본이 자세한 설명을 제공하지 않았습니다.",
-      summaryHealthy: "데이터가 정상입니다",
-      summaryUnavailable: "일부 데이터를 일시적으로 사용할 수 없습니다",
-      summaryPreparing: "일부 데이터를 아직 준비하고 있습니다"
     },
     detail: {
       status: "상태",
@@ -473,18 +429,13 @@ const koKrAppCopy: AppCopy = {
     smartSchedulerStopped: "스마트 스케줄링 중지됨",
     pendingChanges: (count: number) => `확인 대기 중인 변경 ${count}건`,
     appliedTargets: (count: number) => `최적화된 항목 ${count}개`,
-    statusSeparator: " · ",
     search: "검색",
     searchLabel: "최적화 보고서 검색",
     reportPanel: "최적화 보고서",
-    reportStateUnavailable: "보고서 상태를 사용할 수 없음",
-    monitoring: (count: number) => `모니터링 중 · ${count}개`,
-    monitoringNotStarted: "모니터링이 아직 시작되지 않았습니다",
     filterLabel: "보고서 필터",
     filterUntrusted: (count: string) => `신뢰하지 않음 ${count}`,
     filterAll: (count: string) => `전체 ${count}`,
     filterTrusted: (count: string) => `신뢰함 ${count}`,
-    countUnavailable: "--",
     refresh: "새로 고침",
     refreshing: "새로 고치는 중",
     noSearchResults: "일치하는 결과가 없습니다.",
@@ -568,13 +519,11 @@ const koKrAppCopy: AppCopy = {
       observationScope: "관측 범위",
       foregroundSoftware: "포그라운드 소프트웨어",
       relatedProcesses: "관련 프로세스",
-      processSeparator: ", ",
       firstObserved: "처음 발견",
       lastObserved: "마지막 발견",
       duration: "지속 시간",
       occurrences: "발견 횟수",
-      occurrenceTimes: (count: number) => `${count}회`,
-      occurrenceCount: (count: number) => `${count}회`
+      occurrenceTimes: (count: number) => `${count}회`
     },
     duration: {
       days: (value: number) => `${value}일`,
@@ -614,8 +563,6 @@ const koKrAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} 세부 정보`,
     fallbackDeviceName: "장치",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "연결된 장치",
     section: {
       overview: "개요",
@@ -701,7 +648,6 @@ const koKrAppCopy: AppCopy = {
       downstreamHubPath: "하위 허브 경로",
       displayDevicePath: "디스플레이 장치 경로"
     },
-    companion: (index: number, port: number) => `#${index} · 허브 포트 ${port}`,
     connectionState: {
       connected: "연결됨",
       disconnected: "연결되지 않음",
@@ -946,7 +892,6 @@ const koKrAppCopy: AppCopy = {
     hdrOn: "켜짐",
     advancedColorSupported: "고급 색 지원",
     hdrCurrentlyOff: "현재 꺼짐",
-    hdrUnavailable: "현재 시스템에서 사용할 수 없음",
     hdrFormatUnavailable: (format: string) => `${format} · 현재 이 시스템에서 사용할 수 없습니다`,
     advancedColorUnsupported: "고급 색 미지원",
     bitsPerChannel: (bits: string) => `${bits} 비트 / 색 채널`,
@@ -970,7 +915,6 @@ const koKrAppCopy: AppCopy = {
     powerInputRole: "전력 싱크",
     powerInputBadge: "전원 입력",
     dock: "포트 도크",
-    usbHub: "USB 허브",
     dockBadge: "도크",
     hubSummary: (total: number, connected: number) =>
       `하위 포트 ${total} · 연결됨 ${connected}`,
@@ -983,8 +927,7 @@ const koKrAppCopy: AppCopy = {
     disk: "디스크",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "USB 장치",
-    internalDisplay: "내장 디스플레이",
-    ethernet: "이더넷"
+    internalDisplay: "내장 디스플레이"
   },
   deviceTree: {
     downstreamPort: (port: number) => `하위 포트 ${port}`,
@@ -1033,8 +976,6 @@ const koKrAppCopy: AppCopy = {
     cancel: "취소",
     reset: "재설정",
     save: "저장",
-    observationLabel: "CPU 토폴로지 및 점유 상태",
-    noTopology: "아직 CPU 토폴로지를 읽지 않았습니다.",
     setCoreScore: (core: string) => `${core}의 성능 점수 설정`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `논리 프로세서 ${id}, 실행 시간 ${executionTime}`,
@@ -1044,7 +985,6 @@ const koKrAppCopy: AppCopy = {
     ringBus: "링 버스",
     coreCount: (count: number) => `${count}개 코어`,
     selectedCount: (count: number) => `${count}개 선택됨`,
-    selectedLogical: (ids: string) => `논리 프로세서: ${ids}`,
     clear: "지우기",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, 사용률 ${usage}, 성능 ${performance}, 실행 시간 ${executionTime}`,
@@ -1076,23 +1016,14 @@ const koKrAppCopy: AppCopy = {
       `${level} 캐시 ${size} · ${scope} · 논리 프로세서 ${logicalIds}`,
     residency: {
       readFailed: "스레드 활동을 읽지 못했습니다",
-      reading: "스레드 활동을 읽는 중",
       loading: "스레드 활동을 불러오는 중",
       window: (window: string) => `스레드 활동 ${window}`,
-      paused: "스레드 활동 일시 중지됨",
       unavailable: "스레드 활동을 일시적으로 사용할 수 없음",
-      idle: "스레드 활동 유휴",
       preparing: "스레드 활동 준비 중"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "메트릭 카탈로그를 읽지 못했습니다.",
-    overridesReadFailed: "GPU 점수 재정의를 읽지 못했습니다.",
-    scoresReadFailed: "GPU 성능 점수를 읽지 못했습니다.",
     dataReadFailed: "GPU 스케줄링 데이터를 읽지 못했습니다.",
-    metricsReadFailed: "GPU 메트릭을 읽지 못했습니다.",
-    specializedTelemetryReadFailed: "GPU 전용 유닛 원격 측정을 읽지 못했습니다.",
-    processAttributionReadFailed: "GPU 프로세스 귀속 정보를 읽지 못했습니다.",
     telemetryLive: "실시간 하드웨어 / 프로세스 귀속",
     telemetryStale: "오래된 하드웨어 / 프로세스 귀속",
     telemetryUnavailable: "데이터를 사용할 수 없음",
@@ -1135,9 +1066,7 @@ const koKrAppCopy: AppCopy = {
     cdnaUsage: "CDNA 사용률",
     gpuFull: "GPU 포화",
     vramFull: "VRAM 포화",
-    noProcessAttribution: "프로세스 귀속 정보 없음",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `소프트웨어 ${softwareCount} · 프로세스 ${processCount}`
+    noProcessAttribution: "프로세스 귀속 정보 없음"
   },
   softwareDetail: {
     tab: {
@@ -1230,8 +1159,6 @@ const koKrAppCopy: AppCopy = {
       title: "CPU 코어 할당",
       description: "“전용”은 다른 소프트웨어가 이 코어를 피하게 하고, “고정”은 이 소프트웨어를 그 코어로 제한합니다.",
       clear: "지우기",
-      loadingTopology: "CPU 토폴로지를 읽는 중입니다.",
-      noTopology: "아직 CPU 토폴로지 데이터가 없습니다.",
       maxBoost: (value: string) => `최대 부스트 ${value}`,
       l1Cache: "L1 캐시 --",
       l2Cache: (value: string) => `L2 캐시 ${value}`,
@@ -1276,8 +1203,7 @@ const koKrAppCopy: AppCopy = {
       unsupported: "지원되지 않음",
       unknown: "알 수 없음",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "시작 시 정밀 공급자를 사용할 수 없습니다. 설정은 유지되지만 실행되지 않습니다.",
@@ -1448,7 +1374,6 @@ const koKrAppCopy: AppCopy = {
       observedChanges: "관측된 변경",
       changeTimes: (count: number) => `${count}회`,
       observedProcesses: "감시한 프로세스",
-      processSeparator: ", ",
       observationScope: "관측 범위",
       directory: (index: number) => `디렉터리 ${index}`,
       migratableContent: "마이그레이션할 수 있는 내용",
@@ -1458,8 +1383,6 @@ const koKrAppCopy: AppCopy = {
       lastObserved: "마지막 관측",
       relatedProcesses: "관련 프로세스",
       savedLocations: "저장 위치",
-      userData: "사용자 데이터",
-      miscData: "기타 데이터",
       softwareRoot: "소프트웨어 루트 디렉터리",
       migrationJudgement: "마이그레이션 평가",
       risk: "위험",
@@ -1511,15 +1434,7 @@ const koKrAppCopy: AppCopy = {
   },
   hotkeyGroup: {
     mouse: "마우스",
-    character: "문자",
-    modifier: "한정 키",
-    functionKey: "기능 키",
-    navigation: "탐색",
-    numpad: "숫자 키패드",
-    symbol: "기호",
-    system: "시스템 키",
-    media: "미디어 키",
-    ime: "IME"
+    system: "시스템 키"
   },
   hotkeyEditor: {
     searchKey: "키 검색",
@@ -1537,7 +1452,6 @@ const koKrAppCopy: AppCopy = {
     backendResyncing: "로컬 서비스가 다시 동기화하는 중이라 지금은 백엔드 작업을 변경할 수 없습니다.",
     backendUnavailable: "백엔드 작업 상태를 읽을 수 없습니다. 인터페이스 작업은 계속 동작합니다.",
     filterLabel: "작업 필터",
-    noBackendTasks: "이 시작 프로필은 백엔드 작업을 제공하지 않습니다. 인터페이스 작업은 여기에 표시됩니다",
     noTasksInFilter: "이 필터에 해당하는 작업이 없습니다",
     itemCount: (count: number) => `${count}개 항목`,
     close: "닫기",
@@ -1571,7 +1485,6 @@ const koKrAppCopy: AppCopy = {
       queued: "대기 중",
       startPending: "시작하는 중",
       running: "실행 중",
-      cancelPending: "취소하는 중",
       retryWait: "재시도 대기 중",
       recoveryPending: "복구하는 중",
       succeeded: "완료됨",
@@ -1593,7 +1506,6 @@ const koKrAppCopy: AppCopy = {
   smartReport: {
     panel: "스마트 스케줄링 보고서",
     loading: "불러오는 중",
-    updated: "스마트 스케줄링 상태를 업데이트했습니다",
     unavailable: "상태를 사용할 수 없음",
     refresh: "새로 고침",
     completed: "완료됨",
@@ -1699,11 +1611,8 @@ const koKrAppCopy: AppCopy = {
     refreshFailed: "새로 고치지 못했습니다",
     installDisabled: "이 시작 프로필은 구성 요소 상태만 표시하며 설치를 실행하지 않습니다.",
     fallbackComponentName: "이 구성 요소",
-    externalTermsRequired: (name: string) => `${name}을(를) 계속하려면 공급업체의 약관에 동의해야 합니다.`,
     componentMissingIdentity: "이 구성 요소에는 안정적인 식별자가 없어 설치 작업을 만들 수 없습니다.",
     waiting: "대기 중",
-    installing: "설치하는 중",
-    noInstallEntry: "이 구성 요소에는 지금 사용할 수 있는 설치 항목이 없습니다.",
     actionFailed: "작업하지 못했습니다",
     uninstallDisabled: "이 시작 프로필은 소프트웨어 제거를 실행하지 않습니다.",
     cannotUninstall: "이 소프트웨어는 지금 제거할 수 없습니다",
@@ -1723,9 +1632,7 @@ const koKrAppCopy: AppCopy = {
     progressCanceled: "취소됨",
     progressUncertain: "상태 불확실",
     progressWorking: "처리 중",
-    progressSummary: (stage: string, percent: string, speed: string) => `${stage}${percent}${speed}`,
     operationStateDisabled: "이 시작 프로필은 실행 가능한 작업 상태를 불러오지 않습니다.",
-    operationStateRefreshFailed: "작업 상태를 새로 고치지 못했습니다",
     operationStateStopped: "작업 상태가 중지되었습니다",
     migrationRuntimeDisabled: "이 시작 프로필은 마이그레이션 런타임을 사용하도록 설정하지 않습니다.",
     notPreviewed: "아직 미리 보지 않음",
@@ -1754,7 +1661,6 @@ const koKrAppCopy: AppCopy = {
     restoreStartFailed: "복원을 시작하지 못했습니다",
     restoreCompleted: "복원이 완료되었습니다",
     restoreFailed: "마이그레이션을 복원하지 못했습니다",
-    taskTitle: (action: string, name: string) => `${action}: ${name}`,
     resultUncertain: "작업 결과가 불확실합니다. 먼저 실제 상태를 확인하세요.",
     resultIncomplete: "작업이 완료되지 않았습니다.",
     optimizationReportDisabled: "이 시작 프로필은 최적화 보고서를 사용하도록 설정하지 않습니다.",
@@ -1762,10 +1668,7 @@ const koKrAppCopy: AppCopy = {
     smartModeSwitchFailed: "스마트 최적화 모드를 전환하지 못했습니다",
     optimizationReportRefreshFailed: "성능 최적화 보고서를 새로 고치지 못했습니다",
     optimizationScheduleRefreshFailed: "최적화 스케줄링 상태를 새로 고치지 못했습니다",
-    resourceBreakdownRefreshFailed: "리소스 사용량을 새로 고치지 못했습니다",
-    resourceTableRefreshFailed: "리소스 목록을 새로 고치지 못했습니다",
-    metricCatalogRefreshFailed: "메트릭 카탈로그를 새로 고치지 못했습니다",
-    resourceMonitorRefreshFailed: "리소스 모니터링을 새로 고치지 못했습니다"
+    metricCatalogRefreshFailed: "메트릭 카탈로그를 새로 고치지 못했습니다"
   },
   apiError: {
     readFailed: "데이터를 읽지 못했습니다. 잠시 후 다시 시도하세요",
@@ -1781,13 +1684,11 @@ const koKrAppCopy: AppCopy = {
     openPropertiesFailed: "속성을 열지 못했습니다",
     terminateFailed: "작업을 끝내지 못했습니다",
     dumpFailed: "메모리 덤프 파일을 만들지 못했습니다",
-    updateViewportFailed: "리소스 관리자 뷰포트를 업데이트하지 못했습니다",
     addSoftwareFailed: "소프트웨어를 추가하지 못했습니다",
     confirmRootFailed: "소프트웨어 루트 디렉터리를 확정하지 못했습니다",
     saveGpuSoftwarePolicyFailed: "GPU 스케줄링 소프트웨어 정책을 저장하지 못했습니다",
     saveGpuProcessPolicyFailed: "GPU 스케줄링 프로세스 정책을 저장하지 못했습니다",
     recordGpuProcessHistoryFailed: "GPU 스케줄링 프로세스 기록을 남기지 못했습니다",
-    refreshOptimizationReportFailed: "성능 최적화 보고서를 새로 고치지 못했습니다",
     readGpuScoreOverridesFailed: "GPU 점수 재정의를 읽지 못했습니다",
     readGpuScoresFailed: "GPU 성능 점수를 읽지 못했습니다",
     readOptimizationReportsFailed: "성능 최적화 보고서를 읽지 못했습니다",
@@ -1796,7 +1697,6 @@ const koKrAppCopy: AppCopy = {
     removeTrustFailed: "신뢰를 해제하지 못했습니다"
   },
   session: {
-    noVerifiedSession: "확인 가능한 로컬 서비스 세션이 아직 없습니다",
     notReady: "로컬 서비스가 아직 준비되지 않았습니다",
     sessionChanged: "로컬 서비스 세션이 바뀌었습니다",
     noTrustedHost: "이 페이지에는 신뢰할 수 있는 로컬 호스트가 없습니다",
@@ -1804,7 +1704,6 @@ const koKrAppCopy: AppCopy = {
     hostCannotSubscribe: "이 호스트는 백엔드 세션 상태를 구독할 수 없습니다",
     frontendClosed: "프런트엔드 런타임이 닫혔습니다",
     sessionUnavailable: (reason: string) => `로컬 서비스 세션을 사용할 수 없습니다: ${reason}`,
-    identityConflict: "로컬 서비스 세션 식별 정보가 충돌합니다",
     hostCannotRerequest: "이 호스트는 백엔드 세션 상태를 다시 요청할 수 없습니다",
     waitTimeout: "로컬 서비스 세션을 기다리다가 시간이 초과되었습니다",
     requestFailed: (message: string) => `로컬 서비스 세션을 요청하지 못했습니다: ${message}`,
@@ -1820,15 +1719,9 @@ const koKrAppCopy: AppCopy = {
     actionFailed: "작업하지 못했습니다. 잠시 후 다시 시도하세요"
   },
   operationRegistry: {
-    backendOperationsDisabled: "이 시작 프로필은 백엔드 작업을 제공하지 않습니다.",
-    notSynced: "백그라운드 작업 상태가 현재 로컬 서비스 세션과 아직 동기화되지 않았습니다.",
-    staleSessionResponse: "백그라운드 작업 응답이 만료된 로컬 서비스 세션에서 왔습니다.",
     noCurrentValue: "백그라운드 작업 상태의 현재 값이 아직 도착하지 않았습니다.",
     cancelFailed: "작업을 취소하지 못했습니다",
     removedFromCurrentValue: (operationId: string) => `백그라운드 작업이 현재 값에서 제거되었습니다: ${operationId}`,
-    notFound: (operationId: string) => `백그라운드 작업을 찾을 수 없습니다: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `백그라운드 작업이 권한 있는 상태에서 제거되었습니다: ${operationId}`,
     canceled: "작업이 취소되었습니다"
   },
   gpuTarget: {
@@ -1839,9 +1732,7 @@ const koKrAppCopy: AppCopy = {
     unavailable: "지금은 사용할 수 없음",
     specificGpu: "특정 GPU",
     needsPreciseSelection: (target: string) => `${target} (정밀 GPU 선택 필요)`,
-    startupUnavailable: (target: string) => `${target} (시작 시 사용할 수 없음)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (시작 시 사용할 수 없음)`
   },
   shellBridge: {
     desktopOnly: "이 기능은 리소스 관리자 데스크톱 앱에서만 사용할 수 있습니다.",
@@ -1934,8 +1825,6 @@ const koKrAppCopy: AppCopy = {
     relatedInfo: "관련 정보",
     content: "내용",
     infoIndex: (index: number) => `정보 ${index}`,
-    selfSchedulingRefreshFailed: "리소스 관리자 자체 스케줄링 상태를 새로 고치지 못했습니다",
-    localStatusRefreshFailed: "로컬 런타임 상태를 새로 고치지 못했습니다",
     search: "검색",
     searchOptions: "검색 옵션",
     noMatchingOption: "일치하는 선택 항목이 없습니다",

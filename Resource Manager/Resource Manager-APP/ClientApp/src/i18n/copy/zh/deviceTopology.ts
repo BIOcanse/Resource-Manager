@@ -30,8 +30,6 @@ export const zhDeviceTopologyCopy = {
     detailTitle: (name: string) => `${name}详细信息`,
     fallbackDeviceName: "设备",
     countSuffix: (count: number) => `${count} 个`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "连接设备",
     section: {
       overview: "概览",
@@ -117,7 +115,6 @@ export const zhDeviceTopologyCopy = {
       downstreamHubPath: "下游 Hub 路径",
       displayDevicePath: "显示器设备路径"
     },
-    companion: (index: number, port: number) => `#${index} · Hub 端口 ${port}`,
     connectionState: {
       connected: "已连接",
       disconnected: "未连接",

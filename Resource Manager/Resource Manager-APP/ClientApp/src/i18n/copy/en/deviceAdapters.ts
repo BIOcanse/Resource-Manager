@@ -100,7 +100,6 @@ export const enDeviceAdaptersCopy: Pick<
     hdrOn: "On",
     advancedColorSupported: "Advanced color supported",
     hdrCurrentlyOff: "Currently off",
-    hdrUnavailable: "Not available in the system right now",
     hdrFormatUnavailable: (format: string) => `${format} · currently unavailable on this system`,
     advancedColorUnsupported: "Advanced color not supported",
     bitsPerChannel: (bits: string) => `${bits} bit / color channel`,
@@ -124,7 +123,6 @@ export const enDeviceAdaptersCopy: Pick<
     powerInputRole: "Power sink",
     powerInputBadge: "Power input",
     dock: "Port dock",
-    usbHub: "USB hub",
     dockBadge: "Dock",
     hubSummary: (total: number, connected: number) =>
       `${total} downstream ports · ${connected} connected`,
@@ -137,8 +135,7 @@ export const enDeviceAdaptersCopy: Pick<
     disk: "Disk",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "USB device",
-    internalDisplay: "Built-in display",
-    ethernet: "Ethernet"
+    internalDisplay: "Built-in display"
   },
   deviceTree: {
     downstreamPort: (port: number) => `Downstream port ${port}`,

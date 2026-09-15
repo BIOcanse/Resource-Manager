@@ -92,8 +92,6 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail"> = {
       title: "CPU core allocation",
       description: "“Reserve” makes other software avoid these cores; “Pin” restricts this software to them.",
       clear: "Clear",
-      loadingTopology: "Reading CPU topology.",
-      noTopology: "No CPU topology data yet.",
       maxBoost: (value: string) => `Max boost ${value}`,
       l1Cache: "L1 cache --",
       l2Cache: (value: string) => `L2 cache ${value}`,
@@ -138,8 +136,7 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail"> = {
       unsupported: "unsupported",
       unknown: "unknown",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "The launch-time precise provider is unavailable; the setting is kept but not executed.",

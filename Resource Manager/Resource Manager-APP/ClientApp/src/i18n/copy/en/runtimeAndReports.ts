@@ -4,7 +4,6 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
   smartReport: {
     panel: "Smart scheduling report",
     loading: "Loading",
-    updated: "Smart scheduling state updated",
     unavailable: "State unavailable",
     refresh: "Refresh",
     completed: "Completed",

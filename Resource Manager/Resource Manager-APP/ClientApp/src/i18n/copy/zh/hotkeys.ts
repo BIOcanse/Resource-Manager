@@ -39,15 +39,7 @@ export const zhHotkeysCopy = {
   },
   hotkeyGroup: {
     mouse: "鼠标",
-    character: "字符",
-    modifier: "修饰键",
-    functionKey: "功能键",
-    navigation: "导航",
-    numpad: "数字键盘",
-    symbol: "符号",
-    system: "系统键",
-    media: "媒体键",
-    ime: "输入法"
+    system: "系统键"
   },
   hotkeyEditor: {
     searchKey: "搜索按键",

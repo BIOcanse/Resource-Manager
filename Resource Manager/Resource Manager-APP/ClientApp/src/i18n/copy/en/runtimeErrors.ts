@@ -18,13 +18,11 @@ export const enRuntimeErrorsCopy: Pick<
     openPropertiesFailed: "Opening properties failed",
     terminateFailed: "Ending the task failed",
     dumpFailed: "Creating the memory dump file failed",
-    updateViewportFailed: "Updating the Resource Manager viewport failed",
     addSoftwareFailed: "Adding the software failed",
     confirmRootFailed: "Confirming the software root directory failed",
     saveGpuSoftwarePolicyFailed: "Saving the GPU scheduling software policy failed",
     saveGpuProcessPolicyFailed: "Saving the GPU scheduling process policy failed",
     recordGpuProcessHistoryFailed: "Recording GPU scheduling process history failed",
-    refreshOptimizationReportFailed: "Refreshing performance optimization reports failed",
     readGpuScoreOverridesFailed: "Reading the GPU score overrides failed",
     readGpuScoresFailed: "Reading the GPU performance scores failed",
     readOptimizationReportsFailed: "Reading the optimization reports failed",
@@ -33,7 +31,6 @@ export const enRuntimeErrorsCopy: Pick<
     removeTrustFailed: "Removing trust failed"
   },
   session: {
-    noVerifiedSession: "No verifiable local service session yet",
     notReady: "The local service is not ready yet",
     sessionChanged: "The local service session has changed",
     noTrustedHost: "This page has no trusted local host",
@@ -41,7 +38,6 @@ export const enRuntimeErrorsCopy: Pick<
     hostCannotSubscribe: "This host cannot subscribe to backend session state",
     frontendClosed: "The frontend runtime is closed",
     sessionUnavailable: (reason: string) => `Local service session unavailable: ${reason}`,
-    identityConflict: "Local service session identity conflict",
     hostCannotRerequest: "This host cannot re-request backend session state",
     waitTimeout: "Timed out waiting for the local service session",
     requestFailed: (message: string) => `Could not request the local service session: ${message}`,
@@ -57,15 +53,9 @@ export const enRuntimeErrorsCopy: Pick<
     actionFailed: "The action failed, please try again later"
   },
   operationRegistry: {
-    backendOperationsDisabled: "This startup profile provides no backend operations.",
-    notSynced: "Background operation state is not synced with the current local service session yet.",
-    staleSessionResponse: "The background operation response came from an expired local service session.",
     noCurrentValue: "No current value has arrived for the background operation state.",
     cancelFailed: "Canceling the operation failed",
     removedFromCurrentValue: (operationId: string) => `The background operation was removed from the current value: ${operationId}`,
-    notFound: (operationId: string) => `Background operation not found: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `The background operation was removed from authoritative state: ${operationId}`,
     canceled: "The operation was canceled"
   },
   gpuTarget: {
@@ -76,9 +66,7 @@ export const enRuntimeErrorsCopy: Pick<
     unavailable: "Unavailable right now",
     specificGpu: "Specific GPU",
     needsPreciseSelection: (target: string) => `${target} (requires precise GPU selection)`,
-    startupUnavailable: (target: string) => `${target} (unavailable at launch)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (unavailable at launch)`
   },
   shellBridge: {
     desktopOnly: "This feature is only available in the Resource Manager desktop app.",
@@ -171,8 +159,6 @@ export const enRuntimeErrorsCopy: Pick<
     relatedInfo: "Related information",
     content: "Content",
     infoIndex: (index: number) => `Info ${index}`,
-    selfSchedulingRefreshFailed: "Refreshing Resource Manager self-scheduling state failed",
-    localStatusRefreshFailed: "Refreshing local runtime state failed",
     search: "Search",
     searchOptions: "Search options",
     noMatchingOption: "No matching option",

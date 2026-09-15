@@ -14,10 +14,6 @@ export const zhMonitorCopy = {
     layoutEditor: "监控面板布局编辑器",
     dashboardQuarantined: "仪表盘配置已损坏并隔离，当前使用明确保存的安全默认配置。",
     dashboardRecovered: "仪表盘配置已从最近一次有效副本恢复。",
-    dashboardLoading: "正在读取仪表盘配置…",
-    dashboardUnavailable: "仪表盘配置不可用",
-    dashboardUnavailableDetail: "实时资源数据仍会继续显示，布局编辑暂不可用。",
-    retryLayout: "重试布局",
     metricCatalog: "指标目录",
     liveMetrics: "实时指标",
     resourceUsage: "资源占用",
@@ -32,8 +28,7 @@ export const zhMonitorCopy = {
     replaceMetric: (slot: string, metric: string) => `更换${slot}：${metric}`,
     removeMetric: (slot: string, metric: string) => `删除${slot}：${metric}`,
     catalogUnavailable: "指标目录暂不可用",
-    metricUnavailable: "指标不可用",
-    valueUnavailable: "--"
+    metricUnavailable: "指标不可用"
   },
   resourceBreakdown: {
     panel: "软件资源占用",
