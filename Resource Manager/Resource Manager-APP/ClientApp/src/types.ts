@@ -202,6 +202,8 @@ export interface AppPerformanceSettings {
   virtualMemoryOptimizationTargetUsagePercent: number;
   gpuPerformanceUseCases: AppGpuPerformanceUseCase[];
   smartMonitoringMode: AppAdaptiveBooleanMode;
+  /** 自动：不止一个显卡才调度；始终开启/关闭由用户决定。 */
+  gpuSchedulingMode: AppAdaptiveBooleanMode;
   frontendHiddenRefreshMode: AppFrontendHiddenRefreshMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;

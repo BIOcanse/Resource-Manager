@@ -27,6 +27,7 @@ interface PerformanceSettingsSectionProps {
   text: SettingsTextBundle;
   preciseGpuPlacementAvailable: boolean;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
+  onGpuSchedulingModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -50,6 +51,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     virtualMemoryOptimizationTargetUsagePercent: 70,
     gpuPerformanceUseCases: ["general"],
     smartMonitoringMode: "auto",
+    gpuSchedulingMode: "auto" as const,
     frontendHiddenRefreshMode: "auto",
     monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
     resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -137,6 +139,18 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           options={props.text.performance.adaptiveBooleanModeOptions}
           ariaLabel={props.text.performance.smartMonitoringTitle}
           onChange={props.onSmartMonitoringModeChange}
+        />
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.performance.gpuSchedulingTitle}</strong>
+          <span>{props.text.performance.gpuSchedulingDescription}</span>
+        </div>
+        <SegmentedControl
+          value={performance().gpuSchedulingMode ?? "auto"}
+          options={props.text.performance.adaptiveBooleanModeOptions}
+          ariaLabel={props.text.performance.gpuSchedulingTitle}
+          onChange={props.onGpuSchedulingModeChange}
         />
       </div>
       <div class="settings-row">

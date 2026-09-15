@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -139,7 +139,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.True(loaded.Settings.Debug.HostManagerSmartCoordinatorPerformanceLogEnabled);
 
         var persisted = await File.ReadAllTextAsync(settingsPath);
-        Assert.Contains("\"version\": \"1.0.23\"", persisted, StringComparison.Ordinal);
+        Assert.Contains("\"version\": \"1.0.24\"", persisted, StringComparison.Ordinal);
         Assert.Contains("hostManagerSmartCoordinatorScoreOnlyEnabled", persisted, StringComparison.Ordinal);
         Assert.Contains("hostManagerSmartCoordinatorPerformanceLogEnabled", persisted, StringComparison.Ordinal);
         Assert.DoesNotContain("smartOptimizationScoreOnlyEnabled", persisted, StringComparison.Ordinal);

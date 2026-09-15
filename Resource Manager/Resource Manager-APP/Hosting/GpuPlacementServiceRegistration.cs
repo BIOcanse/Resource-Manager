@@ -1,4 +1,4 @@
-using ResourceManager.App.Application.GpuPlacement;
+﻿using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
@@ -26,6 +26,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuLaunchInterceptionRegistry, WindowsIfeoGpuLaunchInterceptionRegistry>();
         services.AddSingleton<IGpuLaunchExecutionReportStore, JsonGpuLaunchExecutionReportStore>();
         services.AddSingleton<IGpuStartupPlacementResolver, GpuStartupPlacementResolver>();
+        services.AddSingleton<IGpuSchedulingAvailability, GpuSchedulingAvailabilityReader>();
         if (startupCapabilities.Allows(
                 StartupCapability.GpuLaunchInterceptionReconciliation))
         {
