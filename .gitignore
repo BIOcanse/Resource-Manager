@@ -39,6 +39,9 @@
 /Resource Manager/Misc/
 /Resource Manager/Bin/
 /Resource Manager/.resource-manager-validation-authority/
-/docs/
+# README 里的截图是对外资源，必须随仓库发出；docs/ 下其余内容仍然不进仓库。
+# 目录本身不能整体排除，否则 git 不会再进去看 negation 规则。
+/docs/*
+!/docs/screenshots/
 /evidence/
 /output/
