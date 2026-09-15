@@ -1,3 +1,4 @@
+import { localizedMetricLabel } from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
@@ -1147,7 +1148,7 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
     .sort((left, right) => gpuColumnOrder(left.id) - gpuColumnOrder(right.id))
     .map((metric) => ({
       id: metric.id,
-      label: gpuMetricLabel(metric.id, metric.label),
+      label: localizedMetricLabel(metric.id, gpuMetricLabel(metric.id, metric.label)),
       unit: metric.id.endsWith(".vram") ? "B" : "%",
       visible: true,
       sortable: true,

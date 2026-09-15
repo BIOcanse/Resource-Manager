@@ -1,3 +1,4 @@
+import { localizedMetricLabel } from "../presentation/metricLabels";
 import { createSignal, For, Show } from "solid-js";
 import { pointerReorderProps } from "../interactions/pointerReorder";
 import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../types";
@@ -146,7 +147,9 @@ function MetricSlot(props: {
   const isMain = () => props.slot === "main";
   const slotRef = (): DashboardSlotRef => ({ cardId: props.card.id, slot: props.slot, index: props.index });
   const key = () => slotKey(slotRef());
-  const metricLabel = () => props.catalog.find((metric) => metric.id === props.metricId)?.label
+  const metricLabel = () => localizedMetricLabel(
+    props.metricId,
+    props.catalog.find((metric) => metric.id === props.metricId)?.label)
     ?? props.metricId
     ?? uiText.dashboard.emptyMetric;
   const slotLabel = () => props.slot === "main"
@@ -232,7 +235,10 @@ function MetricView(props: {
     const label = metric()?.label?.trim();
     return label && label !== props.metricId ? label : null;
   };
-  const label = () => definition()?.label ?? snapshotLabel() ?? (props.metricId ? uiText.dashboard.metricUnavailable : "--");
+  const label = () => (props.metricId
+    ? localizedMetricLabel(props.metricId, definition()?.label ?? snapshotLabel())
+    : null)
+    ?? (props.metricId ? uiText.dashboard.metricUnavailable : "--");
   const value = () => metric()?.displayValue ?? (definition() ? "N/A" : "--");
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>

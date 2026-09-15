@@ -1,3 +1,4 @@
+import { localizedMetricLabel } from "../presentation/metricLabels";
 import { Search, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
@@ -57,7 +58,7 @@ export function MetricModal(props: MetricModalProps) {
     return props.catalog.filter((metric) => {
       const group = userFacingMetricGroup(metric.group);
       return !filter
-        || metric.label.toLocaleLowerCase().includes(filter)
+        || localizedMetricLabel(metric.id, metric.label).toLocaleLowerCase().includes(filter)
         || metric.id.toLocaleLowerCase().includes(filter)
         || group.toLocaleLowerCase().includes(filter);
     });
@@ -260,7 +261,7 @@ export function MetricModal(props: MetricModalProps) {
                             onClick={() => chooseMetric(metric)}
                           >
                             <span class="metric-option-content">
-                              <span>{metric.label}</span>
+                              <span>{localizedMetricLabel(metric.id, metric.label)}</span>
                               <Show when={dependency()}>
                                 {(state) => (
                                   <small class={state().missing ? "metric-dependency missing" : "metric-dependency"}>
