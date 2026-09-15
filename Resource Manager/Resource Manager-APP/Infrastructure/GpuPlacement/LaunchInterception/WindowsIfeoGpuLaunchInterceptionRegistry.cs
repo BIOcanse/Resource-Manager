@@ -24,19 +24,38 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
         RegistryView.Registry32
     ];
 
+    private static readonly object RegistryOperationGate = new();
+
     private readonly string brokerPath;
+    private readonly IfeoOwnedRuleCleanupCoordinator ownedRuleCleanup;
 
     public WindowsIfeoGpuLaunchInterceptionRegistry()
-        : this(Path.Combine(AppContext.BaseDirectory, BrokerFileName))
+        : this(Path.Combine(AppContext.BaseDirectory, BrokerFileName), new WindowsIfeoOwnedRuleStore())
     {
     }
 
     internal WindowsIfeoGpuLaunchInterceptionRegistry(string brokerPath)
+        : this(brokerPath, new WindowsIfeoOwnedRuleStore())
+    {
+    }
+
+    internal WindowsIfeoGpuLaunchInterceptionRegistry(
+        string brokerPath,
+        IIfeoOwnedRuleStore ownedRuleStore)
     {
         this.brokerPath = Path.GetFullPath(brokerPath);
+        ownedRuleCleanup = new IfeoOwnedRuleCleanupCoordinator(ownedRuleStore, OwnerValue);
     }
 
     public GpuLaunchInterceptionStatus Apply(GpuPlacementProcessPolicy policy)
+    {
+        lock (RegistryOperationGate)
+        {
+            return ApplyUnderGate(policy);
+        }
+    }
+
+    private GpuLaunchInterceptionStatus ApplyUnderGate(GpuPlacementProcessPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
 
@@ -77,7 +96,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
                 WriteRule(view, imageName, executablePath, ruleName, debuggerCommand);
             }
 
-            return GetStatus(policy);
+            return GetStatusUnderGate(policy);
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -97,6 +116,14 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
     }
 
     public GpuLaunchInterceptionStatus GetStatus(GpuPlacementProcessPolicy policy)
+    {
+        lock (RegistryOperationGate)
+        {
+            return GetStatusUnderGate(policy);
+        }
+    }
+
+    private GpuLaunchInterceptionStatus GetStatusUnderGate(GpuPlacementProcessPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
 
@@ -171,38 +198,44 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
 
     public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(GpuPlacementPolicyDocument document)
     {
-        ArgumentNullException.ThrowIfNull(document);
+        lock (RegistryOperationGate)
+        {
+            ArgumentNullException.ThrowIfNull(document);
 
-        var desiredPaths = document.ProcessPolicies
-            .Where(static policy => policy.StartupInterceptionEnabled)
-            .Select(static policy => NormalizePath(policy.ExecutablePath))
-            .Where(static path => !string.IsNullOrWhiteSpace(path))
-            .Select(static path => path!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var desiredPaths = document.ProcessPolicies
+                .Where(static policy => policy.StartupInterceptionEnabled)
+                .Select(static policy => NormalizePath(policy.ExecutablePath))
+                .Where(static path => !string.IsNullOrWhiteSpace(path))
+                .Select(static path => path!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        RemoveStaleOwnedRules(desiredPaths);
-        return document.ProcessPolicies
-            .Where(static policy => policy.StartupInterceptionEnabled)
-            .Select(Apply)
-            .ToArray();
+            RemoveStaleOwnedRules(desiredPaths);
+            return document.ProcessPolicies
+                .Where(static policy => policy.StartupInterceptionEnabled)
+                .Select(ApplyUnderGate)
+                .ToArray();
+        }
     }
 
     public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules()
     {
-        try
+        lock (RegistryOperationGate)
         {
-            var removed = RegistryViews.Sum(RemoveAllOwnedRules);
-            return new GpuLaunchInterceptionCleanupResult(
-                true,
-                removed,
-                $"已从 IFEO 注册表视图中移除 {removed} 条 Resource Manager 启动拦截规则。");
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException
-            or System.Security.SecurityException
-            or IOException
-            or Win32Exception)
-        {
-            return new GpuLaunchInterceptionCleanupResult(false, 0, ex.Message);
+            try
+            {
+                var removed = ownedRuleCleanup.RemoveAll(RegistryViews);
+                return new GpuLaunchInterceptionCleanupResult(
+                    true,
+                    removed,
+                    $"已从 IFEO 注册表视图中移除 {removed} 条 Resource Manager 启动拦截规则。");
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException
+                or System.Security.SecurityException
+                or IOException
+                or Win32Exception)
+            {
+                return new GpuLaunchInterceptionCleanupResult(false, 0, ex.Message);
+            }
         }
     }
 
