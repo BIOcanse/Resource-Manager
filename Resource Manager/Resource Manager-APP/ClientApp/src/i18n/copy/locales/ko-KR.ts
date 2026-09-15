@@ -1944,6 +1944,20 @@ const koKrAppCopy: AppCopy = {
       notExposed: "현재 하드웨어 또는 공급자가 이 값을 제공하지 않습니다.",
       needsComponent: (value: string) => `현재 공급자가 유효한 값을 반환하지 않습니다. 더 완전한 ${value} 또는 해당 하드웨어/OEM 구성 요소가 필요합니다.`,
       noValidReading: "현재 하드웨어 또는 공급자가 유효한 값을 반환하지 않습니다."
+    },
+    software: {
+      hasUninstallEntry: "제거 항목 있음",
+      missingUninstallEntry: "제거 항목 없음",
+      uninstallAction: "제거",
+      cannotUninstallAction: "제거할 수 없음",
+      windowsUninstallerDescription: "Windows에 등록된 공식 제거 프로그램을 실행합니다.",
+      noUninstallUnknownRoot: "제거 항목이 없어 수동으로만 처리할 수 있습니다. Resource Manager는 알 수 없는 소프트웨어 루트를 삭제하지 않습니다.",
+      manualClassificationNoUninstall: "수동 분류 항목 자체는 제거 프로그램이 아닙니다. 소프트웨어 세부 정보나 원래 소프트웨어에서 처리하세요.",
+      controlledNoUninstall: "제어되는 소프트웨어에는 별도의 제거 정책 기록이 필요하며, 현재는 데이터 마이그레이션 복원만 지원합니다.",
+      selfNoUninstall: "Resource Manager 자체는 여기에서 제거하거나 마이그레이션할 수 없습니다.",
+      adaptedNoUninstall: "적응형 소프트웨어는 등록 또는 manifest에 제거 정책을 선언해야 합니다.",
+      legacyControlledNoUninstall: "L0 제어 등록에는 제거 정책이 없습니다.",
+      portableNoUninstall: "휴대용 소프트웨어에는 제거 프로그램이 없습니다. 파일을 삭제하고 목록을 새로 고치면 기록이 사라집니다."
     }
   }
 };

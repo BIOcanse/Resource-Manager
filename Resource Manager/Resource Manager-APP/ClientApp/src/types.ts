@@ -578,6 +578,9 @@ export interface SoftwareRecord {
   message?: string;
   /** 给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 message。 */
   messageCode?: BackendMessage;
+  /** 发布者与版本是事实，由前端拼接与省略。 */
+  publisher?: string | null;
+  version?: string | null;
   operations?: {
     canUninstall?: boolean;
     uninstallKind?: string;

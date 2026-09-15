@@ -1944,6 +1944,20 @@ const esEsAppCopy: AppCopy = {
       notExposed: "El hardware o el proveedor actual no expone esta lectura.",
       needsComponent: (value: string) => `El proveedor actual no devuelve ninguna lectura válida; hace falta un ${value} más completo o el hardware o componente OEM correspondiente.`,
       noValidReading: "El hardware o el proveedor actual no devuelve ninguna lectura válida."
+    },
+    software: {
+      hasUninstallEntry: "Tiene entrada de desinstalación",
+      missingUninstallEntry: "Sin entrada de desinstalación",
+      uninstallAction: "Desinstalar",
+      cannotUninstallAction: "No se puede desinstalar",
+      windowsUninstallerDescription: "Inicia el desinstalador oficial registrado en Windows.",
+      noUninstallUnknownRoot: "No hay entrada de desinstalación, así que solo puede tratarse manualmente; Resource Manager no elimina raíces de software desconocidas.",
+      manualClassificationNoUninstall: "Una entrada de clasificación manual no es en sí un desinstalador; trátala desde los detalles del software o desde el software original.",
+      controlledNoUninstall: "El software controlado necesita su propio registro de política de desinstalación; por ahora solo se admite la restauración de migración de datos.",
+      selfNoUninstall: "Resource Manager no puede desinstalarse ni migrarse a sí mismo desde aquí.",
+      adaptedNoUninstall: "El software adaptado debe declarar una política de desinstalación en su registro o manifiesto.",
+      legacyControlledNoUninstall: "Los registros controlados L0 no tienen política de desinstalación.",
+      portableNoUninstall: "El software portátil no tiene desinstalador; borra los archivos y actualiza la lista para quitar el registro."
     }
   }
 };

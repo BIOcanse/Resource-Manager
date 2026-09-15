@@ -47,7 +47,10 @@ public sealed record SoftwareRecord(
     string? SoftwareIdentityId = null,
     IReadOnlyList<SoftwareIssueTag>? Issues = null,
     /// <summary>这条记录要说的话。给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 Message。</summary>
-    BackendMessage? MessageCode = null);
+    BackendMessage? MessageCode = null,
+    /// <summary>发布者与版本是事实，不走消息码；前端负责拼接与省略。</summary>
+    string? Publisher = null,
+    string? Version = null);
 
 public sealed record SoftwareOperationCapabilities(
     bool CanUninstall,

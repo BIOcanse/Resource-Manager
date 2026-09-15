@@ -1,5 +1,7 @@
-using ResourceManager.App.Domain.Software;
+﻿using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.SoftwareDiscovery;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Software;
 
@@ -20,7 +22,7 @@ public sealed partial class SoftwareRegistryView
             [registration.IdentityConfirmed ? "运行时便携软件确认" : "运行时便携软件候选", $"软件身份目录 {softwareIdentityCatalog.Version}"],
             registration.RootPaths,
             $"已定位 {registration.ExecutablePaths.Count} 个便携程序入口。{confirmationMessage}",
-            NoUninstall("便携软件没有卸载器；删除原文件后刷新软件列表会自动移除记录。"),
+            NoUninstall(BackendMessageCodes.Software.PortableNoUninstall),
             null,
             registration.RequiresRootPathConfirmation,
             registration.IdentityConfirmed,

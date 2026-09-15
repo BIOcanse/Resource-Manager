@@ -1,4 +1,6 @@
-using ResourceManager.App.Domain.Software;
+﻿using ResourceManager.App.Domain.Software;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Software;
 
@@ -14,9 +16,17 @@ public sealed partial class SoftwareRegistryView
         return string.IsNullOrWhiteSpace(normalized) ? "unknown" : normalized;
     }
 
-    private static SoftwareOperationCapabilities NoUninstall(string message)
+    private static SoftwareOperationCapabilities NoUninstall(byte reasonCode)
     {
-        return new SoftwareOperationCapabilities(false, "None", "不可卸载", message);
+        return new SoftwareOperationCapabilities(
+            false,
+            "None",
+            string.Empty,
+            string.Empty,
+            BackendMessage.Create(
+                BackendMessageDomains.Software,
+                BackendMessageCodes.Software.CannotUninstallAction),
+            BackendMessage.Create(BackendMessageDomains.Software, reasonCode));
     }
 
     private static bool DirectoryHasContent(string path)

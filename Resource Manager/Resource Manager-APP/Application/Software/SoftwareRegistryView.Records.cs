@@ -52,7 +52,7 @@ public sealed partial class SoftwareRegistryView
                     ["数据迁移"],
                     records.Select(static record => record.DestinationPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     $"已有 {records.Length} 条迁移记录。",
-                    NoUninstall("受控软件卸载策略需要独立记录；当前只支持数据迁移恢复。"),
+                    NoUninstall(BackendMessageCodes.Software.ControlledNoUninstall),
                     null);
             });
     }
@@ -70,22 +70,14 @@ public sealed partial class SoftwareRegistryView
             record.Sources,
             record.RootPaths,
             record.Message,
-            NoUninstall("手动分类/补录项不直接代表卸载器；需要从软件详情或原始软件入口处理。"),
+            NoUninstall(BackendMessageCodes.Software.ManualClassificationNoUninstall),
             null,
             SoftwareIdentityId: softwareIdentityId);
     }
 
     private static SoftwareRecord ToOtherSoftwareRecord(InstalledSoftwareEntry entry)
     {
-        var details = new[]
-            {
-                entry.Publisher,
-                entry.Version,
-                string.IsNullOrWhiteSpace(entry.UninstallString) ? "缺少卸载入口" : "有卸载入口"
-            }
-            .Where(static item => !string.IsNullOrWhiteSpace(item))
-            .ToArray();
-
+        var hasUninstallEntry = !string.IsNullOrWhiteSpace(entry.UninstallString);
         return new SoftwareRecord(
             entry.Id,
             entry.Name,
@@ -94,14 +86,27 @@ public sealed partial class SoftwareRegistryView
             "installed",
             ["Windows卸载注册表"],
             entry.RootPaths,
-            string.Join(" · ", details),
-            string.IsNullOrWhiteSpace(entry.UninstallString)
-                ? NoUninstall("缺少卸载入口，只能跳转或手动处理，Resource Manager 不删除未知软件根目录。")
-                : new SoftwareOperationCapabilities(
+            string.Empty,
+            hasUninstallEntry
+                ? new SoftwareOperationCapabilities(
                     true,
                     "WindowsUninstaller",
-                    "卸载",
-                    "启动 Windows 注册表提供的官方卸载器。"),
-            null);
+                    string.Empty,
+                    string.Empty,
+                    BackendMessage.Create(
+                        BackendMessageDomains.Software,
+                        BackendMessageCodes.Software.UninstallAction),
+                    BackendMessage.Create(
+                        BackendMessageDomains.Software,
+                        BackendMessageCodes.Software.WindowsUninstallerDescription))
+                : NoUninstall(BackendMessageCodes.Software.NoUninstallUnknownRoot),
+            null,
+            MessageCode: BackendMessage.Create(
+                BackendMessageDomains.Software,
+                hasUninstallEntry
+                    ? BackendMessageCodes.Software.HasUninstallEntry
+                    : BackendMessageCodes.Software.MissingUninstallEntry),
+            Publisher: entry.Publisher,
+            Version: entry.Version);
     }
 }

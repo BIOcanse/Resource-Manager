@@ -16,6 +16,9 @@ public static class BackendMessageDomains
 
     /// <summary>指标目录里某个指标为什么不能选。</summary>
     public const byte Metric = 3;
+
+    /// <summary>软件记录（卸载能力、来源说明等）。</summary>
+    public const byte Software = 4;
 }
 
 /// <summary>
@@ -90,6 +93,45 @@ public static class BackendMessageCodes
 
         /// <summary>安装器已可见启动，需要用户完成厂商安装提示。参数：无。</summary>
         public const byte InstallerLaunched = 22;
+    }
+
+    public static class Software
+    {
+        /// <summary>Windows 卸载注册表里有卸载入口。参数：无。</summary>
+        public const byte HasUninstallEntry = 1;
+
+        /// <summary>缺少卸载入口。参数：无。</summary>
+        public const byte MissingUninstallEntry = 2;
+
+        /// <summary>操作名：卸载。参数：无。</summary>
+        public const byte UninstallAction = 3;
+
+        /// <summary>操作名：不可卸载。参数：无。</summary>
+        public const byte CannotUninstallAction = 4;
+
+        /// <summary>启动 Windows 注册表提供的官方卸载器。参数：无。</summary>
+        public const byte WindowsUninstallerDescription = 5;
+
+        /// <summary>缺少卸载入口，只能跳转或手动处理，不删除未知软件根目录。参数：无。</summary>
+        public const byte NoUninstallUnknownRoot = 6;
+
+        /// <summary>手动分类/补录项不直接代表卸载器。参数：无。</summary>
+        public const byte ManualClassificationNoUninstall = 7;
+
+        /// <summary>受控软件卸载策略需要独立记录，当前只支持数据迁移恢复。参数：无。</summary>
+        public const byte ControlledNoUninstall = 8;
+
+        /// <summary>资源管理器自身不能从这里卸载或迁移。参数：无。</summary>
+        public const byte SelfNoUninstall = 9;
+
+        /// <summary>适配软件需要先在注册/manifest 里声明卸载策略。参数：无。</summary>
+        public const byte AdaptedNoUninstall = 10;
+
+        /// <summary>L0 受控注册没有卸载策略。参数：无。</summary>
+        public const byte LegacyControlledNoUninstall = 11;
+
+        /// <summary>便携软件没有卸载器，删除原文件后刷新会移除记录。参数：无。</summary>
+        public const byte PortableNoUninstall = 12;
     }
 
     public static class Metric
