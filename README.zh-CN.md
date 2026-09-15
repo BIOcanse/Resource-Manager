@@ -186,7 +186,7 @@ UserData/
 
 资源管理器基于 **[Apache License 2.0](LICENSE)** 授权，第三方组件仍适用各自的许可证。
 
-没有 Microsoft、.NET Foundation 以及众多上游作者与维护者的工作，就没有这个项目，在此深表感谢 🙏。完整的致谢与许可信息见应用内的「致谢」页面，以及 [第三方声明](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices)。
+没有 Microsoft、.NET Foundation 以及众多上游作者与维护者的工作，就没有这个项目，在此深表感谢 🙏。完整的致谢与许可信息见应用内的「致谢」页面，以及 [第三方声明](Resource%20Manager/Resource%20Manager-APP/ThirdPartyNotices/README.md)。
 
 ---
 
