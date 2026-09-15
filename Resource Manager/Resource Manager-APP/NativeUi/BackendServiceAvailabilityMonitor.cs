@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.Diagnostics;
 
 namespace ResourceManager.NativeUi;
@@ -31,14 +32,14 @@ internal sealed class BackendServiceUnavailableEventArgs : EventArgs
     public static BackendServiceUnavailableEventArgs OwnedProcessExited(int exitCode) =>
         new(
             BackendServiceUnavailableReason.OwnedProcessExited,
-            $"本地服务进程已退出，退出码 {exitCode}。",
+            string.Format(NativeUiText.Current.BackendProcessExitedFormat, exitCode),
             exitCode);
 
     public static BackendServiceUnavailableEventArgs ConsecutiveProbeFailures(
         int failureCount) =>
         new(
             BackendServiceUnavailableReason.ConsecutiveProbeFailures,
-            $"本地服务连续 {failureCount} 次健康探测失败。",
+            string.Format(NativeUiText.Current.BackendHealthProbeFailedFormat, failureCount),
             exitCode: null);
 
     public static BackendServiceUnavailableEventArgs StartupFailed(Exception exception)
@@ -46,7 +47,7 @@ internal sealed class BackendServiceUnavailableEventArgs : EventArgs
         ArgumentNullException.ThrowIfNull(exception);
         return new BackendServiceUnavailableEventArgs(
             BackendServiceUnavailableReason.StartupFailed,
-            $"本地服务启动失败：{exception.Message}",
+            string.Format(NativeUiText.Current.BackendStartFailedFormat, exception.Message),
             exitCode: null);
     }
 
@@ -55,7 +56,7 @@ internal sealed class BackendServiceUnavailableEventArgs : EventArgs
         ArgumentNullException.ThrowIfNull(exception);
         return new BackendServiceUnavailableEventArgs(
             BackendServiceUnavailableReason.MonitorFault,
-            $"本地服务生命周期监视失败：{exception.Message}",
+            string.Format(NativeUiText.Current.BackendLifecycleMonitorFailedFormat, exception.Message),
             exitCode: null);
     }
 }

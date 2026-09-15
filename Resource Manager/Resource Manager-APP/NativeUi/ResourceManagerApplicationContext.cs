@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.SystemIntegration;
 using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
@@ -20,6 +21,8 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private BackendServiceLossHandler? backendLossHandler;
     private ToolStripMenuItem? backendStatusMenuItem;
     private ToolStripMenuItem? retryBackendMenuItem;
+    private ToolStripMenuItem? openMenuItem;
+    private ToolStripMenuItem? exitMenuItem;
     private MainForm? mainForm;
     private Task<bool>? backendConnectionTask;
     private Task? reconnectLoopTask;
@@ -51,7 +54,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         trayIcon = new NotifyIcon
         {
             Icon = SystemIcons.Application,
-            Text = "资源管理器",
+            Text = NativeUiText.Current.AppName,
             Visible = true,
             ContextMenuStrip = trayMenu
         };
@@ -75,7 +78,36 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             ShowForceTerminateHotkeyStatus);
         forceTerminateHotkey.Start();
 
+        NativeUiText.Changed += OnInterfaceLanguageChanged;
         Application.Idle += OnApplicationIdle;
+    }
+
+    // 语言由前端设置切换，这里把托盘与窗口上常驻的文案换成当前语言。
+    private void OnInterfaceLanguageChanged(object? sender, EventArgs args)
+    {
+        if (exiting || uiDispatcher.IsDisposed)
+        {
+            return;
+        }
+
+        uiDispatcher.BeginInvoke(new Action(() =>
+        {
+            if (exiting)
+            {
+                return;
+            }
+
+            if (openMenuItem is not null)
+            {
+                openMenuItem.Text = NativeUiText.Current.TrayOpen;
+            }
+            if (exitMenuItem is not null)
+            {
+                exitMenuItem.Text = NativeUiText.Current.TrayExit;
+            }
+            mainForm?.ApplyInterfaceLanguage();
+            UpdateShellStatus();
+        }));
     }
 
     protected override void Dispose(bool disposing)
@@ -86,6 +118,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             RunDisposalAction(shutdown.Cancel);
             RunDisposalAction(() => reconnectDelayCancellation?.Cancel());
             RunDisposalAction(() => Application.Idle -= OnApplicationIdle);
+            RunDisposalAction(() => NativeUiText.Changed -= OnInterfaceLanguageChanged);
             RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
             RunDisposalAction(DisposeMainForm);
             RunDisposalAction(DisposeBackendGeneration);
@@ -105,16 +138,16 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private ContextMenuStrip BuildTrayMenu()
     {
         var menu = new ContextMenuStrip();
-        backendStatusMenuItem = new ToolStripMenuItem("本地服务：正在连接")
+        backendStatusMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayBackendStatusConnecting)
         {
             Enabled = false
         };
-        var openItem = new ToolStripMenuItem("打开");
+        var openItem = openMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayOpen);
         openItem.Click += (_, _) =>
             _ = ShowMainWindowAsync(startFrontend: true, activate: true);
-        retryBackendMenuItem = new ToolStripMenuItem("重新连接本地服务");
+        retryBackendMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayReconnectBackend);
         retryBackendMenuItem.Click += (_, _) => RequestBackendRetry();
-        var exitItem = new ToolStripMenuItem("退出");
+        var exitItem = exitMenuItem = new ToolStripMenuItem(NativeUiText.Current.TrayExit);
         exitItem.Click += (_, _) => ExitApplication();
         menu.Items.AddRange(
         [
@@ -400,7 +433,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
         trayIcon.ShowBalloonTip(
             6000,
-            "任务管理器快捷键替换",
+            NativeUiText.Current.TaskManagerHotkeyReplacement,
             message,
             icon);
     }
@@ -433,14 +466,14 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             var targets = HungAndForegroundProcessResolver.Resolve(foregroundProcessId);
             if (targets.ProcessIds.Count == 0)
             {
-                ShowForceTerminateHotkeyStatus("没有可结束的前台或无响应程序。", ToolTipIcon.Info);
+                ShowForceTerminateHotkeyStatus(NativeUiText.Current.NoForegroundProcessToTerminate, ToolTipIcon.Info);
                 return;
             }
 
             var session = backendSession;
             if (!backendReady || session is null)
             {
-                ShowForceTerminateHotkeyStatus("本地服务不可用，未执行进程终止。", ToolTipIcon.Warning);
+                ShowForceTerminateHotkeyStatus(NativeUiText.Current.BackendUnavailableNoTerminate, ToolTipIcon.Warning);
                 RequestBackendRetry();
                 return;
             }
@@ -454,7 +487,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            ShowForceTerminateHotkeyStatus("强制结束失败，请稍后重试。", ToolTipIcon.Error);
+            ShowForceTerminateHotkeyStatus(NativeUiText.Current.ForceTerminateFailed, ToolTipIcon.Error);
         }
         finally
         {
@@ -469,7 +502,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             return;
         }
 
-        trayIcon.ShowBalloonTip(5000, "强制结束快捷键", message, icon);
+        trayIcon.ShowBalloonTip(5000, NativeUiText.Current.ForceTerminateHotkeyBalloonTitle, message, icon);
     }
 
     private void ExitApplication()
@@ -682,15 +715,19 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         var snapshot = ShellAvailabilityProjection.Project(
             backendConnectionState,
             frontendConnectionState);
-        trayIcon.Text = $"资源管理器 - {snapshot.StatusText}";
+        trayIcon.Text = string.Format(NativeUiText.Current.TrayTooltipFormat, snapshot.StatusText);
         if (backendStatusMenuItem is not null)
         {
-            backendStatusMenuItem.Text = $"状态：{snapshot.StatusText}";
+            backendStatusMenuItem.Text = string.Format(NativeUiText.Current.TrayStatusFormat, snapshot.StatusText);
         }
         if (retryBackendMenuItem is not null)
         {
             retryBackendMenuItem.Text = snapshot.RetryActionText;
             retryBackendMenuItem.Enabled = snapshot.RetryEnabled;
+        }
+        if (mainForm is { IsDisposed: false } form)
+        {
+            form.SetStatusText(snapshot.StatusText);
         }
     }
 
@@ -705,7 +742,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
                 break;
             case BackendConnectionState.Degraded:
                 form.ShowBackendUnavailable(
-                    "尚未建立本地服务连接。",
+                    NativeUiText.Current.NoVerifiedSession,
                     RequireBackendSessionProjection(ready: false));
                 break;
             case BackendConnectionState.Reconnecting:
@@ -753,7 +790,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         {
             trayIcon.ShowBalloonTip(
                 5000,
-                "本地服务不可用",
+                NativeUiText.Current.BackendUnavailableBalloonTitle,
                 message,
                 ToolTipIcon.Warning);
         }
@@ -795,7 +832,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
                 or System.ComponentModel.Win32Exception)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            ShowBackendUnavailableBalloon("无法打开诊断目录。");
+            ShowBackendUnavailableBalloon(NativeUiText.Current.DiagnosticsOpenFailed);
         }
     }
 

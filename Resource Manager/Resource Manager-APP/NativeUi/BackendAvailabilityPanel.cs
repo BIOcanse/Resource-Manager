@@ -1,3 +1,5 @@
+using ResourceManager.NativeUi.Localization;
+
 namespace ResourceManager.NativeUi;
 
 internal sealed class BackendAvailabilityPanel : UserControl
@@ -5,10 +7,12 @@ internal sealed class BackendAvailabilityPanel : UserControl
     private readonly Label stateLabel;
     private readonly Label detailLabel;
     private readonly Button retryButton;
+    private readonly Button diagnosticsButton;
+    private readonly Button exitButton;
 
     public BackendAvailabilityPanel()
     {
-        AccessibleName = "本地服务状态";
+        AccessibleName = NativeUiText.Current.AvailabilityPanelName;
         AccessibleRole = AccessibleRole.Pane;
         BackColor = SystemColors.Window;
         Dock = DockStyle.Fill;
@@ -33,14 +37,14 @@ internal sealed class BackendAvailabilityPanel : UserControl
                 FontStyle.Bold),
             ForeColor = SystemColors.WindowText,
             Margin = new Padding(0, 24, 0, 12),
-            Text = "正在连接本地服务"
+            Text = NativeUiText.Current.ConnectingTitle
         };
         detailLabel = new Label
         {
             AutoSize = true,
             ForeColor = SystemColors.WindowText,
             Margin = new Padding(0, 0, 0, 24),
-            Text = "正在验证服务身份并建立会话。"
+            Text = NativeUiText.Current.ConnectingDetail
         };
 
         var actions = new FlowLayoutPanel
@@ -51,9 +55,10 @@ internal sealed class BackendAvailabilityPanel : UserControl
             Margin = Padding.Empty,
             WrapContents = true
         };
-        retryButton = CreateButton("重试", "立即重新连接本地服务");
-        var diagnosticsButton = CreateButton("打开诊断目录", "打开本地诊断文件目录");
-        var exitButton = CreateButton("退出", "退出资源管理器");
+        var text = NativeUiText.Current;
+        retryButton = CreateButton(text.RetryButton, text.RetryButtonDescription);
+        diagnosticsButton = CreateButton(text.DiagnosticsButton, text.DiagnosticsButtonDescription);
+        exitButton = CreateButton(text.ExitButton, text.ExitButtonDescription);
         retryButton.Click += (_, _) => RetryRequested?.Invoke(this, EventArgs.Empty);
         diagnosticsButton.Click += (_, _) => DiagnosticsRequested?.Invoke(this, EventArgs.Empty);
         exitButton.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
@@ -73,12 +78,23 @@ internal sealed class BackendAvailabilityPanel : UserControl
 
     public event EventHandler? ExitRequested;
 
+    /// <summary>语言切换后重新取一遍常驻文案；随状态变化的文案由 Show* 在调用时取。</summary>
+    public void ApplyText()
+    {
+        var text = NativeUiText.Current;
+        AccessibleName = text.AvailabilityPanelName;
+        ApplyButtonText(retryButton, text.RetryButton, text.RetryButtonDescription);
+        ApplyButtonText(diagnosticsButton, text.DiagnosticsButton, text.DiagnosticsButtonDescription);
+        ApplyButtonText(exitButton, text.ExitButton, text.ExitButtonDescription);
+    }
+
     public void ShowConnecting(bool reconnecting)
     {
+        var text = NativeUiText.Current;
         stateLabel.Text = reconnecting
-            ? "正在重新连接本地服务"
-            : "正在连接本地服务";
-        detailLabel.Text = "正在验证服务身份并建立会话。";
+            ? text.ReconnectingTitle
+            : text.ConnectingTitle;
+        detailLabel.Text = text.ConnectingDetail;
         retryButton.Enabled = false;
         Visible = true;
         BringToFront();
@@ -86,10 +102,11 @@ internal sealed class BackendAvailabilityPanel : UserControl
 
     public void ShowUnavailable(string detail)
     {
-        stateLabel.Text = "本地服务暂时不可用";
+        var text = NativeUiText.Current;
+        stateLabel.Text = text.BackendUnavailableTitle;
         detailLabel.Text = string.IsNullOrWhiteSpace(detail)
-            ? "资源管理器会在后台继续尝试连接。"
-            : $"{detail}\r\n资源管理器会在后台继续尝试连接。";
+            ? text.BackendUnavailableDetail
+            : $"{detail}\r\n{text.BackendUnavailableDetail}";
         retryButton.Enabled = true;
         Visible = true;
         BringToFront();
@@ -97,8 +114,9 @@ internal sealed class BackendAvailabilityPanel : UserControl
 
     public void ShowFrontendLoading()
     {
-        stateLabel.Text = "正在加载界面";
-        detailLabel.Text = "本地服务已通过身份验证，正在加载应用界面。";
+        var text = NativeUiText.Current;
+        stateLabel.Text = text.FrontendLoadingTitle;
+        detailLabel.Text = text.FrontendLoadingDetail;
         retryButton.Enabled = false;
         Visible = true;
         BringToFront();
@@ -106,10 +124,11 @@ internal sealed class BackendAvailabilityPanel : UserControl
 
     public void ShowFrontendUnavailable(string detail)
     {
-        stateLabel.Text = "应用界面暂时不可用";
+        var text = NativeUiText.Current;
+        stateLabel.Text = text.FrontendUnavailableTitle;
         detailLabel.Text = string.IsNullOrWhiteSpace(detail)
-            ? "本地服务仍在运行，可以重新加载界面。"
-            : $"{detail}\r\n本地服务仍在运行，可以重新加载界面。";
+            ? text.FrontendUnavailableDetail
+            : $"{detail}\r\n{text.FrontendUnavailableDetail}";
         retryButton.Enabled = true;
         Visible = true;
         BringToFront();
@@ -126,6 +145,13 @@ internal sealed class BackendAvailabilityPanel : UserControl
             Text = text,
             UseVisualStyleBackColor = true
         };
+
+    private static void ApplyButtonText(Button button, string text, string accessibleDescription)
+    {
+        button.AccessibleName = text;
+        button.AccessibleDescription = accessibleDescription;
+        button.Text = text;
+    }
 
     private void UpdateTextWidth()
     {

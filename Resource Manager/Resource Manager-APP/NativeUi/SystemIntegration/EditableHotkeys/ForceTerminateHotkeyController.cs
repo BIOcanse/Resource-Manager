@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.Text.Json;
 
 namespace ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
@@ -47,7 +48,7 @@ internal sealed class ForceTerminateHotkeyController : IDisposable
             if (appliedEnabled || !Equals(appliedDefinition, definition))
             {
                 statusReporter(
-                    "强制结束快捷键已停用：必须同时包含 Ctrl、Alt 或 Win 修饰键以及一个非修饰键。",
+                    NativeUiText.Current.ForceTerminateHotkeyDisabled,
                     ToolTipIcon.Warning);
             }
             enabled = false;
@@ -81,7 +82,7 @@ internal sealed class ForceTerminateHotkeyController : IDisposable
             hook?.Dispose();
             hook = null;
             System.Diagnostics.Trace.WriteLine(ex);
-            statusReporter("强制结束快捷键启用失败，请检查按键设置后重试。", ToolTipIcon.Warning);
+            statusReporter(NativeUiText.Current.ForceTerminateHotkeyEnableFailed, ToolTipIcon.Warning);
         }
     }
 

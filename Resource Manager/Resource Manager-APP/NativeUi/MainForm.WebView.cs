@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.WebView;
 using System.Text.Json;
 
@@ -40,7 +41,7 @@ public sealed partial class MainForm
             if (backendContentEnabled)
             {
                 ShowFrontendUnavailable(
-                    "内嵌界面初始化失败。可以打开诊断目录查看详细信息。");
+                    NativeUiText.Current.WebViewInitializationFailed);
             }
             return false;
         }
@@ -105,7 +106,7 @@ public sealed partial class MainForm
         else if (backendContentEnabled && !args.WasConnectionAborted)
         {
             appNavigationStarted = false;
-            ShowFrontendUnavailable("本地界面未能从已验证的服务加载。");
+            ShowFrontendUnavailable(NativeUiText.Current.FrontendLoadFailed);
         }
     }
 
