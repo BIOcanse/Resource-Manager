@@ -101,7 +101,9 @@ assert.match(systemIntegrationSettings, /uiText\.misc\.publicServicesNotRunning/
 
 // Monitor actions and copy must reflect actual available behavior.
 assert.match(resourceTable, /<Show when=\{props\.mode !== "performance"\}>[\s\S]*?onClick=\{props\.onToggleEdit\}/);
-assert.match(resourceTable, /label: gpuMetricLabel\(column\.id, column\.label\)/);
+// 表头措辞由前端按列 id 出；后端只发 id，所以不能再有任何一处直接印 column.label。
+assert.match(resourceTable, /resourceTableColumnLabel\(column\(\)\.id\)/);
+assert.doesNotMatch(resourceTable, /column\.label|column\(\)\.label/);
 assert.doesNotMatch(resourceBreakdown, /采样已经完成，但所选指标暂时没有可归属的资源/);
 assert.doesNotMatch(resourceBreakdown, /<For each=\{barKeys\(\)\}>/);
 assert.doesNotMatch(resourceBreakdown, /<For each=\{keys\(\)\}>/);

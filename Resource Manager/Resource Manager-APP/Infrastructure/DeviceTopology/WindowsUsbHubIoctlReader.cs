@@ -388,7 +388,8 @@ internal static class WindowsUsbHubIoctlReader
         };
     }
 
-    internal static string DescribeMaximumUsbSpeed(
+    /// <summary>没有可判定的能力时返回 null。</summary>
+    internal static string? DescribeMaximumUsbSpeed(
         IEnumerable<DeviceTopologyUsbPortCapability?> capabilities)
     {
         var values = capabilities.Where(static capability => capability is not null).ToArray();
