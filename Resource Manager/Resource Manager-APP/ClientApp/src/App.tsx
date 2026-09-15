@@ -318,6 +318,7 @@ export default function App() {
           runtimeCapabilities={runtimeCapabilities}
           highlightedSoftwareId={softwareActions.highlightedSoftwareId}
           onResourceTableSoftwareContextMenu={softwareActions.openResourceTableSoftwareContextMenu}
+          contextMenuOpen={softwareActions.contextMenu() !== null}
           onManagementSoftwareContextMenu={softwareActions.openManagementSoftwareContextMenu}
           onOpenSoftwareDetail={softwareActions.openSoftwareDetail}
           onOpenSoftwareSettingsById={(softwareId, softwareName) =>

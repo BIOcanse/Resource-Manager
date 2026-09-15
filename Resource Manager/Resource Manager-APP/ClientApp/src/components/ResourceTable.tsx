@@ -1,4 +1,4 @@
-import { localizedMetricLabel, resourceTableColumnLabel } from "../presentation/metricLabels";
+import { localizedMetricLabel, resourceTableColumnLabel, softwareDisplayName } from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
@@ -20,6 +20,7 @@ import {
   classifyResourceTableContentState,
   type ResourceTableContentState
 } from "../resourceTable/resourceTableContentState";
+import { pinResourceTableRow } from "../resourceTable/resourceTableRowPin";
 import { resourceTableColumnsEqual } from "../resourceTable/resourceTableColumnIdentity";
 import { projectResourceTableHeat } from "../resourceTable/resourceTableHeat";
 import { formatBytes } from "../utils";
@@ -65,6 +66,8 @@ interface ResourceTableProps {
   onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  /** 有右键菜单打开时，被右键的那一行钉住不动。 */
+  contextMenuOpen?: boolean;
   onReorderColumn: (sourceColumnId: string, targetColumnId: string) => void;
 }
 
@@ -199,6 +202,7 @@ export function ResourceTable(props: ResourceTableProps) {
                 onColumnWidthChange={props.onColumnWidthChange}
                 onToggleExpand={props.onToggleExpand}
                 onSoftwareContextMenu={props.onSoftwareContextMenu}
+                contextMenuOpen={props.contextMenuOpen}
                 onReorderColumn={props.onReorderColumn}
               />
             </div>
@@ -312,6 +316,7 @@ function VirtualResourceTable(props: {
   onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  contextMenuOpen?: boolean;
   onReorderColumn: (sourceColumnId: string, targetColumnId: string) => void;
 }) {
   let viewport: HTMLDivElement | undefined;
@@ -323,7 +328,16 @@ function VirtualResourceTable(props: {
   const [dragColumnId, setDragColumnId] = createSignal<string | null>(null);
   const [overColumnId, setOverColumnId] = createSignal<string | null>(null);
   const [activeRowId, setActiveRowId] = createSignal<string | null>(null);
-  const rows = createMemo(() => props.rows);
+  // 被右键的那一行钉在它当时所在的位置；菜单关掉就松开。
+  const [pinnedRowId, setPinnedRowId] = createSignal<string | null>(null);
+  const [pinnedIndex, setPinnedIndex] = createSignal<number | null>(null);
+  createEffect(() => {
+    if (!props.contextMenuOpen) {
+      setPinnedRowId(null);
+      setPinnedIndex(null);
+    }
+  });
+  const rows = createMemo(() => pinResourceTableRow(props.rows, pinnedRowId(), pinnedIndex()));
   const columnSettingsById = createMemo(() => new Map(props.columnSettings.map((column) => [column.id, column])));
   const columnOrderIndex = createMemo(() => new Map(props.columnSettings.map((column, index) => [column.id, index])));
   const baseColumns = createMemo(() => {
@@ -492,6 +506,11 @@ function VirtualResourceTable(props: {
   const openRowContextMenu = (row: ResourceTableRow, element: HTMLElement) => {
     if (!props.onSoftwareContextMenu || (row.kind !== "software" && row.kind !== "process")) {
       return;
+    }
+    const index = rows().findIndex((candidate) => candidate.id === row.id);
+    if (index >= 0) {
+      setPinnedRowId(row.id);
+      setPinnedIndex(index);
     }
     props.onSoftwareContextMenu(
       contextMenuEventForElement(element),
@@ -740,6 +759,7 @@ function VirtualResourceTable(props: {
                   onRowKeyDown={handleRowKeyDown}
                   onToggleExpand={props.onToggleExpand}
                   onSoftwareContextMenu={props.onSoftwareContextMenu}
+                  onRowContextMenu={openRowContextMenu}
                 />
               );
             }}
@@ -763,6 +783,8 @@ function ResourceTableRowSlot(props: {
   onRowKeyDown: (event: KeyboardEvent, row: ResourceTableRow, element: HTMLElement) => void;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  /** 行上的右键与「更多操作」都走这一个入口，钉住逻辑只在那里。 */
+  onRowContextMenu: (row: ResourceTableRow, element: HTMLElement) => void;
 }) {
   const row = () => props.row();
   const hasRow = () => row() !== undefined;
@@ -815,15 +837,12 @@ function ResourceTableRowSlot(props: {
       }}
       onContextMenu={(event) => {
         const current = row();
-        if (!current || !props.onSoftwareContextMenu || (current.kind !== "software" && current.kind !== "process")) {
+        if (!current) {
           return;
         }
 
         event.preventDefault();
-        props.onSoftwareContextMenu(
-          event,
-          createSoftwareContextTargetFromRow(current, props.mode, props.expandedSoftwareIds()),
-          event.currentTarget);
+        props.onRowContextMenu(current, event.currentTarget);
       }}
       style={{
         "grid-template-columns": props.gridTemplate(),
@@ -838,6 +857,7 @@ function ResourceTableRowSlot(props: {
           return <ResourceTableCell
             column={column()}
             columnIndex={columnIndex()}
+            onRowContextMenu={props.onRowContextMenu}
             row={row}
             mode={props.mode}
             expandedSoftwareIds={props.expandedSoftwareIds}
@@ -872,10 +892,13 @@ function createSoftwareContextTargetFromRow(
   const processIds = row.kind === "process" && row.processId
     ? [row.processId]
     : row.processIds ?? [];
+  // 只代表一个分组的行后端不发名字，菜单里的确认框与提示要用解析后的名字，
+  // 否则标题会是空的。
+  const displayName = rowName(row);
   return {
-    name: row.kind === "process" ? row.softwareName ?? row.name : row.name,
+    name: row.kind === "process" ? row.softwareName ?? row.name : displayName,
     softwareId: row.softwareId,
-    softwareName: row.softwareName ?? (row.kind === "software" ? row.name : undefined),
+    softwareName: row.softwareName ?? (row.kind === "software" ? displayName : undefined),
     processIds,
     processTargets: row.kind === "process"
       && row.processId
@@ -1010,6 +1033,7 @@ function ResourceTableCell(props: {
   expandedSoftwareIds: () => Record<string, boolean>;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
+  onRowContextMenu: (row: ResourceTableRow, element: HTMLElement) => void;
 }) {
   const row = () => props.row();
   const value = () => row()?.values?.[props.column.id];
@@ -1105,14 +1129,9 @@ function ResourceTableCell(props: {
 
   function openRowActions(element: HTMLElement) {
     const current = row();
-    if (!current || !props.onSoftwareContextMenu || (current.kind !== "software" && current.kind !== "process")) {
-      return;
+    if (current) {
+      props.onRowContextMenu(current, element);
     }
-
-    props.onSoftwareContextMenu(
-      contextMenuEventForElement(element),
-      createSoftwareContextTargetFromRow(current, props.mode, props.expandedSoftwareIds()),
-      element);
   }
 }
 
@@ -1198,16 +1217,12 @@ function rowName(row: ResourceTableRow | undefined) {
     return uiText.resourceTable.summaryRow.name;
   }
 
-  if (row?.softwareId === "resource-manager:self") {
-    return uiText.shell.productName;
-  }
-
-  const residualMetricId = /^resource-residual:(.+)$/.exec(row?.softwareId ?? "")?.[1];
-  if (residualMetricId) {
-    return uiText.resourceTable.systemResidualRow(localizedMetricLabel(residualMetricId));
-  }
-
-  return row?.name?.trim() || softwareGroupLabel(row?.status) || "";
+  // 软件行的分组标识装在 status 里，其余由共用规则处理。
+  return softwareDisplayName({
+    softwareId: row?.softwareId,
+    name: row?.name,
+    displayKind: row?.status
+  });
 }
 
 // 状态列：汇总行装的是采样状态标识，软件行装的是分组标识，进程行装的是进程状态。
