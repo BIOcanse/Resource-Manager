@@ -49,6 +49,36 @@ export function resourceTableColumnLabel(id: string | null | undefined): string 
   return localizedMetricLabel(normalized);
 }
 
+/**
+ * 一条软件记录该叫什么。后端只在有「软件自己的名字」时才发名字：
+ * 只代表一个分组的行（Windows 系统、Windows 服务、未归属进程…）名字是空的，
+ * 由这里按分组标识出名；资源管理器自己和系统保留那条各有自己的来源。
+ *
+ * 资源列表和资源占用条都用它，措辞只有这一个出处。
+ */
+export function softwareDisplayName(software: {
+  softwareId?: string | null;
+  name?: string | null;
+  displayKind?: string | null;
+}): string {
+  if (software.softwareId === "resource-manager:self") {
+    return uiText.shell.productName;
+  }
+
+  const residualMetricId = /^resource-residual:(.+)$/.exec(software.softwareId ?? "")?.[1];
+  if (residualMetricId) {
+    return uiText.resourceTable.systemResidualRow(localizedMetricLabel(residualMetricId));
+  }
+
+  const reported = software.name?.trim();
+  if (reported) {
+    return reported;
+  }
+
+  const group = (software.displayKind ?? "").trim() as keyof typeof uiText.softwareKind;
+  return uiText.softwareKind[group] ?? "";
+}
+
 function normalizeMetricId(id: string): { pattern: string; index: string | null } {
   const segments = id.split(".");
   let index: string | null = null;
