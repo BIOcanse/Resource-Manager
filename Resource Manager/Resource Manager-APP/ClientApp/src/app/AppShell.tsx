@@ -50,13 +50,13 @@ export function AppShell(props: AppShellProps) {
     <>
       <header class="window-shellbar">
         <nav class="shell-pages" aria-label={uiText.shell.pageNav}>
-          <button class="shell-page" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>监视控制台</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>组件与软件</button>
+          <button class="shell-page" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>{uiText.page.monitor}</button>
+          <button class="shell-page" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>{uiText.page.components}</button>
           <Show when={props.runtimeCapabilities.optimizationEnabled()}>
-            <button class="shell-page" classList={{ active: props.activePage() === "optimization" }} type="button" aria-current={props.activePage() === "optimization" ? "page" : undefined} onClick={() => props.onPageSelect("optimization")}>性能优化</button>
+            <button class="shell-page" classList={{ active: props.activePage() === "optimization" }} type="button" aria-current={props.activePage() === "optimization" ? "page" : undefined} onClick={() => props.onPageSelect("optimization")}>{uiText.page.optimization}</button>
           </Show>
-          <button class="shell-page" classList={{ active: props.activePage() === "details" }} type="button" aria-current={props.activePage() === "details" ? "page" : undefined} onClick={() => props.onPageSelect("details")}>详细信息</button>
-          <button class="shell-page" classList={{ active: props.activePage() === "settings" }} type="button" aria-current={props.activePage() === "settings" ? "page" : undefined} onClick={() => props.onPageSelect("settings")}>设置</button>
+          <button class="shell-page" classList={{ active: props.activePage() === "details" }} type="button" aria-current={props.activePage() === "details" ? "page" : undefined} onClick={() => props.onPageSelect("details")}>{uiText.page.details}</button>
+          <button class="shell-page" classList={{ active: props.activePage() === "settings" }} type="button" aria-current={props.activePage() === "settings" ? "page" : undefined} onClick={() => props.onPageSelect("settings")}>{uiText.page.settings}</button>
         </nav>
         <div class="window-drag-region" data-window-drag onPointerDown={(event) => {
           if (event.button === 0) {
@@ -64,7 +64,7 @@ export function AppShell(props: AppShellProps) {
             postShellMessage("window.drag");
           }
         }}>
-          <strong>资源管理器</strong>
+          <strong>{uiText.shell.productName}</strong>
           <span id="shellPageName">{props.pageTitle()}</span>
           <span id="captureTime">{props.systemUptime()}</span>
         </div>

@@ -34,6 +34,12 @@ export function ComponentAcquisitionDialog(props: {
   const [choice, setChoice] = createSignal<string | null>(null);
   let cancelButton: HTMLButtonElement | undefined;
 
+  // 只有目录声明「需要确认外部厂商条款」的组件才显示条款与同意口径；
+  // 其余组件走同一个弹窗，但只选版本。
+  function requiresTerms(request: ComponentAcquisitionRequest) {
+    return request.component.definition?.requiresExternalTermsAcknowledgement === true;
+  }
+
   function selectableVersions(request: ComponentAcquisitionRequest) {
     return request.versions.filter((option) => option.available);
   }
@@ -79,9 +85,13 @@ export function ComponentAcquisitionDialog(props: {
           <DialogBody class="feedback-body">
             <div id="componentAcquisitionDescription" class="feedback-description">
               <p>
-                {request.manual
-                  ? uiText.componentAcquisition.manualIntro
-                  : uiText.componentAcquisition.installIntro}
+                {requiresTerms(request)
+                  ? request.manual
+                    ? uiText.componentAcquisition.manualIntro
+                    : uiText.componentAcquisition.installIntro
+                  : request.manual
+                    ? uiText.componentAcquisition.manualIntroWithoutTerms
+                    : uiText.componentAcquisition.installIntroWithoutTerms}
               </p>
 
               <Show when={request.component.definition?.vendor}>
@@ -93,7 +103,7 @@ export function ComponentAcquisitionDialog(props: {
               </Show>
 
               <div class="component-acquisition-links">
-                <Show when={request.component.definition?.externalTermsUrl}>
+                <Show when={requiresTerms(request) && request.component.definition?.externalTermsUrl}>
                   {(url) => (
                     <button type="button" class="secondary" onClick={() => props.onOpenLink(url())}>
                       {uiText.componentAcquisition.openTerms}
@@ -165,9 +175,13 @@ export function ComponentAcquisitionDialog(props: {
               disabled={!request.manual && request.loading}
               onClick={() => props.onConfirm(effectiveChoice(request))}
             >
-              {request.manual
-                ? uiText.componentAcquisition.agreeAndOpen
-                : uiText.componentAcquisition.agreeAndInstall}
+              {requiresTerms(request)
+                ? request.manual
+                  ? uiText.componentAcquisition.agreeAndOpen
+                  : uiText.componentAcquisition.agreeAndInstall
+                : request.manual
+                  ? uiText.componentAcquisition.openDownloadPage
+                  : uiText.componentAcquisition.startInstall}
             </button>
           </DialogActions>
         </DialogRoot>

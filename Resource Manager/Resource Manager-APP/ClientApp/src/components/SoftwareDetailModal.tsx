@@ -367,8 +367,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   <Show when={props.mutablePersistenceEnabled && model().type === "software" && model().requiresRootPathConfirmation}>
                     <section class="software-detail-section portable-root-warning">
                       <div>
-                        <h3><AlertTriangle aria-hidden="true" size={18} /> 根目录需要确认</h3>
-                        <p>当前只有可执行文件位置，尚未确认软件根目录。</p>
+                        <h3><AlertTriangle aria-hidden="true" size={18} /> {uiText.softwareDetail.rootNeedsConfirmation}</h3>
+                        <p>{uiText.softwareDetail.rootNeedsConfirmationDetail}</p>
                       </div>
                       <button type="button" disabled={props.actionInProgress} onClick={props.onConfirmPortableRoot}>
                         <FolderOpen aria-hidden="true" size={17} />
@@ -379,8 +379,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.gpuPlacementEnabled && model().type === "software" && !props.preciseGpuPlacementEnabled}>
                     <section class="software-detail-section">
-                      <h3>GPU 调度</h3>
-                      <p class="software-detail-empty">当前为普通配置模式，仅使用系统默认 GPU 选项。</p>
+                      <h3>{uiText.softwareDetail.section.gpuScheduling}</h3>
+                      <p class="software-detail-empty">{uiText.softwareDetail.ordinaryGpuMode}</p>
                     </section>
                   </Show>
                 </TabsPanel>
@@ -419,8 +419,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   />
                   <Show when={props.migrationRecords.length === 0}>
                     <section class="software-detail-section">
-                      <h3>迁移和恢复</h3>
-                      <p class="software-detail-empty">暂无迁移记录。</p>
+                      <h3>{uiText.softwareDetail.section.migrationAndRestore}</h3>
+                      <p class="software-detail-empty">{uiText.softwareDetail.noMigrationRecord}</p>
                     </section>
                   </Show>
                 </TabsPanel>
@@ -449,7 +449,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
               {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.migrateWholeSoftware}
             </button>
           </Show>
-          <button class="secondary" type="button" onClick={props.onClose}>关闭</button>
+          <button class="secondary" type="button" onClick={props.onClose}>{uiText.softwareDetail.close}</button>
         </DialogActions>
       </DialogRoot>
       <UserDetailsDialog
@@ -560,7 +560,7 @@ function GpuPlacementPolicySection(props: {
   return (
     <section class="software-detail-section">
       <div class="software-policy-section-header">
-        <h3>软件调度策略</h3>
+        <h3>{uiText.softwareDetail.policyPanelTitle}</h3>
         <div class="software-policy-actions">
           <button
             class="secondary"
@@ -579,8 +579,8 @@ function GpuPlacementPolicySection(props: {
           </button>
         </div>
       </div>
-      <Show when={!props.loading} fallback={<p class="software-detail-empty">正在加载策略...</p>}>
-        <Show when={policy()} fallback={<p class="software-detail-empty">暂无策略数据。</p>}>
+      <Show when={!props.loading} fallback={<p class="software-detail-empty">{uiText.softwareDetail.loadingPolicy}</p>}>
+        <Show when={policy()} fallback={<p class="software-detail-empty">{uiText.softwareDetail.noPolicyData}</p>}>
           {(current) => (
             <>
               <Show when={localError()}>
@@ -679,7 +679,7 @@ function GpuPlacementPolicySection(props: {
                   onChange={(value) => updateDraft({ explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
                 />
                 <label class="policy-field policy-toggle-field">
-                  <span>允许运行时切换显卡</span>
+                  <span>{uiText.softwareDetail.label.allowRuntimeGpuSwitch}</span>
                   <input
                     type="checkbox"
                     checked={current().runtimeHotSwitchEnabled !== false}
@@ -689,7 +689,7 @@ function GpuPlacementPolicySection(props: {
                   />
                 </label>
                 <label class="policy-field policy-toggle-field">
-                  <span>优先保留目标显卡</span>
+                  <span>{uiText.softwareDetail.label.preferKeepingTargetGpu}</span>
                   <input
                     type="checkbox"
                     checked={current().gpuExclusive === true}
@@ -704,7 +704,7 @@ function GpuPlacementPolicySection(props: {
                   onChange={(value) => updateDraft({ preferredRuntimeSwitchMethod: value as GpuPlacementRuntimeSwitchMethod })}
                 />
                 <label class="policy-field policy-toggle-field">
-                  <span>允许按进程单独设置</span>
+                  <span>{uiText.softwareDetail.label.allowPerProcessOverride}</span>
                   <input
                     type="checkbox"
                     checked={current().processOverrideAllowed}
@@ -724,7 +724,7 @@ function GpuPlacementPolicySection(props: {
                   }}
                 />
                 <label class="policy-field policy-toggle-field">
-                  <span>优先保障性能</span>
+                  <span>{uiText.softwareDetail.label.prioritizePerformance}</span>
                   <input
                     type="checkbox"
                     checked={current().absolutePerformanceModeEnabled === true}
@@ -732,7 +732,7 @@ function GpuPlacementPolicySection(props: {
                   />
                 </label>
                 <label class="policy-field policy-toggle-field">
-                  <span>固定到所选核心</span>
+                  <span>{uiText.softwareDetail.label.pinToSelectedCores}</span>
                   <input
                     type="checkbox"
                     checked={current().cpuExclusiveLocksAffinity === true}
@@ -788,8 +788,8 @@ function CpuManualPlacementSection(props: {
     <div class="cpu-manual-placement">
       <div class="cpu-manual-placement-header">
         <div>
-          <strong>CPU 核心分配</strong>
-          <span>“保留”会让其他软件避开；“固定”会限制当前软件使用范围。</span>
+          <strong>{uiText.softwareDetail.cpu.title}</strong>
+          <span>{uiText.softwareDetail.cpu.description}</span>
         </div>
         <button
           class="secondary"
@@ -808,7 +808,7 @@ function CpuManualPlacementSection(props: {
                 <span>{model().physicalCoreCount}C / {model().logicalProcessorCount}T</span>
                 <span>{model().ccdCount} CCD</span>
                 <span>最大加速 {formatMhz(model().specification.maxClockSpeedMhz)}</span>
-                <span>L1 缓存 --</span>
+                <span>{uiText.softwareDetail.cpu.l1Cache}</span>
                 <span>L2 缓存 {formatCacheKb(model().specification.l2CacheSizeKb)}</span>
                 <span>L3 缓存 {formatCacheKb(model().specification.l3CacheSizeKb)}</span>
               </div>
@@ -889,7 +889,7 @@ function CpuManualPlacementToggles(props: {
           disabled={props.exclusiveDisabled === true}
           onChange={(event) => props.onExclusiveChange(event.currentTarget.checked)}
         />
-        <span>保留</span>
+        <span>{uiText.softwareDetail.cpu.reserve}</span>
       </label>
       <label>
         <input
@@ -897,7 +897,7 @@ function CpuManualPlacementToggles(props: {
           checked={hasId(props.lockedIds, props.id)}
           onChange={(event) => props.onLockedChange(event.currentTarget.checked)}
         />
-        <span>固定</span>
+        <span>{uiText.softwareDetail.cpu.pin}</span>
       </label>
     </div>
   );
@@ -1035,9 +1035,9 @@ function GpuPlacementProcessSection(props: {
 
   return (
     <section class="software-detail-section software-process-policy-section">
-      <h3>历史进程与进程级覆盖</h3>
-      <Show when={!props.loading} fallback={<p class="software-detail-empty">正在加载进程历史...</p>}>
-        <Show when={processes().length > 0} fallback={<p class="software-detail-empty">暂无历史进程。打开软件运行一段时间后会逐步记录。</p>}>
+      <h3>{uiText.softwareDetail.process.title}</h3>
+      <Show when={!props.loading} fallback={<p class="software-detail-empty">{uiText.softwareDetail.process.loading}</p>}>
+        <Show when={processes().length > 0} fallback={<p class="software-detail-empty">{uiText.softwareDetail.process.empty}</p>}>
           <div class="process-policy-layout">
             <div class="process-policy-list" role="listbox" aria-label={uiText.softwareDetail.process.listLabel}>
               <For each={processes()}>
@@ -1077,7 +1077,7 @@ function GpuPlacementProcessSection(props: {
                     />
                     <div class="software-policy-grid compact">
                       <label class="policy-field policy-toggle-field">
-                        <span>继承软件默认</span>
+                        <span>{uiText.softwareDetail.label.inheritSoftwareDefault}</span>
                         <input
                           type="checkbox"
                           checked={policy().inherit}
@@ -1128,7 +1128,7 @@ function GpuPlacementProcessSection(props: {
                         onChange={(value) => props.onUpdateProcess(process(), { explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
                       />
                       <label class="policy-field policy-toggle-field">
-                        <span>启动前应用显卡设置</span>
+                        <span>{uiText.softwareDetail.label.applyGpuBeforeLaunch}</span>
                         <input
                           type="checkbox"
                           checked={policy().startupInterceptionEnabled === true}
@@ -1274,7 +1274,7 @@ function MigrationRecordsSection(props: {
   return (
     <Show when={props.records.length > 0}>
       <section class="software-detail-section">
-        <h3>迁移和恢复</h3>
+        <h3>{uiText.softwareDetail.section.migrationAndRestore}</h3>
         <div class="software-detail-migration-list">
           <For each={props.records}>
             {(record) => {

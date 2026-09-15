@@ -104,6 +104,7 @@ const jaJpAppCopy: AppCopy = {
     installed: "インストール済み",
     settingsAndMigration: "設定と移行",
     issueStrip: "ソフトウェアの問題",
+    issueHeading: "問題のお知らせ",
     issueCurrentReport: "現在のレポート",
     issueKnownCatalog: "既知の問題カタログ",
     issueReferences: (label: string) => `${label}の参考資料`
@@ -1048,7 +1049,7 @@ const jaJpAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}、使用率 ${usage}、パフォーマンス ${performance}、実行時間 ${executionTime}`,
     corePerformance: (value: string) => `性能 ${value}`,
-    coreProcessScore: (value: string) => `プロセス ${value}`,
+    coreExecutionTime: (value: string) => `実行時間 ${value}`,
     coreDetailTitle: "CPU コアの詳細",
     coreDetailSummary: "ソフトウェア単位の専有範囲とロック範囲を展開して表示しています。変更は各ソフトウェアの設定で行ってください。",
     physicalCoreList: "物理コア",
@@ -1944,7 +1945,9 @@ const jaJpAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "このコンポーネントは、先に外部ベンダーの規約に同意し、インストールするバージョンを選ぶ必要があります。",
+    installIntroWithoutTerms: "インストールするバージョンを選んでから、ダウンロードとインストールを開始します。",
     manualIntro: "このコンポーネントは自動取得できるインストーラーがありません。外部ベンダーの規約に同意したうえで、入手元ページから手動でダウンロードしてください。",
+    manualIntroWithoutTerms: "このコンポーネントは自動取得できるインストーラーがないため、ソースページから手動でダウンロードします。",
     vendor: (vendor: string) => `提供元: ${vendor}`,
     openTerms: "規約を読む",
     openSourcePage: "入手元ページを開く",
@@ -1956,7 +1959,9 @@ const jaJpAppCopy: AppCopy = {
     versionLookupFailed: "最新バージョンの情報を取得できませんでした。",
     elevationNote: "インストールには管理者権限が必要です。",
     agreeAndInstall: "読んで同意し、インストールする",
+    startInstall: "インストールを開始",
     agreeAndOpen: "読んで同意し、ダウンロード ページを開く",
+    openDownloadPage: "ダウンロードページを開く",
     manualNextStep: "入手元ページとインストーラー キャッシュ フォルダーを開きました。ダウンロードしたインストーラーをそのフォルダーに入れてから、戻って「インストール」を選んでください。"
   },
   metricLabel: {

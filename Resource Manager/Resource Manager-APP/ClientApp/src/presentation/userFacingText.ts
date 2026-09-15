@@ -171,7 +171,17 @@ export function userFacingMetricGroup(value: unknown) {
   }
 }
 
-export function userFacingMetricUnavailableReason(requiredComponentName?: string | null) {
+// 为什么不能选这个指标，后端在目录里已经算好了（可能是「当前没有读数」而不是「缺组件」）。
+// 只有后端没给理由时才退回这两句通用说明，不要因为指标声明过组件就断言是缺组件。
+export function userFacingMetricUnavailableReason(
+  requiredComponentName?: string | null,
+  disabledReason?: string | null
+) {
+  const reported = disabledReason?.trim();
+  if (reported) {
+    return userFacingMessage(reported, uiText.status.metricUnavailable.deviceNotProvided);
+  }
+
   return requiredComponentName
     ? uiText.status.metricUnavailable.needsComponent
     : uiText.status.metricUnavailable.deviceNotProvided;

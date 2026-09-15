@@ -85,19 +85,19 @@ function MonitorDetails(props: { model: MonitorDeviceModel }) {
     <>
       <div class="device-monitor-mode">
         <div>
-          <span>活动分辨率</span>
+          <span>{uiText.deviceSpecialized.activeResolution}</span>
           <strong>{props.model.resolution}</strong>
         </div>
         <div>
-          <span>刷新率</span>
+          <span>{uiText.deviceSpecialized.refreshRate}</span>
           <strong>{props.model.refreshRate}</strong>
         </div>
         <div>
-          <span>HDR / 高级颜色</span>
+          <span>{uiText.deviceSpecialized.hdrAdvancedColor}</span>
           <strong>{props.model.hdrState}</strong>
         </div>
         <div>
-          <span>输出位深</span>
+          <span>{uiText.deviceSpecialized.outputBitDepth}</span>
           <strong>{props.model.bitDepth}</strong>
         </div>
       </div>
@@ -146,11 +146,11 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
     <>
       <div class="device-storage-overview">
         <div>
-          <span>整盘容量</span>
+          <span>{uiText.deviceSpecialized.driveCapacity}</span>
           <strong>{props.model.capacity}</strong>
         </div>
         <div>
-          <span>健康状态</span>
+          <span>{uiText.deviceSpecialized.healthState}</span>
           <strong>{props.model.healthStatus}</strong>
         </div>
       </div>
@@ -172,7 +172,7 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
                   <strong>分区 {partition.partitionNumber ?? "--"}</strong>
                   <span>{formatBytes(partition.capacityBytes)} · {partition.type ?? uiText.deviceSpecialized.formatNotReported}</span>
                 </header>
-                <Show when={partition.volumes.length > 0} fallback={<small>未挂载卷</small>}>
+                <Show when={partition.volumes.length > 0} fallback={<small>{uiText.deviceSpecialized.noMountedVolume}</small>}>
                   <For each={partition.volumes}>
                     {(volume) => (
                       <div class="device-storage-volume">
@@ -238,7 +238,7 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
     <>
       <Show when={props.model.bestMode !== "--"}>
         <div class="device-camera-best-mode">
-          <span>最高原生模式</span>
+          <span>{uiText.deviceSpecialized.highestNativeMode}</span>
           <strong>{props.model.bestMode}</strong>
         </div>
       </Show>

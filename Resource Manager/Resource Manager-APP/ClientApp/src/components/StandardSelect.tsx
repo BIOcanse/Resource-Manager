@@ -313,7 +313,7 @@ export function StandardSelect<T extends string>(props: {
               </label>
             </Show>
             <div id={listboxId} class="standard-select-options" role="listbox" aria-label={props.ariaLabel}>
-              <For each={visibleOptions()} fallback={<div class="standard-select-empty">没有匹配项</div>}>
+              <For each={visibleOptions()} fallback={<div class="standard-select-empty">{uiText.misc.noMatchingOption}</div>}>
                 {(option, index) => {
                   const previousGroup = () => index() > 0 ? visibleOptions()[index() - 1]?.group : undefined;
                   return (

@@ -143,7 +143,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
           class="panel-header"
         >
           <div class="optimization-heading">
-            <h2>优化报告</h2>
+            <h2>{uiText.optimization.reportPanel}</h2>
           </div>
           <div class="panel-header-actions">
             <SegmentedControl
@@ -192,13 +192,13 @@ export function OptimizationPage(props: OptimizationPageProps) {
                     </div>
                     <div class="optimization-report-actions">
                       <Show when={isTrustedReport(report)}>
-                        <span class="optimization-report-state">已信任</span>
+                        <span class="optimization-report-state">{uiText.optimization.trusted}</span>
                       </Show>
                       <Show when={report.target.targetType === "Software"}>
-                        <button class="secondary" type="button" onClick={() => props.onInspect(report)}>查看软件</button>
+                        <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewSoftware}</button>
                       </Show>
                       <Show when={["Device", "Display", "PhysicalDisk"].includes(report.target.targetType)}>
-                        <button class="secondary" type="button" onClick={() => props.onInspect(report)}>查看设备</button>
+                        <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewDevice}</button>
                       </Show>
                       <button class="secondary details-button" type="button" onClick={() => setDetailReport(report)}>
                         详细信息

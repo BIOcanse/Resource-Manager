@@ -122,10 +122,10 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
               fallback={
                 <Show
                   when={candidates().length > 0}
-                  fallback={<div class="management-empty">当前没有可添加的软件。先刷新软件列表。</div>}
+                  fallback={<div class="management-empty">{uiText.manualSoftwareModal.noCandidates}</div>}
                 >
                   <label class="manual-software-field">
-                    <span>软件</span>
+                    <span>{uiText.manualSoftwareModal.software}</span>
                     <StandardSelect
                       value={selectedSoftwareId()}
                       ariaLabel={uiText.manualSoftwareModal.software}
@@ -146,12 +146,12 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
             >
               <Show when={props.kind === "Other"}>
                 <label class="manual-software-field">
-                  <span>名称</span>
+                  <span>{uiText.manualSoftwareModal.name}</span>
                   <input value={manualName()} onInput={(event) => setManualName(event.currentTarget.value)} />
                 </label>
               </Show>
               <label class="manual-software-field">
-                <span>根目录</span>
+                <span>{uiText.manualSoftwareModal.rootDirectory}</span>
                 <textarea
                   rows={5}
                   value={manualRootPaths()}

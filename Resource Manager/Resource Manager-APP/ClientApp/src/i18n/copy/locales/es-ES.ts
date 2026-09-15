@@ -104,6 +104,7 @@ const esEsAppCopy: AppCopy = {
     installed: "Instalado",
     settingsAndMigration: "Configuración y migración",
     issueStrip: "Problemas de software",
+    issueHeading: "Aviso de problema",
     issueCurrentReport: "Informe actual",
     issueKnownCatalog: "Catálogo de problemas conocidos",
     issueReferences: (label: string) => `Referencias de ${label}`
@@ -1048,7 +1049,7 @@ const esEsAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, uso ${usage}, rendimiento ${performance}, tiempo de ejecución ${executionTime}`,
     corePerformance: (value: string) => `Rend. ${value}`,
-    coreProcessScore: (value: string) => `Procesos ${value}`,
+    coreExecutionTime: (value: string) => `Tiempo de ejecución ${value}`,
     coreDetailTitle: "Detalles del núcleo del procesador",
     coreDetailSummary: "Aquí se muestran desplegados los rangos exclusivos y bloqueados definidos a nivel de software. Cámbialos en la configuración de cada software.",
     physicalCoreList: "Núcleos físicos",
@@ -1944,7 +1945,9 @@ const esEsAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "Este componente requiere aceptar antes las condiciones del proveedor externo y luego elegir la versión que se va a instalar.",
+    installIntroWithoutTerms: "Elige la versión que quieres instalar y luego inicia la descarga e instalación.",
     manualIntro: "Este componente no tiene un instalador que se pueda obtener automáticamente. Acepta las condiciones del proveedor externo y descárgalo desde la página de origen.",
+    manualIntroWithoutTerms: "Este componente no tiene un instalador que se pueda obtener automáticamente; descárgalo desde la página de origen.",
     vendor: (vendor: string) => `Proporcionado por ${vendor}`,
     openTerms: "Leer las condiciones",
     openSourcePage: "Abrir la página de origen",
@@ -1956,7 +1959,9 @@ const esEsAppCopy: AppCopy = {
     versionLookupFailed: "No se pudo leer la información de la última versión.",
     elevationNote: "La instalación necesita permisos de administrador.",
     agreeAndInstall: "He leído y acepto, instalar",
+    startInstall: "Iniciar la instalación",
     agreeAndOpen: "He leído y acepto, abrir la página de descarga",
+    openDownloadPage: "Abrir la página de descarga",
     manualNextStep: "Se han abierto la página de origen y la carpeta de caché de instaladores. Pon ahí el instalador descargado y vuelve para elegir «Instalar»."
   },
   metricLabel: {

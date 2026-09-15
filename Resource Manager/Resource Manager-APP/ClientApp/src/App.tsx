@@ -272,6 +272,13 @@ export default function App() {
 
     monitor.closeMetricModal();
     selectManagementSubpage("Dependency");
+
+    // 缺的组件如果还没装，直接把标准获取弹窗开出来，不让用户自己在列表里找。
+    const component = management.components().find((item) =>
+      (item.definition?.id ?? "").toLowerCase() === dependency.componentId.toLowerCase());
+    if (component && !component.installed) {
+      void management.installComponent(component);
+    }
   }
 
   function selectPage(page: PageId) {

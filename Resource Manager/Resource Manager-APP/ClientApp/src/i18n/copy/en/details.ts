@@ -30,7 +30,7 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "gpuScheduling"> = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, usage ${usage}, performance ${performance}, execution time ${executionTime}`,
     corePerformance: (value: string) => `Perf ${value}`,
-    coreProcessScore: (value: string) => `Processes ${value}`,
+    coreExecutionTime: (value: string) => `Execution time ${value}`,
     coreDetailTitle: "CPU core details",
     coreDetailSummary: "This shows the expanded software-level exclusive and locked ranges. Change them in each software's settings.",
     physicalCoreList: "Physical cores",

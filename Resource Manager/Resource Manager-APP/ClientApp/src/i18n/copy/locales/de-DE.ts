@@ -104,6 +104,7 @@ const deDeAppCopy: AppCopy = {
     installed: "Installiert",
     settingsAndMigration: "Einstellungen und Migration",
     issueStrip: "Softwareprobleme",
+    issueHeading: "Problemhinweis",
     issueCurrentReport: "Aktueller Bericht",
     issueKnownCatalog: "Katalog bekannter Probleme",
     issueReferences: (label: string) => `Referenzen zu ${label}`
@@ -1048,7 +1049,7 @@ const deDeAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, Auslastung ${usage}, Leistung ${performance}, Ausführungszeit ${executionTime}`,
     corePerformance: (value: string) => `Leistung ${value}`,
-    coreProcessScore: (value: string) => `Prozesse ${value}`,
+    coreExecutionTime: (value: string) => `Ausführungszeit ${value}`,
     coreDetailTitle: "Details zum Prozessorkern",
     coreDetailSummary: "Hier werden die auf Softwareebene festgelegten exklusiven und gesperrten Bereiche aufgeklappt. Ändern Sie sie in den Einstellungen der jeweiligen Software.",
     physicalCoreList: "Physische Kerne",
@@ -1944,7 +1945,9 @@ const deDeAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "Für diese Komponente müssen zuerst die externen Bedingungen des Anbieters bestätigt und dann eine Version zum Installieren gewählt werden.",
+    installIntroWithoutTerms: "Wählen Sie die zu installierende Version und starten Sie dann Download und Installation.",
     manualIntro: "Für diese Komponente gibt es kein automatisch beziehbares Installationsprogramm. Bestätigen Sie die externen Bedingungen des Anbieters und laden Sie es dann von der Quellseite herunter.",
+    manualIntroWithoutTerms: "Für diese Komponente gibt es kein automatisch abrufbares Installationsprogramm; laden Sie es von der Quellseite herunter.",
     vendor: (vendor: string) => `Bereitgestellt von ${vendor}`,
     openTerms: "Bedingungen lesen",
     openSourcePage: "Quellseite öffnen",
@@ -1956,7 +1959,9 @@ const deDeAppCopy: AppCopy = {
     versionLookupFailed: "Die Informationen zur neuesten Version konnten nicht gelesen werden.",
     elevationNote: "Die Installation erfordert Administratorrechte.",
     agreeAndInstall: "Gelesen und akzeptiert, installieren",
+    startInstall: "Installation starten",
     agreeAndOpen: "Gelesen und akzeptiert, Downloadseite öffnen",
+    openDownloadPage: "Downloadseite öffnen",
     manualNextStep: "Die Quellseite und der Installationsprogramm-Cacheordner sind geöffnet. Legen Sie das heruntergeladene Installationsprogramm dort ab und wählen Sie dann hier „Installieren“."
   },
   metricLabel: {

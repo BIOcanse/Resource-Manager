@@ -88,16 +88,16 @@ export function MigrationPanel(props: MigrationPanelProps) {
         || props.discoveryStopInProgress}
     >
       <div class="panel-header">
-        <h2>迁移工作台</h2>
+        <h2>{uiText.migrationPanel.title}</h2>
         <span id="migrationStatus" role="status" aria-live="polite">{props.status}</span>
       </div>
       <div class="migration-form">
         <label>
-          <span>软件名</span>
+          <span>{uiText.migrationPanel.softwareName}</span>
           <input value={props.softwareName} type="text" placeholder={uiText.migrationPanel.softwareNamePlaceholder} onInput={(event) => props.setSoftwareName(event.currentTarget.value)} />
         </label>
         <label>
-          <span>迁移类型</span>
+          <span>{uiText.migrationPanel.migrationKind}</span>
           <StandardSelect
             value={props.kind}
             ariaLabel={uiText.migrationPanel.migrationKind}
@@ -109,7 +109,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
           />
         </label>
         <label>
-          <span>目标分类</span>
+          <span>{uiText.migrationPanel.targetCategory}</span>
           <StandardSelect
             value={props.targetCategory}
             ariaLabel={uiText.migrationPanel.targetCategory}
@@ -121,21 +121,21 @@ export function MigrationPanel(props: MigrationPanelProps) {
           />
         </label>
         <label class="migration-paths-field">
-          <span>源路径</span>
+          <span>{uiText.migrationPanel.sourcePaths}</span>
           <textarea value={props.sourcePaths} rows={3} placeholder={uiText.migrationPanel.sourcePathsPlaceholder} onInput={(event) => props.setSourcePaths(event.currentTarget.value)} />
         </label>
         <label class="migration-risk-toggle">
           <input type="checkbox" checked={props.allowMediumRisk} onChange={(event) => props.setAllowMediumRisk(event.currentTarget.checked)} />
-          <span>允许中等风险迁移（含软件根目录）</span>
+          <span>{uiText.migrationPanel.allowMediumRisk}</span>
         </label>
       </div>
       <div class="migration-discovery">
         <label>
-          <span>手动根目录（高级）</span>
+          <span>{uiText.migrationPanel.manualRoots}</span>
           <textarea value={props.discoveryProgramRootPaths} rows={2} placeholder={uiText.migrationPanel.manualRootsPlaceholder} onInput={(event) => props.setDiscoveryProgramRootPaths(event.currentTarget.value)} />
         </label>
         <label>
-          <span>需要观察的进程名称</span>
+          <span>{uiText.migrationPanel.processNames}</span>
           <input value={props.discoveryProcessNames} type="text" placeholder={uiText.migrationPanel.processNamesPlaceholder} onInput={(event) => props.setDiscoveryProcessNames(event.currentTarget.value)} />
         </label>
         <div class="migration-actions">
@@ -197,7 +197,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
               >
                 详细信息
               </button>
-              <button class="secondary" type="button" onClick={() => props.onUseCandidate(candidate)}>填入</button>
+              <button class="secondary" type="button" onClick={() => props.onUseCandidate(candidate)}>{uiText.migrationPanel.fill}</button>
               <button
                 type="button"
                 disabled={!props.workbenchAvailable || props.previewInProgress}
@@ -266,7 +266,7 @@ export function MigrationPanel(props: MigrationPanelProps) {
         </Show>
       </div>
       <div class="panel-header migration-record-header">
-        <h2>恢复</h2>
+        <h2>{uiText.migrationPanel.restoreTitle}</h2>
         <span id="migrationRecordCount">{props.records.length} 条记录</span>
       </div>
       <ListBlock className="migration-records" items={props.records} empty="" render={(record) => (

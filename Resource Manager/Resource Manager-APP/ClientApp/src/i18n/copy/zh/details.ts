@@ -27,7 +27,7 @@ export const zhDetailsCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}，使用率 ${usage}，性能 ${performance}，执行时长 ${executionTime}`,
     corePerformance: (value: string) => `性能 ${value}`,
-    coreProcessScore: (value: string) => `执行时长 ${value}`,
+    coreExecutionTime: (value: string) => `执行时长 ${value}`,
     coreDetailTitle: "CPU 核心详细信息",
     coreDetailSummary: "这里统一显示实际展开后的软件级独占与锁定范围。修改请进入对应软件设置。",
     physicalCoreList: "物理核心",

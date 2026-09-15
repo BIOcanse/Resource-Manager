@@ -119,19 +119,19 @@ export function TaskCenterDialog(props: {
         <Show when={props.snapshot().operationState === "loading"}>
           <div class="task-center-session-warning" role="status">
             <LoaderCircle class="task-center-spinner" aria-hidden="true" size={17} />
-            <span>后端任务正在同步。</span>
+            <span>{uiText.taskCenter.backendSyncing}</span>
           </div>
         </Show>
         <Show when={props.snapshot().operationState === "disconnected"}>
           <div class="task-center-session-warning" role="status">
             <TriangleAlert aria-hidden="true" size={17} />
-            <span>本机服务正在重新同步，后端任务暂时不能操作。</span>
+            <span>{uiText.taskCenter.backendResyncing}</span>
           </div>
         </Show>
         <Show when={props.snapshot().operationState === "error"}>
           <div class="task-center-session-warning" role="alert">
             <TriangleAlert aria-hidden="true" size={17} />
-            <span>无法读取后端任务状态；界面任务仍可正常管理。</span>
+            <span>{uiText.taskCenter.backendUnavailable}</span>
           </div>
         </Show>
         <TabsRoot
@@ -168,7 +168,7 @@ export function TaskCenterDialog(props: {
       </DialogBody>
       <DialogActions class="task-center-actions">
         <span>{itemsFor(activeTab()).length} 项</span>
-        <button class="secondary" type="button" onClick={props.onClose}>关闭</button>
+        <button class="secondary" type="button" onClick={props.onClose}>{uiText.taskCenter.close}</button>
       </DialogActions>
     </DialogRoot>
   );
@@ -229,7 +229,7 @@ function TaskCenterList(props: {
                   )}
                 </Show>
                 <Show when={item().stateUncertain}>
-                  <p class="task-center-inline-warning">任务状态需要与本机服务重新确认。</p>
+                  <p class="task-center-inline-warning">{uiText.taskCenter.needsResync}</p>
                 </Show>
                 <Show when={item().errorSummary}>
                   {(error) => (
@@ -246,15 +246,15 @@ function TaskCenterList(props: {
                   )}
                 </Show>
                 <details class="task-center-details">
-                  <summary>详情</summary>
+                  <summary>{uiText.taskCenter.detailsSummary}</summary>
                   <dl>
-                    <div><dt>类型</dt><dd>{item().kind}</dd></div>
+                    <div><dt>{uiText.taskCenter.kind}</dt><dd>{item().kind}</dd></div>
                     <Show when={item().domainKey}>
-                      {(domainKey) => <div><dt>目标</dt><dd>{domainKey()}</dd></div>}
+                      {(domainKey) => <div><dt>{uiText.taskCenter.target}</dt><dd>{domainKey()}</dd></div>}
                     </Show>
-                    <div><dt>创建时间</dt><dd>{userFacingDateTime(item().createdAt)}</dd></div>
-                    <div><dt>更新时间</dt><dd>{userFacingDateTime(item().updatedAt)}</dd></div>
-                    <div><dt>标识</dt><dd>{item().ownerId}</dd></div>
+                    <div><dt>{uiText.taskCenter.createdAt}</dt><dd>{userFacingDateTime(item().createdAt)}</dd></div>
+                    <div><dt>{uiText.taskCenter.updatedAt}</dt><dd>{userFacingDateTime(item().updatedAt)}</dd></div>
+                    <div><dt>{uiText.taskCenter.identity}</dt><dd>{item().ownerId}</dd></div>
                   </dl>
                 </details>
               </div>

@@ -55,12 +55,12 @@ export function HostManagerSmartCoordinatorDetailsReport() {
     >
       <div class="panel-header smart-details-header">
         <div class="optimization-heading">
-          <h2>智能调度报告</h2>
+          <h2>{uiText.smartReport.panel}</h2>
         </div>
       </div>
       <Show
         when={state()}
-        fallback={<div class="optimization-empty">暂无智能调度记录。</div>}
+        fallback={<div class="optimization-empty">{uiText.smartReport.empty}</div>}
       >
         {(current) => (
           <>
@@ -72,7 +72,7 @@ export function HostManagerSmartCoordinatorDetailsReport() {
           </div>
           <Show
             when={records().length > 0}
-            fallback={<div class="optimization-empty">暂无智能调度记录。</div>}
+            fallback={<div class="optimization-empty">{uiText.smartReport.empty}</div>}
           >
             <div class="smart-details-records">
               <For each={records().slice(0, 8)}>

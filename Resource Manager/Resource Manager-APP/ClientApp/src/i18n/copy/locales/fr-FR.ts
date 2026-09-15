@@ -104,6 +104,7 @@ const frFrAppCopy: AppCopy = {
     installed: "Installé",
     settingsAndMigration: "Paramètres et migration",
     issueStrip: "Problèmes logiciels",
+    issueHeading: "Avis de problème",
     issueCurrentReport: "Rapport actuel",
     issueKnownCatalog: "Catalogue des problèmes connus",
     issueReferences: (label: string) => `Références de ${label}`
@@ -1048,7 +1049,7 @@ const frFrAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, utilisation ${usage}, performance ${performance}, temps d'exécution ${executionTime}`,
     corePerformance: (value: string) => `Perf ${value}`,
-    coreProcessScore: (value: string) => `Processus ${value}`,
+    coreExecutionTime: (value: string) => `Temps d'exécution ${value}`,
     coreDetailTitle: "Détails du cœur processeur",
     coreDetailSummary: "Voici les plages exclusives et verrouillées définies au niveau des logiciels. Modifiez-les dans les paramètres de chaque logiciel.",
     physicalCoreList: "Cœurs physiques",
@@ -1944,7 +1945,9 @@ const frFrAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "Ce composant nécessite d'abord l'acceptation des conditions du fournisseur externe, puis le choix d'une version à installer.",
+    installIntroWithoutTerms: "Choisissez la version à installer, puis lancez le téléchargement et l'installation.",
     manualIntro: "Ce composant n'a pas d'installateur récupérable automatiquement. Acceptez les conditions du fournisseur externe, puis téléchargez-le depuis la page source.",
+    manualIntroWithoutTerms: "Ce composant n'a pas d'installateur récupérable automatiquement : téléchargez-le depuis la page source.",
     vendor: (vendor: string) => `Fourni par ${vendor}`,
     openTerms: "Lire les conditions",
     openSourcePage: "Ouvrir la page source",
@@ -1956,7 +1959,9 @@ const frFrAppCopy: AppCopy = {
     versionLookupFailed: "Les informations sur la dernière version n'ont pas pu être lues.",
     elevationNote: "L'installation nécessite des droits d'administrateur.",
     agreeAndInstall: "J'ai lu et j'accepte, installer",
+    startInstall: "Lancer l'installation",
     agreeAndOpen: "J'ai lu et j'accepte, ouvrir la page de téléchargement",
+    openDownloadPage: "Ouvrir la page de téléchargement",
     manualNextStep: "La page source et le dossier de cache des installateurs sont ouverts. Placez-y l'installateur téléchargé, puis revenez choisir « Installer »."
   },
   metricLabel: {

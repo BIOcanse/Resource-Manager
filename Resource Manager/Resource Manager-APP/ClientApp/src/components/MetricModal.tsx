@@ -226,7 +226,7 @@ export function MetricModal(props: MetricModalProps) {
           role="listbox"
           aria-label={uiText.metricPicker.listLabel}
         >
-          <For each={groupedMetrics()} fallback={<div class="metric-picker-empty">没有匹配的监控项</div>}>
+          <For each={groupedMetrics()} fallback={<div class="metric-picker-empty">{uiText.metricPicker.empty}</div>}>
             {(group, groupIndex) => {
               const headingId = `metric-modal-group-${groupIndex()}`;
               return (
@@ -273,7 +273,7 @@ export function MetricModal(props: MetricModalProps) {
                               </Show>
                               <Show when={unavailable()}>
                                 <small class="metric-unavailable">
-                                  {userFacingMetricUnavailableReason(metric.requiredComponentName)}
+                                  {userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason)}
                                 </small>
                               </Show>
                             </span>
@@ -289,8 +289,8 @@ export function MetricModal(props: MetricModalProps) {
         </div>
       </DialogBody>
       <DialogActions>
-        <button class="secondary" type="button" onClick={props.onClose}>取消</button>
-        <button type="button" disabled={!props.selectedMetricId || selectedMetricUnavailable()} onClick={props.onConfirm}>确定</button>
+        <button class="secondary" type="button" onClick={props.onClose}>{uiText.metricPicker.cancel}</button>
+        <button type="button" disabled={!props.selectedMetricId || selectedMetricUnavailable()} onClick={props.onConfirm}>{uiText.metricPicker.confirm}</button>
       </DialogActions>
     </DialogRoot>
   );

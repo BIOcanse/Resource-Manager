@@ -231,7 +231,7 @@ function ResourceTableContentStateView(props: {
         kind="empty"
         title={uiText.resourceTableView.noMatchTitle}
         detail={uiText.resourceTableView.noMatchDetail}
-        actions={<button class="secondary" type="button" onClick={props.onClearSearch}>清除搜索</button>}
+        actions={<button class="secondary" type="button" onClick={props.onClearSearch}>{uiText.resourceTableView.clearSearch}</button>}
       />
     );
   }

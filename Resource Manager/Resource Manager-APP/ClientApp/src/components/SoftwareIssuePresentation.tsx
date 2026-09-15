@@ -30,7 +30,7 @@ export function SoftwareIssueDetailSection(props: {
   return (
     <Show when={(props.issues?.length ?? 0) > 0}>
       <section class="software-detail-section software-issue-section">
-        <h3><AlertTriangle aria-hidden="true" size={18} /> 问题提示</h3>
+        <h3><AlertTriangle aria-hidden="true" size={18} /> {uiText.management.issueHeading}</h3>
         <div class="software-issue-detail-list">
           <For each={props.issues ?? []}>
             {(issue) => (

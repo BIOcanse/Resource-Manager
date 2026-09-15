@@ -80,7 +80,9 @@ export const enStoresCopy: Pick<AppCopy, "stores" | "componentAcquisition"> = {
   },
   componentAcquisition: {
     installIntro: "This component needs the vendor's external terms acknowledged first, then a version to install.",
+    installIntroWithoutTerms: "Choose the version to install, then start the download and installation.",
     manualIntro: "This component has no installer that can be fetched automatically. Acknowledge the vendor's external terms, then download it from the source page.",
+    manualIntroWithoutTerms: "This component has no installer that can be fetched automatically; download it from the source page.",
     vendor: (vendor: string) => `Provided by ${vendor}`,
     openTerms: "Read the terms",
     openSourcePage: "Open the source page",
@@ -92,7 +94,9 @@ export const enStoresCopy: Pick<AppCopy, "stores" | "componentAcquisition"> = {
     versionLookupFailed: "The latest version information could not be read.",
     elevationNote: "The installation needs administrator permission.",
     agreeAndInstall: "I have read and agree, install",
+    startInstall: "Start installation",
     agreeAndOpen: "I have read and agree, open the download page",
+    openDownloadPage: "Open the download page",
     manualNextStep: "The source page and the installer cache folder are open. Put the downloaded installer in that folder, then come back and choose Install."
   }
 };
