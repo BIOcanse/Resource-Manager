@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
@@ -256,7 +257,7 @@ public sealed class WindowsDeviceTopologyReaderTests
         };
         var conflict = first with { DisplayName = "Conflicting" };
 
-        var equivalentNotes = new List<string>();
+        var equivalentNotes = new List<BackendMessage>();
         var left = WindowsDeviceTopologyReader.ResolveDuplicateDeviceIds(
             [first, equivalent],
             equivalentNotes);
@@ -271,14 +272,15 @@ public sealed class WindowsDeviceTopologyReaderTests
             DeviceTopologySemanticComparer.ComputeCanonicalPortPayload(right[0]));
         Assert.Empty(equivalentNotes);
 
-        var conflictNotes = new List<string>();
+        var conflictNotes = new List<BackendMessage>();
         var conflicted = WindowsDeviceTopologyReader.ResolveDuplicateDeviceIds(
             [conflict, first],
             conflictNotes);
 
         Assert.Empty(conflicted);
         Assert.Single(conflictNotes);
-        Assert.Contains(@"USB\VID_0001", conflictNotes[0], StringComparison.Ordinal);
+        Assert.Equal(BackendMessageCodes.DeviceTopology.ConflictingFacts, conflictNotes[0].Code);
+        Assert.Contains(@"USB\VID_0001", conflictNotes[0].Args[0], StringComparison.Ordinal);
     }
 
     private static DeviceTopologyUsbConnectorProperties Connector(bool userConnectable, bool typeC)
@@ -307,8 +309,8 @@ public sealed class WindowsDeviceTopologyReaderTests
             Manufacturer: "Test",
             Service: "test",
             Status: "OK",
-            Confidence: "test",
-            Source: "test",
+            Confidence: BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.ConfidenceDeviceEnumeration),
+            Source: BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.SourcePnpEnumeration),
             UpstreamDeviceId: null,
             UpstreamDisplayName: null,
             TopologyPath: deviceId,

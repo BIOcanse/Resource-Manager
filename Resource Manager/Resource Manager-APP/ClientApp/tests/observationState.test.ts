@@ -126,7 +126,7 @@ assert.deepEqual(projectDeviceTopologyObservation(ready, {
     sourceId: "display-coordinator",
     status: "required-incomplete",
     code: "device-topology-display-coordinator-incomplete",
-    message: "显示协调器尚未提供完整快照：Warming"
+    messageCode: { domain: 5, code: 10, args: ["Warming"] }
   }]
 }), {
   status: "stale",
