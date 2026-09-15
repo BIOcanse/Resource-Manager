@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using Microsoft.Win32;
 
 namespace ResourceManager.NativeUi.SystemIntegration;
@@ -16,7 +17,7 @@ internal sealed class TaskManagerLaunchReplacementRegistry
             using var key = Registry.LocalMachine.CreateSubKey(TaskManagerIfeoKeyPath, writable: true);
             if (key is null)
             {
-                return TaskManagerLaunchReplacementResult.Failed("任务管理器快捷键启用失败，请稍后重试。");
+                return TaskManagerLaunchReplacementResult.Failed(NativeUiText.Current.TaskManagerHotkeyEnableFailed);
             }
 
             var existing = key.GetValue(DebuggerValueName) as string;
@@ -24,7 +25,7 @@ internal sealed class TaskManagerLaunchReplacementRegistry
                 && !IsOwnedDebuggerCommand(existing))
             {
                 return TaskManagerLaunchReplacementResult.Conflict(
-                    "检测到其他任务管理器快捷键设置，已保留原设置。");
+                    NativeUiText.Current.TaskManagerHotkeyForeignSetting);
             }
 
             if (!string.Equals(existing, debuggerCommand, StringComparison.Ordinal))
@@ -37,12 +38,12 @@ internal sealed class TaskManagerLaunchReplacementRegistry
         catch (UnauthorizedAccessException)
         {
             return TaskManagerLaunchReplacementResult.NeedsElevation(
-                "需要管理员权限才能在资源管理器未运行时接管任务管理器快捷键。");
+                NativeUiText.Current.TaskManagerHotkeyNeedsAdminToEnable);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            return TaskManagerLaunchReplacementResult.Failed("任务管理器快捷键启用失败，请稍后重试。");
+            return TaskManagerLaunchReplacementResult.Failed(NativeUiText.Current.TaskManagerHotkeyEnableFailed);
         }
     }
 
@@ -65,7 +66,7 @@ internal sealed class TaskManagerLaunchReplacementRegistry
             if (!IsOwnedDebuggerCommand(existing))
             {
                 return TaskManagerLaunchReplacementResult.Conflict(
-                    "检测到其他任务管理器快捷键设置，已保留原设置。");
+                    NativeUiText.Current.TaskManagerHotkeyForeignSetting);
             }
 
             key.DeleteValue(DebuggerValueName, throwOnMissingValue: false);
@@ -74,12 +75,12 @@ internal sealed class TaskManagerLaunchReplacementRegistry
         catch (UnauthorizedAccessException)
         {
             return TaskManagerLaunchReplacementResult.NeedsElevation(
-                "需要管理员权限才能完全关闭任务管理器快捷键替换。");
+                NativeUiText.Current.TaskManagerHotkeyNeedsAdminToDisable);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            return TaskManagerLaunchReplacementResult.Failed("任务管理器快捷键关闭失败，请稍后重试。");
+            return TaskManagerLaunchReplacementResult.Failed(NativeUiText.Current.TaskManagerHotkeyDisableFailed);
         }
     }
 
@@ -104,10 +105,10 @@ internal sealed record TaskManagerLaunchReplacementResult(
     string Message)
 {
     public static TaskManagerLaunchReplacementResult Registered() =>
-        new(TaskManagerLaunchReplacementState.Registered, ColdStartAvailable: true, "任务管理器快捷键已启用。");
+        new(TaskManagerLaunchReplacementState.Registered, ColdStartAvailable: true, NativeUiText.Current.TaskManagerHotkeyEnabled);
 
     public static TaskManagerLaunchReplacementResult Removed() =>
-        new(TaskManagerLaunchReplacementState.Removed, ColdStartAvailable: false, "任务管理器快捷键已关闭。");
+        new(TaskManagerLaunchReplacementState.Removed, ColdStartAvailable: false, NativeUiText.Current.TaskManagerHotkeyDisabled);
 
     public static TaskManagerLaunchReplacementResult NeedsElevation(string message) =>
         new(TaskManagerLaunchReplacementState.NeedsElevation, ColdStartAvailable: false, message);

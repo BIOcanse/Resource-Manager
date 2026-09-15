@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.Text.Json;
 
 namespace ResourceManager.NativeUi.SystemIntegration;
@@ -90,7 +91,7 @@ internal sealed class TaskManagerShortcutReplacementController : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            ReportStatusOnce("任务管理器快捷键启用失败，请稍后重试。", ToolTipIcon.Warning);
+            ReportStatusOnce(NativeUiText.Current.TaskManagerHotkeyEnableFailed, ToolTipIcon.Warning);
         }
 
         var result = launchReplacementRegistry.EnsureRegistered(debuggerCommand);
@@ -109,7 +110,7 @@ internal sealed class TaskManagerShortcutReplacementController : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
-            ReportStatusOnce("任务管理器快捷键关闭失败，请稍后重试。", ToolTipIcon.Warning);
+            ReportStatusOnce(NativeUiText.Current.TaskManagerHotkeyDisableFailed, ToolTipIcon.Warning);
         }
 
         var result = launchReplacementRegistry.RemoveIfOwned();

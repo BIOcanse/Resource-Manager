@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.Text.Json;
 
 namespace ResourceManager.NativeUi;
@@ -23,7 +24,7 @@ public sealed partial class MainForm
 
         using var picker = new FolderBrowserDialog
         {
-            Description = string.IsNullOrWhiteSpace(title) ? "选择软件根目录" : title,
+            Description = string.IsNullOrWhiteSpace(title) ? NativeUiText.Current.SelectSoftwareRootFolder : title,
             UseDescriptionForTitle = true,
             ShowNewFolderButton = false,
             SelectedPath = Directory.Exists(initialPath) ? initialPath : string.Empty

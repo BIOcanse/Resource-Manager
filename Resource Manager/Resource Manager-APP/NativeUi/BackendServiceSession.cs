@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net;
@@ -59,7 +60,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         ObjectDisposedException.ThrowIf(disposed, this);
         if (processIds.Count == 0)
         {
-            return "没有可结束的进程。";
+            return NativeUiText.Current.NoProcessToTerminate;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/system/processes/terminate")
@@ -71,9 +72,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException(ReadMessage(payload) ?? $"本地服务返回 HTTP {(int)response.StatusCode}。");
+            throw new InvalidOperationException(ReadMessage(payload) ?? string.Format(NativeUiText.Current.BackendHttpErrorFormat, (int)response.StatusCode));
         }
-        return ReadMessage(payload) ?? "进程终止请求已完成。";
+        return ReadMessage(payload) ?? NativeUiText.Current.TerminateRequestCompleted;
     }
 
     public async Task<string> EnsureConnectedAsync(CancellationToken cancellationToken)
@@ -83,18 +84,18 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         if (await TryConnectAsync(cancellationToken))
         {
             StartAvailabilityMonitor();
-            return "已就绪";
+            return NativeUiText.Current.StatusReady;
         }
 
         if (!File.Exists(BackendPath))
         {
             throw new FileNotFoundException(
-                "最终映像中缺少本地后端服务入口。",
+                NativeUiText.Current.BackendEntryMissing,
                 BackendPath);
         }
 
         throw new InvalidOperationException(
-            "本地后端服务尚未就绪；Native UI 不拥有服务启动权限。请启动或修复 ResourceManager.Service。");
+            NativeUiText.Current.BackendNotOwned);
     }
 
     public void Dispose()
@@ -388,7 +389,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
 
     private BackendRequestAuthorization GetRequestAuthorization() =>
         requestAuthorization
-        ?? throw new InvalidOperationException("本地服务请求管线尚未就绪。");
+        ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
 
     private sealed record BackendRequestAuthorization(
         string? AccessToken,

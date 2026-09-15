@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -36,11 +37,11 @@ internal sealed class EditableHotkeyHook : IDisposable
         ArgumentNullException.ThrowIfNull(definition);
         if (definition.IsEmpty)
         {
-            throw new ArgumentException("快捷键至少需要一个按键。", nameof(definition));
+            throw new ArgumentException(NativeUiText.Current.HotkeyNeedsAtLeastOneKey, nameof(definition));
         }
         if (!definition.IsSafeForDestructiveGlobalAction)
         {
-            throw new ArgumentException("强制结束快捷键必须同时包含 Ctrl、Alt 或 Win 修饰键以及一个非修饰键。", nameof(definition));
+            throw new ArgumentException(NativeUiText.Current.ForceTerminateHotkeyNeedsModifier, nameof(definition));
         }
 
         this.shortcutPressed = shortcutPressed;
@@ -65,7 +66,7 @@ internal sealed class EditableHotkeyHook : IDisposable
             keyboardHookHandle = SetWindowsHookExKeyboard(WhKeyboardLl, hookProc, module, 0);
             if (keyboardHookHandle == IntPtr.Zero)
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "无法注册自定义全局键盘快捷键钩子。");
+                throw new Win32Exception(Marshal.GetLastWin32Error(), NativeUiText.Current.KeyboardHookRegisterFailed);
             }
         }
 
@@ -76,7 +77,7 @@ internal sealed class EditableHotkeyHook : IDisposable
             {
                 var error = Marshal.GetLastWin32Error();
                 Unhook(ref keyboardHookHandle);
-                throw new Win32Exception(error, "无法注册自定义全局鼠标快捷键钩子。");
+                throw new Win32Exception(error, NativeUiText.Current.MouseHookRegisterFailed);
             }
         }
     }

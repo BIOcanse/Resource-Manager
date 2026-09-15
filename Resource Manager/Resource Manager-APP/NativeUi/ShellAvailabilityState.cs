@@ -1,3 +1,5 @@
+using ResourceManager.NativeUi.Localization;
+
 namespace ResourceManager.NativeUi;
 
 internal enum FrontendConnectionState
@@ -26,41 +28,44 @@ internal static class ShellAvailabilityProjection
 {
     public static ShellAvailabilitySnapshot Project(
         BackendConnectionState backend,
-        FrontendConnectionState frontend) => backend switch
+        FrontendConnectionState frontend)
+    {
+        var text = NativeUiText.Current;
+        return backend switch
     {
         BackendConnectionState.Connecting => new(
-            "正在连接本地服务",
-            "重新连接本地服务",
+            text.StatusConnecting,
+            text.ActionReconnectBackend,
             RetryEnabled: false),
         BackendConnectionState.Reconnecting => new(
-            "正在重新连接本地服务",
-            "重新连接本地服务",
+            text.StatusReconnecting,
+            text.ActionReconnectBackend,
             RetryEnabled: false),
         BackendConnectionState.Degraded => new(
-            "本地服务不可用",
-            "重新连接本地服务",
+            text.StatusBackendUnavailable,
+            text.ActionReconnectBackend,
             RetryEnabled: true),
         BackendConnectionState.ShuttingDown => new(
-            "正在退出",
-            "重新连接本地服务",
+            text.StatusShuttingDown,
+            text.ActionReconnectBackend,
             RetryEnabled: false),
         BackendConnectionState.Ready => frontend switch
         {
             FrontendConnectionState.NotStarted => new(
-                "本地服务已就绪",
-                "重新加载界面",
+                text.StatusBackendReady,
+                text.ActionReloadFrontend,
                 RetryEnabled: false),
             FrontendConnectionState.Loading => new(
-                "正在加载界面",
-                "重新加载界面",
+                text.StatusFrontendLoading,
+                text.ActionReloadFrontend,
                 RetryEnabled: false),
             FrontendConnectionState.Ready => new(
-                "已就绪",
-                "重新加载界面",
+                text.StatusReady,
+                text.ActionReloadFrontend,
                 RetryEnabled: false),
             FrontendConnectionState.Unavailable => new(
-                "界面不可用",
-                "重新加载界面",
+                text.StatusFrontendUnavailable,
+                text.ActionReloadFrontend,
                 RetryEnabled: true),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(frontend),
@@ -68,5 +73,6 @@ internal static class ShellAvailabilityProjection
                 null)
         },
         _ => throw new ArgumentOutOfRangeException(nameof(backend), backend, null)
-    };
+        };
+    }
 }

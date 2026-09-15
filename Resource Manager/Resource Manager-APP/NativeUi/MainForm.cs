@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using ResourceManager.NativeUi.WebView;
 
 namespace ResourceManager.NativeUi;
@@ -41,7 +42,7 @@ public sealed partial class MainForm : Form
                 () => loopbackApiAccessToken));
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;
-        Text = "资源管理器";
+        Text = NativeUiText.Current.AppName;
         StartPosition = FormStartPosition.Manual;
         MinimumSize = new Size(760, 520);
         Size = WindowPlacement.GetPreferredPrimaryScreenSize(MinimumSize);
@@ -134,11 +135,14 @@ public sealed partial class MainForm : Form
         return Task.CompletedTask;
     }
 
+    /// <summary>语言切换后重新取一遍窗口内常驻文案；状态文案由外壳状态投影推送。</summary>
+    public void ApplyInterfaceLanguage() => backendAvailabilityPanel.ApplyText();
+
     public void SetStatusText(string text)
     {
         Text = string.IsNullOrWhiteSpace(text)
-            ? "资源管理器"
-            : $"资源管理器 - {text}";
+            ? NativeUiText.Current.AppName
+            : string.Format(NativeUiText.Current.WindowTitleFormat, text);
     }
 
     public void SetLoopbackApiAccessToken(string? accessToken)
@@ -151,7 +155,7 @@ public sealed partial class MainForm : Form
     internal void ShowBackendConnecting(bool reconnecting)
     {
         DisableBackendContent();
-        SetStatusText(reconnecting ? "正在重新连接本地服务" : "正在连接本地服务");
+        SetStatusText(reconnecting ? NativeUiText.Current.StatusReconnecting : NativeUiText.Current.StatusConnecting);
         backendAvailabilityPanel.ShowConnecting(reconnecting);
     }
 
@@ -170,7 +174,7 @@ public sealed partial class MainForm : Form
         backendSessionProjection = projection;
         PublishBackendSessionProjection();
         DisableBackendContent();
-        SetStatusText("本地服务不可用");
+        SetStatusText(NativeUiText.Current.StatusBackendUnavailable);
         backendAvailabilityPanel.ShowUnavailable(detail);
     }
 
@@ -191,7 +195,7 @@ public sealed partial class MainForm : Form
         backendContentEnabled = true;
         appNavigationStarted = false;
         frontendHost.View.Visible = false;
-        SetStatusText("本地服务已就绪");
+        SetStatusText(NativeUiText.Current.StatusBackendReady);
         SetFrontendConnectionState(FrontendConnectionState.NotStarted);
     }
 
@@ -234,7 +238,7 @@ public sealed partial class MainForm : Form
     private void ShowFrontendLoading()
     {
         frontendHost.View.Visible = false;
-        SetStatusText("正在加载界面");
+        SetStatusText(NativeUiText.Current.StatusFrontendLoading);
         backendAvailabilityPanel.ShowFrontendLoading();
         SetFrontendConnectionState(FrontendConnectionState.Loading);
     }
@@ -243,14 +247,14 @@ public sealed partial class MainForm : Form
     {
         backendAvailabilityPanel.Visible = false;
         frontendHost.View.Visible = true;
-        SetStatusText("已就绪");
+        SetStatusText(NativeUiText.Current.StatusReady);
         SetFrontendConnectionState(FrontendConnectionState.Ready);
     }
 
     private void ShowFrontendUnavailable(string detail)
     {
         frontendHost.View.Visible = false;
-        SetStatusText("界面不可用");
+        SetStatusText(NativeUiText.Current.StatusFrontendUnavailable);
         backendAvailabilityPanel.ShowFrontendUnavailable(detail);
         SetFrontendConnectionState(FrontendConnectionState.Unavailable, detail);
     }

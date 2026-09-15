@@ -1,3 +1,4 @@
+using ResourceManager.NativeUi.Localization;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -38,7 +39,7 @@ internal sealed class TaskManagerShortcutHook : IDisposable
         hookHandle = SetWindowsHookEx(WhKeyboardLl, hookProc, ResolveCurrentModuleHandle(), 0);
         if (hookHandle == IntPtr.Zero)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "无法注册 Ctrl+Shift+Esc 快捷键钩子。");
+            throw new Win32Exception(Marshal.GetLastWin32Error(), NativeUiText.Current.TaskManagerShortcutHookRegisterFailed);
         }
     }
 
@@ -53,7 +54,7 @@ internal sealed class TaskManagerShortcutHook : IDisposable
         hookHandle = IntPtr.Zero;
         if (!UnhookWindowsHookEx(handle))
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "无法移除 Ctrl+Shift+Esc 快捷键钩子。");
+            throw new Win32Exception(Marshal.GetLastWin32Error(), NativeUiText.Current.TaskManagerShortcutHookRemoveFailed);
         }
     }
 
