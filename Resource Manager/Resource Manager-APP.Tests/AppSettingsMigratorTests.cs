@@ -419,7 +419,7 @@ public sealed class AppSettingsMigratorTests
             "gpuPerformanceUseCases": ["general"],
             "smartMonitoringMode": "auto",
             "frontendHiddenRefreshMode": "auto",
-            "gpuSchedulingMode": "auto",
+            "automaticSchedulingOptimizationsEnabled": true,
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "managementRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 10000 },

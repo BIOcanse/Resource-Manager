@@ -38,7 +38,8 @@ public static class AppSettingsNormalizer
             NormalizeGpuPerformanceUseCases(performance?.GpuPerformanceUseCases),
             NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
             NormalizeFrontendHiddenRefreshMode(performance?.FrontendHiddenRefreshMode),
-            NormalizeAdaptiveBooleanMode(performance?.GpuSchedulingMode),
+            performance?.AutomaticSchedulingOptimizationsEnabled
+                ?? AppSettingsDefaults.Create().Performance.AutomaticSchedulingOptimizationsEnabled,
             NormalizeLogicRefreshInterval(
                 performance?.MonitorRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Responsive,

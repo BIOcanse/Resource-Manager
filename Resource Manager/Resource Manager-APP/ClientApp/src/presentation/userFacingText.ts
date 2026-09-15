@@ -194,6 +194,7 @@ export function componentDisplayName(componentId: unknown, fallback?: unknown) {
     case "amd-ryzen-master-monitoring-sdk": return names.amdRyzenMaster;
     case "msi-afterburner": return names.msiAfterburner;
     case "librehardwaremonitor-provider": return names.libreHardwareMonitor;
+    case "shared-webview2-runtime": return names.sharedWebView2Runtime;
     case "notebook-fancontrol-provider": return names.notebookFanControl;
     case "notebook-oem-fan-provider": return names.notebookOemFan;
     case "windows-performance-toolkit": return names.windowsPerformanceToolkit;

@@ -1,4 +1,6 @@
-using ResourceManager.App.Domain.Components;
+﻿using ResourceManager.App.Domain.Components;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Components;
 
@@ -38,7 +40,9 @@ public sealed partial class ComponentManager
             return new ComponentActionResult(
                 id,
                 statusBeforeInstall.State,
-                "组件已安装，直接复用现有安装。",
+                BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.AlreadyInstalledReuse),
                 statusBeforeInstall.InstallerPath,
                 null,
                 currentStatus);
@@ -74,7 +78,11 @@ public sealed partial class ComponentManager
         return new ComponentActionResult(
             id,
             status.State,
-            status.ProviderActive ? "Provider 已通过实时指标验证。" : status.Message,
+            status.ProviderActive
+                ? BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.ProviderVerified)
+                : status.Message,
             status.InstallerPath,
             null,
             status);

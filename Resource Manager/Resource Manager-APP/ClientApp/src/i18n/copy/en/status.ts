@@ -86,6 +86,7 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
         amdRyzenMaster: "AMD Ryzen monitoring support",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "General hardware sensor support",
+        sharedWebView2Runtime: "Shared WebView2 runtime",
         notebookFanControl: "Notebook fan monitoring support",
         notebookOemFan: "Notebook vendor fan support",
         windowsPerformanceToolkit: "Windows Performance Toolkit",

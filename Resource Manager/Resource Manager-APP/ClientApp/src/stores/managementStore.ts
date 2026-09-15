@@ -26,6 +26,7 @@ import {
   refreshingObservation,
   type ObservationState
 } from "../observation/observationState";
+import { renderBackendMessage } from "../presentation/backendMessage.ts";
 import { userFacingErrorMessage, userFacingMessage } from "../presentation/userFacingText";
 import {
   compareUInt64Decimal,
@@ -401,7 +402,9 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
 
     const operations = softwareRecord.operations ?? {};
     if (!operations.canUninstall) {
-      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: userFacingMessage(operations.uninstallMessage, uiText.stores.cannotUninstall) });
+      options.showToast({ tone: "warning", title: uiText.feedback.warning, message: operations.uninstallMessageCode
+          ? renderBackendMessage(operations.uninstallMessageCode)
+          : userFacingMessage(operations.uninstallMessage, uiText.stores.cannotUninstall) });
       return;
     }
 

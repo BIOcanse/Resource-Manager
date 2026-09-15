@@ -374,6 +374,7 @@ const frFrAppCopy: AppCopy = {
         amdRyzenMaster: "Prise en charge de la surveillance AMD Ryzen",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "Prise en charge générale des capteurs matériels",
+        sharedWebView2Runtime: "Runtime WebView2 partagé",
         notebookFanControl: "Prise en charge de la surveillance des ventilateurs de portable",
         notebookOemFan: "Prise en charge des ventilateurs du fabricant du portable",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const frFrAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `VRAM utilisée du GPU${index}`,
     "gpu.{index}.vramPercent": (index: string) => `Pourcentage de VRAM du GPU${index}`,
     "gpu.{index}.memoryClock": (index: string) => `Fréquence VRAM du GPU${index}`
+  },
+  backendMessage: {
+    unknown: "L'état a été mis à jour.",
+    dependency: {
+      managedRootRemovable: "Supprime la racine Dependencies gérée de cette dépendance.",
+      managedRootEmpty: "Cette dépendance n'a aucune installation gérée à nettoyer.",
+      categoryTag: "Dépendance de composant",
+      uninstallAction: "Désinstaller",
+      installedInManagedRoot: "Installé dans la racine logicielle Dependencies.",
+      installerCached: "L'installateur est dans le cache Misc et peut être installé dans Dependencies.",
+      downloadableWithVersionChoice: "L'installateur peut être téléchargé depuis la page de publication officielle, en version vérifiée ou la plus récente.",
+      downloadable: "L'installateur peut être téléchargé depuis la source officielle.",
+      manualAcquisition: "Ouvrez la page source officielle et placez l'installateur dans le cache Misc.",
+      reusingExternalInstall: (value: string) => `Une installation existante a été détectée et est réutilisée : ${value}`,
+      providerVerified: "Le fournisseur est vérifié par des mesures en direct.",
+      providerRuntimeUnverified: "Un runtime de fournisseur installé sur ce système a été détecté, mais il n'est pas encore vérifié par des relevés en direct.",
+      componentFilesUnverified: "Les fichiers du composant sont en place, mais le fournisseur n'est pas encore vérifié par des relevés en direct.",
+      runtimeAvailableBridgePending: "Le runtime est disponible, mais le pont du fournisseur ou la vérification des relevés en direct n'est pas terminé.",
+      providerBridgeMissing: "Le pont du fournisseur n'est pas connecté, ou le matériel ou le pilote actuel ne renvoie aucun relevé vérifiable.",
+      bundledVerified: "Le composant intégré est vérifié par des mesures en direct.",
+      bundledUnverified: "Le composant intégré est installé ; le matériel ou le runtime OEM actuel ne renvoie aucun relevé vérifiable.",
+      alreadyInstalledReuse: "Le composant est déjà installé ; l'installation existante est réutilisée.",
+      installerDownloaded: "L'installateur a été téléchargé dans le répertoire de dépendances géré.",
+      installerDownloadedVersion: (value: string) => `L'installateur de ${value} a été téléchargé dans le répertoire de dépendances géré.`,
+      sharedRuntimeInstalled: "Le runtime WebView2 partagé est installé et détecté.",
+      installerLaunched: "L'installateur s'est lancé visiblement. Terminez les invites d'installation du fournisseur avant d'utiliser ce fournisseur."
+    },
+    gpuPlacement: {
+      singleAdapter: "Cette machine n'a qu'un seul GPU : l'ordonnancement GPU n'a aucune cible à choisir."
+    }
   }
 };
 

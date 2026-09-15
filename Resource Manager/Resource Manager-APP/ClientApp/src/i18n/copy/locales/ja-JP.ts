@@ -374,6 +374,7 @@ const jaJpAppCopy: AppCopy = {
         amdRyzenMaster: "AMD Ryzen 監視サポート",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "汎用ハードウェア センサー サポート",
+        sharedWebView2Runtime: "共有 WebView2 ランタイム",
         notebookFanControl: "ノート PC ファン監視サポート",
         notebookOemFan: "ノート PC メーカー製ファン サポート",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const jaJpAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `GPU${index} VRAM 使用量`,
     "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM の割合`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} VRAM クロック`
+  },
+  backendMessage: {
+    unknown: "状態が更新されました。",
+    dependency: {
+      managedRootRemovable: "この依存関係の管理された Dependencies ルートを削除します。",
+      managedRootEmpty: "この依存関係にはクリーンアップできる管理下のインストールがありません。",
+      categoryTag: "コンポーネント依存関係",
+      uninstallAction: "アンインストール",
+      installedInManagedRoot: "Dependencies ソフトウェアルートにインストール済みです。",
+      installerCached: "インストーラーは Misc キャッシュにあり、Dependencies にインストールできます。",
+      downloadableWithVersionChoice: "公式リリースページからインストーラーを取得でき、検証済みか最新のバージョンを選べます。",
+      downloadable: "公式ソースからインストーラーをダウンロードできます。",
+      manualAcquisition: "公式ソースページを開き、インストーラーを Misc キャッシュに置いてください。",
+      reusingExternalInstall: (value: string) => `システムに既存のインストールが見つかったため再利用します：${value}`,
+      providerVerified: "プロバイダーはライブ指標で検証されました。",
+      providerRuntimeUnverified: "システムにインストール済みのプロバイダーランタイムを検出しましたが、ライブ読み取りでは未検証です。",
+      componentFilesUnverified: "コンポーネントファイルは準備できていますが、プロバイダーはライブ読み取りで未検証です。",
+      runtimeAvailableBridgePending: "ランタイムは利用できますが、プロバイダーブリッジまたはライブ読み取りの検証が未完了です。",
+      providerBridgeMissing: "プロバイダーブリッジが未接続か、現在のハードウェア／ドライバーが検証可能な値を返しません。",
+      bundledVerified: "同梱コンポーネントはライブ指標で検証されました。",
+      bundledUnverified: "同梱コンポーネントはインストール済みですが、現在のハードウェアまたは OEM ランタイムが検証可能な値を返しません。",
+      alreadyInstalledReuse: "コンポーネントはインストール済みのため、既存のインストールを再利用します。",
+      installerDownloaded: "インストーラーを管理下の依存関係ディレクトリにダウンロードしました。",
+      installerDownloadedVersion: (value: string) => `${value} のインストーラーを管理下の依存関係ディレクトリにダウンロードしました。`,
+      sharedRuntimeInstalled: "共有 WebView2 ランタイムがインストールされ、検出されました。",
+      installerLaunched: "インストーラーが表示されました。このプロバイダーを使う前にベンダーのインストール手順を完了してください。"
+    },
+    gpuPlacement: {
+      singleAdapter: "このマシンには GPU が 1 つしかないため、GPU スケジューリングに選択肢がありません。"
+    }
   }
 };
 

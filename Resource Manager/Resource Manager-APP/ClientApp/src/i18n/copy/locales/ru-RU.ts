@@ -374,6 +374,7 @@ const ruRuAppCopy: AppCopy = {
         amdRyzenMaster: "Поддержка мониторинга AMD Ryzen",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "Общая поддержка аппаратных датчиков",
+        sharedWebView2Runtime: "Общая среда выполнения WebView2",
         notebookFanControl: "Поддержка мониторинга вентиляторов ноутбука",
         notebookOemFan: "Поддержка вентиляторов производителя ноутбука",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const ruRuAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `Использование видеопамяти GPU${index}`,
     "gpu.{index}.vramPercent": (index: string) => `Доля видеопамяти GPU${index}`,
     "gpu.{index}.memoryClock": (index: string) => `Частота видеопамяти GPU${index}`
+  },
+  backendMessage: {
+    unknown: "Состояние обновлено.",
+    dependency: {
+      managedRootRemovable: "Удаляет управляемый корневой каталог Dependencies этой зависимости.",
+      managedRootEmpty: "У этой зависимости нет управляемой установки для очистки.",
+      categoryTag: "Зависимость компонента",
+      uninstallAction: "Удалить",
+      installedInManagedRoot: "Установлено в корневом каталоге Dependencies.",
+      installerCached: "Установщик находится в кэше Misc и может быть установлен в Dependencies.",
+      downloadableWithVersionChoice: "Установщик можно загрузить со страницы официальных выпусков, выбрав проверенную или последнюю версию.",
+      downloadable: "Установщик можно загрузить из официального источника.",
+      manualAcquisition: "Откройте официальную страницу источника и положите установщик в кэш Misc.",
+      reusingExternalInstall: (value: string) => `Обнаружена существующая установка в системе, она используется повторно: ${value}`,
+      providerVerified: "Поставщик подтверждён живыми метриками.",
+      providerRuntimeUnverified: "Найдена установленная в системе среда выполнения поставщика, но она ещё не подтверждена живыми показаниями.",
+      componentFilesUnverified: "Файлы компонента готовы, но поставщик ещё не подтверждён живыми показаниями.",
+      runtimeAvailableBridgePending: "Среда выполнения доступна, но мост поставщика или проверка живыми показаниями не завершены.",
+      providerBridgeMissing: "Мост поставщика не подключён, либо текущее оборудование или драйвер не возвращает проверяемых показаний.",
+      bundledVerified: "Встроенный компонент подтверждён живыми метриками.",
+      bundledUnverified: "Встроенный компонент установлен; текущее оборудование или среда выполнения OEM не возвращает проверяемых показаний.",
+      alreadyInstalledReuse: "Компонент уже установлен, используется существующая установка.",
+      installerDownloaded: "Установщик загружен в управляемый каталог зависимостей.",
+      installerDownloadedVersion: (value: string) => `Установщик ${value} загружен в управляемый каталог зависимостей.`,
+      sharedRuntimeInstalled: "Общая среда выполнения WebView2 установлена и обнаружена.",
+      installerLaunched: "Установщик запущен. Завершите шаги установки поставщика, прежде чем использовать его."
+    },
+    gpuPlacement: {
+      singleAdapter: "В этой машине только один GPU, поэтому планировщику GPU не из чего выбирать."
+    }
   }
 };
 

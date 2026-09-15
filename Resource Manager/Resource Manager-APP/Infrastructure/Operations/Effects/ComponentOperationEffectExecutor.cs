@@ -1,4 +1,4 @@
-using ResourceManager.App.Application.Components;
+﻿using ResourceManager.App.Application.Components;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
 
@@ -47,11 +47,13 @@ internal sealed class ComponentOperationEffectExecutor(
                     acknowledge,
                     versionChoice,
                     cancellationToken).ConfigureAwait(false);
-            return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
+            // 这一层的完成消息还没迁到消息码（操作日志是二进制持久化的，见 M5）。
+            // 暂时不带文本：前端会用自己的本地化「操作完成」，不会漏出中文。
+            return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new(HostManagerOperationEffectOutcome.Canceled, "操作已取消。");
+            return new(HostManagerOperationEffectOutcome.Canceled, string.Empty);
         }
         catch (IOException error)
         {
@@ -73,9 +75,9 @@ internal sealed class ComponentOperationEffectExecutor(
         return ValueTask.FromResult(receipt.State == HostManagerOperationEffectReceiptState.Prepared
             ? new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.RetryableFailure,
-                "尚无组件动作执行证据，可重新排队。")
+                string.Empty)
             : new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.Uncertain,
-                "组件动作可能已发生，无法安全重复执行。"));
+                string.Empty));
     }
 }

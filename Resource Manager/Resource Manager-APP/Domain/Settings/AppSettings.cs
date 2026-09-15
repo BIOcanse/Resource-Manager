@@ -193,8 +193,9 @@ public sealed record AppPerformanceSettings(
     IReadOnlyList<string> GpuPerformanceUseCases,
     string SmartMonitoringMode,
     string FrontendHiddenRefreshMode,
-    // 自动：只有这台机器不止一个显卡才调度；始终开启/关闭由用户直接决定。
-    string GpuSchedulingMode,
+    // 开启后，处于自动调度模式的机制可以按本机事实做额外优化
+    // （例如只有一个显卡时不再跑 GPU 调度）。关闭则一律按用户设置照常运行。
+    bool AutomaticSchedulingOptimizationsEnabled,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,
     AppPresetNumericSetting ManagementRefreshIntervalMs,

@@ -1,8 +1,10 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Operations;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -96,8 +98,13 @@ public sealed partial class OptionalDependencyManager
             destination,
             length,
             installerSource.Version is null
-                ? "安装器已下载到托管依赖目录。"
-                : $"已下载 {installerSource.Version} 的安装器到托管依赖目录。",
+                ? BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.InstallerDownloaded)
+                : BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.InstallerDownloadedVersion,
+                    installerSource.Version),
             fileChanges);
     }
 }
