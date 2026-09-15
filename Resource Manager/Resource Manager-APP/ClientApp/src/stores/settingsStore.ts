@@ -95,6 +95,7 @@ export interface SettingsStore {
   discardDraftChanges: () => void;
   resetDraftToDefaults: () => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
+  updateGpuSchedulingMode: (mode: AppAdaptiveBooleanMode) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -388,6 +389,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       smartMonitoringMode: normalizeAdaptiveBooleanMode(mode),
       smartMonitoringEnabled: resolveAdaptiveBooleanMode(mode, true)
     })),
+    updateGpuSchedulingMode: (mode) => updatePerformance((performance) => ({
+      ...performance,
+      gpuSchedulingMode: normalizeAdaptiveBooleanMode(mode)
+    })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
       preciseGpuPlacementEnabled: enabled
@@ -563,6 +568,7 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryOptimizationTargetUsagePercent: 70,
       gpuPerformanceUseCases: ["general"],
       smartMonitoringMode: "auto",
+      gpuSchedulingMode: "auto",
       frontendHiddenRefreshMode: "auto",
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -623,6 +629,7 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
       gpuPerformanceUseCases: normalizeGpuPerformanceUseCases(settings?.performance?.gpuPerformanceUseCases),
       smartMonitoringMode: normalizeAdaptiveBooleanMode(settings?.performance?.smartMonitoringMode),
+      gpuSchedulingMode: normalizeAdaptiveBooleanMode(settings?.performance?.gpuSchedulingMode),
       frontendHiddenRefreshMode: normalizeFrontendHiddenRefreshMode(settings?.performance?.frontendHiddenRefreshMode),
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),

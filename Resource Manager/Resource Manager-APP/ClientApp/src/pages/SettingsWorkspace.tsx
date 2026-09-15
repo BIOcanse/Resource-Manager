@@ -28,6 +28,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onSave={() => void settings.saveDraft()}
         onRestoreDefaults={settings.resetDraftToDefaults}
         onSmartMonitoringModeChange={settings.updateSmartMonitoringMode}
+        onGpuSchedulingModeChange={settings.updateGpuSchedulingMode}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
         onGpuPerformanceUseCasesChange={settings.updateGpuPerformanceUseCases}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}

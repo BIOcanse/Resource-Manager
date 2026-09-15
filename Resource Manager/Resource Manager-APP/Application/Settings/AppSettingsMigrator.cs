@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ResourceManager.App.Domain.Settings;
 
 namespace ResourceManager.App.Application.Settings;
@@ -71,6 +71,7 @@ public static class AppSettingsMigrator
                 ReadGpuPerformanceUseCases(root, defaults.Performance.GpuPerformanceUseCases),
                 ReadString(root, "performance", "smartMonitoringMode", defaults.Performance.SmartMonitoringMode),
                 ReadString(root, "performance", "frontendHiddenRefreshMode", defaults.Performance.FrontendHiddenRefreshMode),
+                ReadString(root, "performance", "gpuSchedulingMode", defaults.Performance.GpuSchedulingMode),
                 ReadLogicRefreshInterval(
                     root,
                     "monitorRefreshIntervalMs",
@@ -176,6 +177,7 @@ public static class AppSettingsMigrator
             || !performance.TryGetProperty("gpuPerformanceUseCases", out var gpuPerformanceUseCases)
             || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
             || !performance.TryGetProperty("frontendHiddenRefreshMode", out var frontendHiddenRefreshMode)
+            || !performance.TryGetProperty("gpuSchedulingMode", out var gpuSchedulingMode)
             || !performance.TryGetProperty("monitorRefreshIntervalMs", out var monitorRefreshIntervalMs)
             || !performance.TryGetProperty("resourceTableRefreshIntervalMs", out var resourceTableRefreshIntervalMs)
             || !performance.TryGetProperty("managementRefreshIntervalMs", out var managementRefreshIntervalMs)

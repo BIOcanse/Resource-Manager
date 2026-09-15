@@ -1,4 +1,4 @@
-using ResourceManager.App.Domain.Settings;
+﻿using ResourceManager.App.Domain.Settings;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -38,6 +38,7 @@ public static class AppSettingsNormalizer
             NormalizeGpuPerformanceUseCases(performance?.GpuPerformanceUseCases),
             NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
             NormalizeFrontendHiddenRefreshMode(performance?.FrontendHiddenRefreshMode),
+            NormalizeAdaptiveBooleanMode(performance?.GpuSchedulingMode),
             NormalizeLogicRefreshInterval(
                 performance?.MonitorRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Responsive,
