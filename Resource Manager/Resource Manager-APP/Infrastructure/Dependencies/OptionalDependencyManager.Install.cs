@@ -1,7 +1,9 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.Shared.BrowserRuntimes;
+
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -65,8 +67,12 @@ public sealed partial class OptionalDependencyManager
             "installerStarted",
             status.InstallerPath,
             definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase)
-                ? "共享 WebView2 Runtime 已安装并通过检测。"
-                : "安装器已可见启动。使用该 Provider 前需要完成厂商安装提示。");
+                ? BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.SharedRuntimeInstalled)
+                : BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.InstallerLaunched));
     }
 
     private static string BuildInstallerArguments(

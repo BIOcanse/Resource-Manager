@@ -85,6 +85,7 @@ export const zhStatusCopy = {
         amdRyzenMaster: "AMD Ryzen 监控支持",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "通用硬件传感支持",
+        sharedWebView2Runtime: "共享 WebView2 运行时",
         notebookFanControl: "笔记本风扇监控支持",
         notebookOemFan: "笔记本厂商风扇支持",
         windowsPerformanceToolkit: "Windows 性能分析工具",

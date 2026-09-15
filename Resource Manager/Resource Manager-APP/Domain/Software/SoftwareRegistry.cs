@@ -1,3 +1,4 @@
+﻿using ResourceManager.App.Domain.Messages;
 namespace ResourceManager.App.Domain.Software;
 
 public static class SoftwareKinds
@@ -44,13 +45,18 @@ public sealed record SoftwareRecord(
     IReadOnlyList<string>? SuggestedRootPaths = null,
     IReadOnlyList<string>? ExecutablePaths = null,
     string? SoftwareIdentityId = null,
-    IReadOnlyList<SoftwareIssueTag>? Issues = null);
+    IReadOnlyList<SoftwareIssueTag>? Issues = null,
+    /// <summary>这条记录要说的话。给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 Message。</summary>
+    BackendMessage? MessageCode = null);
 
 public sealed record SoftwareOperationCapabilities(
     bool CanUninstall,
     string UninstallKind,
     string UninstallLabel,
-    string UninstallMessage);
+    string UninstallMessage,
+    /// <summary>操作名与说明的消息码；给了码就以码为准。</summary>
+    BackendMessage? UninstallLabelCode = null,
+    BackendMessage? UninstallMessageCode = null);
 
 public sealed record SoftwareOperationRequest(
     string Id,

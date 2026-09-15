@@ -1,4 +1,4 @@
-using ResourceManager.App.Application.Dependencies;
+﻿using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
@@ -27,7 +27,9 @@ internal sealed class DependencyOperationEffectExecutor(
                     acknowledge,
                     versionChoice,
                     cancellationToken).ConfigureAwait(false);
-                return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
+                // 这一层的完成消息还没迁到消息码（操作日志是二进制持久化的，见 M5）。
+                // 暂时不带文本：前端会用自己的本地化「操作完成」，不会漏出中文。
+                return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);
             }
 
             var progressAdapter = new DurableDependencyProgress(
@@ -40,11 +42,11 @@ internal sealed class DependencyOperationEffectExecutor(
                 versionChoice,
                 cancellationToken,
                 progressAdapter).ConfigureAwait(false);
-            return new(HostManagerOperationEffectOutcome.Succeeded, download.Message);
+            return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            return new(HostManagerOperationEffectOutcome.Canceled, "操作已取消。");
+            return new(HostManagerOperationEffectOutcome.Canceled, string.Empty);
         }
         catch (HttpRequestException error)
         {
@@ -70,10 +72,10 @@ internal sealed class DependencyOperationEffectExecutor(
         return ValueTask.FromResult(receipt.State == HostManagerOperationEffectReceiptState.Prepared
             ? new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.RetryableFailure,
-                "尚无依赖动作执行证据，可重新排队。")
+                string.Empty)
             : new HostManagerOperationEffectCompletion(
                 HostManagerOperationEffectOutcome.Uncertain,
-                "依赖动作可能已发生，无法安全重复执行。"));
+                string.Empty));
     }
 
     private sealed class DurableDependencyProgress(

@@ -37,7 +37,7 @@ interface SettingsPageProps {
   onSave: () => void;
   onRestoreDefaults: () => void;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
-  onGpuSchedulingModeChange: (mode: AppAdaptiveBooleanMode) => void;
+  onAutomaticSchedulingOptimizationsChange: (enabled: boolean) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -231,7 +231,7 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
               onSmartMonitoringModeChange={props.onSmartMonitoringModeChange}
-              onGpuSchedulingModeChange={props.onGpuSchedulingModeChange}
+              onAutomaticSchedulingOptimizationsChange={props.onAutomaticSchedulingOptimizationsChange}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
               onGpuPerformanceUseCasesChange={props.onGpuPerformanceUseCasesChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}

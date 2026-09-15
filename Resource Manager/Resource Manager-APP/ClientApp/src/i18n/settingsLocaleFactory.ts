@@ -42,8 +42,12 @@ const zhCnSettingsCopy: SettingsCopy = {
     ],
     gpuPerformanceUseCasesTitle: "GPU 用途",
     gpuPerformanceUseCasesDescription: "选择主要用途，以更合适地比较不同显卡的能力。可多选。",
-    gpuSchedulingTitle: "GPU 调度",
-    gpuSchedulingDescription: "自动调度只在这台机器不止一个显卡时启用；只有一个显卡时没有可选目标，整条链路停用。也可以始终开启或始终关闭。",
+    automaticSchedulingOptimizationsTitle: "自动调度性能优化",
+    automaticSchedulingOptimizationsDescription: "开启后，处于自动调度模式的机制会按本机实际情况做额外优化，例如只有一个显卡时不再运行 GPU 调度。关闭则一律按设置照常运行。",
+    onOffOptions: [
+      { id: "on", label: "开启", description: "允许按本机实际情况做额外优化。" },
+      { id: "off", label: "关闭", description: "一律按设置照常运行。" }
+    ],
     preciseGpuPlacementTitle: "精确 GPU 选择",
     preciseGpuPlacementDescription: "当前精确 Provider 仅支持原生 x64 进程，并只影响后续创建或重建的 D3D11 设备。每个软件可以单独设置。",
     preciseGpuPlacementModeOptions: {
@@ -330,8 +334,12 @@ const enSettingsCopy: SettingsCopy = {
     ],
     gpuPerformanceUseCasesTitle: "GPU use cases",
     gpuPerformanceUseCasesDescription: "Select the main workloads to compare GPU capabilities more appropriately. Multiple selections are allowed.",
-    gpuSchedulingTitle: "GPU scheduling",
-    gpuSchedulingDescription: "Automatic scheduling runs only when this machine has more than one GPU; with a single GPU there is no target to choose and the whole path stops. It can also be kept always on or always off.",
+    automaticSchedulingOptimizationsTitle: "Automatic scheduling optimizations",
+    automaticSchedulingOptimizationsDescription: "When enabled, mechanisms running in automatic mode may take extra shortcuts based on what this machine actually has - for example, GPU scheduling stops on a machine with a single GPU. When disabled, everything runs as configured.",
+    onOffOptions: [
+      { id: "on", label: "On", description: "Allow extra optimizations based on this machine." },
+      { id: "off", label: "Off", description: "Run everything as configured." }
+    ],
     preciseGpuPlacementTitle: "Precise GPU selection",
     preciseGpuPlacementDescription: "The current precise provider supports native x64 processes and only affects D3D11 devices created or rebuilt afterward. Each software item remains configurable.",
     preciseGpuPlacementModeOptions: {

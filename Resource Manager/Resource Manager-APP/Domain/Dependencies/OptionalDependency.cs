@@ -1,3 +1,4 @@
+﻿using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Operations;
 
 namespace ResourceManager.App.Domain.Dependencies;
@@ -104,7 +105,8 @@ public sealed record OptionalDependencyStatus(
     string EffectiveInstallDirectory,
     string? DetectedInstallDirectory,
     string DetectionSource,
-    string Message,
+    /// <summary>这条状态要说的话：域 + 码 + 事实参数，措辞由前端按当前语言决定。</summary>
+    BackendMessage Message,
     /// <summary>安装器来源形态，界面据此如实标注按钮。</summary>
     string InstallerSourceKind = DependencyInstallerSourceKinds.Manual);
 
@@ -121,7 +123,7 @@ public sealed record OptionalDependencyDownloadResult(
     string State,
     string FilePath,
     long BytesWritten,
-    string Message,
+    BackendMessage Message,
     FileChangeReport? FileChanges = null);
 
 public sealed record DependencyDownloadProgress(
@@ -135,4 +137,4 @@ public sealed record OptionalDependencyLaunchResult(
     string Id,
     string State,
     string InstallerPath,
-    string Message);
+    BackendMessage Message);

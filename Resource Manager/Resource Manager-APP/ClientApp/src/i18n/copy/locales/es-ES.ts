@@ -374,6 +374,7 @@ const esEsAppCopy: AppCopy = {
         amdRyzenMaster: "Compatibilidad con la supervisión de AMD Ryzen",
         msiAfterburner: "MSI Afterburner",
         libreHardwareMonitor: "Compatibilidad general con sensores de hardware",
+        sharedWebView2Runtime: "Runtime compartido de WebView2",
         notebookFanControl: "Compatibilidad con la supervisión de ventiladores de portátiles",
         notebookOemFan: "Compatibilidad con ventiladores del fabricante del portátil",
         windowsPerformanceToolkit: "Windows Performance Toolkit",
@@ -1909,6 +1910,36 @@ const esEsAppCopy: AppCopy = {
     "gpu.{index}.vram": (index: string) => `VRAM usada de la GPU${index}`,
     "gpu.{index}.vramPercent": (index: string) => `Porcentaje de VRAM de la GPU${index}`,
     "gpu.{index}.memoryClock": (index: string) => `Frecuencia de VRAM de la GPU${index}`
+  },
+  backendMessage: {
+    unknown: "El estado se ha actualizado.",
+    dependency: {
+      managedRootRemovable: "Elimina la raíz Dependencies gestionada de esta dependencia.",
+      managedRootEmpty: "Esta dependencia no tiene ninguna instalación gestionada que limpiar.",
+      categoryTag: "Dependencia de componente",
+      uninstallAction: "Desinstalar",
+      installedInManagedRoot: "Instalado en la raíz de software Dependencies.",
+      installerCached: "El instalador está en la caché Misc y puede instalarse en Dependencies.",
+      downloadableWithVersionChoice: "El instalador puede descargarse desde la página oficial de versiones, con la versión verificada o la más reciente.",
+      downloadable: "El instalador puede descargarse desde la fuente oficial.",
+      manualAcquisition: "Abre la página de origen oficial y coloca el instalador en la caché Misc.",
+      reusingExternalInstall: (value: string) => `Se ha detectado una instalación existente del sistema y se reutiliza: ${value}`,
+      providerVerified: "El proveedor está verificado con métricas en vivo.",
+      providerRuntimeUnverified: "Se ha detectado un runtime del proveedor instalado en el sistema, pero aún no está verificado con lecturas en vivo.",
+      componentFilesUnverified: "Los archivos del componente están listos, pero el proveedor aún no está verificado con lecturas en vivo.",
+      runtimeAvailableBridgePending: "El runtime está disponible, pero el puente del proveedor o la verificación con lecturas en vivo no ha terminado.",
+      providerBridgeMissing: "El puente del proveedor no está conectado, o el hardware o el controlador actual no devuelve lecturas verificables.",
+      bundledVerified: "El componente incluido está verificado con métricas en vivo.",
+      bundledUnverified: "El componente incluido está instalado; el hardware o el runtime OEM actual no devuelve lecturas verificables.",
+      alreadyInstalledReuse: "El componente ya está instalado y se reutiliza la instalación existente.",
+      installerDownloaded: "El instalador se ha descargado en el directorio de dependencias gestionado.",
+      installerDownloadedVersion: (value: string) => `El instalador de ${value} se ha descargado en el directorio de dependencias gestionado.`,
+      sharedRuntimeInstalled: "El runtime compartido de WebView2 está instalado y detectado.",
+      installerLaunched: "El instalador se ha abierto. Completa las indicaciones de instalación del proveedor antes de usarlo."
+    },
+    gpuPlacement: {
+      singleAdapter: "Esta máquina solo tiene una GPU, así que la programación de GPU no tiene ningún destino que elegir."
+    }
   }
 };
 

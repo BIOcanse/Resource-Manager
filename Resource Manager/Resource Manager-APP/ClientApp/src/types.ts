@@ -1,5 +1,14 @@
 export type PageId = "monitor" | "components" | "optimization" | "details" | "settings";
 
+export interface BackendMessage {
+  /** 消息域，见后端 BackendMessageDomains。 */
+  domain: number;
+  /** 该域内的消息码。 */
+  code: number;
+  /** 渲染这条消息需要的事实参数，按顺序。 */
+  args: string[];
+}
+
 export interface BackendStartupCapabilities {
   profileId: string;
   readOnly: boolean;
@@ -202,8 +211,8 @@ export interface AppPerformanceSettings {
   virtualMemoryOptimizationTargetUsagePercent: number;
   gpuPerformanceUseCases: AppGpuPerformanceUseCase[];
   smartMonitoringMode: AppAdaptiveBooleanMode;
-  /** 自动：不止一个显卡才调度；始终开启/关闭由用户决定。 */
-  gpuSchedulingMode: AppAdaptiveBooleanMode;
+  /** 开启后，处于自动调度模式的机制可以按本机事实做额外优化。 */
+  automaticSchedulingOptimizationsEnabled: boolean;
   frontendHiddenRefreshMode: AppFrontendHiddenRefreshMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;
@@ -538,7 +547,7 @@ export interface ManagedComponent {
   installerSourceKind?: ComponentInstallerSourceKind;
   state?: string;
   stateLabel?: string;
-  message?: string;
+  message?: BackendMessage;
   installRoot?: string;
   installerDirectory?: string;
   installerPath?: string;
@@ -567,11 +576,15 @@ export interface SoftwareRecord {
   requiresRootPathConfirmation?: boolean;
   identityConfirmed?: boolean;
   message?: string;
+  /** 给了码就以码为准，前端按当前语言渲染；还没迁的生产方继续用 message。 */
+  messageCode?: BackendMessage;
   operations?: {
     canUninstall?: boolean;
     uninstallKind?: string;
     uninstallLabel?: string;
     uninstallMessage?: string;
+    uninstallLabelCode?: BackendMessage;
+    uninstallMessageCode?: BackendMessage;
   };
 }
 

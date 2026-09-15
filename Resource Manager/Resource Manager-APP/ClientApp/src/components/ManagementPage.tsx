@@ -30,6 +30,7 @@ import {
   ObservationStateNotice
 } from "./ObservationStateNotice";
 import { SoftwareIssueTagStrip } from "./SoftwareIssuePresentation";
+import { renderBackendMessage } from "../presentation/backendMessage.ts";
 
 // 分类名按当前语言求值，不能在模块顶层固化。
 export function managementKinds(): Array<{ id: ManagementKind; label: string }> {
@@ -334,9 +335,11 @@ function SoftwareCard(props: {
         </div>
         <SoftwareIssueTagStrip issues={props.software.issues} />
         <div class="management-card-purpose">
-          {userFacingMessage(
-            props.software.message,
-            softwareDisplayKindLabel(props.software.kind, props.software.displayKind))}
+          {props.software.messageCode
+            ? renderBackendMessage(props.software.messageCode)
+            : userFacingMessage(
+              props.software.message,
+              softwareDisplayKindLabel(props.software.kind, props.software.displayKind))}
         </div>
       </div>
       <div class="software-actions">
@@ -516,7 +519,7 @@ function matchesComponentSearch(component: ManagedComponent, query: string) {
     definition.installNote,
     component.state,
     component.stateLabel,
-    component.message,
+    renderBackendMessage(component.message),
     component.installRoot,
     component.installerDirectory,
     component.installerPath,
@@ -540,6 +543,7 @@ function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
     softwareDisplayKindLabel(software.kind, software.displayKind),
     software.state,
     software.message,
+    renderBackendMessage(software.messageCode),
     ...(software.issues ?? []).flatMap((issue) => [
       issue.kind,
       issue.label,
@@ -551,7 +555,8 @@ function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
     ...(software.rootPaths ?? []),
     software.operations?.uninstallKind,
     software.operations?.uninstallLabel,
-    software.operations?.uninstallMessage);
+    software.operations?.uninstallMessage,
+    renderBackendMessage(software.operations?.uninstallMessageCode));
 }
 
 function normalizeSearchQuery(value: string) {

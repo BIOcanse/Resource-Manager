@@ -1,3 +1,4 @@
+﻿using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Operations;
 
@@ -47,7 +48,7 @@ public sealed record ComponentStatus(
     bool CanInstall,
     bool CanVerify,
     IReadOnlyList<ComponentProviderStatus> Providers,
-    string Message,
+    BackendMessage Message,
     /// <summary>安装器来源形态，界面据此如实标注按钮并决定要不要问版本。</summary>
     string InstallerSourceKind = DependencyInstallerSourceKinds.Manual);
 
@@ -59,7 +60,7 @@ public sealed record ComponentActionRequest(
 public sealed record ComponentActionResult(
     string Id,
     string State,
-    string Message,
+    BackendMessage Message,
     string? FilePath = null,
     long? BytesWritten = null,
     ComponentStatus? Status = null,
