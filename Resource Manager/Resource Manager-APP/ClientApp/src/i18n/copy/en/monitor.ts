@@ -69,6 +69,16 @@ export const enMonitorCopy: Pick<
       process: "By process",
       performance: "Performance"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "Total usage",
+      status: {
+        warming: "Warming up",
+        ready: "Current sample",
+        stale: "Last sample",
+        failed: "Sampling failed"
+      }
+    },
+    systemResidualRow: (metric: string) => `System/driver reserved · ${metric}`,
     columns: {
       name: "Name",
       pid: "PID",

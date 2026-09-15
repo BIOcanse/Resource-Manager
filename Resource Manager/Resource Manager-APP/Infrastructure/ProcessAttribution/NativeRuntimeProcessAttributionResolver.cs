@@ -25,7 +25,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         RuntimeAttributionIds.ResourceManagerSelf,
         ResourceManagerSelfDescriptor.DisplayName,
         SoftwareKinds.Adapted,
-        SoftwareText.Adapted,
+        SoftwareDisplayKinds.Adapted,
         ResourceManagerSelfDescriptor.ResolveRootPaths()
             .Select(CanonicalPath)
             .Where(static value => value is not null)
@@ -326,7 +326,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                         $"catalog:{entry.Id}",
                         entry.DisplayName,
                         entry.Kind,
-                        SoftwareText.DisplayKind(entry.Kind),
+                        SoftwareDisplayKinds.Project(entry.Kind),
                         root is null ? [] : [root]),
                     observation.EvidenceMask,
                     generation);
@@ -483,7 +483,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 $"native-source-conflict:{source}:a",
                 "Identity conflict",
                 SoftwareKinds.Other,
-                SoftwareText.General,
+                SoftwareDisplayKinds.General,
                 []),
             SourceEvidence(source),
             generation);
@@ -494,7 +494,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 $"native-source-conflict:{source}:b",
                 "Identity conflict",
                 SoftwareKinds.Other,
-                SoftwareText.General,
+                SoftwareDisplayKinds.General,
                 []),
             SourceEvidence(source),
             generation);
@@ -544,7 +544,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             $"runtime-product:{NormalizeId(identityText)}",
             displayName,
             SoftwareKinds.RuntimeProduct,
-            SoftwareText.General,
+            SoftwareDisplayKinds.General,
             root is null ? [] : [root]));
     }
 
@@ -573,7 +573,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     registration.Id,
                     registration.DisplayName,
                     SoftwareKinds.Adapted,
-                    SoftwareText.Adapted,
+                    SoftwareDisplayKinds.Adapted,
                     roots);
             foreach (var process in registration.Processes)
             {
@@ -625,7 +625,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                         ? string.Join(", ", registration.Software)
                         : registration.Command,
                     SoftwareKinds.Controlled,
-                    SoftwareText.Controlled,
+                    SoftwareDisplayKinds.Controlled,
                     roots);
             foreach (var process in registration.Processes)
             {
@@ -1069,7 +1069,7 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
             $"runtime-game:{output.DerivedIdentityFingerprintLow:x16}{output.DerivedIdentityFingerprintHigh:x16}",
             display,
             SoftwareKinds.Game,
-            SoftwareText.Game,
+            SoftwareDisplayKinds.Game,
             [root]);
     }
 

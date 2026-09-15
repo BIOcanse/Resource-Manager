@@ -52,7 +52,7 @@ public sealed class WindowsRuntimeRootIdentityResolver : IRuntimeRootIdentityRes
             $"runtime-root:{NormalizeId(rootPath)}",
             displayName,
             SoftwareKinds.RuntimeRoot,
-            SoftwareText.General,
+            SoftwareDisplayKinds.General,
             [rootPath]));
     }
 

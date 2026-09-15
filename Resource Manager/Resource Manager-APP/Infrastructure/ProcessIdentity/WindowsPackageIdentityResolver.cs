@@ -57,7 +57,7 @@ public sealed class WindowsPackageIdentityResolver : IRuntimePackageIdentityReso
             $"appx:{NormalizeId(packageName)}",
             FormatPackageName(packageName),
             SoftwareKinds.RuntimePackage,
-            SoftwareText.WindowsApp,
+            SoftwareDisplayKinds.WindowsApp,
             rootPaths));
     }
 

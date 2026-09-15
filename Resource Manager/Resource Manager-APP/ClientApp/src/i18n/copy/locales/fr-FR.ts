@@ -72,6 +72,7 @@ const frFrAppCopy: AppCopy = {
     RuntimeProduct: "Applications générales",
     RuntimeRoot: "Applications générales",
     Unattributed: "Processus non attribués",
+    SystemResidual: "Réservé système/pilote",
     Empty: "Libre"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const frFrAppCopy: AppCopy = {
       process: "Par processus",
       performance: "Performances"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "Utilisation totale",
+      status: {
+        warming: "Préchauffage",
+        ready: "Échantillon actuel",
+        stale: "Dernier échantillon",
+        failed: "Échec de l'échantillonnage"
+      }
+    },
+    systemResidualRow: (metric: string) => `Réservé système/pilote · ${metric}`,
     columns: {
       name: "Nom",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const frFrAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "Utilisation du processeur",
+    "disk.io": "E/S disque",
+    "disk.read": "Lecture disque",
+    "disk.write": "Écriture disque",
+    "network.traffic": "Trafic réseau",
+    "network.receive": "Réception réseau",
+    "network.send": "Émission réseau",
+    "network.raw.traffic": "Trafic réseau brut",
+    "network.raw.receive": "Réception réseau brute",
+    "network.raw.send": "Émission réseau brute",
     "cpu.frequency": "Fréquence du processeur",
     "cpu.frequencyPercent": "Pourcentage de fréquence du processeur",
     "cpu.temperature": "Température du processeur",

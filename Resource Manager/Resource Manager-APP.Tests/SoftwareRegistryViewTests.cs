@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.Dependencies;
@@ -82,7 +83,7 @@ public sealed class SoftwareRegistryViewTests
             "manual:skyrim",
             "Skyrim 自定义分类",
             SoftwareKinds.Game,
-            "游戏",
+            SoftwareDisplayKinds.Game,
             "manual",
             ["手动补录"],
             [@"F:\Portable\Skyrim"],
@@ -181,7 +182,7 @@ public sealed class SoftwareRegistryViewTests
 
         var chronicon = Assert.Single(records, record => record.Id == chroniconId);
         Assert.Equal(SoftwareKinds.Game, chronicon.Kind);
-        Assert.Equal("游戏", chronicon.DisplayKind);
+        Assert.Equal(SoftwareDisplayKinds.Game, chronicon.DisplayKind);
         Assert.Equal([@"D:\Games\Steam\steamapps\common\Chronicon"], chronicon.RootPaths);
 
         var steam = Assert.Single(records, record => record.Id == "windows-installed:steam");
@@ -219,7 +220,7 @@ public sealed class SoftwareRegistryViewTests
 
         var adapted = Assert.Single(records, record => record.Id == "adapter:word-memory");
         Assert.Equal(SoftwareKinds.Adapted, adapted.Kind);
-        Assert.Equal("适配软件", adapted.DisplayKind);
+        Assert.Equal(SoftwareDisplayKinds.Adapted, adapted.DisplayKind);
         Assert.DoesNotContain(records, record => record.Id == "windows-installed:word-memory");
     }
 

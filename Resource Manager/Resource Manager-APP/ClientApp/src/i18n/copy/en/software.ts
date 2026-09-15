@@ -39,6 +39,7 @@ export const enSoftwareCopy: Pick<
     RuntimeProduct: "General applications",
     RuntimeRoot: "General applications",
     Unattributed: "Unattributed processes",
+    SystemResidual: "System/driver reserved",
     Empty: "Free"
   },
   managementRole: {

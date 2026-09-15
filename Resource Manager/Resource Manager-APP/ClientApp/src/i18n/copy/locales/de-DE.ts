@@ -72,6 +72,7 @@ const deDeAppCopy: AppCopy = {
     RuntimeProduct: "Allgemeine Anwendungen",
     RuntimeRoot: "Allgemeine Anwendungen",
     Unattributed: "Nicht zugeordnete Prozesse",
+    SystemResidual: "System-/Treiberreserviert",
     Empty: "Frei"
   },
   managementRole: {
@@ -168,6 +169,16 @@ const deDeAppCopy: AppCopy = {
       process: "Nach Prozess",
       performance: "Leistung"
     } as Record<ResourceTableViewMode, string>,
+    summaryRow: {
+      name: "Gesamtauslastung",
+      status: {
+        warming: "Aufwärmen",
+        ready: "Aktuelle Messung",
+        stale: "Letzte Messung",
+        failed: "Messung fehlgeschlagen"
+      }
+    },
+    systemResidualRow: (metric: string) => `System-/Treiberreserviert · ${metric}`,
     columns: {
       name: "Name",
       pid: "PID",
@@ -1911,6 +1922,15 @@ const deDeAppCopy: AppCopy = {
   },
   metricLabel: {
     "cpu.usage": "CPU-Auslastung",
+    "disk.io": "Datenträger-E/A",
+    "disk.read": "Datenträger lesen",
+    "disk.write": "Datenträger schreiben",
+    "network.traffic": "Netzwerkverkehr",
+    "network.receive": "Netzwerkempfang",
+    "network.send": "Netzwerkübertragung",
+    "network.raw.traffic": "Roher Netzwerkverkehr",
+    "network.raw.receive": "Roher Netzwerkempfang",
+    "network.raw.send": "Rohe Netzwerkübertragung",
     "cpu.frequency": "CPU-Takt",
     "cpu.frequencyPercent": "CPU-Taktanteil",
     "cpu.temperature": "CPU-Temperatur",
