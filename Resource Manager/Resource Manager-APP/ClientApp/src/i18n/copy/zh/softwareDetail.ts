@@ -90,8 +90,6 @@ export const zhSoftwareDetailCopy = {
       title: "CPU 核心分配",
       description: "“保留”会让其他软件避开；“固定”会限制当前软件使用范围。",
       clear: "清空",
-      loadingTopology: "正在读取 CPU 拓扑。",
-      noTopology: "暂无 CPU 拓扑数据。",
       maxBoost: (value: string) => `最大加速 ${value}`,
       l1Cache: "L1 缓存 --",
       l2Cache: (value: string) => `L2 缓存 ${value}`,
@@ -135,8 +133,7 @@ export const zhSoftwareDetailCopy = {
       unsupported: "不支持",
       unknown: "未知",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state}（${api}${architecture}）：${reason}`,
-      capabilitySeparator: "；"
+        `${phase} ${state}（${api}${architecture}）：${reason}`
     },
     startupGpuState: {
       providerUnavailable: "启动期精确 Provider 当前不可用；设置已保留但不会执行。",

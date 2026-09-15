@@ -112,21 +112,6 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
       }
     },
     resourceData: {
-      sourceCpu: "CPU process statistics",
-      sourceDisk: "Disk process statistics",
-      sourceNetwork: "Network process statistics",
-      sourceGpuMemory: "VRAM process statistics",
-      sourceGeneric: "Process resource statistics",
-      stateUnavailable: "Temporarily unavailable",
-      statePreparing: "Preparing",
-      stateIdle: "Not in use",
-      stateNormal: "Normal",
-      messageUnavailable: "The data source did not provide a failure description that can be shown.",
-      messagePreparing: "The data source is initializing and has no further description yet.",
-      messageGeneric: "The data source provided no further description.",
-      summaryHealthy: "Data is normal",
-      summaryUnavailable: "Some data is temporarily unavailable",
-      summaryPreparing: "Some data is still being prepared"
     },
     detail: {
       status: "Status",

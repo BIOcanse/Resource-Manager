@@ -111,21 +111,6 @@ export const zhStatusCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "CPU 进程统计",
-      sourceDisk: "磁盘进程统计",
-      sourceNetwork: "网络进程统计",
-      sourceGpuMemory: "显存进程统计",
-      sourceGeneric: "进程资源统计",
-      stateUnavailable: "暂时不可用",
-      statePreparing: "正在准备",
-      stateIdle: "当前未使用",
-      stateNormal: "正常",
-      messageUnavailable: "数据源未提供可公开显示的故障说明。",
-      messagePreparing: "数据源正在初始化，尚未提供更多说明。",
-      messageGeneric: "数据源未提供更多说明。",
-      summaryHealthy: "数据正常",
-      summaryUnavailable: "部分数据暂时不可用",
-      summaryPreparing: "部分数据正在准备"
     },
     detail: {
       status: "状态",

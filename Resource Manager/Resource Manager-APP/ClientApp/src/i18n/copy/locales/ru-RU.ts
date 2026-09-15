@@ -7,7 +7,6 @@ const ruRuAppCopy: AppCopy = {
     saveFailed: "Не удалось сохранить"
   },
   feedback: {
-    confirmTitle: "Подтверждение действия",
     confirm: "Подтвердить",
     cancel: "Отмена",
     close: "Закрыть",
@@ -29,7 +28,6 @@ const ruRuAppCopy: AppCopy = {
     pageNav: "Навигация по страницам",
     currentPage: "Текущая страница",
     runtimeCapability: "Возможности среды выполнения",
-    selfSchedulingState: "Состояние самопланирования",
     taskCenter: "Центр задач",
     taskCenterActive: (count: number) => `Центр задач, выполняется: ${count}`,
     taskCenterSyncing: "Центр задач · синхронизация задач службы",
@@ -37,15 +35,7 @@ const ruRuAppCopy: AppCopy = {
     taskCenterUnavailable: "Центр задач · состояние задач службы недоступно",
     minimize: "Свернуть",
     maximize: "Развернуть",
-    closeWindow: "Закрыть",
-    uptimeLoading: "Загрузка времени работы",
-    uptimeStale: (uptime: string) => `${uptime} · не в реальном времени`,
-    uptimeUnavailable: "Время работы недоступно",
-    uptimeDisabled: "Время работы отключено",
-    observationLoading: (label: string) => `Загрузка: ${label}`,
-    observationStale: (label: string) => `${label} не в реальном времени`,
-    observationUnavailable: (label: string) => `${label} недоступно`,
-    observationDisabled: (label: string) => `${label} отключено`
+    closeWindow: "Закрыть"
   },
   managementPage: {
     browserRuntimeTab: "Управление средами выполнения",
@@ -54,7 +44,6 @@ const ruRuAppCopy: AppCopy = {
     searchLabel: (kind: string) => `Поиск: ${kind}`,
     search: "Поиск",
     itemCount: (count: number) => `${count} элементов`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "Дополнения реестра программ",
     softwareRegistrySupplementDisabled: "Этот профиль запуска показывает только каталог компонентов и не загружает дополнения реестра программ.",
     operationState: "Состояние операций",
@@ -128,10 +117,6 @@ const ruRuAppCopy: AppCopy = {
     layoutEditor: "Редактор макета панели",
     dashboardQuarantined: "Конфигурация панели была повреждена и помещена в карантин; используется сохранённая безопасная конфигурация.",
     dashboardRecovered: "Конфигурация панели восстановлена из последней действительной копии.",
-    dashboardLoading: "Загрузка конфигурации панели…",
-    dashboardUnavailable: "Конфигурация панели недоступна",
-    dashboardUnavailableDetail: "Данные о ресурсах продолжают обновляться; изменение макета сейчас недоступно.",
-    retryLayout: "Повторить загрузку макета",
     metricCatalog: "Каталог метрик",
     liveMetrics: "Метрики в реальном времени",
     resourceUsage: "Использование ресурсов",
@@ -146,8 +131,7 @@ const ruRuAppCopy: AppCopy = {
     replaceMetric: (slot: string, metric: string) => `Заменить ${slot}: ${metric}`,
     removeMetric: (slot: string, metric: string) => `Удалить ${slot}: ${metric}`,
     catalogUnavailable: "Каталог метрик недоступен",
-    metricUnavailable: "Метрика недоступна",
-    valueUnavailable: "--"
+    metricUnavailable: "Метрика недоступна"
   },
   resourceBreakdown: {
     panel: "Использование ресурсов программами",
@@ -210,12 +194,10 @@ const ruRuAppCopy: AppCopy = {
     noDataDetail: "Отображаемые данные ещё не поступили; они обновятся автоматически, когда источник данных будет готов.",
     editorLabel: "Редактор элементов использования ресурсов",
     scaleModeLabel: (metric: string) => `Режим шкалы: ${metric}`,
-    attributionUnavailable: " · отнесение недоступно",
     moveUp: (label: string) => `Переместить ${label} вверх`,
     moveUpTitle: "Переместить вверх",
     moveDown: (label: string) => `Переместить ${label} вниз`,
     moveDownTitle: "Переместить вниз",
-    barUnavailable: (label: string) => `${label} недоступно`,
     unavailable: "Недоступно",
     processUsage: (name: string) => `Использование процессами ${name}`,
     metric: {
@@ -236,13 +218,6 @@ const ruRuAppCopy: AppCopy = {
     cancel: "Отмена",
     saveLabel: "Сохранить столбцы списка ресурсов",
     editLabel: "Изменить столбцы списка ресурсов",
-    dataStateTitle: "Состояние данных о ресурсах",
-    refreshData: "Обновить данные",
-    partialUnavailableTitle: "Часть данных о ресурсах временно недоступна",
-    partialUnavailableDetail: "Поставщик данных не смог завершить выборку; проверьте причину и повторите попытку.",
-    viewDetails: "Показать сведения",
-    preparingTitle: "Данные о ресурсах подготавливаются",
-    preparingDetail: "Поставщик данных инициализируется; в сведениях показано текущее состояние.",
     noMatchTitle: "Подходящих ресурсов нет",
     noMatchDetail: "Текущему фильтру не соответствует ни одна программа или процесс.",
     clearSearch: "Очистить поиск",
@@ -285,12 +260,10 @@ const ruRuAppCopy: AppCopy = {
     searchPlaceholder: "Поиск по имени или категории",
     searchLabel: "Поиск элементов мониторинга",
     clearSearchLabel: "Очистить поиск элементов мониторинга",
-    clearSearchTitle: "Очистить поиск",
     count: (count: number) => `Элементов мониторинга: ${count}`,
     listLabel: "Элементы мониторинга",
     empty: "Нет подходящих элементов мониторинга",
     needsInstall: (name: string) => `Требуется установка: ${name}`,
-    componentState: (name: string, state: string) => `${name} · ${state}`,
     cancel: "Отмена",
     confirm: "Подтвердить"
   },
@@ -299,13 +272,11 @@ const ruRuAppCopy: AppCopy = {
     noCandidates: "Нет программ, доступных для добавления. Сначала обновите список программ.",
     software: "Программа",
     searchSoftware: "Поиск программы",
-    optionLabel: (name: string, kind: string) => `${name} · ${kind}`,
     name: "Имя",
     rootDirectory: "Корневой каталог",
     rootPlaceholder: "По одному каталогу в строке, например D:\\Tools\\App",
     cancel: "Отмена",
     saving: "Сохранение",
-    confirm: "Подтвердить",
     additionalRoots: (count: number) => `Ещё каталогов: ${count}`
   },
   observationNotice: {
@@ -429,21 +400,6 @@ const ruRuAppCopy: AppCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "Статистика процессов по ЦП",
-      sourceDisk: "Статистика процессов по диску",
-      sourceNetwork: "Статистика процессов по сети",
-      sourceGpuMemory: "Статистика процессов по видеопамяти",
-      sourceGeneric: "Статистика ресурсов процессов",
-      stateUnavailable: "Временно недоступно",
-      statePreparing: "Подготовка",
-      stateIdle: "Не используется",
-      stateNormal: "Нормально",
-      messageUnavailable: "Источник данных не предоставил описание сбоя, пригодное для показа.",
-      messagePreparing: "Источник данных инициализируется и пока не даёт дополнительных пояснений.",
-      messageGeneric: "Источник данных не предоставил дополнительных пояснений.",
-      summaryHealthy: "Данные в норме",
-      summaryUnavailable: "Часть данных временно недоступна",
-      summaryPreparing: "Часть данных ещё подготавливается"
     },
     detail: {
       status: "Состояние",
@@ -473,18 +429,13 @@ const ruRuAppCopy: AppCopy = {
     smartSchedulerStopped: "Умное планирование остановлено",
     pendingChanges: (count: number) => `Изменений, ожидающих подтверждения: ${count}`,
     appliedTargets: (count: number) => `Оптимизировано элементов: ${count}`,
-    statusSeparator: " · ",
     search: "Поиск",
     searchLabel: "Поиск в отчётах об оптимизации",
     reportPanel: "Отчёты об оптимизации",
-    reportStateUnavailable: "Состояние отчётов недоступно",
-    monitoring: (count: number) => `Наблюдение · элементов: ${count}`,
-    monitoringNotStarted: "Наблюдение не начато",
     filterLabel: "Фильтр отчётов",
     filterUntrusted: (count: string) => `Недоверенные ${count}`,
     filterAll: (count: string) => `Все ${count}`,
     filterTrusted: (count: string) => `Доверенные ${count}`,
-    countUnavailable: "--",
     refresh: "Обновить",
     refreshing: "Обновление",
     noSearchResults: "Подходящих результатов нет.",
@@ -568,13 +519,11 @@ const ruRuAppCopy: AppCopy = {
       observationScope: "Область наблюдения",
       foregroundSoftware: "Программа на переднем плане",
       relatedProcesses: "Связанные процессы",
-      processSeparator: ", ",
       firstObserved: "Впервые замечено",
       lastObserved: "Последний раз замечено",
       duration: "Длительность",
       occurrences: "Число обнаружений",
-      occurrenceTimes: (count: number) => `${count} раз`,
-      occurrenceCount: (count: number) => `${count} раз`
+      occurrenceTimes: (count: number) => `${count} раз`
     },
     duration: {
       days: (value: number) => `${value} дн.`,
@@ -614,8 +563,6 @@ const ruRuAppCopy: AppCopy = {
     detailTitle: (name: string) => `Сведения: ${name}`,
     fallbackDeviceName: "Устройство",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} Б`,
-    valueUnavailable: "--",
     connectedDevice: "Подключённое устройство",
     section: {
       overview: "Обзор",
@@ -701,7 +648,6 @@ const ruRuAppCopy: AppCopy = {
       downstreamHubPath: "Путь нижестоящего концентратора",
       displayDevicePath: "Путь устройства отображения"
     },
-    companion: (index: number, port: number) => `#${index} · порт концентратора ${port}`,
     connectionState: {
       connected: "Подключено",
       disconnected: "Не подключено",
@@ -946,7 +892,6 @@ const ruRuAppCopy: AppCopy = {
     hdrOn: "Вкл.",
     advancedColorSupported: "Расширенный цвет поддерживается",
     hdrCurrentlyOff: "Сейчас выключено",
-    hdrUnavailable: "Сейчас недоступно в системе",
     hdrFormatUnavailable: (format: string) => `${format} · сейчас недоступно в этой системе`,
     advancedColorUnsupported: "Расширенный цвет не поддерживается",
     bitsPerChannel: (bits: string) => `${bits} бит на цветовой канал`,
@@ -970,7 +915,6 @@ const ruRuAppCopy: AppCopy = {
     powerInputRole: "Потребитель питания",
     powerInputBadge: "Вход питания",
     dock: "Док-станция",
-    usbHub: "USB-концентратор",
     dockBadge: "Док-станция",
     hubSummary: (total: number, connected: number) =>
       `Нижестоящих портов: ${total} · подключено: ${connected}`,
@@ -983,8 +927,7 @@ const ruRuAppCopy: AppCopy = {
     disk: "Диск",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "USB-устройство",
-    internalDisplay: "Встроенный дисплей",
-    ethernet: "Ethernet"
+    internalDisplay: "Встроенный дисплей"
   },
   deviceTree: {
     downstreamPort: (port: number) => `Нижестоящий порт ${port}`,
@@ -1033,8 +976,6 @@ const ruRuAppCopy: AppCopy = {
     cancel: "Отмена",
     reset: "Сбросить",
     save: "Сохранить",
-    observationLabel: "Топология и загрузка процессора",
-    noTopology: "Топология процессора ещё не считана.",
     setCoreScore: (core: string) => `Задать оценку производительности для ${core}`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `Логический процессор ${id}, время выполнения ${executionTime}`,
@@ -1044,7 +985,6 @@ const ruRuAppCopy: AppCopy = {
     ringBus: "Кольцевая шина",
     coreCount: (count: number) => `${count} ядер`,
     selectedCount: (count: number) => `Выбрано: ${count}`,
-    selectedLogical: (ids: string) => `Логические процессоры: ${ids}`,
     clear: "Очистить",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, загрузка ${usage}, производительность ${performance}, время выполнения ${executionTime}`,
@@ -1076,23 +1016,14 @@ const ruRuAppCopy: AppCopy = {
       `Кэш ${level} ${size} · ${scope} · логические процессоры ${logicalIds}`,
     residency: {
       readFailed: "Не удалось прочитать активность потоков",
-      reading: "Чтение активности потоков",
       loading: "Загрузка активности потоков",
       window: (window: string) => `Активность потоков ${window}`,
-      paused: "Активность потоков приостановлена",
       unavailable: "Активность потоков временно недоступна",
-      idle: "Активность потоков в простое",
       preparing: "Подготовка активности потоков"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "Не удалось прочитать каталог метрик.",
-    overridesReadFailed: "Не удалось прочитать переопределения оценок GPU.",
-    scoresReadFailed: "Не удалось прочитать оценки производительности GPU.",
     dataReadFailed: "Не удалось прочитать данные планирования GPU.",
-    metricsReadFailed: "Не удалось прочитать метрики GPU.",
-    specializedTelemetryReadFailed: "Не удалось прочитать телеметрию специализированных блоков GPU.",
-    processAttributionReadFailed: "Не удалось прочитать отнесение процессов к GPU.",
     telemetryLive: "Актуальное отнесение оборудования и процессов",
     telemetryStale: "Устаревшее отнесение оборудования и процессов",
     telemetryUnavailable: "Данные недоступны",
@@ -1135,9 +1066,7 @@ const ruRuAppCopy: AppCopy = {
     cdnaUsage: "Загрузка CDNA",
     gpuFull: "GPU загружен полностью",
     vramFull: "Видеопамять заполнена",
-    noProcessAttribution: "Отнесение процессов отсутствует",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `Программ: ${softwareCount} · процессов: ${processCount}`
+    noProcessAttribution: "Отнесение процессов отсутствует"
   },
   softwareDetail: {
     tab: {
@@ -1230,8 +1159,6 @@ const ruRuAppCopy: AppCopy = {
       title: "Распределение ядер процессора",
       description: "«Резервировать» заставляет другие программы избегать этих ядер; «Закрепить» ограничивает эту программу ими.",
       clear: "Очистить",
-      loadingTopology: "Чтение топологии процессора.",
-      noTopology: "Данных о топологии процессора пока нет.",
       maxBoost: (value: string) => `Макс. ускорение ${value}`,
       l1Cache: "Кэш L1 --",
       l2Cache: (value: string) => `Кэш L2 ${value}`,
@@ -1276,8 +1203,7 @@ const ruRuAppCopy: AppCopy = {
       unsupported: "не поддерживается",
       unknown: "неизвестно",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "Точный поставщик для запуска недоступен; параметр сохраняется, но не выполняется.",
@@ -1448,7 +1374,6 @@ const ruRuAppCopy: AppCopy = {
       observedChanges: "Замеченные изменения",
       changeTimes: (count: number) => `${count} раз`,
       observedProcesses: "Наблюдаемые процессы",
-      processSeparator: ", ",
       observationScope: "Область наблюдения",
       directory: (index: number) => `Каталог ${index}`,
       migratableContent: "Содержимое для переноса",
@@ -1458,8 +1383,6 @@ const ruRuAppCopy: AppCopy = {
       lastObserved: "Последнее наблюдение",
       relatedProcesses: "Связанные процессы",
       savedLocations: "Места хранения",
-      userData: "Данные пользователя",
-      miscData: "Прочие данные",
       softwareRoot: "Корневой каталог программы",
       migrationJudgement: "Оценка переноса",
       risk: "Риск",
@@ -1511,15 +1434,7 @@ const ruRuAppCopy: AppCopy = {
   },
   hotkeyGroup: {
     mouse: "Мышь",
-    character: "Символы",
-    modifier: "Модификаторы",
-    functionKey: "Функциональные клавиши",
-    navigation: "Навигация",
-    numpad: "Цифровая клавиатура",
-    symbol: "Знаки",
-    system: "Системные клавиши",
-    media: "Мультимедийные клавиши",
-    ime: "IME"
+    system: "Системные клавиши"
   },
   hotkeyEditor: {
     searchKey: "Поиск клавиш",
@@ -1537,7 +1452,6 @@ const ruRuAppCopy: AppCopy = {
     backendResyncing: "Локальная служба повторно синхронизируется; задачи службы сейчас изменить нельзя.",
     backendUnavailable: "Не удаётся прочитать состояние задач службы; задачи интерфейса продолжают работать.",
     filterLabel: "Фильтр задач",
-    noBackendTasks: "Этот профиль запуска не предоставляет задач операций службы; задачи интерфейса всё равно отображаются здесь",
     noTasksInFilter: "В этом фильтре нет задач",
     itemCount: (count: number) => `${count} элементов`,
     close: "Закрыть",
@@ -1571,7 +1485,6 @@ const ruRuAppCopy: AppCopy = {
       queued: "Ожидание",
       startPending: "Запуск",
       running: "Выполняется",
-      cancelPending: "Отмена",
       retryWait: "Ожидание повтора",
       recoveryPending: "Восстановление",
       succeeded: "Завершено",
@@ -1593,7 +1506,6 @@ const ruRuAppCopy: AppCopy = {
   smartReport: {
     panel: "Отчёт умного планирования",
     loading: "Загрузка",
-    updated: "Состояние умного планирования обновлено",
     unavailable: "Состояние недоступно",
     refresh: "Обновить",
     completed: "Завершено",
@@ -1699,11 +1611,8 @@ const ruRuAppCopy: AppCopy = {
     refreshFailed: "Не удалось обновить",
     installDisabled: "Этот профиль запуска показывает только состояние компонентов и не выполняет установку.",
     fallbackComponentName: "Этот компонент",
-    externalTermsRequired: (name: string) => `Чтобы продолжить с ${name}, необходимо принять условия поставщика.`,
     componentMissingIdentity: "У компонента нет устойчивого идентификатора, поэтому создать операцию установки нельзя.",
     waiting: "Ожидание",
-    installing: "Установка",
-    noInstallEntry: "Для этого компонента сейчас нет доступной записи установки.",
     actionFailed: "Не удалось выполнить действие",
     uninstallDisabled: "Этот профиль запуска не выполняет удаление программ.",
     cannotUninstall: "Эту программу сейчас удалить нельзя",
@@ -1723,9 +1632,7 @@ const ruRuAppCopy: AppCopy = {
     progressCanceled: "Отменено",
     progressUncertain: "Состояние неоднозначно",
     progressWorking: "Выполняется",
-    progressSummary: (stage: string, percent: string, speed: string) => `${stage}${percent}${speed}`,
     operationStateDisabled: "Этот профиль запуска не загружает состояние выполняемых операций.",
-    operationStateRefreshFailed: "Не удалось обновить состояние операций",
     operationStateStopped: "Состояние операций остановлено",
     migrationRuntimeDisabled: "Этот профиль запуска не включает среду выполнения переноса.",
     notPreviewed: "Предварительный просмотр не выполнялся",
@@ -1754,7 +1661,6 @@ const ruRuAppCopy: AppCopy = {
     restoreStartFailed: "Не удалось начать восстановление",
     restoreCompleted: "Восстановление завершено",
     restoreFailed: "Не удалось восстановить перенос",
-    taskTitle: (action: string, name: string) => `${action}: ${name}`,
     resultUncertain: "Результат операции неоднозначен; сначала проверьте фактическое состояние.",
     resultIncomplete: "Операция не была завершена.",
     optimizationReportDisabled: "Этот профиль запуска не включает отчёты об оптимизации.",
@@ -1762,10 +1668,7 @@ const ruRuAppCopy: AppCopy = {
     smartModeSwitchFailed: "Не удалось переключить режим умной оптимизации",
     optimizationReportRefreshFailed: "Не удалось обновить отчёты об оптимизации производительности",
     optimizationScheduleRefreshFailed: "Не удалось обновить состояние планирования оптимизации",
-    resourceBreakdownRefreshFailed: "Не удалось обновить использование ресурсов",
-    resourceTableRefreshFailed: "Не удалось обновить список ресурсов",
-    metricCatalogRefreshFailed: "Не удалось обновить каталог метрик",
-    resourceMonitorRefreshFailed: "Не удалось обновить мониторинг ресурсов"
+    metricCatalogRefreshFailed: "Не удалось обновить каталог метрик"
   },
   apiError: {
     readFailed: "Не удалось прочитать данные, повторите попытку позже",
@@ -1781,13 +1684,11 @@ const ruRuAppCopy: AppCopy = {
     openPropertiesFailed: "Не удалось открыть свойства",
     terminateFailed: "Не удалось снять задачу",
     dumpFailed: "Не удалось создать файл дампа памяти",
-    updateViewportFailed: "Не удалось обновить область отображения диспетчера ресурсов",
     addSoftwareFailed: "Не удалось добавить программу",
     confirmRootFailed: "Не удалось подтвердить корневой каталог программы",
     saveGpuSoftwarePolicyFailed: "Не удалось сохранить программную политику планирования GPU",
     saveGpuProcessPolicyFailed: "Не удалось сохранить политику процессов планирования GPU",
     recordGpuProcessHistoryFailed: "Не удалось записать историю процессов планирования GPU",
-    refreshOptimizationReportFailed: "Не удалось обновить отчёты об оптимизации производительности",
     readGpuScoreOverridesFailed: "Не удалось прочитать переопределения оценки GPU",
     readGpuScoresFailed: "Не удалось прочитать оценки производительности GPU",
     readOptimizationReportsFailed: "Не удалось прочитать отчёты об оптимизации",
@@ -1796,7 +1697,6 @@ const ruRuAppCopy: AppCopy = {
     removeTrustFailed: "Не удалось снять доверие"
   },
   session: {
-    noVerifiedSession: "Проверяемого сеанса локальной службы пока нет",
     notReady: "Локальная служба ещё не готова",
     sessionChanged: "Сеанс локальной службы изменился",
     noTrustedHost: "У этой страницы нет доверенного локального узла",
@@ -1804,7 +1704,6 @@ const ruRuAppCopy: AppCopy = {
     hostCannotSubscribe: "Этот узел не может подписаться на состояние сеанса службы",
     frontendClosed: "Среда выполнения интерфейса закрыта",
     sessionUnavailable: (reason: string) => `Сеанс локальной службы недоступен: ${reason}`,
-    identityConflict: "Конфликт идентификации сеанса локальной службы",
     hostCannotRerequest: "Этот узел не может повторно запросить состояние сеанса службы",
     waitTimeout: "Истекло время ожидания сеанса локальной службы",
     requestFailed: (message: string) => `Не удалось запросить сеанс локальной службы: ${message}`,
@@ -1820,15 +1719,9 @@ const ruRuAppCopy: AppCopy = {
     actionFailed: "Не удалось выполнить действие, повторите попытку позже"
   },
   operationRegistry: {
-    backendOperationsDisabled: "Этот профиль запуска не предоставляет операций службы.",
-    notSynced: "Состояние фоновых операций ещё не синхронизировано с текущим сеансом локальной службы.",
-    staleSessionResponse: "Ответ фоновой операции получен из устаревшего сеанса локальной службы.",
     noCurrentValue: "Текущее значение состояния фоновых операций ещё не получено.",
     cancelFailed: "Не удалось отменить операцию",
     removedFromCurrentValue: (operationId: string) => `Фоновая операция удалена из текущего значения: ${operationId}`,
-    notFound: (operationId: string) => `Фоновая операция не найдена: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `Фоновая операция удалена из достоверного состояния: ${operationId}`,
     canceled: "Операция отменена"
   },
   gpuTarget: {
@@ -1839,9 +1732,7 @@ const ruRuAppCopy: AppCopy = {
     unavailable: "Сейчас недоступно",
     specificGpu: "Определённый GPU",
     needsPreciseSelection: (target: string) => `${target} (требуется точный выбор GPU)`,
-    startupUnavailable: (target: string) => `${target} (недоступно при запуске)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (недоступно при запуске)`
   },
   shellBridge: {
     desktopOnly: "Эта функция доступна только в классическом приложении диспетчера ресурсов.",
@@ -1934,8 +1825,6 @@ const ruRuAppCopy: AppCopy = {
     relatedInfo: "Связанные сведения",
     content: "Содержимое",
     infoIndex: (index: number) => `Сведения ${index}`,
-    selfSchedulingRefreshFailed: "Не удалось обновить состояние самопланирования диспетчера ресурсов",
-    localStatusRefreshFailed: "Не удалось обновить состояние локальной среды выполнения",
     search: "Поиск",
     searchOptions: "Параметры поиска",
     noMatchingOption: "Подходящих вариантов нет",

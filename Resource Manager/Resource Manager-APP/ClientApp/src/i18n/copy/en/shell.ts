@@ -6,7 +6,6 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "shell"
     saveFailed: "Save failed"
   },
   feedback: {
-    confirmTitle: "Confirm action",
     confirm: "Confirm",
     cancel: "Cancel",
     close: "Close",
@@ -28,7 +27,6 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "shell"
     pageNav: "Page navigation",
     currentPage: "Current page",
     runtimeCapability: "Runtime capability",
-    selfSchedulingState: "Self-scheduling state",
     taskCenter: "Task center",
     taskCenterActive: (count: number) => `Task center, ${count} in progress`,
     taskCenterSyncing: "Task center · backend tasks are syncing",
@@ -36,14 +34,6 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "shell"
     taskCenterUnavailable: "Task center · backend task state unavailable",
     minimize: "Minimize",
     maximize: "Maximize",
-    closeWindow: "Close",
-    uptimeLoading: "Loading uptime",
-    uptimeStale: (uptime: string) => `${uptime} · not live`,
-    uptimeUnavailable: "Uptime unavailable",
-    uptimeDisabled: "Uptime turned off",
-    observationLoading: (label: string) => `${label} loading`,
-    observationStale: (label: string) => `${label} not live`,
-    observationUnavailable: (label: string) => `${label} unavailable`,
-    observationDisabled: (label: string) => `${label} turned off`
+    closeWindow: "Close"
   }
 };

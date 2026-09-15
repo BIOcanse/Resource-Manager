@@ -4,7 +4,6 @@ export const zhShellCopy = {
     saveFailed: "保存失败"
   },
   feedback: {
-    confirmTitle: "确认操作",
     confirm: "确认",
     cancel: "取消",
     close: "关闭",
@@ -26,7 +25,6 @@ export const zhShellCopy = {
     pageNav: "页面切换",
     currentPage: "当前页面",
     runtimeCapability: "运行能力",
-    selfSchedulingState: "自调度状态",
     taskCenter: "任务中心",
     taskCenterActive: (count: number) => `任务中心，${count} 项正在进行`,
     taskCenterSyncing: "任务中心 · 后端任务正在同步",
@@ -34,14 +32,6 @@ export const zhShellCopy = {
     taskCenterUnavailable: "任务中心 · 后端任务状态不可用",
     minimize: "最小化",
     maximize: "最大化",
-    closeWindow: "关闭",
-    uptimeLoading: "运行时长加载中",
-    uptimeStale: (uptime: string) => `${uptime} · 非实时`,
-    uptimeUnavailable: "运行时长不可用",
-    uptimeDisabled: "运行时长已停用",
-    observationLoading: (label: string) => `${label}加载中`,
-    observationStale: (label: string) => `${label}非实时`,
-    observationUnavailable: (label: string) => `${label}不可用`,
-    observationDisabled: (label: string) => `${label}已停用`
+    closeWindow: "关闭"
   }
 };

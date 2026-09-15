@@ -32,8 +32,6 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
     detailTitle: (name: string) => `${name} details`,
     fallbackDeviceName: "Device",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "Connected device",
     section: {
       overview: "Overview",
@@ -119,7 +117,6 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
       downstreamHubPath: "Downstream hub path",
       displayDevicePath: "Display device path"
     },
-    companion: (index: number, port: number) => `#${index} · hub port ${port}`,
     connectionState: {
       connected: "Connected",
       disconnected: "Not connected",

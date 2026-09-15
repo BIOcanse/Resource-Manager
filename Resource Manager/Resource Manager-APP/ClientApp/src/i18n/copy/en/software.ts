@@ -11,7 +11,6 @@ export const enSoftwareCopy: Pick<
     searchLabel: (kind: string) => `Search ${kind}`,
     search: "Search",
     itemCount: (count: number) => `${count} items`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "Software registry additions",
     softwareRegistrySupplementDisabled: "This startup profile only shows the component catalog and does not load software registry additions.",
     operationState: "Operation state",

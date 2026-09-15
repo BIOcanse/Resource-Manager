@@ -41,15 +41,7 @@ export const enHotkeysCopy: Pick<AppCopy, "hotkeyKey" | "hotkeyGroup" | "hotkeyE
   },
   hotkeyGroup: {
     mouse: "Mouse",
-    character: "Characters",
-    modifier: "Modifiers",
-    functionKey: "Function keys",
-    navigation: "Navigation",
-    numpad: "Numpad",
-    symbol: "Symbols",
-    system: "System keys",
-    media: "Media keys",
-    ime: "IME"
+    system: "System keys"
   },
   hotkeyEditor: {
     searchKey: "Search keys",

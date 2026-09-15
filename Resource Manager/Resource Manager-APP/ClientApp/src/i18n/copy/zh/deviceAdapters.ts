@@ -95,7 +95,6 @@ export const zhDeviceAdaptersCopy = {
     hdrOn: "已开启",
     advancedColorSupported: "支持高级颜色",
     hdrCurrentlyOff: "当前关闭",
-    hdrUnavailable: "系统当前不可用",
     hdrFormatUnavailable: (format: string) => `${format} · 系统当前不可用`,
     advancedColorUnsupported: "不支持高级颜色",
     bitsPerChannel: (bits: string) => `${bits} bit / 色通道`,
@@ -119,7 +118,6 @@ export const zhDeviceAdaptersCopy = {
     powerInputRole: "输入供电",
     powerInputBadge: "供电输入",
     dock: "接口扩展坞",
-    usbHub: "USB Hub",
     dockBadge: "扩展坞",
     hubSummary: (total: number, connected: number) => `${total} 个下游接口 · ${connected} 个已连接`,
     hubDownstreamSummary: (total: number) => `${total} 个下游接口`,
@@ -131,8 +129,7 @@ export const zhDeviceAdaptersCopy = {
     disk: "磁盘",
     partitionCount: (count: number) => `${count} 个`,
     usbDevice: "USB 设备",
-    internalDisplay: "内置显示",
-    ethernet: "Ethernet"
+    internalDisplay: "内置显示"
   },
   deviceTree: {
     downstreamPort: (port: number) => `下游端口 ${port}`,

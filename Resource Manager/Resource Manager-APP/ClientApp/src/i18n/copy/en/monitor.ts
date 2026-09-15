@@ -18,10 +18,6 @@ export const enMonitorCopy: Pick<
     layoutEditor: "Dashboard layout editor",
     dashboardQuarantined: "The dashboard configuration was damaged and quarantined; a saved safe default is in use.",
     dashboardRecovered: "The dashboard configuration was restored from the last valid copy.",
-    dashboardLoading: "Loading dashboard configuration…",
-    dashboardUnavailable: "Dashboard configuration unavailable",
-    dashboardUnavailableDetail: "Live resource data keeps updating; layout editing is unavailable for now.",
-    retryLayout: "Retry layout",
     metricCatalog: "Metric catalog",
     liveMetrics: "Live metrics",
     resourceUsage: "Resource usage",
@@ -36,8 +32,7 @@ export const enMonitorCopy: Pick<
     replaceMetric: (slot: string, metric: string) => `Replace ${slot}: ${metric}`,
     removeMetric: (slot: string, metric: string) => `Remove ${slot}: ${metric}`,
     catalogUnavailable: "Metric catalog unavailable",
-    metricUnavailable: "Metric unavailable",
-    valueUnavailable: "--"
+    metricUnavailable: "Metric unavailable"
   },
   resourceBreakdown: {
     panel: "Software resource usage",

@@ -7,7 +7,6 @@ const esEsAppCopy: AppCopy = {
     saveFailed: "No se pudo guardar"
   },
   feedback: {
-    confirmTitle: "Confirmar la acción",
     confirm: "Confirmar",
     cancel: "Cancelar",
     close: "Cerrar",
@@ -29,7 +28,6 @@ const esEsAppCopy: AppCopy = {
     pageNav: "Navegación de páginas",
     currentPage: "Página actual",
     runtimeCapability: "Capacidades de ejecución",
-    selfSchedulingState: "Estado de la autoplanificación",
     taskCenter: "Centro de tareas",
     taskCenterActive: (count: number) => `Centro de tareas, ${count} en curso`,
     taskCenterSyncing: "Centro de tareas · sincronizando las tareas del servicio",
@@ -37,15 +35,7 @@ const esEsAppCopy: AppCopy = {
     taskCenterUnavailable: "Centro de tareas · estado de las tareas del servicio no disponible",
     minimize: "Minimizar",
     maximize: "Maximizar",
-    closeWindow: "Cerrar",
-    uptimeLoading: "Cargando el tiempo de actividad",
-    uptimeStale: (uptime: string) => `${uptime} · no en directo`,
-    uptimeUnavailable: "Tiempo de actividad no disponible",
-    uptimeDisabled: "Tiempo de actividad desactivado",
-    observationLoading: (label: string) => `Cargando ${label}`,
-    observationStale: (label: string) => `${label} no en directo`,
-    observationUnavailable: (label: string) => `${label} no disponible`,
-    observationDisabled: (label: string) => `${label} desactivado`
+    closeWindow: "Cerrar"
   },
   managementPage: {
     browserRuntimeTab: "Gestión de entornos de ejecución",
@@ -54,7 +44,6 @@ const esEsAppCopy: AppCopy = {
     searchLabel: (kind: string) => `Buscar en ${kind}`,
     search: "Buscar",
     itemCount: (count: number) => `${count} elementos`,
-    countUnavailable: "--",
     softwareRegistrySupplement: "Adiciones del registro de software",
     softwareRegistrySupplementDisabled: "Este perfil de inicio solo muestra el catálogo de componentes y no carga las adiciones del registro de software.",
     operationState: "Estado de las operaciones",
@@ -128,10 +117,6 @@ const esEsAppCopy: AppCopy = {
     layoutEditor: "Editor del diseño del panel",
     dashboardQuarantined: "La configuración del panel estaba dañada y se puso en cuarentena; se usa una configuración segura guardada.",
     dashboardRecovered: "La configuración del panel se restauró desde la última copia válida.",
-    dashboardLoading: "Cargando la configuración del panel…",
-    dashboardUnavailable: "Configuración del panel no disponible",
-    dashboardUnavailableDetail: "Los datos de recursos en directo siguen actualizándose; la edición del diseño no está disponible por ahora.",
-    retryLayout: "Reintentar el diseño",
     metricCatalog: "Catálogo de métricas",
     liveMetrics: "Métricas en directo",
     resourceUsage: "Uso de recursos",
@@ -146,8 +131,7 @@ const esEsAppCopy: AppCopy = {
     replaceMetric: (slot: string, metric: string) => `Sustituir ${slot}: ${metric}`,
     removeMetric: (slot: string, metric: string) => `Quitar ${slot}: ${metric}`,
     catalogUnavailable: "Catálogo de métricas no disponible",
-    metricUnavailable: "Métrica no disponible",
-    valueUnavailable: "--"
+    metricUnavailable: "Métrica no disponible"
   },
   resourceBreakdown: {
     panel: "Uso de recursos por software",
@@ -210,12 +194,10 @@ const esEsAppCopy: AppCopy = {
     noDataDetail: "Todavía no ha llegado ningún dato que mostrar; se actualizará automáticamente cuando la fuente de datos esté lista.",
     editorLabel: "Editor de elementos de uso de recursos",
     scaleModeLabel: (metric: string) => `Modo de escala de ${metric}`,
-    attributionUnavailable: " · atribución no disponible",
     moveUp: (label: string) => `Mover ${label} hacia arriba`,
     moveUpTitle: "Mover hacia arriba",
     moveDown: (label: string) => `Mover ${label} hacia abajo`,
     moveDownTitle: "Mover hacia abajo",
-    barUnavailable: (label: string) => `${label} no disponible`,
     unavailable: "No disponible",
     processUsage: (name: string) => `Uso de los procesos de ${name}`,
     metric: {
@@ -236,13 +218,6 @@ const esEsAppCopy: AppCopy = {
     cancel: "Cancelar",
     saveLabel: "Guardar las columnas de la lista de recursos",
     editLabel: "Editar las columnas de la lista de recursos",
-    dataStateTitle: "Estado de los datos de recursos",
-    refreshData: "Actualizar los datos",
-    partialUnavailableTitle: "Algunos datos de recursos no están disponibles temporalmente",
-    partialUnavailableDetail: "El proveedor de datos no pudo terminar el muestreo; comprueba el motivo y vuelve a intentarlo.",
-    viewDetails: "Ver los detalles",
-    preparingTitle: "Se están preparando los datos de recursos",
-    preparingDetail: "El proveedor de datos se está inicializando; los detalles muestran el estado actual.",
     noMatchTitle: "No hay recursos coincidentes",
     noMatchDetail: "El filtro actual no coincide con ningún software ni proceso.",
     clearSearch: "Borrar la búsqueda",
@@ -285,12 +260,10 @@ const esEsAppCopy: AppCopy = {
     searchPlaceholder: "Buscar por nombre o categoría",
     searchLabel: "Buscar elementos de supervisión",
     clearSearchLabel: "Borrar la búsqueda de elementos de supervisión",
-    clearSearchTitle: "Borrar la búsqueda",
     count: (count: number) => `${count} elementos de supervisión`,
     listLabel: "Elementos de supervisión",
     empty: "No hay ningún elemento de supervisión coincidente",
     needsInstall: (name: string) => `Requiere instalación: ${name}`,
-    componentState: (name: string, state: string) => `${name} · ${state}`,
     cancel: "Cancelar",
     confirm: "Confirmar"
   },
@@ -299,13 +272,11 @@ const esEsAppCopy: AppCopy = {
     noCandidates: "No hay software disponible para añadir. Actualiza primero la lista de software.",
     software: "Software",
     searchSoftware: "Buscar software",
-    optionLabel: (name: string, kind: string) => `${name} · ${kind}`,
     name: "Nombre",
     rootDirectory: "Directorio raíz",
     rootPlaceholder: "Un directorio por línea, por ejemplo D:\\Tools\\App",
     cancel: "Cancelar",
     saving: "Guardando",
-    confirm: "Confirmar",
     additionalRoots: (count: number) => `${count} directorios más`
   },
   observationNotice: {
@@ -429,21 +400,6 @@ const esEsAppCopy: AppCopy = {
       }
     },
     resourceData: {
-      sourceCpu: "Estadísticas de CPU por proceso",
-      sourceDisk: "Estadísticas de disco por proceso",
-      sourceNetwork: "Estadísticas de red por proceso",
-      sourceGpuMemory: "Estadísticas de VRAM por proceso",
-      sourceGeneric: "Estadísticas de recursos por proceso",
-      stateUnavailable: "No disponible temporalmente",
-      statePreparing: "Preparando",
-      stateIdle: "Sin uso",
-      stateNormal: "Normal",
-      messageUnavailable: "La fuente de datos no proporcionó una descripción del fallo que se pueda mostrar.",
-      messagePreparing: "La fuente de datos se está inicializando y aún no tiene más detalles.",
-      messageGeneric: "La fuente de datos no proporcionó más detalles.",
-      summaryHealthy: "Los datos son normales",
-      summaryUnavailable: "Algunos datos no están disponibles temporalmente",
-      summaryPreparing: "Algunos datos aún se están preparando"
     },
     detail: {
       status: "Estado",
@@ -473,18 +429,13 @@ const esEsAppCopy: AppCopy = {
     smartSchedulerStopped: "Planificación inteligente detenida",
     pendingChanges: (count: number) => `${count} cambios pendientes de confirmación`,
     appliedTargets: (count: number) => `${count} elementos optimizados`,
-    statusSeparator: " · ",
     search: "Buscar",
     searchLabel: "Buscar en los informes de optimización",
     reportPanel: "Informes de optimización",
-    reportStateUnavailable: "Estado de los informes no disponible",
-    monitoring: (count: number) => `Supervisando · ${count} elementos`,
-    monitoringNotStarted: "La supervisión no ha comenzado",
     filterLabel: "Filtro de informes",
     filterUntrusted: (count: string) => `No confiables ${count}`,
     filterAll: (count: string) => `Todos ${count}`,
     filterTrusted: (count: string) => `Confiables ${count}`,
-    countUnavailable: "--",
     refresh: "Actualizar",
     refreshing: "Actualizando",
     noSearchResults: "No hay resultados coincidentes.",
@@ -568,13 +519,11 @@ const esEsAppCopy: AppCopy = {
       observationScope: "Ámbito de observación",
       foregroundSoftware: "Software en primer plano",
       relatedProcesses: "Procesos relacionados",
-      processSeparator: ", ",
       firstObserved: "Primera vez visto",
       lastObserved: "Última vez visto",
       duration: "Duración",
       occurrences: "Veces visto",
-      occurrenceTimes: (count: number) => `${count} veces`,
-      occurrenceCount: (count: number) => `${count} veces`
+      occurrenceTimes: (count: number) => `${count} veces`
     },
     duration: {
       days: (value: number) => `${value} d`,
@@ -614,8 +563,6 @@ const esEsAppCopy: AppCopy = {
     detailTitle: (name: string) => `Detalles de ${name}`,
     fallbackDeviceName: "Dispositivo",
     countSuffix: (count: number) => `${count}`,
-    byteSuffix: (value: number) => `${value} B`,
-    valueUnavailable: "--",
     connectedDevice: "Dispositivo conectado",
     section: {
       overview: "Resumen",
@@ -701,7 +648,6 @@ const esEsAppCopy: AppCopy = {
       downstreamHubPath: "Ruta del concentrador inferior",
       displayDevicePath: "Ruta del dispositivo de pantalla"
     },
-    companion: (index: number, port: number) => `#${index} · puerto ${port} del concentrador`,
     connectionState: {
       connected: "Conectado",
       disconnected: "No conectado",
@@ -946,7 +892,6 @@ const esEsAppCopy: AppCopy = {
     hdrOn: "Activado",
     advancedColorSupported: "Color avanzado compatible",
     hdrCurrentlyOff: "Actualmente desactivado",
-    hdrUnavailable: "No disponible en el sistema ahora mismo",
     hdrFormatUnavailable: (format: string) => `${format} · no disponible actualmente en este sistema`,
     advancedColorUnsupported: "Color avanzado no compatible",
     bitsPerChannel: (bits: string) => `${bits} bits / canal de color`,
@@ -970,7 +915,6 @@ const esEsAppCopy: AppCopy = {
     powerInputRole: "Consumidor de energía",
     powerInputBadge: "Entrada de alimentación",
     dock: "Base de conexiones",
-    usbHub: "Concentrador USB",
     dockBadge: "Base",
     hubSummary: (total: number, connected: number) =>
       `${total} puertos inferiores · ${connected} conectados`,
@@ -983,8 +927,7 @@ const esEsAppCopy: AppCopy = {
     disk: "Disco",
     partitionCount: (count: number) => `${count}`,
     usbDevice: "Dispositivo USB",
-    internalDisplay: "Pantalla integrada",
-    ethernet: "Ethernet"
+    internalDisplay: "Pantalla integrada"
   },
   deviceTree: {
     downstreamPort: (port: number) => `Puerto inferior ${port}`,
@@ -1033,8 +976,6 @@ const esEsAppCopy: AppCopy = {
     cancel: "Cancelar",
     reset: "Restablecer",
     save: "Guardar",
-    observationLabel: "Topología y ocupación del procesador",
-    noTopology: "Todavía no se ha leído la topología del procesador.",
     setCoreScore: (core: string) => `Definir la puntuación de rendimiento de ${core}`,
     logicalProcessorLabel: (id: number, executionTime: string) =>
       `Procesador lógico ${id}, tiempo de ejecución ${executionTime}`,
@@ -1044,7 +985,6 @@ const esEsAppCopy: AppCopy = {
     ringBus: "Bus en anillo",
     coreCount: (count: number) => `${count} núcleos`,
     selectedCount: (count: number) => `${count} seleccionados`,
-    selectedLogical: (ids: string) => `Procesadores lógicos: ${ids}`,
     clear: "Borrar",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, uso ${usage}, rendimiento ${performance}, tiempo de ejecución ${executionTime}`,
@@ -1076,23 +1016,14 @@ const esEsAppCopy: AppCopy = {
       `Caché ${level} ${size} · ${scope} · procesadores lógicos ${logicalIds}`,
     residency: {
       readFailed: "No se pudo leer la actividad de subprocesos",
-      reading: "Leyendo la actividad de subprocesos",
       loading: "Cargando la actividad de subprocesos",
       window: (window: string) => `Actividad de subprocesos ${window}`,
-      paused: "Actividad de subprocesos en pausa",
       unavailable: "Actividad de subprocesos no disponible temporalmente",
-      idle: "Actividad de subprocesos inactiva",
       preparing: "Preparando la actividad de subprocesos"
     }
   },
   gpuScheduling: {
-    catalogReadFailed: "No se pudo leer el catálogo de métricas.",
-    overridesReadFailed: "No se pudieron leer las sustituciones de puntuación de la GPU.",
-    scoresReadFailed: "No se pudieron leer las puntuaciones de rendimiento de la GPU.",
     dataReadFailed: "No se pudieron leer los datos de programación de GPU.",
-    metricsReadFailed: "No se pudieron leer las métricas de la GPU.",
-    specializedTelemetryReadFailed: "No se pudo leer la telemetría de las unidades especializadas de la GPU.",
-    processAttributionReadFailed: "No se pudo leer la atribución de procesos de la GPU.",
     telemetryLive: "Atribución de hardware / procesos en directo",
     telemetryStale: "Atribución de hardware / procesos desactualizada",
     telemetryUnavailable: "Datos no disponibles",
@@ -1135,9 +1066,7 @@ const esEsAppCopy: AppCopy = {
     cdnaUsage: "Uso de CDNA",
     gpuFull: "GPU saturada",
     vramFull: "VRAM saturada",
-    noProcessAttribution: "Sin atribución de procesos",
-    attributionSummary: (softwareCount: number, processCount: number) =>
-      `${softwareCount} software · ${processCount} procesos`
+    noProcessAttribution: "Sin atribución de procesos"
   },
   softwareDetail: {
     tab: {
@@ -1230,8 +1159,6 @@ const esEsAppCopy: AppCopy = {
       title: "Asignación de núcleos del procesador",
       description: "«Reservar» hace que otro software evite estos núcleos; «Fijar» restringe este software a ellos.",
       clear: "Borrar",
-      loadingTopology: "Leyendo la topología del procesador.",
-      noTopology: "Todavía no hay datos de topología del procesador.",
       maxBoost: (value: string) => `Impulso máx. ${value}`,
       l1Cache: "Caché L1 --",
       l2Cache: (value: string) => `Caché L2 ${value}`,
@@ -1276,8 +1203,7 @@ const esEsAppCopy: AppCopy = {
       unsupported: "no compatible",
       unknown: "desconocido",
       summary: (phase: string, state: string, api: string, architecture: string, reason: string) =>
-        `${phase} ${state} (${api}${architecture}): ${reason}`,
-      capabilitySeparator: "; "
+        `${phase} ${state} (${api}${architecture}): ${reason}`
     },
     startupGpuState: {
       providerUnavailable: "El proveedor preciso de inicio no está disponible; la configuración se mantiene pero no se ejecuta.",
@@ -1448,7 +1374,6 @@ const esEsAppCopy: AppCopy = {
       observedChanges: "Cambios observados",
       changeTimes: (count: number) => `${count} veces`,
       observedProcesses: "Procesos vigilados",
-      processSeparator: ", ",
       observationScope: "Ámbito de observación",
       directory: (index: number) => `Directorio ${index}`,
       migratableContent: "Contenido migrable",
@@ -1458,8 +1383,6 @@ const esEsAppCopy: AppCopy = {
       lastObserved: "Última observación",
       relatedProcesses: "Procesos relacionados",
       savedLocations: "Ubicaciones de almacenamiento",
-      userData: "Datos de usuario",
-      miscData: "Otros datos",
       softwareRoot: "Directorio raíz del software",
       migrationJudgement: "Evaluación de la migración",
       risk: "Riesgo",
@@ -1511,15 +1434,7 @@ const esEsAppCopy: AppCopy = {
   },
   hotkeyGroup: {
     mouse: "Ratón",
-    character: "Caracteres",
-    modifier: "Modificadores",
-    functionKey: "Teclas de función",
-    navigation: "Navegación",
-    numpad: "Teclado numérico",
-    symbol: "Símbolos",
-    system: "Teclas del sistema",
-    media: "Teclas multimedia",
-    ime: "IME"
+    system: "Teclas del sistema"
   },
   hotkeyEditor: {
     searchKey: "Buscar teclas",
@@ -1537,7 +1452,6 @@ const esEsAppCopy: AppCopy = {
     backendResyncing: "El servicio local se está resincronizando; ahora mismo no se pueden cambiar las tareas del servicio.",
     backendUnavailable: "No se puede leer el estado de las tareas del servicio; las tareas de la interfaz siguen funcionando.",
     filterLabel: "Filtro de tareas",
-    noBackendTasks: "Este perfil de inicio no proporciona tareas de operaciones del servicio; las tareas de la interfaz siguen apareciendo aquí",
     noTasksInFilter: "No hay tareas en este filtro",
     itemCount: (count: number) => `${count} elementos`,
     close: "Cerrar",
@@ -1571,7 +1485,6 @@ const esEsAppCopy: AppCopy = {
       queued: "En espera",
       startPending: "Iniciando",
       running: "En ejecución",
-      cancelPending: "Cancelando",
       retryWait: "Esperando para reintentar",
       recoveryPending: "Recuperando",
       succeeded: "Completada",
@@ -1593,7 +1506,6 @@ const esEsAppCopy: AppCopy = {
   smartReport: {
     panel: "Informe de planificación inteligente",
     loading: "Cargando",
-    updated: "Estado de la planificación inteligente actualizado",
     unavailable: "Estado no disponible",
     refresh: "Actualizar",
     completed: "Completado",
@@ -1699,11 +1611,8 @@ const esEsAppCopy: AppCopy = {
     refreshFailed: "No se pudo actualizar",
     installDisabled: "Este perfil de inicio solo muestra el estado de los componentes y no ejecuta instalaciones.",
     fallbackComponentName: "Este componente",
-    externalTermsRequired: (name: string) => `${name} requiere aceptar las condiciones del proveedor para continuar.`,
     componentMissingIdentity: "El componente no tiene una identidad estable, así que no se puede crear una operación de instalación.",
     waiting: "En espera",
-    installing: "Instalando",
-    noInstallEntry: "Este componente no tiene ahora mismo ninguna entrada de instalación disponible.",
     actionFailed: "La acción ha fallado",
     uninstallDisabled: "Este perfil de inicio no ejecuta la desinstalación de software.",
     cannotUninstall: "Este software no se puede desinstalar ahora mismo",
@@ -1723,9 +1632,7 @@ const esEsAppCopy: AppCopy = {
     progressCanceled: "Cancelado",
     progressUncertain: "Estado incierto",
     progressWorking: "Procesando",
-    progressSummary: (stage: string, percent: string, speed: string) => `${stage}${percent}${speed}`,
     operationStateDisabled: "Este perfil de inicio no carga el estado de operaciones ejecutables.",
-    operationStateRefreshFailed: "No se pudo actualizar el estado de las operaciones",
     operationStateStopped: "El estado de las operaciones se ha detenido",
     migrationRuntimeDisabled: "Este perfil de inicio no activa el entorno de ejecución de migración.",
     notPreviewed: "Todavía sin vista previa",
@@ -1754,7 +1661,6 @@ const esEsAppCopy: AppCopy = {
     restoreStartFailed: "No se pudo iniciar la restauración",
     restoreCompleted: "Restauración completada",
     restoreFailed: "No se pudo restaurar la migración",
-    taskTitle: (action: string, name: string) => `${action}: ${name}`,
     resultUncertain: "El resultado de la operación es incierto; comprueba primero el estado real.",
     resultIncomplete: "La operación no se completó.",
     optimizationReportDisabled: "Este perfil de inicio no activa los informes de optimización.",
@@ -1762,10 +1668,7 @@ const esEsAppCopy: AppCopy = {
     smartModeSwitchFailed: "No se pudo cambiar el modo de optimización inteligente",
     optimizationReportRefreshFailed: "No se pudieron actualizar los informes de optimización del rendimiento",
     optimizationScheduleRefreshFailed: "No se pudo actualizar el estado de la planificación de optimización",
-    resourceBreakdownRefreshFailed: "No se pudo actualizar el uso de recursos",
-    resourceTableRefreshFailed: "No se pudo actualizar la lista de recursos",
-    metricCatalogRefreshFailed: "No se pudo actualizar el catálogo de métricas",
-    resourceMonitorRefreshFailed: "No se pudo actualizar la supervisión de recursos"
+    metricCatalogRefreshFailed: "No se pudo actualizar el catálogo de métricas"
   },
   apiError: {
     readFailed: "No se pudieron leer los datos, inténtalo de nuevo más tarde",
@@ -1781,13 +1684,11 @@ const esEsAppCopy: AppCopy = {
     openPropertiesFailed: "No se pudieron abrir las propiedades",
     terminateFailed: "No se pudo finalizar la tarea",
     dumpFailed: "No se pudo crear el archivo de volcado de memoria",
-    updateViewportFailed: "No se pudo actualizar el área de visualización del Administrador de recursos",
     addSoftwareFailed: "No se pudo añadir el software",
     confirmRootFailed: "No se pudo confirmar el directorio raíz del software",
     saveGpuSoftwarePolicyFailed: "No se pudo guardar la política de software de planificación de GPU",
     saveGpuProcessPolicyFailed: "No se pudo guardar la política de procesos de planificación de GPU",
     recordGpuProcessHistoryFailed: "No se pudo registrar el historial de procesos de planificación de GPU",
-    refreshOptimizationReportFailed: "No se pudieron actualizar los informes de optimización del rendimiento",
     readGpuScoreOverridesFailed: "No se pudieron leer las sustituciones de puntuación de GPU",
     readGpuScoresFailed: "No se pudieron leer las puntuaciones de rendimiento de GPU",
     readOptimizationReportsFailed: "No se pudieron leer los informes de optimización",
@@ -1796,7 +1697,6 @@ const esEsAppCopy: AppCopy = {
     removeTrustFailed: "No se pudo quitar la confianza"
   },
   session: {
-    noVerifiedSession: "Todavía no hay ninguna sesión verificable del servicio local",
     notReady: "El servicio local todavía no está listo",
     sessionChanged: "La sesión del servicio local ha cambiado",
     noTrustedHost: "Esta página no tiene un host local de confianza",
@@ -1804,7 +1704,6 @@ const esEsAppCopy: AppCopy = {
     hostCannotSubscribe: "Este host no puede suscribirse al estado de la sesión del servicio",
     frontendClosed: "El entorno de ejecución del frontend está cerrado",
     sessionUnavailable: (reason: string) => `Sesión del servicio local no disponible: ${reason}`,
-    identityConflict: "Conflicto de identidad de la sesión del servicio local",
     hostCannotRerequest: "Este host no puede volver a solicitar el estado de la sesión del servicio",
     waitTimeout: "Se agotó el tiempo de espera de la sesión del servicio local",
     requestFailed: (message: string) => `No se pudo solicitar la sesión del servicio local: ${message}`,
@@ -1820,15 +1719,9 @@ const esEsAppCopy: AppCopy = {
     actionFailed: "La acción ha fallado, inténtalo de nuevo más tarde"
   },
   operationRegistry: {
-    backendOperationsDisabled: "Este perfil de inicio no proporciona operaciones del servicio.",
-    notSynced: "El estado de las operaciones en segundo plano todavía no está sincronizado con la sesión actual del servicio local.",
-    staleSessionResponse: "La respuesta de la operación en segundo plano procede de una sesión del servicio local caducada.",
     noCurrentValue: "Todavía no ha llegado ningún valor actual del estado de las operaciones en segundo plano.",
     cancelFailed: "No se pudo cancelar la operación",
     removedFromCurrentValue: (operationId: string) => `La operación en segundo plano se eliminó del valor actual: ${operationId}`,
-    notFound: (operationId: string) => `Operación en segundo plano no encontrada: ${operationId}`,
-    removedFromAuthority: (operationId: string) =>
-      `La operación en segundo plano se eliminó del estado de referencia: ${operationId}`,
     canceled: "La operación se canceló"
   },
   gpuTarget: {
@@ -1839,9 +1732,7 @@ const esEsAppCopy: AppCopy = {
     unavailable: "No disponible ahora mismo",
     specificGpu: "GPU concreta",
     needsPreciseSelection: (target: string) => `${target} (requiere selección precisa de GPU)`,
-    startupUnavailable: (target: string) => `${target} (no disponible al iniciar)`,
-    withReason: (target: string, reason: string) => `${target} (${reason})`,
-    targetWithReason: (name: string, reason: string) => `${name} · ${reason}`
+    startupUnavailable: (target: string) => `${target} (no disponible al iniciar)`
   },
   shellBridge: {
     desktopOnly: "Esta función solo está disponible en la aplicación de escritorio del Administrador de recursos.",
@@ -1934,8 +1825,6 @@ const esEsAppCopy: AppCopy = {
     relatedInfo: "Información relacionada",
     content: "Contenido",
     infoIndex: (index: number) => `Info ${index}`,
-    selfSchedulingRefreshFailed: "No se pudo actualizar el estado de autoplanificación del Administrador de recursos",
-    localStatusRefreshFailed: "No se pudo actualizar el estado del entorno de ejecución local",
     search: "Buscar",
     searchOptions: "Opciones de búsqueda",
     noMatchingOption: "No hay ninguna opción coincidente",
