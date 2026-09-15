@@ -114,140 +114,156 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             return;
         }
 
-        foreach (var view in RegistryViews)
-        {
-            RemoveOwnedRulesForPath(view, normalizedPath);
-        }
+        ownedRuleCleanup.RemoveForPath(RegistryViews, normalizedPath);
     }
 
-    private static void RemoveOwnedRulesForPath(RegistryView view, string executablePath)
+    private void RemoveStaleOwnedRules(IReadOnlySet<string> desiredPaths)
     {
-        var imageName = Path.GetFileName(executablePath);
-        var expectedRuleName = CreateRuleName(executablePath);
-        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-        using var imageKey = baseKey.OpenSubKey($@"{IfeoRoot}\{imageName}", writable: true);
-        if (imageKey is null)
+        ownedRuleCleanup.RemoveStale(RegistryViews, desiredPaths);
+    }
+
+    private sealed class WindowsIfeoOwnedRuleStore : IIfeoOwnedRuleStore
+    {
+        public IReadOnlyList<string> EnumerateImageNames(RegistryView view)
         {
-            return;
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var root = baseKey.OpenSubKey(IfeoRoot, writable: false);
+            return root?.GetSubKeyNames() ?? [];
         }
 
-        foreach (var subKeyName in imageKey.GetSubKeyNames())
+        public IfeoImageSnapshot? ReadImage(RegistryView view, string imageName)
         {
-            using var subKey = imageKey.OpenSubKey(subKeyName, writable: false);
-            if (subKey is null
-                || !OwnerValue.Equals(subKey.GetValue(OwnerValueName) as string, StringComparison.Ordinal)
-                || (!subKeyName.Equals(expectedRuleName, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(
-                        NormalizePath(subKey.GetValue(FilterFullPathValueName) as string),
-                        executablePath,
-                        StringComparison.OrdinalIgnoreCase)))
+            try
             {
-                continue;
+                using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                using var imageKey = baseKey.OpenSubKey($@"{IfeoRoot}\{imageName}", writable: false);
+                return imageKey is null ? null : SnapshotImage(imageKey, imageName);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException
+                or System.Security.SecurityException
+                or IOException)
+            {
+                return null;
+            }
+        }
+
+        public int DeleteOwnedRules(
+            RegistryView view,
+            string imageName,
+            IReadOnlyList<IfeoOwnedRuleCandidate> candidates,
+            bool settleParentOwnership)
+        {
+            if (candidates.Count == 0 && !settleParentOwnership)
+            {
+                return 0;
             }
 
-            subKey.Close();
-            imageKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
-        }
-
-        CleanupParentUseFilter(imageKey);
-    }
-
-    private static int RemoveAllOwnedRules(RegistryView view)
-    {
-        var removed = 0;
-        using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-        using var root = baseKey.OpenSubKey(IfeoRoot, writable: true);
-        if (root is null)
-        {
-            return 0;
-        }
-
-        foreach (var imageName in root.GetSubKeyNames())
-        {
-            using var imageKey = root.OpenSubKey(imageName, writable: true);
+            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using var imageKey = baseKey.OpenSubKey($@"{IfeoRoot}\{imageName}", writable: true);
             if (imageKey is null)
             {
-                continue;
+                return 0;
             }
 
-            foreach (var subKeyName in imageKey.GetSubKeyNames())
+            var removed = 0;
+            foreach (var candidate in candidates)
             {
-                using var subKey = imageKey.OpenSubKey(subKeyName, writable: false);
-                if (!OwnerValue.Equals(subKey?.GetValue(OwnerValueName) as string, StringComparison.Ordinal))
+                IfeoRuleSnapshot? current;
+                try
+                {
+                    using var ruleKey = imageKey.OpenSubKey(candidate.RuleName, writable: false);
+                    current = ruleKey is null ? null : SnapshotRule(ruleKey, candidate.RuleName);
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException
+                    or System.Security.SecurityException
+                    or IOException)
                 {
                     continue;
                 }
 
-                subKey?.Close();
-                imageKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                if (current is null
+                    || !IfeoOwnedRuleCleanupCoordinator.MatchesCandidate(current, candidate, OwnerValue))
+                {
+                    continue;
+                }
+
+                imageKey.DeleteSubKeyTree(candidate.RuleName, throwOnMissingSubKey: false);
                 removed++;
             }
 
-            CleanupParentUseFilter(imageKey);
-        }
-
-        return removed;
-    }
-
-    private static void CleanupParentUseFilter(RegistryKey imageKey)
-    {
-        var hasFullPathRules = imageKey.GetSubKeyNames().Any(subKeyName =>
-        {
-            using var subKey = imageKey.OpenSubKey(subKeyName, writable: false);
-            return !string.IsNullOrWhiteSpace(subKey?.GetValue(FilterFullPathValueName) as string);
-        });
-
-        var ownsUseFilter = OwnerValue.Equals(
-            imageKey.GetValue(ParentOwnerValueName) as string,
-            StringComparison.Ordinal);
-        if (!hasFullPathRules && ownsUseFilter)
-        {
-            imageKey.DeleteValue(UseFilterValueName, throwOnMissingValue: false);
-        }
-        if (ownsUseFilter)
-        {
-            imageKey.DeleteValue(ParentOwnerValueName, throwOnMissingValue: false);
-        }
-    }
-
-    private static void RemoveStaleOwnedRules(IReadOnlySet<string> desiredPaths)
-    {
-        foreach (var view in RegistryViews)
-        {
-            using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
-            using var root = baseKey.OpenSubKey(IfeoRoot, writable: true);
-            if (root is null)
+            if (settleParentOwnership)
             {
-                continue;
+                CleanupParentUseFilter(imageKey, imageName);
             }
 
-            foreach (var imageName in root.GetSubKeyNames())
+            return removed;
+        }
+
+        private static IfeoImageSnapshot SnapshotImage(RegistryKey imageKey, string imageName)
+        {
+            var complete = true;
+            var rules = new List<IfeoRuleSnapshot>();
+            foreach (var ruleName in imageKey.GetSubKeyNames())
             {
-                using var imageKey = root.OpenSubKey(imageName, writable: true);
-                if (imageKey is null)
+                try
                 {
-                    continue;
-                }
-
-                foreach (var subKeyName in imageKey.GetSubKeyNames())
-                {
-                    using var subKey = imageKey.OpenSubKey(subKeyName, writable: false);
-                    if (!OwnerValue.Equals(subKey?.GetValue(OwnerValueName) as string, StringComparison.Ordinal))
+                    using var ruleKey = imageKey.OpenSubKey(ruleName, writable: false);
+                    if (ruleKey is null)
                     {
+                        complete = false;
                         continue;
                     }
 
-                    var filterPath = NormalizePath(subKey?.GetValue(FilterFullPathValueName) as string);
-                    if (!string.IsNullOrWhiteSpace(filterPath) && desiredPaths.Contains(filterPath))
-                    {
-                        continue;
-                    }
-
-                    subKey?.Close();
-                    imageKey.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                    rules.Add(SnapshotRule(ruleKey, ruleName));
                 }
+                catch (Exception ex) when (ex is UnauthorizedAccessException
+                    or System.Security.SecurityException
+                    or IOException)
+                {
+                    complete = false;
+                }
+            }
 
-                CleanupParentUseFilter(imageKey);
+            return new IfeoImageSnapshot(
+                imageName,
+                complete,
+                OwnerValue.Equals(
+                    imageKey.GetValue(ParentOwnerValueName) as string,
+                    StringComparison.Ordinal),
+                rules);
+        }
+
+        private static IfeoRuleSnapshot SnapshotRule(RegistryKey ruleKey, string ruleName)
+        {
+            return new IfeoRuleSnapshot(
+                ruleName,
+                ruleKey.GetValue(OwnerValueName) as string,
+                NormalizePath(ruleKey.GetValue(FilterFullPathValueName) as string));
+        }
+
+        private static void CleanupParentUseFilter(RegistryKey imageKey, string imageName)
+        {
+            IfeoImageSnapshot image;
+            try
+            {
+                image = SnapshotImage(imageKey, imageName);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException
+                or System.Security.SecurityException
+                or IOException)
+            {
+                return;
+            }
+
+            switch (IfeoOwnedRuleCleanupCoordinator.DecideParentCleanup(image, OwnerValue))
+            {
+                case IfeoParentCleanupAction.RemoveOwnerAndUseFilter:
+                    imageKey.DeleteValue(UseFilterValueName, throwOnMissingValue: false);
+                    imageKey.DeleteValue(ParentOwnerValueName, throwOnMissingValue: false);
+                    break;
+                case IfeoParentCleanupAction.RemoveOwner:
+                    imageKey.DeleteValue(ParentOwnerValueName, throwOnMissingValue: false);
+                    break;
             }
         }
     }
