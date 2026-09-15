@@ -48,15 +48,15 @@ public static class ResourceTableColumnCatalog
     {
         return
         [
-            new(ResourceTableColumnIds.Name, "名称", "", true, true, 260),
-            new(ResourceTableColumnIds.ProcessId, "PID", "", true, true, 76),
-            new(ResourceTableColumnIds.Status, "状态", "", true, true, 92),
-            new(ResourceTableColumnIds.User, "用户", "", true, true, 150),
-            new(ResourceTableColumnIds.Architecture, "架构", "", true, true, 76),
-            new(ResourceTableColumnIds.Cpu, "CPU", "%", true, true, 86),
-            new(ResourceTableColumnIds.Memory, "内存", "B", true, true, 110),
-            new(ResourceTableColumnIds.Disk, "磁盘", "B/s", true, true, 112),
-            new(ResourceTableColumnIds.Network, "网络", "bps", true, true, 106)
+            new(ResourceTableColumnIds.Name, "", true, true, 260),
+            new(ResourceTableColumnIds.ProcessId, "", true, true, 76),
+            new(ResourceTableColumnIds.Status, "", true, true, 92),
+            new(ResourceTableColumnIds.User, "", true, true, 150),
+            new(ResourceTableColumnIds.Architecture, "", true, true, 76),
+            new(ResourceTableColumnIds.Cpu, "%", true, true, 86),
+            new(ResourceTableColumnIds.Memory, "B", true, true, 110),
+            new(ResourceTableColumnIds.Disk, "B/s", true, true, 112),
+            new(ResourceTableColumnIds.Network, "bps", true, true, 106)
         ];
     }
 
@@ -94,14 +94,11 @@ public static class ResourceTableColumnCatalog
         return metricName is "usage" or "vram";
     }
 
-    public static ResourceTableColumn CreateGpuColumn(string columnId, string? label = null)
+    public static ResourceTableColumn CreateGpuColumn(string columnId)
     {
-        return TryParseGpuColumn(columnId, out var index, out var metricName)
+        return TryParseGpuColumn(columnId, out _, out var metricName)
             ? new ResourceTableColumn(
                 columnId,
-                string.IsNullOrWhiteSpace(label)
-                    ? metricName == "vram" ? $"GPU{index} 显存占用" : $"GPU{index} 占用率"
-                    : label.Trim(),
                 metricName == "vram" ? "B" : "%",
                 true,
                 true,
@@ -179,8 +176,8 @@ public sealed record ResourceTableDatasetInput(
     string? FailureMessage);
 
 public sealed record ResourceTableColumn(
+    /// <summary>列的标识；表头措辞由前端按 id 出，后端不发措辞。</summary>
     string Id,
-    string Label,
     string Unit,
     bool Visible,
     bool Sortable,

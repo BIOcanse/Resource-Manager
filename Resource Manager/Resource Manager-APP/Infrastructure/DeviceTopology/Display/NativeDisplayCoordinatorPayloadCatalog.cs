@@ -72,6 +72,12 @@ internal sealed class NativeDisplayCoordinatorPayloadCatalog
                 throw new InvalidDataException(
                     "The display-coordinator payload catalog contains an invalid entry.");
             }
+            // 上一版写下的载荷形状可能已经变了（例如某个字段从字符串改成消息码）。
+            // 这类条目在这里丢掉，而不是等到解析时把宿主拖崩。
+            if (!CanDeserialize(entry))
+            {
+                continue;
+            }
             if (entries.TryGetValue(entry.Handle, out var existing)
                 && (existing.Kind != entry.Kind
                     || !existing.Payload.AsSpan().SequenceEqual(entry.Payload)))
@@ -80,6 +86,27 @@ internal sealed class NativeDisplayCoordinatorPayloadCatalog
                     "The display-coordinator payload catalog contains a handle collision.");
             }
             entries[entry.Handle] = entry with { Payload = entry.Payload.ToArray() };
+        }
+    }
+
+    private static bool CanDeserialize(NativeDisplayPayloadEntry entry)
+    {
+        try
+        {
+            return entry.Kind switch
+            {
+                NativeDisplayPayloadKind.DisplayPath =>
+                    JsonSerializer.Deserialize<DeviceTopologyDisplayPath>(entry.Payload, JsonOptions) is not null,
+                NativeDisplayPayloadKind.OemConnectorProfile =>
+                    JsonSerializer.Deserialize<DeviceTopologyOemDisplayConnectorProfile>(
+                        entry.Payload,
+                        JsonOptions) is not null,
+                _ => true
+            };
+        }
+        catch (JsonException)
+        {
+            return false;
         }
     }
 
