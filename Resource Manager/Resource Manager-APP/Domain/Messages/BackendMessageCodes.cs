@@ -92,6 +92,18 @@ public static class BackendMessageCodes
         public const byte InstallerLaunched = 22;
     }
 
+    public static class Metric
+    {
+        /// <summary>当前硬件或 Provider 未暴露这个读数。参数：无。</summary>
+        public const byte NotExposed = 1;
+
+        /// <summary>Provider 未返回有效读数，需要更完整的组件或对应硬件。参数：1 = 组件名。</summary>
+        public const byte NeedsComponent = 2;
+
+        /// <summary>当前硬件或 Provider 未返回有效读数。参数：无。</summary>
+        public const byte NoValidReading = 3;
+    }
+
     public static class GpuPlacement
     {
         /// <summary>这台机器只有一个显卡，GPU 调度没有可选目标。参数：无。</summary>

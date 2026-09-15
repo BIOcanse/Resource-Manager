@@ -1939,6 +1939,11 @@ const jaJpAppCopy: AppCopy = {
     },
     gpuPlacement: {
       singleAdapter: "このマシンには GPU が 1 つしかないため、GPU スケジューリングに選択肢がありません。"
+    },
+    metric: {
+      notExposed: "現在のハードウェアまたはプロバイダーはこの値を公開していません。",
+      needsComponent: (value: string) => `現在のプロバイダーは有効な値を返しません。より完全な ${value}、または対応するハードウェア／OEM コンポーネントが必要です。`,
+      noValidReading: "現在のハードウェアまたはプロバイダーは有効な値を返しません。"
     }
   }
 };

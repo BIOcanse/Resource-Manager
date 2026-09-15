@@ -1,3 +1,4 @@
+﻿using ResourceManager.App.Domain.Messages;
 namespace ResourceManager.App.Domain.Metrics;
 
 public sealed record MetricDefinition(
@@ -10,7 +11,7 @@ public sealed record MetricDefinition(
     string? RequiredComponentId = null,
     string? RequiredComponentName = null,
     bool Selectable = true,
-    string? DisabledReason = null,
+    BackendMessage? DisabledReason = null,
     string? ScopeKind = null,
     string? ScopeKey = null);
 

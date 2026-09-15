@@ -27,6 +27,11 @@ export const zhBackendMessagesCopy = {
     },
     gpuPlacement: {
       singleAdapter: "这台机器只有一个显卡，GPU 调度没有可选目标。"
+    },
+    metric: {
+      notExposed: "当前硬件或 Provider 未暴露这个读数。",
+      needsComponent: (value: string) => `当前 Provider 未返回有效读数，需要更完整的 ${value} 或对应硬件/OEM 组件。`,
+      noValidReading: "当前硬件或 Provider 未返回有效读数。"
     }
   }
 };
