@@ -1,4 +1,5 @@
 import { For, Show, createUniqueId, type JSX } from "solid-js";
+import { uiText } from "../text.ts";
 import type { UserDetailSection } from "../presentation/userDetails";
 import {
   DialogActions,
@@ -60,7 +61,7 @@ export function UserDetailsDialog(props: {
       </DialogBody>
       <DialogActions>
         {props.actions}
-        <button class="secondary" type="button" onClick={props.onClose}>关闭</button>
+        <button class="secondary" type="button" onClick={props.onClose}>{uiText.misc.close}</button>
       </DialogActions>
     </DialogRoot>
   );

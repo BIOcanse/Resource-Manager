@@ -61,6 +61,7 @@ export const enSoftwareCopy: Pick<
     installed: "Installed",
     settingsAndMigration: "Settings and migration",
     issueStrip: "Software issues",
+    issueHeading: "Issue notice",
     issueCurrentReport: "Current report",
     issueKnownCatalog: "Known issue catalog",
     issueReferences: (label: string) => `${label} references`

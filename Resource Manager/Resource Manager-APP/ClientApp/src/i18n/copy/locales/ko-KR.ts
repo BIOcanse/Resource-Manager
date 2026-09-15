@@ -104,6 +104,7 @@ const koKrAppCopy: AppCopy = {
     installed: "설치됨",
     settingsAndMigration: "설정 및 마이그레이션",
     issueStrip: "소프트웨어 문제",
+    issueHeading: "문제 알림",
     issueCurrentReport: "현재 보고서",
     issueKnownCatalog: "알려진 문제 목록",
     issueReferences: (label: string) => `${label} 참고 자료`
@@ -1048,7 +1049,7 @@ const koKrAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, 사용률 ${usage}, 성능 ${performance}, 실행 시간 ${executionTime}`,
     corePerformance: (value: string) => `성능 ${value}`,
-    coreProcessScore: (value: string) => `프로세스 ${value}`,
+    coreExecutionTime: (value: string) => `실행 시간 ${value}`,
     coreDetailTitle: "CPU 코어 세부 정보",
     coreDetailSummary: "소프트웨어 단위의 전용 범위와 고정 범위를 펼쳐서 보여 줍니다. 변경은 각 소프트웨어 설정에서 하세요.",
     physicalCoreList: "물리 코어",
@@ -1944,7 +1945,9 @@ const koKrAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "이 구성 요소는 먼저 외부 공급업체 약관에 동의한 다음 설치할 버전을 선택해야 합니다.",
+    installIntroWithoutTerms: "설치할 버전을 선택한 다음 다운로드와 설치를 시작합니다.",
     manualIntro: "이 구성 요소는 자동으로 가져올 수 있는 설치 관리자가 없습니다. 외부 공급업체 약관에 동의한 뒤 출처 페이지에서 직접 내려받으세요.",
+    manualIntroWithoutTerms: "이 구성 요소는 자동으로 가져올 수 있는 설치 프로그램이 없으므로 출처 페이지에서 직접 내려받아야 합니다.",
     vendor: (vendor: string) => `제공: ${vendor}`,
     openTerms: "약관 읽기",
     openSourcePage: "출처 페이지 열기",
@@ -1956,7 +1959,9 @@ const koKrAppCopy: AppCopy = {
     versionLookupFailed: "최신 버전 정보를 읽지 못했습니다.",
     elevationNote: "설치하려면 관리자 권한이 필요합니다.",
     agreeAndInstall: "읽고 동의함, 설치",
+    startInstall: "설치 시작",
     agreeAndOpen: "읽고 동의함, 다운로드 페이지 열기",
+    openDownloadPage: "다운로드 페이지 열기",
     manualNextStep: "출처 페이지와 설치 관리자 캐시 폴더를 열었습니다. 내려받은 설치 관리자를 그 폴더에 넣은 뒤 돌아와 «설치»를 선택하세요."
   },
   metricLabel: {
