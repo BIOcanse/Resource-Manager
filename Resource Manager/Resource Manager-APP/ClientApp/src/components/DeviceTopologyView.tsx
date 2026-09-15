@@ -53,6 +53,7 @@ import { DeviceSpecializedSummary } from "./deviceTopology/DeviceSpecializedSumm
 import { ObservationStateNotice } from "./ObservationStateNotice";
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl";
+import { renderBackendMessage } from "../presentation/backendMessage.ts";
 import { uiText } from "../text.ts";
 
 interface DeviceTopologyListNode {
@@ -485,8 +486,8 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                             </>
                           )}
                         </Show>
-                        <DetailRow label={uiText.deviceTopology.label.confidence} value={port().confidence} />
-                        <DetailRow label={uiText.deviceTopology.label.source} value={port().source} />
+                        <DetailRow label={uiText.deviceTopology.label.confidence} value={renderBackendMessage(port().confidence)} />
+                        <DetailRow label={uiText.deviceTopology.label.source} value={renderBackendMessage(port().source)} />
                         <DetailRow label={uiText.deviceTopology.label.upstreamDevice} value={port().upstreamDisplayName ?? "--"} />
                         <DetailRow label={uiText.deviceTopology.label.deviceParent} value={port().nativeParentDisplayName ?? "--"} />
                         <DetailRow label={uiText.deviceTopology.label.locationText} value={port().locationInfo ?? "--"} />

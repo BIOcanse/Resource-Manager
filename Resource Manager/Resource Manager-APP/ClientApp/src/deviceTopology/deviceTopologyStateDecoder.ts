@@ -1,13 +1,13 @@
 import {
   defineResponseDecoder,
   requireArray,
+  requireBackendMessage,
   requireNonEmptyString,
   requireNonNegativeSafeInteger,
   requireNullable,
   requireOneOf,
   requireRecord,
   requireString,
-  requireStringArray,
   ResponseDecodeError
 } from "../frontendRuntime/request/ResponseDecoder.ts";
 import type {
@@ -20,7 +20,7 @@ import type {
 } from "../types.ts";
 import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
 
-const currentSchemaVersion = "3.0.0";
+const currentSchemaVersion = "4.0.0";
 const statuses = ["warming", "ready", "refreshing", "failed"] as const;
 const sources = ["memory", "persisted", "live"] as const;
 const diagnosticStatuses = ["required-incomplete", "optional-degraded"] as const;
@@ -86,7 +86,7 @@ function decodeSourceDiagnostic(
       `${path}.status`,
       diagnosticStatuses) as DeviceTopologySourceDiagnosticStatus,
     code: requireNonEmptyString(record.code, `${path}.code`),
-    message: requireNonEmptyString(record.message, `${path}.message`)
+    messageCode: requireBackendMessage(record.messageCode, `${path}.messageCode`)
   };
 }
 
@@ -106,7 +106,8 @@ function decodeSnapshot(value: unknown, path: string): DeviceTopologySnapshot {
     capturedAt: requireTimestamp(record.capturedAt, `${path}.capturedAt`),
     system: decodeSystemIdentity(record.system, `${path}.system`),
     ports,
-    notes: requireStringArray(record.notes, `${path}.notes`)
+    notes: requireArray(record.notes, `${path}.notes`)
+      .map((item, index) => requireBackendMessage(item, `${path}.notes[${index}]`))
   };
 }
 

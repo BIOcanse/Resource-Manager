@@ -6,6 +6,7 @@ import {
   type ObservationState
 } from "../observation/observationState.ts";
 import type { DeviceTopologySnapshotState } from "../types";
+import { renderBackendMessage } from "../presentation/backendMessage.ts";
 import { uiText } from "../text.ts";
 
 export function projectDeviceTopologyObservation(
@@ -32,10 +33,12 @@ export function projectDeviceTopologyObservation(
   }
 
   if (state.state === "failed") {
-    const diagnosticMessage = state.attemptDiagnostics[0]?.message;
+    const diagnostic = state.attemptDiagnostics[0];
     return failedObservation(
       hasSnapshot ? lastGoodObservation(state, capturedAt) : loadingObservation(),
-      diagnosticMessage ?? uiText.deviceTopologyState.collectionFailed);
+      diagnostic
+        ? renderBackendMessage(diagnostic.messageCode, uiText.deviceTopologyState.collectionFailed)
+        : uiText.deviceTopologyState.collectionFailed);
   }
 
   if (!hasSnapshot) {
