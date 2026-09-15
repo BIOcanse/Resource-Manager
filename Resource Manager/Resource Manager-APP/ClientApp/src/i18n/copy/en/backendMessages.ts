@@ -106,7 +106,13 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       usbDeviceInLegacyHub: "Device is on a legacy hub",
       usbEnumerating: "Enumerating",
       usbResetting: "Resetting",
-      usbUnknownStatus: (status: string) => `Windows returned unknown status ${status}`
+      usbUnknownStatus: (status: string) => `Windows returned unknown status ${status}`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk + Win32 disk, partition and volume associations",
+      sourceUsbHidEndpointDescriptors: "USB HID and endpoint descriptors",
+      sourceUsbVideoClassDescriptors: "USB Video Class configuration descriptors",
+      sourceUsbDescriptorsAndWindows: "USB device and configuration descriptors + Windows PnP",
+      sourceWindowsWpdPnp: "Windows WPD / PnP properties"
     }
   }
 };

@@ -139,7 +139,13 @@ function deviceTopologyRenderers(): Record<number, Renderer> {
     54: () => copy.usbDeviceInLegacyHub,
     55: () => copy.usbEnumerating,
     56: () => copy.usbResetting,
-    57: (args) => copy.usbUnknownStatus(args[0] ?? "")
+    57: (args) => copy.usbUnknownStatus(args[0] ?? ""),
+    58: () => copy.sourceWin32DiskAssociations,
+    59: () => copy.sourceMsftDiskAssociations,
+    60: () => copy.sourceUsbHidEndpointDescriptors,
+    61: () => copy.sourceUsbVideoClassDescriptors,
+    62: () => copy.sourceUsbDescriptorsAndWindows,
+    63: () => copy.sourceWindowsWpdPnp
   };
 }
 

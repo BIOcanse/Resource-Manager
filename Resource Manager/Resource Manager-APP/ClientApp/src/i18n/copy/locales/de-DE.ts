@@ -654,6 +654,28 @@ const deDeAppCopy: AppCopy = {
       disconnected: "Nicht verbunden",
       unknown: "Status unbekannt"
     },
+    hidType: {
+      keyboard: "Tastatur",
+      mouse: "Maus",
+      inputDevice: "HID-Eingabegerät"
+    },
+    portableDeviceType: {
+      phone: "Telefon",
+      tablet: "Tablet",
+      camera: "Digitalkamera",
+      smartDevice: "Tragbares Smart-Gerät"
+    },
+    storageHealth: {
+      healthy: "In Ordnung",
+      warning: "Warnung",
+      unhealthy: "Fehlerhaft",
+      unknown: "Unbekannt"
+    },
+    mountState: {
+      mounted: "Eingebunden",
+      notReady: "Nicht bereit",
+      unknown: "Status unbekannt"
+    },
     displayLocation: {
       internal: "Interne Verbindung",
       external: "Externe Verbindung"
@@ -2016,7 +2038,13 @@ const deDeAppCopy: AppCopy = {
       usbDeviceInLegacyHub: "Gerät an einem Legacy-Hub",
       usbEnumerating: "Wird enumeriert",
       usbResetting: "Wird zurückgesetzt",
-      usbUnknownStatus: (status: string) => `Windows hat den unbekannten Status ${status} zurückgegeben`
+      usbUnknownStatus: (status: string) => `Windows hat den unbekannten Status ${status} zurückgegeben`,
+      sourceWin32DiskAssociations: "Win32_DiskDrive / DiskPartition / LogicalDisk",
+      sourceMsftDiskAssociations: "MSFT_Disk + Win32-Zuordnungen von Datenträgern, Partitionen und Volumes",
+      sourceUsbHidEndpointDescriptors: "USB-HID- und Endpunktdeskriptoren",
+      sourceUsbVideoClassDescriptors: "USB-Video-Class-Konfigurationsdeskriptoren",
+      sourceUsbDescriptorsAndWindows: "USB-Geräte- und Konfigurationsdeskriptoren + Windows PnP",
+      sourceWindowsWpdPnp: "Windows-WPD-/PnP-Eigenschaften"
     }
   }
 };
