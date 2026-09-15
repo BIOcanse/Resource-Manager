@@ -2004,7 +2004,19 @@ const jaJpAppCopy: AppCopy = {
       roleUcsiConnectorManager: "USB Type-C コネクターマネージャー",
       roleUsb4HostRouter: "USB4 ホストルーター",
       roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 デバイスルーター",
-      roleUsb4P2PNetwork: "USB4 ホスト間ネットワークアダプター"
+      roleUsb4P2PNetwork: "USB4 ホスト間ネットワークアダプター",
+      usbNotConnected: "未接続",
+      usbConnected: "接続済み",
+      usbEnumerationFailed: "列挙に失敗",
+      usbDeviceGeneralFailure: "デバイスの一般的な障害",
+      usbDeviceCausedOvercurrent: "デバイスが過電流を発生",
+      usbInsufficientPower: "電力不足",
+      usbInsufficientBandwidth: "帯域幅不足",
+      usbHubNestedTooDeep: "ハブの階層が深すぎます",
+      usbDeviceInLegacyHub: "レガシーハブ上のデバイス",
+      usbEnumerating: "列挙中",
+      usbResetting: "リセット中",
+      usbUnknownStatus: (status: string) => `Windows が不明な状態 ${status} を返しました`
     }
   }
 };

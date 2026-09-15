@@ -1,5 +1,7 @@
 using Microsoft.Win32.SafeHandles;
+using ResourceManager.App.Domain.Messages;
 using System.Buffers.Binary;
+using System.Globalization;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -355,19 +357,15 @@ internal static class WindowsUsbHubIoctlReader
         return string.IsNullOrWhiteSpace(path) ? null : path;
     }
 
-    internal static string DescribeNegotiatedUsbSpeed(
+    /// <summary>没有设备或还没协商出速率时返回 null，由前端出占位文案。</summary>
+    internal static string? DescribeNegotiatedUsbSpeed(
         uint connectionStatus,
         byte speed,
         DeviceTopologyUsbPortCapability? capability)
     {
-        if (connectionStatus == 0)
-        {
-            return "未连接";
-        }
-
         if (connectionStatus != 1)
         {
-            return "未协商";
+            return null;
         }
 
         if (capability?.OperatingAtSuperSpeedPlusOrHigher == true)
@@ -415,27 +413,33 @@ internal static class WindowsUsbHubIoctlReader
             return "USB Full-Speed / 12Mbps";
         }
 
-        return "未知";
+        return null;
     }
 
-    private static string DescribeConnectionStatus(uint status)
+    private static BackendMessage DescribeConnectionStatus(uint status)
     {
         return status switch
         {
-            0 => "未连接",
-            1 => "已连接",
-            2 => "枚举失败",
-            3 => "设备通用故障",
-            4 => "设备引发过流",
-            5 => "电源不足",
-            6 => "带宽不足",
-            7 => "Hub 嵌套过深",
-            8 => "设备位于旧版 Hub",
-            9 => "枚举中",
-            10 => "重置中",
-            _ => $"状态 {status}"
+            0 => Status(BackendMessageCodes.DeviceTopology.UsbNotConnected),
+            1 => Status(BackendMessageCodes.DeviceTopology.UsbConnected),
+            2 => Status(BackendMessageCodes.DeviceTopology.UsbEnumerationFailed),
+            3 => Status(BackendMessageCodes.DeviceTopology.UsbDeviceGeneralFailure),
+            4 => Status(BackendMessageCodes.DeviceTopology.UsbDeviceCausedOvercurrent),
+            5 => Status(BackendMessageCodes.DeviceTopology.UsbInsufficientPower),
+            6 => Status(BackendMessageCodes.DeviceTopology.UsbInsufficientBandwidth),
+            7 => Status(BackendMessageCodes.DeviceTopology.UsbHubNestedTooDeep),
+            8 => Status(BackendMessageCodes.DeviceTopology.UsbDeviceInLegacyHub),
+            9 => Status(BackendMessageCodes.DeviceTopology.UsbEnumerating),
+            10 => Status(BackendMessageCodes.DeviceTopology.UsbResetting),
+            _ => BackendMessage.Create(
+                BackendMessageDomains.DeviceTopology,
+                BackendMessageCodes.DeviceTopology.UsbUnknownStatus,
+                status.ToString(CultureInfo.InvariantCulture))
         };
     }
+
+    private static BackendMessage Status(byte code)
+        => BackendMessage.Create(BackendMessageDomains.DeviceTopology, code);
 
     public static string NormalizeDriverKey(string? driverKey)
     {

@@ -379,7 +379,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <Show when={!port().display}>
                           <DetailRow
                             label={selectedNodeIsDevice() ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed}
-                            value={port().speed}
+                            value={port().speed ?? notReportedValue()}
                           />
                         </Show>
                         <Show when={!port().display || port().physicalMaximumSpeed}>
@@ -441,7 +441,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           {(network) => (
                             <>
                               <DetailRow label={uiText.deviceTopology.label.networkInterface} value={network().interfaceName ?? "--"} />
-                              <DetailRow label={uiText.deviceTopology.label.connectionState} value={network().connectionState} />
+                              <DetailRow label={uiText.deviceTopology.label.connectionState} value={userFacingNetworkState(network().connectionState)} />
                               <Show when={network().transmitLinkSpeed && network().receiveLinkSpeed && network().transmitLinkSpeed !== network().receiveLinkSpeed}>
                                 <DetailRow label={uiText.deviceTopology.label.transmitSpeed} value={network().transmitLinkSpeed ?? "--"} />
                                 <DetailRow label={uiText.deviceTopology.label.receiveSpeed} value={network().receiveLinkSpeed ?? "--"} />
@@ -460,7 +460,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                             <>
                               <DetailRow label={selectedNodeIsDevice() ? uiText.deviceTopology.label.upstreamHubPort : uiText.deviceTopology.label.hubPort} value={formatUsbPort(usb())} />
                               <Show when={props.scope === "internal"}>
-                                <DetailRow label={uiText.deviceTopology.label.usbConnection} value={usb().connectionStatus} />
+                                <DetailRow label={uiText.deviceTopology.label.usbConnection} value={renderBackendMessage(usb().connectionStatus)} />
                               </Show>
                               <Show when={!selectedNodeIsDevice()}>
                                 <DetailRow label={uiText.deviceTopology.label.connector} value={formatUsbConnector(usb())} />
@@ -643,7 +643,7 @@ function deviceUserDetailSections(
     ]) : null,
     usb ? userDetailSection("USB", [
       userDetailItem(uiText.deviceTopology.label.port, formatUsbPort(usb)),
-      userDetailItem(uiText.deviceTopology.label.connectionState, userFacingUsbState(usb.connectionStatus)),
+      userDetailItem(uiText.deviceTopology.label.connectionState, renderBackendMessage(usb.connectionStatus)),
       userDetailItem(uiText.deviceTopology.label.connector, formatUsbConnector(usb)),
       userDetailItem(uiText.deviceTopology.label.supportedProtocols, reportedDeviceValue(usb.supportedProtocols)),
       userDetailItem(uiText.deviceTopology.label.portCapability, reportedDeviceValue(formatUsbCapability(usb))),
@@ -668,21 +668,18 @@ function isReportedDeviceValue(value?: string | null) {
   return Boolean(text && text !== "--" && text.toLocaleLowerCase() !== "unknown" && !text.includes(uiText.deviceTopology.notReportedMarker));
 }
 
+// 后端给的是状态 id（见 DeviceNetworkConnectionStates），措辞在这里。
 function userFacingNetworkState(value?: string | null) {
-  switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "up":
+  switch (String(value ?? "").trim()) {
     case "connected": return uiText.deviceTopology.connectionState.connected;
-    case "down":
     case "disconnected": return uiText.deviceTopology.connectionState.disconnected;
+    case "not-reported": return uiText.deviceTopology.notReportedMarker;
     default: return uiText.deviceTopology.connectionState.unknown;
   }
 }
 
-function userFacingUsbState(value?: string | null) {
-  const state = String(value ?? "").trim().toLocaleLowerCase();
-  if (state.includes("no") || state.includes("not") || state.includes("disconnect") || state.includes("empty") || state.includes("none")) return uiText.deviceTopology.connectionState.disconnected;
-  if (state.includes("connected")) return uiText.deviceTopology.connectionState.connected;
-  return uiText.deviceTopology.connectionState.unknown;
+function notReportedValue() {
+  return uiText.deviceTopology.notReportedMarker;
 }
 
 // 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。

@@ -92,7 +92,19 @@ export const zhBackendMessagesCopy = {
       roleUcsiConnectorManager: "USB Type-C 连接器管理器",
       roleUsb4HostRouter: "USB4 主机路由器",
       roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 设备路由器",
-      roleUsb4P2PNetwork: "USB4 主机互联网络适配器"
+      roleUsb4P2PNetwork: "USB4 主机互联网络适配器",
+      usbNotConnected: "未连接",
+      usbConnected: "已连接",
+      usbEnumerationFailed: "枚举失败",
+      usbDeviceGeneralFailure: "设备通用故障",
+      usbDeviceCausedOvercurrent: "设备引发过流",
+      usbInsufficientPower: "电源不足",
+      usbInsufficientBandwidth: "带宽不足",
+      usbHubNestedTooDeep: "Hub 嵌套过深",
+      usbDeviceInLegacyHub: "设备位于旧版 Hub",
+      usbEnumerating: "枚举中",
+      usbResetting: "重置中",
+      usbUnknownStatus: (status: string) => `Windows 返回了未知状态 ${status}`
     }
   }
 };

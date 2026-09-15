@@ -420,11 +420,11 @@ function resolveNonUsbConnectionState(port: DeviceTopologyPort): ExternalInterfa
     return port.display.active && port.display.targetAvailable ? "connected" : "disconnected";
   }
   if (port.network) {
-    const state = port.network.connectionState.toLocaleLowerCase();
-    if (state.includes("connected") || state === "up" || state.includes("已连接")) return "connected";
-    if (state.includes("disconnected") || state === "down" || state.includes("未连接")) return "disconnected";
+    const state = port.network.connectionState.trim();
+    if (state === "connected") return "connected";
+    if (state === "disconnected") return "disconnected";
   }
-  return port.speed.includes("未连接") ? "disconnected" : "unknown";
+  return "unknown";
 }
 
 function resolveNonUsbStateLabel(port: DeviceTopologyPort) {

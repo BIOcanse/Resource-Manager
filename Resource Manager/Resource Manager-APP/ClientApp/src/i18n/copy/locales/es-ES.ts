@@ -2004,7 +2004,19 @@ const esEsAppCopy: AppCopy = {
       roleUcsiConnectorManager: "Administrador de conectores USB Type-C",
       roleUsb4HostRouter: "Enrutador host USB4",
       roleUsb4DeviceRouter: "Enrutador de dispositivo USB4 / Thunderbolt 3",
-      roleUsb4P2PNetwork: "Adaptador de red entre hosts USB4"
+      roleUsb4P2PNetwork: "Adaptador de red entre hosts USB4",
+      usbNotConnected: "No conectado",
+      usbConnected: "Conectado",
+      usbEnumerationFailed: "Error de enumeración",
+      usbDeviceGeneralFailure: "Error general del dispositivo",
+      usbDeviceCausedOvercurrent: "El dispositivo provocó una sobrecorriente",
+      usbInsufficientPower: "Alimentación insuficiente",
+      usbInsufficientBandwidth: "Ancho de banda insuficiente",
+      usbHubNestedTooDeep: "Concentradores anidados demasiado profundo",
+      usbDeviceInLegacyHub: "Dispositivo en un concentrador heredado",
+      usbEnumerating: "Enumerando",
+      usbResetting: "Restableciendo",
+      usbUnknownStatus: (status: string) => `Windows devolvió el estado desconocido ${status}`
     }
   }
 };

@@ -2004,7 +2004,19 @@ const ruRuAppCopy: AppCopy = {
       roleUcsiConnectorManager: "Диспетчер разъёмов USB Type-C",
       roleUsb4HostRouter: "Хост-маршрутизатор USB4",
       roleUsb4DeviceRouter: "Маршрутизатор устройства USB4 / Thunderbolt 3",
-      roleUsb4P2PNetwork: "Сетевой адаптер связи хостов USB4"
+      roleUsb4P2PNetwork: "Сетевой адаптер связи хостов USB4",
+      usbNotConnected: "Не подключено",
+      usbConnected: "Подключено",
+      usbEnumerationFailed: "Сбой перечисления",
+      usbDeviceGeneralFailure: "Общий сбой устройства",
+      usbDeviceCausedOvercurrent: "Устройство вызвало перегрузку по току",
+      usbInsufficientPower: "Недостаточно питания",
+      usbInsufficientBandwidth: "Недостаточно пропускной способности",
+      usbHubNestedTooDeep: "Слишком глубокая вложенность концентраторов",
+      usbDeviceInLegacyHub: "Устройство на устаревшем концентраторе",
+      usbEnumerating: "Перечисление",
+      usbResetting: "Сброс",
+      usbUnknownStatus: (status: string) => `Windows вернула неизвестное состояние ${status}`
     }
   }
 };

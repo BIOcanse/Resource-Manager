@@ -131,19 +131,16 @@ function resolveConnectionState(port: DeviceTopologyPort): DeviceTopologyConnect
   }
 
   if (port.network) {
-    const state = port.network.connectionState.trim().toLocaleLowerCase();
-    if (state.includes("disconnected") || state === "down" || state.includes("未连接")) {
+    const state = port.network.connectionState.trim();
+    if (state === "disconnected") {
       return "disconnected";
     }
-    if (state.includes("connected") || state === "up" || state.includes("已连接")) {
+    if (state === "connected") {
       return "connected";
     }
   }
 
-  if (port.speed.includes("未连接")) {
-    return "disconnected";
-  }
-
+  // 走到这里说明这个端口没有 USB / 显示 / 网络三种连接事实中的任何一种。
   return "unknown";
 }
 
@@ -241,11 +238,10 @@ function displayValue(value: string | null | undefined) {
   return normalized || "--";
 }
 
-function meaningfulSpeed(value: string) {
-  const normalized = value.trim();
-  return !normalized || normalized === "不适用" || normalized === "未知" || normalized === "未连接"
-    ? undefined
-    : normalized;
+// 后端读不出速率时给的是 null，占位词不再从字符串里认。
+function meaningfulSpeed(value: string | null) {
+  const normalized = (value ?? "").trim();
+  return normalized ? normalized : undefined;
 }
 
 function firstText(...values: Array<string | null | undefined>) {

@@ -296,5 +296,41 @@ public static class BackendMessageCodes
 
         /// <summary>互联角色：USB4 主机互联网络适配器。参数：无。</summary>
         public const byte RoleUsb4P2PNetwork = 45;
+
+        /// <summary>USB 端口连接状态：没有设备。参数：无。</summary>
+        public const byte UsbNotConnected = 46;
+
+        /// <summary>USB 端口连接状态：已连接。参数：无。</summary>
+        public const byte UsbConnected = 47;
+
+        /// <summary>USB 端口连接状态：枚举失败。参数：无。</summary>
+        public const byte UsbEnumerationFailed = 48;
+
+        /// <summary>USB 端口连接状态：设备通用故障。参数：无。</summary>
+        public const byte UsbDeviceGeneralFailure = 49;
+
+        /// <summary>USB 端口连接状态：设备引发过流。参数：无。</summary>
+        public const byte UsbDeviceCausedOvercurrent = 50;
+
+        /// <summary>USB 端口连接状态：电源不足。参数：无。</summary>
+        public const byte UsbInsufficientPower = 51;
+
+        /// <summary>USB 端口连接状态：带宽不足。参数：无。</summary>
+        public const byte UsbInsufficientBandwidth = 52;
+
+        /// <summary>USB 端口连接状态：Hub 嵌套过深。参数：无。</summary>
+        public const byte UsbHubNestedTooDeep = 53;
+
+        /// <summary>USB 端口连接状态：设备位于旧版 Hub。参数：无。</summary>
+        public const byte UsbDeviceInLegacyHub = 54;
+
+        /// <summary>USB 端口连接状态：枚举中。参数：无。</summary>
+        public const byte UsbEnumerating = 55;
+
+        /// <summary>USB 端口连接状态：重置中。参数：无。</summary>
+        public const byte UsbResetting = 56;
+
+        /// <summary>USB 端口连接状态：Windows 返回了未定义的状态值。参数：1 = 原始状态号。</summary>
+        public const byte UsbUnknownStatus = 57;
     }
 }

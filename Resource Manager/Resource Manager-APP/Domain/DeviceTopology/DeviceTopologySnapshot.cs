@@ -25,7 +25,7 @@ public sealed record DeviceTopologyPort(
     string BusKind,
     string HardwareKind,
     string Protocol,
-    string Speed,
+    string? Speed,
     string DeviceId,
     string? PnpClass,
     string? Manufacturer,
@@ -87,6 +87,7 @@ public sealed record DeviceTopologyDisplayConnection(
 
 public sealed record DeviceTopologyNetworkConnection(
     string? InterfaceName,
+    /// <summary>取值见 <see cref="DeviceNetworkConnectionStates"/>，措辞由前端出。</summary>
     string ConnectionState,
     string? TransmitLinkSpeed,
     string? ReceiveLinkSpeed,
@@ -112,8 +113,8 @@ public sealed record DeviceTopologyUsbConnection(
     string HubDevicePath,
     uint PortNumber,
     bool DeviceConnected,
-    string ConnectionStatus,
-    string NegotiatedSpeed,
+    BackendMessage ConnectionStatus,
+    string? NegotiatedSpeed,
     ushort DeviceAddress,
     string? VendorId,
     string? ProductId,
@@ -263,6 +264,15 @@ public static class DeviceBusKinds
     public const string Bluetooth = "bluetooth";
     public const string System = "system";
     public const string Unknown = "unknown";
+}
+
+/// <summary>网络接口的连接状态。只有状态，没有措辞。</summary>
+public static class DeviceNetworkConnectionStates
+{
+    public const string Connected = "connected";
+    public const string Disconnected = "disconnected";
+    public const string Unknown = "unknown";
+    public const string NotReported = "not-reported";
 }
 
 public static class DeviceInterconnectKinds

@@ -83,7 +83,7 @@ const port = {
     hubDevicePath: "\\\\?\\usb#hub",
     portNumber: 1,
     deviceConnected: true,
-    connectionStatus: "connected",
+    connectionStatus: { domain: 5, code: 47, args: [] },
     negotiatedSpeed: "super-speed-plus",
     deviceAddress: 2,
     vendorId: "1234",

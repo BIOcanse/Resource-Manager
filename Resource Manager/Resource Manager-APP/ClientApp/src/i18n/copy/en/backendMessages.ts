@@ -94,7 +94,19 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       roleUcsiConnectorManager: "USB Type-C connector manager",
       roleUsb4HostRouter: "USB4 host router",
       roleUsb4DeviceRouter: "USB4 / Thunderbolt 3 device router",
-      roleUsb4P2PNetwork: "USB4 host-to-host network adapter"
+      roleUsb4P2PNetwork: "USB4 host-to-host network adapter",
+      usbNotConnected: "Not connected",
+      usbConnected: "Connected",
+      usbEnumerationFailed: "Enumeration failed",
+      usbDeviceGeneralFailure: "General device failure",
+      usbDeviceCausedOvercurrent: "Device caused an overcurrent",
+      usbInsufficientPower: "Insufficient power",
+      usbInsufficientBandwidth: "Insufficient bandwidth",
+      usbHubNestedTooDeep: "Hub nested too deeply",
+      usbDeviceInLegacyHub: "Device is on a legacy hub",
+      usbEnumerating: "Enumerating",
+      usbResetting: "Resetting",
+      usbUnknownStatus: (status: string) => `Windows returned unknown status ${status}`
     }
   }
 };

@@ -2004,7 +2004,19 @@ const frFrAppCopy: AppCopy = {
       roleUcsiConnectorManager: "Gestionnaire de connecteurs USB Type-C",
       roleUsb4HostRouter: "Routeur hôte USB4",
       roleUsb4DeviceRouter: "Routeur de périphérique USB4 / Thunderbolt 3",
-      roleUsb4P2PNetwork: "Adaptateur réseau hôte à hôte USB4"
+      roleUsb4P2PNetwork: "Adaptateur réseau hôte à hôte USB4",
+      usbNotConnected: "Non connecté",
+      usbConnected: "Connecté",
+      usbEnumerationFailed: "Échec de l'énumération",
+      usbDeviceGeneralFailure: "Défaillance générale du périphérique",
+      usbDeviceCausedOvercurrent: "Le périphérique a provoqué une surintensité",
+      usbInsufficientPower: "Alimentation insuffisante",
+      usbInsufficientBandwidth: "Bande passante insuffisante",
+      usbHubNestedTooDeep: "Concentrateurs imbriqués trop profondément",
+      usbDeviceInLegacyHub: "Périphérique sur un concentrateur hérité",
+      usbEnumerating: "Énumération en cours",
+      usbResetting: "Réinitialisation en cours",
+      usbUnknownStatus: (status: string) => `Windows a renvoyé l'état inconnu ${status}`
     }
   }
 };
