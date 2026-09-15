@@ -676,6 +676,39 @@ const koKrAppCopy: AppCopy = {
       notReady: "준비되지 않음",
       unknown: "상태를 알 수 없음"
     },
+    outputTechnology: {
+      "other": "기타 디스플레이 연결",
+      "vga": "VGA / HD15",
+      "s-video": "S-Video",
+      "composite-video": "컴포지트 비디오",
+      "component-video": "컴포넌트 비디오",
+      "dvi": "DVI",
+      "hdmi": "HDMI",
+      "lvds": "LVDS 내장 패널",
+      "d-jpn": "D 단자",
+      "sdi": "SDI",
+      "displayport-external": "DisplayPort",
+      "displayport-embedded": "내장 DisplayPort",
+      "udi-external": "UDI",
+      "udi-embedded": "내장 UDI",
+      "sdtv-dongle": "SDTV 동글",
+      "miracast": "Miracast",
+      "indirect-wired": "간접 유선 디스플레이",
+      "indirect-virtual": "간접 가상 디스플레이",
+      "displayport-usb4-tunnel": "USB4를 통한 DisplayPort",
+      "internal": "내장 디스플레이 연결",
+      "unknown": "알 수 없는 디스플레이 연결"
+    },
+    edidDigitalInterface: {
+      "analog": "아날로그 디스플레이 입력",
+      "undefined": "정의되지 않은 디지털 인터페이스",
+      "dvi": "DVI",
+      "hdmi-type-a": "HDMI Type-A",
+      "hdmi-type-b": "HDMI Type-B",
+      "mddi": "MDDI",
+      "displayport": "DisplayPort",
+      "reserved": "예약된 디지털 인터페이스"
+    },
     displayLocation: {
       internal: "내부 연결",
       external: "외부 연결"
@@ -2044,7 +2077,21 @@ const koKrAppCopy: AppCopy = {
       sourceUsbHidEndpointDescriptors: "USB HID 및 엔드포인트 디스크립터",
       sourceUsbVideoClassDescriptors: "USB Video Class 구성 디스크립터",
       sourceUsbDescriptorsAndWindows: "USB 장치/구성 디스크립터 + Windows PnP",
-      sourceWindowsWpdPnp: "Windows WPD / PnP 속성"
+      sourceWindowsWpdPnp: "Windows WPD / PnP 속성",
+      pathPnpEnumeration: "PnP 장치 열거",
+      pathDeviceManagerProperties: "장치 관리자 속성",
+      pathUsbHubPort: (port: string) => `USB 허브 > 포트 ${port}`,
+      pathWindowsDisplayPath: (technology: string, monitor: string) => `Windows 디스플레이 경로 > ${technology} > ${monitor}`,
+      pathOemProfile: (profile: string) => `기종별 커넥터 프로필 > ${profile}`,
+      nameConnectedDeviceOnConnector: (connector: string) => `${connector}에 연결된 장치`,
+      nameIdleConnector: (connector: string) => `비어 있는 ${connector}`,
+      nameInternalDisplayPanel: "내장 디스플레이 패널",
+      nameActiveMonitor: (technology: string) => `${technology} 활성 모니터`,
+      nameConnectorInterface: (connector: string) => `${connector} 포트`,
+      kindPhysicalConnector: (connector: string) => `${connector} 물리 커넥터`,
+      kindActiveDisplayPath: (technology: string) => `${technology} 활성 디스플레이 경로`,
+      displayTechnologyAnalog: "아날로그 디스플레이",
+      displayTechnologyDigital: (connection: string) => `디지털 디스플레이 / ${connection}`
     }
   }
 };

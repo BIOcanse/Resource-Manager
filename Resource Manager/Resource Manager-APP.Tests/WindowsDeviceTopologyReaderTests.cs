@@ -203,11 +203,31 @@ public sealed class WindowsDeviceTopologyReaderTests
     }
 
     [Theory]
-    [InlineData(5, "HDMI", DeviceConnectorKinds.Hdmi, true, false)]
-    [InlineData(10, "DisplayPort", DeviceConnectorKinds.DisplayPort, true, false)]
-    [InlineData(18, "DisplayPort USB4 隧道", DeviceConnectorKinds.DisplayPort, true, false)]
-    [InlineData(11, "内置 DisplayPort", DeviceConnectorKinds.InternalDisplay, false, true)]
-    [InlineData(15, "Miracast", DeviceConnectorKinds.WirelessDisplay, false, false)]
+    [InlineData(5, DeviceDisplayOutputTechnologies.Hdmi, DeviceConnectorKinds.Hdmi, true, false)]
+    [InlineData(
+        10,
+        DeviceDisplayOutputTechnologies.DisplayPortExternal,
+        DeviceConnectorKinds.DisplayPort,
+        true,
+        false)]
+    [InlineData(
+        18,
+        DeviceDisplayOutputTechnologies.DisplayPortUsb4Tunnel,
+        DeviceConnectorKinds.DisplayPort,
+        true,
+        false)]
+    [InlineData(
+        11,
+        DeviceDisplayOutputTechnologies.DisplayPortEmbedded,
+        DeviceConnectorKinds.InternalDisplay,
+        false,
+        true)]
+    [InlineData(
+        15,
+        DeviceDisplayOutputTechnologies.Miracast,
+        DeviceConnectorKinds.WirelessDisplay,
+        false,
+        false)]
     public void DisplayOutputTechnology_MapsDocumentedConnectorRoles(
         int technology,
         string expectedName,
@@ -224,8 +244,11 @@ public sealed class WindowsDeviceTopologyReaderTests
     [Theory]
     [InlineData(60u, 1u, "60 Hz")]
     [InlineData(60_000u, 1_001u, "59.94 Hz")]
-    [InlineData(0u, 0u, "未报告")]
-    public void FormatRefreshRate_HandlesExactAndFractionalRates(uint numerator, uint denominator, string expected)
+    [InlineData(0u, 0u, null)]
+    public void FormatRefreshRate_HandlesExactAndFractionalRates(
+        uint numerator,
+        uint denominator,
+        string? expected)
     {
         Assert.Equal(expected, WindowsDisplayPathTopologyReader.FormatRefreshRate(numerator, denominator));
     }
@@ -311,7 +334,10 @@ public sealed class WindowsDeviceTopologyReaderTests
             Source: BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.SourcePnpEnumeration),
             UpstreamDeviceId: null,
             UpstreamDisplayName: null,
-            TopologyPath: deviceId,
+            TopologyPath: BackendMessage.Create(
+                BackendMessageDomains.DeviceTopology,
+                BackendMessageCodes.DeviceTopology.PathDeviceChain,
+                deviceId),
             NativeParentDeviceId: null,
             NativeParentDisplayName: null,
             LocationInfo: null,

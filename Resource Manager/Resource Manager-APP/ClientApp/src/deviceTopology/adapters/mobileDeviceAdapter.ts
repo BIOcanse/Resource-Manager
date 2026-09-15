@@ -1,3 +1,4 @@
+import { portDisplayName } from "../deviceVocabulary.ts";
 import { portableDeviceTypeLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
@@ -28,7 +29,7 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
     const smart = context.port.smartDevice;
     const deviceType = portableDeviceTypeLabel(smart?.deviceType) ?? uiText.deviceAdapters.mobileDevice;
     const manufacturer = displayValue(smart?.manufacturer, context.port.manufacturer ?? undefined);
-    const model = displayValue(smart?.model, context.port.displayName);
+    const model = displayValue(smart?.model, portDisplayName(context.port));
     const firmwareVersion = displayValue(smart?.firmwareVersion, uiText.deviceAdapters.deviceNotReported);
     const protocol = displayValue(smart?.protocol, mediaTransfer ? "MTP / PTP" : undefined);
     const transport = displayValue(smart?.transport, connection.currentLink);

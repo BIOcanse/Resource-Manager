@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -124,11 +126,14 @@ public sealed class HostManagerDisplayCoordinatorTests
                 ProductName: "EDID display",
                 SerialNumber: "1234",
                 BitsPerColorChannel: 8,
-                DigitalInterface: "DisplayPort",
+                DigitalInterface: DeviceEdidDigitalInterfaces.DisplayPort,
                 HdrFormats: null,
                 WidthMillimeters: 600,
                 HeightMillimeters: 340,
-                DisplayTechnology: "LCD",
+                DisplayTechnology: BackendMessage.Create(
+                    BackendMessageDomains.DeviceTopology,
+                    BackendMessageCodes.DeviceTopology.DisplayTechnologyDigital,
+                    DeviceEdidDigitalInterfaces.DisplayPort),
                 PanelTechnology: null)
         };
         var batch = Assert.Single(

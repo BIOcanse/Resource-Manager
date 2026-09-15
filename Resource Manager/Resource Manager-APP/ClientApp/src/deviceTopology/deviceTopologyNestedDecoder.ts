@@ -53,10 +53,18 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
   return {
     id: requireNonEmptyString(record.id, `${path}.id`),
     isPhysicalConnector: requireBoolean(record.isPhysicalConnector, `${path}.isPhysicalConnector`),
-    displayName: requireString(record.displayName, `${path}.displayName`),
+    displayName: requireNullable(record.displayName ?? null, `${path}.displayName`, requireString),
+    displayNameCode: requireNullable(
+      record.displayNameCode ?? null,
+      `${path}.displayNameCode`,
+      requireBackendMessage),
     connectorKind: requireString(record.connectorKind, `${path}.connectorKind`),
     busKind: requireString(record.busKind, `${path}.busKind`),
-    hardwareKind: requireString(record.hardwareKind, `${path}.hardwareKind`),
+    hardwareKind: requireNullable(record.hardwareKind ?? null, `${path}.hardwareKind`, requireString),
+    hardwareKindCode: requireNullable(
+      record.hardwareKindCode ?? null,
+      `${path}.hardwareKindCode`,
+      requireBackendMessage),
     protocol: requireString(record.protocol, `${path}.protocol`),
     speed: requireNullable(record.speed ?? null, `${path}.speed`, requireString),
     physicalMaximumSpeed: nullableString(
@@ -73,7 +81,7 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
     upstreamDisplayName: nullableString(
       record.upstreamDisplayName,
       `${path}.upstreamDisplayName`),
-    topologyPath: requireString(record.topologyPath, `${path}.topologyPath`),
+    topologyPath: requireBackendMessage(record.topologyPath, `${path}.topologyPath`),
     nativeParentDeviceId: nullableString(
       record.nativeParentDeviceId,
       `${path}.nativeParentDeviceId`),
@@ -114,12 +122,16 @@ function decodeDisplayConnection(
 ): DeviceTopologyDisplayConnection {
   const record = requireRecord(value, path);
   return {
-    connectorTechnology: requireString(
-      record.connectorTechnology,
-      `${path}.connectorTechnology`),
+    connectorTechnology: requireNullable(
+      record.connectorTechnology ?? null,
+      `${path}.connectorTechnology`,
+      requireString),
+    outputTechnology: requireNonEmptyString(
+      record.outputTechnology,
+      `${path}.outputTechnology`),
     monitorName: requireString(record.monitorName, `${path}.monitorName`),
     resolution: nullableString(record.resolution, `${path}.resolution`),
-    refreshRate: requireString(record.refreshRate, `${path}.refreshRate`),
+    refreshRate: requireNullable(record.refreshRate ?? null, `${path}.refreshRate`, requireString),
     active: requireBoolean(record.active, `${path}.active`),
     targetAvailable: requireBoolean(record.targetAvailable, `${path}.targetAvailable`),
     internal: requireBoolean(record.internal, `${path}.internal`),
@@ -146,9 +158,10 @@ function decodeDisplayConnection(
       record.sdrWhiteLevelNits,
       `${path}.sdrWhiteLevelNits`),
     hdrFormats: nullableString(record.hdrFormats, `${path}.hdrFormats`),
-    displayTechnology: nullableString(
-      record.displayTechnology,
-      `${path}.displayTechnology`),
+    displayTechnology: requireNullable(
+      record.displayTechnology ?? null,
+      `${path}.displayTechnology`,
+      requireBackendMessage),
     panelTechnology: nullableString(record.panelTechnology, `${path}.panelTechnology`),
     edidVersion: nullableString(record.edidVersion, `${path}.edidVersion`),
     edidProductName: nullableString(record.edidProductName, `${path}.edidProductName`),

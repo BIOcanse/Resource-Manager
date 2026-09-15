@@ -828,10 +828,11 @@ export interface DeviceTopologySystemIdentity {
 export interface DeviceTopologyPort {
   id: string;
   isPhysicalConnector: boolean;
-  displayName: string;
+  /** 设备自报的名字；我们自己生成名字时为 null，改看 displayNameCode。 */
+  displayName: string | null;
   connectorKind: string;
   busKind: string;
-  hardwareKind: string;
+  hardwareKind: string | null;
   protocol: string;
   speed: string | null;
   physicalMaximumSpeed?: string | null;
@@ -844,7 +845,7 @@ export interface DeviceTopologyPort {
   source: BackendMessage;
   upstreamDeviceId?: string | null;
   upstreamDisplayName?: string | null;
-  topologyPath: string;
+  topologyPath: BackendMessage;
   nativeParentDeviceId?: string | null;
   nativeParentDisplayName?: string | null;
   locationInfo?: string | null;
@@ -859,6 +860,10 @@ export interface DeviceTopologyPort {
   compatibleIds: string[];
   devNodeStatus?: number | null;
   problemCode?: number | null;
+  /** 我们自己生成的节点名；设备自报了名字时为 null。 */
+  displayNameCode?: BackendMessage | null;
+  /** 我们自己生成的硬件类别；hardwareKind 有技术名时为 null。 */
+  hardwareKindCode?: BackendMessage | null;
   hid?: DeviceTopologyHidCapabilities | null;
   camera?: DeviceTopologyCameraCapabilities | null;
   smartDevice?: DeviceTopologySmartDeviceCapabilities | null;
@@ -866,10 +871,13 @@ export interface DeviceTopologyPort {
 }
 
 export interface DeviceTopologyDisplayConnection {
-  connectorTechnology: string;
+  /** 机型接口档案给的接口名；没有档案时为 null。 */
+  connectorTechnology: string | null;
+  /** Windows 输出技术 id，措辞由前端出。 */
+  outputTechnology: string;
   monitorName: string;
   resolution?: string | null;
-  refreshRate: string;
+  refreshRate: string | null;
   active: boolean;
   targetAvailable: boolean;
   internal: boolean;
@@ -882,7 +890,7 @@ export interface DeviceTopologyDisplayConnection {
   wideColorEnforced?: boolean | null;
   sdrWhiteLevelNits?: number | null;
   hdrFormats?: string | null;
-  displayTechnology?: string | null;
+  displayTechnology?: BackendMessage | null;
   panelTechnology?: string | null;
   edidVersion?: string | null;
   edidProductName?: string | null;

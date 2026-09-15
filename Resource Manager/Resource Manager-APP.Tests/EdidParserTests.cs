@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 
 namespace Resource_Manager_APP.Tests;
@@ -29,7 +31,10 @@ public sealed class EdidParserTests
         Assert.Equal("EDID 1.4", result.Version);
         Assert.Equal("P275MS PLUS", result.ProductName);
         Assert.Equal(10u, result.BitsPerColorChannel);
-        Assert.Equal("DisplayPort", result.DigitalInterface);
+        Assert.Equal(DeviceEdidDigitalInterfaces.DisplayPort, result.DigitalInterface);
+        Assert.Equal(
+            BackendMessageCodes.DeviceTopology.DisplayTechnologyDigital,
+            result.DisplayTechnology.Code);
         Assert.Equal("HDR10 / PQ / HLG", result.HdrFormats);
         Assert.Equal(600u, result.WidthMillimeters);
         Assert.Equal(340u, result.HeightMillimeters);
