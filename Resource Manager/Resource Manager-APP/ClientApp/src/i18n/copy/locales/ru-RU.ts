@@ -104,6 +104,7 @@ const ruRuAppCopy: AppCopy = {
     installed: "Установлено",
     settingsAndMigration: "Параметры и перенос",
     issueStrip: "Проблемы программы",
+    issueHeading: "Уведомление о проблеме",
     issueCurrentReport: "Текущий отчёт",
     issueKnownCatalog: "Каталог известных проблем",
     issueReferences: (label: string) => `Справочные материалы: ${label}`
@@ -1048,7 +1049,7 @@ const ruRuAppCopy: AppCopy = {
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, загрузка ${usage}, производительность ${performance}, время выполнения ${executionTime}`,
     corePerformance: (value: string) => `Произв. ${value}`,
-    coreProcessScore: (value: string) => `Процессы ${value}`,
+    coreExecutionTime: (value: string) => `Время выполнения ${value}`,
     coreDetailTitle: "Сведения о ядре процессора",
     coreDetailSummary: "Здесь развёрнуты монопольные и закреплённые диапазоны, заданные на уровне программ. Изменяйте их в параметрах каждой программы.",
     physicalCoreList: "Физические ядра",
@@ -1944,7 +1945,9 @@ const ruRuAppCopy: AppCopy = {
   },
   componentAcquisition: {
     installIntro: "Для этого компонента сначала нужно принять внешние условия поставщика, а затем выбрать версию для установки.",
+    installIntroWithoutTerms: "Выберите версию для установки, затем запустите загрузку и установку.",
     manualIntro: "Для этого компонента нет установщика, который можно получить автоматически. Примите внешние условия поставщика и скачайте его со страницы источника.",
+    manualIntroWithoutTerms: "Для этого компонента нет установщика, который можно получить автоматически: скачайте его со страницы источника.",
     vendor: (vendor: string) => `Поставщик: ${vendor}`,
     openTerms: "Прочитать условия",
     openSourcePage: "Открыть страницу источника",
@@ -1956,7 +1959,9 @@ const ruRuAppCopy: AppCopy = {
     versionLookupFailed: "Не удалось получить сведения о последней версии.",
     elevationNote: "Для установки нужны права администратора.",
     agreeAndInstall: "Прочитал и принимаю, установить",
+    startInstall: "Начать установку",
     agreeAndOpen: "Прочитал и принимаю, открыть страницу загрузки",
+    openDownloadPage: "Открыть страницу загрузки",
     manualNextStep: "Страница источника и папка кэша установщиков открыты. Положите скачанный установщик в эту папку и вернитесь, чтобы выбрать «Установить»."
   },
   metricLabel: {

@@ -99,9 +99,9 @@ export function ResourcePerformancePanel(props: {
         >
           <Show
             when={series().length > 0}
-            fallback={<p>当前指标目录中没有可显示的性能指标。</p>}
+            fallback={<p>{uiText.misc.noPerformanceMetrics}</p>}
           >
-            <Show when={latest()} fallback={<p>正在等待第一组性能数据。</p>}>
+            <Show when={latest()} fallback={<p>{uiText.misc.waitingFirstPerformance}</p>}>
               {(point) => (
                 <dl class="resource-performance-summary-grid">
                   <For each={series()}>

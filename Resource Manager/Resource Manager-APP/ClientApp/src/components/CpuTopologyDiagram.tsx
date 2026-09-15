@@ -145,7 +145,7 @@ export function CpuTopologyDiagram(props: {
     >
       <div class="panel-header cpu-topology-header">
         <div class="optimization-heading">
-          <h2>CPU 调度模型</h2>
+          <h2>{uiText.cpuTopology.panel}</h2>
           <span>
             <Show when={topologySummary()} fallback="-">
               {(summary) => summary()}
@@ -270,7 +270,7 @@ export function CpuTopologyDiagram(props: {
                       aria-pressed={Boolean(model().ccds[0] && isSelected(selected(), "ccd", model().ccds[0].id))}
                       onClick={() => toggleSelection(setSelected, "ccd", model().ccds[0]?.id ?? "")}
                     >
-                      <span>环形总线</span>
+                      <span>{uiText.cpuTopology.ringBus}</span>
                       <small>{model().physicalCoreCount} 核心</small>
                     </button>
                   </div>
@@ -465,7 +465,7 @@ function CpuCoreSelectionButton(props: {
       <span>{props.core.label}</span>
       <strong>{usage()}</strong>
       <small>性能 {performance()}</small>
-      <small>执行时长 {executionTime()}</small>
+      <small>{uiText.cpuTopology.coreExecutionTime(executionTime())}</small>
       <Show when={props.variant === "grid"}>
         <span class="cpu-core-meter" aria-hidden="true">
           <span style={{ width: `${clampPercent(props.core.usagePercent ?? 0)}%` }} />
@@ -540,26 +540,26 @@ function CpuTopologyDetailsDialog(props: {
                   <h3>{current().label}</h3>
                   <dl>
                     <div class="user-details-row"><dt>CCD</dt><dd>{ccd()?.label ?? current().ccdId}</dd></div>
-                    <div class="user-details-row"><dt>使用率</dt><dd>{formatUsage(current().usagePercent)}</dd></div>
-                    <div class="user-details-row"><dt>性能分</dt><dd>{formatScore(current().performanceScore)}</dd></div>
+                    <div class="user-details-row"><dt>{uiText.cpuTopology.usage}</dt><dd>{formatUsage(current().usagePercent)}</dd></div>
+                    <div class="user-details-row"><dt>{uiText.cpuTopology.performanceScore}</dt><dd>{formatScore(current().performanceScore)}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.logicalProcessors}</dt><dd>{logical().map((item) => item.id).join(", ") || "--"}</dd></div>
-                    <div class="user-details-row"><dt>缓存</dt><dd>{formatCoreCacheLevels(current().cacheLevels)}</dd></div>
+                    <div class="user-details-row"><dt>{uiText.cpuTopology.cache}</dt><dd>{formatCoreCacheLevels(current().cacheLevels)}</dd></div>
                     <div class="user-details-row">
-                      <dt>执行时长</dt>
+                      <dt>{uiText.cpuTopology.executionTime}</dt>
                       <dd>{formatRuntimeDuration(runtime().executionTimeMilliseconds, props.residencyAvailable)}</dd>
                     </div>
                   </dl>
                   <CpuProcessDurationList processes={runtime().topProcesses} />
                 </section>
                 <section class="user-details-section">
-                  <h3>软件级独占绑定</h3>
+                  <h3>{uiText.cpuTopology.exclusiveBindings}</h3>
                   <Show
                     when={!props.bindingsLoading}
-                    fallback={<p class="user-details-summary">正在读取软件策略。</p>}
+                    fallback={<p class="user-details-summary">{uiText.cpuTopology.loadingSoftwarePolicy}</p>}
                   >
                     <Show
                       when={bindings().length > 0}
-                      fallback={<p class="user-details-summary">当前核心没有软件级独占或锁定绑定。</p>}
+                      fallback={<p class="user-details-summary">{uiText.cpuTopology.noBindings}</p>}
                     >
                       <div class="cpu-exclusive-binding-list">
                         <For each={bindings()}>

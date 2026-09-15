@@ -200,7 +200,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       />
       <header class="device-topology-header">
         <div>
-          <h2>设备拓扑</h2>
+          <h2>{uiText.deviceTopology.panel}</h2>
           <span>{snapshot()?.system.brandDisplayName ?? uiText.deviceTopology.brandLoading}</span>
         </div>
       </header>
@@ -304,7 +304,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
               <aside class="device-port-detail" aria-label={uiText.deviceTopology.detailPane}>
                 <Show
                   when={selectedPort()}
-                  fallback={<p class="device-topology-empty">选择一个项目查看详情。</p>}
+                  fallback={<p class="device-topology-empty">{uiText.deviceTopology.selectPrompt}</p>}
                 >
                   {(port) => (
                     <>
@@ -347,7 +347,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         {(model) => <DeviceSpecializedDetails model={model()} />}
                       </Show>
                       <div class="device-detail-divider" role="separator">
-                        <span>全部详细信息</span>
+                        <span>{uiText.deviceTopology.allDetails}</span>
                       </div>
                       <div class="device-detail-grid">
                         <DetailRow
@@ -494,7 +494,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </div>
                       <Show when={!selectedNodeIsInterface() && (port().usb?.interfaceProtocols ?? []).length > 0}>
                         <div class="device-id-block">
-                          <strong>当前配置接口</strong>
+                          <strong>{uiText.deviceTopology.group.activeConfigurationInterface}</strong>
                           <For each={port().usb?.interfaceProtocols ?? []}>
                             {(protocol) => <code>{protocol}</code>}
                           </For>
@@ -502,7 +502,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </Show>
                       <Show when={!selectedNodeIsDevice() && (port().usb?.companionPorts ?? []).length > 0}>
                         <div class="device-id-block">
-                          <strong>共享连接器 Companion</strong>
+                          <strong>{uiText.deviceTopology.group.sharedConnectorCompanion}</strong>
                           <For each={port().usb?.companionPorts ?? []}>
                             {(companion) => (
                               <code>
@@ -516,18 +516,18 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       <Show when={selectedNodeIsDevice() && port().usb?.serialNumber}>
                         {(serialNumber) => (
                           <div class="device-id-block">
-                            <strong>USB 序列号</strong>
+                            <strong>{uiText.deviceTopology.group.usbSerialNumber}</strong>
                             <code>{serialNumber()}</code>
                           </div>
                         )}
                       </Show>
                       <div class="device-id-block">
-                        <strong>关系链</strong>
+                        <strong>{uiText.deviceTopology.group.relationChain}</strong>
                         <code>{port().topologyPath}</code>
                       </div>
                       <Show when={(port().locationPaths ?? []).length > 0}>
                         <div class="device-id-block">
-                          <strong>位置路径</strong>
+                          <strong>{uiText.deviceTopology.group.locationPath}</strong>
                           <For each={port().locationPaths}>
                             {(path) => <code>{path}</code>}
                           </For>
@@ -535,14 +535,14 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       </Show>
                       <Show when={port().usb?.hubDevicePath}>
                         <div class="device-id-block">
-                          <strong>Hub 设备路径</strong>
+                          <strong>{uiText.deviceTopology.group.hubDevicePath}</strong>
                           <code>{port().usb?.hubDevicePath}</code>
                         </div>
                       </Show>
                       <Show when={port().usb?.downstreamHubDevicePath}>
                         {(path) => (
                           <div class="device-id-block">
-                            <strong>下游 Hub 路径</strong>
+                            <strong>{uiText.deviceTopology.group.downstreamHubPath}</strong>
                             <code>{path()}</code>
                           </div>
                         )}
@@ -550,7 +550,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       <Show when={selectedNodeIsDevice() && port().display?.monitorDevicePath}>
                         {(devicePath) => (
                           <div class="device-id-block">
-                            <strong>显示器设备路径</strong>
+                            <strong>{uiText.deviceTopology.group.displayDevicePath}</strong>
                             <code>{devicePath()}</code>
                           </div>
                         )}
@@ -569,7 +569,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
 
               <Show when={(data().notes ?? []).length > 0}>
                 <div class="device-topology-notes">
-                  <span>部分设备信息暂时不可用，可以稍后刷新。</span>
+                  <span>{uiText.deviceTopology.partialUnavailable}</span>
                 </div>
               </Show>
             </div>

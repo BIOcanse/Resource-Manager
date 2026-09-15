@@ -270,7 +270,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     >
       <div class="panel-header gpu-scheduling-header">
         <div class="optimization-heading">
-          <h2>GPU 调度模型</h2>
+          <h2>{uiText.gpuScheduling.panel}</h2>
           <span>{observationCanRender(observation()) ? positions().length : "--"} 张 GPU · GPU {gpuUsageFullPressurePercent}% / 显存 {gpuVramFullPressurePercent}% · {telemetryStatus()}</span>
         </div>
         <div class="gpu-scheduling-actions">
@@ -299,7 +299,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         label={uiText.gpuScheduling.observationLabel}
         onRetry={refreshAll}
       >
-        <Show when={positions().length > 0} fallback={<div class="optimization-empty">未识别到 GPU 调度位置。</div>}>
+        <Show when={positions().length > 0} fallback={<div class="optimization-empty">{uiText.gpuScheduling.noPositions}</div>}>
           <div class="gpu-position-grid">
             <For each={sortedPositions()}>
               {(position) => (
@@ -327,7 +327,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                     </span>
                   }>
                     <label class="gpu-score-editor">
-                      <span>性能分</span>
+                      <span>{uiText.gpuScheduling.performanceScoreLabel}</span>
                       <input
                         class="gpu-score-input"
                         type="number"

@@ -105,8 +105,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     fontSmoothingDescription: "自动平衡文字清晰度和界面开销，也可以固定渲染方式。",
     languageTitle: "界面语言",
     languageDescription: "选择资源管理器界面使用的语言。跟随系统会使用 Windows 显示语言。",
-    settingsLanguageTitle: "设置页语言",
-    settingsLanguageDescription: "只切换设置页中的文字。其他页面仍使用当前产品语言；跟随系统会使用 Windows 显示语言。",
+    settingsLanguageTitle: "界面语言",
+    settingsLanguageDescription: "切换整个界面的语言，包括桌面外壳的托盘与窗口标题；跟随系统会使用 Windows 显示语言。",
     languageSelectLabel: "语言",
     themeOptions: {
       system: "跟随系统",
@@ -391,8 +391,8 @@ const enSettingsCopy: SettingsCopy = {
     fontSmoothingDescription: "Balance text clarity and interface cost automatically, or lock a rendering mode.",
     languageTitle: "Interface language",
     languageDescription: "Choose the language used by the Resource Manager interface. System uses the Windows display language.",
-    settingsLanguageTitle: "Settings language",
-    settingsLanguageDescription: "Changes text on the Settings page only. Other pages keep the current product language; System uses the Windows display language.",
+    settingsLanguageTitle: "Interface language",
+    settingsLanguageDescription: "Changes the language of the whole interface, including the desktop shell tray and window title. System uses the Windows display language.",
     languageSelectLabel: "Language",
     themeOptions: {
       system: "System",

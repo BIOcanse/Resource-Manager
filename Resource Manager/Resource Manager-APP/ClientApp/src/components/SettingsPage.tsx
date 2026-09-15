@@ -4,11 +4,7 @@ import { CreditsSettingsSection } from "./settings/CreditsSettingsSection";
 import { DebugSettingsSection } from "./settings/DebugSettingsSection";
 import { PerformanceSettingsSection } from "./settings/PerformanceSettingsSection";
 import { SystemIntegrationSettingsSection } from "./settings/SystemIntegrationSettingsSection";
-import { uiText, fallbackSettingsText,
-  isRightToLeftLanguage,
-  loadSettingsText,
-  normalizeLanguageMode } from "../text.ts";
-import type { SettingsTextBundle } from "../text.ts";
+import { uiText, currentSettingsText, isRightToLeftLanguage } from "../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppBarColorMode,
@@ -68,22 +64,9 @@ interface SettingsPageProps {
 const settingSections: SettingsSection[] = ["performance", "appearance", "systemIntegration", "debug", "credits"];
 
 export function SettingsPage(props: SettingsPageProps) {
-  const [localizedText, setLocalizedText] = createSignal<SettingsTextBundle>(fallbackSettingsText);
-
-  createEffect(() => {
-    const requestedLanguage = normalizeLanguageMode(props.settings.appearance?.language ?? "system");
-    let isCurrentRequest = true;
-    void loadSettingsText(requestedLanguage).then((nextText) => {
-      if (isCurrentRequest) {
-        setLocalizedText(nextText);
-      }
-    });
-    onCleanup(() => {
-      isCurrentRequest = false;
-    });
-  });
-
-  const text = () => localizedText();
+  // 界面语言只有一个所有者（appTextStore）：设置页的文案跟着它走，
+  // 不再自己按草稿里的语言另外载入一份，否则设置页会先于其他页面变语言。
+  const text = () => currentSettingsText();
   const sectionLabel = (section: SettingsSection) => text().sections[section] ?? section;
   const statusText = () => {
     if (props.saveState === "saving") {

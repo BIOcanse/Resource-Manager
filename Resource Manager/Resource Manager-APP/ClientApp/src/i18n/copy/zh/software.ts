@@ -35,6 +35,7 @@ export const zhSoftwareCopy = {
     installed: "已安装",
     settingsAndMigration: "设置和迁移",
     issueStrip: "软件问题",
+    issueHeading: "问题提示",
     issueCurrentReport: "当前报告",
     issueKnownCatalog: "已知问题目录",
     issueReferences: (label: string) => `${label}参考资料`

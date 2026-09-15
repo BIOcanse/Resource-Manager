@@ -27,8 +27,8 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
     <>
       <header class="browser-runtime-header">
         <div>
-          <h2>运行时管理</h2>
-          <p>查看 Web 界面运行环境和已安装的浏览器。</p>
+          <h2>{uiText.browserRuntime.title}</h2>
+          <p>{uiText.browserRuntime.description}</p>
         </div>
         <div class="browser-runtime-actions">
           <Show when={!props.snapshot?.sharedRuntime && installAvailable()}>
@@ -57,8 +57,8 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
       <section class="browser-runtime-current" aria-labelledby="sharedRuntimeHeading">
         <div class="browser-runtime-section-heading">
           <div>
-            <h3 id="sharedRuntimeHeading">当前共享运行时</h3>
-            <p>资源管理器与其它 WebView2 软件共用同一份系统运行时。</p>
+            <h3 id="sharedRuntimeHeading">{uiText.browserRuntime.sharedRuntimeTitle}</h3>
+            <p>{uiText.browserRuntime.sharedRuntimeDescription}</p>
           </div>
           <Show when={props.installComponent?.definition?.sourcePageUrl}>
             {(url) => (
@@ -78,8 +78,8 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
           when={props.snapshot?.sharedRuntime}
           fallback={(
             <div class="browser-runtime-empty">
-              <strong>未检测到共享运行时</strong>
-              <span>可以安装官方共享运行时；现有浏览器仍会列入备用目录。</span>
+              <strong>{uiText.browserRuntime.noSharedRuntime}</strong>
+              <span>{uiText.browserRuntime.noSharedRuntimeDetail}</span>
             </div>
           )}
         >
@@ -96,15 +96,15 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
       <section class="browser-runtime-browsers" aria-labelledby="browserCandidatesHeading">
         <div class="browser-runtime-section-heading">
           <div>
-            <h3 id="browserCandidatesHeading">已安装的浏览器</h3>
-            <p>支持外部浏览器的软件可以使用这些浏览器。</p>
+            <h3 id="browserCandidatesHeading">{uiText.browserRuntime.installedBrowsersTitle}</h3>
+            <p>{uiText.browserRuntime.installedBrowsersDescription}</p>
           </div>
           <span class="browser-runtime-count">{browsers().length} 项</span>
         </div>
         <div class="browser-runtime-list">
           <Show
             when={browsers().length > 0}
-            fallback={<div class="browser-runtime-empty">未发现可复用的浏览器。</div>}
+            fallback={<div class="browser-runtime-empty">{uiText.browserRuntime.noBrowsers}</div>}
           >
             <For each={browsers()}>
               {(browser) => (
