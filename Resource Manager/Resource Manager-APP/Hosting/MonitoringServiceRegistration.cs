@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Metrics;
@@ -10,6 +11,7 @@ using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.SystemHealth;
+using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.App.Infrastructure.DiskUsage;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -97,6 +99,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
         services.AddSingleton<IDiskUsageTreeStore, DiskUsageTreeStore>();
+        // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
+        services.AddSingleton<IControlObjectCatalog, WindowsControlObjectCatalog>();
         // 快速扫描读主文件表，全扫描逐级遍历。进来的请求由前者按模式分派，
         // 不匹配就把请求原样交给后者 —— 模式是用户选的，程序不替他改。
         services.AddSingleton<DirectoryWalkDiskUsageScanner>();
