@@ -65,6 +65,7 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "diskUs
       directoryWalk: "Walked the directories"
     },
     navigateUp: "Up one level",
+    resetView: "Reset view",
     collapseSetup: "Hide options",
     expandSetup: "Scan options",
     scanTotals: (size: string, files: number, folders: number) =>

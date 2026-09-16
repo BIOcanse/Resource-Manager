@@ -61,6 +61,8 @@ export function DiskUsageWorkspace() {
   let shownView: DiskUsageViewWindow | null = null;
   // 每次换布局都加一号，回来的响应对不上号就丢掉 —— 慢的那个不能盖住快的那个。
   let layoutToken = 0;
+  // 这个数一变，方格图就把视口拨回整图。
+  const [resetNonce, setResetNonce] = createSignal(0);
 
   /**
    * 视图变了：如果现在能看见的细节比手上这份布局多，就换一份。
@@ -73,20 +75,47 @@ export function DiskUsageWorkspace() {
     if (!current) {
       return;
     }
+    // 视图被推出图外时看得见的那块是空的，没什么可要的。
+    // 这种范围发过去后端会收拢成整张图，反而和我们记下的对不上。
+    if (view.maxX <= view.minX || view.maxY <= view.minY) {
+      return;
+    }
     if (shownView && !needsMoreDetail(shownView, view)) {
       return;
     }
+    requestLayout(current.rootNodeId, view);
+  }
+
+  /** 取一份布局换上去。以后端回给我们的那个视图为准记下来。 */
+  function requestLayout(rootNodeId: number, view?: DiskUsageViewWindow) {
     const token = ++layoutToken;
-    const rootNodeId = current.rootNodeId;
     void getDiskUsageLayout(runtime.requestClient, rootNodeId, undefined, view)
       .then((next) => {
         if (token !== layoutToken || !next || next.rootNodeId !== rootNodeId) {
           return;
         }
-        shownView = view;
+        // 记后端实际用的那份，不是我们请求的那份。
+        shownView = next.view;
         setLayout(next);
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * 复位：回到整图。
+   *
+   * 光把视口拨回去不够 —— 手上这份布局可能只覆盖放大后那一小块，
+   * 视口回到整图之后那张位图只占屏幕上一丁点，看着就是一片空白。
+   * 所以数据也要跟着回到整图。
+   */
+  function resetView() {
+    const current = layout();
+    if (!current) {
+      return;
+    }
+    shownView = null;
+    requestLayout(current.rootNodeId);
+    setResetNonce((value) => value + 1);
   }
 
   async function refreshResult(signal?: AbortSignal, nodeId?: number) {
@@ -187,6 +216,8 @@ export function DiskUsageWorkspace() {
                 .catch(() => undefined);
             }}
             onViewChanged={onViewChanged}
+            onResetView={resetView}
+            resetNonce={resetNonce()}
             onNavigateUp={navigateUp}
             canNavigateUp={drillStack().length > 0}
           />
