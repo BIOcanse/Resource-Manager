@@ -234,22 +234,28 @@ public static class DiskUsageTreemapLayout
             var shortSide = alongWidth ? height : width;
 
             // 先决定这一行放几个：加到长宽比不再变好为止。
+            //
+            // 一行里最差的长宽比只由最大和最小的那一个决定（其余都夹在中间），
+            // 而 children 是按大小降序的，所以最大的就是行首、最小的就是刚加进来这个。
+            // 两个值顺着记就行，不用每加一个成员再把整行扫一遍 ——
+            // 那样一个有几万个子项的目录（WinSxS 之类）要平方级的时间。
             var rowCount = 0;
             double rowSum = 0;
+            double rowLargest = 0;
             var bestRatio = double.MaxValue;
             while (index + rowCount < children.Length)
             {
-                var candidateSum = rowSum + Math.Max(0, tree.SizeOf(children[index + rowCount]));
+                var candidate = Math.Max(0, tree.SizeOf(children[index + rowCount]));
+                var candidateSum = rowSum + candidate;
                 if (candidateSum <= 0)
                 {
                     rowCount++;
                     continue;
                 }
+                var largest = rowCount == 0 ? candidate : rowLargest;
                 var ratio = WorstAspectRatio(
-                    tree,
-                    children,
-                    index,
-                    rowCount + 1,
+                    largest,
+                    candidate,
                     candidateSum,
                     remaining,
                     alongWidth ? width : height,
@@ -260,6 +266,7 @@ public static class DiskUsageTreemapLayout
                 }
                 bestRatio = ratio;
                 rowSum = candidateSum;
+                rowLargest = largest;
                 rowCount++;
             }
 
@@ -317,12 +324,15 @@ public static class DiskUsageTreemapLayout
         return placed;
     }
 
-    /// <summary>这一行里最差的那个方格的长宽比。越接近 1 越好。</summary>
+    /// <summary>
+    /// 这一行里最差的那个方格的长宽比。越接近 1 越好。
+    ///
+    /// 只看行里最大和最小的那两个：行内每个方格的厚度相同，宽度正比于自己的大小，
+    /// 所以最扁的一定是最大的那个，最细的一定是最小的那个，中间的都比它们好。
+    /// </summary>
     private static double WorstAspectRatio(
-        DiskUsageTree tree,
-        int[] children,
-        int start,
-        int count,
+        double largest,
+        double smallest,
         double rowSum,
         double remaining,
         double longSide,
@@ -340,19 +350,21 @@ public static class DiskUsageTreemapLayout
         }
 
         var worst = 0d;
-        for (var item = 0; item < count; item++)
+        if (largest > 0)
         {
-            var size = Math.Max(0, tree.SizeOf(children[start + item]));
-            if (size <= 0)
+            var extent = largest / rowSum * shortSide;
+            if (extent > 0)
             {
-                continue;
+                worst = Math.Max(worst, Math.Max(thickness / extent, extent / thickness));
             }
-            var extent = size / rowSum * shortSide;
-            if (extent <= 0)
+        }
+        if (smallest > 0)
+        {
+            var extent = smallest / rowSum * shortSide;
+            if (extent > 0)
             {
-                continue;
+                worst = Math.Max(worst, Math.Max(thickness / extent, extent / thickness));
             }
-            worst = Math.Max(worst, Math.Max(thickness / extent, extent / thickness));
         }
         return worst == 0 ? double.MaxValue : worst;
     }

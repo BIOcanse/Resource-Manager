@@ -60,13 +60,18 @@ assert.ok(outRect.maxX <= 1 && outRect.maxY <= 1);
 assert.deepEqual(
   edgePanDelta(width / 2, height / 2, width, height),
   { deltaX: 0, deltaY: 0 });
-const nearLeft = edgePanDelta(4, height / 2, width, height);
-assert.ok(nearLeft.deltaX > 0, "贴左边要把视图往右推");
-assert.equal(nearLeft.deltaY, 0);
+// 方向不反转：鼠标在右，视口就往右走（看到右边的内容）。
 const nearRight = edgePanDelta(width - 4, height / 2, width, height);
-assert.ok(nearRight.deltaX < 0, "贴右边要把视图往左推");
-const nearerLeft = edgePanDelta(1, height / 2, width, height);
-assert.ok(nearerLeft.deltaX > nearLeft.deltaX, "越贴近边缘越快");
+assert.ok(nearRight.deltaX > 0, "贴右边要往右看");
+assert.equal(nearRight.deltaY, 0);
+const nearLeft = edgePanDelta(4, height / 2, width, height);
+assert.ok(nearLeft.deltaX < 0, "贴左边要往左看");
+const nearBottom = edgePanDelta(width / 2, height - 4, width, height);
+assert.ok(nearBottom.deltaY > 0, "贴下边要往下看");
+const nearTop = edgePanDelta(width / 2, 4, width, height);
+assert.ok(nearTop.deltaY < 0, "贴上边要往上看");
+const nearerRight = edgePanDelta(width - 1, height / 2, width, height);
+assert.ok(nearerRight.deltaX > nearRight.deltaX, "越贴近边缘越快");
 
 // clampToBounds 幂等：夹过一次的视口再夹还是它自己。
 const clamped = clampToBounds({ scale: 4, offsetX: 9, offsetY: -3 });

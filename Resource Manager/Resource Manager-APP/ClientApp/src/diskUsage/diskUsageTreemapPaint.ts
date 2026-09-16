@@ -63,6 +63,30 @@ export interface DiskUsageSheet {
   minY: number;
   maxX: number;
   maxY: number;
+  /**
+   * 这张位图是按"放大多少倍"渲染的。
+   *
+   * 1 表示和这块范围铺满画布时 1:1。放大之后位图会被拉大，就糊了，
+   * 所以放大到一定程度要按更高的倍数重渲一张。见 magnificationOf。
+   */
+  magnification: number;
+}
+
+/**
+ * 当前这块可见范围相对于位图覆盖范围放大了多少倍。
+ *
+ * 位图覆盖的是布局那块范围；视口只看其中的一小块时，那一小块被放大到整个画布，
+ * 放大的倍数就是两者跨度之比。位图得按这个倍数渲染才不会糊。
+ */
+export function magnificationOf(
+  layout: DiskUsageLayout,
+  viewportScale: number
+): number {
+  const layoutSpan = Math.max(
+    1e-9,
+    Math.max(layout.view.maxX - layout.view.minX, layout.view.maxY - layout.view.minY));
+  const visibleSpan = 1 / Math.max(1e-9, viewportScale);
+  return Math.max(1, layoutSpan / visibleSpan);
 }
 
 /** 位图最多这么多像素。再大的话显存和渲染时间都不划算。 */
@@ -77,9 +101,14 @@ const maximumSheetPixels = 8_000_000;
 export function renderTreemapSheet(
   layout: DiskUsageLayout,
   theme: DiskUsagePaintTheme,
-  requestedWidth: number,
-  requestedHeight: number
+  canvasWidth: number,
+  canvasHeight: number,
+  magnification = 1
 ): DiskUsageSheet | null {
+  // 按当前放大倍数提高渲染精度：视口只看其中一小块时，那一小块要顶满整个画布，
+  // 位图就得按相应倍数渲染，否则放大之后看到的是被拉大的糊图。
+  const requestedWidth = canvasWidth * magnification;
+  const requestedHeight = canvasHeight * magnification;
   const span = {
     x: Math.max(1e-9, layout.view.maxX - layout.view.minX),
     y: Math.max(1e-9, layout.view.maxY - layout.view.minY)
@@ -135,7 +164,9 @@ export function renderTreemapSheet(
     minX: layout.view.minX,
     minY: layout.view.minY,
     maxX: layout.view.maxX,
-    maxY: layout.view.maxY
+    maxY: layout.view.maxY,
+    // 像素预算截断过的话，实际精度就没到请求的倍数，如实记下来。
+    magnification: magnification * shrink
   };
 }
 
