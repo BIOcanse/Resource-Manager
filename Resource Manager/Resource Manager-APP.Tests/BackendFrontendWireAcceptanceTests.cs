@@ -136,8 +136,7 @@ public sealed class BackendFrontendWireAcceptanceTests
             @"C:\Apps\example.exe",
             12,
             12,
-            100,
-            "12%")
+            100)
         {
             ProcessStartKey = long.MaxValue
         };
@@ -148,7 +147,6 @@ public sealed class BackendFrontendWireAcceptanceTests
             "普通软件",
             12,
             12,
-            "12%",
             1,
             [process]);
         var snapshot = new ResourceBreakdownSnapshot(
@@ -162,7 +160,6 @@ public sealed class BackendFrontendWireAcceptanceTests
                     12,
                     100,
                     12,
-                    "12%",
                     [software],
                     SamplingObservationStatus.Current,
                     SamplingObservationStatus.Current)

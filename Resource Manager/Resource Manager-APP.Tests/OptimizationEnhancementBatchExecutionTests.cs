@@ -278,7 +278,6 @@ public sealed class OptimizationEnhancementBatchExecutionTests
                     10,
                     100,
                     10,
-                    "10%",
                     [
                         new ResourceSoftwareSegment(
                             TargetKey,
@@ -287,7 +286,6 @@ public sealed class OptimizationEnhancementBatchExecutionTests
                             SoftwareKinds.Game,
                             10,
                             10,
-                            "10%",
                             1,
                             [
                                 new ResourceProcessSegment(
@@ -296,8 +294,7 @@ public sealed class OptimizationEnhancementBatchExecutionTests
                                     process.ExecutablePath,
                                     10,
                                     10,
-                                    100,
-                                    "10%")
+                                    100)
                             ])
                     ])
             ]);

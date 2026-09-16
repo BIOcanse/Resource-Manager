@@ -48,7 +48,6 @@ public sealed partial class ResourceTableProjector
                     bar,
                     totalValue,
                     totalSystemPercent,
-                    bar.TotalDisplay,
                     bar.SharedValue);
             }
             else
@@ -90,7 +89,7 @@ public sealed partial class ResourceTableProjector
         public void ApplySoftwareValue(ResourceBreakdownBar bar, ResourceSoftwareSegment segment)
         {
             processCount = Math.Max(processCount, segment.ProcessCount);
-            ApplyColumnValue(columns, bar, segment.Value, segment.SystemPercent, segment.DisplayValue, segment.SharedValue);
+            ApplyColumnValue(columns, bar, segment.Value, segment.SystemPercent, segment.SharedValue);
         }
 
         public void ApplyProcessValue(ResourceBreakdownBar bar, ResourceProcessSegment process)
@@ -177,7 +176,7 @@ public sealed partial class ResourceTableProjector
 
         public void Apply(ResourceBreakdownBar bar, ResourceProcessSegment processValue)
         {
-            ApplyColumnValue(columns, bar, processValue.Value, processValue.SystemPercent, processValue.DisplayValue, processValue.SharedValue);
+            ApplyColumnValue(columns, bar, processValue.Value, processValue.SystemPercent, processValue.SharedValue);
         }
 
         public ResourceTableRow ToGroupedRow(
@@ -259,7 +258,6 @@ public sealed partial class ResourceTableProjector
         public double Percent { get; set; }
         public double Capacity { get; set; }
         public string Unit { get; set; } = "";
-        public string DisplayValue { get; set; } = "--";
         public string? Availability { get; private set; }
 
         public void Add(double value, double percent, double capacity, string unit)
@@ -271,19 +269,12 @@ public sealed partial class ResourceTableProjector
             {
                 Value = Math.Max(Value, value);
                 Percent = Math.Max(Percent, percent);
-                DisplayValue = $"{Value:0.0}%";
                 return;
             }
 
             Value += Math.Max(0, value);
             Capacity += Math.Max(0, capacity);
             Percent = Capacity > 0 ? Value * 100 / Capacity : Math.Max(Percent, percent);
-            DisplayValue = Unit switch
-            {
-                "B" => FormatBytes(Value),
-                "B/s" => $"{FormatBytes(Value)}/s",
-                _ => Value.ToString("0.0")
-            };
         }
 
         public void MarkUnavailable(string unit)
@@ -295,7 +286,6 @@ public sealed partial class ResourceTableProjector
 
             Unit = unit;
             Availability = "Unavailable";
-            DisplayValue = "N/A";
         }
     }
 

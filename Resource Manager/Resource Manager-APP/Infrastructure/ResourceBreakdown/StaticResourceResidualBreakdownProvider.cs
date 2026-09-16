@@ -21,7 +21,6 @@ public sealed class StaticResourceResidualBreakdownProvider : IResourceResidualB
                 request.Value,
                 request.SystemPercent,
                 100,
-                request.DisplayValue,
                 null,
                 null,
                 ResourceProcessAttributionKinds.SystemResidual)

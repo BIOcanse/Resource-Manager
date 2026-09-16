@@ -338,7 +338,6 @@ export interface ResourceProcessSegment {
   value: number;
   systemPercent: number;
   softwarePercent: number;
-  displayValue: string;
   userName?: string | null;
   architecture?: string | null;
   attributionKind?: string;
@@ -381,7 +380,6 @@ export interface ResourceSoftwareSegment {
   displayKind: string;
   value: number;
   systemPercent: number;
-  displayValue: string;
   processCount: number;
   processes: ResourceProcessSegment[];
   baseScore?: number | null;
@@ -395,7 +393,6 @@ export interface ResourceBreakdownBar {
   totalValue: number | null;
   capacityValue: number | null;
   totalSystemPercent: number | null;
-  totalDisplay: string;
   software: ResourceSoftwareSegment[];
 }
 
@@ -416,8 +413,10 @@ export interface ResourceTableColumn {
 export interface ResourceTableValue {
   value?: number | null;
   percent?: number | null;
+  // 只有文本单元（进程号、用户、架构）带文本；数值单元是空串，
+  // 由 resourceTableCellText 按 unit 和 value 出文本。
   displayValue: string;
-  unit?: string;
+  unit: string;
   availability?: string | null;
   heatPercent?: number | null;
   sharedValue?: number | null;

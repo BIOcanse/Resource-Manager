@@ -5,10 +5,10 @@ export const capturedAt = "2026-08-22T15:20:30.000Z";
 
 export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
   return {
-    version: 8,
+    version: 9,
     capturedAt,
     breakdown: {
-      version: 7,
+      version: 8,
       capturedAt,
       softwareCatalog: [["software:test", "Test App", "Other", "一般应用"]],
       bars: [{
@@ -19,12 +19,10 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
         totalValue: 64,
         capacityValue: 1024,
         totalSystemPercent: 6.25,
-        totalDisplay: "64 B / 1 KB",
         software: [[
           0,
           64,
           6.25,
-          "64 B",
           1,
           125,
           [[
@@ -34,7 +32,6 @@ export function readyResourceMonitorWire(): ResourceMonitorWireSnapshot {
             64,
             6.25,
             100,
-            "64 B",
             "USER",
             "x64",
             "process",

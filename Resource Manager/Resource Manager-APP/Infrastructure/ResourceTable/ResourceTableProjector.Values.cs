@@ -13,7 +13,6 @@ public sealed partial class ResourceTableProjector
         ResourceBreakdownBar bar,
         double value,
         double percent,
-        string displayValue,
         double? sharedValue = null)
     {
         var columnId = ColumnIdForMetric(bar.MetricId);
@@ -30,10 +29,6 @@ public sealed partial class ResourceTableProjector
 
         accumulator.Add(value, percent, bar.CapacityValue ?? 0, bar.Unit);
         if (sharedValue is { } shared) accumulator.SharedValue = (accumulator.SharedValue ?? 0) + shared;
-        if (bar.Unit == "%")
-        {
-            accumulator.DisplayValue = displayValue;
-        }
     }
 
     private static void MarkColumnUnavailable(
@@ -73,7 +68,7 @@ public sealed partial class ResourceTableProjector
                 values[column.Id] = new ResourceTableValue(
                     accumulator.Value,
                     SanitizePercent(accumulator.Percent),
-                    accumulator.DisplayValue,
+                    string.Empty,
                     accumulator.Unit,
                     null) { SharedValue = accumulator.SharedValue };
             }
@@ -82,7 +77,7 @@ public sealed partial class ResourceTableProjector
                 values[column.Id] = new ResourceTableValue(
                     null,
                     null,
-                    accumulator.DisplayValue,
+                    string.Empty,
                     accumulator.Unit,
                     accumulator.Availability);
             }
@@ -91,7 +86,7 @@ public sealed partial class ResourceTableProjector
                 values[column.Id] = new ResourceTableValue(
                     null,
                     null,
-                    "--",
+                    string.Empty,
                     column.Unit,
                     null);
             }
@@ -260,28 +255,5 @@ public sealed partial class ResourceTableProjector
         return double.IsNaN(value) || double.IsInfinity(value) || value < 0 ? 0 : Math.Min(value, 100);
     }
 
-    private static string FormatBytes(double value)
-    {
-        var sanitized = Math.Max(0, value);
-        const double kib = 1024d;
-        const double mib = kib * 1024d;
-        const double gib = mib * 1024d;
-        if (sanitized >= gib)
-        {
-            return $"{sanitized / gib:0.0} GB";
-        }
-
-        if (sanitized >= mib)
-        {
-            return $"{sanitized / mib:0.0} MB";
-        }
-
-        if (sanitized >= kib)
-        {
-            return $"{sanitized / kib:0} K";
-        }
-
-        return $"{sanitized:0} B";
-    }
 
 }
