@@ -68,7 +68,8 @@ export const zhShellCopy = {
     scanTotals: (size: string, files: number, folders: number) =>
       `${size} · ${files} 个文件 · ${folders} 个文件夹`,
     fileCount: (count: number) => `${count} 个文件`,
-    omitted: (count: number) => `还有 ${count} 个太小的方格没有单独画出来。`,
+    omitted: (count: number) =>
+      `还有 ${count} 个方格这会儿太小或者不在视野里，放大就会出现。`,
     copied: "已复制",
     menuOpenLocation: "打开所在位置",
     menuProperties: "属性",

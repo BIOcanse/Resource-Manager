@@ -2,9 +2,10 @@ import { createSignal, For, Show } from "solid-js";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { uiText } from "../text.ts";
 import { DiskUsageTreemapPlane } from "./DiskUsageTreemapPlane";
+import type { DiskUsageTileFacts } from "./diskUsageLayoutFacts.ts";
+import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import type {
   DiskUsageLayout,
-  DiskUsageNode,
   DiskUsageScanSummary
 } from "./diskUsageLayoutTypes.ts";
 
@@ -17,18 +18,19 @@ export function DiskUsageResultPanel(props: {
   summary: DiskUsageScanSummary;
   layout: DiskUsageLayout;
   selectedNodeId: number;
-  nodeOf: (nodeId: number) => DiskUsageNode | undefined;
+  factsOf: (nodeId: number) => DiskUsageTileFacts | undefined;
   labelOf: (nodeId: number) => string;
   onSelect: (nodeId: number) => void;
   onActivate: (nodeId: number) => void;
   onContextMenu: (nodeId: number, clientX: number, clientY: number) => void;
+  onViewChanged: (view: DiskUsageViewWindow) => void;
   onNavigateUp: () => void;
   canNavigateUp: boolean;
 }) {
   const [hover, setHover] = createSignal<{ node: number; x: number; y: number } | null>(null);
   const hovered = () => {
     const current = hover();
-    return current && current.node >= 0 ? props.nodeOf(current.node) : undefined;
+    return current && current.node >= 0 ? props.factsOf(current.node) : undefined;
   };
 
   return (
@@ -80,6 +82,7 @@ export function DiskUsageResultPanel(props: {
         onSelect={props.onSelect}
         onActivate={props.onActivate}
         onContextMenu={props.onContextMenu}
+        onViewChanged={props.onViewChanged}
         onHover={(node, x, y) => setHover(node >= 0 ? { node, x, y } : null)}
       />
 
@@ -98,6 +101,7 @@ export function DiskUsageResultPanel(props: {
             <Show when={node().isDirectory}>
               <span>{uiText.diskUsage.fileCount(node().fileCount)}</span>
             </Show>
+
             <span class="disk-usage-hover-path">{node().fullPath}</span>
           </div>
         )}

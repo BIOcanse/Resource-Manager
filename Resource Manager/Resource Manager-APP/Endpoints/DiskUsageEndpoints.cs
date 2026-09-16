@@ -31,10 +31,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }).AllowAnonymous();
 
         // 方格布局。默认从根开始；钻进子树时带上 node。
+        //
+        // 其余参数描述客户端此刻看到的东西：画布的物理像素尺寸、滚轮倍数、
+        // 以及看得见的那块单位空间矩形。发哪些方格由它们决定 ——
+        // 看不见的不发，在屏幕上小于一个像素门槛的也不发。
+        // 一个都不传就按整张图、不缩放算，所以这些参数都是可选的。
         app.MapGet("/api/disk-usage/layout", (
             HttpResponse response,
             IDiskUsageTreeStore store,
-            int? node) =>
+            int? node,
+            float? pixelWidth,
+            float? pixelHeight,
+            float? scale,
+            float? minX,
+            float? minY,
+            float? maxX,
+            float? maxY) =>
         {
             DisableResponseCache(response);
             var current = store.Current;
@@ -47,7 +59,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var rootNode = node is { } requested && requested >= 0 && requested < tree.Count
                 ? requested
                 : tree.Roots[0];
-            var layout = DiskUsageTreemapLayout.Create(tree, rootNode);
+            var view = DiskUsageViewWindow.Normalize(
+                pixelWidth, pixelHeight, scale, minX, minY, maxX, maxY);
+            var layout = DiskUsageTreemapLayout.Create(tree, rootNode, view);
             return Results.Ok(new
             {
                 rootNodeId = layout.RootNodeId,
@@ -63,7 +77,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 width = layout.Tiles.Select(static tile => tile.Width).ToArray(),
                 height = layout.Tiles.Select(static tile => tile.Height).ToArray(),
                 directoryFlags = layout.Tiles.Select(static tile => tile.IsDirectory).ToArray(),
-                sizes = layout.Tiles.Select(static tile => tile.SizeBytes).ToArray()
+                sizes = layout.Tiles.Select(static tile => tile.SizeBytes).ToArray(),
+                // 名字跟方格一起发。它只是每个方格多几十字节，
+                // 而分开按需取意味着一次布局要发几万个单节点请求 —— 那才是真的重。
+                names = layout.Tiles
+                    .Select(tile => new string(tree.NameOf(tile.NodeId)))
+                    .ToArray(),
+                // 悬停提示要对目录说"里面有多少个文件"，同样跟着方格一起发。
+                fileCounts = layout.Tiles
+                    .Select(tile => tree.FileCountOf(tile.NodeId))
+                    .ToArray()
             });
         }).AllowAnonymous();
 
