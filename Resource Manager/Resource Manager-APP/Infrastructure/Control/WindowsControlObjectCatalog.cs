@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control;
@@ -40,18 +41,26 @@ public sealed class WindowsControlObjectCatalog(
         foreach (var gpu in snapshot.Gpus)
         {
             var vendor = VendorOf(gpu.Name);
+            // 核显和独显的可调自由度差很多，所以要分开 —— 沿用性能分那边已有的判定，
+            // 不另写一套型号名单。
+            var attachment = GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(gpu.Name)
+                ? ControlGpuAttachments.Integrated
+                : ControlGpuAttachments.Discrete;
             // 每块卡一个对象，各自带自己的 (系统, 厂商) —— 不是全局状态。
             objects.Add(new ControlObject(
                 $"gpu:{gpu.IdentityKey ?? gpu.Index.ToString()}",
                 ControlObjectKinds.Gpu,
                 gpu.Name,
                 new ControlObjectPlatform(ControlOperatingSystems.Windows, vendor),
-                GpuCapabilities(vendor, gpu),
-                $"GPU{gpu.Index}"));
+                attachment == ControlGpuAttachments.Integrated
+                    ? IntegratedGpuCapabilities(vendor)
+                    : DiscreteGpuCapabilities(vendor, gpu),
+                $"GPU{gpu.Index}",
+                attachment));
         }
     }
 
-    private static IReadOnlyList<ControlCapability> GpuCapabilities(
+    private static IReadOnlyList<ControlCapability> DiscreteGpuCapabilities(
         string vendor,
         GpuMetrics gpu)
     {
@@ -96,6 +105,34 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Curve,
                 componentId,
                 componentName)
+        ];
+    }
+
+    /// <summary>
+    /// 核显能调的比独显少得多。
+    ///
+    /// 它的频率和功耗由 CPU 封装的 SMU 统一管，没有独立的显存也没有独立供电，
+    /// 所以没有"显存频率偏移"，"功耗上限"也不是这块卡自己的事 ——
+    /// 真要限它得去调处理器的封装功耗。与其列一堆它做不到的项，不如如实说清楚。
+    /// </summary>
+    private static IReadOnlyList<ControlCapability> IntegratedGpuCapabilities(string vendor)
+    {
+        var (componentId, componentName) = vendor switch
+        {
+            ControlVendors.Amd => ("amd-smu-pawnio-provider", "AMD SMU / PawnIO Provider"),
+            ControlVendors.Intel => ("intel-pcm-provider", "Intel PCM / MSR Provider"),
+            _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
+        };
+        return
+        [
+            Unsupported(
+                "gpu.core-clock-offset",
+                "核心频率偏移",
+                ControlValueKinds.Number,
+                componentId,
+                componentName,
+                // 核显的频率余量比独显窄得多。
+                new ControlNumberRange(-200, 200, 5, "MHz", 0))
         ];
     }
 

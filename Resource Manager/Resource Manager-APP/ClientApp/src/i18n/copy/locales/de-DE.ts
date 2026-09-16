@@ -31,6 +31,19 @@ const deDeAppCopy: AppCopy = {
     empty: "Nothing tunable has been identified on this machine yet.",
     ready: "Adjustable",
     needsComponent: (name: string) => `Needs ${name}`,
+    attachment: {
+      integrated: "Integrated",
+      discrete: "Discrete",
+      unknown: "Attachment unknown"
+    },
+    status: {
+      unset: "Not set",
+      edited: "Changed, not applied",
+      applying: "Applying",
+      applied: "Applied",
+      unsupported: "Not tunable on this machine",
+      failed: "Did not apply"
+    },
     kind: {
       gpu: "Graphics",
       cpu: "Processor",
