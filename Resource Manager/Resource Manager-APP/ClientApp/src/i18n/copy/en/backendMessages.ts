@@ -25,7 +25,8 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       installerDownloaded: "The installer was downloaded into the managed dependency directory.",
       installerDownloadedVersion: (value: string) => `The installer for ${value} was downloaded into the managed dependency directory.`,
       sharedRuntimeInstalled: "The shared WebView2 runtime is installed and detected.",
-      installerLaunched: "The installer started visibly. Finish the vendor's installation prompts before using this provider."
+      installerLaunched: "The installer started visibly. Finish the vendor's installation prompts before using this provider.",
+      componentFilesExtracted: "The component files were extracted into the install directory."
     },
     gpuPlacement: {
       singleAdapter: "This machine has a single GPU, so GPU scheduling has no target to choose."

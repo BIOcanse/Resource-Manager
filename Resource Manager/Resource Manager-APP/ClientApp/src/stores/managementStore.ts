@@ -288,9 +288,10 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
-    // 安装器已经在缓存里：不需要联网，也没有版本可选，直接装。
+    // 安装器已经在缓存里：不用联网，也没有版本可选，但确认这一步不能省。
+    // 厂商、条款、是否需要提权都只在这个弹窗里说过，跳过它等于替用户按了「装」。
     if (component.installerAvailable && !component.installed) {
-      await runComponentInstall(component, null);
+      setAcquisitionRequest({ component, versions: [], loading: false, manual: false });
       return;
     }
 

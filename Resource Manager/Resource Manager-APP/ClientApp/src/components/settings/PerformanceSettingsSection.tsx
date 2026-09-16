@@ -61,9 +61,10 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
   };
   const gpuSchedulingMode = (): GpuSchedulingMode => performance().preciseGpuPlacementEnabled ? "precise" : "basic";
+  // 设置页的两态开关一律「开启在前、关闭在后」，和按需监控、自动调度性能优化保持一致。
   const gpuSchedulingModeOptions = (): Array<{ id: GpuSchedulingMode; label: string; description: string }> => [
-    { id: "basic", ...props.text.performance.preciseGpuPlacementModeOptions.basic },
-    { id: "precise", ...props.text.performance.preciseGpuPlacementModeOptions.precise }
+    { id: "precise", ...props.text.performance.preciseGpuPlacementModeOptions.precise },
+    { id: "basic", ...props.text.performance.preciseGpuPlacementModeOptions.basic }
   ];
   const updateCleanupLine = (field: "physical" | "virtual", value: string) => {
     const number = Number(value);

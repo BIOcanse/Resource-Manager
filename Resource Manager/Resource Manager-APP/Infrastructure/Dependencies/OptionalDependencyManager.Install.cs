@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using System.IO.Compression;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.Shared.BrowserRuntimes;
@@ -28,6 +29,21 @@ public sealed partial class OptionalDependencyManager
         }
 
         Directory.CreateDirectory(status.InstallDirectory);
+
+        // 压缩包形式的组件（例如 LibreHardwareMonitor）没有安装器可运行：
+        // 它要的是「把文件解压到安装目录」。直接 Process.Start 一个 .zip
+        // 在 Windows 上必然失败（没有关联的应用程序）。
+        if (IsArchiveInstaller(status.InstallerPath))
+        {
+            ZipFile.ExtractToDirectory(status.InstallerPath, status.InstallDirectory, overwriteFiles: true);
+            return new OptionalDependencyLaunchResult(
+                definition.Id,
+                "filesExtracted",
+                status.InstallerPath,
+                BackendMessage.Create(
+                    BackendMessageDomains.Dependency,
+                    BackendMessageCodes.Dependency.ComponentFilesExtracted));
+        }
 
         var startInfo = new ProcessStartInfo
         {
@@ -74,6 +90,9 @@ public sealed partial class OptionalDependencyManager
                     BackendMessageDomains.Dependency,
                     BackendMessageCodes.Dependency.InstallerLaunched));
     }
+
+    private static bool IsArchiveInstaller(string installerPath)
+        => Path.GetExtension(installerPath).Equals(".zip", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildInstallerArguments(
         OptionalDependencyDefinition definition,

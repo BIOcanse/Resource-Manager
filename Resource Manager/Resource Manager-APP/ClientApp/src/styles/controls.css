@@ -13,8 +13,8 @@ button {
 }
 
 button:not(:disabled):hover {
-  background-color: var(--accent-strong);
-  border-color: var(--accent-strong);
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* Elevation only on the prominent buttons: bare accent primaries (no modifier

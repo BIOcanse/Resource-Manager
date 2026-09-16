@@ -41,11 +41,23 @@
   white-space: nowrap;
 }
 
-.shell-page:hover,
 .shell-page.active {
   border-color: var(--accent-soft);
   background: var(--accent);
   color: var(--on-accent);
+}
+
+/* 悬停只是「指到了」，不是「选中了」：给一层淡强调色，
+   不要刷成和当前页一样的实心绿 —— 既太深，也会让人以为已经切过去了。 */
+.shell-page:not(.active):hover {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.shell-page.active:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .window-drag-region {
