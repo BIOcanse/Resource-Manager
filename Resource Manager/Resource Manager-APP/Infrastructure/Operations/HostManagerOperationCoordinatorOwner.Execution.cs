@@ -414,35 +414,38 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             var schema = completion.Outcome == HostManagerOperationEffectOutcome.Succeeded
                 ? HostManagerOperationRequestSchemas.OperationResult
                 : HostManagerOperationRequestSchemas.OperationError;
-            var message = candidatePayloads.Add(
-                schema,
-                HostManagerOperationRequestSchemas.Version,
-                payloadRole,
-                workspace!.SessionInstanceId,
-                ticket.Action.OperationId,
-                ticket.Action.AttemptToken,
-                HostManagerOperationRequestCodec.EncodeText(completion.Message));
-            if (payloadRole == HostManagerOperationPayloadRole.Result)
-            {
-                input.ResultHandle = message.Handle;
-                input.ValidMask = (ulong)NativeOperationResultValidity.Result;
-            }
-            else
-            {
-                input.ErrorHandle = message.Handle;
-                input.ValidMask = (ulong)NativeOperationResultValidity.Error;
-            }
-            var observation = payloadRole == HostManagerOperationPayloadRole.Result
-                ? candidatePayloads.Add(
-                    HostManagerOperationRequestSchemas.EffectObservation,
-                    HostManagerOperationRequestSchemas.Version,
-                    HostManagerOperationPayloadRole.EffectObservation,
-                    workspace.SessionInstanceId,
-                    ticket.Action.OperationId,
-                    ticket.Action.AttemptToken,
-                    HostManagerOperationRequestCodec.EncodeText(completion.Message))
+            var isResult = payloadRole == HostManagerOperationPayloadRole.Result;
+            var hasMessage = !string.IsNullOrWhiteSpace(completion.Message);
+            var evidenceText = hasMessage
+                ? completion.Message
+                : OutcomeEvidenceToken(completion.Outcome);
+            // 失败的错误载荷同时是收据证据，一定要写；成功的结果载荷只是给用户看的文本，
+            // 没话说就不写 —— 载荷目录不允许存在没人引用的条目。
+            var message = !isResult || hasMessage
+                ? AddTextLocked(candidatePayloads, schema, payloadRole, ticket, evidenceText)
                 : null;
-            var accepted = workspace.CompleteLocked(ref input);
+            if (hasMessage && message is not null)
+            {
+                if (isResult)
+                {
+                    input.ResultHandle = message.Handle;
+                    input.ValidMask = (ulong)NativeOperationResultValidity.Result;
+                }
+                else
+                {
+                    input.ErrorHandle = message.Handle;
+                    input.ValidMask = (ulong)NativeOperationResultValidity.Error;
+                }
+            }
+            var observation = isResult
+                ? AddTextLocked(
+                    candidatePayloads,
+                    HostManagerOperationRequestSchemas.EffectObservation,
+                    HostManagerOperationPayloadRole.EffectObservation,
+                    ticket,
+                    evidenceText)
+                : null;
+            var accepted = workspace!.CompleteLocked(ref input);
             var current = candidateReceipts.Require(ticket.ReceiptId);
             candidateReceipts.Upsert(current with
             {
@@ -455,7 +458,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ObservationHandle = observation is not null
                     ? observation.Handle
                     : current.ObservationHandle,
-                ErrorHandle = payloadRole == HostManagerOperationPayloadRole.Error
+                ErrorHandle = !isResult && message is not null
                     ? message.Handle
                     : current.ErrorHandle
             });
@@ -473,6 +476,56 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         }
     }
 
+    /// <summary>
+    /// 结算证据和给用户看的文本是两件事，这里把它们分开。
+    ///
+    /// 证据是收据合同要求的：成功必须有观察句柄、失败必须有错误句柄
+    /// （见 <c>HostManagerOperationEffectReceiptTable.HasCanonicalEvidenceShape</c>），
+    /// 所以这条载荷一定要写。文本则是可选的 —— 有些结算只有结论，没有能本地化的话可说；
+    /// 这时证据里记的是结算结论的稳定标识，它只用于证明「这次结算被观察到了」，不进界面。
+    ///
+    /// 给用户看的结果或错误文本，只在真有一句话时才把操作记录的句柄和 ValidMask 指过去；
+    /// 投影端本来就按 ResultValid/ErrorValid 读取，所以「没有文本」是协议里已有的合法状态。
+    /// </summary>
+    private static string OutcomeEvidenceToken(HostManagerOperationEffectOutcome outcome)
+        => outcome switch
+        {
+            HostManagerOperationEffectOutcome.Succeeded => "succeeded",
+            HostManagerOperationEffectOutcome.RetryableFailure => "retryable-failure",
+            HostManagerOperationEffectOutcome.TerminalFailure => "terminal-failure",
+            HostManagerOperationEffectOutcome.Canceled => "canceled",
+            HostManagerOperationEffectOutcome.Uncertain => "uncertain",
+            _ => "unspecified"
+        };
+
+    private static string OutcomeEvidenceToken(
+        HostManagerOperationEffectReceiptOutcome outcome)
+        => outcome switch
+        {
+            HostManagerOperationEffectReceiptOutcome.Succeeded => "succeeded",
+            HostManagerOperationEffectReceiptOutcome.EffectNotObserved => "effect-not-observed",
+            HostManagerOperationEffectReceiptOutcome.RetryableFailure => "retryable-failure",
+            HostManagerOperationEffectReceiptOutcome.TerminalFailure => "terminal-failure",
+            HostManagerOperationEffectReceiptOutcome.Canceled => "canceled",
+            HostManagerOperationEffectReceiptOutcome.Uncertain => "uncertain",
+            _ => "unspecified"
+        };
+
+    private HostManagerOperationPayloadEntry AddTextLocked(
+        HostManagerOperationPayloadCatalog candidatePayloads,
+        uint schema,
+        HostManagerOperationPayloadRole role,
+        HostManagerOperationActionTicket ticket,
+        string text)
+        => candidatePayloads.Add(
+                schema,
+                HostManagerOperationRequestSchemas.Version,
+                role,
+                workspace!.SessionInstanceId,
+                ticket.Action.OperationId,
+                ticket.Action.AttemptToken,
+                HostManagerOperationRequestCodec.EncodeText(text));
+
     private async Task ApplyActionFeedbackAsync(
         HostManagerOperationActionTicket ticket,
         NativeOperationActionFeedbackOutcome feedback,
@@ -487,29 +540,29 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            var messagePayload = candidatePayloads.Add(
-                receiptOutcome == HostManagerOperationEffectReceiptOutcome.Succeeded
-                    ? HostManagerOperationRequestSchemas.OperationResult
-                    : HostManagerOperationRequestSchemas.OperationError,
-                HostManagerOperationRequestSchemas.Version,
-                receiptOutcome == HostManagerOperationEffectReceiptOutcome.Succeeded
-                    ? HostManagerOperationPayloadRole.Result
-                    : HostManagerOperationPayloadRole.Error,
-                workspace!.SessionInstanceId,
-                ticket.Action.OperationId,
-                ticket.Action.AttemptToken,
-                HostManagerOperationRequestCodec.EncodeText(message));
             var isResult =
                 receiptOutcome == HostManagerOperationEffectReceiptOutcome.Succeeded;
+            var hasMessage = !string.IsNullOrWhiteSpace(message);
+            var evidenceText = hasMessage ? message : OutcomeEvidenceToken(receiptOutcome);
+            var messagePayload = !isResult || hasMessage
+                ? AddTextLocked(
+                    candidatePayloads,
+                    isResult
+                        ? HostManagerOperationRequestSchemas.OperationResult
+                        : HostManagerOperationRequestSchemas.OperationError,
+                    isResult
+                        ? HostManagerOperationPayloadRole.Result
+                        : HostManagerOperationPayloadRole.Error,
+                    ticket,
+                    evidenceText)
+                : null;
             var observation = isResult
-                ? candidatePayloads.Add(
+                ? AddTextLocked(
+                    candidatePayloads,
                     HostManagerOperationRequestSchemas.EffectObservation,
-                    HostManagerOperationRequestSchemas.Version,
                     HostManagerOperationPayloadRole.EffectObservation,
-                    workspace.SessionInstanceId,
-                    ticket.Action.OperationId,
-                    ticket.Action.AttemptToken,
-                    HostManagerOperationRequestCodec.EncodeText(message))
+                    ticket,
+                    evidenceText)
                 : null;
             var input = new NativeOperationActionFeedbackInput
             {
@@ -522,14 +575,20 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ObservedUtcMilliseconds = now,
                 ObservedMonotonicMilliseconds =
                     NativeOperationCoordinatorWorkspace.MonotonicMilliseconds(),
-                ResultHandle = isResult ? messagePayload.Handle : default,
-                ErrorHandle = isResult ? default : messagePayload.Handle,
-                ValidMask = (ulong)(isResult
-                    ? NativeOperationResultValidity.Result
-                    : NativeOperationResultValidity.Error),
+                ResultHandle = isResult && hasMessage && messagePayload is not null
+                    ? messagePayload.Handle
+                    : default,
+                ErrorHandle = !isResult && hasMessage && messagePayload is not null
+                    ? messagePayload.Handle
+                    : default,
+                ValidMask = !hasMessage || messagePayload is null
+                    ? 0
+                    : (ulong)(isResult
+                        ? NativeOperationResultValidity.Result
+                        : NativeOperationResultValidity.Error),
                 Flags = 0
             };
-            var accepted = workspace.ApplyActionFeedbackLocked(ref input);
+            var accepted = workspace!.ApplyActionFeedbackLocked(ref input);
             var current = candidateReceipts.Require(ticket.ReceiptId);
             candidateReceipts.Upsert(current with
             {
@@ -542,9 +601,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ObservationHandle = observation is not null
                     ? observation.Handle
                     : current.ObservationHandle,
-                ErrorHandle = isResult
-                    ? current.ErrorHandle
-                    : messagePayload.Handle
+                ErrorHandle = !isResult && messagePayload is not null
+                    ? messagePayload.Handle
+                    : current.ErrorHandle
             });
             CommitCurrentLocked(
                 accepted

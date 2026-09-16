@@ -73,6 +73,19 @@ assert.match(managementPage, /normalizedSearchQuery\(\)[\s\S]*?uiText\.managemen
 assert.match(managementPage, /uiText\.management\.clearSearch/);
 assert.match(managementCopy, /noSearchResults: \(query: string\)/);
 
+// 从卡片提示跳过来也好，自己在列表里点也好，安装一律先开标准获取弹窗。
+// 安装器已经在缓存里不是省掉确认的理由 —— 厂商、条款、是否提权只在那个弹窗里说过。
+const managementStore = readSource("../src/stores/managementStore.ts");
+const installComponentBody = managementStore.slice(
+  managementStore.indexOf("async function installComponent("),
+  managementStore.indexOf("async function confirmAcquisition("));
+assert.ok(installComponentBody.length > 0, "找不到 installComponent");
+assert.doesNotMatch(
+  installComponentBody,
+  /runComponentInstall/,
+  "installComponent 不能直接开装，必须先 setAcquisitionRequest 让用户确认");
+assert.match(installComponentBody, /installerAvailable[\s\S]*?setAcquisitionRequest/);
+
 function readSource(relativePath: string) {
   return readFileSync(new URL(relativePath, import.meta.url), "utf8");
 }

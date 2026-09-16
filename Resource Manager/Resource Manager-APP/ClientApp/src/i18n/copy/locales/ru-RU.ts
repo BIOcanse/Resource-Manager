@@ -2010,7 +2010,8 @@ const ruRuAppCopy: AppCopy = {
       installerDownloaded: "Установщик загружен в управляемый каталог зависимостей.",
       installerDownloadedVersion: (value: string) => `Установщик ${value} загружен в управляемый каталог зависимостей.`,
       sharedRuntimeInstalled: "Общая среда выполнения WebView2 установлена и обнаружена.",
-      installerLaunched: "Установщик запущен. Завершите шаги установки поставщика, прежде чем использовать его."
+      installerLaunched: "Установщик запущен. Завершите шаги установки поставщика, прежде чем использовать его.",
+      componentFilesExtracted: "Файлы компонента распакованы в папку установки."
     },
     gpuPlacement: {
       singleAdapter: "В этой машине только один GPU, поэтому планировщику GPU не из чего выбирать."

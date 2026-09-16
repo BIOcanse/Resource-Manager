@@ -1089,3 +1089,47 @@
     grid-template-columns: 1fr;
   }
 }
+
+/*
+ * CPU 拓扑里的 CCD、核心、逻辑处理器都是 <button>，但它们是版面本身，不是操作按钮。
+ * 全局的 button:not(:disabled):hover 会把整块刷成 --accent-strong，鼠标一放就是一大片绿。
+ * 这里让每个元素在 hover 时保持自己的底色，改用与设备拓扑一致的淡强调色提示。
+ */
+/* 这两个是版面本身，hover 保持各自的底色：核心标题本来就没有边框和底色，
+   CCD 标题条本来是 --surface 加一条 --line，只把边框提亮成强调色。 */
+.cpu-core-main:not(:disabled):hover {
+  background-color: transparent;
+  border-color: transparent;
+}
+
+.cpu-ccd-header:not(:disabled):hover {
+  background-color: var(--surface);
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+}
+
+.cpu-core:has(.cpu-core-main:hover):not(.selected),
+.cpu-ring-core:not(:disabled):not(.selected):hover {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+  background-color: color-mix(in oklab, var(--accent) 8%, var(--surface));
+}
+
+.cpu-ccd:has(.cpu-ccd-header:hover):not(.selected) {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+}
+
+.cpu-logical-chip:not(:disabled):not(.selected):hover {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+  background-color: color-mix(in oklab, var(--accent) 10%, var(--surface-soft));
+}
+
+.cpu-ring-logical-chip:not(:disabled):not(.selected):hover {
+  border-color: color-mix(in oklab, var(--accent) 52%, var(--line));
+  background-color: color-mix(in oklab, var(--accent) 10%, var(--surface-soft));
+}
+
+/* 选中态已经是强调色，hover 时不要再被全局规则改深。 */
+.cpu-logical-chip.selected:not(:disabled):hover,
+.cpu-ring-logical-chip.selected:not(:disabled):hover {
+  border-color: var(--accent);
+  background-color: var(--accent);
+}

@@ -2010,7 +2010,8 @@ const deDeAppCopy: AppCopy = {
       installerDownloaded: "Das Installationsprogramm wurde in das verwaltete Abhängigkeitsverzeichnis geladen.",
       installerDownloadedVersion: (value: string) => `Das Installationsprogramm für ${value} wurde in das verwaltete Abhängigkeitsverzeichnis geladen.`,
       sharedRuntimeInstalled: "Die gemeinsame WebView2-Laufzeit ist installiert und wird erkannt.",
-      installerLaunched: "Das Installationsprogramm wurde sichtbar gestartet. Schließen Sie die Installationsschritte des Anbieters ab, bevor Sie diesen Provider verwenden."
+      installerLaunched: "Das Installationsprogramm wurde sichtbar gestartet. Schließen Sie die Installationsschritte des Anbieters ab, bevor Sie diesen Provider verwenden.",
+      componentFilesExtracted: "Die Komponentendateien wurden in das Installationsverzeichnis entpackt."
     },
     gpuPlacement: {
       singleAdapter: "Dieser Rechner hat nur eine GPU, daher gibt es für die GPU-Planung kein Ziel zur Auswahl."

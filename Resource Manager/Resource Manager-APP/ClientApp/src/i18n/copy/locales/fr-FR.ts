@@ -2010,7 +2010,8 @@ const frFrAppCopy: AppCopy = {
       installerDownloaded: "L'installateur a été téléchargé dans le répertoire de dépendances géré.",
       installerDownloadedVersion: (value: string) => `L'installateur de ${value} a été téléchargé dans le répertoire de dépendances géré.`,
       sharedRuntimeInstalled: "Le runtime WebView2 partagé est installé et détecté.",
-      installerLaunched: "L'installateur s'est lancé visiblement. Terminez les invites d'installation du fournisseur avant d'utiliser ce fournisseur."
+      installerLaunched: "L'installateur s'est lancé visiblement. Terminez les invites d'installation du fournisseur avant d'utiliser ce fournisseur.",
+      componentFilesExtracted: "Les fichiers du composant ont été extraits dans le dossier d'installation."
     },
     gpuPlacement: {
       singleAdapter: "Cette machine n'a qu'un seul GPU : l'ordonnancement GPU n'a aucune cible à choisir."
