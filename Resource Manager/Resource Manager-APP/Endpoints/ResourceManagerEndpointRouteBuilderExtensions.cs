@@ -27,7 +27,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapDebugEndpoints();
         app.MapSettingsEndpoints();
         app.MapResourceMonitorEndpoints();
-        app.MapDiskUsageEndpoints();
+        app.MapDiskUsageEndpoints(startupCapabilities);
         app.MapFrontendRuntimeStateEndpoints();
         app.MapAdapterEndpoints(startupCapabilities);
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))

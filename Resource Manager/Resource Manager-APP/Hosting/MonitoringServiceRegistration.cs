@@ -96,6 +96,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
+        services.AddSingleton<IDiskUsageTreeStore, DiskUsageTreeStore>();
+        services.AddSingleton<IDiskUsageScanner, DirectoryWalkDiskUsageScanner>();
 
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());

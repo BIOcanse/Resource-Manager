@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Components;
@@ -90,6 +91,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 new DependencyOperationEffectExecutor(
                     provider.GetRequiredService<IOptionalDependencyManager>(),
                     launchInstaller: true));
+            services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
+                new DiskUsageScanEffectExecutor(
+                    provider.GetRequiredService<IDiskUsageScanner>(),
+                    provider.GetRequiredService<IDiskUsageTreeStore>()));
             services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
                 new SoftwareOperationEffectExecutor(
                     provider.GetRequiredService<ISoftwareOperationManager>()));

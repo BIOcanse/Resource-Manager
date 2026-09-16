@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.DiskUsage;
 using System.Buffers.Binary;
 using System.Text;
 using ResourceManager.App.Domain.Components;
@@ -19,6 +20,7 @@ internal static class HostManagerOperationKinds
     public const string MigrationExecute = "migration.execute";
     public const string MigrationRestore = "migration.restore";
     public const string DiscoveryStart = "discovery.start";
+    public const string DiskUsageScan = "disk-usage.scan";
 
     internal static IReadOnlySet<string> All { get; } = new HashSet<string>(
         [
@@ -29,7 +31,8 @@ internal static class HostManagerOperationKinds
             SoftwareUninstall,
             MigrationExecute,
             MigrationRestore,
-            DiscoveryStart
+            DiscoveryStart,
+            DiskUsageScan
         ],
         StringComparer.Ordinal);
 }
@@ -49,6 +52,7 @@ internal static class HostManagerOperationRequestSchemas
     public const uint MigrationExecute = 0x0401;
     public const uint MigrationRestore = 0x0402;
     public const uint DiscoveryStart = 0x0501;
+    public const uint DiskUsageScan = 0x0601;
     public const uint ProgressStage = 0x1001;
     public const uint ProgressMessage = 0x1002;
     public const uint OperationCheckpoint = 0x1003;
@@ -175,6 +179,38 @@ internal static class HostManagerOperationRequestCodec
             HostManagerOperationRequestSchemas.DiscoveryStart,
             HostManagerOperationRequestSchemas.Version,
             payload);
+    }
+
+    internal static HostManagerOperationSubmitCommand DiskUsageScan(
+        DiskUsageScanRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var payload = Encode(writer =>
+        {
+            WriteString(writer, request.Scope);
+            WriteString(writer, request.Mode);
+            // 全局扫描没有目标路径，写个占位，读回来再还原成空串。
+            WriteString(writer, string.IsNullOrEmpty(request.Target) ? "*" : request.Target);
+        });
+        // 同一时刻只允许一个磁盘扫描：域键固定，协调器自己会挡掉重复提交。
+        return new HostManagerOperationSubmitCommand(
+            HostManagerOperationKinds.DiskUsageScan,
+            "扫描磁盘占用",
+            "disk-usage:scan",
+            HostManagerOperationRequestSchemas.DiskUsageScan,
+            HostManagerOperationRequestSchemas.Version,
+            payload);
+    }
+
+    internal static DiskUsageScanRequest DecodeDiskUsageScan(ReadOnlySpan<byte> payload)
+    {
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var scope = ReadString(reader);
+        var mode = ReadString(reader);
+        var target = ReadString(reader);
+        RequireEnd(stream);
+        return new DiskUsageScanRequest(scope, mode, target == "*" ? string.Empty : target);
     }
 
     internal static (string Id, bool Confirm, string? VersionChoice) DecodeAcquisitionRequest(

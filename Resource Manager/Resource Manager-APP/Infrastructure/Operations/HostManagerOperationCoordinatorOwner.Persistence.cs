@@ -464,6 +464,13 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             throw new InvalidOperationException(
                 "The configured operation kind set and registered effect executors differ.");
         }
+
+        // 每个种类还要有自己的效果类型编码（收据里要存它）。少了会在排产时才炸，
+        // 把协调器整个打成故障；在这里一起验，缺了就启动即失败。
+        foreach (var kind in configured)
+        {
+            _ = EffectKindCode(kind);
+        }
     }
 
     private string ResolveEnvelopePath(string relativePath)
