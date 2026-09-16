@@ -14,6 +14,11 @@ import type { DiskUsageViewport } from "./diskUsageViewport.ts";
  *
  * 名字只在矩形装得下时画（宽够放字、高够放行），装不下就不画 ——
  * 画一半的字比不画更糟。
+ *
+ * 名字之间也要让位：子方格在父方格里面，两个名字会重叠，
+ * 后画的把先画的盖掉一截，"Windows Kits" 就成了 "10 ndows Kits"。
+ * 所以按由浅到深的顺序画，先占住位置的保留，后来的撞上了就不画 ——
+ * 外层名字负责定位，里层名字放大之后自然会露出来。
  */
 export interface DiskUsagePaintTheme {
   /** 目录方格的基色。 */
@@ -45,6 +50,51 @@ const innerStrokeMinimumSide = 14;
 /** 名字至少要这么宽、这么高才画。 */
 const labelMinimumWidth = 44;
 const labelMinimumHeight = 16;
+
+/** 名字底衬的高度，占位和绘制用的是同一个值。 */
+const labelChipHeight = 15;
+
+/**
+ * 记名字占了画布上哪些地方，用来判断后来的名字会不会压到先画的。
+ *
+ * 用固定粒度的格子而不是两两比大小：可见的名字最多上千个，
+ * 两两比就是百万次，拖动时会卡；格子是按面积算的，一个名字只碰几个格。
+ * 粒度偏粗会让紧挨着的两个名字也算撞上，这个方向是安全的 —— 宁可不画。
+ */
+export class LabelOccupancy {
+  private readonly columns: number;
+  private readonly taken: Uint8Array;
+  private readonly cell: number;
+
+  constructor(width: number, height: number, cell = 8) {
+    this.cell = cell;
+    this.columns = Math.max(1, Math.ceil(width / cell));
+    this.taken = new Uint8Array(this.columns * Math.max(1, Math.ceil(height / cell)));
+  }
+
+  /** 这块地方还空着就占下并返回 true，已经被占了就返回 false。 */
+  tryReserve(left: number, top: number, width: number, height: number): boolean {
+    const firstColumn = Math.max(0, Math.floor(left / this.cell));
+    const lastColumn = Math.min(this.columns - 1, Math.floor((left + width) / this.cell));
+    const rows = this.taken.length / this.columns;
+    const firstRow = Math.max(0, Math.floor(top / this.cell));
+    const lastRow = Math.min(rows - 1, Math.floor((top + height) / this.cell));
+
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let column = firstColumn; column <= lastColumn; column++) {
+        if (this.taken[row * this.columns + column] === 1) {
+          return false;
+        }
+      }
+    }
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let column = firstColumn; column <= lastColumn; column++) {
+        this.taken[row * this.columns + column] = 1;
+      }
+    }
+    return true;
+  }
+}
 
 export function paintTreemap(
   context: CanvasRenderingContext2D,
@@ -111,6 +161,7 @@ function paintLabels(
   const { layout, viewport, theme } = options;
   context.textBaseline = "top";
   context.font = "12px 'Segoe UI Variable Text', 'Segoe UI', sans-serif";
+  const occupancy = new LabelOccupancy(options.width, options.height);
 
   for (const index of candidates) {
     const label = options.labelOf(layout.nodeIds[index]);
@@ -127,6 +178,14 @@ function paintLabels(
       continue;
     }
 
+    // 先占位置：这块地方已经有名字了就整个不画，不画半截压上去的字。
+    const chipLeft = left + 3;
+    const chipTop = top + 3;
+    const chipWidth = measured.width + 5;
+    if (!occupancy.tryReserve(chipLeft, chipTop, chipWidth, labelChipHeight)) {
+      continue;
+    }
+
     // 裁到自己的格子里再画。相邻两个窄格子各画各的名字时，
     // 不裁的话两串字会紧挨着连成一个词（"adapters" + "topology"）。
     const boxHeight = layout.height[index] * scaleY;
@@ -136,7 +195,7 @@ function paintLabels(
     context.clip();
     // 底衬让名字在深浅不一的方格上都读得清，比描边字干净。
     context.fillStyle = theme.labelShadow;
-    context.fillRect(left + 3, top + 3, measured.width + 5, 15);
+    context.fillRect(chipLeft, chipTop, chipWidth, labelChipHeight);
     context.fillStyle = theme.label;
     context.fillText(label, left + 5, top + 5);
     context.restore();

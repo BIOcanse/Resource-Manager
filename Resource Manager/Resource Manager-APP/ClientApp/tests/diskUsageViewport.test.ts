@@ -8,6 +8,7 @@ import {
   unitToPixels,
   zoomAt
 } from "../src/diskUsage/diskUsageViewport.ts";
+import { LabelOccupancy } from "../src/diskUsage/diskUsageTreemapPaint.ts";
 
 const width = 1000;
 const height = 500;
@@ -60,5 +61,16 @@ const clamped = clampToBounds({ scale: 4, offsetX: 9, offsetY: -3 });
 assert.deepEqual(clampToBounds(clamped), clamped);
 assert.equal(clamped.offsetX, 0.75);
 assert.equal(clamped.offsetY, 0);
+
+// 名字占位：子方格的名字在父方格里面，撞上了就不画，
+// 否则父方格的名字会被盖掉中间一截（"Windows Kits" → "10 ndows Kits"）。
+const occupancy = new LabelOccupancy(400, 200);
+assert.equal(occupancy.tryReserve(10, 10, 120, 15), true, "第一个名字总能画");
+assert.equal(occupancy.tryReserve(40, 12, 30, 15), false, "压在上面的名字不画");
+assert.equal(occupancy.tryReserve(10, 10, 120, 15), false, "同一个位置不能占两次");
+assert.equal(occupancy.tryReserve(200, 100, 80, 15), true, "错开的名字照画");
+// 画布外的坐标不能越界写，也不能把不相干的位置误判成已占用。
+assert.equal(occupancy.tryReserve(-50, -50, 20, 15), true);
+assert.equal(occupancy.tryReserve(9_000, 9_000, 20, 15), true);
 
 console.log("diskUsageViewport: ok");
