@@ -66,3 +66,40 @@
   margin: 12px 0 0;
   color: var(--muted);
 }
+
+/* 识别到过的设备。不在场的压暗但保留，用户要看得见连接过什么。 */
+.control-instances-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.control-instance-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.control-instance-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name action" "meta action";
+  align-items: center;
+  gap: 2px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.control-instance-list li > .control-capability-label { grid-area: name; }
+.control-instance-list li > .control-object-platform { grid-area: meta; }
+.control-instance-list li > button,
+.control-instance-list li > .control-capability-reason { grid-area: action; }
+
+.control-instance-absent {
+  opacity: 0.68;
+}
