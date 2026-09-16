@@ -1,10 +1,16 @@
 using ResourceManager.App.Application.DiskUsage;
+using ResourceManager.App.Application.Operations;
+using ResourceManager.App.Domain.DiskUsage;
+using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.Operations;
 
 namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private static IEndpointRouteBuilder MapDiskUsageEndpoints(this IEndpointRouteBuilder app)
+    private static IEndpointRouteBuilder MapDiskUsageEndpoints(
+        this IEndpointRouteBuilder app,
+        StartupCapabilitySet startupCapabilities)
     {
         // 卷会插拔，所以每次都现读，不缓存也不缓存响应。
         app.MapGet("/api/disk-usage/volumes", (
@@ -14,6 +20,104 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             DisableResponseCache(response);
             return Results.Ok(volumes.ReadVolumes());
         }).AllowAnonymous();
+
+        // 扫描结果的概况。还没扫过就是 null，界面据此显示空态。
+        app.MapGet("/api/disk-usage/summary", (
+            HttpResponse response,
+            IDiskUsageTreeStore store) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(store.Current?.Summary);
+        }).AllowAnonymous();
+
+        // 方格布局。默认从根开始；钻进子树时带上 node。
+        app.MapGet("/api/disk-usage/layout", (
+            HttpResponse response,
+            IDiskUsageTreeStore store,
+            int? node) =>
+        {
+            DisableResponseCache(response);
+            var current = store.Current;
+            if (current is null || current.Tree.Roots.Count == 0)
+            {
+                return Results.Ok(null as object);
+            }
+
+            var tree = current.Tree;
+            var rootNode = node is { } requested && requested >= 0 && requested < tree.Count
+                ? requested
+                : tree.Roots[0];
+            var layout = DiskUsageTreemapLayout.Create(tree, rootNode);
+            return Results.Ok(new
+            {
+                rootNodeId = layout.RootNodeId,
+                rootPath = tree.PathOf(rootNode),
+                rootSizeBytes = tree.SizeOf(rootNode),
+                omittedCount = layout.OmittedCount,
+                // 方格是热路径上量最大的东西，发成并列数组而不是一堆对象。
+                nodeIds = layout.Tiles.Select(static tile => tile.NodeId).ToArray(),
+                parentIds = layout.Tiles.Select(static tile => tile.ParentNodeId).ToArray(),
+                depths = layout.Tiles.Select(static tile => tile.Depth).ToArray(),
+                x = layout.Tiles.Select(static tile => tile.X).ToArray(),
+                y = layout.Tiles.Select(static tile => tile.Y).ToArray(),
+                width = layout.Tiles.Select(static tile => tile.Width).ToArray(),
+                height = layout.Tiles.Select(static tile => tile.Height).ToArray(),
+                directoryFlags = layout.Tiles.Select(static tile => tile.IsDirectory).ToArray(),
+                sizes = layout.Tiles.Select(static tile => tile.SizeBytes).ToArray()
+            });
+        }).AllowAnonymous();
+
+        // 单个节点的事实：右键菜单和选中提示要的就是这些。
+        app.MapGet("/api/disk-usage/node/{nodeId:int}", (
+            HttpResponse response,
+            IDiskUsageTreeStore store,
+            int nodeId) =>
+        {
+            DisableResponseCache(response);
+            var current = store.Current;
+            if (current is null || nodeId < 0 || nodeId >= current.Tree.Count)
+            {
+                return Results.NotFound();
+            }
+
+            var tree = current.Tree;
+            return Results.Ok(new DiskUsageNode(
+                checked((uint)nodeId),
+                tree.ParentOf(nodeId) >= 0 ? checked((uint)tree.ParentOf(nodeId)) : 0,
+                new string(tree.NameOf(nodeId)),
+                tree.PathOf(nodeId),
+                tree.IsDirectory(nodeId),
+                tree.SizeOf(nodeId) > 0 ? (ulong)tree.SizeOf(nodeId) : 0,
+                tree.AllocatedOf(nodeId) > 0 ? (ulong)tree.AllocatedOf(nodeId) : 0,
+                tree.FileCountOf(nodeId),
+                null));
+        }).AllowAnonymous();
+
+        if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
+        {
+            // 扫描走操作协调器：进度、取消和任务中心条目都是它现成给的。
+            app.MapPost("/api/disk-usage/scan", async (
+                DiskUsageScanRequest request,
+                IHostManagerOperationCommandService operations,
+                CancellationToken cancellationToken) =>
+            {
+                try
+                {
+                    var command = HostManagerOperationRequestCodec.DiskUsageScan(request);
+                    return Results.Ok(await operations
+                        .SubmitAsync(command, cancellationToken)
+                        .ConfigureAwait(false));
+                }
+                catch (ArgumentException error)
+                {
+                    return Results.BadRequest(new { error = error.Message });
+                }
+                catch (InvalidOperationException error)
+                {
+                    return Results.BadRequest(new { error = error.Message });
+                }
+            });
+        }
 
         return app;
     }

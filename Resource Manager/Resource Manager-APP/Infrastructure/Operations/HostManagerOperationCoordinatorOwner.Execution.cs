@@ -712,6 +712,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             HostManagerOperationKinds.MigrationExecute => 6,
             HostManagerOperationKinds.MigrationRestore => 7,
             HostManagerOperationKinds.DiscoveryStart => 8,
+            HostManagerOperationKinds.DiskUsageScan => 9,
             _ => throw new InvalidDataException(
                 "The operation effect kind is unknown.")
         };
