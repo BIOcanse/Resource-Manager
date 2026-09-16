@@ -51,6 +51,40 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
 
+        // 见过的设备登记表。在场的标激活，不在场的照样列出来 ——
+        // 「都能看到连接过什么东西」。
+        app.MapGet("/api/control/instances", async (
+            HttpResponse response,
+            IControlInstanceRegistry registry,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(await registry.ReadAsync(cancellationToken));
+        }).AllowAnonymous();
+
+        // 重新检测。新设备会被登记并自带默认配置。
+        app.MapPost("/api/control/instances/refresh", async (
+            IControlInstanceRegistry registry,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await registry.RefreshAsync(cancellationToken)));
+
+        // 删掉一条早就不用的记录，连同它的设定。
+        app.MapDelete("/api/control/instances/{instanceId}", async (
+            string instanceId,
+            IControlInstanceRegistry registry,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await registry.ForgetAsync(instanceId, cancellationToken));
+            }
+            catch (InvalidOperationException error)
+            {
+                // 设备还在场：说清楚为什么删不了，而不是点了没反应。
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
+
         return app;
     }
 }

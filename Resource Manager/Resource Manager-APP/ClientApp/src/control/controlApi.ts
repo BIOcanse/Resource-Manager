@@ -16,6 +16,7 @@ import type {
   ControlCapability,
   ControlNumberRange,
   ControlObject,
+  ControlInstanceCatalog,
   ControlObjectCatalog,
   ControlSetting,
   ControlStateView
@@ -191,5 +192,87 @@ export function getControlState(
     decoder: controlStateDecoder,
     signal,
     request: { method: "GET" }
+  });
+}
+
+function readInstanceCatalog(value: unknown): ControlInstanceCatalog {
+  const record = requireRecord(value, "$");
+  return {
+    instances: requireArray(record.instances, "$.instances").map((row, index) => {
+      const view = requireRecord(row, `$.instances[${index}]`);
+      const instance = requireRecord(view.instance, `$.instances[${index}].instance`);
+      const platform = requireRecord(
+        instance.platform,
+        `$.instances[${index}].instance.platform`);
+      const at = `$.instances[${index}].instance`;
+      return {
+        isPresent: requireBoolean(view.isPresent, `$.instances[${index}].isPresent`),
+        instance: {
+          id: requireNonEmptyString(instance.id, `${at}.id`),
+          kind: requireNonEmptyString(instance.kind, `${at}.kind`),
+          displayName: requireString(instance.displayName, `${at}.displayName`),
+          platform: {
+            operatingSystem: requireNonEmptyString(
+              platform.operatingSystem,
+              `${at}.platform.operatingSystem`),
+            vendor: requireNonEmptyString(platform.vendor, `${at}.platform.vendor`)
+          },
+          gpuAttachment: optionalString(instance.gpuAttachment, `${at}.gpuAttachment`),
+          identityIsUnique: requireBoolean(
+            instance.identityIsUnique,
+            `${at}.identityIsUnique`),
+          firstSeenAt: requireNonEmptyString(instance.firstSeenAt, `${at}.firstSeenAt`),
+          lastSeenAt: requireNonEmptyString(instance.lastSeenAt, `${at}.lastSeenAt`),
+          defaultSettings: requireArray(instance.defaultSettings, `${at}.defaultSettings`)
+            .map((setting, index2) => readSetting(setting, `${at}.defaultSettings[${index2}]`))
+        }
+      };
+    }),
+    readAt: requireNonEmptyString(record.readAt, "$.readAt")
+  };
+}
+
+export const controlInstancesDecoder = defineResponseDecoder<ControlInstanceCatalog>(
+  "control.instances.v1",
+  readInstanceCatalog);
+
+export function getControlInstances(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<ControlInstanceCatalog> {
+  return requestClient.request({
+    key: "control.instances",
+    url: "/api/control/instances",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlInstancesDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+/** 重新检测。新设备会被登记并自带默认配置。 */
+export function refreshControlInstances(
+  requestClient: Pick<RequestClient, "request">
+): Promise<ControlInstanceCatalog> {
+  return requestClient.request({
+    key: "control.instances.refresh",
+    url: "/api/control/instances/refresh",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlInstancesDecoder,
+    request: { method: "POST" }
+  });
+}
+
+/** 删掉一条早就不用的记录，连同它的设定。设备还在场时后端会拒绝。 */
+export function forgetControlInstance(
+  requestClient: Pick<RequestClient, "request">,
+  instanceId: string
+): Promise<ControlInstanceCatalog> {
+  return requestClient.request({
+    key: "control.instances.forget",
+    url: `/api/control/instances/${encodeURIComponent(instanceId)}`,
+    fallbackError: uiText.control.forgetFailed,
+    decoder: controlInstancesDecoder,
+    request: { method: "DELETE" }
   });
 }

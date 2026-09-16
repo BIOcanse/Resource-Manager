@@ -35,6 +35,8 @@ interface AppRoutesProps {
   onOpenSoftwareDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onOpenSoftwareSettingsById: (softwareId: string, softwareName: string) => void;
   onInspectOptimizationTarget: (report: OptimizationReportItem) => void;
+  /** 流程提示：某个动作做不成时当场说一句，不在页面上常驻。 */
+  onNotice: (message: string) => void;
 }
 
 export function AppRoutes(props: AppRoutesProps) {
@@ -84,7 +86,7 @@ export function AppRoutes(props: AppRoutesProps) {
               )}
             >
               <PageBoundary name={uiText.page.control}>
-                <ControlWorkspace />
+                <ControlWorkspace onNotice={props.onNotice} />
               </PageBoundary>
             </Show>
           }
