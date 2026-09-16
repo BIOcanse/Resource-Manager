@@ -41,10 +41,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             DashboardMonitoringCatalogState catalogState) =>
         {
             var snapshot = catalogState.Current;
+            // 读不到的条目也要发出去。
+            //
+            // 目录里每一条都带着 Selectable、DisabledReason 和缺哪个组件，
+            // 界面也早就会把这些画成灰掉的条目加一句原因。先前这里按 Selectable 过滤，
+            // 等于把算好的原因直接扔掉 —— 用户看到的就是"根本没有这一项"，
+            // 分不清是这台机器读不到，还是这个软件压根不支持。
+            // 比如 AMD 机器上的 CPU 电压/电流/温度要装 AMD SMU 组件才读得到，
+            // 不发出来就没有任何地方告诉用户这件事。
             return Results.Ok(snapshot is null
                 ? Array.Empty<MetricDefinition>()
-                : MetricCatalog.FromSnapshot(snapshot)
-                    .Where(static definition => definition.Selectable));
+                : MetricCatalog.FromSnapshot(snapshot));
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/snapshot", async (

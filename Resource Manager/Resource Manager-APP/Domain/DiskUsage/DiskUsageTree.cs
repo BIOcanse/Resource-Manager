@@ -54,6 +54,26 @@ public sealed class DiskUsageTree
     /// <summary>根节点序号。全局扫描会有多个根，一个卷一个。</summary>
     public IReadOnlyList<int> Roots { get; }
 
+    /// <summary>
+    /// 这棵树占多少字节。
+    ///
+    /// 它要登记进内存账本，账本按大小排队回收，所以这个数必须是实际占用，
+    /// 不能拿节点数估。各个并列数组的长度加起来就是准确值 ——
+    /// 名字缓冲往往比索引列还大，漏掉它会少算将近一半。
+    /// 数组对象头这类常数开销忽略不计。
+    /// </summary>
+    public long ApproximateByteSize =>
+        ((long)parents.Length * sizeof(int))
+        + ((long)firstChildren.Length * sizeof(int))
+        + ((long)nextSiblings.Length * sizeof(int))
+        + ((long)sizes.Length * sizeof(long))
+        + ((long)allocated.Length * sizeof(long))
+        + ((long)nameOffsets.Length * sizeof(int))
+        + ((long)nameLengths.Length * sizeof(int))
+        + ((long)fileCounts.Length * sizeof(int))
+        + directoryFlags.Length
+        + ((long)names.Length * sizeof(char));
+
     public int ParentOf(int node) => parents[node];
 
     public int FirstChildOf(int node) => firstChildren[node];

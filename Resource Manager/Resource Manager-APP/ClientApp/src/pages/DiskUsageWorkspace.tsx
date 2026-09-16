@@ -50,11 +50,24 @@ export function DiskUsageWorkspace() {
 
   onMount(() => {
     const controller = new AbortController();
-    void getDiskUsageVolumes(runtime.requestClient, controller.signal)
-      .then(setVolumes)
-      .catch(() => setVolumes([]));
+    const readVolumes = (signal?: AbortSignal) =>
+      void getDiskUsageVolumes(runtime.requestClient, signal)
+        .then(setVolumes)
+        .catch(() => setVolumes([]));
+
+    readVolumes(controller.signal);
     void refreshResult(controller.signal);
-    onCleanup(() => controller.abort());
+
+    // 盘符是会变的：U 盘插上、BitLocker 解锁、虚拟盘挂载，随时会多一个。
+    // 每次打开这一页都会重读（这个组件是随页面挂载的），
+    // 但页面一直开着的时候也得能发现 —— 窗口重新拿到焦点时再读一次。
+    const refreshVolumes = () => readVolumes();
+    window.addEventListener("focus", refreshVolumes);
+
+    onCleanup(() => {
+      window.removeEventListener("focus", refreshVolumes);
+      controller.abort();
+    });
   });
 
   // 当前这一份布局是按哪个视图算出来的。用来判断新视图值不值得再要一份。

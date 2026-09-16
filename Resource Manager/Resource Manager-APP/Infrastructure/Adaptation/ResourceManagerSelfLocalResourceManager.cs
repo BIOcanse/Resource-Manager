@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.LocalResources;
+using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.Optimization;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
@@ -16,8 +17,15 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
 {
     private const int SelfMemoryTableCapacity = 8;
     private const uint TrimWorkingSetAction = 1;
+    private const uint DiscardDiskUsageSnapshotAction = 2;
     private const uint BackendRecoveryCostCoefficient = 3;
     private const uint NativeUiRecoveryCostCoefficient = 2;
+
+    /// <summary>
+    /// 重扫一次整盘要几秒，比 trim 工作集贵得多，所以恢复代价给得比那两条高。
+    /// 账本按代价排队，这样只有在真的缺内存时才会轮到它。
+    /// </summary>
+    private const uint DiskUsageSnapshotRecoveryCostCoefficient = 6;
 
     private static long nextConfigurationGeneration = DateTime.UtcNow.Ticks;
     private static readonly LocalResourceId SelfMemoryTableId = Id("resource-manager:memory:memory-table");
@@ -25,12 +33,16 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
         Id("resource-manager:memory:backend-working-set");
     private static readonly LocalResourceId NativeUiWorkingSetId =
         Id("resource-manager:memory:native-ui-working-set");
+    private static readonly LocalResourceId DiskUsageSnapshotId =
+        Id("resource-manager:memory:disk-usage-snapshot");
 
     private readonly IProcessResourcePolicyWriter policyWriter;
+    private readonly IDiskUsageTreeStore diskUsageTrees;
     private readonly NativeLocalResourceManagerSession session;
     private readonly DefaultLocalResourceManager manager;
     private readonly LocalResourceTableHandle memoryTable;
     private readonly LocalResourceCapabilityHandle trimCapability;
+    private readonly LocalResourceCapabilityHandle discardDiskUsageCapability;
     private readonly Dictionary<LocalResourceId, LocalResourceHandle> resources = [];
     private readonly List<LocalResourceUncertainExecution> uncertainExecutions = [];
     private readonly SemaphoreSlim tickGate = new(1, 1);
@@ -42,17 +54,21 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
     private bool disposed;
 
     public ResourceManagerSelfLocalResourceManager(
-        IProcessResourcePolicyWriter policyWriter)
-        : this(policyWriter, CreateGuardedConfiguration())
+        IProcessResourcePolicyWriter policyWriter,
+        IDiskUsageTreeStore diskUsageTrees)
+        : this(policyWriter, diskUsageTrees, CreateGuardedConfiguration())
     {
     }
 
     internal ResourceManagerSelfLocalResourceManager(
         IProcessResourcePolicyWriter policyWriter,
+        IDiskUsageTreeStore diskUsageTrees,
         LocalResourceManagerConfiguration configuration)
     {
         LocalResourceIntentExecutor.ThrowIfCapabilityHandlerLifecycleEntry();
         this.policyWriter = policyWriter ?? throw new ArgumentNullException(nameof(policyWriter));
+        this.diskUsageTrees = diskUsageTrees
+            ?? throw new ArgumentNullException(nameof(diskUsageTrees));
         ArgumentNullException.ThrowIfNull(configuration);
 
         LocalResourceTableHandle configuredMemoryTable = default;
@@ -83,6 +99,22 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
         session = manager.Session;
         memoryTable = configuredMemoryTable;
         trimCapability = configuredTrimCapability;
+        // 一张表上两种能力各只能有一个：
+        // 带 ReleasesLedgerSlot 的占"容量"那个位子，其余效果占"模式"那个位子。
+        // trim 已经占了模式位，所以这条只能声明 ReleasesLedgerSlot ——
+        // 写成 ChangesSizeBytes | ReleasesLedgerSlot 会同时去抢两个位子，
+        // 原生侧直接判 IntentConflict。
+        //
+        // 语义上也对得上：trim 是"把这张表里的东西压小"，
+        // 丢掉扫描结果是"把这张表里的一条整个拿掉"，本来就是容量那一路。
+        discardDiskUsageCapability = manager.RegisterCapability(
+            memoryTable,
+            new(
+                CapabilityId: DiscardDiskUsageSnapshotAction,
+                ActionCode: DiscardDiskUsageSnapshotAction,
+                ExpectedEffects: LocalResourceEffects.ReleasesLedgerSlot,
+                Destructive: true),
+            DiscardDiskUsageSnapshotAsync);
     }
 
     public bool IsBackgroundWorkerRunning => false;
@@ -233,6 +265,79 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
             NativeUiWorkingSetId,
             sample.NativeUi,
             NativeUiRecoveryCostCoefficient);
+        SynchronizeDiskUsageSnapshot();
+    }
+
+    /// <summary>
+    /// 磁盘占用的扫描结果树。
+    ///
+    /// 它是一份缓存：整块 C 盘一百多万个节点大概 90–100 MB，一直留到下次扫描或退出，
+    /// 而这个软件平时的后台占用比这小得多，不登记的话账本上等于凭空少了一大块。
+    /// 它也确实有动作可做 —— 整份丢掉，用户重扫就能拿回来，
+    /// 正好符合"只登记确有动作的"这条标准。
+    ///
+    /// 工作集那两条只能 trim，trim 对它没用：树是活着的托管内存，
+    /// 换页出去不等于还回去了。所以它必须是独立的一条，带自己的 discard。
+    /// </summary>
+    private void SynchronizeDiskUsageSnapshot()
+    {
+        var tree = diskUsageTrees.Current?.Tree;
+        var sizeBytes = tree?.ApproximateByteSize ?? 0;
+        if (tree is null || sizeBytes <= 0)
+        {
+            if (resources.TryGetValue(DiskUsageSnapshotId, out var stale))
+            {
+                manager.UnregisterResource(stale);
+                resources.Remove(DiskUsageSnapshotId);
+            }
+            return;
+        }
+
+        var definition = new LocalResourceDefinition(
+            DiskUsageSnapshotId,
+            (ulong)sizeBytes,
+            DiskUsageSnapshotRecoveryCostCoefficient,
+            LocalResourceRecoverability.Recoverable,
+            // 丢掉之后界面上那张图就空了，用户当场看得见，不是悄无声息的回收。
+            LocalResourceAccessLossImpact.ObservableNow);
+        if (resources.TryGetValue(DiskUsageSnapshotId, out var existing))
+        {
+            var current = session.ReadResource(existing);
+            if (!MatchesDefinition(current, definition))
+            {
+                manager.UpdateResource(existing, definition);
+            }
+            return;
+        }
+        resources.Add(
+            DiskUsageSnapshotId,
+            manager.RegisterResource(memoryTable, definition));
+    }
+
+    private ValueTask<LocalResourceEffect> DiscardDiskUsageSnapshotAsync(
+        LocalResourceExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (context.ResourceUid != DiskUsageSnapshotId)
+        {
+            return ValueTask.FromResult(
+                new LocalResourceEffect(LocalResourceEffectOutcome.NoEffect));
+        }
+
+        var released = diskUsageTrees.Current?.Tree.ApproximateByteSize ?? 0;
+        if (released <= 0)
+        {
+            return ValueTask.FromResult(
+                new LocalResourceEffect(LocalResourceEffectOutcome.NoEffect));
+        }
+        diskUsageTrees.Clear();
+        // 整棵树没了，这条资源也就不存在了：报的效果要和注册时声明的一致。
+        return ValueTask.FromResult(new LocalResourceEffect(
+            LocalResourceEffectOutcome.Applied,
+            LocalResourceEffects.ReleasesLedgerSlot,
+            SizeBytesAfter: 0,
+            ReleasedBytes: (ulong)released));
     }
 
     private void SynchronizeResource(
