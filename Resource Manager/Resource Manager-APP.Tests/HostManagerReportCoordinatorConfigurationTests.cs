@@ -24,7 +24,7 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(21632, plan.Recreate.Capacity.MaximumBucketCount);
         Assert.Equal(32768, plan.Recreate.Capacity.MaximumPersistenceOperationCount);
         Assert.Equal(65536, plan.Recreate.Capacity.PlannedPersistenceIndexCapacity);
-        Assert.Equal(7, plan.Recreate.Rules.Length);
+        Assert.Equal(8, plan.Recreate.Rules.Length);
         Assert.All(plan.Recreate.Rules, rule => Assert.NotEqual(0UL, rule.RuleGeneration));
         Assert.Equal(
             plan.Recreate.Rules.Length,
@@ -37,6 +37,20 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
             plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1031).FactKind);
         Assert.Equal(3U, plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1031).PredicateCount);
         Assert.Equal(2U, plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1033).Comparison);
+        // 内存报告是双重判断：百分比和绝对字节各自成组、共用同一个 family，
+        // 所以任一越线都会出报告（或关系），而不是两个条件同时成立才报。
+        var percentRule = plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1037);
+        var bytesRule = plan.Recreate.Rules.Single(rule => rule.RuleHandle == 1038);
+        Assert.Equal(HostManagerReportFactKind.SoftwareMemorySystemPercent, percentRule.FactKind);
+        Assert.Equal(HostManagerReportFactKind.SoftwareMemoryBytes, bytesRule.FactKind);
+        Assert.Equal(percentRule.FamilyHandle, bytesRule.FamilyHandle);
+        Assert.NotEqual(percentRule.PredicateGroupHandle, bytesRule.PredicateGroupHandle);
+        Assert.Equal(1U, percentRule.PredicateCount);
+        Assert.Equal(1U, bytesRule.PredicateCount);
+        // 两者同时越线时，报告带绝对值：优先级更高的那条观测胜出。
+        Assert.True(bytesRule.Priority > percentRule.Priority);
+        Assert.Equal(4L * 1024 * 1024 * 1024, bytesRule.ActivationThreshold);
+        Assert.Equal(3L * 1024 * 1024 * 1024, bytesRule.ClearThreshold);
         Assert.Equal(3_600_000, plan.HotPublish.BucketWidthMilliseconds);
         Assert.Equal(86_400_000, plan.HotPublish.Window24HoursMilliseconds);
         Assert.Equal(604_800_000, plan.HotPublish.Window7DaysMilliseconds);

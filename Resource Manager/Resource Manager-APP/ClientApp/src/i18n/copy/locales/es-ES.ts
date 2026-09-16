@@ -396,14 +396,19 @@ const esEsAppCopy: AppCopy = {
         intelPcm: "Compatibilidad con la supervisión de procesadores Intel"
       },
       purposes: {
-        amdCpuSensors: "Añade la potencia, la temperatura, el voltaje y la frecuencia de los procesadores AMD.",
-        gpuOptionalMonitoring: "Proporciona información opcional de supervisión de la GPU.",
-        generalHardwareSensors: "Añade información de ventiladores, temperatura, voltaje y placa base.",
-        notebookFan: "Añade la velocidad y el estado de funcionamiento de los ventiladores del portátil.",
-        latencyAnalysis: "Se usa para investigar más a fondo los problemas de latencia y rendimiento del sistema.",
-        nvidiaGpu: "Añade la frecuencia, la temperatura, la potencia y el ventilador de las GPU NVIDIA.",
-        amdGpu: "Añade la frecuencia, la temperatura, la potencia y el ventilador de las GPU AMD.",
-        intelCpu: "Añade la potencia, la frecuencia y la temperatura de los procesadores Intel."
+        msiAfterburner: "Si ya tienes Afterburner instalado, también se leen sus datos de GPU. Opcional.",
+        amdRyzenSdk: "El SDK oficial de AMD. Lee potencia, voltaje, corriente y temperatura de Ryzen.",
+        amdSmu: "Lee las tablas SMU directamente y añade STAPM y lecturas por núcleo que el SDK no expone.",
+        intelCpu: "Lee la potencia, la frecuencia y la temperatura de los procesadores Intel.",
+        generalHardwareSensors: "La fuente general de placa base, ventiladores, temperatura y voltaje. Suficiente para la mayoría de equipos.",
+        nvidiaNvml: "Lee frecuencias, VRAM, potencia y temperatura de NVIDIA desde el controlador instalado.",
+        nvidiaNvapi: "Añade las lecturas de ventilador, voltaje y corriente que la interfaz básica de NVIDIA no da.",
+        amdGpu: "Lee frecuencias, temperatura, potencia y ventilador de las GPU AMD.",
+        notebookEcFan: "Lee los ventiladores desde el EC del portátil, cuando ni la monitorización general ni el controlador gráfico los exponen.",
+        notebookOemFan: "Usa el controlador del fabricante para la velocidad de los ventiladores de CPU/GPU. Más preciso en modelos reconocidos.",
+        latencyMon: "Investiga la latencia de interrupciones y los tirones, hasta saber qué controlador frena el sistema.",
+        windowsPerformanceToolkit: "WPR / Xperf de Microsoft, para un rastreo más profundo del sistema.",
+        sharedWebView2Runtime: "El entorno Chromium sobre el que corre la interfaz, compartido en todo el equipo."
       },
       categories: {
         performanceAnalysis: "Herramientas de análisis del rendimiento",

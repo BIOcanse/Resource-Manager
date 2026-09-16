@@ -127,7 +127,7 @@ function decodeReport(value: unknown, path: string): OptimizationReportItem {
     lastObservedAt: requireTimestamp(
       record.lastObservedAt,
       `${path}.lastObservedAt`),
-    title: requireNonEmptyString(record.title, `${path}.title`),
+    title: requireString(record.title, `${path}.title`),
     message: requireString(record.message, `${path}.message`),
     context: decodeContext(record.context, `${path}.context`),
     target: decodeTarget(record.target, `${path}.target`),
@@ -173,7 +173,7 @@ function decodeTarget(value: unknown, path: string): OptimizationReportTarget {
   return Object.freeze({
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
+    displayName: requireString(record.displayName, `${path}.displayName`),
     softwareId: requireNullable(record.softwareId, `${path}.softwareId`, requireString),
     softwareName: requireNullable(record.softwareName, `${path}.softwareName`, requireString),
     softwareKind: requireNullable(record.softwareKind, `${path}.softwareKind`, requireString),
@@ -196,9 +196,7 @@ function decodeEvidence(value: unknown, path: string): OptimizationReportEvidenc
     averageValue: requireFiniteNumber(record.averageValue, `${path}.averageValue`),
     peakValue: requireFiniteNumber(record.peakValue, `${path}.peakValue`),
     currentValue: requireFiniteNumber(record.currentValue, `${path}.currentValue`),
-    averageDisplay: requireString(record.averageDisplay, `${path}.averageDisplay`),
-    peakDisplay: requireString(record.peakDisplay, `${path}.peakDisplay`),
-    currentDisplay: requireString(record.currentDisplay, `${path}.currentDisplay`),
+    valueUnit: requireString(record.valueUnit, `${path}.valueUnit`),
     activeSampleCount: requireNonNegativeSafeInteger(
       record.activeSampleCount,
       `${path}.activeSampleCount`),
@@ -214,7 +212,7 @@ function decodeAction(value: unknown, path: string): OptimizationReportAction {
   const record = requireRecord(value, path);
   return Object.freeze({
     id: requireNonEmptyString(record.id, `${path}.id`),
-    label: requireNonEmptyString(record.label, `${path}.label`),
+    label: requireString(record.label, `${path}.label`),
     kind: requireNonEmptyString(record.kind, `${path}.kind`),
     enabled: requireBoolean(record.enabled, `${path}.enabled`),
     disabledReason: requireNullable(
@@ -230,7 +228,7 @@ function decodeTrustedTarget(value: unknown, path: string): TrustedOptimizationT
     id: requireNonEmptyString(record.id, `${path}.id`),
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
+    displayName: requireString(record.displayName, `${path}.displayName`),
     reportType: requireNonEmptyString(record.reportType, `${path}.reportType`),
     resourceKind: requireNonEmptyString(record.resourceKind, `${path}.resourceKind`),
     trustedAt: requireTimestamp(record.trustedAt, `${path}.trustedAt`),
@@ -255,7 +253,7 @@ function decodeProtectedTarget(
     id: requireNonEmptyString(record.id, `${path}.id`),
     targetType: requireNonEmptyString(record.targetType, `${path}.targetType`),
     targetKey: requireNonEmptyString(record.targetKey, `${path}.targetKey`),
-    displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
+    displayName: requireString(record.displayName, `${path}.displayName`),
     softwareId: requireNullable(record.softwareId, `${path}.softwareId`, requireString),
     softwareName: requireNullable(record.softwareName, `${path}.softwareName`, requireString),
     softwareKind: requireNullable(record.softwareKind, `${path}.softwareKind`, requireString),

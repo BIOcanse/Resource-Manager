@@ -396,14 +396,19 @@ const frFrAppCopy: AppCopy = {
         intelPcm: "Prise en charge de la surveillance des processeurs Intel"
       },
       purposes: {
-        amdCpuSensors: "Ajoute la puissance, la température, la tension et la fréquence des processeurs AMD.",
-        gpuOptionalMonitoring: "Fournit des informations de surveillance GPU optionnelles.",
-        generalHardwareSensors: "Ajoute des informations sur les ventilateurs, la température, la tension et la carte mère.",
-        notebookFan: "Ajoute la vitesse et l'état de fonctionnement des ventilateurs de portable.",
-        latencyAnalysis: "Sert à approfondir l'analyse des problèmes de latence et de performances du système.",
-        nvidiaGpu: "Ajoute la fréquence, la température, la puissance et le ventilateur des GPU NVIDIA.",
-        amdGpu: "Ajoute la fréquence, la température, la puissance et le ventilateur des GPU AMD.",
-        intelCpu: "Ajoute la puissance, la fréquence et la température des processeurs Intel."
+        msiAfterburner: "Si Afterburner est déjà installé, ses relevés GPU sont repris aussi. Facultatif.",
+        amdRyzenSdk: "Le SDK officiel d'AMD. Lit la consommation, la tension, le courant et la température des Ryzen.",
+        amdSmu: "Lit directement les tables SMU et ajoute le STAPM et les relevés par cœur que le SDK n'expose pas.",
+        intelCpu: "Lit la consommation, la fréquence et la température des processeurs Intel.",
+        generalHardwareSensors: "La source générale pour la carte mère, les ventilateurs, la température et la tension. Suffisant pour la plupart des machines.",
+        nvidiaNvml: "Lit fréquences, VRAM, consommation et température NVIDIA depuis le pilote installé.",
+        nvidiaNvapi: "Complète les relevés de ventilateur, de tension et de courant que l'interface NVIDIA de base laisse de côté.",
+        amdGpu: "Lit les fréquences, la température, la consommation et le ventilateur des GPU AMD.",
+        notebookEcFan: "Lit les ventilateurs via l'EC du portable, quand ni la surveillance générale ni le pilote graphique ne les exposent.",
+        notebookOemFan: "Passe par le pilote du constructeur pour la vitesse des ventilateurs CPU/GPU. Plus précis sur les modèles reconnus.",
+        latencyMon: "Analyse la latence des interruptions et les micro-saccades, jusqu'au pilote qui ralentit le système.",
+        windowsPerformanceToolkit: "WPR / Xperf de Microsoft, pour un traçage système plus poussé.",
+        sharedWebView2Runtime: "Le moteur Chromium sur lequel tourne l'interface, partagé sur toute la machine."
       },
       categories: {
         performanceAnalysis: "Outils d'analyse des performances",

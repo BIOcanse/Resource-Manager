@@ -396,14 +396,19 @@ const jaJpAppCopy: AppCopy = {
         intelPcm: "Intel プロセッサ監視サポート"
       },
       purposes: {
-        amdCpuSensors: "AMD プロセッサの電力、温度、電圧、クロックの情報を追加します。",
-        gpuOptionalMonitoring: "オプションの GPU 監視情報を提供します。",
-        generalHardwareSensors: "ファン、温度、電圧、マザーボードのハードウェア情報を追加します。",
-        notebookFan: "ノート PC のファン回転数と動作状態を追加します。",
-        latencyAnalysis: "システムの遅延やパフォーマンスの問題をさらに調べるために使います。",
-        nvidiaGpu: "NVIDIA GPU のクロック、温度、電力、ファンの情報を追加します。",
-        amdGpu: "AMD GPU のクロック、温度、電力、ファンの情報を追加します。",
-        intelCpu: "Intel プロセッサの電力、クロック、温度の情報を追加します。"
+        msiAfterburner: "Afterburner が入っていれば、その GPU の値もついでに読み取ります。任意です。",
+        amdRyzenSdk: "AMD 公式の SDK。Ryzen の消費電力・電圧・電流・温度を読みます。",
+        amdSmu: "SMU のテーブルを直接読み、SDK にはない STAPM とコアごとの値まで取れます。",
+        intelCpu: "Intel プロセッサの消費電力・周波数・温度を読みます。",
+        generalHardwareSensors: "マザーボード・ファン・温度・電圧の汎用ソース。多くの環境はこれで足ります。",
+        nvidiaNvml: "インストール済みドライバーから NVIDIA のクロック・VRAM・電力・温度を読みます。",
+        nvidiaNvapi: "NVIDIA の基本インターフェースが返さないファン・電圧・電流を補います。",
+        amdGpu: "AMD GPU のクロック・温度・電力・ファンを読みます。",
+        notebookEcFan: "汎用監視でも GPU ドライバーでもファンが取れない場合に、ノート PC の EC から読みます。",
+        notebookOemFan: "メーカー製ドライバー経由で CPU/GPU ファンの回転数を読みます。対応機種ではより正確です。",
+        latencyMon: "割り込み遅延やカクつきを調べ、どのドライバーが足を引っ張っているかまで分かります。",
+        windowsPerformanceToolkit: "Microsoft 公式の WPR / Xperf。より深いシステムトレース向けです。",
+        sharedWebView2Runtime: "画面が動作する Chromium ランタイム。PC 全体で共有します。"
       },
       categories: {
         performanceAnalysis: "パフォーマンス解析ツール",

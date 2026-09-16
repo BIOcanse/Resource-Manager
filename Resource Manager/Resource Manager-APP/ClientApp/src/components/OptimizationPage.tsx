@@ -27,6 +27,7 @@ import {
 } from "./ObservationStateNotice";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../text.ts";
+import { optimizationEvidenceValue } from "../presentation/optimizationPresentation";
 
 type ReportFilter = "untrusted" | "all" | "trusted";
 
@@ -310,8 +311,9 @@ function matchesOptimizationReportSearch(report: OptimizationReportItem, query: 
     report.state,
     report.severity,
     report.confidence,
-    report.title,
-    report.message,
+    // 标题与正文由前端成句，搜索也要按用户看到的那句话来匹配。
+    presentOptimizationReport(report).title,
+    presentOptimizationReport(report).summary,
     report.target.targetType,
     report.target.targetKey,
     report.target.displayName,
@@ -329,9 +331,9 @@ function matchesOptimizationReportSearch(report: OptimizationReportItem, query: 
     report.context?.confidence,
     ...(report.context?.evidence ?? []),
     report.evidence.resourceKind,
-    report.evidence.averageDisplay,
-    report.evidence.peakDisplay,
-    report.evidence.currentDisplay,
+    optimizationEvidenceValue(report.evidence, report.evidence.averageValue),
+    optimizationEvidenceValue(report.evidence, report.evidence.peakValue),
+    optimizationEvidenceValue(report.evidence, report.evidence.currentValue),
     ...(report.evidence.details ?? []));
 }
 
