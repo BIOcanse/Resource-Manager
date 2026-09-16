@@ -1,6 +1,7 @@
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.NativeScheduling;
 using ResourceManager.Adapter.LocalResources;
+using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Adaptation;
@@ -12,13 +13,30 @@ using System.Reflection;
 namespace Resource_Manager_APP.Tests;
 
 [Collection(LocalResourceCapabilityHandlerProcessStateCollection.Name)]
+/// <summary>
+/// 没有扫描结果的磁盘占用存储。
+/// 这些用例只关心工作集那两条资源；没扫过时磁盘占用不该出现在账本里，
+/// 正好也顺带守住了这一点。
+/// </summary>
+internal sealed class EmptyDiskUsageTreeStore : IDiskUsageTreeStore
+{
+    public DiskUsageScanResult? Current => null;
+
+    public void Replace(DiskUsageScanResult result) => throw new NotSupportedException();
+
+    public void Clear()
+    {
+    }
+}
+
 public sealed class ResourceManagerSelfTypedResourceActionTests
 {
     [Fact]
     public void LocalSelfManagerResynchronizesAgainstNativeDefinitionAuthority()
     {
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter());
+            new RecordingPolicyWriter(),
+            new EmptyDiskUsageTreeStore());
         var sample = InvokePrivate(manager, "CaptureProcessFamilySample");
         var rows = sample.GetType().GetProperty("Backend")!.GetValue(sample)!;
         var resourceId = (LocalResourceId)typeof(ResourceManagerSelfLocalResourceManager)
@@ -59,7 +77,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     {
         var writer = new RecordingPolicyWriter();
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            writer);
+            writer,
+            new EmptyDiskUsageTreeStore());
 
         var result = await manager.TickAsync();
 
@@ -79,7 +98,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     {
         var writer = new RecordingPolicyWriter();
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            writer);
+            writer,
+            new EmptyDiskUsageTreeStore());
 
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
         var first = await manager.TickAsync();
@@ -101,7 +121,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     public async Task LocalSelfManagerPreservesAndReconcilesUnknownTrimEffect()
     {
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true));
+            new RecordingPolicyWriter(malformedResults: true),
+            new EmptyDiskUsageTreeStore());
 
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
         var result = await manager.TickAsync();
@@ -126,7 +147,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     public async Task LocalSelfManagerRetainsHandleUntilRecoveryCompletesAndUnregisterCanBeRetried()
     {
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true));
+            new RecordingPolicyWriter(malformedResults: true),
+            new EmptyDiskUsageTreeStore());
         var sample = InvokePrivate(manager, "CaptureProcessFamilySample");
 
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
@@ -193,7 +215,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     public async Task LocalSelfManagerRetainsAuthorityBeforePropagatingTypedTickFailure()
     {
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(throwOnApply: true));
+            new RecordingPolicyWriter(throwOnApply: true),
+            new EmptyDiskUsageTreeStore());
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
 
         var exception = await Assert.ThrowsAsync<LocalResourceManagerTickFailedException>(
@@ -214,7 +237,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     public async Task LocalSelfManagerCloseRetainsUnknownAuthorityUntilReconciled()
     {
         using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true));
+            new RecordingPolicyWriter(malformedResults: true),
+            new EmptyDiskUsageTreeStore());
 
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
         var tick = await manager.TickAsync();
@@ -247,7 +271,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             applyEntered: handlerEntered,
             applyContinue: allowHandlerToFinish);
         var manager = new ResourceManagerSelfLocalResourceManager(
-            writer);
+            writer,
+            new EmptyDiskUsageTreeStore());
         using var cancellation = new CancellationTokenSource();
 
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
@@ -308,7 +333,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
                 .GetAwaiter()
                 .GetResult();
         });
-        using (manager = new ResourceManagerSelfLocalResourceManager(writer))
+        using (manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore()))
         {
             manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
 
@@ -332,7 +357,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             applyEntered: handlerEntered,
             applyContinue: allowHandlerToFinish);
         var manager = new ResourceManagerSelfLocalResourceManager(
-            writer);
+            writer,
+            new EmptyDiskUsageTreeStore());
         using var cancellation = new CancellationTokenSource();
 
         manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
@@ -394,7 +420,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
                 manager!.GetPendingUncertainExecutions());
             disposeError = Record.Exception(manager!.Dispose);
         });
-        using (manager = new ResourceManagerSelfLocalResourceManager(writer))
+        using (manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore()))
         {
             manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
             var result = await manager.TickAsync();
@@ -428,9 +454,11 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             disposeError = Record.Exception(secondManager.Dispose);
         });
         using var firstManager = new ResourceManagerSelfLocalResourceManager(
-            firstWriter);
+            firstWriter,
+            new EmptyDiskUsageTreeStore());
         using (secondManager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter()))
+            new RecordingPolicyWriter(),
+            new EmptyDiskUsageTreeStore()))
         {
             firstManager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
 
@@ -457,7 +485,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             applyEntered: selfHandlerEntered,
             applyContinue: allowSelfHandler);
         using var selfManager = new ResourceManagerSelfLocalResourceManager(
-            selfWriter);
+            selfWriter,
+            new EmptyDiskUsageTreeStore());
         var configuration = LocalResourceManagerConfiguration.CreateDefault(
             tableCapacity: 1,
             resourceCapacity: 1);
@@ -496,7 +525,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             var constructorError = Record.Exception(() =>
             {
                 unexpectedManager = new ResourceManagerSelfLocalResourceManager(
-                    new RecordingPolicyWriter());
+                    new RecordingPolicyWriter(),
+                    new EmptyDiskUsageTreeStore());
             });
             sdkTick = Task.Run(() => sdkManager.TickAsync());
             var active = await Assert.ThrowsAsync<InvalidOperationException>(
@@ -600,7 +630,8 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(target)!;
 
-    private sealed class RecordingPolicyWriter(
+    // 账本相关的其他用例也要用它，所以放开到程序集内可见。
+    internal sealed class RecordingPolicyWriter(
         bool succeed = true,
         bool throwOnApply = false,
         bool malformedResults = false,
