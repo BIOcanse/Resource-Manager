@@ -39,6 +39,11 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
       forget: "Remove record",
       firstSeen: (at: string) => `First seen ${at}`
     },
+    clear: "Clear",
+    on: "On",
+    createCurve: "New curve",
+    curvePreview: "Curve preview",
+    saveFailed: "Save failed",
     attachment: {
       integrated: "Integrated",
       discrete: "Discrete",
