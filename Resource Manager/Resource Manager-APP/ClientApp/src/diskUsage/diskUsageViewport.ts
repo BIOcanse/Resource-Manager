@@ -93,14 +93,26 @@ export function edgePanDelta(
   return { deltaX, deltaY };
 }
 
-/** 视口不允许划出图外：缩放为 1 时整张图铺满，更大时边界贴边。 */
+/**
+ * 允许把图推出画布，但不许推到找不回来。
+ *
+ * 先前是贴着边界夹死的：手一松就弹回去，看着像"自动归位"，
+ * 而且缩放为 1 时根本没法移动。现在两个方向各留一整屏的余量，
+ * 也就是最多能把图整个推出画布外，再多就不行了 ——
+ * 有余量才能把角落里的方格拖到中间看，有上限才不会推到一片空白里回不来。
+ * 真推出去了也有"复位"可以一键回到整图。
+ */
+const overscrollSpans = 1;
+
 export function clampToBounds(viewport: DiskUsageViewport): DiskUsageViewport {
   const visible = 1 / viewport.scale;
-  const maximumOffset = Math.max(0, 1 - visible);
+  const slack = visible * overscrollSpans;
+  const low = -slack;
+  const high = Math.max(0, 1 - visible) + slack;
   return {
     scale: viewport.scale,
-    offsetX: clamp(viewport.offsetX, 0, maximumOffset),
-    offsetY: clamp(viewport.offsetY, 0, maximumOffset)
+    offsetX: clamp(viewport.offsetX, low, high),
+    offsetY: clamp(viewport.offsetY, low, high)
   };
 }
 
@@ -145,11 +157,13 @@ export function visibleUnitRect(viewport: DiskUsageViewport): {
   maxY: number;
 } {
   const visible = 1 / viewport.scale;
+  // 视图可以被推出图外，所以这里要和 [0,1] 取交集：
+  // 图外面没有方格，报出去只会让后端算一块空的。
   return {
-    minX: viewport.offsetX,
-    minY: viewport.offsetY,
-    maxX: Math.min(1, viewport.offsetX + visible),
-    maxY: Math.min(1, viewport.offsetY + visible)
+    minX: clamp(viewport.offsetX, 0, 1),
+    minY: clamp(viewport.offsetY, 0, 1),
+    maxX: clamp(viewport.offsetX + visible, 0, 1),
+    maxY: clamp(viewport.offsetY + visible, 0, 1)
   };
 }
 

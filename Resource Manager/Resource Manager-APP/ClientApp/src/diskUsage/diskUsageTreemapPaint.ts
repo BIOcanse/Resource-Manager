@@ -4,6 +4,11 @@ import type { DiskUsageViewport } from "./diskUsageViewport.ts";
 /**
  * 方格图的绘制规则。
  *
+ * **方格只画一次，之后是贴图**：整份布局先渲染进一张位图（见 renderTreemapSheet），
+ * 每一帧只把这张位图按视口 drawImage 上去。所以拖动和缩放的开销跟方格数量无关，
+ * 几万个和几十万个一样快。名字和选中框是每帧现画的，这样放大之后字仍然是清晰的，
+ * 而且它们数量很少。命中测试走布局数据，跟画法无关，所以每个方格照样能单独响应。
+ *
  * **方格不画边框**：小文件本来就只有几个像素，一圈边框会把它整个吃掉。
  * 区分靠三样东西，全部画在矩形内部：
  *
@@ -33,6 +38,8 @@ export interface DiskUsagePaintTheme {
 
 export interface DiskUsagePaintOptions {
   layout: DiskUsageLayout;
+  /** 整张图预先渲染好的那张位图。见 <see cref="renderTreemapSheet" />。 */
+  sheet: DiskUsageSheet | null;
   viewport: DiskUsageViewport;
   width: number;
   height: number;
@@ -40,8 +47,96 @@ export interface DiskUsagePaintOptions {
   theme: DiskUsagePaintTheme;
   /** 选中的节点序号，没有就是 -1。 */
   selectedNodeId: number;
-  /** 取节点名字，拿不到就返回空串（名字是按需取的，不随布局一起发）。 */
+  /** 取节点名字。名字跟布局一起发下来了，这是纯查表。 */
   labelOf: (nodeId: number) => string;
+}
+
+/**
+ * 整张图渲染好的一张位图，外加它覆盖的那块单位空间范围。
+ *
+ * 方格本身只画这一次。之后缩放平移都只是把这张图按视口贴上去 ——
+ * 一次 drawImage，和方格有几万个还是几十万个没关系。
+ */
+export interface DiskUsageSheet {
+  canvas: HTMLCanvasElement;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** 位图最多这么多像素。再大的话显存和渲染时间都不划算。 */
+const maximumSheetPixels = 8_000_000;
+
+/**
+ * 把这份布局的所有方格画进一张位图。
+ *
+ * 只在布局或配色变了的时候做一次。它是整个页面最重的一步，
+ * 但它不在交互路径上 —— 拖动和缩放碰不到它。
+ */
+export function renderTreemapSheet(
+  layout: DiskUsageLayout,
+  theme: DiskUsagePaintTheme,
+  requestedWidth: number,
+  requestedHeight: number
+): DiskUsageSheet | null {
+  const span = {
+    x: Math.max(1e-9, layout.view.maxX - layout.view.minX),
+    y: Math.max(1e-9, layout.view.maxY - layout.view.minY)
+  };
+  const wanted = Math.max(1, Math.round(requestedWidth))
+    * Math.max(1, Math.round(requestedHeight));
+  // 超出像素预算就整体缩一档，长宽比保持不变。
+  const shrink = wanted > maximumSheetPixels
+    ? Math.sqrt(maximumSheetPixels / wanted)
+    : 1;
+  const sheetWidth = Math.max(1, Math.round(requestedWidth * shrink));
+  const sheetHeight = Math.max(1, Math.round(requestedHeight * shrink));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sheetWidth;
+  canvas.height = sheetHeight;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return null;
+  }
+
+  context.fillStyle = theme.surface;
+  context.fillRect(0, 0, sheetWidth, sheetHeight);
+
+  const count = layout.nodeIds.length;
+  for (let index = 0; index < count; index++) {
+    // 根方格只是背景，画了会把所有子方格盖住。
+    if (layout.depths[index] === 0) {
+      continue;
+    }
+    const left = (layout.x[index] - layout.view.minX) / span.x * sheetWidth;
+    const top = (layout.y[index] - layout.view.minY) / span.y * sheetHeight;
+    const boxWidth = layout.width[index] / span.x * sheetWidth;
+    const boxHeight = layout.height[index] / span.y * sheetHeight;
+    if (boxWidth < 0.05 || boxHeight < 0.05) {
+      continue;
+    }
+
+    const isDirectory = layout.directoryFlags[index] === 1;
+    context.fillStyle = tileColor(theme, layout.depths[index], index, isDirectory);
+    context.fillRect(left, top, boxWidth, boxHeight);
+
+    // 内描边：画在里侧，够大才画。这就是"类边框纹理"，不占外部像素。
+    if (boxWidth >= innerStrokeMinimumSide && boxHeight >= innerStrokeMinimumSide) {
+      context.strokeStyle = innerStrokeColor(layout.depths[index], isDirectory);
+      context.lineWidth = 1;
+      context.strokeRect(left + 0.5, top + 0.5, boxWidth - 1, boxHeight - 1);
+    }
+  }
+
+  return {
+    canvas,
+    minX: layout.view.minX,
+    minY: layout.view.minY,
+    maxX: layout.view.maxX,
+    maxY: layout.view.maxY
+  };
 }
 
 /** 小于这个边长的方格不画内描边：描边会把它整个糊住。 */
@@ -110,40 +205,40 @@ export function paintTreemap(
   const count = layout.nodeIds.length;
   const scaleX = width * viewport.scale;
   const scaleY = height * viewport.scale;
-  const labelCandidates: number[] = [];
 
-  for (let index = 0; index < count; index++) {
-    const left = (layout.x[index] - viewport.offsetX) * scaleX;
-    const top = (layout.y[index] - viewport.offsetY) * scaleY;
-    const boxWidth = layout.width[index] * scaleX;
-    const boxHeight = layout.height[index] * scaleY;
-
-    // 视口外的直接跳过，缩放到很深时这一步省掉绝大部分绘制。
-    if (left + boxWidth < 0 || top + boxHeight < 0 || left > width || top > height) {
-      continue;
+  // 方格是整张贴上去的，不是一个个画的。
+  if (options.sheet) {
+    const sheet = options.sheet;
+    const left = (sheet.minX - viewport.offsetX) * scaleX;
+    const top = (sheet.minY - viewport.offsetY) * scaleY;
+    const right = (sheet.maxX - viewport.offsetX) * scaleX;
+    const bottom = (sheet.maxY - viewport.offsetY) * scaleY;
+    if (right > left && bottom > top) {
+      context.drawImage(sheet.canvas, left, top, right - left, bottom - top);
     }
-    // 根节点只是背景，不画它自己，否则会把所有子节点盖住。
+  }
+
+  // 名字每帧现画：烘进位图的话一放大就跟着糊掉，而且字会被拉变形。
+  // 它数量很少（放得下才画，而且互相让位），现画不费事。
+  const labelCandidates: number[] = [];
+  for (let index = 0; index < count; index++) {
     if (layout.depths[index] === 0) {
       continue;
     }
-    if (boxWidth < 0.5 || boxHeight < 0.5) {
+    const boxWidth = layout.width[index] * scaleX;
+    if (boxWidth < labelMinimumWidth) {
       continue;
     }
-
-    const isDirectory = layout.directoryFlags[index] === 1;
-    context.fillStyle = tileColor(theme, layout.depths[index], index, isDirectory);
-    context.fillRect(left, top, boxWidth, boxHeight);
-
-    // 内描边：画在里侧，够大才画。这就是"类边框纹理"，不占外部像素。
-    if (boxWidth >= innerStrokeMinimumSide && boxHeight >= innerStrokeMinimumSide) {
-      context.strokeStyle = innerStrokeColor(layout.depths[index], isDirectory);
-      context.lineWidth = 1;
-      context.strokeRect(left + 0.5, top + 0.5, boxWidth - 1, boxHeight - 1);
+    const boxHeight = layout.height[index] * scaleY;
+    if (boxHeight < labelMinimumHeight) {
+      continue;
     }
-
-    if (boxWidth >= labelMinimumWidth && boxHeight >= labelMinimumHeight) {
-      labelCandidates.push(index);
+    const left = (layout.x[index] - viewport.offsetX) * scaleX;
+    const top = (layout.y[index] - viewport.offsetY) * scaleY;
+    if (left + boxWidth < 0 || top + boxHeight < 0 || left > width || top > height) {
+      continue;
     }
+    labelCandidates.push(index);
   }
 
   paintLabels(context, options, labelCandidates, scaleX, scaleY);

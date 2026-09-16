@@ -24,6 +24,9 @@ export function DiskUsageResultPanel(props: {
   onActivate: (nodeId: number) => void;
   onContextMenu: (nodeId: number, clientX: number, clientY: number) => void;
   onViewChanged: (view: DiskUsageViewWindow) => void;
+  /** 复位：视口回到整图，布局也换回整图那一份。 */
+  onResetView: () => void;
+  resetNonce: number;
   onNavigateUp: () => void;
   canNavigateUp: boolean;
 }) {
@@ -49,11 +52,20 @@ export function DiskUsageResultPanel(props: {
               props.summary.directoryCount)}
           </span>
         </div>
-        <Show when={props.canNavigateUp}>
-          <button class="secondary" type="button" onClick={props.onNavigateUp}>
-            {uiText.diskUsage.navigateUp}
+        <div class="disk-usage-view-actions">
+          <button
+            class="secondary"
+            type="button"
+            onClick={props.onResetView}
+          >
+            {uiText.diskUsage.resetView}
           </button>
-        </Show>
+          <Show when={props.canNavigateUp}>
+            <button class="secondary" type="button" onClick={props.onNavigateUp}>
+              {uiText.diskUsage.navigateUp}
+            </button>
+          </Show>
+        </div>
       </div>
 
       <Show when={props.summary.skipped.length > 0}>
@@ -83,6 +95,7 @@ export function DiskUsageResultPanel(props: {
         onActivate={props.onActivate}
         onContextMenu={props.onContextMenu}
         onViewChanged={props.onViewChanged}
+        resetNonce={props.resetNonce}
         onHover={(node, x, y) => setHover(node >= 0 ? { node, x, y } : null)}
       />
 

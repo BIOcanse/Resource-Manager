@@ -151,7 +151,8 @@ export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | nu
       sizes: new Float64Array(length),
       names: decodedNames,
       fileCounts: new Float64Array(length),
-      indexByNodeId
+      indexByNodeId,
+      view: readView(record.view)
     };
 
     for (let index = 0; index < length; index++) {
@@ -176,6 +177,26 @@ export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | nu
     }
     return layout;
   });
+
+/**
+ * 后端实际用的那个视图，归一化之后原样回给我们。
+ *
+ * 必须以它为准，不能拿我们请求时用的那份去比：请求的值越界或者退化时
+ * （视图被推出图外就会这样），后端会收拢成整张图，两边一对不上，
+ * 就会判断成"还需要更细的"，然后一直要下去。
+ */
+function readView(raw: unknown): DiskUsageViewWindow {
+  const record = requireRecord(raw, "$.view");
+  return {
+    minX: requireFiniteNumber(record.minX, "$.view.minX"),
+    minY: requireFiniteNumber(record.minY, "$.view.minY"),
+    maxX: requireFiniteNumber(record.maxX, "$.view.maxX"),
+    maxY: requireFiniteNumber(record.maxY, "$.view.maxY"),
+    pixelWidth: requireFiniteNumber(record.pixelWidth, "$.view.pixelWidth"),
+    pixelHeight: requireFiniteNumber(record.pixelHeight, "$.view.pixelHeight"),
+    scale: requireFiniteNumber(record.scale, "$.view.scale")
+  };
+}
 
 export const diskUsageNodeDecoder = defineResponseDecoder<DiskUsageNode>(
   "disk-usage.node.v1",

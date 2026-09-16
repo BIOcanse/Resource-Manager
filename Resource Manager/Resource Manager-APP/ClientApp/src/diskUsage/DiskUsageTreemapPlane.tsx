@@ -3,8 +3,10 @@ import { readDocumentTheme } from "../presentation/documentTheme";
 import {
   hitTest,
   paintTreemap,
+  renderTreemapSheet,
   type DiskUsagePaintOptions,
-  type DiskUsagePaintTheme
+  type DiskUsagePaintTheme,
+  type DiskUsageSheet
 } from "./diskUsageTreemapPaint.ts";
 import {
   clampToBounds,
@@ -37,6 +39,8 @@ export function DiskUsageTreemapPlane(props: {
    * 上层据此决定要不要换一份更细的布局 —— 放大之后原先太小的方格就该出现了。
    */
   onViewChanged: (view: DiskUsageViewWindow) => void;
+  /** 这个数一变就把视口复位成整图。上层的「复位」按钮靠它驱动。 */
+  resetNonce: number;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let container: HTMLDivElement | undefined;
@@ -94,6 +98,22 @@ export function DiskUsageTreemapPlane(props: {
     setViewport(identityViewport);
   });
 
+  // 「复位」：回到整图。推出画布之后靠它找回来。
+  let appliedResetNonce = props.resetNonce;
+  createEffect(() => {
+    const nonce = props.resetNonce;
+    if (nonce === appliedResetNonce) {
+      return;
+    }
+    appliedResetNonce = nonce;
+    // 正在贴边平移的话要先停住，否则下一个 16 毫秒就把刚复位的视图又推出去了。
+    // 指针要是还压在边缘上，下一次 mousemove 会重新开始，这是对的。
+    pointerX = -1;
+    pointerY = -1;
+    stopEdgePan();
+    setViewport(identityViewport);
+  });
+
   // 一次要画几万个方格，比一帧还久。所以这里只登记"该重画了"，
   // 真正画在下一个动画帧，一帧最多画一次；中间那些视口值直接跳过。
   // 贴边平移每 16 毫秒改一次视口，不这样做就会排出画不完的队。
@@ -102,6 +122,25 @@ export function DiskUsageTreemapPlane(props: {
   // 而不是排队里某个已经过时的视口。
   let pending: DiskUsagePaintOptions | null = null;
 
+  // 整张图的位图。布局或配色变了才重渲染一次，拖动和缩放都碰不到它。
+  const [sheet, setSheet] = createSignal<DiskUsageSheet | null>(null);
+  createEffect(() => {
+    const layout = props.layout;
+    const currentTheme = theme();
+    const { width, height } = size();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const ratio = window.devicePixelRatio || 1;
+    // 位图按这块范围在屏幕上的物理像素数渲染，也就是和屏幕 1:1。
+    // 位图覆盖的正是后端这批方格覆盖的那块，所以两边尺度是一致的。
+    setSheet(renderTreemapSheet(
+      layout,
+      currentTheme,
+      width * ratio,
+      height * ratio));
+  });
+
   createEffect(() => {
     const { width, height } = size();
     if (width <= 0 || height <= 0) {
@@ -109,6 +148,7 @@ export function DiskUsageTreemapPlane(props: {
     }
     pending = {
       layout: props.layout,
+      sheet: sheet(),
       viewport: viewport(),
       width,
       height,

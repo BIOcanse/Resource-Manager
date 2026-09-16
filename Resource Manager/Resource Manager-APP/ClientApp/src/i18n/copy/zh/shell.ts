@@ -63,6 +63,7 @@ export const zhShellCopy = {
       directoryWalk: "逐级遍历目录"
     },
     navigateUp: "上一层",
+    resetView: "复位视图",
     collapseSetup: "收起设置",
     expandSetup: "重新设置",
     scanTotals: (size: string, files: number, folders: number) =>

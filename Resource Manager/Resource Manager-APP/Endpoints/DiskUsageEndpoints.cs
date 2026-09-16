@@ -68,6 +68,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 rootPath = tree.PathOf(rootNode),
                 rootSizeBytes = tree.SizeOf(rootNode),
                 omittedCount = layout.OmittedCount,
+                // 把归一化之后的视图原样回给客户端：这批方格覆盖的就是这块范围。
+                // 前端要照着它把整张图渲染成一张位图，不能自己猜后端最后用了什么值。
+                view = new
+                {
+                    minX = view.MinX,
+                    minY = view.MinY,
+                    maxX = view.MaxX,
+                    maxY = view.MaxY,
+                    pixelWidth = view.PixelWidth,
+                    pixelHeight = view.PixelHeight,
+                    scale = view.Scale
+                },
                 // 方格是热路径上量最大的东西，发成并列数组而不是一堆对象。
                 nodeIds = layout.Tiles.Select(static tile => tile.NodeId).ToArray(),
                 parentIds = layout.Tiles.Select(static tile => tile.ParentNodeId).ToArray(),
