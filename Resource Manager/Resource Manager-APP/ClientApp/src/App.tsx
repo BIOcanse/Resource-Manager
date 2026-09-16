@@ -30,6 +30,7 @@ import {
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
 import { applyLanguage, uiText } from "./text.ts";
+import { applyByteUnitMode } from "./presentation/byteUnits.ts";
 import type {
   MetricDefinition,
   PageId
@@ -137,6 +138,11 @@ export default function App() {
   // 界面语言：设置里的选择是唯一来源，解析、载入和 <html lang/dir> 都由 appTextStore 完成。
   createEffect(() => {
     applyLanguage(settings.settings().appearance?.language ?? "system");
+  });
+
+  // 容量进制：设置里的选择是唯一来源，换算与单位标签都由 byteUnits 统一给出。
+  createEffect(() => {
+    applyByteUnitMode(settings.settings().appearance?.byteUnitMode);
   });
 
   const pageTitle = createMemo(() => {

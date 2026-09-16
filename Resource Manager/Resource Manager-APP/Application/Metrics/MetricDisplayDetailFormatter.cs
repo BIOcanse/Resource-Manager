@@ -51,12 +51,12 @@ public static class MetricDisplayDetailFormatter
         return SensorDetail(name, $"风扇{index}");
     }
 
+    // 后端不再把容量拼进副标题：容量的换算和单位标签归前端统一负责，
+    // 这里只给磁盘名字。完整容量在设备拓扑页按用户选择的进制显示。
     public static string DiskDetail(string name, ulong? sizeBytes)
     {
-        var size = sizeBytes is > 0
-            ? $" / {sizeBytes.Value / 1024d / 1024d / 1024d:0.#} GB"
-            : string.Empty;
-        return $"{Normalize(name)}{size}";
+        _ = sizeBytes;
+        return Normalize(name);
     }
 
     public static bool ContainsDiagnosticText(string? text)

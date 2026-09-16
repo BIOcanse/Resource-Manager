@@ -1,4 +1,4 @@
-import { localizedMetricLabel, softwareDisplayName } from "../presentation/metricLabels";
+import { localizedMetricLabel, softwareDisplayName } from "../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../frontendRuntime/task/useTaskScope";
@@ -30,7 +30,9 @@ import {
   createResourceLayoutSettleController
 } from "../resourceBreakdown/resourceLayoutSettleTransition";
 import { uiText } from "../text.ts";
-import { formatBytes, formatPercent } from "../utils";
+import { formatPercent } from "../utils";
+import { formatBytes } from "../presentation/byteUnits.ts";
+import { byteQuantityKindForMetric } from "../presentation/metricLabels.ts";
 import { StandardSelect } from "./StandardSelect";
 import { ContentState } from "../ui/patterns/ContentState.tsx";
 import {
@@ -838,7 +840,8 @@ function resourceSegmentTooltip(bar: ResourceBreakdownBar, segment: ResourceSele
 
 function formatResourceBarValue(bar: ResourceBreakdownBar, value: number) {
   if (bar.unit === "B") {
-    return formatBytes(value);
+    // 条形本身知道自己是哪条指标：内存类走二进制天性，其余（磁盘、网络流量）走十进制天性。
+    return formatBytes(value, byteQuantityKindForMetric(bar.metricId));
   }
   if (bar.unit === "%") {
     return formatPercent(value);

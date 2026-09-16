@@ -1,3 +1,4 @@
+import { formatBytes } from "../../presentation/byteUnits.ts";
 const maximumUInt64Decimal = "18446744073709551615";
 
 export function isCanonicalUInt64Decimal(value: unknown): value is string {
@@ -17,25 +18,9 @@ export function formatUInt64Bytes(value: string): string {
   if (!isCanonicalUInt64Decimal(value)) {
     throw new TypeError("Expected a canonical uint64 decimal string.");
   }
-  const units = ["B", "KB", "MB", "GB", "TB", "PB", "EB"] as const;
-  const bytes = BigInt(value);
-  let unit = 0;
-  let divisor = 1n;
-  while (unit < units.length - 1 && bytes >= divisor * 1024n) {
-    divisor *= 1024n;
-    unit += 1;
-  }
-  if (unit === 0) {
-    return `${bytes} B`;
-  }
-
-  const whole = bytes / divisor;
-  const digits = whole >= 10n ? 1 : 2;
-  const scale = 10n ** BigInt(digits);
-  const rounded = (bytes * scale + divisor / 2n) / divisor;
-  const integer = rounded / scale;
-  const fraction = String(rounded % scale).padStart(digits, "0");
-  return `${integer}.${fraction} ${units[unit]}`;
+  // 下载体积与速率都是传输量，按存储类交给唯一所有者换算。
+  // uint64 在这里先转成 number：传输量远小于 2^53，不会丢精度。
+  return formatBytes(Number(BigInt(value)), "storage");
 }
 
 function compareUnsignedDecimalText(left: string, right: string): number {

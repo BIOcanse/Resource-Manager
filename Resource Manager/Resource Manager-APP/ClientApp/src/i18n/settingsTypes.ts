@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppThemeMode, SettingsSection } from "../types.ts";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppThemeMode, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -103,6 +103,8 @@ export interface SettingsCopy {
     resourceBarHardwareAccelerationModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description: string }>;
     barColorTitle: string;
     barColorDescription: string;
+    byteUnitTitle: string;
+    byteUnitDescription: string;
     fontSmoothingTitle: string;
     fontSmoothingDescription: string;
     languageTitle: string;
@@ -113,6 +115,7 @@ export interface SettingsCopy {
     themeOptions: Record<AppThemeMode, string>;
     animationOptions: Record<AppAnimationMode, { label: string; description: string }>;
     barColorOptions: Record<AppBarColorMode, { label: string; description: string }>;
+    byteUnitOptions: Record<ByteUnitMode, { label: string; description: string }>;
     fontSmoothingOptions: Record<AppFontSmoothing, { label: string; description: string }>;
     gpuPerformanceUseCaseOptions: Record<AppGpuPerformanceUseCase, { label: string; description: string }>;
   };
@@ -287,6 +290,7 @@ export interface SettingsTextBundle extends SettingsCopy {
   themeOptions: Array<{ id: AppThemeMode; label: string }>;
   animationOptions: Array<{ id: AppAnimationMode; label: string; description: string }>;
   barColorOptions: Array<{ id: AppBarColorMode; label: string; description: string }>;
+  byteUnitOptions: Array<{ id: ByteUnitMode; label: string; description: string }>;
   fontSmoothingOptions: Array<{ id: AppFontSmoothing; label: string; description: string }>;
   gpuPerformanceUseCaseOptions: Array<{ id: AppGpuPerformanceUseCase; label: string; description: string }>;
   creditGroups: CreditGroup[];

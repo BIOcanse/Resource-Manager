@@ -1,4 +1,6 @@
-﻿namespace ResourceManager.App.Domain.Settings;
+﻿using ResourceManager.App.Domain.Units;
+
+namespace ResourceManager.App.Domain.Settings;
 
 public static class AppThemeModes
 {
@@ -210,7 +212,12 @@ public sealed record AppAppearanceSettings(
     string ResourceBarHardwareAccelerationMode,
     string BarColorMode,
     string FontSmoothing,
-    string Language);
+    string Language,
+    // 容量数字用哪个进制显示，见 Domain/Units/AppByteUnitModes.cs。
+    // native = 每个量按它本来的进制（内存类 1024、存储类 1000）；
+    // binary = 一律 1024；decimal = 一律 1000。
+    // 后端只存和校验这个值，不按它做任何换算 —— 换算在前端。
+    string ByteUnitMode);
 
 public sealed record AppSystemIntegrationSettings(
     bool TaskManagerShortcutReplacementEnabled,

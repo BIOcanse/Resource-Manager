@@ -70,7 +70,7 @@ public static partial class MetricCatalog
         AddGpuMetric(definitions, items, $"{prefix}.fanPercent", $"{group} 风扇百分比", group, "%", "small", detail, gpuFanPercentComponentId, ComponentName(gpuFanPercentComponentId), identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.coreVoltage", $"{group} 电压", group, "V", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.current", $"{group} 电流", group, "A", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{group} 显存占用", group, "GB", "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{group} 显存占用", group, MetricUnits.Bytes, "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.vramPercent", $"{group} 显存占用率", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.memoryClock", $"{group} 显存频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         return definitions;

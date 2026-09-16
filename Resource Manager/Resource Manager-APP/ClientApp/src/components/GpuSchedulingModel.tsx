@@ -21,6 +21,7 @@ import {
   type SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot";
 import { resolveGpuDeviceName } from "../gpuScheduling/gpuDeviceName";
+import { metricDisplayValue } from "../presentation/metricLabels";
 import {
   failedObservation,
   loadingObservation,
@@ -542,7 +543,9 @@ function buildGpuPositions(
       hasPerformanceOverride: scoreItem?.hasPerformanceOverride ?? fallbackOverrideScore !== null,
       usagePercent,
       vramPercent: usedVramPercent,
-      vramDisplay: vram?.displayValue ?? (dedicatedMemory ? uiText.gpuScheduling.vramNoData : uiText.gpuScheduling.sharedMemory),
+      vramDisplay: metricDisplayValue(
+        vram,
+        dedicatedMemory ? uiText.gpuScheduling.vramNoData : uiText.gpuScheduling.sharedMemory),
       graphicsClockDisplay: graphicsClock?.displayValue ? uiText.gpuScheduling.clock(graphicsClock.displayValue) : uiText.gpuScheduling.clockNoData,
       memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : uiText.gpuScheduling.memoryClockNoData,
       scoreSource: scoreItem?.source ?? "unknown",

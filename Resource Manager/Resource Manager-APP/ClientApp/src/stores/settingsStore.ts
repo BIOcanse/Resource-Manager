@@ -21,6 +21,7 @@ import type {
   SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot.ts";
 import { classifySettingsApplicationOutcome } from "../settings/settingsApplicationDisposition.ts";
+import { normalizeByteUnitMode } from "../presentation/byteUnits.ts";
 import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
   AppAnimationMode,
@@ -29,6 +30,7 @@ import type {
   AppAppearanceSettings,
   AppEditableHotkeySettings,
   AppBarColorMode,
+  ByteUnitMode,
   AppFontSmoothing,
   AppFrontendHiddenRefreshMode,
   AppGpuPerformanceUseCase,
@@ -106,6 +108,7 @@ export interface SettingsStore {
   updateAnimations: (animations: AppAnimationMode) => void;
   updateResourceBarHardwareAccelerationMode: (mode: AppAdaptiveBooleanMode) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
+  updateByteUnitMode: (byteUnitMode: ByteUnitMode) => void;
   updateFontSmoothing: (fontSmoothing: AppFontSmoothing) => void;
   updateLanguage: (language: AppLanguageMode) => void;
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
@@ -452,6 +455,15 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         appearance: {
           ...normalizeAppSettings(currentSettings).appearance!,
           barColorMode
+        }
+      }));
+    },
+    updateByteUnitMode: (byteUnitMode) => {
+      updateDraft((currentSettings) => ({
+        ...currentSettings,
+        appearance: {
+          ...normalizeAppSettings(currentSettings).appearance!,
+          byteUnitMode
         }
       }));
     },
@@ -940,6 +952,7 @@ function normalizeAppearanceSettings(
     resourceBarHardwareAccelerationMode: normalizeAdaptiveBooleanMode(
       settings?.resourceBarHardwareAccelerationMode),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),
+    byteUnitMode: normalizeByteUnitMode(settings?.byteUnitMode),
     fontSmoothing: normalizeFontSmoothing(settings?.fontSmoothing),
     language: normalizeLanguageMode(settings?.language)
   };

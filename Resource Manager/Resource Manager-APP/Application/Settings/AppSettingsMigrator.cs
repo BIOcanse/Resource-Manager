@@ -103,7 +103,8 @@ public static class AppSettingsMigrator
                 ReadString(root, "appearance", "resourceBarHardwareAccelerationMode", defaults.Appearance.ResourceBarHardwareAccelerationMode),
                 ReadString(root, "appearance", "barColorMode", defaults.Appearance.BarColorMode),
                 ReadString(root, "appearance", "fontSmoothing", defaults.Appearance.FontSmoothing),
-                ReadString(root, "appearance", "language", defaults.Appearance.Language)),
+                ReadString(root, "appearance", "language", defaults.Appearance.Language),
+                ReadString(root, "appearance", "byteUnitMode", defaults.Appearance.ByteUnitMode)),
             new AppSystemIntegrationSettings(
                 ReadBoolean(root, "systemIntegration", "taskManagerShortcutReplacementEnabled", defaults.SystemIntegration.TaskManagerShortcutReplacementEnabled),
                 ReadEditableHotkeys(root, defaults.SystemIntegration.Hotkeys),

@@ -1,3 +1,4 @@
+import { metricDisplayValue } from "../presentation/metricLabels.ts";
 import type { MetricSnapshot } from "../types.ts";
 import { metricSnapshotObservedAt } from
   "../data/monitor/metricSnapshotValue.ts";
@@ -34,7 +35,7 @@ export function appendPerformancePoint(
       ? Math.max(0, Math.min(100, rawValue))
       : null;
     values[item.id] = value;
-    displays[item.id] = metric?.displayValue ?? "-";
+    displays[item.id] = metricDisplayValue(metric, "-");
   }
   return Object.freeze({
     capturedAt,

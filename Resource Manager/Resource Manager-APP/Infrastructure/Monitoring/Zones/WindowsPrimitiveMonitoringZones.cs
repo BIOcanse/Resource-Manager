@@ -108,7 +108,7 @@ public sealed class WindowsMemoryMonitoringZone : MonitoringSourceZone
             status.TotalPhys,
             MonitoringMetricSanitizer.ClampPercent(percent),
             true,
-            hardwareDescription ?? $"Physical RAM {ToGib(status.TotalPhys):0.#} GB")
+            hardwareDescription ?? "Physical RAM")
         {
             ObservationStatus = SamplingObservationStatus.Current
         };
@@ -122,10 +122,6 @@ public sealed class WindowsMemoryMonitoringZone : MonitoringSourceZone
         };
     }
 
-    private static double ToGib(ulong bytes)
-    {
-        return bytes / 1024d / 1024d / 1024d;
-    }
 }
 
 public sealed class WindowsVirtualMemoryMonitoringZone : MonitoringSourceZone

@@ -1,4 +1,5 @@
 ﻿using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Units;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -75,7 +76,8 @@ public static class AppSettingsNormalizer
             NormalizeAdaptiveBooleanMode(appearance?.ResourceBarHardwareAccelerationMode),
             NormalizeBarColorMode(appearance?.BarColorMode),
             NormalizeFontSmoothing(appearance?.FontSmoothing),
-            NormalizeLanguage(appearance?.Language));
+            NormalizeLanguage(appearance?.Language),
+            AppByteUnitModes.Normalize(appearance?.ByteUnitMode));
     }
 
     private static AppSystemIntegrationSettings NormalizeSystemIntegration(AppSystemIntegrationSettings? systemIntegration)

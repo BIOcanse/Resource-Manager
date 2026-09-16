@@ -1,4 +1,6 @@
-import { uiText } from "../text";
+import { uiText } from "../text.ts";
+import { formatBytePair, formatBytes, type ByteQuantityKind } from "./byteUnits.ts";
+import type { MetricValue } from "../types.ts";
 
 // 后端按稳定指标 id 提供事实，用户看到的名称由当前语言的文案包决定。
 // 不认识的 id 保留后端标签，保证新增指标不会显示空白。
@@ -99,4 +101,47 @@ function normalizeMetricId(id: string): { pattern: string; index: string | null 
     })
     .join(".");
   return { pattern, index };
+}
+
+
+/**
+ * 一条指标读数怎么显示。
+ *
+ * 后端对容量类指标只发原始字节（unit 为 "B"），换算和单位标签在这里按当前进制模式给出；
+ * 其余指标的显示串仍由后端给定（°C、%、MHz、RPM 这类没有进制歧义）。
+ * 所有消费端都走这一个函数，不要各自判断 unit。
+ */
+export function metricDisplayValue(
+  metric: MetricValue | null | undefined,
+  fallback = "--"
+): string {
+  if (!metric) {
+    return fallback;
+  }
+  if (metric.unit !== "B") {
+    return metric.displayValue || fallback;
+  }
+
+  const used = metric.numericValue;
+  if (typeof used !== "number" || !Number.isFinite(used)) {
+    return fallback;
+  }
+  const kind = byteQuantityKindForMetric(metric.id);
+  return typeof metric.total === "number" && Number.isFinite(metric.total) && metric.total > 0
+    ? formatBytePair(used, metric.total, kind)
+    : formatBytes(used, kind);
+}
+
+/**
+ * 一条指标的字节值属于哪一类物理量。
+ *
+ * 内存、虚拟内存、显存以及它们的占用分解都住在内存颗粒里，是二进制天性；
+ * 磁盘读写、网络流量这类累计字节是十进制天性。认不出的一律当存储类，
+ * 因为绝大多数新增的字节指标都是流量或容量。
+ */
+export function byteQuantityKindForMetric(
+  metricId: string | null | undefined
+): ByteQuantityKind {
+  const id = String(metricId ?? "").toLowerCase();
+  return id.includes("memory") || id.includes("vram") ? "memory" : "storage";
 }

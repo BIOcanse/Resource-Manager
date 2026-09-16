@@ -51,6 +51,7 @@ import { isHttpUrl, pathLooksUsable, textOrEmpty, uniqueTextValues } from "../ut
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SoftwareIssueDetailSection } from "./SoftwareIssuePresentation";
 import { uiText } from "../text.ts";
+import { formatBytes } from "../presentation/byteUnits.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
 type DetailTabId = "overview" | "policy" | "processes" | "migration";
@@ -989,9 +990,8 @@ function formatCacheKb(value?: number | null) {
     return "--";
   }
 
-  return value >= 1024
-    ? `${(value / 1024).toFixed(value >= 10240 ? 1 : 2)} MB`
-    : `${value} KB`;
+  // 同上：缓存大小以 KiB 计，还原成字节后按内存类换算。
+  return formatBytes(value * 1024, "memory");
 }
 
 function formatScoreValue(value: number) {
