@@ -1,0 +1,15 @@
+{
+  "objects": [
+    {
+      "objectId": "gpu:windows-gpu|PCI\\VEN_10DE\u0026DEV_2D19\u0026SUBSYS_605C1D05\u0026REV_A1\\DE3013DDB22DB04800|000010DE:00002D19:00001D05:0000605C:000000A1;",
+      "settings": [
+        {
+          "capabilityId": "gpu.power-limit",
+          "number": 120,
+          "toggle": null,
+          "curve": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,8 +1,13 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { getControlObjects } from "../control/controlApi.ts";
+import { getControlObjects, getControlState } from "../control/controlApi.ts";
+import { controlItemStatusOf } from "../control/controlStateMachine.ts";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
 import { uiText } from "../text.ts";
-import type { ControlObject, ControlObjectCatalog } from "../control/controlTypes.ts";
+import type {
+  ControlObject,
+  ControlObjectCatalog,
+  ControlStateView
+} from "../control/controlTypes.ts";
 
 /**
  * 控制面。
@@ -16,13 +21,20 @@ import type { ControlObject, ControlObjectCatalog } from "../control/controlType
 export function ControlWorkspace() {
   const runtime = useFrontendRuntime();
   const [catalog, setCatalog] = createSignal<ControlObjectCatalog | null>(null);
+  const [state, setState] = createSignal<ControlStateView | null>(null);
   const [failed, setFailed] = createSignal(false);
 
   onMount(() => {
     const controller = new AbortController();
-    const read = () => void getControlObjects(runtime.requestClient, controller.signal)
-      .then((next) => { setCatalog(next); setFailed(false); })
-      .catch(() => setFailed(true));
+    const read = () => {
+      void getControlObjects(runtime.requestClient, controller.signal)
+        .then((next) => { setCatalog(next); setFailed(false); })
+        .catch(() => setFailed(true));
+      // 期望状态和回执分开取：对象清单是硬件事实，这份是用户设过什么。
+      void getControlState(runtime.requestClient, controller.signal)
+        .then(setState)
+        .catch(() => undefined);
+    };
 
     read();
     // 显卡会热插拔，组件装上之后风扇会突然可控，所以回到窗口时重读一次。
@@ -75,7 +87,7 @@ export function ControlWorkspace() {
               <h3>{group.label}</h3>
               <div class="control-object-grid">
                 <For each={group.objects}>
-                  {(object) => <ControlObjectCard object={object} />}
+                  {(object) => <ControlObjectCard object={object} state={state()} />}
                 </For>
               </div>
             </section>
@@ -86,7 +98,16 @@ export function ControlWorkspace() {
   );
 }
 
-function ControlObjectCard(props: { object: ControlObject }) {
+function ControlObjectCard(props: {
+  object: ControlObject;
+  state: ControlStateView | null;
+}) {
+  // 用户对这个对象设过什么，以及最近一次施加的回执。
+  const saved = () => props.state?.desired.objects
+    .find((entry) => entry.objectId === props.object.id)?.settings ?? [];
+  const outcomes = () => props.state?.lastApply.outcomes
+    .filter((entry) => entry.objectId === props.object.id) ?? [];
+
   return (
     <article
       class="control-object"
@@ -99,6 +120,15 @@ function ControlObjectCard(props: { object: ControlObject }) {
           {props.object.platform.operatingSystem}
           {" · "}
           {props.object.platform.vendor}
+          {/* 核显能调的比独显少，所以要标出来。 */}
+          <Show when={props.object.gpuAttachment}>
+            {(attachment) => <>
+              {" · "}
+              {uiText.control.attachment[
+                attachment() as keyof typeof uiText.control.attachment
+              ] ?? attachment()}
+            </>}
+          </Show>
           <Show when={props.object.detail}>{(detail) => <> · {detail()}</>}</Show>
         </span>
       </header>
@@ -108,6 +138,7 @@ function ControlObjectCard(props: { object: ControlObject }) {
           {(capability) => (
             <li classList={{ "control-capability-off": !capability.supported }}>
               <span class="control-capability-label">{capability.label}</span>
+              {/* 状态是算出来的，不是另存一份标志位。 */}
               <Show
                 when={capability.supported}
                 fallback={
@@ -120,9 +151,18 @@ function ControlObjectCard(props: { object: ControlObject }) {
                 }
               >
                 <span class="control-capability-range">
-                  <Show when={capability.range} fallback={uiText.control.ready}>
+                  {uiText.control.status[
+                    controlItemStatusOf(
+                      capability.id,
+                      saved(),
+                      saved(),
+                      outcomes(),
+                      false).status
+                  ]}
+                  <Show when={capability.range}>
                     {(range) => (
                       <>
+                        {" · "}
                         {range().minimum} ~ {range().maximum} {range().unit}
                       </>
                     )}

@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.Control;
+using ResourceManager.App.Domain.Control;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -18,6 +19,37 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             DisableResponseCache(response);
             return Results.Ok(catalog.ReadObjects());
         }).AllowAnonymous();
+
+        // 期望状态 + 最近一次施加的回执。界面据此算"已应用/正在应用/没应用上"。
+        app.MapGet("/api/control/state", async (
+            HttpResponse response,
+            IControlPlane plane,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(await plane.ReadStateAsync(cancellationToken));
+        }).AllowAnonymous();
+
+        // 改某个对象的设定。**先存后施加**，所以返回的一定是存下来的那份。
+        // 施加不算重大操作：用户设一次就该一直维持，不每次问。
+        app.MapPut("/api/control/state/{objectId}", async (
+            string objectId,
+            ControlSetting[] settings,
+            IControlPlane plane,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await plane.SetObjectSettingsAsync(
+                    objectId,
+                    settings ?? [],
+                    cancellationToken));
+            }
+            catch (ArgumentException error)
+            {
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
 
         return app;
     }

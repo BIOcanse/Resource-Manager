@@ -28,6 +28,19 @@ export const zhShellCopy = {
     empty: "这台机器上还没认出可以调节的对象。",
     ready: "可调节",
     needsComponent: (name: string) => `需要 ${name}`,
+    attachment: {
+      integrated: "核显",
+      discrete: "独显",
+      unknown: "接法未知"
+    },
+    status: {
+      unset: "未设定",
+      edited: "已改动，未应用",
+      applying: "正在应用",
+      applied: "已应用",
+      unsupported: "这台机器上控不了",
+      failed: "没应用上"
+    },
     kind: {
       gpu: "显卡",
       cpu: "处理器",
