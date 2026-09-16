@@ -63,7 +63,10 @@ assert.equal(isCanonicalUInt64Decimal("18446744073709551615"), true);
 assert.equal(isCanonicalUInt64Decimal("18446744073709551616"), false);
 assert.equal(isCanonicalUInt64Decimal("01"), false);
 assert.equal(compareUInt64Decimal("10", "9"), 1);
-assert.equal(formatUInt64Bytes("1024"), "1.00 KB");
+// 下载体积是传输量，按十进制显示：1024 字节就是 1.02 kB。
+// 进制与标签由 presentation/byteUnits.ts 统一决定，见 byteUnitsContract。
+assert.equal(formatUInt64Bytes("1024"), "1.02 kB");
+assert.equal(formatUInt64Bytes("1000"), "1.00 kB");
 
 const invalidCases: Array<[unknown, string]> = [
   [[], "$"],

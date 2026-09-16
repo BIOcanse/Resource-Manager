@@ -79,6 +79,7 @@ function decodeMetricValue(value: unknown, path: string): MetricValue {
     displayValue: requireString(record.displayValue, `${path}.displayValue`),
     numericValue: optionalNullableNumber(record.numericValue, `${path}.numericValue`),
     unit: optionalString(record.unit, `${path}.unit`),
+    total: optionalNullableNumber(record.total, `${path}.total`),
     percent: optionalNullableNumber(record.percent, `${path}.percent`),
     detail: optionalNullableString(record.detail, `${path}.detail`)
   };

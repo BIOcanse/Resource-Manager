@@ -37,6 +37,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onLogicRefreshIntervalChange={settings.updateLogicRefreshInterval}
         onThemeChange={settings.updateTheme}
         onBarColorModeChange={settings.updateBarColorMode}
+        onByteUnitModeChange={settings.updateByteUnitMode}
         onLanguageChange={settings.updateLanguage}
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}
         onAutoStartChange={settings.updateAutoStart}

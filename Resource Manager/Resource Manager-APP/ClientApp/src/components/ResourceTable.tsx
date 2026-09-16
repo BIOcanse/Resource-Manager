@@ -23,7 +23,7 @@ import {
 import { pinResourceTableRow } from "../resourceTable/resourceTableRowPin";
 import { resourceTableColumnsEqual } from "../resourceTable/resourceTableColumnIdentity";
 import { projectResourceTableHeat } from "../resourceTable/resourceTableHeat";
-import { formatBytes } from "../utils";
+import { formatBytes } from "../presentation/byteUnits.ts";
 import { ContentState } from "../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../interactions/inlineEditorFocus";
 
@@ -1117,8 +1117,8 @@ function ResourceTableCell(props: {
         ? uiText.resourceTableView.memoryBreakdown(
           resourceTableColumnLabel(props.column.id),
           String(value()?.displayValue),
-          formatBytes((value()?.value ?? 0) - value()!.sharedValue!),
-          formatBytes(value()?.sharedValue))
+          formatBytes((value()?.value ?? 0) - value()!.sharedValue!, "memory"),
+          formatBytes(value()?.sharedValue, "memory"))
         : value()
           ? `${resourceTableColumnLabel(props.column.id)}: ${value()?.displayValue}`
           : resourceTableColumnLabel(props.column.id)}

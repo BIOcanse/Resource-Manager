@@ -24,7 +24,8 @@ public sealed class MetricDisplayDetailFormatterTests
     {
         var detail = MetricDisplayDetailFormatter.DiskDetail("Samsung SSD", 1024UL * 1024 * 1024 * 512);
 
-        Assert.Equal("Samsung SSD / 512 GB", detail);
+        // 容量不再拼进副标题：换算与单位标签归前端按用户选择的进制统一给出。
+        Assert.Equal("Samsung SSD", detail);
         Assert.False(MetricDisplayDetailFormatter.ContainsDiagnosticText(detail));
     }
 }

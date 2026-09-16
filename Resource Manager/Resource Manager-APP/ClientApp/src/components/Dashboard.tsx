@@ -1,4 +1,5 @@
-import { localizedMetricLabel } from "../presentation/metricLabels";
+import { localizedMetricLabel, metricDisplayValue
+} from "../presentation/metricLabels";
 import { createSignal, For, Show } from "solid-js";
 import { pointerReorderProps } from "../interactions/pointerReorder";
 import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../types";
@@ -239,7 +240,7 @@ function MetricView(props: {
     ? localizedMetricLabel(props.metricId, definition()?.label ?? snapshotLabel())
     : null)
     ?? (props.metricId ? uiText.dashboard.metricUnavailable : "--");
-  const value = () => metric()?.displayValue ?? (definition() ? "N/A" : "--");
+  const value = () => metricDisplayValue(metric(), definition() ? "N/A" : "--");
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
       <div class="metric-label">{label()}</div>

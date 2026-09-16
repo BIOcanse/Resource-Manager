@@ -316,7 +316,12 @@ public sealed class SchedulingObservationContractTests
             snapshot.Memory.ObservationStatus);
         var item = snapshot.Items["memory.usage"];
         Assert.Equal(25, item.Percent);
-        Assert.Equal("8.0 / 32.0 GB", item.DisplayValue);
+        // 容量类指标发的是原始字节：不拼显示串，也不写死单位标签。
+        // 换算与标签由前端按用户选择的进制统一给出（见 ClientApp byteUnitsContract）。
+        Assert.Equal(string.Empty, item.DisplayValue);
+        Assert.Equal(MetricUnits.Bytes, item.Unit);
+        Assert.Equal(8d * 1024 * 1024 * 1024, item.NumericValue);
+        Assert.Equal(32d * 1024 * 1024 * 1024, item.Total);
         Assert.DoesNotContain("memory.percent", snapshot.Items.Keys);
         Assert.Equal(
             SamplingObservationStatus.Current,

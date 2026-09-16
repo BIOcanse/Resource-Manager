@@ -98,9 +98,14 @@ export interface MetricValue {
   id?: string;
   label?: string;
   group?: string;
+  // 后端已经拼好的一句显示值。容量类指标不再走这里 —— 它们的 unit 是 "B"，
+  // numericValue 是原始字节，换算和单位标签由 presentation/byteUnits.ts 负责。
   displayValue?: string;
   numericValue?: number | null;
+  // 原始单位标记。"B" = 原始字节，"bit/s" = 原始比特率，其余是后端已定的显示单位。
   unit?: string;
+  // 和 numericValue 同单位的总量，只有存在有意义总量的指标才有（内存、显存）。
+  total?: number | null;
   percent?: number | null;
   detail?: string | null;
 }
@@ -262,6 +267,10 @@ export interface HostManagerAppliedRecord {
   metadata?: Record<string, string> | null;
 }
 
+// 容量数字用哪个进制显示：native = 各按本来的进制（内存类 1024、存储类 1000），
+// binary = 一律 1024（KiB/MiB/GiB），decimal = 一律 1000（kB/MB/GB）。
+export type ByteUnitMode = "native" | "binary" | "decimal";
+
 export interface AppAppearanceSettings {
   theme: AppThemeMode;
   animations?: AppAnimationMode;
@@ -270,6 +279,7 @@ export interface AppAppearanceSettings {
   barColorMode?: AppBarColorMode;
   fontSmoothing?: AppFontSmoothing;
   language?: AppLanguageMode;
+  byteUnitMode?: ByteUnitMode;
 }
 
 export interface AppSystemIntegrationSettings {
