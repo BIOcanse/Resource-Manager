@@ -1621,6 +1621,15 @@
           "execution_timeout_ms": 86400000,
           "cancel_grace_ms": 60000,
           "terminal_retention_ms": 604800000
+        },
+        {
+          "name": "disk-usage.scan",
+          "priority": 70,
+          "maximum_attempts": 1,
+          "retry_delay_ms": 0,
+          "execution_timeout_ms": 7200000,
+          "cancel_grace_ms": 15000,
+          "terminal_retention_ms": 86400000
         }
       ]
     },
