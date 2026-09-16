@@ -4,8 +4,10 @@ import {
   getControlInstances,
   getControlObjects,
   getControlState,
-  refreshControlInstances
+  refreshControlInstances,
+  setControlObjectSettings
 } from "../control/controlApi.ts";
+import { ControlCapabilityEditor } from "../control/ControlCapabilityEditor";
 import { controlItemStatusOf } from "../control/controlStateMachine.ts";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
 import { uiText } from "../text.ts";
@@ -13,6 +15,7 @@ import type {
   ControlInstanceCatalog,
   ControlObject,
   ControlObjectCatalog,
+  ControlSetting,
   ControlStateView
 } from "../control/controlTypes.ts";
 
@@ -104,7 +107,18 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
               <h3>{group.label}</h3>
               <div class="control-object-grid">
                 <For each={group.objects}>
-                  {(object) => <ControlObjectCard object={object} state={state()} />}
+                  {(object) => (
+                    <ControlObjectCard
+                      object={object}
+                      state={state()}
+                      onSave={(settings) => void setControlObjectSettings(
+                        runtime.requestClient,
+                        object.id,
+                        settings)
+                        .then(setState)
+                        .catch(() => props.onNotice(uiText.control.saveFailed))}
+                    />
+                  )}
                 </For>
               </div>
             </section>
@@ -118,12 +132,20 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
 function ControlObjectCard(props: {
   object: ControlObject;
   state: ControlStateView | null;
+  onSave: (settings: readonly ControlSetting[]) => void;
 }) {
   // 用户对这个对象设过什么，以及最近一次施加的回执。
   const saved = () => props.state?.desired.objects
     .find((entry) => entry.objectId === props.object.id)?.settings ?? [];
   const outcomes = () => props.state?.lastApply.outcomes
     .filter((entry) => entry.objectId === props.object.id) ?? [];
+
+  const itemStatus = (capabilityId: string) => controlItemStatusOf(
+    capabilityId,
+    saved(),
+    saved(),
+    outcomes(),
+    false).status;
 
   /**
    * 整张卡的能力都卡在同一件事上时，返回那句话，让卡片只说一遍。
@@ -181,40 +203,33 @@ function ControlObjectCard(props: {
         <For each={props.object.capabilities}>
           {(capability) => (
             <li classList={{ "control-capability-off": !capability.supported }}>
-              <span class="control-capability-label">{capability.label}</span>
-              {/* 状态是算出来的，不是另存一份标志位。 */}
-              <Show
-                when={capability.supported}
-                fallback={
-                  <Show when={!sharedReason()}>
-                    <span class="control-capability-reason">
-                      {capability.unavailableReason}
-                      <Show when={capability.requiredComponentName}>
-                        {(name) => <> · {uiText.control.needsComponent(name())}</>}
-                      </Show>
-                    </span>
-                  </Show>
-                }
-              >
-                <span class="control-capability-range">
-                  {uiText.control.status[
-                    controlItemStatusOf(
-                      capability.id,
-                      saved(),
-                      saved(),
-                      outcomes(),
-                      false).status
-                  ]}
-                  <Show when={capability.range}>
-                    {(range) => (
-                      <>
-                        {" · "}
-                        {range().minimum} ~ {range().maximum} {range().unit}
-                      </>
-                    )}
-                  </Show>
+              <span class="control-capability-label">
+                {capability.label}
+                {/* 设过的才报状态。每行都挂个「未设定」就是纯噪音。 */}
+                <Show when={itemStatus(capability.id) !== "unset"}>
+                  <span class="control-capability-tag">
+                    {uiText.control.status[itemStatus(capability.id)]}
+                  </span>
+                </Show>
+              </span>
+              {/*
+                控不了的项照样能编：期望状态和写入器是分开的，
+                组件装上之后那一轮重新施加就会把它写下去。
+              */}
+              <Show when={!capability.supported && !sharedReason()}>
+                <span class="control-capability-reason">
+                  {capability.unavailableReason}
                 </span>
               </Show>
+              <ControlCapabilityEditor
+                capability={capability}
+                setting={saved().find((entry) => entry.capabilityId === capability.id)}
+                onChange={(next) => {
+                  const rest = saved().filter(
+                    (entry) => entry.capabilityId !== capability.id);
+                  props.onSave(next ? [...rest, next] : rest);
+                }}
+              />
             </li>
           )}
         </For>

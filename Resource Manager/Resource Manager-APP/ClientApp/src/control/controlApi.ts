@@ -276,3 +276,22 @@ export function forgetControlInstance(
     request: { method: "DELETE" }
   });
 }
+
+/** 替换某个对象的设定并立刻施加。后端先存后施加，返回的是存下来的那份。 */
+export function setControlObjectSettings(
+  requestClient: Pick<RequestClient, "request">,
+  objectId: string,
+  settings: readonly ControlSetting[]
+): Promise<ControlStateView> {
+  return requestClient.request({
+    key: "control.state.set",
+    url: `/api/control/state/${encodeURIComponent(objectId)}`,
+    fallbackError: uiText.control.saveFailed,
+    decoder: controlStateDecoder,
+    request: {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(settings)
+    }
+  });
+}
