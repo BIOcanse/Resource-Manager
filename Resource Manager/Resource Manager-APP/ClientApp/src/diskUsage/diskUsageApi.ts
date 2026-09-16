@@ -15,6 +15,7 @@ import {
 import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../text.ts";
 import type { DiskUsageVolume, DiskUsageVolumeKind } from "./diskUsageTypes.ts";
+import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import type {
   DiskUsageLayout,
   DiskUsageNode,
@@ -127,7 +128,11 @@ export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | nu
     const height = requireColumn(record.height, "$.height");
     const directoryFlags = requireColumn(record.directoryFlags, "$.directoryFlags");
     const sizes = requireColumn(record.sizes, "$.sizes");
+    const names = requireColumn(record.names, "$.names");
+    const fileCounts = requireColumn(record.fileCounts, "$.fileCounts");
 
+    const decodedNames = new Array<string>(length);
+    const indexByNodeId = new Map<number, number>();
     const layout: DiskUsageLayout = {
       rootNodeId: requireSafeInteger(record.rootNodeId, "$.rootNodeId"),
       rootPath: requireString(record.rootPath, "$.rootPath"),
@@ -143,11 +148,16 @@ export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | nu
       width: new Float32Array(length),
       height: new Float32Array(length),
       directoryFlags: new Uint8Array(length),
-      sizes: new Float64Array(length)
+      sizes: new Float64Array(length),
+      names: decodedNames,
+      fileCounts: new Float64Array(length),
+      indexByNodeId
     };
 
     for (let index = 0; index < length; index++) {
       layout.nodeIds[index] = requireSafeInteger(nodeIds[index], `$.nodeIds[${index}]`);
+      indexByNodeId.set(layout.nodeIds[index], index);
+      decodedNames[index] = requireString(names[index], `$.names[${index}]`);
       layout.parentIds[index] = requireSafeInteger(
         parentIds[index],
         `$.parentIds[${index}]`);
@@ -160,6 +170,9 @@ export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | nu
         directoryFlags[index],
         `$.directoryFlags[${index}]`) ? 1 : 0;
       layout.sizes[index] = requireFiniteNumber(sizes[index], `$.sizes[${index}]`);
+      layout.fileCounts[index] = requireNonNegativeSafeInteger(
+        fileCounts[index],
+        `$.fileCounts[${index}]`);
     }
     return layout;
   });
@@ -199,9 +212,23 @@ export function getDiskUsageSummary(
 export function getDiskUsageLayout(
   requestClient: Pick<RequestClient, "request">,
   nodeId?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  view?: DiskUsageViewWindow
 ): Promise<DiskUsageLayout | null> {
-  const query = typeof nodeId === "number" ? `?node=${nodeId}` : "";
+  const parameters = new URLSearchParams();
+  if (typeof nodeId === "number") {
+    parameters.set("node", String(nodeId));
+  }
+  if (view) {
+    parameters.set("pixelWidth", view.pixelWidth.toFixed(1));
+    parameters.set("pixelHeight", view.pixelHeight.toFixed(1));
+    parameters.set("scale", view.scale.toFixed(4));
+    parameters.set("minX", view.minX.toFixed(6));
+    parameters.set("minY", view.minY.toFixed(6));
+    parameters.set("maxX", view.maxX.toFixed(6));
+    parameters.set("maxY", view.maxY.toFixed(6));
+  }
+  const query = parameters.size > 0 ? `?${parameters}` : "";
   return requestClient.request({
     key: "disk-usage.layout",
     url: `/api/disk-usage/layout${query}`,

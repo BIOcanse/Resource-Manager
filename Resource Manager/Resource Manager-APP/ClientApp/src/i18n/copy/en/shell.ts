@@ -70,7 +70,8 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "diskUs
     scanTotals: (size: string, files: number, folders: number) =>
       `${size} · ${files} files · ${folders} folders`,
     fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
+    omitted: (count: number) =>
+      `${count} more tiles are too small or off-screen right now. Zoom in to see them.`,
     copied: "Copied",
     menuOpenLocation: "Open file location",
     menuProperties: "Properties",

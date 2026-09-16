@@ -1,13 +1,20 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { readDocumentTheme } from "../presentation/documentTheme";
-import { hitTest, paintTreemap, type DiskUsagePaintTheme } from "./diskUsageTreemapPaint.ts";
+import {
+  hitTest,
+  paintTreemap,
+  type DiskUsagePaintOptions,
+  type DiskUsagePaintTheme
+} from "./diskUsageTreemapPaint.ts";
 import {
   clampToBounds,
   edgePanDelta,
   identityViewport,
   panByPixels,
+  visibleUnitRect,
   zoomAt,
-  type DiskUsageViewport
+  type DiskUsageViewport,
+  type DiskUsageViewWindow
 } from "./diskUsageViewport.ts";
 import type { DiskUsageLayout } from "./diskUsageLayoutTypes.ts";
 
@@ -25,6 +32,11 @@ export function DiskUsageTreemapPlane(props: {
   onActivate: (nodeId: number) => void;
   onContextMenu: (nodeId: number, clientX: number, clientY: number) => void;
   onHover: (nodeId: number, clientX: number, clientY: number) => void;
+  /**
+   * 视图稳定下来之后报一次当前看到的范围和物理像素尺寸。
+   * 上层据此决定要不要换一份更细的布局 —— 放大之后原先太小的方格就该出现了。
+   */
+  onViewChanged: (view: DiskUsageViewWindow) => void;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let container: HTMLDivElement | undefined;
@@ -50,26 +62,52 @@ export function DiskUsageTreemapPlane(props: {
       attributeFilter: ["data-theme"]
     });
 
+    // 窗口失焦时指针不会再有消息传过来，贴边平移必须就地停住，
+    // 否则切回来会发现视图自己跑掉了。
+    const release = () => {
+      pointerX = -1;
+      pointerY = -1;
+      stopEdgePan();
+      props.onHover(-1, 0, 0);
+    };
+    window.addEventListener("blur", release);
+
     onCleanup(() => {
       observer.disconnect();
       themeObserver.disconnect();
+      window.removeEventListener("blur", release);
       stopEdgePan();
     });
   });
 
-  // 换了一棵树就回到整图视角，否则会停在上一棵树的某个角落。
+  // 换了一棵树才回到整图视角，否则会停在上一棵树的某个角落。
+  //
+  // 只看根节点，不看布局对象本身：放大之后会换上一份更细的布局，
+  // 那时根没变，视口必须原地不动，否则一放大就被弹回整图。
+  let shownRootNodeId = -1;
   createEffect(() => {
-    void props.layout;
+    const rootNodeId = props.layout.rootNodeId;
+    if (rootNodeId === shownRootNodeId) {
+      return;
+    }
+    shownRootNodeId = rootNodeId;
     setViewport(identityViewport);
   });
 
+  // 一次要画几万个方格，比一帧还久。所以这里只登记"该重画了"，
+  // 真正画在下一个动画帧，一帧最多画一次；中间那些视口值直接跳过。
+  // 贴边平移每 16 毫秒改一次视口，不这样做就会排出画不完的队。
+  let paintHandle = 0;
+  // 待画的那一份。晚来的直接覆盖它，所以画的永远是最新状态，
+  // 而不是排队里某个已经过时的视口。
+  let pending: DiskUsagePaintOptions | null = null;
+
   createEffect(() => {
-    const context = canvas?.getContext("2d");
     const { width, height } = size();
-    if (!context || width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0) {
       return;
     }
-    paintTreemap(context, {
+    pending = {
       layout: props.layout,
       viewport: viewport(),
       width,
@@ -78,7 +116,59 @@ export function DiskUsageTreemapPlane(props: {
       theme: theme(),
       selectedNodeId: props.selectedNodeId,
       labelOf: props.labelOf
+    };
+    if (paintHandle !== 0) {
+      return;
+    }
+    paintHandle = window.requestAnimationFrame(() => {
+      paintHandle = 0;
+      const options = pending;
+      pending = null;
+      const context = canvas?.getContext("2d");
+      if (context && options) {
+        paintTreemap(context, options);
+      }
     });
+  });
+
+  onCleanup(() => {
+    if (paintHandle !== 0) {
+      window.cancelAnimationFrame(paintHandle);
+      paintHandle = 0;
+    }
+  });
+
+  // 滚轮和贴边平移会连着改很多次视口。等它停下来再报一次，
+  // 不然每动一下都去要一份新布局。
+  let viewTimer = 0;
+  createEffect(() => {
+    const current = viewport();
+    const { width, height } = size();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const ratio = window.devicePixelRatio || 1;
+    const rect = visibleUnitRect(current);
+    if (viewTimer !== 0) {
+      window.clearTimeout(viewTimer);
+    }
+    viewTimer = window.setTimeout(() => {
+      viewTimer = 0;
+      props.onViewChanged({
+        // 物理像素：窗口缩放和屏幕缩放都已经算在里面了。
+        pixelWidth: width * ratio,
+        pixelHeight: height * ratio,
+        scale: current.scale,
+        ...rect
+      });
+    }, 160);
+  });
+
+  onCleanup(() => {
+    if (viewTimer !== 0) {
+      window.clearTimeout(viewTimer);
+      viewTimer = 0;
+    }
   });
 
   function measure() {
@@ -107,22 +197,44 @@ export function DiskUsageTreemapPlane(props: {
     return hitTest(props.layout, viewport(), width, height, point.x, point.y);
   }
 
-  function startEdgePan() {
+  /**
+   * 贴边平移。只在指针确实落在边缘带里的时候才跑定时器，一离开就停。
+   *
+   * 先前是只要动过鼠标就一直跑，只有 mouseleave 才停 —— 于是指针没触发
+   * mouseleave 就离开画布时（弹出菜单盖上来、窗口失焦、指针飞出去），
+   * 视图会自己一直平移，怎么点都退不出来。现在它自己会停。
+   */
+  function updateEdgePan() {
+    const { width, height } = size();
+    if (pointerX < 0 || width <= 0) {
+      stopEdgePan();
+      return;
+    }
+    const delta = edgePanDelta(pointerX, pointerY, width, height);
+    if (delta.deltaX === 0 && delta.deltaY === 0) {
+      stopEdgePan();
+      return;
+    }
     if (edgeTimer !== 0) {
       return;
     }
     edgeTimer = window.setInterval(() => {
-      const { width, height } = size();
-      if (pointerX < 0 || width <= 0) {
+      const current = size();
+      if (pointerX < 0 || current.width <= 0) {
         stopEdgePan();
         return;
       }
-      const delta = edgePanDelta(pointerX, pointerY, width, height);
-      if (delta.deltaX === 0 && delta.deltaY === 0) {
+      const step = edgePanDelta(pointerX, pointerY, current.width, current.height);
+      if (step.deltaX === 0 && step.deltaY === 0) {
+        stopEdgePan();
         return;
       }
-      setViewport((current) =>
-        panByPixels(current, width, height, delta.deltaX, delta.deltaY));
+      setViewport((viewportNow) => panByPixels(
+        viewportNow,
+        current.width,
+        current.height,
+        step.deltaX,
+        step.deltaY));
     }, 16);
   }
 
@@ -152,11 +264,20 @@ export function DiskUsageTreemapPlane(props: {
           setViewport((current) =>
             zoomAt(current, width, height, point.x, point.y, factor));
         }}
+        onMouseEnter={(event) => {
+          // 指针进来就接管键盘，省掉"先点一下才能用方向键"这一步。
+          // 正在输入的时候不抢：鼠标扫过图上不该把光标从输入框里拽走。
+          if (isTypingSomewhere()) {
+            return;
+          }
+          // preventScroll：这张图可能在页面下半部分，对焦不该把页面滚过去。
+          event.currentTarget.focus({ preventScroll: true });
+        }}
         onMouseMove={(event) => {
           const point = localPoint(event);
           pointerX = point.x;
           pointerY = point.y;
-          startEdgePan();
+          updateEdgePan();
           props.onHover(nodeAt(event), event.clientX, event.clientY);
         }}
         onMouseLeave={() => {
@@ -281,6 +402,22 @@ function neighbourOf(
     }
   }
   return best;
+}
+
+/**
+ * 焦点现在是不是在一个正在输入的地方。
+ * 悬停对焦要避开这些，不然鼠标随便扫过去就会把用户的输入光标弄丢。
+ */
+function isTypingSomewhere(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    return false;
+  }
+  if (active.isContentEditable) {
+    return true;
+  }
+  const tag = active.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
 function readPaintTheme(): DiskUsagePaintTheme {
