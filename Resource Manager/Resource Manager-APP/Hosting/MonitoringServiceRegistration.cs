@@ -97,7 +97,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
         services.AddSingleton<IDiskUsageTreeStore, DiskUsageTreeStore>();
-        services.AddSingleton<IDiskUsageScanner, DirectoryWalkDiskUsageScanner>();
+        // 快速扫描读主文件表，全扫描逐级遍历。进来的请求由前者按模式分派，
+        // 不匹配就把请求原样交给后者 —— 模式是用户选的，程序不替他改。
+        services.AddSingleton<DirectoryWalkDiskUsageScanner>();
+        services.AddSingleton<IDiskUsageScanner>(static provider =>
+            new WindowsMftDiskUsageScanner(
+                provider.GetRequiredService<IDiskUsageVolumeCatalog>(),
+                provider.GetRequiredService<DirectoryWalkDiskUsageScanner>()));
 
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
