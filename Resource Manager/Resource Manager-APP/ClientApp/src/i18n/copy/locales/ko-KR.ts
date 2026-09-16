@@ -20,7 +20,53 @@ const koKrAppCopy: AppCopy = {
     components: "구성 요소 및 소프트웨어",
     optimization: "성능 최적화",
     details: "자세한 정보",
-    settings: "설정"
+    settings: "설정",
+    diskUsage: "디스크 사용량"
+  },
+  diskUsage: {
+    title: "디스크 사용량",
+    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
+    scopeLabel: "Scan scope",
+    scopeAllVolumes: "All drives",
+    scopeVolume: "One drive",
+    scopeFolder: "One folder",
+    modeLabel: "Scan method",
+    modeFast: "Fast scan",
+    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
+    modeFull: "Full scan",
+    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
+    chooseFolder: "Choose folder",
+    folderNotChosen: "No folder chosen yet",
+    scan: "Start scan",
+    rescan: "Scan again",
+    cancel: "Cancel scan",
+    scanning: "Scanning",
+    volumeColumnLabel: "Drive",
+    noVolumes: "No scannable drive was found.",
+    notReady: "Not ready",
+    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    volumeKind: {
+      physical: "Physical drive",
+      virtual: "Virtual drive",
+      removable: "Removable",
+      network: "Network location",
+      optical: "Optical drive",
+      unknown: "Unknown source"
+    },
+    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
+    skipped: "Not covered by this scan",
+    skipReason: {
+      noFileSystemIndex: "The filesystem has no readable index",
+      needsElevation: "Reading the index needs administrator rights",
+      volumeNotReady: "The drive is not ready",
+      targetUnavailable: "The path does not exist or cannot be opened"
+    },
+    scanKind: {
+      masterFileTable: "Read the filesystem index",
+      directoryWalk: "Walked the directories"
+    },
+    emptyTitle: "Nothing scanned yet",
+    emptyDetail: "Pick a scope and a method, then start the scan."
   },
   shell: {
     productName: "리소스 관리자",

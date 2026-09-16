@@ -1,0 +1,105 @@
+/* Disk Usage */
+.disk-usage-page {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.disk-usage-setup .settings-row:last-of-type {
+  border-bottom: none;
+}
+
+.disk-usage-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--line));
+  border-radius: var(--radius-sm);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 13px;
+}
+
+.disk-usage-volume-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.disk-usage-volume {
+  position: relative;
+  width: 100%;
+  min-height: 74px;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 10px 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  background-image: none;
+  color: var(--text);
+  text-align: left;
+  overflow: hidden;
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.disk-usage-volume:not(:disabled):not(.selected):hover {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.disk-usage-volume.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.disk-usage-volume.unavailable {
+  opacity: 1;
+  color: var(--muted);
+}
+
+.disk-usage-volume-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.disk-usage-volume-meta,
+.disk-usage-volume-size {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 底部那条细线表示已用比例，不抢视觉，只做个量感。 */
+.disk-usage-volume-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--line-soft);
+}
+
+.disk-usage-volume-bar::before {
+  content: "";
+  display: block;
+  height: 100%;
+  width: calc(var(--disk-usage-used, 0) * 100%);
+  background: var(--accent);
+}
+
+.disk-usage-empty {
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  min-height: 220px;
+}
+
+.disk-usage-empty strong {
+  color: var(--text);
+  font-size: 15px;
+}

@@ -206,7 +206,8 @@ assert.match(pageBoundary, /role="alert"/);
 assert.match(pageBoundary, /tabIndex=\{-1\}/);
 assert.match(pageBoundary, /<Show when=\{props\.onRetry\}>/);
 assert.match(pageBoundary, /props\.resetKey/);
-assert.equal(appRoutes.match(/<PageBoundary name=/g)?.length, 5);
+// 六个一级分页各有自己的错误边界。
+assert.equal(appRoutes.match(/<PageBoundary name=/g)?.length, 6);
 assert.match(appShell, /<PageBoundary name=\{uiText\.shell\.currentPage\} resetKey=\{props\.activePage\(\)\}>/);
 assert.match(appShell, /document\.title = uiText\.shell\.documentTitle\(props\.pageTitle\(\), uiText\.shell\.productName\)/);
 assert.match(appShell, /<h1[\s\S]*?id="activePageTitle"[\s\S]*?tabIndex=\{-1\}/);

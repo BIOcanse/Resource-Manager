@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
@@ -9,6 +10,7 @@ using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.SystemHealth;
+using ResourceManager.App.Infrastructure.DiskUsage;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry;
@@ -91,6 +93,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<CpuTopologySnapshotProvider>();
         services.AddSingleton<ICpuTopologyReader>(static provider => provider.GetRequiredService<CpuTopologySnapshotProvider>());
         services.AddHostedServiceAlias<CpuTopologySnapshotProvider>();
+
+        // 磁盘占用：卷清单只读，随叫随取。
+        services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
 
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
