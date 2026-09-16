@@ -1,4 +1,5 @@
-﻿using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Units;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -68,7 +69,8 @@ public static class AppSettingsDefaults
                 AppAdaptiveBooleanModes.Auto,
                 AppBarColorModes.Type,
                 AppFontSmoothingModes.Auto,
-                AppLanguageModes.System),
+                AppLanguageModes.System,
+                AppByteUnitModes.Native),
             new AppSystemIntegrationSettings(
                 TaskManagerShortcutReplacementEnabled: false,
                 Hotkeys:

@@ -8,6 +8,7 @@ import { uiText, currentSettingsText, isRightToLeftLanguage } from "../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppBarColorMode,
+  ByteUnitMode,
   AppEditableHotkeySettings,
   AppFrontendHiddenRefreshMode,
   AppGpuPerformanceUseCase,
@@ -46,6 +47,7 @@ interface SettingsPageProps {
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onThemeChange: (theme: AppThemeMode) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
+  onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
   onLanguageChange: (language: AppLanguageMode) => void;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
@@ -246,6 +248,7 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               onThemeChange={props.onThemeChange}
               onBarColorModeChange={props.onBarColorModeChange}
+              onByteUnitModeChange={props.onByteUnitModeChange}
               onLanguageChange={props.onLanguageChange}
             />
           </Show>

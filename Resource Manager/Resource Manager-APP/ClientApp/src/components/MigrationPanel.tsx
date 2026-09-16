@@ -24,7 +24,7 @@ import {
 } from "../presentation/userFacingText";
 import type { UserDetailSection } from "../presentation/userDetails";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "../presentation/userDetails";
-import { formatBytes } from "../utils";
+import { formatBytes } from "../presentation/byteUnits.ts";
 import { uiText } from "../text.ts";
 
 interface MigrationPanelProps {
@@ -348,7 +348,7 @@ function migrationPlanItemDetails(item: MigrationPlan["items"][number]) {
       userDetailItem(uiText.migrationPanel.detail.risk, userFacingRisk(item.risk)),
       userDetailItem(uiText.migrationPanel.detail.content, migrationClassificationLabel(item.classification)),
       userDetailItem(uiText.migrationPanel.detail.result, item.canExecute ? uiText.migrationPanel.canMigrate : uiText.migrationPanel.detail.needsAdjustment),
-      typeof item.sizeBytes === "number" ? userDetailItem(uiText.migrationPanel.detail.size, formatBytes(item.sizeBytes)) : null
+      typeof item.sizeBytes === "number" ? userDetailItem(uiText.migrationPanel.detail.size, formatBytes(item.sizeBytes, "storage")) : null
     ]),
     userDetailSection(uiText.migrationPanel.detail.location, [
       userDetailItem(uiText.migrationPanel.detail.sourceLocation, item.sourcePath),

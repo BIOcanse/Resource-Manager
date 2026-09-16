@@ -1,3 +1,4 @@
+import { formatBytes as formatBytesInUnits } from "../../presentation/byteUnits.ts";
 import type { DeviceTopologyPort } from "../../types";
 import type {
   DeviceAdapterContext,
@@ -106,19 +107,12 @@ export function activeCapabilities(values: Array<[string, boolean]>) {
   return values.filter(([, enabled]) => enabled).map(([label]) => label);
 }
 
+/**
+ * 设备拓扑里的容量都是磁盘、分区、可移动存储 —— 天生十进制，
+ * 所以固定按存储类交给唯一所有者换算，这里不再自己除 1024。
+ */
 export function formatBytes(value: number | null | undefined, fallback = "--") {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return fallback;
-  }
-
-  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-  let scaled = value;
-  let unitIndex = 0;
-  while (scaled >= 1024 && unitIndex < units.length - 1) {
-    scaled /= 1024;
-    unitIndex += 1;
-  }
-  return `${scaled.toFixed(unitIndex === 0 ? 0 : scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+  return formatBytesInUnits(value, "storage", undefined, fallback);
 }
 
 export function formatRate(value: number | null | undefined, unit: string, fallback = "--") {

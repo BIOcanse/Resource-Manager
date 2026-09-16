@@ -113,25 +113,6 @@ export function formatPercent(value: unknown) {
   return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : "0.0%";
 }
 
-export function formatBytes(value: unknown) {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = Math.max(0, Number(value) || 0);
-  let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
-    unit++;
-  }
-
-  const digits = unit === 0 ? 0 : size >= 10 ? 1 : 2;
-  return `${size.toFixed(digits)} ${units[unit]}`;
-}
-
-export function formatSignedBytes(value: unknown) {
-  const numeric = Number(value) || 0;
-  const sign = numeric > 0 ? "+" : numeric < 0 ? "-" : "";
-  return `${sign}${formatBytes(Math.abs(numeric))}`;
-}
-
 export function isHttpUrl(value: unknown) {
   return /^https?:\/\//i.test(textOrEmpty(value));
 }

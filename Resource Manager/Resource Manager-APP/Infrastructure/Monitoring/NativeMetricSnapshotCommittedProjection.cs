@@ -418,10 +418,11 @@ internal static class NativeMetricSnapshotCommittedProjection
                     StringComparison.OrdinalIgnoreCase))
             {
                 presentation = new PresentationValue(
-                    $"{ToGib(memory.UsedBytes):0.0} / {ToGib(memory.TotalBytes):0.0} GB",
-                    ToGib(memory.UsedBytes),
-                    "GB",
-                    memory.UsagePercent);
+                    string.Empty,
+                    memory.UsedBytes,
+                    MetricUnits.Bytes,
+                    memory.UsagePercent,
+                    memory.TotalBytes);
                 valueAvailable = memory.IsUsageAvailable;
             }
             else if (string.Equals(
@@ -430,10 +431,11 @@ internal static class NativeMetricSnapshotCommittedProjection
                          StringComparison.OrdinalIgnoreCase))
             {
                 presentation = new PresentationValue(
-                    $"{ToGib(virtualMemory.UsedBytes):0.0} / {ToGib(virtualMemory.TotalBytes):0.0} GB",
-                    ToGib(virtualMemory.UsedBytes),
-                    "GB",
-                    virtualMemory.UsagePercent);
+                    string.Empty,
+                    virtualMemory.UsedBytes,
+                    MetricUnits.Bytes,
+                    virtualMemory.UsagePercent,
+                    virtualMemory.TotalBytes);
                 valueAvailable = virtualMemory.IsSelectable;
             }
             else if (id.EndsWith(
@@ -444,19 +446,22 @@ internal static class NativeMetricSnapshotCommittedProjection
                     readings,
                     id[..^".vram".Length] + ".vramTotal");
                 presentation = new PresentationValue(
-                    $"{ToGib(ToUInt64(reading.Value)):0.0} / {ToGib(ToUInt64(total.Value)):0.0} GB",
-                    ToGib(ToUInt64(reading.Value)),
-                    "GB",
-                    RatioPercent(reading, total));
+                    string.Empty,
+                    ToUInt64(reading.Value),
+                    MetricUnits.Bytes,
+                    RatioPercent(reading, total),
+                    ToUInt64(total.Value));
                 valueAvailable = reading.IsAvailable && total.IsAvailable;
             }
             if (!valueAvailable)
             {
                 presentation = presentation with
                 {
-                    Display = "N/A",
+                    // 容量类指标不带显示字符串，空读数就是 Numeric 为 null，前端自己说「无数据」。
+                    Display = presentation.Unit == MetricUnits.Bytes ? string.Empty : "N/A",
                     Numeric = null,
-                    Percent = null
+                    Percent = null,
+                    Total = null
                 };
             }
             items[id] = new MetricValue(
@@ -467,7 +472,8 @@ internal static class NativeMetricSnapshotCommittedProjection
                 presentation.Numeric,
                 presentation.Unit,
                 presentation.Percent,
-                detail);
+                detail,
+                presentation.Total);
         }
         return items;
     }
@@ -853,9 +859,6 @@ internal static class NativeMetricSnapshotCommittedProjection
             ? checked((ulong)Math.Round(value))
             : 0;
 
-    private static double ToGib(ulong bytes)
-        => bytes / 1024d / 1024d / 1024d;
-
     private readonly record struct Reading(
         NativeMetricSnapshotMetricOutput Output,
         double Value)
@@ -871,5 +874,6 @@ internal static class NativeMetricSnapshotCommittedProjection
         string Display,
         double? Numeric,
         string Unit,
-        double? Percent);
+        double? Percent,
+        double? Total = null);
 }

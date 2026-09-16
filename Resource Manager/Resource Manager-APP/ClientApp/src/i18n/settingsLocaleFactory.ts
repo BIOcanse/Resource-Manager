@@ -107,6 +107,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     ],
     barColorTitle: "条形图配色",
     barColorDescription: "按软件类型使用固定颜色，或为每个软件分配不同颜色。",
+    byteUnitTitle: "容量单位",
+    byteUnitDescription: "1 GiB = 1024 MiB，1 GB = 1000 MB。切换后所有容量数字一起变，不只是改标签。",
     fontSmoothingTitle: "文字平滑",
     fontSmoothingDescription: "自动平衡文字清晰度和界面开销，也可以固定渲染方式。",
     languageTitle: "界面语言",
@@ -129,6 +131,14 @@ const zhCnSettingsCopy: SettingsCopy = {
     barColorOptions: {
       type: { label: "类型固定色", description: "按系统、适配和一般应用上色，相邻分段用分隔线区分" },
       distinct: { label: "异色区分", description: "每个软件不同颜色，不表达类型，无分隔线" }
+    },
+    byteUnitOptions: {
+      native: {
+        label: "按物理性质",
+        description: "内存、显存、缓存用 GiB（内存颗粒天生是 2 的幂）；磁盘容量、文件大小、累计流量用 GB（与厂商标称一致）"
+      },
+      binary: { label: "全用 GiB", description: "一律按 1024 换算，标签一律 KiB / MiB / GiB" },
+      decimal: { label: "全用 GB", description: "一律按 1000 换算，标签一律 kB / MB / GB" }
     },
     fontSmoothingOptions: {
       auto: { label: "自动调度", description: "正常状态使用系统 ClearType，超高性能状态减少文字平滑开销" },
@@ -399,6 +409,8 @@ const enSettingsCopy: SettingsCopy = {
     ],
     barColorTitle: "Bar Colours",
     barColorDescription: "Use fixed colours by software type or assign a different colour to each software item.",
+    byteUnitTitle: "Capacity Units",
+    byteUnitDescription: "1 GiB = 1024 MiB, 1 GB = 1000 MB. Switching changes the numbers themselves, not just the labels.",
     fontSmoothingTitle: "Text Smoothing",
     fontSmoothingDescription: "Balance text clarity and interface cost automatically, or lock a rendering mode.",
     languageTitle: "Interface language",
@@ -421,6 +433,14 @@ const enSettingsCopy: SettingsCopy = {
     barColorOptions: {
       type: { label: "Fixed by type", description: "Colour by system, adapted, and general software; adjacent segments use dividers" },
       distinct: { label: "Distinct colours", description: "A different colour per software, no type meaning, no dividers" }
+    },
+    byteUnitOptions: {
+      native: {
+        label: "Match the hardware",
+        description: "GiB for memory, VRAM and caches (memory capacity is a power of two); GB for disk capacity, file sizes and transfer totals (matching what vendors print)"
+      },
+      binary: { label: "Always GiB", description: "Always divide by 1024; labels are always KiB / MiB / GiB" },
+      decimal: { label: "Always GB", description: "Always divide by 1000; labels are always kB / MB / GB" }
     },
     fontSmoothingOptions: {
       auto: { label: "Automatic", description: "Use system ClearType normally and reduce smoothing cost in ultra-performance mode" },

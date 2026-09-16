@@ -29,6 +29,7 @@ import type {
 } from "../types";
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { uiText } from "../text.ts";
+import { formatBytes } from "../presentation/byteUnits.ts";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 
@@ -990,12 +991,8 @@ function formatCacheSize(sizeKb?: number | null) {
     return "";
   }
 
-  if (sizeKb >= 1024) {
-    const sizeMb = sizeKb / 1024;
-    return `${Number.isInteger(sizeMb) ? sizeMb : sizeMb.toFixed(1)} MB`;
-  }
-
-  return `${Math.round(sizeKb)} KB`;
+  // 系统报的缓存大小以 KiB 计，先还原成字节再交给唯一所有者按内存类换算。
+  return formatBytes(sizeKb * 1024, "memory");
 }
 
 function partitionByCacheLevel(

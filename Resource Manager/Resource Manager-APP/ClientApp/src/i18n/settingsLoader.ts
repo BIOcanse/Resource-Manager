@@ -1,4 +1,4 @@
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppThemeMode } from "../types.ts";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppThemeMode, ByteUnitMode } from "../types.ts";
 import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
@@ -106,6 +106,8 @@ export const loadingSettingsText: SettingsTextBundle = {
     resourceBarHardwareAccelerationDescription: "",
     resourceBarHardwareAccelerationModeOptions: [],
     barColorTitle: "",
+    byteUnitTitle: "",
+    byteUnitDescription: "",
     barColorDescription: "",
     fontSmoothingTitle: "",
     fontSmoothingDescription: "",
@@ -124,6 +126,11 @@ export const loadingSettingsText: SettingsTextBundle = {
     barColorOptions: {
       type: { label: "", description: "" },
       distinct: { label: "", description: "" }
+    },
+    byteUnitOptions: {
+      native: { label: "", description: "" },
+      binary: { label: "", description: "" },
+      decimal: { label: "", description: "" }
     },
     fontSmoothingOptions: {
       auto: { label: "", description: "" },
@@ -281,6 +288,7 @@ export const loadingSettingsText: SettingsTextBundle = {
   themeOptions: [],
   animationOptions: [],
   barColorOptions: [],
+  byteUnitOptions: [],
   fontSmoothingOptions: [],
   gpuPerformanceUseCaseOptions: [],
   creditGroups: []
@@ -317,6 +325,8 @@ function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: Setti
     animationOptions: (Object.entries(copy.appearance.animationOptions) as Array<[AppAnimationMode, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     barColorOptions: (Object.entries(copy.appearance.barColorOptions) as Array<[AppBarColorMode, { label: string; description: string }]>)
+      .map(([id, option]) => ({ id, label: option.label, description: option.description })),
+    byteUnitOptions: (Object.entries(copy.appearance.byteUnitOptions) as Array<[ByteUnitMode, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     fontSmoothingOptions: (Object.entries(copy.appearance.fontSmoothingOptions) as Array<[AppFontSmoothing, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),

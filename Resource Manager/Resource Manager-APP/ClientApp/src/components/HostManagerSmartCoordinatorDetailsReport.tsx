@@ -1,3 +1,4 @@
+import { formatBytes } from "../presentation/byteUnits.ts";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
@@ -67,8 +68,8 @@ export function HostManagerSmartCoordinatorDetailsReport() {
           <div class="smart-details-summary">
             <SummaryTile label={uiText.smartReport.completed} value={formatNumber(current().appliedPlacements.length)} />
             <SummaryTile label={uiText.smartReport.needsAttention} value={formatNumber(attentionCount())} tone={attentionCount() > 0 ? "danger" : "normal"} />
-            <SummaryTile label={uiText.smartReport.releasedMemory} value={formatBytes(releasedMemoryBytes())} />
-            <SummaryTile label={uiText.smartReport.releasedVram} value={formatBytes(releasedVramBytes())} />
+            <SummaryTile label={uiText.smartReport.releasedMemory} value={formatBytes(releasedMemoryBytes(), "memory")} />
+            <SummaryTile label={uiText.smartReport.releasedVram} value={formatBytes(releasedVramBytes(), "memory")} />
           </div>
           <Show
             when={records().length > 0}
@@ -164,8 +165,8 @@ function detailRecordSections(record: DetailRecord) {
       userDetailItem(uiText.smartReport.field.accepted, uiText.smartReport.itemCount(record.acceptedCount)),
       record.timedOutCount > 0 ? userDetailItem(uiText.smartReport.field.timedOut, uiText.smartReport.itemCount(record.timedOutCount)) : null,
       record.rejectedCount > 0 ? userDetailItem(uiText.smartReport.field.rejected, uiText.smartReport.itemCount(record.rejectedCount)) : null,
-      record.releasedMemoryBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedMemory, formatBytes(record.releasedMemoryBytes)) : null,
-      record.releasedVramBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedVram, formatBytes(record.releasedVramBytes)) : null
+      record.releasedMemoryBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedMemory, formatBytes(record.releasedMemoryBytes, "memory")) : null,
+      record.releasedVramBytes > 0 ? userDetailItem(uiText.smartReport.field.releasedVram, formatBytes(record.releasedVramBytes, "memory")) : null
     ])
   ]);
 }
@@ -179,21 +180,6 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value);
 }
 
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) {
-    return "0 B";
-  }
-
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let current = value;
-  let index = 0;
-  while (current >= 1024 && index < units.length - 1) {
-    current /= 1024;
-    index++;
-  }
-
-  return `${current >= 10 || index === 0 ? current.toFixed(0) : current.toFixed(1)} ${units[index]}`;
-}
 
 function formatRecordKind(kind: string) {
   switch (kind) {
