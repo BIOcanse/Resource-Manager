@@ -95,3 +95,32 @@ export interface ControlStateView {
   desired: ControlDesiredState;
   lastApply: ControlApplyReport;
 }
+
+/**
+ * 登记过的一台设备。
+ * 实例一旦登记就不再消失，只在"在场/不在场"之间切换 —— 配置挂在它上面，
+ * 所以拔掉一块卡不会让它的设定变成孤儿。
+ */
+export interface ControlInstance {
+  id: string;
+  kind: string;
+  displayName: string;
+  platform: ControlObjectPlatform;
+  gpuAttachment: string | null;
+  /** 这个身份能不能唯一认出这台设备。不能的话如实标出来，不假装。 */
+  identityIsUnique: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  /** 登记时生成的默认配置，「恢复默认」用它。 */
+  defaultSettings: readonly ControlSetting[];
+}
+
+export interface ControlInstanceView {
+  instance: ControlInstance;
+  isPresent: boolean;
+}
+
+export interface ControlInstanceCatalog {
+  instances: readonly ControlInstanceView[];
+  readAt: string;
+}

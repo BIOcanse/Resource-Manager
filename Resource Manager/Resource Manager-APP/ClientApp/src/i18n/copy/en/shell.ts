@@ -30,6 +30,15 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     empty: "Nothing tunable has been identified on this machine yet.",
     ready: "Adjustable",
     needsComponent: (name: string) => `Needs ${name}`,
+    forgetFailed: "Delete not allowed",
+    instances: {
+      title: "Devices seen before",
+      present: "Present",
+      absent: "Not present",
+      refresh: "Detect again",
+      forget: "Remove record",
+      firstSeen: (at: string) => `First seen ${at}`
+    },
     attachment: {
       integrated: "Integrated",
       discrete: "Discrete",

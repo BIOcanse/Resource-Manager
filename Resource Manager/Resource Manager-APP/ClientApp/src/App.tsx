@@ -335,7 +335,12 @@ export default function App() {
           onOpenSoftwareDetail={softwareActions.openSoftwareDetail}
           onOpenSoftwareSettingsById={(softwareId, softwareName) =>
             void softwareActions.openSoftwareSettingsById(softwareId, softwareName)}
-          onInspectOptimizationTarget={(report) => void softwareActions.inspectOptimizationTarget(report)}
+          onNotice={(message) => showToast({
+          tone: "info",
+          title: uiText.control.title,
+          message
+        })}
+        onInspectOptimizationTarget={(report) => void softwareActions.inspectOptimizationTarget(report)}
         />
       </AppShell>
 

@@ -51,3 +51,31 @@ public interface IControlPlane
     /// </summary>
     Task<ControlApplyReport> ReassertAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// 见过的设备登记表。
+///
+/// 它和 <see cref="IControlObjectCatalog"/> 的区别是**时间**：
+/// 目录回答"现在插着什么"，登记表回答"这台机器上出现过什么"。
+/// 配置挂在登记表上，所以拔掉一块卡不会让它的设定变成孤儿。
+/// </summary>
+public interface IControlInstanceRegistry
+{
+    /// <summary>
+    /// 全部登记过的实例，并标出现在哪些在场。
+    /// 顺带把新认到的设备登记进去 —— 插上就该能设，不用先手动刷新。
+    /// </summary>
+    Task<ControlInstanceCatalog> ReadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 重新检测一遍。新设备会被登记并自带默认配置。
+    /// 界面上那个「刷新」就是它。
+    /// </summary>
+    Task<ControlInstanceCatalog> RefreshAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 删掉一个实例及其设定。用于清理早就不用的卡。
+    /// 设备还在场时不允许删 —— 删了下一次读取又会把它登记回来，等于什么都没发生。
+    /// </summary>
+    Task<ControlInstanceCatalog> ForgetAsync(string instanceId, CancellationToken cancellationToken);
+}

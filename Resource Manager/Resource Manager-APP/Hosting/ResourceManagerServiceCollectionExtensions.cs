@@ -82,6 +82,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlDesiredStateStore, JsonControlDesiredStateStore>();
         services.AddSingleton<IControlPlanExecutor, ControlPlanExecutor>();
         services.AddSingleton<IControlPlane, ControlPlane>();
+        // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
+        services.AddSingleton<IControlInstanceRegistry, JsonControlInstanceRegistry>();
         // 设定要一直维持：启动后和之后每隔一段重新施加一次。
         //
         // 只在允许运行时写入的档位里注册。只读服务图不该带着一个会写硬件的后台服务 ——

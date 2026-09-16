@@ -28,6 +28,15 @@ export const zhShellCopy = {
     empty: "这台机器上还没认出可以调节的对象。",
     ready: "可调节",
     needsComponent: (name: string) => `需要 ${name}`,
+    forgetFailed: "禁止删除",
+    instances: {
+      title: "识别到过的设备",
+      present: "在场",
+      absent: "不在场",
+      refresh: "重新检测",
+      forget: "删除记录",
+      firstSeen: (at: string) => `首次见到 ${at}`
+    },
     attachment: {
       integrated: "核显",
       discrete: "独显",
