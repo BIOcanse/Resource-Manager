@@ -35,17 +35,26 @@ assert.ok(Math.abs(beforeUnit.y - afterUnit.y) < 1e-6, "锚点纵向不能漂");
 // 缩放倍数有下限：1 表示整图铺满，再缩就没意义了。
 assert.equal(zoomAt(identityViewport, width, height, 0, 0, 0.5).scale, 1);
 
-// 平移不许把图划出画布。
+// 图可以被推出画布，但推不到找不回来：两个方向各留一整屏余量。
 const panned = panByPixels(zoomed, width, height, -10_000, -10_000);
-const maximumOffset = 1 - 1 / zoomed.scale;
-assert.ok(panned.offsetX <= maximumOffset + 1e-6);
-assert.ok(panned.offsetY <= maximumOffset + 1e-6);
-assert.ok(panned.offsetX >= 0 && panned.offsetY >= 0);
+const span = 1 / zoomed.scale;
+const upperBound = Math.max(0, 1 - span) + span;
+assert.ok(panned.offsetX <= upperBound + 1e-6, "不能推到图外一屏以上");
+assert.ok(panned.offsetY <= upperBound + 1e-6);
+const pulled = panByPixels(zoomed, width, height, 10_000, 10_000);
+assert.ok(pulled.offsetX >= -span - 1e-6, "另一个方向同样有上限");
 
-// 放大之前没有可平移的余地，怎么拖都还是原样。
-assert.deepEqual(
-  panByPixels(identityViewport, width, height, 500, 500),
-  identityViewport);
+// 不再"自动归位"：缩放为 1 时也能把图整个推开。
+const nudged = panByPixels(identityViewport, width, height, 500, 500);
+assert.notDeepEqual(nudged, identityViewport, "缩放为 1 时也要能移动");
+assert.ok(nudged.offsetX > 0, "视口跟着移出去了");
+assert.ok(nudged.offsetX <= 1 + 1e-6, "但最多推出一屏");
+
+// 推出去之后，看得见的那块要和图取交集，不能报一块图外的空范围。
+const pushedOut = clampToBounds({ scale: 1, offsetX: -0.9, offsetY: -0.9 });
+const outRect = visibleUnitRect(pushedOut);
+assert.ok(outRect.minX >= 0 && outRect.minY >= 0);
+assert.ok(outRect.maxX <= 1 && outRect.maxY <= 1);
 
 // 贴边才平移，越贴近边缘越快；中间不动。
 assert.deepEqual(
@@ -62,8 +71,9 @@ assert.ok(nearerLeft.deltaX > nearLeft.deltaX, "越贴近边缘越快");
 // clampToBounds 幂等：夹过一次的视口再夹还是它自己。
 const clamped = clampToBounds({ scale: 4, offsetX: 9, offsetY: -3 });
 assert.deepEqual(clampToBounds(clamped), clamped);
-assert.equal(clamped.offsetX, 0.75);
-assert.equal(clamped.offsetY, 0);
+// 缩放 4 时一屏是 0.25，所以上界是 0.75 再加一屏余量，下界是负一屏。
+assert.equal(clamped.offsetX, 1);
+assert.equal(clamped.offsetY, -0.25);
 
 // 名字占位：子方格的名字在父方格里面，撞上了就不画，
 // 否则父方格的名字会被盖掉中间一截（"Windows Kits" → "10 ndows Kits"）。

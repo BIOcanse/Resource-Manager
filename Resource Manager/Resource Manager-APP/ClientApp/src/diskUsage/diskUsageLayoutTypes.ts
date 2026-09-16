@@ -1,3 +1,5 @@
+import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
+
 /**
  * 方格布局的线上形状。
  *
@@ -27,6 +29,11 @@ export interface DiskUsageLayout {
   fileCounts: Float64Array;
   /** 节点序号 → 上面数组里的下标。选中和悬停要按节点序号找回方格。 */
   indexByNodeId: ReadonlyMap<number, number>;
+  /**
+   * 后端实际用的视图，归一化之后回给我们。整图位图照着它渲染，
+   * 判断要不要换更细的布局也拿它做基准 —— 不能用我们请求时的那份。
+   */
+  view: DiskUsageViewWindow;
 }
 
 export interface DiskUsageScanSummary {

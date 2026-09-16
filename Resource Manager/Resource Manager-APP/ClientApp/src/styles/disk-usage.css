@@ -252,3 +252,10 @@
   flex: 0 0 auto;
   gap: 8px;
 }
+
+/* 视图操作：复位 / 上一层。挨在标题右侧。 */
+.disk-usage-view-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}

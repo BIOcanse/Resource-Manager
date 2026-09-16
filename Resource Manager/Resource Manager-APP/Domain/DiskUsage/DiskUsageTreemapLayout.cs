@@ -50,8 +50,15 @@ public readonly record struct DiskUsageViewWindow(
     /// <summary>方格在屏幕上至少要占这么多物理像素才值得单独发。</summary>
     public const float MinimumTilePixelArea = 8f;
 
-    /// <summary>一次布局最多这么多方格。这是资源上限，不是正常情况下的限制器。</summary>
-    public const int MaximumTileCount = 60_000;
+    /// <summary>
+    /// 一次布局最多这么多方格。
+    ///
+    /// 这是**纯粹的资源上限**，不该在正常使用中碰到 —— 正常的限制器是上面那个像素门槛。
+    /// 屏幕像素多本来就该看到更多方格，不能反过来用一个固定数量去限制它。
+    /// 实测整块 C 盘缩到最小：1600×1000 出 33,390 个，4K 出 99,964 个，
+    /// 所以这个数留了很大余量，只用来兜住"树坏掉了"这种情况。
+    /// </summary>
+    public const int MaximumTileCount = 400_000;
 
     /// <summary>客户端什么都没说时的口径：整张图、不缩放、按一块 1920×1080 的画布算。</summary>
     public static DiskUsageViewWindow Full { get; } =
