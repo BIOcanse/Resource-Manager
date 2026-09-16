@@ -1,6 +1,6 @@
 import type { AppCopy } from "../zh/index.ts";
 
-export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "diskUsage" | "shell"> = {
+export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
   common: {
     saving: "Saving",
     saveFailed: "Save failed"
@@ -20,7 +20,21 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "diskUs
     optimization: "Performance Optimization",
     details: "Detailed Information",
     settings: "Settings",
-    diskUsage: "Disk Usage"
+    diskUsage: "Disk Usage",
+    control: "Control"
+  },
+  control: {
+    title: "Control",
+    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
+    loadFailed: "Could not read the controllable devices.",
+    empty: "Nothing tunable has been identified on this machine yet.",
+    ready: "Adjustable",
+    needsComponent: (name: string) => `Needs ${name}`,
+    kind: {
+      gpu: "Graphics",
+      cpu: "Processor",
+      fan: "Fans"
+    }
   },
   diskUsage: {
     title: "Disk Usage",
