@@ -36,6 +36,14 @@ export type JsonRequestOptions = Omit<RequestInit, "signal"> & {
   signal?: AbortSignal;
   timeoutMs?: number;
   allowEmptyResponse?: boolean;
+  /**
+   * 按二进制读响应，成功时把 ArrayBuffer 交给解码器。
+   *
+   * 给量大的并列数组用：同样的一份方格数据，JSON 要几 MB 和好几秒，
+   * 二进制只要一次 fetch 加几个定型数组视图。失败响应仍然按 JSON 读错误体，
+   * 因为后端的错误格式没有跟着变。
+   */
+  binary?: boolean;
 };
 
 export const defaultApiRequestTimeoutMs = 10_000;
@@ -46,6 +54,7 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
     signal: callerSignal,
     timeoutMs: requestedTimeoutMs,
     allowEmptyResponse = false,
+    binary = false,
     ...requestInit
   } = options;
   const timeoutMs = normalizeTimeout(requestedTimeoutMs);
@@ -95,8 +104,15 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
     }
 
     let text: string;
+    let buffer: ArrayBuffer | null = null;
     try {
-      text = await Promise.race([response.text(), cancellation]);
+      if (binary) {
+        buffer = await Promise.race([response.arrayBuffer(), cancellation]);
+        // 失败响应仍然是 JSON，所以这里把字节按文本再读一遍给错误分支用。
+        text = response.ok ? "" : new TextDecoder().decode(buffer);
+      } else {
+        text = await Promise.race([response.text(), cancellation]);
+      }
     } catch (error) {
       if (error instanceof ApiRequestError) {
         throw error;
@@ -125,6 +141,17 @@ export async function requestJson<T>(url: string, options: JsonRequestOptions): 
         payload: invalidJson ? null : payload,
         retryable: isRetryableHttpStatus(response.status)
       });
+    }
+
+    if (binary) {
+      if (buffer === null || buffer.byteLength === 0) {
+        throw new ApiRequestError(uiText.misc.transportUnreadable, {
+          kind: "invalid-response",
+          status: response.status,
+          retryable: true
+        });
+      }
+      return buffer as T;
     }
 
     if ((!text || invalidJson) && !allowEmptyResponse) {

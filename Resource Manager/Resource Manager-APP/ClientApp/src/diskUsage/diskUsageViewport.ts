@@ -67,6 +67,9 @@ export function panByPixels(
 /**
  * 鼠标贴着边界时往那个方向移动视图。
  * 返回这一帧应该平移的像素量；不在边界区域内就是 0，不动。
+ *
+ * 方向按"鼠标在右，视口就往右走"来 —— 也就是往右贴边会看到右边的内容，
+ * 图看上去朝左滑。先前是反的（贴右边反而往左看），多数人不习惯。
  */
 export function edgePanDelta(
   pointerX: number,
@@ -81,14 +84,14 @@ export function edgePanDelta(
   let deltaX = 0;
   let deltaY = 0;
   if (pointerX >= 0 && pointerX < edgeThickness) {
-    deltaX = step * (1 - pointerX / edgeThickness);
+    deltaX = -step * (1 - pointerX / edgeThickness);
   } else if (pointerX <= canvasWidth && pointerX > canvasWidth - edgeThickness) {
-    deltaX = -step * (1 - (canvasWidth - pointerX) / edgeThickness);
+    deltaX = step * (1 - (canvasWidth - pointerX) / edgeThickness);
   }
   if (pointerY >= 0 && pointerY < edgeThickness) {
-    deltaY = step * (1 - pointerY / edgeThickness);
+    deltaY = -step * (1 - pointerY / edgeThickness);
   } else if (pointerY <= canvasHeight && pointerY > canvasHeight - edgeThickness) {
-    deltaY = -step * (1 - (canvasHeight - pointerY) / edgeThickness);
+    deltaY = step * (1 - (canvasHeight - pointerY) / edgeThickness);
   }
   return { deltaX, deltaY };
 }

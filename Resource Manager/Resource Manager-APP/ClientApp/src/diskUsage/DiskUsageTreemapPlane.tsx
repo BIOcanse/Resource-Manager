@@ -2,6 +2,7 @@ import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { readDocumentTheme } from "../presentation/documentTheme";
 import {
   hitTest,
+  magnificationOf,
   paintTreemap,
   renderTreemapSheet,
   type DiskUsagePaintOptions,
@@ -122,23 +123,64 @@ export function DiskUsageTreemapPlane(props: {
   // 而不是排队里某个已经过时的视口。
   let pending: DiskUsagePaintOptions | null = null;
 
-  // 整张图的位图。布局或配色变了才重渲染一次，拖动和缩放都碰不到它。
+  // 整张图的位图。方格只在这里画，拖动和缩放都碰不到它。
   const [sheet, setSheet] = createSignal<DiskUsageSheet | null>(null);
+  // 放大到这个倍数之前，现有位图还够清楚，不用重渲。
+  const [sheetMagnification, setSheetMagnification] = createSignal(1);
+
   createEffect(() => {
     const layout = props.layout;
     const currentTheme = theme();
+    const magnification = sheetMagnification();
     const { width, height } = size();
     if (width <= 0 || height <= 0) {
       return;
     }
     const ratio = window.devicePixelRatio || 1;
-    // 位图按这块范围在屏幕上的物理像素数渲染，也就是和屏幕 1:1。
-    // 位图覆盖的正是后端这批方格覆盖的那块，所以两边尺度是一致的。
+    // 物理像素：窗口缩放和屏幕缩放都算在里面。再乘当前放大倍数，
+    // 位图就始终和屏幕保持 1:1，而不是一直只有一张整体渲染的图。
     setSheet(renderTreemapSheet(
       layout,
       currentTheme,
       width * ratio,
-      height * ratio));
+      height * ratio,
+      magnification));
+  });
+
+  /** 位图糊到这个倍数就该重渲一张更精细的。 */
+  const sheetRefreshRatio = 1.3;
+
+  // 缩放过程中不重渲（那是整张图重画，比一帧久得多），
+  // 等视口停下来再补一张更精细的。停之前先用现有位图撑着，交互不受影响。
+  let sheetTimer = 0;
+  createEffect(() => {
+    const currentViewport = viewport();
+    const layout = props.layout;
+    const wanted = magnificationOf(layout, currentViewport.scale);
+    const current = sheetMagnification();
+    if (wanted < current * sheetRefreshRatio && wanted > current / sheetRefreshRatio) {
+      return;
+    }
+    if (sheetTimer !== 0) {
+      window.clearTimeout(sheetTimer);
+    }
+    sheetTimer = window.setTimeout(() => {
+      sheetTimer = 0;
+      setSheetMagnification(magnificationOf(props.layout, viewport().scale));
+    }, 140);
+  });
+
+  // 换了布局就回到 1:1：新布局覆盖的正是当前看得见的那块。
+  createEffect(() => {
+    void props.layout;
+    setSheetMagnification(1);
+  });
+
+  onCleanup(() => {
+    if (sheetTimer !== 0) {
+      window.clearTimeout(sheetTimer);
+      sheetTimer = 0;
+    }
   });
 
   createEffect(() => {
@@ -363,12 +405,13 @@ export function DiskUsageTreemapPlane(props: {
                   event.key));
                 return;
               }
+              // 按右就往右看，和贴边平移同一个方向口径。
               setViewport((current) => panByPixels(
                 current,
                 width,
                 height,
-                event.key === "ArrowLeft" ? step : event.key === "ArrowRight" ? -step : 0,
-                event.key === "ArrowUp" ? step : event.key === "ArrowDown" ? -step : 0));
+                event.key === "ArrowRight" ? step : event.key === "ArrowLeft" ? -step : 0,
+                event.key === "ArrowDown" ? step : event.key === "ArrowUp" ? -step : 0));
               return;
             case "Enter":
               if (props.selectedNodeId >= 0) {

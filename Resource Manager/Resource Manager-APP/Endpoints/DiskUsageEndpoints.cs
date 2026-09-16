@@ -52,7 +52,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var current = store.Current;
             if (current is null || current.Tree.Roots.Count == 0)
             {
-                return Results.Ok(null as object);
+                return Results.Bytes(
+                    DiskUsageLayoutBinaryWriter.WriteEmpty(),
+                    "application/octet-stream");
             }
 
             var tree = current.Tree;
@@ -62,44 +64,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var view = DiskUsageViewWindow.Normalize(
                 pixelWidth, pixelHeight, scale, minX, minY, maxX, maxY);
             var layout = DiskUsageTreemapLayout.Create(tree, rootNode, view);
-            return Results.Ok(new
-            {
-                rootNodeId = layout.RootNodeId,
-                rootPath = tree.PathOf(rootNode),
-                rootSizeBytes = tree.SizeOf(rootNode),
-                omittedCount = layout.OmittedCount,
-                // 把归一化之后的视图原样回给客户端：这批方格覆盖的就是这块范围。
-                // 前端要照着它把整张图渲染成一张位图，不能自己猜后端最后用了什么值。
-                view = new
-                {
-                    minX = view.MinX,
-                    minY = view.MinY,
-                    maxX = view.MaxX,
-                    maxY = view.MaxY,
-                    pixelWidth = view.PixelWidth,
-                    pixelHeight = view.PixelHeight,
-                    scale = view.Scale
-                },
-                // 方格是热路径上量最大的东西，发成并列数组而不是一堆对象。
-                nodeIds = layout.Tiles.Select(static tile => tile.NodeId).ToArray(),
-                parentIds = layout.Tiles.Select(static tile => tile.ParentNodeId).ToArray(),
-                depths = layout.Tiles.Select(static tile => tile.Depth).ToArray(),
-                x = layout.Tiles.Select(static tile => tile.X).ToArray(),
-                y = layout.Tiles.Select(static tile => tile.Y).ToArray(),
-                width = layout.Tiles.Select(static tile => tile.Width).ToArray(),
-                height = layout.Tiles.Select(static tile => tile.Height).ToArray(),
-                directoryFlags = layout.Tiles.Select(static tile => tile.IsDirectory).ToArray(),
-                sizes = layout.Tiles.Select(static tile => tile.SizeBytes).ToArray(),
-                // 名字跟方格一起发。它只是每个方格多几十字节，
-                // 而分开按需取意味着一次布局要发几万个单节点请求 —— 那才是真的重。
-                names = layout.Tiles
-                    .Select(tile => new string(tree.NameOf(tile.NodeId)))
-                    .ToArray(),
-                // 悬停提示要对目录说"里面有多少个文件"，同样跟着方格一起发。
-                fileCounts = layout.Tiles
-                    .Select(tile => tree.FileCountOf(tile.NodeId))
-                    .ToArray()
-            });
+            // 方格数据走二进制：一次布局是十来个并列数组、几万到十万项，
+            // 用 JSON 光是序列化和解析就要几秒。格式见 DiskUsageLayoutBinaryWriter。
+            return Results.Bytes(
+                DiskUsageLayoutBinaryWriter.Write(
+                    tree,
+                    layout,
+                    view,
+                    tree.PathOf(rootNode),
+                    tree.SizeOf(rootNode)),
+                "application/octet-stream");
         }).AllowAnonymous();
 
         // 单个节点的事实：右键菜单和选中提示要的就是这些。
