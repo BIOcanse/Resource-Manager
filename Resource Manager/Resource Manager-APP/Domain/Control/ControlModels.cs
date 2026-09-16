@@ -37,6 +37,23 @@ public static class ControlOperatingSystems
     public const string Windows = "windows";
 }
 
+/// <summary>
+/// 显卡是怎么接上来的。
+///
+/// 要分这个是因为**可调的自由度差很多**：核显的频率和功耗通常由 CPU 封装的 SMU 管，
+/// 走的是处理器那条路，不是独显那条；能调的项更少，范围也更窄。
+/// 不分的话界面上会对着核显显示一堆它根本做不到的项。
+/// </summary>
+public static class ControlGpuAttachments
+{
+    /// <summary>核显，和 CPU 同一封装。</summary>
+    public const string Integrated = "integrated";
+    /// <summary>独显。</summary>
+    public const string Discrete = "discrete";
+    /// <summary>认不出来时用它，不猜。</summary>
+    public const string Unknown = "unknown";
+}
+
 /// <summary>一个能力能取什么值。前端据此决定画滑块、曲线还是开关。</summary>
 public static class ControlValueKinds
 {
@@ -91,7 +108,12 @@ public sealed record ControlObject(
     ControlObjectPlatform Platform,
     IReadOnlyList<ControlCapability> Capabilities,
     /// <summary>补充说明，例如这个风扇是哪个采集器报上来的。</summary>
-    string? Detail = null)
+    string? Detail = null,
+    /// <summary>
+    /// 显卡的接法：核显还是独显。非显卡对象为 null。
+    /// 核显能调的比独显少，见 <see cref="ControlGpuAttachments"/>。
+    /// </summary>
+    string? GpuAttachment = null)
 {
     /// <summary>这个对象现在一项都控不了。界面据此整体标灰。</summary>
     public bool IsControllable => Capabilities.Any(static capability => capability.Supported);

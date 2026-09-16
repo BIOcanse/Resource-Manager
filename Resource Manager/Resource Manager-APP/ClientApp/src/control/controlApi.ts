@@ -12,10 +12,13 @@ import {
 import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../text.ts";
 import type {
+  ControlApplyOutcome,
   ControlCapability,
   ControlNumberRange,
   ControlObject,
-  ControlObjectCatalog
+  ControlObjectCatalog,
+  ControlSetting,
+  ControlStateView
 } from "./controlTypes.ts";
 
 const valueKinds = ["toggle", "number", "curve"] as const;
@@ -82,6 +85,7 @@ function readObject(value: unknown, path: string): ControlObject {
     capabilities: requireArray(record.capabilities, `${path}.capabilities`)
       .map((row, index) => readCapability(row, `${path}.capabilities[${index}]`)),
     detail: optionalString(record.detail, `${path}.detail`),
+    gpuAttachment: optionalString(record.gpuAttachment, `${path}.gpuAttachment`),
     isControllable: requireBoolean(record.isControllable, `${path}.isControllable`)
   };
 }
@@ -106,6 +110,85 @@ export function getControlObjects(
     url: "/api/control/objects",
     fallbackError: uiText.control.loadFailed,
     decoder: controlObjectsDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+const applyStatuses = ["applied", "unsupported", "failed"] as const;
+
+function readSetting(value: unknown, path: string): ControlSetting {
+  const record = requireRecord(value, path);
+  return {
+    capabilityId: requireNonEmptyString(record.capabilityId, `${path}.capabilityId`),
+    number: record.number === null || record.number === undefined
+      ? null
+      : requireFiniteNumber(record.number, `${path}.number`),
+    toggle: record.toggle === null || record.toggle === undefined
+      ? null
+      : requireBoolean(record.toggle, `${path}.toggle`),
+    curve: record.curve === null || record.curve === undefined
+      ? null
+      : requireArray(record.curve, `${path}.curve`).map((point, index) => {
+        const entry = requireRecord(point, `${path}.curve[${index}]`);
+        return {
+          temperatureCelsius: requireFiniteNumber(
+            entry.temperatureCelsius,
+            `${path}.curve[${index}].temperatureCelsius`),
+          percent: requireFiniteNumber(entry.percent, `${path}.curve[${index}].percent`)
+        };
+      })
+  };
+}
+
+function readOutcome(value: unknown, path: string): ControlApplyOutcome {
+  const record = requireRecord(value, path);
+  return {
+    objectId: requireNonEmptyString(record.objectId, `${path}.objectId`),
+    capabilityId: requireNonEmptyString(record.capabilityId, `${path}.capabilityId`),
+    status: requireOneOf(record.status, `${path}.status`, applyStatuses),
+    message: optionalString(record.message, `${path}.message`)
+  };
+}
+
+export const controlStateDecoder = defineResponseDecoder<ControlStateView>(
+  "control.state.v1",
+  (value) => {
+    const record = requireRecord(value, "$");
+    const desired = requireRecord(record.desired, "$.desired");
+    const lastApply = requireRecord(record.lastApply, "$.lastApply");
+    return {
+      desired: {
+        objects: requireArray(desired.objects, "$.desired.objects").map((row, index) => {
+          const entry = requireRecord(row, `$.desired.objects[${index}]`);
+          return {
+            objectId: requireNonEmptyString(
+              entry.objectId,
+              `$.desired.objects[${index}].objectId`),
+            settings: requireArray(entry.settings, `$.desired.objects[${index}].settings`)
+              .map((setting, at) =>
+                readSetting(setting, `$.desired.objects[${index}].settings[${at}]`))
+          };
+        })
+      },
+      lastApply: {
+        outcomes: requireArray(lastApply.outcomes, "$.lastApply.outcomes")
+          .map((row, index) => readOutcome(row, `$.lastApply.outcomes[${index}]`)),
+        appliedAt: requireString(lastApply.appliedAt, "$.lastApply.appliedAt")
+      }
+    };
+  });
+
+/** 期望状态 + 最近一次施加的回执。 */
+export function getControlState(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<ControlStateView> {
+  return requestClient.request({
+    key: "control.state",
+    url: "/api/control/state",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlStateDecoder,
     signal,
     request: { method: "GET" }
   });
