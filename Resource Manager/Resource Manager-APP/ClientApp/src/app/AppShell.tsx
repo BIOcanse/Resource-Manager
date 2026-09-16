@@ -56,6 +56,7 @@ export function AppShell(props: AppShellProps) {
             <button class="shell-page" classList={{ active: props.activePage() === "optimization" }} type="button" aria-current={props.activePage() === "optimization" ? "page" : undefined} onClick={() => props.onPageSelect("optimization")}>{uiText.page.optimization}</button>
           </Show>
           <button class="shell-page" classList={{ active: props.activePage() === "diskUsage" }} type="button" aria-current={props.activePage() === "diskUsage" ? "page" : undefined} onClick={() => props.onPageSelect("diskUsage")}>{uiText.page.diskUsage}</button>
+          <button class="shell-page" classList={{ active: props.activePage() === "control" }} type="button" aria-current={props.activePage() === "control" ? "page" : undefined} onClick={() => props.onPageSelect("control")}>{uiText.page.control}</button>
           <button class="shell-page" classList={{ active: props.activePage() === "details" }} type="button" aria-current={props.activePage() === "details" ? "page" : undefined} onClick={() => props.onPageSelect("details")}>{uiText.page.details}</button>
           <button class="shell-page" classList={{ active: props.activePage() === "settings" }} type="button" aria-current={props.activePage() === "settings" ? "page" : undefined} onClick={() => props.onPageSelect("settings")}>{uiText.page.settings}</button>
         </nav>

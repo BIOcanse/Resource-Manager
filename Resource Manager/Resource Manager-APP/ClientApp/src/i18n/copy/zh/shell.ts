@@ -18,7 +18,21 @@ export const zhShellCopy = {
     optimization: "性能优化",
     details: "详细信息",
     settings: "设置",
-    diskUsage: "磁盘占用"
+    diskUsage: "磁盘占用",
+    control: "控制面"
+  },
+  control: {
+    title: "控制面",
+    intro: "风扇、显卡、处理器的调节都在这一页。控不了的也列出来，并说明差什么。",
+    loadFailed: "读不到可控对象。",
+    empty: "这台机器上还没认出可以调节的对象。",
+    ready: "可调节",
+    needsComponent: (name: string) => `需要 ${name}`,
+    kind: {
+      gpu: "显卡",
+      cpu: "处理器",
+      fan: "风扇"
+    }
   },
   diskUsage: {
     title: "磁盘占用",

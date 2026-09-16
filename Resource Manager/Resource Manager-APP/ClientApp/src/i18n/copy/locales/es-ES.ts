@@ -21,7 +21,21 @@ const esEsAppCopy: AppCopy = {
     optimization: "Optimización del rendimiento",
     details: "Información detallada",
     settings: "Configuración",
-    diskUsage: "Uso del disco"
+    diskUsage: "Uso del disco",
+    control: "Control"
+  },
+  control: {
+    title: "Control",
+    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
+    loadFailed: "Could not read the controllable devices.",
+    empty: "Nothing tunable has been identified on this machine yet.",
+    ready: "Adjustable",
+    needsComponent: (name: string) => `Needs ${name}`,
+    kind: {
+      gpu: "Graphics",
+      cpu: "Processor",
+      fan: "Fans"
+    }
   },
   diskUsage: {
     title: "Uso del disco",

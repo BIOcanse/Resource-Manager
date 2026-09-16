@@ -3,6 +3,7 @@ export type PageId =
   | "components"
   | "optimization"
   | "diskUsage"
+  | "control"
   | "details"
   | "settings";
 

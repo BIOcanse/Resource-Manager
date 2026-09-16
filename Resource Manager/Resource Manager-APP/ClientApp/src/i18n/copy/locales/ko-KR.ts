@@ -21,7 +21,21 @@ const koKrAppCopy: AppCopy = {
     optimization: "성능 최적화",
     details: "자세한 정보",
     settings: "설정",
-    diskUsage: "디스크 사용량"
+    diskUsage: "디스크 사용량",
+    control: "Control"
+  },
+  control: {
+    title: "Control",
+    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
+    loadFailed: "Could not read the controllable devices.",
+    empty: "Nothing tunable has been identified on this machine yet.",
+    ready: "Adjustable",
+    needsComponent: (name: string) => `Needs ${name}`,
+    kind: {
+      gpu: "Graphics",
+      cpu: "Processor",
+      fan: "Fans"
+    }
   },
   diskUsage: {
     title: "디스크 사용량",
