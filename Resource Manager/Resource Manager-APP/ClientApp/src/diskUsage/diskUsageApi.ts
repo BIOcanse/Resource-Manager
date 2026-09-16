@@ -99,104 +99,113 @@ export const diskUsageSummaryDecoder =
       };
     });
 
+/** 二进制布局的头部常量。必须和 DiskUsageLayoutBinaryWriter 对上。 */
+const layoutMagic = 0x5544_4d52;
+const layoutVersion = 1;
+const layoutHeaderBytes = 64;
+
 /**
- * 方格布局。方格按并列数组过来，这里直接转成定型数组：
- * 绘制是热路径，一次可能几万个方格，不为每个方格建对象。
+ * 方格布局。走二进制，不走 JSON。
+ *
+ * 一次布局是十来个并列数组、几万到十万项。JSON 光是序列化和解析就要好几秒，
+ * 而这些本来就是定长数值 —— 这里直接在同一块 ArrayBuffer 上开定型数组视图，
+ * 不逐项转换，也不为每个方格建对象。
+ * 头部固定 64 字节、各列从宽到窄排，就是为了让每一列的偏移都满足对齐要求。
  */
 export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | null>(
-  "disk-usage.layout.v1",
+  "disk-usage.layout.v2",
   (value) => {
-    if (value === null || value === undefined) {
+    if (!(value instanceof ArrayBuffer) || value.byteLength < layoutHeaderBytes) {
+      throw new ResponseDecodeError("$", "a disk usage layout buffer");
+    }
+    const header = new DataView(value);
+    if (header.getUint32(0, true) !== layoutMagic) {
+      throw new ResponseDecodeError("$.magic", "the disk usage layout magic");
+    }
+    if (header.getUint32(4, true) !== layoutVersion) {
+      throw new ResponseDecodeError("$.version", `version ${layoutVersion}`);
+    }
+
+    const length = header.getUint32(8, true);
+    const rootNodeId = header.getInt32(12, true);
+    // 还没扫过：后端给的是只有头部的空布局。
+    if (length === 0 || rootNodeId < 0) {
       return null;
     }
-    const record = requireRecord(value, "$");
-    const nodeIds = requireArray(record.nodeIds, "$.nodeIds");
-    const length = nodeIds.length;
-    const requireColumn = (raw: unknown, path: string) => {
-      const column = requireArray(raw, path);
-      if (column.length !== length) {
-        throw new ResponseDecodeError(path, `column of ${length} values`);
-      }
-      return column;
+
+    const view = {
+      minX: header.getFloat32(32, true),
+      minY: header.getFloat32(36, true),
+      maxX: header.getFloat32(40, true),
+      maxY: header.getFloat32(44, true),
+      pixelWidth: header.getFloat32(48, true),
+      pixelHeight: header.getFloat32(52, true),
+      scale: header.getFloat32(56, true)
     };
+    const rootPathBytes = header.getUint32(60, true);
 
-    const parentIds = requireColumn(record.parentIds, "$.parentIds");
-    const depths = requireColumn(record.depths, "$.depths");
-    const x = requireColumn(record.x, "$.x");
-    const y = requireColumn(record.y, "$.y");
-    const width = requireColumn(record.width, "$.width");
-    const height = requireColumn(record.height, "$.height");
-    const directoryFlags = requireColumn(record.directoryFlags, "$.directoryFlags");
-    const sizes = requireColumn(record.sizes, "$.sizes");
-    const names = requireColumn(record.names, "$.names");
-    const fileCounts = requireColumn(record.fileCounts, "$.fileCounts");
+    let offset = layoutHeaderBytes;
+    const sizes = new Float64Array(value, offset, length);
+    offset += 8 * length;
+    const nodeIds = new Int32Array(value, offset, length);
+    offset += 4 * length;
+    const parentIds = new Int32Array(value, offset, length);
+    offset += 4 * length;
+    const depths = new Int32Array(value, offset, length);
+    offset += 4 * length;
+    const fileCountsRaw = new Int32Array(value, offset, length);
+    offset += 4 * length;
+    const x = new Float32Array(value, offset, length);
+    offset += 4 * length;
+    const y = new Float32Array(value, offset, length);
+    offset += 4 * length;
+    const width = new Float32Array(value, offset, length);
+    offset += 4 * length;
+    const height = new Float32Array(value, offset, length);
+    offset += 4 * length;
+    const directoryFlags = new Uint8Array(value, offset, length);
+    offset += length;
+    // 名字那几列之前补齐到 4 的倍数，否则 Uint32Array 开不出来。
+    offset += (4 - (offset % 4)) % 4;
+    const nameByteLengths = new Uint32Array(value, offset, length);
+    offset += 4 * length;
 
-    const decodedNames = new Array<string>(length);
+    const decoder = new TextDecoder();
+    const names = new Array<string>(length);
     const indexByNodeId = new Map<number, number>();
-    const layout: DiskUsageLayout = {
-      rootNodeId: requireSafeInteger(record.rootNodeId, "$.rootNodeId"),
-      rootPath: requireString(record.rootPath, "$.rootPath"),
-      rootSizeBytes: requireNonNegativeSafeInteger(
-        record.rootSizeBytes,
-        "$.rootSizeBytes"),
-      omittedCount: requireNonNegativeSafeInteger(record.omittedCount, "$.omittedCount"),
-      nodeIds: new Int32Array(length),
-      parentIds: new Int32Array(length),
-      depths: new Int32Array(length),
-      x: new Float32Array(length),
-      y: new Float32Array(length),
-      width: new Float32Array(length),
-      height: new Float32Array(length),
-      directoryFlags: new Uint8Array(length),
-      sizes: new Float64Array(length),
-      names: decodedNames,
-      fileCounts: new Float64Array(length),
-      indexByNodeId,
-      view: readView(record.view)
-    };
-
+    const fileCounts = new Float64Array(length);
     for (let index = 0; index < length; index++) {
-      layout.nodeIds[index] = requireSafeInteger(nodeIds[index], `$.nodeIds[${index}]`);
-      indexByNodeId.set(layout.nodeIds[index], index);
-      decodedNames[index] = requireString(names[index], `$.names[${index}]`);
-      layout.parentIds[index] = requireSafeInteger(
-        parentIds[index],
-        `$.parentIds[${index}]`);
-      layout.depths[index] = requireSafeInteger(depths[index], `$.depths[${index}]`);
-      layout.x[index] = requireFiniteNumber(x[index], `$.x[${index}]`);
-      layout.y[index] = requireFiniteNumber(y[index], `$.y[${index}]`);
-      layout.width[index] = requireFiniteNumber(width[index], `$.width[${index}]`);
-      layout.height[index] = requireFiniteNumber(height[index], `$.height[${index}]`);
-      layout.directoryFlags[index] = requireBoolean(
-        directoryFlags[index],
-        `$.directoryFlags[${index}]`) ? 1 : 0;
-      layout.sizes[index] = requireFiniteNumber(sizes[index], `$.sizes[${index}]`);
-      layout.fileCounts[index] = requireNonNegativeSafeInteger(
-        fileCounts[index],
-        `$.fileCounts[${index}]`);
+      const nameLength = nameByteLengths[index];
+      names[index] = nameLength === 0
+        ? ""
+        : decoder.decode(new Uint8Array(value, offset, nameLength));
+      offset += nameLength;
+      indexByNodeId.set(nodeIds[index], index);
+      fileCounts[index] = fileCountsRaw[index];
     }
-    return layout;
-  });
 
-/**
- * 后端实际用的那个视图，归一化之后原样回给我们。
- *
- * 必须以它为准，不能拿我们请求时用的那份去比：请求的值越界或者退化时
- * （视图被推出图外就会这样），后端会收拢成整张图，两边一对不上，
- * 就会判断成"还需要更细的"，然后一直要下去。
- */
-function readView(raw: unknown): DiskUsageViewWindow {
-  const record = requireRecord(raw, "$.view");
-  return {
-    minX: requireFiniteNumber(record.minX, "$.view.minX"),
-    minY: requireFiniteNumber(record.minY, "$.view.minY"),
-    maxX: requireFiniteNumber(record.maxX, "$.view.maxX"),
-    maxY: requireFiniteNumber(record.maxY, "$.view.maxY"),
-    pixelWidth: requireFiniteNumber(record.pixelWidth, "$.view.pixelWidth"),
-    pixelHeight: requireFiniteNumber(record.pixelHeight, "$.view.pixelHeight"),
-    scale: requireFiniteNumber(record.scale, "$.view.scale")
-  };
-}
+    return {
+      rootNodeId,
+      rootPath: rootPathBytes === 0
+        ? ""
+        : decoder.decode(new Uint8Array(value, offset, rootPathBytes)),
+      rootSizeBytes: header.getFloat64(24, true),
+      omittedCount: header.getUint32(16, true),
+      nodeIds,
+      parentIds,
+      depths,
+      x,
+      y,
+      width,
+      height,
+      directoryFlags,
+      sizes,
+      names,
+      fileCounts,
+      indexByNodeId,
+      view
+    };
+  });
 
 export const diskUsageNodeDecoder = defineResponseDecoder<DiskUsageNode>(
   "disk-usage.node.v1",
@@ -256,7 +265,8 @@ export function getDiskUsageLayout(
     fallbackError: uiText.diskUsage.emptyTitle,
     decoder: diskUsageLayoutDecoder,
     signal,
-    request: { method: "GET" }
+    // 方格数据走二进制，见 diskUsageLayoutDecoder。
+    request: { method: "GET", binary: true }
   });
 }
 
