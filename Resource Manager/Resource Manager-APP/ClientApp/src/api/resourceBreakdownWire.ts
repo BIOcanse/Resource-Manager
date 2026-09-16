@@ -37,7 +37,6 @@ type ProcessRow = [
   value: number,
   systemPercent: number,
   softwarePercent: number,
-  displayValue: string,
   userName: string | null,
   architecture: string | null,
   attributionKind: string,
@@ -49,7 +48,6 @@ type SoftwareValueRow = [
   softwareIndex: number,
   value: number,
   systemPercent: number,
-  displayValue: string,
   processCount: number,
   baseScore: number,
   processes: ProcessRow[]
@@ -63,19 +61,18 @@ interface ResourceBreakdownBarWire {
   totalValue: number | null;
   capacityValue: number | null;
   totalSystemPercent: number | null;
-  totalDisplay: string;
   software: SoftwareValueRow[];
 }
 
 export interface ResourceBreakdownWireSnapshot {
-  version: 7;
+  version: 8;
   capturedAt: string | null;
   softwareCatalog: SoftwareIdentityRow[];
   bars: ResourceBreakdownBarWire[];
 }
 
 export interface ResourceMonitorWireSnapshot {
-  version: 8;
+  version: 9;
   capturedAt: string | null;
   breakdown: ResourceBreakdownWireSnapshot;
   table: ResourceTableWireSnapshot;
@@ -92,8 +89,8 @@ export function decodeResourceBreakdownWireSnapshot(
   value: unknown
 ): ResourceBreakdownSnapshot {
   const snapshot = requireRecord(value);
-  if (requireSafeInteger(snapshot.version, "$.version") !== 7) {
-    throw new ResponseDecodeError("$.version", "resource breakdown wire version 7");
+  if (requireSafeInteger(snapshot.version, "$.version") !== 8) {
+    throw new ResponseDecodeError("$.version", "resource breakdown wire version 8");
   }
 
   const softwareCatalog = requireArray(snapshot.softwareCatalog, "$.softwareCatalog")
@@ -115,8 +112,8 @@ export function decodeResourceMonitorWireSnapshot(
   value: unknown
 ): ResourceMonitorSnapshot {
   const snapshot = requireRecord(value);
-  if (requireSafeInteger(snapshot.version, "$.version") !== 8) {
-    throw new ResponseDecodeError("$.version", "resource monitor wire version 8");
+  if (requireSafeInteger(snapshot.version, "$.version") !== 9) {
+    throw new ResponseDecodeError("$.version", "resource monitor wire version 9");
   }
   const capturedAt = requireNullable(
     snapshot.capturedAt,
@@ -173,7 +170,6 @@ function decodeBar(
     totalValue,
     capacityValue,
     totalSystemPercent,
-    totalDisplay: requireString(bar.totalDisplay, `${path}.totalDisplay`),
     software: requireArray(bar.software, `${path}.software`)
       .map((row, index) => decodeSoftware(
         row,
@@ -187,7 +183,7 @@ function decodeSoftware(
   softwareCatalog: SoftwareIdentityRow[],
   path: string
 ): ResourceSoftwareSegment {
-  const row = requireTuple(value, path, 7);
+  const row = requireTuple(value, path, 6);
   const softwareIndex = requireSafeInteger(row[0], `${path}[0]`);
   const identity = softwareCatalog[softwareIndex];
   if (!identity) {
@@ -202,32 +198,30 @@ function decodeSoftware(
     displayKind,
     value: requireFiniteNumber(row[1], `${path}[1]`),
     systemPercent: requireFiniteNumber(row[2], `${path}[2]`),
-    displayValue: requireString(row[3], `${path}[3]`),
-    processCount: requireSafeInteger(row[4], `${path}[4]`),
-    baseScore: requireFiniteNumber(row[5], `${path}[5]`),
-    processes: requireArray(row[6], `${path}[6]`)
-      .map((process, index) => decodeProcess(process, `${path}[6][${index}]`))
+    processCount: requireSafeInteger(row[3], `${path}[3]`),
+    baseScore: requireFiniteNumber(row[4], `${path}[4]`),
+    processes: requireArray(row[5], `${path}[5]`)
+      .map((process, index) => decodeProcess(process, `${path}[5][${index}]`))
   };
 }
 
 function decodeProcess(value: unknown, path: string): ResourceProcessSegment {
-  const row = requireTuple(value, path, 12);
+  const row = requireTuple(value, path, 11);
   return {
     processId: requireSafeInteger(row[0], `${path}[0]`),
     processStartKey: requireNullable(
-      row[11],
-      `${path}[11]`,
+      row[10],
+      `${path}[10]`,
       requirePositiveIntegerString),
     name: requireNonEmptyString(row[1], `${path}[1]`),
     executablePath: requireNullable(row[2], `${path}[2]`, requireString),
     value: requireFiniteNumber(row[3], `${path}[3]`),
     systemPercent: requireFiniteNumber(row[4], `${path}[4]`),
     softwarePercent: requireFiniteNumber(row[5], `${path}[5]`),
-    displayValue: requireString(row[6], `${path}[6]`),
-    userName: requireNullable(row[7], `${path}[7]`, requireString),
-    architecture: requireNullable(row[8], `${path}[8]`, requireString),
-    attributionKind: requireNonEmptyString(row[9], `${path}[9]`),
-    baseScore: requireFiniteNumber(row[10], `${path}[10]`)
+    userName: requireNullable(row[6], `${path}[6]`, requireString),
+    architecture: requireNullable(row[7], `${path}[7]`, requireString),
+    attributionKind: requireNonEmptyString(row[8], `${path}[8]`),
+    baseScore: requireFiniteNumber(row[9], `${path}[9]`)
   };
 }
 
@@ -303,8 +297,9 @@ function decodeTableValue(value: unknown, path: string): ResourceTableValue {
   return {
     value: optionalNullableFiniteNumber(cell.value, `${path}.value`),
     percent: optionalNullableFiniteNumber(cell.percent, `${path}.percent`),
+    // 文本单元（进程号、用户、架构）的文本；数值单元为空串，靠 unit + value 自己格式化。
     displayValue: requireString(cell.displayValue, `${path}.displayValue`),
-    unit: optionalString(cell.unit, `${path}.unit`),
+    unit: requireString(cell.unit, `${path}.unit`),
     availability: optionalNullableString(cell.availability, `${path}.availability`),
     heatPercent: optionalNullableFiniteNumber(cell.heatPercent, `${path}.heatPercent`),
     sharedValue: optionalNullableFiniteNumber(cell.sharedValue, `${path}.sharedValue`),

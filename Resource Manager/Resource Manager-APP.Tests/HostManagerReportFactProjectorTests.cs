@@ -155,7 +155,6 @@ public sealed class HostManagerReportFactProjectorTests
                     4_000,
                     10_000,
                     40,
-                    "4 KB / 10 KB",
                     [
                         CreateSoftware(
                             "software:editor",
@@ -303,7 +302,6 @@ public sealed class HostManagerReportFactProjectorTests
             kind,
             systemPercent * 100,
             systemPercent,
-            $"{systemPercent:0}%",
             1,
             [
                 new ResourceProcessSegment(
@@ -312,8 +310,7 @@ public sealed class HostManagerReportFactProjectorTests
                     $@"C:\Tools\{name}.exe",
                     systemPercent * 100,
                     systemPercent,
-                    100,
-                    $"{systemPercent:0}%")
+                    100)
             ]);
     }
 }

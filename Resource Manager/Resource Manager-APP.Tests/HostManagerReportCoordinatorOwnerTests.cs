@@ -697,7 +697,6 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                     value,
                     10_000,
                     systemPercent,
-                    $"{systemPercent:0.##}%",
                     [
                         new ResourceSoftwareSegment(
                             "software:editor",
@@ -706,7 +705,6 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                             SoftwareKinds.Other,
                             value,
                             systemPercent,
-                            $"{systemPercent:0.##}%",
                             1,
                             [
                                 new ResourceProcessSegment(
@@ -715,8 +713,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                                     @"C:\Tools\Editor.exe",
                                     value,
                                     systemPercent,
-                                    100,
-                                    $"{systemPercent:0.##}%")
+                                    100)
                             ])
                     ])
             ])

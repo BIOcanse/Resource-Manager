@@ -26,7 +26,6 @@ public sealed class ResourceTableProjectorTests
                     20,
                     100,
                     20,
-                    "20.0%",
                     []),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
@@ -36,7 +35,6 @@ public sealed class ResourceTableProjectorTests
                     400,
                     1000,
                     40,
-                    "400 B / 1000 B",
                     [])
             ])
         {
@@ -129,7 +127,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             25,
             100,
-            "2 MB",
             @"TEST-PC\test-user",
             "x64");
         var software = new ResourceSoftwareSegment(
@@ -139,7 +136,6 @@ public sealed class ResourceTableProjectorTests
             "其他软件",
             2 * 1024 * 1024,
             25,
-            "2 MB",
             1,
             [process]);
         var bar = new ResourceBreakdownBar(
@@ -150,7 +146,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             8d * 1024 * 1024 * 1024,
             25,
-            "2 MB / 8 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -177,7 +172,7 @@ public sealed class ResourceTableProjectorTests
         Assert.Equal("4242", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
         Assert.Equal(@"TEST-PC\test-user", row.Values[ResourceTableColumnIds.User].DisplayValue);
         Assert.Equal("x64", row.Values[ResourceTableColumnIds.Architecture].DisplayValue);
-        Assert.Equal("2.0 MB", row.Values[ResourceTableColumnIds.Memory].DisplayValue);
+        AssertBytes(row.Values[ResourceTableColumnIds.Memory], 2 * 1024 * 1024);
     }
 
     [Fact]
@@ -215,7 +210,6 @@ public sealed class ResourceTableProjectorTests
                     25,
                     100,
                     25,
-                    "25%",
                     [])
             ]);
         string[] requested =
@@ -253,7 +247,6 @@ public sealed class ResourceTableProjectorTests
                     null,
                     null,
                     null,
-                    "N/A",
                     [],
                     SamplingObservationStatus.Unavailable,
                     SamplingObservationStatus.NotRequested)
@@ -274,7 +267,8 @@ public sealed class ResourceTableProjectorTests
 
         Assert.Null(value.Value);
         Assert.Null(value.Percent);
-        Assert.Equal("N/A", value.DisplayValue);
+        Assert.Equal(string.Empty, value.DisplayValue);
+        Assert.Equal("Unavailable", value.Availability);
         Assert.Equal("Unavailable", value.Availability);
     }
 
@@ -288,7 +282,6 @@ public sealed class ResourceTableProjectorTests
             "其他软件",
             2 * 1024 * 1024,
             25,
-            "2 MB",
             1,
             []);
         var bar = new ResourceBreakdownBar(
@@ -299,7 +292,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             8d * 1024 * 1024 * 1024,
             25,
-            "2 MB / 8 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -314,7 +306,7 @@ public sealed class ResourceTableProjectorTests
 
         var row = SingleDataRow(result);
         Assert.Equal(ResourceTableRowKinds.Software, row.Kind);
-        Assert.Equal("2.0 MB", row.Values[ResourceTableColumnIds.Memory].DisplayValue);
+        AssertBytes(row.Values[ResourceTableColumnIds.Memory], 2 * 1024 * 1024);
     }
 
     [Fact]
@@ -327,7 +319,6 @@ public sealed class ResourceTableProjectorTests
             SoftwareDisplayKinds.SystemResidual,
             2 * 1024 * 1024,
             10,
-            "2 MB",
             0,
             []);
         var bar = new ResourceBreakdownBar(
@@ -338,7 +329,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             20d * 1024 * 1024 * 1024,
             10,
-            "2 MB / 20 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -364,7 +354,6 @@ public sealed class ResourceTableProjectorTests
             512 * 1024 * 1024,
             12.5,
             100,
-            "512 MB",
             null,
             null,
             ResourceProcessAttributionKinds.SystemResidual);
@@ -375,7 +364,6 @@ public sealed class ResourceTableProjectorTests
             SoftwareDisplayKinds.SystemResidual,
             512 * 1024 * 1024,
             12.5,
-            "512 MB",
             0,
             [residualCategory]);
         var bar = new ResourceBreakdownBar(
@@ -386,7 +374,6 @@ public sealed class ResourceTableProjectorTests
             512 * 1024 * 1024,
             4d * 1024 * 1024 * 1024,
             12.5,
-            "512 MB / 4 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -410,7 +397,7 @@ public sealed class ResourceTableProjectorTests
         Assert.Equal(SoftwareDisplayKinds.SystemResidual, row.Status);
         Assert.Null(row.ProcessId);
         Assert.Equal("--", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
-        Assert.Equal("512.0 MB", row.Values["gpu.1.vram"].DisplayValue);
+        AssertBytes(row.Values["gpu.1.vram"], 512L * 1024 * 1024);
     }
 
     [Fact]
@@ -423,7 +410,6 @@ public sealed class ResourceTableProjectorTests
             256 * 1024 * 1024,
             6.25,
             100,
-            "256 MB",
             null,
             null,
             ResourceProcessAttributionKinds.EtwResidualProcess);
@@ -434,7 +420,6 @@ public sealed class ResourceTableProjectorTests
             SoftwareDisplayKinds.SystemResidual,
             256 * 1024 * 1024,
             6.25,
-            "256 MB",
             0,
             [residualCategory]);
         var bar = new ResourceBreakdownBar(
@@ -445,7 +430,6 @@ public sealed class ResourceTableProjectorTests
             256 * 1024 * 1024,
             4d * 1024 * 1024 * 1024,
             6.25,
-            "256 MB / 4 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -469,7 +453,7 @@ public sealed class ResourceTableProjectorTests
         Assert.Equal("DXGKrnl/VidMm", row.Status);
         Assert.Equal(1528, row.ProcessId);
         Assert.Equal("1528", row.Values[ResourceTableColumnIds.ProcessId].DisplayValue);
-        Assert.Equal("256.0 MB", row.Values["gpu.1.vram"].DisplayValue);
+        AssertBytes(row.Values["gpu.1.vram"], 256L * 1024 * 1024);
     }
 
     [Fact]
@@ -502,7 +486,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             25,
             100,
-            "2 MB",
             @"TEST-PC\test-user",
             "x64");
         var software = new ResourceSoftwareSegment(
@@ -512,7 +495,6 @@ public sealed class ResourceTableProjectorTests
             "其他软件",
             2 * 1024 * 1024,
             25,
-            "2 MB",
             1,
             [process]);
         var bar = new ResourceBreakdownBar(
@@ -523,7 +505,6 @@ public sealed class ResourceTableProjectorTests
             2 * 1024 * 1024,
             8d * 1024 * 1024 * 1024,
             25,
-            "2 MB / 8 GB",
             [software]);
         var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UnixEpoch, [bar]);
         var request = new ResourceTableRequest(
@@ -624,8 +605,7 @@ public sealed class ResourceTableProjectorTests
             @"C:\Tools\old-worker.exe",
             30,
             30,
-            100,
-            "30.0%")
+            100)
         {
             ProcessStartKey = oldStartKey
         };
@@ -635,8 +615,7 @@ public sealed class ResourceTableProjectorTests
             @"C:\Tools\new-worker.exe",
             400,
             40,
-            100,
-            "400 B")
+            100)
         {
             ProcessStartKey = newStartKey
         };
@@ -647,7 +626,6 @@ public sealed class ResourceTableProjectorTests
             SoftwareDisplayKinds.General,
             30,
             30,
-            "30.0%",
             1,
             [oldProcess]);
         var memorySoftware = new ResourceSoftwareSegment(
@@ -657,7 +635,6 @@ public sealed class ResourceTableProjectorTests
             SoftwareDisplayKinds.General,
             400,
             40,
-            "400 B",
             1,
             [newProcess]);
         var snapshot = new ResourceBreakdownSnapshot(
@@ -671,7 +648,6 @@ public sealed class ResourceTableProjectorTests
                     30,
                     100,
                     30,
-                    "30.0%",
                     [cpuSoftware]),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
@@ -681,7 +657,6 @@ public sealed class ResourceTableProjectorTests
                     400,
                     1000,
                     40,
-                    "400 B / 1000 B",
                     [memorySoftware])
             ]);
         var request = new ResourceTableRequest(
@@ -703,11 +678,12 @@ public sealed class ResourceTableProjectorTests
         var oldRow = Assert.Single(rows, row => row.ProcessStartKey == oldStartKey.ToString());
         var newRow = Assert.Single(rows, row => row.ProcessStartKey == newStartKey.ToString());
         Assert.Equal("old-worker.exe", oldRow.Name);
-        Assert.Equal("30.0%", oldRow.Values[ResourceTableColumnIds.Cpu].DisplayValue);
-        Assert.Equal("--", oldRow.Values[ResourceTableColumnIds.Memory].DisplayValue);
+        Assert.Equal("%", oldRow.Values[ResourceTableColumnIds.Cpu].Unit);
+        Assert.Equal(30, oldRow.Values[ResourceTableColumnIds.Cpu].Value);
+        Assert.Null(oldRow.Values[ResourceTableColumnIds.Memory].Value);
         Assert.Equal("new-worker.exe", newRow.Name);
-        Assert.Equal("--", newRow.Values[ResourceTableColumnIds.Cpu].DisplayValue);
-        Assert.Equal("400 B", newRow.Values[ResourceTableColumnIds.Memory].DisplayValue);
+        Assert.Null(newRow.Values[ResourceTableColumnIds.Cpu].Value);
+        AssertBytes(newRow.Values[ResourceTableColumnIds.Memory], 400);
         Assert.NotEqual(oldRow.Id, newRow.Id);
     }
 
@@ -748,8 +724,7 @@ public sealed class ResourceTableProjectorTests
                         $@"C:\Tools\{row.ProcessName}",
                         row.Value,
                         row.Value * 100 / capacity,
-                        row.Value * 100 / group.Sum(static item => item.Value),
-                        $"{row.Value:0} B"))
+                        row.Value * 100 / group.Sum(static item => item.Value)))
                     .ToArray();
                 var total = group.Sum(static row => row.Value);
                 return new ResourceSoftwareSegment(
@@ -759,7 +734,6 @@ public sealed class ResourceTableProjectorTests
                     SoftwareDisplayKinds.General,
                     total,
                     total * 100 / capacity,
-                    $"{total:0} B",
                     processes.Length,
                     processes);
             })
@@ -776,8 +750,15 @@ public sealed class ResourceTableProjectorTests
                     totalValue,
                     capacity,
                     totalValue * 100 / capacity,
-                    $"{totalValue:0} B / {capacity:0} B",
                     software)
             ]);
+    }
+    // 容量单元只带原始字节和单位；显示成 GiB 还是 GB 由前端按用户选择决定，
+    // 那条规则钉在 ClientApp 的 byteUnitsContract 里。
+    private static void AssertBytes(ResourceTableValue value, double expectedBytes)
+    {
+        Assert.Equal("B", value.Unit);
+        Assert.Equal(expectedBytes, value.Value);
+        Assert.Equal(string.Empty, value.DisplayValue);
     }
 }

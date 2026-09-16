@@ -1,6 +1,11 @@
 import { uiText } from "../text.ts";
-import { formatBytePair, formatBytes, type ByteQuantityKind } from "./byteUnits.ts";
-import type { MetricValue } from "../types.ts";
+import {
+  formatBytePair,
+  formatBytes,
+  formatBytesPerSecond,
+  type ByteQuantityKind
+} from "./byteUnits.ts";
+import type { MetricValue, ResourceTableValue } from "../types.ts";
 
 // 后端按稳定指标 id 提供事实，用户看到的名称由当前语言的文案包决定。
 // 不认识的 id 保留后端标签，保证新增指标不会显示空白。
@@ -144,4 +149,37 @@ export function byteQuantityKindForMetric(
 ): ByteQuantityKind {
   const id = String(metricId ?? "").toLowerCase();
   return id.includes("memory") || id.includes("vram") ? "memory" : "storage";
+}
+
+/**
+ * 资源表一个单元格显示什么。
+ *
+ * 单元格只有两种：带单位的数值单元，和纯文本单元（进程号、用户、架构）。
+ * 后端对数值单元只发 value 和 unit，不发文本；文本单元反过来只发文本、单位为空。
+ * 读不到时后端给 availability，这里统一出「无数据」。
+ */
+export function resourceTableCellText(
+  cell: ResourceTableValue | null | undefined,
+  metricId?: string | null
+): string {
+  if (!cell) {
+    return "--";
+  }
+  if (!cell.unit) {
+    return cell.displayValue || "--";
+  }
+  if (typeof cell.value !== "number" || !Number.isFinite(cell.value)) {
+    return cell.availability ? "N/A" : "--";
+  }
+
+  switch (cell.unit) {
+    case "%":
+      return `${cell.value.toFixed(1)}%`;
+    case "B":
+      return formatBytes(cell.value, byteQuantityKindForMetric(metricId));
+    case "B/s":
+      return formatBytesPerSecond(cell.value);
+    default:
+      return `${cell.value.toFixed(1)} ${cell.unit}`.trim();
+  }
 }

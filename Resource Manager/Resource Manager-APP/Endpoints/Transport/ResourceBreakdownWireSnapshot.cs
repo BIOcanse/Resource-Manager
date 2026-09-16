@@ -9,7 +9,7 @@ namespace ResourceManager.App.Endpoints.Transport;
 [JsonConverter(typeof(ResourceBreakdownWireSnapshotJsonConverter))]
 public sealed class ResourceBreakdownWireSnapshot
 {
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
 
     private ResourceBreakdownWireSnapshot(
         DateTimeOffset? capturedAt,
@@ -138,7 +138,6 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             WriteNullableNumber(writer, "totalValue", bar.TotalValue);
             WriteNullableNumber(writer, "capacityValue", bar.CapacityValue);
             WriteNullableNumber(writer, "totalSystemPercent", bar.TotalSystemPercent);
-            writer.WriteString("totalDisplay", bar.TotalDisplay);
             WriteSoftwareRows(writer, value, bar.Software);
             writer.WriteEndObject();
         }
@@ -158,7 +157,6 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             writer.WriteNumberValue(value.SoftwareIndexes[segment.SoftwareId]);
             writer.WriteNumberValue(segment.Value);
             writer.WriteNumberValue(segment.SystemPercent);
-            writer.WriteStringValue(segment.DisplayValue);
             writer.WriteNumberValue(segment.ProcessCount);
             writer.WriteNumberValue(segment.BaseScore);
             WriteProcessRows(
@@ -187,7 +185,6 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
                 writer.WriteNumberValue(process.Value);
                 writer.WriteNumberValue(process.SystemPercent);
                 writer.WriteNumberValue(process.SoftwarePercent);
-                writer.WriteStringValue(process.DisplayValue);
                 WriteNullableString(writer, process.UserName);
                 WriteNullableString(writer, process.Architecture);
                 writer.WriteStringValue(process.AttributionKind);
@@ -256,5 +253,5 @@ internal sealed record ResourceMonitorWireSnapshot(
     ResourceBreakdownWireSnapshot Breakdown,
     ResourceTableWireSnapshot Table)
 {
-    internal const int CurrentVersion = 8;
+    internal const int CurrentVersion = 9;
 }

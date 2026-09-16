@@ -25,7 +25,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         CompiledBaseScorePlan baseScore)
     {
         if (amounts is null) return bar with { TotalValue = null, TotalSystemPercent = null, SharedValue = null,
-            TotalDisplay = "--", Software = [], ObservationStatus = SamplingObservationStatus.Unavailable,
+            Software = [], ObservationStatus = SamplingObservationStatus.Unavailable,
             AttributionStatus = SamplingObservationStatus.Unavailable };
         var groups = new Dictionary<string, SoftwareGroupAccumulator>(StringComparer.OrdinalIgnoreCase);
         foreach (var (pid, amount) in amounts)
@@ -48,7 +48,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         }).ToArray();
         var total = software.Sum(s => s.Value);
         return bar with { TotalValue = total, TotalSystemPercent = bar.CapacityValue is > 0 ? total / bar.CapacityValue * 100 : 0,
-            CapacityValue = bar.CapacityValue ?? 0, TotalDisplay = FormatValue(total, bar.CapacityValue ?? 0, true, false),
+            CapacityValue = bar.CapacityValue ?? 0,
             Software = software, SharedValue = software.Sum(s => s.SharedValue ?? 0),
             ObservationStatus = SamplingObservationStatus.Current, AttributionStatus = SamplingObservationStatus.Current };
     }

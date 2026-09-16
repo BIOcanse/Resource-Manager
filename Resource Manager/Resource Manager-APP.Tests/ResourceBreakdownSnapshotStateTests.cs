@@ -374,7 +374,6 @@ public sealed class ResourceBreakdownSnapshotStateTests
             total,
             100,
             total,
-            $"{total}%",
             [],
             AttributionStatus: attributionStatus);
 }

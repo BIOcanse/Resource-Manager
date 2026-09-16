@@ -175,7 +175,6 @@ public sealed record ResourceBreakdownBar(
     double? TotalValue,
     double? CapacityValue,
     double? TotalSystemPercent,
-    string TotalDisplay,
     IReadOnlyList<ResourceSoftwareSegment> Software,
     SamplingObservationStatus ObservationStatus = SamplingObservationStatus.Current,
     SamplingObservationStatus AttributionStatus = SamplingObservationStatus.Current)
@@ -190,7 +189,6 @@ public sealed record ResourceSoftwareSegment(
     string DisplayKind,
     double Value,
     double SystemPercent,
-    string DisplayValue,
     int ProcessCount,
     IReadOnlyList<ResourceProcessSegment> Processes,
     double BaseScore = 0)
@@ -205,7 +203,6 @@ public sealed record ResourceProcessSegment(
     double Value,
     double SystemPercent,
     double SoftwarePercent,
-    string DisplayValue,
     string? UserName = null,
     string? Architecture = null,
     string AttributionKind = ResourceProcessAttributionKinds.Process,

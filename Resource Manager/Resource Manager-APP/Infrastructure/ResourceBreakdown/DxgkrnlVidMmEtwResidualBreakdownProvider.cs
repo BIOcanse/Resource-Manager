@@ -85,7 +85,6 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
                 value,
                 Percent(value, request.CapacityValue),
                 Percent(value, request.Value),
-                FormatBytesWithCapacity(value, request.CapacityValue),
                 null,
                 null,
                 ResourceProcessAttributionKinds.EtwResidualProcess));
@@ -101,8 +100,7 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
             var fallbackRequest = request with
             {
                 Value = remaining,
-                SystemPercent = Percent(remaining, request.CapacityValue),
-                DisplayValue = FormatBytesWithCapacity(remaining, request.CapacityValue)
+                SystemPercent = Percent(remaining, request.CapacityValue)
             };
             rows.AddRange(fallback.CreateResidualSegments(fallbackRequest));
         }

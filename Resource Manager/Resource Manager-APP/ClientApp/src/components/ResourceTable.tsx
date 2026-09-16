@@ -1,4 +1,9 @@
-import { localizedMetricLabel, resourceTableColumnLabel, softwareDisplayName } from "../presentation/metricLabels";
+import {
+  localizedMetricLabel,
+  resourceTableCellText,
+  resourceTableColumnLabel,
+  softwareDisplayName
+} from "../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
@@ -990,9 +995,9 @@ function resourceTableRowSearchKey(
     row.status,
     row.softwareId ?? "",
     row.processId?.toString() ?? "",
-    row.values?.pid?.displayValue ?? "",
-    row.values?.user?.displayValue ?? "",
-    row.values?.architecture?.displayValue ?? ""
+    resourceTableCellText(row.values?.pid, "pid"),
+    resourceTableCellText(row.values?.user, "user"),
+    resourceTableCellText(row.values?.architecture, "architecture")
   ];
   const signature = parts.join("\u0000");
   const cached = cache.get(row.id);
@@ -1100,8 +1105,8 @@ function ResourceTableCell(props: {
 
   if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
     return (
-      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={value()?.displayValue ?? resourceTableColumnLabel(props.column.id)}>
-        {value()?.displayValue ?? "--"}
+      <div class="resource-table-cell text-cell" role="cell" aria-colindex={props.columnIndex + 1} title={resourceTableCellText(value(), props.column.id)}>
+        {resourceTableCellText(value(), props.column.id)}
       </div>
     );
   }
@@ -1116,14 +1121,14 @@ function ResourceTableCell(props: {
       title={value()?.sharedValue != null
         ? uiText.resourceTableView.memoryBreakdown(
           resourceTableColumnLabel(props.column.id),
-          String(value()?.displayValue),
+          resourceTableCellText(value(), props.column.id),
           formatBytes((value()?.value ?? 0) - value()!.sharedValue!, "memory"),
           formatBytes(value()?.sharedValue, "memory"))
         : value()
-          ? `${resourceTableColumnLabel(props.column.id)}: ${value()?.displayValue}`
+          ? `${resourceTableColumnLabel(props.column.id)}: ${resourceTableCellText(value(), props.column.id)}`
           : resourceTableColumnLabel(props.column.id)}
     >
-      {value()?.displayValue ?? "--"}
+      {resourceTableCellText(value(), props.column.id)}
     </div>
   );
 

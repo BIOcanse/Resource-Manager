@@ -71,7 +71,6 @@ public sealed class ResourceMonitorProjectionTests
                     null,
                     null,
                     null,
-                    "N/A",
                     [],
                     SamplingObservationStatus.Unavailable,
                     SamplingObservationStatus.NotRequested)
@@ -120,7 +119,6 @@ public sealed class ResourceMonitorProjectionTests
                     25,
                     100,
                     25,
-                    "25%",
                     []),
                 new ResourceBreakdownBar(
                     ResourceBreakdownMetricIds.MemoryUsage,
@@ -130,7 +128,6 @@ public sealed class ResourceMonitorProjectionTests
                     64,
                     1024,
                     6.25,
-                    "64 B / 1 KB",
                     [])
             ])
         {
@@ -223,23 +220,23 @@ public sealed class ResourceMonitorProjectionTests
         Assert.Equal("Other", softwareBIdentity[2].GetString());
         Assert.Equal(SoftwareDisplayKinds.General, softwareBIdentity[3].GetString());
 
+        // 元组里不再有展示串：条形自带 unit，数值由前端按用户选的进制格式化。
         var softwareBValue = root.GetProperty("bars")[0].GetProperty("software")[1];
-        Assert.Equal(7, softwareBValue.GetArrayLength());
+        Assert.Equal(6, softwareBValue.GetArrayLength());
         Assert.Equal(1, softwareBValue[0].GetInt32());
         Assert.Equal(1, softwareBValue[1].GetDouble());
         Assert.Equal(1, softwareBValue[2].GetDouble());
-        Assert.Equal("1 B", softwareBValue[3].GetString());
-        Assert.Equal(1, softwareBValue[4].GetInt32());
-        Assert.Equal(0, softwareBValue[5].GetDouble());
+        Assert.Equal(1, softwareBValue[3].GetInt32());
+        Assert.Equal(0, softwareBValue[4].GetDouble());
 
-        var process = Assert.Single(softwareBValue[6].EnumerateArray());
-        Assert.Equal(12, process.GetArrayLength());
+        var process = Assert.Single(softwareBValue[5].EnumerateArray());
+        Assert.Equal(11, process.GetArrayLength());
         Assert.Equal(2002, process[0].GetInt32());
         Assert.Equal("worker-b.exe", process[1].GetString());
         Assert.Equal(@"C:\Apps\worker-b.exe", process[2].GetString());
-        Assert.Equal(ResourceProcessAttributionKinds.Process, process[9].GetString());
-        Assert.Equal(0, process[10].GetDouble());
-        Assert.Equal("2002000", process[11].GetString());
+        Assert.Equal(ResourceProcessAttributionKinds.Process, process[8].GetString());
+        Assert.Equal(0, process[9].GetDouble());
+        Assert.Equal("2002000", process[10].GetString());
     }
 
     [Fact]
@@ -273,7 +270,6 @@ public sealed class ResourceMonitorProjectionTests
                 SoftwareDisplayKinds.General,
                 index + 1,
                 (index + 1) / 10d,
-                $"{index + 1} MB",
                 1,
                 []))
             .ToArray();
@@ -286,7 +282,6 @@ public sealed class ResourceMonitorProjectionTests
                 100,
                 1000,
                 10,
-                "100 B / 1000 B",
                 Enumerable.Range(0, 64)
                     .Select(index => software[(barIndex * 31 + index) % software.Length])
                     .ToArray()))
@@ -327,7 +322,6 @@ public sealed class ResourceMonitorProjectionTests
                     3,
                     100,
                     3,
-                    "3 B / 100 B",
                     [
                         Software("software:a", "App A", 1001, "worker-a.exe"),
                         Software("software:b", "App B", 2002, "worker-b.exe")
@@ -340,7 +334,6 @@ public sealed class ResourceMonitorProjectionTests
                     5,
                     100,
                     5,
-                    "5%",
                     [Software("software:a", "App A", 1001, "worker-a.exe")])
             ])
         {
@@ -364,12 +357,11 @@ public sealed class ResourceMonitorProjectionTests
             $@"C:\Apps\{processName}",
             1,
             1,
-            100,
-            "1 B")
+            100)
         {
             ProcessStartKey = checked(processId * 1000L)
         };
-        return new ResourceSoftwareSegment(id, name, "Other", SoftwareDisplayKinds.General, 1, 1, "1 B", 1, [process]);
+        return new ResourceSoftwareSegment(id, name, "Other", SoftwareDisplayKinds.General, 1, 1, 1, [process]);
     }
 
     private static ResourceBreakdownDatasetSamplingState CurrentDataset(

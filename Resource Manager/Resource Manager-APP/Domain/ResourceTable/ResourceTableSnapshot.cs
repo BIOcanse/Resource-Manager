@@ -228,8 +228,9 @@ public sealed record ResourceTableValue(
     double? Value,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     double? Percent,
+    // 文本单元（进程号、用户、架构）用这里的文本；数值单元留空，
+    // 由前端按 Unit 和 Value 自己格式化。
     string DisplayValue,
-    [property: JsonIgnore]
     string Unit,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? Availability,

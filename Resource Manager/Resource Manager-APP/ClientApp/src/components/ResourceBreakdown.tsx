@@ -411,7 +411,7 @@ function ResourceBreakdownItem(props: {
       <div class="resource-breakdown-header">
         <strong>{label()}</strong>
         <span>
-          {props.bar.totalDisplay} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+          {formatResourceBarValue(props.bar, props.bar.totalValue ?? 0)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
         <Show when={props.editMode}>
           <span class="resource-breakdown-order-actions">
@@ -662,7 +662,7 @@ function ResourceProcessPanel(props: {
                   role="option"
                   tabIndex={-1}
                   aria-selected={activeProcessKey() === processKey(item().segment) ? "true" : "false"}
-                  aria-label={resourceProcessTooltip(item().segment)}
+                  aria-label={resourceProcessTooltip(props.bar, item().segment)}
                   aria-posinset={item().index + 1}
                   aria-setsize={layout().length}
                 >
@@ -670,7 +670,7 @@ function ResourceProcessPanel(props: {
                     class="resource-tooltip"
                     classList={{ visible: hoveredProcessKey() === processKey(item().segment) }}
                   >
-                    {resourceProcessTooltip(item().segment)}
+                    {resourceProcessTooltip(props.bar, item().segment)}
                   </span>
                 </div>
               </div>
@@ -681,7 +681,7 @@ function ResourceProcessPanel(props: {
       <Show when={activeProcess()}>
         {(process) => (
           <p class="resource-process-selection-detail" aria-hidden="true">
-            {resourceProcessTooltip(process())}
+            {resourceProcessTooltip(props.bar, process())}
           </p>
         )}
       </Show>
@@ -689,7 +689,7 @@ function ResourceProcessPanel(props: {
   );
 }
 
-function resourceProcessTooltip(process: ResourceProcessSegment) {
+function resourceProcessTooltip(bar: ResourceBreakdownBar, process: ResourceProcessSegment) {
   const identity = isSystemResidualProcess(process) || Number(process.processId) <= 0
     ? uiText.resourceBreakdown.noPidCategory
     : `PID ${process.processId}`;
@@ -698,7 +698,7 @@ function resourceProcessTooltip(process: ResourceProcessSegment) {
     : isEtwResidualProcess(process)
       ? `\n${uiText.resourceBreakdown.etwSupplement}`
       : "";
-  return `${process.name} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${process.displayValue}${extra}`;
+  return `${process.name} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${formatResourceBarValue(bar, process.value)}${extra}`;
 }
 
 function isSystemResidualProcess(process: ResourceProcessSegment) {
@@ -820,7 +820,6 @@ function resourceEmptyCapacitySegment(bar: ResourceBreakdownBar): ResourceEmptyS
     displayKind: uiText.resourceBreakdown.empty,
     value: emptyValue,
     systemPercent: resourceSegmentPercent(emptyValue, denominator),
-    displayValue: formatResourceBarValue(bar, emptyValue),
     processCount: 0,
     processes: [],
     className: "resource-segment-empty",

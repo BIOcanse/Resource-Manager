@@ -471,7 +471,6 @@ public sealed class HostedResourcePublicationStateTests
                     value,
                     100,
                     value,
-                    $"{value:0.0}%",
                     [])
             ]);
 
@@ -488,7 +487,6 @@ public sealed class HostedResourcePublicationStateTests
             value,
             100,
             value,
-            $"{value:0.0}%",
             [],
             observationStatus,
             observationStatus);
