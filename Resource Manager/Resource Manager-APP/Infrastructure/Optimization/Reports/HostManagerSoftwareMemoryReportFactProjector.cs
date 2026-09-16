@@ -10,7 +10,8 @@ namespace ResourceManager.App.Infrastructure.Optimization.Reports;
 internal static class HostManagerSoftwareMemoryReportFactProjector
 {
     internal static bool Supports(HostManagerReportFactKind kind)
-        => kind == HostManagerReportFactKind.SoftwareMemorySystemPercent;
+        => kind is HostManagerReportFactKind.SoftwareMemorySystemPercent
+            or HostManagerReportFactKind.SoftwareMemoryBytes;
 
     internal static HostManagerReportSourceObservation Project(
         ulong sourceHandle,
@@ -81,10 +82,14 @@ internal static class HostManagerSoftwareMemoryReportFactProjector
 
             foreach (var rule in rules)
             {
+                // 同一个软件同时供两种事实：占系统内存的百分比，和占用的绝对字节。
+                // 规则各自比各自的阈值，谁先过谁出报告。
                 facts.Add(new HostManagerReportFactValue(
                     rule,
                     targetHandle,
-                    software.SystemPercent,
+                    rule.FactKind == HostManagerReportFactKind.SoftwareMemoryBytes
+                        ? software.Value
+                        : software.SystemPercent,
                     EventCount: null));
             }
         }

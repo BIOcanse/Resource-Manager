@@ -1522,9 +1522,9 @@ export interface OptimizationReportEvidence {
   averageValue: number;
   peakValue: number;
   currentValue: number;
-  averageDisplay: string;
-  peakDisplay: string;
-  currentDisplay: string;
+  // 数值的单位标记："%" / "B"（原始字节）/ "°C" / "ms" / "count"。
+  // 后端只给事实，成句和换算由 presentation/optimizationPresentation.ts 负责。
+  valueUnit: string;
   activeSampleCount: number;
   sampleCount: number;
   durationSeconds: number;

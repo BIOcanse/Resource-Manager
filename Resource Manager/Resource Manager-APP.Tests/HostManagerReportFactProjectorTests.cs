@@ -192,9 +192,20 @@ public sealed class HostManagerReportFactProjectorTests
             source => source.Facts.Any(fact =>
                 fact.Rule.FactKind
                     == HostManagerReportFactKind.SoftwareMemorySystemPercent));
-        var fact = Assert.Single(softwareSource.Facts);
+        // 每个合格软件同时供两种事实：占系统内存的百分比，和占用的绝对字节。
+        // 两条规则各比各的阈值，谁先越线谁出报告。
         Assert.Equal(31, softwareSource.ProviderGeneration);
+        var fact = Assert.Single(
+            softwareSource.Facts,
+            candidate => candidate.Rule.FactKind
+                == HostManagerReportFactKind.SoftwareMemorySystemPercent);
+        var bytesFact = Assert.Single(
+            softwareSource.Facts,
+            candidate => candidate.Rule.FactKind
+                == HostManagerReportFactKind.SoftwareMemoryBytes);
         Assert.Equal(18, fact.CurrentValue);
+        Assert.Equal(1_800, bytesFact.CurrentValue);
+        Assert.Equal(fact.TargetHandle, bytesFact.TargetHandle);
         Assert.NotEqual(softwareSource.CoverageScopeHandle, fact.TargetHandle);
 
         var target = Assert.Single(batch.Targets).Value;

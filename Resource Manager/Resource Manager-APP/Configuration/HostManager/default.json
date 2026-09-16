@@ -292,14 +292,14 @@
     }
   },
   "host_recreate": {
-      "shared_resources": {
-        "resource_capacity": 256,
-        "subscription_capacity": 1024,
-        "task_capacity": 2048,
-        "maximum_subscription_lease_duration_ms": 30000,
-        "maximum_queue_duration_ms": 30000,
-        "maximum_grant_duration_ms": 30000
-      },
+    "shared_resources": {
+      "resource_capacity": 256,
+      "subscription_capacity": 1024,
+      "task_capacity": 2048,
+      "maximum_subscription_lease_duration_ms": 30000,
+      "maximum_queue_duration_ms": 30000,
+      "maximum_grant_duration_ms": 30000
+    },
     "resource_scheduler": {
       "target_capacity": 512,
       "private_resource_capacity": 8192,
@@ -701,6 +701,31 @@
           "retention_ms": 604800000,
           "rolling": false,
           "predicate_group_handle": 1027,
+          "predicate_index": 0,
+          "predicate_count": 1
+        },
+        {
+          "fact_kind": 8,
+          "rule_handle": 1038,
+          "source_handle": 14,
+          "coverage_scope_handle": 14,
+          "family_handle": 122,
+          "report_type_handle": 22,
+          "resource_kind_handle": 5,
+          "payload_handle": 22,
+          "metric_selector": 1,
+          "comparison": 1,
+          "priority": 37,
+          "severity": 2,
+          "required_consecutive_hits": 3,
+          "required_consecutive_misses": 2,
+          "minimum_sample_duration_ms": 1000,
+          "activation_threshold": 4294967296,
+          "clear_threshold": 3221225472,
+          "stale_after_ms": 60000,
+          "retention_ms": 604800000,
+          "rolling": false,
+          "predicate_group_handle": 1028,
           "predicate_index": 0,
           "predicate_count": 1
         }
@@ -1426,7 +1451,10 @@
           "capability_handle": 0,
           "payload_handle": 201,
           "path": "/api/public/v1",
-          "methods": ["GET", "HEAD"],
+          "methods": [
+            "GET",
+            "HEAD"
+          ],
           "exact_path": true,
           "catalog_route": true,
           "bypass_rate_limit": false
@@ -1436,7 +1464,10 @@
           "capability_handle": 0,
           "payload_handle": 202,
           "path": "/api/public/v1/capabilities",
-          "methods": ["GET", "HEAD"],
+          "methods": [
+            "GET",
+            "HEAD"
+          ],
           "exact_path": true,
           "catalog_route": true,
           "bypass_rate_limit": false
@@ -1446,7 +1477,10 @@
           "capability_handle": 2,
           "payload_handle": 203,
           "path": "/api/public/v1/index",
-          "methods": ["GET", "HEAD"],
+          "methods": [
+            "GET",
+            "HEAD"
+          ],
           "exact_path": false,
           "catalog_route": false,
           "bypass_rate_limit": false
@@ -1456,7 +1490,12 @@
           "capability_handle": 3,
           "payload_handle": 204,
           "path": "/api/public/v1/sqlite",
-          "methods": ["GET", "HEAD", "POST", "PUT"],
+          "methods": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT"
+          ],
           "exact_path": false,
           "catalog_route": false,
           "bypass_rate_limit": false
@@ -1466,7 +1505,11 @@
           "capability_handle": 4,
           "payload_handle": 205,
           "path": "/api/public/v1/ai",
-          "methods": ["GET", "HEAD", "POST"],
+          "methods": [
+            "GET",
+            "HEAD",
+            "POST"
+          ],
           "exact_path": false,
           "catalog_route": false,
           "bypass_rate_limit": false
@@ -1476,7 +1519,10 @@
           "capability_handle": 5,
           "payload_handle": 206,
           "path": "/api/public/v1/browser-runtimes",
-          "methods": ["GET", "HEAD"],
+          "methods": [
+            "GET",
+            "HEAD"
+          ],
           "exact_path": false,
           "catalog_route": false,
           "bypass_rate_limit": false
@@ -1486,7 +1532,10 @@
           "capability_handle": 6,
           "payload_handle": 207,
           "path": "/api/public/v1/resources",
-          "methods": ["GET", "HEAD"],
+          "methods": [
+            "GET",
+            "HEAD"
+          ],
           "exact_path": false,
           "catalog_route": false,
           "bypass_rate_limit": false
@@ -1722,91 +1771,1531 @@
         }
       ],
       "rule_templates": [
-        {"template_id":"cpu.usage.windows","metric_id_template":"cpu.usage","source_id":"windows.cpu","scope_expansion":"cpu","metric_kind":"cpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":1,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1001},
-        {"template_id":"memory.usage.windows","metric_id_template":"memory.usage","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1002},
-        {"template_id":"memory.percent.windows","metric_id_template":"memory.percent","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1003},
-        {"template_id":"memory.total.windows","metric_id_template":"memory.total","source_id":"windows.memory","scope_expansion":"memory","metric_kind":"memory_total","value_kind":"float64","retention":"retain_last_good","capability_mask":2,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1078},
-        {"template_id":"virtualMemory.usage.windows","metric_id_template":"virtualMemory.usage","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1004},
-        {"template_id":"virtualMemory.percent.windows","metric_id_template":"virtualMemory.percent","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_used","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1005},
-        {"template_id":"virtualMemory.total.windows","metric_id_template":"virtualMemory.total","source_id":"windows.virtual-memory","scope_expansion":"virtual_memory","metric_kind":"virtual_memory_total","value_kind":"float64","retention":"retain_last_good","capability_mask":4,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1079},
-
-        {"template_id":"cpu.frequency.pdh","metric_id_template":"cpu.frequency","source_id":"pdh.cpu-frequency","scope_expansion":"cpu","metric_kind":"cpu_frequency","value_kind":"float64","retention":"retain_last_good","capability_mask":16,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1010},
-        {"template_id":"cpu.frequencyPercent.pdh","metric_id_template":"cpu.frequencyPercent","source_id":"pdh.cpu-frequency","scope_expansion":"cpu","metric_kind":"cpu_frequency","value_kind":"float64","retention":"retain_last_good","capability_mask":16,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1011},
-        {"template_id":"cpu.packagePower.smu","metric_id_template":"cpu.packagePower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1014},
-        {"template_id":"cpu.coreVoltage.smu","metric_id_template":"cpu.coreVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4611686018427387904,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1015},
-        {"template_id":"cpu.packageCurrent.smu","metric_id_template":"cpu.packageCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1016},
-        {"template_id":"cpu.temperature.smu","metric_id_template":"cpu.temperature","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1017},
-        {"template_id":"cpu.stapmPower.smu","metric_id_template":"cpu.stapmPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1018},
-        {"template_id":"cpu.actualPower.smu","metric_id_template":"cpu.actualPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1019},
-        {"template_id":"cpu.averagePower.smu","metric_id_template":"cpu.averagePower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1020},
-        {"template_id":"cpu.tdcCurrent.smu","metric_id_template":"cpu.tdcCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1021},
-        {"template_id":"cpu.edcCurrent.smu","metric_id_template":"cpu.edcCurrent","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1022},
-        {"template_id":"cpu.platformPower.smu","metric_id_template":"cpu.platformPower","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4647503709213818880,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1023},
-        {"template_id":"cpu.platformVoltage.smu","metric_id_template":"cpu.platformVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4612811918334230528,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1024},
-        {"template_id":"cpu.igpuFrequency.smu","metric_id_template":"cpu.igpuFrequency","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1025},
-        {"template_id":"cpu.igpuVoltage.smu","metric_id_template":"cpu.igpuVoltage","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4612811918334230528,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1026},
-        {"template_id":"cpu.igpuTemperature.smu","metric_id_template":"cpu.igpuTemperature","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1027},
-        {"template_id":"cpu.smuFrequency.smu","metric_id_template":"cpu.smuFrequency","source_id":"amd.smu","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":512,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1028},
-
-        {"template_id":"cpu.fanRpm.wmi","metric_id_template":"cpu.fanRpm","source_id":"hardware-monitor.wmi","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1030},
-        {"template_id":"cpu.fanPercent.wmi","metric_id_template":"cpu.fanPercent","source_id":"hardware-monitor.wmi","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1031},
-        {"template_id":"cpu.fanRpm.oem","metric_id_template":"cpu.fanRpm","source_id":"notebook-oem.fan","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1032},
-        {"template_id":"cpu.fanPercent.oem","metric_id_template":"cpu.fanPercent","source_id":"notebook-oem.fan","scope_expansion":"cpu","metric_kind":"cpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1033},
-        {"template_id":"memory.temperature.wmi","metric_id_template":"memory.temperature","source_id":"hardware-monitor.wmi","scope_expansion":"memory","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1034},
-        {"template_id":"system.motherboardTemperature.wmi","metric_id_template":"system.motherboardTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1035},
-        {"template_id":"system.vrmTemperature.wmi","metric_id_template":"system.vrmTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1036},
-        {"template_id":"system.chipsetTemperature.wmi","metric_id_template":"system.chipsetTemperature","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1037},
-        {"template_id":"system.motherboardVoltage.wmi","metric_id_template":"system.motherboardVoltage","source_id":"hardware-monitor.wmi","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4626322717216342016,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1038},
-
-        {"template_id":"disk.total.activePercent.pdh","metric_id_template":"disk.total.activePercent","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1040},
-        {"template_id":"disk.total.readBytesPerSec.pdh","metric_id_template":"disk.total.readBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1041},
-        {"template_id":"disk.total.writeBytesPerSec.pdh","metric_id_template":"disk.total.writeBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1042},
-        {"template_id":"disk.total.queueLength.pdh","metric_id_template":"disk.total.queueLength","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1043},
-        {"template_id":"network.total.receiveBytesPerSec.pdh","metric_id_template":"network.total.receiveBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1044},
-        {"template_id":"network.total.sendBytesPerSec.pdh","metric_id_template":"network.total.sendBytesPerSec","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1045},
-        {"template_id":"network.total.utilizationPercent.pdh","metric_id_template":"network.total.utilizationPercent","source_id":"pdh.system-io","scope_expansion":"host","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":8192,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":1,"semantic_fingerprint":1046},
-        {"template_id":"disk.temperature.windows","metric_id_template":"disk.{disk}.temperature","source_id":"windows.storage-sensors","scope_expansion":"storage_sensor","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":1024,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4639481672377565184,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1047},
-        {"template_id":"fan.speed.wmi","metric_id_template":"fan.{fan}.speed","source_id":"hardware-monitor.wmi","scope_expansion":"system_fan","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4661225614328463360,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1048},
-        {"template_id":"fan.speedPercent.wmi","metric_id_template":"fan.{fan}.speedPercent","source_id":"hardware-monitor.wmi","scope_expansion":"system_fan","metric_kind":"custom_numeric","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":0,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1049},
-
-        {"template_id":"gpu.usage.pdh","metric_id_template":"gpu.{gpu}.usage","source_id":"pdh.gpu-engine","scope_expansion":"gpu_adapter","metric_kind":"gpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":32,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1100},
-        {"template_id":"gpu.usage.nvml","metric_id_template":"gpu.{gpu}.usage","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_usage","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1101},
-        {"template_id":"gpu.graphicsClock.nvml","metric_id_template":"gpu.{gpu}.graphicsClock","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1102},
-        {"template_id":"gpu.graphicsClockPercent.nvml","metric_id_template":"gpu.{gpu}.graphicsClockPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1103},
-        {"template_id":"gpu.vram.nvml","metric_id_template":"gpu.{gpu}.vram","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1104},
-        {"template_id":"gpu.vramTotal.nvml","metric_id_template":"gpu.{gpu}.vramTotal","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_total","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1080},
-        {"template_id":"gpu.vramPercent.nvml","metric_id_template":"gpu.{gpu}.vramPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1105},
-        {"template_id":"gpu.memoryClock.nvml","metric_id_template":"gpu.{gpu}.memoryClock","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1106},
-        {"template_id":"gpu.power.nvml","metric_id_template":"gpu.{gpu}.power","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1107},
-        {"template_id":"gpu.powerLimit.nvml","metric_id_template":"gpu.{gpu}.powerLimit","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1108},
-        {"template_id":"gpu.temperature.nvml","metric_id_template":"gpu.{gpu}.temperature","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1109},
-        {"template_id":"gpu.fanPercent.nvml","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"nvidia.nvml","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":64,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1110},
-        {"template_id":"gpu.fanRpm.nvapi","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1111},
-        {"template_id":"gpu.coreVoltage.nvapi","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1112},
-        {"template_id":"gpu.current.nvapi","metric_id_template":"gpu.{gpu}.current","source_id":"nvidia.nvapi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":128,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":1,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1113},
-
-        {"template_id":"gpu.graphicsClock.adlx","metric_id_template":"gpu.{gpu}.graphicsClock","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1120},
-        {"template_id":"gpu.graphicsClockPercent.adlx","metric_id_template":"gpu.{gpu}.graphicsClockPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1121},
-        {"template_id":"gpu.vram.adlx","metric_id_template":"gpu.{gpu}.vram","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative","used_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1122},
-        {"template_id":"gpu.vramTotal.adlx","metric_id_template":"gpu.{gpu}.vramTotal","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_total","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative","total_value"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1081},
-        {"template_id":"gpu.vramPercent.adlx","metric_id_template":"gpu.{gpu}.vramPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_vram_used","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1123},
-        {"template_id":"gpu.memoryClock.adlx","metric_id_template":"gpu.{gpu}.memoryClock","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_clock","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1124},
-        {"template_id":"gpu.power.adlx","metric_id_template":"gpu.{gpu}.power","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1125},
-        {"template_id":"gpu.boardPower.adlx","metric_id_template":"gpu.{gpu}.boardPower","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1126},
-        {"template_id":"gpu.temperature.adlx","metric_id_template":"gpu.{gpu}.temperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1127},
-        {"template_id":"gpu.hotspotTemperature.adlx","metric_id_template":"gpu.{gpu}.hotspotTemperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1128},
-        {"template_id":"gpu.intakeTemperature.adlx","metric_id_template":"gpu.{gpu}.intakeTemperature","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1129},
-        {"template_id":"gpu.fanPercent.adlx","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":2,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1130},
-        {"template_id":"gpu.coreVoltage.adlx","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"amd.adlx","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":256,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":2,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1131},
-
-        {"template_id":"gpu.power.wmi","metric_id_template":"gpu.{gpu}.power","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1140},
-        {"template_id":"gpu.temperature.wmi","metric_id_template":"gpu.{gpu}.temperature","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1141},
-        {"template_id":"gpu.fanRpm.wmi","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1142},
-        {"template_id":"gpu.fanPercent.wmi","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1143},
-        {"template_id":"gpu.coreVoltage.wmi","metric_id_template":"gpu.{gpu}.coreVoltage","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1144},
-        {"template_id":"gpu.current.wmi","metric_id_template":"gpu.{gpu}.current","source_id":"hardware-monitor.wmi","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":2048,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":0,"maximum_instance_count":32,"semantic_fingerprint":1145},
-        {"template_id":"gpu.fanRpm.oem","metric_id_template":"gpu.{gpu}.fanRpm","source_id":"notebook-oem.fan","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["nonnegative"],"minimum_value_bits":0,"maximum_value_bits":9218868437227405311,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1146},
-        {"template_id":"gpu.fanPercent.oem","metric_id_template":"gpu.{gpu}.fanPercent","source_id":"notebook-oem.fan","scope_expansion":"gpu_adapter","metric_kind":"gpu_sensor","value_kind":"float64","retention":"retain_last_good","capability_mask":4096,"metric_flags":["percentage","nonnegative"],"minimum_value_bits":0,"maximum_value_bits":4636737291354636288,"gpu_vendor_mask":15,"applicability_mask":1,"maximum_instance_count":32,"semantic_fingerprint":1147}
+        {
+          "template_id": "cpu.usage.windows",
+          "metric_id_template": "cpu.usage",
+          "source_id": "windows.cpu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_usage",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 1,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1001
+        },
+        {
+          "template_id": "memory.usage.windows",
+          "metric_id_template": "memory.usage",
+          "source_id": "windows.memory",
+          "scope_expansion": "memory",
+          "metric_kind": "memory_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2,
+          "metric_flags": [
+            "nonnegative",
+            "used_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1002
+        },
+        {
+          "template_id": "memory.percent.windows",
+          "metric_id_template": "memory.percent",
+          "source_id": "windows.memory",
+          "scope_expansion": "memory",
+          "metric_kind": "memory_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1003
+        },
+        {
+          "template_id": "memory.total.windows",
+          "metric_id_template": "memory.total",
+          "source_id": "windows.memory",
+          "scope_expansion": "memory",
+          "metric_kind": "memory_total",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2,
+          "metric_flags": [
+            "nonnegative",
+            "total_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1078
+        },
+        {
+          "template_id": "virtualMemory.usage.windows",
+          "metric_id_template": "virtualMemory.usage",
+          "source_id": "windows.virtual-memory",
+          "scope_expansion": "virtual_memory",
+          "metric_kind": "virtual_memory_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4,
+          "metric_flags": [
+            "nonnegative",
+            "used_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1004
+        },
+        {
+          "template_id": "virtualMemory.percent.windows",
+          "metric_id_template": "virtualMemory.percent",
+          "source_id": "windows.virtual-memory",
+          "scope_expansion": "virtual_memory",
+          "metric_kind": "virtual_memory_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1005
+        },
+        {
+          "template_id": "virtualMemory.total.windows",
+          "metric_id_template": "virtualMemory.total",
+          "source_id": "windows.virtual-memory",
+          "scope_expansion": "virtual_memory",
+          "metric_kind": "virtual_memory_total",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4,
+          "metric_flags": [
+            "nonnegative",
+            "total_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1079
+        },
+        {
+          "template_id": "cpu.frequency.pdh",
+          "metric_id_template": "cpu.frequency",
+          "source_id": "pdh.cpu-frequency",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_frequency",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 16,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1010
+        },
+        {
+          "template_id": "cpu.frequencyPercent.pdh",
+          "metric_id_template": "cpu.frequencyPercent",
+          "source_id": "pdh.cpu-frequency",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_frequency",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 16,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1011
+        },
+        {
+          "template_id": "cpu.packagePower.smu",
+          "metric_id_template": "cpu.packagePower",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1014
+        },
+        {
+          "template_id": "cpu.coreVoltage.smu",
+          "metric_id_template": "cpu.coreVoltage",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4611686018427387904,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1015
+        },
+        {
+          "template_id": "cpu.packageCurrent.smu",
+          "metric_id_template": "cpu.packageCurrent",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1016
+        },
+        {
+          "template_id": "cpu.temperature.smu",
+          "metric_id_template": "cpu.temperature",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1017
+        },
+        {
+          "template_id": "cpu.stapmPower.smu",
+          "metric_id_template": "cpu.stapmPower",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1018
+        },
+        {
+          "template_id": "cpu.actualPower.smu",
+          "metric_id_template": "cpu.actualPower",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1019
+        },
+        {
+          "template_id": "cpu.averagePower.smu",
+          "metric_id_template": "cpu.averagePower",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1020
+        },
+        {
+          "template_id": "cpu.tdcCurrent.smu",
+          "metric_id_template": "cpu.tdcCurrent",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1021
+        },
+        {
+          "template_id": "cpu.edcCurrent.smu",
+          "metric_id_template": "cpu.edcCurrent",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1022
+        },
+        {
+          "template_id": "cpu.platformPower.smu",
+          "metric_id_template": "cpu.platformPower",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4647503709213818880,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1023
+        },
+        {
+          "template_id": "cpu.platformVoltage.smu",
+          "metric_id_template": "cpu.platformVoltage",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4612811918334230528,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1024
+        },
+        {
+          "template_id": "cpu.igpuFrequency.smu",
+          "metric_id_template": "cpu.igpuFrequency",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4661225614328463360,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1025
+        },
+        {
+          "template_id": "cpu.igpuVoltage.smu",
+          "metric_id_template": "cpu.igpuVoltage",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4612811918334230528,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1026
+        },
+        {
+          "template_id": "cpu.igpuTemperature.smu",
+          "metric_id_template": "cpu.igpuTemperature",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1027
+        },
+        {
+          "template_id": "cpu.smuFrequency.smu",
+          "metric_id_template": "cpu.smuFrequency",
+          "source_id": "amd.smu",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4661225614328463360,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1028
+        },
+        {
+          "template_id": "cpu.fanRpm.wmi",
+          "metric_id_template": "cpu.fanRpm",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1030
+        },
+        {
+          "template_id": "cpu.fanPercent.wmi",
+          "metric_id_template": "cpu.fanPercent",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1031
+        },
+        {
+          "template_id": "cpu.fanRpm.oem",
+          "metric_id_template": "cpu.fanRpm",
+          "source_id": "notebook-oem.fan",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4096,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1032
+        },
+        {
+          "template_id": "cpu.fanPercent.oem",
+          "metric_id_template": "cpu.fanPercent",
+          "source_id": "notebook-oem.fan",
+          "scope_expansion": "cpu",
+          "metric_kind": "cpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4096,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1033
+        },
+        {
+          "template_id": "memory.temperature.wmi",
+          "metric_id_template": "memory.temperature",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "memory",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1034
+        },
+        {
+          "template_id": "system.motherboardTemperature.wmi",
+          "metric_id_template": "system.motherboardTemperature",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1035
+        },
+        {
+          "template_id": "system.vrmTemperature.wmi",
+          "metric_id_template": "system.vrmTemperature",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1036
+        },
+        {
+          "template_id": "system.chipsetTemperature.wmi",
+          "metric_id_template": "system.chipsetTemperature",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1037
+        },
+        {
+          "template_id": "system.motherboardVoltage.wmi",
+          "metric_id_template": "system.motherboardVoltage",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4626322717216342016,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1038
+        },
+        {
+          "template_id": "disk.total.activePercent.pdh",
+          "metric_id_template": "disk.total.activePercent",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1040
+        },
+        {
+          "template_id": "disk.total.readBytesPerSec.pdh",
+          "metric_id_template": "disk.total.readBytesPerSec",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1041
+        },
+        {
+          "template_id": "disk.total.writeBytesPerSec.pdh",
+          "metric_id_template": "disk.total.writeBytesPerSec",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1042
+        },
+        {
+          "template_id": "disk.total.queueLength.pdh",
+          "metric_id_template": "disk.total.queueLength",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1043
+        },
+        {
+          "template_id": "network.total.receiveBytesPerSec.pdh",
+          "metric_id_template": "network.total.receiveBytesPerSec",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1044
+        },
+        {
+          "template_id": "network.total.sendBytesPerSec.pdh",
+          "metric_id_template": "network.total.sendBytesPerSec",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1045
+        },
+        {
+          "template_id": "network.total.utilizationPercent.pdh",
+          "metric_id_template": "network.total.utilizationPercent",
+          "source_id": "pdh.system-io",
+          "scope_expansion": "host",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 8192,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 1,
+          "semantic_fingerprint": 1046
+        },
+        {
+          "template_id": "disk.temperature.windows",
+          "metric_id_template": "disk.{disk}.temperature",
+          "source_id": "windows.storage-sensors",
+          "scope_expansion": "storage_sensor",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 1024,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4639481672377565184,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1047
+        },
+        {
+          "template_id": "fan.speed.wmi",
+          "metric_id_template": "fan.{fan}.speed",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "system_fan",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4661225614328463360,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1048
+        },
+        {
+          "template_id": "fan.speedPercent.wmi",
+          "metric_id_template": "fan.{fan}.speedPercent",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "system_fan",
+          "metric_kind": "custom_numeric",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 0,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1049
+        },
+        {
+          "template_id": "gpu.usage.pdh",
+          "metric_id_template": "gpu.{gpu}.usage",
+          "source_id": "pdh.gpu-engine",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_usage",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 32,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1100
+        },
+        {
+          "template_id": "gpu.usage.nvml",
+          "metric_id_template": "gpu.{gpu}.usage",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_usage",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1101
+        },
+        {
+          "template_id": "gpu.graphicsClock.nvml",
+          "metric_id_template": "gpu.{gpu}.graphicsClock",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1102
+        },
+        {
+          "template_id": "gpu.graphicsClockPercent.nvml",
+          "metric_id_template": "gpu.{gpu}.graphicsClockPercent",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1103
+        },
+        {
+          "template_id": "gpu.vram.nvml",
+          "metric_id_template": "gpu.{gpu}.vram",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative",
+            "used_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1104
+        },
+        {
+          "template_id": "gpu.vramTotal.nvml",
+          "metric_id_template": "gpu.{gpu}.vramTotal",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_total",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative",
+            "total_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1080
+        },
+        {
+          "template_id": "gpu.vramPercent.nvml",
+          "metric_id_template": "gpu.{gpu}.vramPercent",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1105
+        },
+        {
+          "template_id": "gpu.memoryClock.nvml",
+          "metric_id_template": "gpu.{gpu}.memoryClock",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1106
+        },
+        {
+          "template_id": "gpu.power.nvml",
+          "metric_id_template": "gpu.{gpu}.power",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1107
+        },
+        {
+          "template_id": "gpu.powerLimit.nvml",
+          "metric_id_template": "gpu.{gpu}.powerLimit",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1108
+        },
+        {
+          "template_id": "gpu.temperature.nvml",
+          "metric_id_template": "gpu.{gpu}.temperature",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1109
+        },
+        {
+          "template_id": "gpu.fanPercent.nvml",
+          "metric_id_template": "gpu.{gpu}.fanPercent",
+          "source_id": "nvidia.nvml",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 64,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1110
+        },
+        {
+          "template_id": "gpu.fanRpm.nvapi",
+          "metric_id_template": "gpu.{gpu}.fanRpm",
+          "source_id": "nvidia.nvapi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 128,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1111
+        },
+        {
+          "template_id": "gpu.coreVoltage.nvapi",
+          "metric_id_template": "gpu.{gpu}.coreVoltage",
+          "source_id": "nvidia.nvapi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 128,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1112
+        },
+        {
+          "template_id": "gpu.current.nvapi",
+          "metric_id_template": "gpu.{gpu}.current",
+          "source_id": "nvidia.nvapi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 128,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 1,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1113
+        },
+        {
+          "template_id": "gpu.graphicsClock.adlx",
+          "metric_id_template": "gpu.{gpu}.graphicsClock",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1120
+        },
+        {
+          "template_id": "gpu.graphicsClockPercent.adlx",
+          "metric_id_template": "gpu.{gpu}.graphicsClockPercent",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1121
+        },
+        {
+          "template_id": "gpu.vram.adlx",
+          "metric_id_template": "gpu.{gpu}.vram",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative",
+            "used_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1122
+        },
+        {
+          "template_id": "gpu.vramTotal.adlx",
+          "metric_id_template": "gpu.{gpu}.vramTotal",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_total",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative",
+            "total_value"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1081
+        },
+        {
+          "template_id": "gpu.vramPercent.adlx",
+          "metric_id_template": "gpu.{gpu}.vramPercent",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_vram_used",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1123
+        },
+        {
+          "template_id": "gpu.memoryClock.adlx",
+          "metric_id_template": "gpu.{gpu}.memoryClock",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1124
+        },
+        {
+          "template_id": "gpu.power.adlx",
+          "metric_id_template": "gpu.{gpu}.power",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1125
+        },
+        {
+          "template_id": "gpu.boardPower.adlx",
+          "metric_id_template": "gpu.{gpu}.boardPower",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1126
+        },
+        {
+          "template_id": "gpu.temperature.adlx",
+          "metric_id_template": "gpu.{gpu}.temperature",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1127
+        },
+        {
+          "template_id": "gpu.hotspotTemperature.adlx",
+          "metric_id_template": "gpu.{gpu}.hotspotTemperature",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1128
+        },
+        {
+          "template_id": "gpu.intakeTemperature.adlx",
+          "metric_id_template": "gpu.{gpu}.intakeTemperature",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1129
+        },
+        {
+          "template_id": "gpu.fanPercent.adlx",
+          "metric_id_template": "gpu.{gpu}.fanPercent",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1130
+        },
+        {
+          "template_id": "gpu.coreVoltage.adlx",
+          "metric_id_template": "gpu.{gpu}.coreVoltage",
+          "source_id": "amd.adlx",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 256,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1131
+        },
+        {
+          "template_id": "gpu.power.wmi",
+          "metric_id_template": "gpu.{gpu}.power",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1140
+        },
+        {
+          "template_id": "gpu.temperature.wmi",
+          "metric_id_template": "gpu.{gpu}.temperature",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1141
+        },
+        {
+          "template_id": "gpu.fanRpm.wmi",
+          "metric_id_template": "gpu.{gpu}.fanRpm",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1142
+        },
+        {
+          "template_id": "gpu.fanPercent.wmi",
+          "metric_id_template": "gpu.{gpu}.fanPercent",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1143
+        },
+        {
+          "template_id": "gpu.coreVoltage.wmi",
+          "metric_id_template": "gpu.{gpu}.coreVoltage",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1144
+        },
+        {
+          "template_id": "gpu.current.wmi",
+          "metric_id_template": "gpu.{gpu}.current",
+          "source_id": "hardware-monitor.wmi",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 2048,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1145
+        },
+        {
+          "template_id": "gpu.fanRpm.oem",
+          "metric_id_template": "gpu.{gpu}.fanRpm",
+          "source_id": "notebook-oem.fan",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4096,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1146
+        },
+        {
+          "template_id": "gpu.fanPercent.oem",
+          "metric_id_template": "gpu.{gpu}.fanPercent",
+          "source_id": "notebook-oem.fan",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 4096,
+          "metric_flags": [
+            "percentage",
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 4636737291354636288,
+          "gpu_vendor_mask": 15,
+          "applicability_mask": 1,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 1147
+        }
       ]
     },
     "process_policy_executor": {

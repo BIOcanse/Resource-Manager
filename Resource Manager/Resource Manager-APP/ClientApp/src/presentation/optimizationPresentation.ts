@@ -3,6 +3,7 @@ import { userFacingDateTime, userFacingOptionalValue } from "./userFacingText";
 import type { UserDetailSection } from "./userDetails";
 import { compactUserDetailSections, userDetailItem, userDetailSection } from "./userDetails";
 import { uiText } from "../text.ts";
+import { formatBytes } from "./byteUnits.ts";
 
 export interface OptimizationReportPresentation {
   title: string;
@@ -56,8 +57,8 @@ function reportTitle(type: string, name: string, resource: string) {
 }
 
 function reportSummary(report: OptimizationReportItem, name: string, resource: string) {
-  const current = userFacingOptionalValue(report.evidence.currentDisplay);
-  const average = userFacingOptionalValue(report.evidence.averageDisplay);
+  const current = optimizationEvidenceValue(report.evidence, report.evidence.currentValue);
+  const average = optimizationEvidenceValue(report.evidence, report.evidence.averageValue);
   switch (report.type) {
     case "DiskPressure": return uiText.optimizationReport.summary.diskPressure(name, current);
     case "SoftwareFootprint": return uiText.optimizationReport.summary.softwareFootprint(name, current);
@@ -81,9 +82,15 @@ function reportDetails(report: OptimizationReportItem, name: string, resource: s
     userDetailSection(uiText.optimizationReport.detail.currentSituation, [
       userDetailItem(uiText.optimizationReport.detail.target, name),
       userDetailItem(uiText.optimizationReport.detail.impact, resource),
-      userDetailItem(uiText.optimizationReport.detail.current, userFacingOptionalValue(report.evidence.currentDisplay)),
-      userDetailItem(uiText.optimizationReport.detail.average, userFacingOptionalValue(report.evidence.averageDisplay)),
-      userDetailItem(uiText.optimizationReport.detail.peak, userFacingOptionalValue(report.evidence.peakDisplay)),
+      userDetailItem(
+        uiText.optimizationReport.detail.current,
+        optimizationEvidenceValue(report.evidence, report.evidence.currentValue)),
+      userDetailItem(
+        uiText.optimizationReport.detail.average,
+        optimizationEvidenceValue(report.evidence, report.evidence.averageValue)),
+      userDetailItem(
+        uiText.optimizationReport.detail.peak,
+        optimizationEvidenceValue(report.evidence, report.evidence.peakValue)),
       userDetailItem(uiText.optimizationReport.detail.status, optimizationSeverityLabel(report.severity))
     ]),
     userDetailSection(uiText.optimizationReport.detail.observationScope, [
@@ -95,6 +102,36 @@ function reportDetails(report: OptimizationReportItem, name: string, resource: s
       report.evidence.activeSampleCount > 0 ? userDetailItem(uiText.optimizationReport.detail.occurrences, uiText.optimizationReport.detail.occurrenceTimes(report.evidence.activeSampleCount)) : null
     ])
   ]);
+}
+
+/**
+ * 报告证据里的一个数值怎么显示。
+ *
+ * 后端只给数值和单位标记，不换算也不成句。容量走字节单位的唯一所有者，
+ * 所以内存报告会跟着用户选的进制显示成 GiB 或 GB；其余单位在这里成句。
+ */
+export function optimizationEvidenceValue(
+  evidence: OptimizationReportItem["evidence"],
+  value: number
+): string {
+  if (!Number.isFinite(value)) {
+    return userFacingOptionalValue(null);
+  }
+  switch (evidence.valueUnit) {
+    case "B":
+      return formatBytes(value, "memory");
+    case "%":
+      return `${trimNumber(value, 2)}%`;
+    case "count":
+      return uiText.optimizationReport.detail.occurrenceTimes(Math.round(value));
+    default:
+      return `${trimNumber(value, 3)} ${evidence.valueUnit}`.trim();
+  }
+}
+
+// 小数位按需要保留：整数不拖小数点，末尾的零去掉。
+function trimNumber(value: number, maximumDigits: number) {
+  return Number(value.toFixed(maximumDigits)).toString();
 }
 
 function resourceLabel(value: string) {

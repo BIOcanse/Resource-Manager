@@ -143,8 +143,12 @@
   font-size: 13px;
   line-height: 1.35;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 说明允许换到第二行再截断：组件之间靠这句话区分，
+     压成一行会把区分点正好切掉（而且各语言长度差很多）。 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .software-issue-tag-strip {

@@ -396,14 +396,19 @@ const deDeAppCopy: AppCopy = {
         intelPcm: "Überwachungsunterstützung für Intel-Prozessoren"
       },
       purposes: {
-        amdCpuSensors: "Fügt Leistungsaufnahme, Temperatur, Spannung und Takt von AMD-Prozessoren hinzu.",
-        gpuOptionalMonitoring: "Stellt optionale GPU-Überwachungsinformationen bereit.",
-        generalHardwareSensors: "Fügt Informationen zu Lüftern, Temperatur, Spannung und Mainboard hinzu.",
-        notebookFan: "Fügt Lüfterdrehzahl und Betriebszustand von Notebooks hinzu.",
-        latencyAnalysis: "Dient der weiteren Untersuchung von Latenz- und Leistungsproblemen des Systems.",
-        nvidiaGpu: "Fügt Takt, Temperatur, Leistungsaufnahme und Lüfter von NVIDIA-GPUs hinzu.",
-        amdGpu: "Fügt Takt, Temperatur, Leistungsaufnahme und Lüfter von AMD-GPUs hinzu.",
-        intelCpu: "Fügt Leistungsaufnahme, Takt und Temperatur von Intel-Prozessoren hinzu."
+        msiAfterburner: "Wenn Afterburner bereits installiert ist, werden dessen GPU-Werte mitgelesen. Optional.",
+        amdRyzenSdk: "AMDs eigenes SDK. Liest Leistungsaufnahme, Spannung, Strom und Temperatur von Ryzen.",
+        amdSmu: "Liest die SMU-Tabellen direkt und liefert zusätzlich STAPM und Werte je Kern.",
+        intelCpu: "Liest Leistungsaufnahme, Takt und Temperatur von Intel-Prozessoren.",
+        generalHardwareSensors: "Die allgemeine Quelle für Mainboard, Lüfter, Temperatur und Spannung. Für die meisten Rechner genug.",
+        nvidiaNvml: "Liest Takt, VRAM, Leistungsaufnahme und Temperatur von NVIDIA aus dem installierten Treiber.",
+        nvidiaNvapi: "Ergänzt Lüfter, Spannung und Strom, die die NVIDIA-Basisschnittstelle auslässt.",
+        amdGpu: "Liest Takt, Temperatur, Leistungsaufnahme und Lüfter von AMD-GPUs.",
+        notebookEcFan: "Liest Lüfter über den EC des Notebooks, wenn weder die allgemeine Überwachung noch der GPU-Treiber sie zeigt.",
+        notebookOemFan: "Nutzt den Treiber des Herstellers für CPU-/GPU-Lüfterdrehzahl. Auf erkannten Modellen genauer.",
+        latencyMon: "Untersucht Interrupt-Latenz und Ruckler bis hin zum Treiber, der das System aufhält.",
+        windowsPerformanceToolkit: "Microsofts WPR / Xperf für tiefere Systemanalysen.",
+        sharedWebView2Runtime: "Die Chromium-Laufzeit der Oberfläche, systemweit gemeinsam genutzt."
       },
       categories: {
         performanceAnalysis: "Werkzeuge zur Leistungsanalyse",
