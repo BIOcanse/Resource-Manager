@@ -20,7 +20,53 @@ const jaJpAppCopy: AppCopy = {
     components: "コンポーネントとソフトウェア",
     optimization: "パフォーマンス最適化",
     details: "詳細情報",
-    settings: "設定"
+    settings: "設定",
+    diskUsage: "ディスク使用状況"
+  },
+  diskUsage: {
+    title: "ディスク使用状況",
+    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
+    scopeLabel: "Scan scope",
+    scopeAllVolumes: "All drives",
+    scopeVolume: "One drive",
+    scopeFolder: "One folder",
+    modeLabel: "Scan method",
+    modeFast: "Fast scan",
+    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
+    modeFull: "Full scan",
+    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
+    chooseFolder: "Choose folder",
+    folderNotChosen: "No folder chosen yet",
+    scan: "Start scan",
+    rescan: "Scan again",
+    cancel: "Cancel scan",
+    scanning: "Scanning",
+    volumeColumnLabel: "Drive",
+    noVolumes: "No scannable drive was found.",
+    notReady: "Not ready",
+    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    volumeKind: {
+      physical: "Physical drive",
+      virtual: "Virtual drive",
+      removable: "Removable",
+      network: "Network location",
+      optical: "Optical drive",
+      unknown: "Unknown source"
+    },
+    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
+    skipped: "Not covered by this scan",
+    skipReason: {
+      noFileSystemIndex: "The filesystem has no readable index",
+      needsElevation: "Reading the index needs administrator rights",
+      volumeNotReady: "The drive is not ready",
+      targetUnavailable: "The path does not exist or cannot be opened"
+    },
+    scanKind: {
+      masterFileTable: "Read the filesystem index",
+      directoryWalk: "Walked the directories"
+    },
+    emptyTitle: "Nothing scanned yet",
+    emptyDetail: "Pick a scope and a method, then start the scan."
   },
   shell: {
     productName: "リソース マネージャー",

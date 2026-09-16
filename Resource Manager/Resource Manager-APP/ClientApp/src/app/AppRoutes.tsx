@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { DetailsPage } from "../components/DetailsPage";
+import { DiskUsageWorkspace } from "../pages/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { ManagementWorkspace } from "../pages/ManagementWorkspace";
 import { MonitorPage } from "../pages/MonitorPage";
@@ -44,6 +45,9 @@ export function AppRoutes(props: AppRoutesProps) {
           when={props.activePage() === "settings"}
           fallback={
             <Show
+              when={props.activePage() === "diskUsage"}
+              fallback={(
+            <Show
               when={props.activePage() === "details"}
               fallback={
                 <Show
@@ -65,6 +69,12 @@ export function AppRoutes(props: AppRoutesProps) {
                   runtimeCapabilities={props.runtimeCapabilities}
                   onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
                 />
+              </PageBoundary>
+            </Show>
+              )}
+            >
+              <PageBoundary name={uiText.page.diskUsage}>
+                <DiskUsageWorkspace />
               </PageBoundary>
             </Show>
           }
