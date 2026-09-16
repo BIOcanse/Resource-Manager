@@ -17,8 +17,92 @@ public readonly record struct DiskUsageTile(
 public sealed record DiskUsageLayout(
     int RootNodeId,
     IReadOnlyList<DiskUsageTile> Tiles,
-    /// <summary>因为太小或超预算而没有单独出方格的节点数。界面可以据此提示"还有更小的没画"。</summary>
+    /// <summary>
+    /// 这一次视图下没有单独出方格的节点数：要么小到不够一个像素，要么在视野之外。
+    /// 它们不是被丢掉了，放大或移过去就会出现。
+    /// </summary>
     int OmittedCount);
+
+/// <summary>
+/// 客户端当前实际看到的东西。布局按它决定发哪些方格。
+///
+/// 为什么需要它：方格该不该画，取决于它在屏幕上占几个像素，
+/// 而这取决于画布的物理像素尺寸、窗口缩放和滚轮倍数 —— 全都是客户端的事实，
+/// 后端无从猜测。写死一个"面积小于百万分之二点五就不发"的阈值，
+/// 在 4K 屏上会糊掉本该看得见的方格，放大十倍之后又只能看见一片空白。
+///
+/// 两道剪枝都由它推出来：
+/// 1. **视野外的整棵子树直接跳过** —— 子方格一定在父方格里面，父的盒子不相交就不用往下看。
+/// 2. **在屏幕上小于一个像素门槛的不发** —— 也不往下钻，因为子节点只会更小。
+/// </summary>
+public readonly record struct DiskUsageViewWindow(
+    /// <summary>画布的物理像素宽高。含窗口缩放与屏幕缩放，由客户端算好。</summary>
+    float PixelWidth,
+    float PixelHeight,
+    /// <summary>滚轮缩放倍数。1 表示整张图刚好铺满画布。</summary>
+    float Scale,
+    /// <summary>当前看得见的那块单位空间矩形。</summary>
+    float MinX,
+    float MinY,
+    float MaxX,
+    float MaxY)
+{
+    /// <summary>方格在屏幕上至少要占这么多物理像素才值得单独发。</summary>
+    public const float MinimumTilePixelArea = 8f;
+
+    /// <summary>一次布局最多这么多方格。这是资源上限，不是正常情况下的限制器。</summary>
+    public const int MaximumTileCount = 60_000;
+
+    /// <summary>客户端什么都没说时的口径：整张图、不缩放、按一块 1920×1080 的画布算。</summary>
+    public static DiskUsageViewWindow Full { get; } =
+        new(1920f, 1080f, 1f, 0f, 0f, 1f, 1f);
+
+    /// <summary>
+    /// 把客户端传来的值收拢成一个一定能用的视图。
+    /// 越界、缺失、颠倒的值在这里一次性处理掉，布局算法里不再判断。
+    /// </summary>
+    public static DiskUsageViewWindow Normalize(
+        float? pixelWidth,
+        float? pixelHeight,
+        float? scale,
+        float? minX,
+        float? minY,
+        float? maxX,
+        float? maxY)
+    {
+        var width = Clamp(pixelWidth, Full.PixelWidth, 64f, 32_768f);
+        var height = Clamp(pixelHeight, Full.PixelHeight, 64f, 32_768f);
+        // 缩放上限对应"整张图放大到一百万倍"，再深也没有更多节点可看了。
+        var zoom = Clamp(scale, 1f, 1f, 1_000_000f);
+
+        var left = Clamp(minX, 0f, 0f, 1f);
+        var top = Clamp(minY, 0f, 0f, 1f);
+        var right = Clamp(maxX, 1f, 0f, 1f);
+        var bottom = Clamp(maxY, 1f, 0f, 1f);
+        if (right <= left)
+        {
+            (left, right) = (0f, 1f);
+        }
+        if (bottom <= top)
+        {
+            (top, bottom) = (0f, 1f);
+        }
+        return new DiskUsageViewWindow(width, height, zoom, left, top, right, bottom);
+    }
+
+    /// <summary>这个单位空间矩形在屏幕上占多少物理像素。</summary>
+    public float PixelAreaOf(float width, float height)
+        => width * PixelWidth * Scale * height * PixelHeight * Scale;
+
+    /// <summary>这个矩形和看得见的那块有没有交集。完全在外面的可以整棵跳过。</summary>
+    public bool Intersects(float x, float y, float width, float height)
+        => x + width >= MinX && x <= MaxX && y + height >= MinY && y <= MaxY;
+
+    private static float Clamp(float? value, float fallback, float low, float high)
+        => value is { } given && float.IsFinite(given)
+            ? Math.Clamp(given, low, high)
+            : fallback;
+}
 
 /// <summary>
 /// 方格图布局（squarified treemap）。
@@ -26,21 +110,24 @@ public sealed record DiskUsageLayout(
 /// 一句话：把一个矩形按子节点的字节数切开，每个子节点拿到的面积正比于它的字节数，
 /// 并且尽量让切出来的方格接近正方形 —— 长条形的方格既难看也难点。
 ///
-/// 输出在单位空间里。同一个根节点的布局是**稳定**的，不随缩放变化，
-/// 所以前端拿到之后缩放和平移全是本地的视口变换，不用回后端重算。
+/// 输出在单位空间里。矩形本身不随缩放变化，所以前端在一份布局之内，
+/// 缩放和平移全是本地的视口变换，不用回后端重算。
 ///
-/// 两道剪枝，都是为了不把看不见的东西发出去：
-/// 面积小于阈值的不出方格，方格总数到预算就停。两者都计入 <see cref="DiskUsageLayout.OmittedCount"/>。
+/// 发哪些方格则**取决于当前视图**（见 <see cref="DiskUsageViewWindow"/>）：
+/// 视野外的整棵子树跳过，在屏幕上不足一个像素门槛的不发也不往下钻。
+/// 所以放大之后要再要一次布局，那时原先太小的方格就够大了，会被发下来。
+/// 两种情况都计入 <see cref="DiskUsageLayout.OmittedCount"/>。
 /// </summary>
 public static class DiskUsageTreemapLayout
 {
     public static DiskUsageLayout Create(
         DiskUsageTree tree,
         int rootNodeId,
-        int maximumTileCount = 50_000,
-        float minimumArea = 1f / 400_000f)
+        DiskUsageViewWindow? view = null)
     {
         ArgumentNullException.ThrowIfNull(tree);
+        var window = view ?? DiskUsageViewWindow.Full;
+        var maximumTileCount = DiskUsageViewWindow.MaximumTileCount;
         var tiles = new List<DiskUsageTile>(Math.Min(maximumTileCount, 4096));
         var omitted = 0;
 
@@ -85,8 +172,16 @@ public static class DiskUsageTreemapLayout
 
             foreach (var placed in Squarify(tree, children, total, box))
             {
-                var area = placed.Width * placed.Height;
-                if (area < minimumArea || tiles.Count >= maximumTileCount)
+                // 看不见的：整棵子树都不用管，子方格一定在父方格里面。
+                if (!window.Intersects(placed.X, placed.Y, placed.Width, placed.Height))
+                {
+                    omitted++;
+                    continue;
+                }
+                // 小到看不出来的：也不往下钻，子节点只会更小。
+                if (window.PixelAreaOf(placed.Width, placed.Height)
+                        < DiskUsageViewWindow.MinimumTilePixelArea
+                    || tiles.Count >= maximumTileCount)
                 {
                     omitted++;
                     continue;

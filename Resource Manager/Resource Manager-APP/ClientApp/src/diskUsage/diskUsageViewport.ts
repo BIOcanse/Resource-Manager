@@ -132,6 +132,69 @@ export function pixelsToUnit(
   };
 }
 
+/**
+ * 当前看得见的那块单位空间矩形。
+ *
+ * 缩放 S 时画布正好覆盖 1/S 见方的一块，左上角就是平移量。
+ * 后端按这块矩形剪枝：在它外面的方格整棵跳过。
+ */
+export function visibleUnitRect(viewport: DiskUsageViewport): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  const visible = 1 / viewport.scale;
+  return {
+    minX: viewport.offsetX,
+    minY: viewport.offsetY,
+    maxX: Math.min(1, viewport.offsetX + visible),
+    maxY: Math.min(1, viewport.offsetY + visible)
+  };
+}
+
+/**
+ * 客户端此刻看到的东西，发给后端决定布局发哪些方格。
+ *
+ * 三样东西共同决定一个方格在屏幕上有多大：画布的物理像素尺寸
+ * （窗口缩放和屏幕缩放都算在里面）、滚轮倍数、以及看得见的那块范围。
+ */
+export interface DiskUsageViewWindow {
+  /** 画布的**物理**像素尺寸，也就是 CSS 尺寸乘以设备像素比。 */
+  pixelWidth: number;
+  pixelHeight: number;
+  scale: number;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** 放大到多少倍才值得换一份更细的布局。 */
+const refineScaleRatio = 1.45;
+
+/**
+ * 新视图比手上这份布局多看得见多少细节，值不值得再要一份。
+ *
+ * 两种情况要换：画面放大了（更多方格够得上像素门槛），
+ * 或者视野移到了原来那块范围之外（那边的方格当时根本没发下来）。
+ * 缩小和原地不动都不用换 —— 手上这份已经覆盖了，再要一次只是白跑一趟。
+ */
+export function needsMoreDetail(
+  shown: DiskUsageViewWindow,
+  next: DiskUsageViewWindow
+): boolean {
+  const shownDetail = shown.scale * Math.min(shown.pixelWidth, shown.pixelHeight);
+  const nextDetail = next.scale * Math.min(next.pixelWidth, next.pixelHeight);
+  if (nextDetail >= shownDetail * refineScaleRatio) {
+    return true;
+  }
+  return next.minX < shown.minX
+    || next.minY < shown.minY
+    || next.maxX > shown.maxX
+    || next.maxY > shown.maxY;
+}
+
 function clamp(value: number, low: number, high: number) {
   return value < low ? low : value > high ? high : value;
 }

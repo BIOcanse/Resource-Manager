@@ -21,6 +21,12 @@ export interface DiskUsageLayout {
   height: Float32Array;
   directoryFlags: Uint8Array;
   sizes: Float64Array;
+  /** 每个方格的名字，跟上面几个数组同序。画名字和悬停提示都直接读它。 */
+  names: readonly string[];
+  /** 目录方格里有多少个文件。文件方格是 0。 */
+  fileCounts: Float64Array;
+  /** 节点序号 → 上面数组里的下标。选中和悬停要按节点序号找回方格。 */
+  indexByNodeId: ReadonlyMap<number, number>;
 }
 
 export interface DiskUsageScanSummary {

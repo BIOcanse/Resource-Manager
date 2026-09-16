@@ -3,10 +3,13 @@ import {
   clampToBounds,
   edgePanDelta,
   identityViewport,
+  needsMoreDetail,
   panByPixels,
   pixelsToUnit,
   unitToPixels,
-  zoomAt
+  visibleUnitRect,
+  zoomAt,
+  type DiskUsageViewWindow
 } from "../src/diskUsage/diskUsageViewport.ts";
 import { LabelOccupancy } from "../src/diskUsage/diskUsageTreemapPaint.ts";
 
@@ -72,5 +75,49 @@ assert.equal(occupancy.tryReserve(200, 100, 80, 15), true, "错开的名字照�
 // 画布外的坐标不能越界写，也不能把不相干的位置误判成已占用。
 assert.equal(occupancy.tryReserve(-50, -50, 20, 15), true);
 assert.equal(occupancy.tryReserve(9_000, 9_000, 20, 15), true);
+
+// 看得见的那块：缩放 S 时正好是 1/S 见方，左上角就是平移量。
+assert.deepEqual(
+  visibleUnitRect(identityViewport),
+  { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+assert.deepEqual(
+  visibleUnitRect({ scale: 4, offsetX: 0.25, offsetY: 0.5 }),
+  { minX: 0.25, minY: 0.5, maxX: 0.5, maxY: 0.75 });
+// 不管平移到哪儿都不会报出图外的范围。
+const edgeRect = visibleUnitRect({ scale: 2, offsetX: 0.9, offsetY: 0.9 });
+assert.ok(edgeRect.maxX <= 1 && edgeRect.maxY <= 1);
+
+// 要不要换一份更细的布局。
+const shown: DiskUsageViewWindow = {
+  pixelWidth: 1600, pixelHeight: 1000, scale: 1,
+  minX: 0, minY: 0, maxX: 1, maxY: 1
+};
+assert.equal(needsMoreDetail(shown, shown), false, "没变就不该重新要");
+assert.equal(
+  needsMoreDetail(shown, { ...shown, scale: 1.1 }),
+  false,
+  "只动一点点不值得跑一趟");
+assert.equal(
+  needsMoreDetail(shown, { ...shown, scale: 4 }),
+  true,
+  "放大了就该把原先太小的方格要下来");
+// 窗口变大或屏幕像素变多，同样意味着能看见更多。
+assert.equal(
+  needsMoreDetail(shown, { ...shown, pixelWidth: 3840, pixelHeight: 2160 }),
+  true,
+  "画布变大也要更细");
+// 缩小回去用手上这份就够了，它覆盖的范围更广。
+assert.equal(
+  needsMoreDetail({ ...shown, scale: 4, minX: 0.2, maxX: 0.45, minY: 0.2, maxY: 0.45 },
+    { ...shown, scale: 2, minX: 0.25, maxX: 0.4, minY: 0.25, maxY: 0.4 }),
+  false,
+  "缩小不用重新要");
+// 移到原来没发过的地方就得要。
+assert.equal(
+  needsMoreDetail(
+    { ...shown, scale: 4, minX: 0.2, maxX: 0.45, minY: 0.2, maxY: 0.45 },
+    { ...shown, scale: 4, minX: 0.5, maxX: 0.75, minY: 0.2, maxY: 0.45 }),
+  true,
+  "移出原来那块就要重新要");
 
 console.log("diskUsageViewport: ok");
