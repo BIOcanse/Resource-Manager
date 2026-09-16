@@ -103,3 +103,152 @@
   color: var(--text);
   font-size: 15px;
 }
+
+/* 方格图本体。方格不画边框，区分靠内部明度与内描边，见 diskUsageTreemapPaint.ts。 */
+.disk-usage-treemap {
+  position: relative;
+  min-height: 420px;
+  height: clamp(420px, 58vh, 900px);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--surface-strong);
+}
+
+.disk-usage-treemap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  outline: none;
+}
+
+.disk-usage-treemap-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 悬停提示跟着指针走，和条形图的提示同一口径。 */
+.disk-usage-hover-tip {
+  position: fixed;
+  z-index: 40;
+  max-width: 460px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.disk-usage-hover-tip strong {
+  font-size: 13px;
+}
+
+.disk-usage-hover-path {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-omitted {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 右键菜单：上半是可选中复制的事实，下半才是动作。 */
+.disk-usage-context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 280px;
+  max-width: 420px;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--modal-shadow);
+  overflow: hidden;
+}
+
+.disk-usage-context-facts {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--divider-soft);
+  /* 这些是事实，不是按钮：不可点，但要能选中复制。 */
+  user-select: text;
+  cursor: text;
+}
+
+.disk-usage-context-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-context-facts dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.disk-usage-context-facts dt {
+  color: var(--muted);
+}
+
+.disk-usage-context-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.disk-usage-context-path {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.disk-usage-context-actions {
+  display: grid;
+  padding: 6px;
+  gap: 2px;
+}
+
+.disk-usage-context-actions button {
+  min-height: 30px;
+  justify-content: flex-start;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  background-image: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  padding: 0 10px;
+  box-shadow: none;
+}
+
+.disk-usage-context-actions button:not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.disk-usage-warning ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+/* 有结果之后设置区收起来，把版面让给方格图。 */
+.disk-usage-setup.collapsed .settings-row,
+.disk-usage-setup.collapsed .disk-usage-warning {
+  display: none;
+}
+
+.disk-usage-setup-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
