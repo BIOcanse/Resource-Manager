@@ -62,6 +62,22 @@ export const zhShellCopy = {
       masterFileTable: "读文件系统索引",
       directoryWalk: "逐级遍历目录"
     },
+    navigateUp: "上一层",
+    collapseSetup: "收起设置",
+    expandSetup: "重新设置",
+    scanTotals: (size: string, files: number, folders: number) =>
+      `${size} · ${files} 个文件 · ${folders} 个文件夹`,
+    fileCount: (count: number) => `${count} 个文件`,
+    omitted: (count: number) => `还有 ${count} 个太小的方格没有单独画出来。`,
+    copied: "已复制",
+    menuOpenLocation: "打开所在位置",
+    menuProperties: "属性",
+    menuCopyPath: "复制完整路径",
+    menuDrillDown: "只看这一层",
+    menuSize: "大小",
+    menuPath: "路径",
+    menuKindFile: "文件",
+    menuKindDirectory: "文件夹",
     emptyTitle: "还没有扫描结果",
     emptyDetail: "选好范围和方式，点「开始扫描」。"
   },

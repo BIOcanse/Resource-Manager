@@ -64,6 +64,22 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "diskUs
       masterFileTable: "Read the filesystem index",
       directoryWalk: "Walked the directories"
     },
+    navigateUp: "Up one level",
+    collapseSetup: "Hide options",
+    expandSetup: "Scan options",
+    scanTotals: (size: string, files: number, folders: number) =>
+      `${size} · ${files} files · ${folders} folders`,
+    fileCount: (count: number) => `${count} files`,
+    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
+    copied: "Copied",
+    menuOpenLocation: "Open file location",
+    menuProperties: "Properties",
+    menuCopyPath: "Copy full path",
+    menuDrillDown: "Zoom into this",
+    menuSize: "Size",
+    menuPath: "Path",
+    menuKindFile: "File",
+    menuKindDirectory: "Folder",
     emptyTitle: "Nothing scanned yet",
     emptyDetail: "Pick a scope and a method, then start the scan."
   },
