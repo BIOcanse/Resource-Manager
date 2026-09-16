@@ -152,6 +152,9 @@ export default function App() {
     if (activePage() === "optimization") {
       return uiText.page.optimization;
     }
+    if (activePage() === "diskUsage") {
+      return uiText.page.diskUsage;
+    }
     if (activePage() === "details") {
       return uiText.page.details;
     }

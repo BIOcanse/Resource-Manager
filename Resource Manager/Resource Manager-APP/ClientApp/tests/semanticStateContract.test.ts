@@ -17,7 +17,8 @@ const segmentedControl = readSource("ui/primitives/SegmentedControl.tsx");
 const radioGroup = readSource("ui/primitives/RadioGroup.tsx");
 const tabs = readSource("ui/primitives/Tabs.tsx");
 
-assert.equal(appShell.match(/aria-current=/g)?.length, 5);
+// 顶栏一级分页：监视控制台、组件与软件、性能优化、磁盘占用、详细信息、设置。
+assert.equal(appShell.match(/aria-current=/g)?.length, 6);
 assert.equal(optimization.match(/<SegmentedControl/g)?.length, 2);
 assert.match(details, /<TabsRoot/);
 assert.equal(details.match(/<TabsPanel/g)?.length, 4);

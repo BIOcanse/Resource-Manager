@@ -1,4 +1,10 @@
-export type PageId = "monitor" | "components" | "optimization" | "details" | "settings";
+export type PageId =
+  | "monitor"
+  | "components"
+  | "optimization"
+  | "diskUsage"
+  | "details"
+  | "settings";
 
 export interface BackendMessage {
   /** 消息域，见后端 BackendMessageDomains。 */
