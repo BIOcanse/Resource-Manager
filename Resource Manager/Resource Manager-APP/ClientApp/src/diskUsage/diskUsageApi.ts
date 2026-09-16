@@ -2,15 +2,24 @@ import {
   defineResponseDecoder,
   requireArray,
   requireBoolean,
+  requireFiniteNumber,
   requireNonEmptyString,
   requireNonNegativeSafeInteger,
   requireOneOf,
   requireRecord,
-  requireString
+  requireSafeInteger,
+  requireString,
+  requireStringArray,
+  ResponseDecodeError
 } from "../frontendRuntime/request/ResponseDecoder.ts";
 import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../text.ts";
 import type { DiskUsageVolume, DiskUsageVolumeKind } from "./diskUsageTypes.ts";
+import type {
+  DiskUsageLayout,
+  DiskUsageNode,
+  DiskUsageScanSummary
+} from "./diskUsageLayoutTypes.ts";
 
 const volumeKinds = [
   "physical",
@@ -49,6 +58,170 @@ export function getDiskUsageVolumes(
     url: "/api/disk-usage/volumes",
     fallbackError: uiText.diskUsage.noVolumes,
     decoder: diskUsageVolumesDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+
+/** 概况。还没扫过时后端返回空，解码成 null。 */
+export const diskUsageSummaryDecoder =
+  defineResponseDecoder<DiskUsageScanSummary | null>(
+    "disk-usage.summary.v1",
+    (value) => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+      const record = requireRecord(value, "$");
+      return {
+        scope: requireNonEmptyString(record.scope, "$.scope"),
+        mode: requireNonEmptyString(record.mode, "$.mode"),
+        target: requireString(record.target, "$.target"),
+        roots: requireStringArray(record.roots, "$.roots"),
+        scanKind: requireNonEmptyString(record.scanKind, "$.scanKind"),
+        skipped: requireArray(record.skipped, "$.skipped").map((row, index) => {
+          const entry = requireRecord(row, `$.skipped[${index}]`);
+          return {
+            target: requireString(entry.target, `$.skipped[${index}].target`),
+            reason: requireNonEmptyString(entry.reason, `$.skipped[${index}].reason`)
+          };
+        }),
+        completedAt: requireNonEmptyString(record.completedAt, "$.completedAt"),
+        durationSeconds: requireFiniteNumber(record.durationSeconds, "$.durationSeconds"),
+        totalBytes: requireNonNegativeSafeInteger(record.totalBytes, "$.totalBytes"),
+        scannedBytes: requireNonNegativeSafeInteger(record.scannedBytes, "$.scannedBytes"),
+        fileCount: requireNonNegativeSafeInteger(record.fileCount, "$.fileCount"),
+        directoryCount: requireNonNegativeSafeInteger(
+          record.directoryCount,
+          "$.directoryCount"),
+        skippedCount: requireNonNegativeSafeInteger(record.skippedCount, "$.skippedCount")
+      };
+    });
+
+/**
+ * 方格布局。方格按并列数组过来，这里直接转成定型数组：
+ * 绘制是热路径，一次可能几万个方格，不为每个方格建对象。
+ */
+export const diskUsageLayoutDecoder = defineResponseDecoder<DiskUsageLayout | null>(
+  "disk-usage.layout.v1",
+  (value) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const record = requireRecord(value, "$");
+    const nodeIds = requireArray(record.nodeIds, "$.nodeIds");
+    const length = nodeIds.length;
+    const requireColumn = (raw: unknown, path: string) => {
+      const column = requireArray(raw, path);
+      if (column.length !== length) {
+        throw new ResponseDecodeError(path, `column of ${length} values`);
+      }
+      return column;
+    };
+
+    const parentIds = requireColumn(record.parentIds, "$.parentIds");
+    const depths = requireColumn(record.depths, "$.depths");
+    const x = requireColumn(record.x, "$.x");
+    const y = requireColumn(record.y, "$.y");
+    const width = requireColumn(record.width, "$.width");
+    const height = requireColumn(record.height, "$.height");
+    const directoryFlags = requireColumn(record.directoryFlags, "$.directoryFlags");
+    const sizes = requireColumn(record.sizes, "$.sizes");
+
+    const layout: DiskUsageLayout = {
+      rootNodeId: requireSafeInteger(record.rootNodeId, "$.rootNodeId"),
+      rootPath: requireString(record.rootPath, "$.rootPath"),
+      rootSizeBytes: requireNonNegativeSafeInteger(
+        record.rootSizeBytes,
+        "$.rootSizeBytes"),
+      omittedCount: requireNonNegativeSafeInteger(record.omittedCount, "$.omittedCount"),
+      nodeIds: new Int32Array(length),
+      parentIds: new Int32Array(length),
+      depths: new Int32Array(length),
+      x: new Float32Array(length),
+      y: new Float32Array(length),
+      width: new Float32Array(length),
+      height: new Float32Array(length),
+      directoryFlags: new Uint8Array(length),
+      sizes: new Float64Array(length)
+    };
+
+    for (let index = 0; index < length; index++) {
+      layout.nodeIds[index] = requireSafeInteger(nodeIds[index], `$.nodeIds[${index}]`);
+      layout.parentIds[index] = requireSafeInteger(
+        parentIds[index],
+        `$.parentIds[${index}]`);
+      layout.depths[index] = requireSafeInteger(depths[index], `$.depths[${index}]`);
+      layout.x[index] = requireFiniteNumber(x[index], `$.x[${index}]`);
+      layout.y[index] = requireFiniteNumber(y[index], `$.y[${index}]`);
+      layout.width[index] = requireFiniteNumber(width[index], `$.width[${index}]`);
+      layout.height[index] = requireFiniteNumber(height[index], `$.height[${index}]`);
+      layout.directoryFlags[index] = requireBoolean(
+        directoryFlags[index],
+        `$.directoryFlags[${index}]`) ? 1 : 0;
+      layout.sizes[index] = requireFiniteNumber(sizes[index], `$.sizes[${index}]`);
+    }
+    return layout;
+  });
+
+export const diskUsageNodeDecoder = defineResponseDecoder<DiskUsageNode>(
+  "disk-usage.node.v1",
+  (value) => {
+    const record = requireRecord(value, "$");
+    return {
+      nodeId: requireNonNegativeSafeInteger(record.nodeId, "$.nodeId"),
+      parentNodeId: requireNonNegativeSafeInteger(record.parentNodeId, "$.parentNodeId"),
+      name: requireString(record.name, "$.name"),
+      fullPath: requireString(record.fullPath, "$.fullPath"),
+      isDirectory: requireBoolean(record.isDirectory, "$.isDirectory"),
+      sizeBytes: requireNonNegativeSafeInteger(record.sizeBytes, "$.sizeBytes"),
+      allocatedBytes: requireNonNegativeSafeInteger(
+        record.allocatedBytes,
+        "$.allocatedBytes"),
+      fileCount: requireNonNegativeSafeInteger(record.fileCount, "$.fileCount")
+    };
+  });
+
+export function getDiskUsageSummary(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<DiskUsageScanSummary | null> {
+  return requestClient.request({
+    key: "disk-usage.summary",
+    url: "/api/disk-usage/summary",
+    fallbackError: uiText.diskUsage.emptyTitle,
+    decoder: diskUsageSummaryDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+export function getDiskUsageLayout(
+  requestClient: Pick<RequestClient, "request">,
+  nodeId?: number,
+  signal?: AbortSignal
+): Promise<DiskUsageLayout | null> {
+  const query = typeof nodeId === "number" ? `?node=${nodeId}` : "";
+  return requestClient.request({
+    key: "disk-usage.layout",
+    url: `/api/disk-usage/layout${query}`,
+    fallbackError: uiText.diskUsage.emptyTitle,
+    decoder: diskUsageLayoutDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+export function getDiskUsageNode(
+  requestClient: Pick<RequestClient, "request">,
+  nodeId: number,
+  signal?: AbortSignal
+): Promise<DiskUsageNode> {
+  return requestClient.request({
+    key: "disk-usage.node",
+    url: `/api/disk-usage/node/${nodeId}`,
+    fallbackError: uiText.diskUsage.emptyTitle,
+    decoder: diskUsageNodeDecoder,
     signal,
     request: { method: "GET" }
   });

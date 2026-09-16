@@ -1,4 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
+import type { JSX } from "solid-js";
 import { formatBytes, formatBytePair } from "../presentation/byteUnits.ts";
 import { pickShellFolder } from "../utils.ts";
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
@@ -20,11 +21,16 @@ export function DiskUsagePage(props: {
   volumes: DiskUsageVolume[];
   scanning: boolean;
   onScan: (scope: DiskUsageScanScope, mode: DiskUsageScanMode, target: string) => void;
+  /** 扫描结果面板。还没有结果时由这里出空态。 */
+  children?: JSX.Element;
 }) {
   const [scope, setScope] = createSignal<DiskUsageScanScope>("allVolumes");
   const [mode, setMode] = createSignal<DiskUsageScanMode>("fast");
   const [volumeId, setVolumeId] = createSignal("");
   const [folder, setFolder] = createSignal("");
+  // 有结果之后默认收起设置区；用户想重扫再展开。
+  const [setupOpen, setSetupOpen] = createSignal(true);
+  const collapsed = () => Boolean(props.children) && !setupOpen();
 
   const scannableVolumes = () => props.volumes.filter((volume) => volume.isReady);
   const selectedVolume = () =>
@@ -57,18 +63,36 @@ export function DiskUsagePage(props: {
 
   return (
     <div class="disk-usage-page">
-      <div class="panel disk-usage-setup">
+      <div class="panel disk-usage-setup" classList={{ collapsed: collapsed() }}>
         <div class="panel-header">
           <div class="optimization-heading">
             <span>{uiText.diskUsage.intro}</span>
           </div>
-          <button
-            type="button"
-            disabled={!canScan()}
-            onClick={() => props.onScan(scope(), mode(), target())}
-          >
-            {props.scanning ? uiText.diskUsage.scanning : uiText.diskUsage.scan}
-          </button>
+          <div class="disk-usage-setup-actions">
+            <Show when={props.children}>
+              <button
+                class="secondary"
+                type="button"
+                aria-expanded={setupOpen()}
+                onClick={() => setSetupOpen((open) => !open)}
+              >
+                {setupOpen()
+                  ? uiText.diskUsage.collapseSetup
+                  : uiText.diskUsage.expandSetup}
+              </button>
+            </Show>
+            <button
+              type="button"
+              disabled={!canScan()}
+              onClick={() => props.onScan(scope(), mode(), target())}
+            >
+              {props.scanning
+                ? uiText.diskUsage.scanning
+                : props.children
+                  ? uiText.diskUsage.rescan
+                  : uiText.diskUsage.scan}
+            </button>
+          </div>
         </div>
 
         <div class="settings-row">
@@ -141,9 +165,7 @@ export function DiskUsagePage(props: {
         </Show>
       </div>
 
-      <Show
-        when={scope() !== "folder"}
-      >
+      <Show when={scope() !== "folder" && !collapsed()}>
         <div class="panel disk-usage-volumes">
           <div class="panel-header">
             <div class="optimization-heading">
@@ -206,12 +228,19 @@ export function DiskUsagePage(props: {
         </div>
       </Show>
 
-      <div class="panel disk-usage-result">
-        <div class="optimization-empty disk-usage-empty">
-          <strong>{uiText.diskUsage.emptyTitle}</strong>
-          <span>{uiText.diskUsage.emptyDetail}</span>
-        </div>
-      </div>
+      <Show
+        when={props.children}
+        fallback={(
+          <div class="panel disk-usage-result">
+            <div class="optimization-empty disk-usage-empty">
+              <strong>{uiText.diskUsage.emptyTitle}</strong>
+              <span>{uiText.diskUsage.emptyDetail}</span>
+            </div>
+          </div>
+        )}
+      >
+        {props.children}
+      </Show>
     </div>
   );
 }

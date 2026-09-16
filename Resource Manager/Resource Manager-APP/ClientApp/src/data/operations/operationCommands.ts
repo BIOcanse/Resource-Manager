@@ -16,6 +16,18 @@ export function componentInstallCommand(
   };
 }
 
+export function diskUsageScanCommand(
+  request: { scope: string; mode: string; target: string }
+): OperationCommandDescriptor {
+  return {
+    // 同一时刻只允许一个磁盘扫描，键固定，重复提交由协调器自己挡。
+    key: "disk-usage.scan",
+    url: "/api/disk-usage/scan",
+    body: request,
+    fallbackError: uiText.diskUsage.scan
+  };
+}
+
 export function softwareUninstallCommand(
   id: string,
   confirmOperation: boolean
