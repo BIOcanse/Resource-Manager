@@ -35,6 +35,7 @@
 *.key
 /Resource Manager/Config/
 /Resource Manager/UserData/
+/Resource Manager/Resource Manager-APP/UserData/
 /Resource Manager/Dependencies/
 /Resource Manager/Misc/
 /Resource Manager/Bin/
