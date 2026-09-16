@@ -16,9 +16,9 @@ public sealed class GpuAllocationTableTests
             new(41, "a", null, 12, 0, 0, "12 B") { SharedValue = 4, ProcessStartKey = 100 },
             new(42, "b", null, 16, 0, 0, "16 B") { SharedValue = 6, ProcessStartKey = 120 }
         ];
-        var software = new ResourceSoftwareSegment("app", "App", "Other", "Other", 28, 0, "28 B", 2, processes)
+        var software = new ResourceSoftwareSegment("app", "App", "Other", "Other", 28, 0, 2, processes)
         { SharedValue = 10 };
-        var bar = new ResourceBreakdownBar("gpu.1.vram", "GPU1", "B", "capacity", 28, 32, 87.5, "28 B", [software])
+        var bar = new ResourceBreakdownBar("gpu.1.vram", "GPU1", "B", "capacity", 28, 32, 87.5, [software])
         { SharedValue = 10 };
         var request = new ResourceTableRequest(["gpu.1.vram"], "gpu.1.vram", "desc", "software", new HashSet<string>(), true);
         var snapshot = new ResourceTableProjector().Project(new(DateTimeOffset.UtcNow, [bar]), request);

@@ -13,5 +13,4 @@ public sealed record ResourceResidualBreakdownRequest(
     double Value,
     double CapacityValue,
     double SystemPercent,
-    string DisplayValue,
     IReadOnlySet<int> KnownProcessIds);

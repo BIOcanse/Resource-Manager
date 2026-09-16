@@ -260,7 +260,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             var gpu = hardwareSnapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex);
             return new ResourceBreakdownBar(metricId, $"GPU{gpuIndex} 显存占用", "B", scaleMode,
-                null, gpu?.TotalMemoryBytes ?? 0, null, "--", [], SamplingObservationStatus.Unavailable,
+                null, gpu?.TotalMemoryBytes ?? 0, null, [], SamplingObservationStatus.Unavailable,
                 SamplingObservationStatus.Unavailable);
         }
 
@@ -276,9 +276,10 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (snapshot.Datasets.TryGetValue(datasetId, out var observation)
             && observation.Status == SamplingObservationStatus.Current
             && snapshot.Items.TryGetValue(metricId, out metric!)
-            && !string.IsNullOrWhiteSpace(metric.DisplayValue)
-            && !metric.DisplayValue.Equals("N/A", StringComparison.OrdinalIgnoreCase)
-            && !metric.DisplayValue.Equals("--", StringComparison.OrdinalIgnoreCase))
+            // 可用与否看读数本身，不看显示串：容量类指标已经不带显示串了，
+            // 拿字符串判空会把内存和显存整条判成不可用。
+            && metric.NumericValue is double reading
+            && double.IsFinite(reading))
         {
             return true;
         }
@@ -303,7 +304,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             null,
             null,
             null,
-            "N/A",
             [],
             NormalizeObservationStatus(observationStatus),
             NormalizeObservationStatus(attributionStatus));

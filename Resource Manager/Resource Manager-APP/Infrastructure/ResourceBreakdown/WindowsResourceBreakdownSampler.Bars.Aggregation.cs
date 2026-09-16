@@ -131,7 +131,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             totalValue,
             capacityValue,
             SanitizePercent(totalSystemPercent),
-            FormatValue(totalValue, capacityValue, isBytes, isBytesPerSecond),
             orderedSoftwareGroups,
             SamplingObservationStatus.Current,
             attributionStatus);
@@ -167,7 +166,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             process,
             value,
             SanitizePercent(systemPercent),
-            FormatValue(value, capacityValue, isBytes, isBytesPerSecond),
             baseScore);
     }
 
@@ -188,7 +186,6 @@ public sealed partial class WindowsResourceBreakdownSampler
                 process.Value,
                 process.SystemPercent,
                 totalValue > 0 ? process.Value * 100 / totalValue : 0,
-                process.DisplayValue,
                 process.Process.UserName,
                 process.Process.Architecture,
                 ResourceProcessAttributionKinds.Process,
@@ -205,7 +202,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             group.Software.DisplayKind,
             totalValue,
             SanitizePercent(systemPercent),
-            FormatValue(totalValue, capacityValue, isBytes, isBytesPerSecond),
             group.Processes.Count,
             processSegments,
             group.BaseScore);
@@ -242,14 +238,12 @@ public sealed partial class WindowsResourceBreakdownSampler
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
         var systemPercent = capacityValue > 0 ? totalValue * 100 / capacityValue : 0;
-        var displayValue = FormatValue(totalValue, capacityValue, isBytes, isBytesPerSecond);
         var categories = residualBreakdownProvider.CreateResidualSegments(new ResourceResidualBreakdownRequest(
             metricId,
             label,
             totalValue,
             capacityValue,
             SanitizePercent(systemPercent),
-            displayValue,
             knownProcessIds));
         return new ResourceSoftwareSegment(
             // 名字为空：前端按这个 id 里的度量名出「系统/驱动保留 · 某度量」。
@@ -259,7 +253,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             SoftwareDisplayKinds.SystemResidual,
             totalValue,
             SanitizePercent(systemPercent),
-            displayValue,
             0,
             categories,
             0);

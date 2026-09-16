@@ -334,37 +334,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         return capacityValue > 0 ? Math.Min(value, capacityValue) : value;
     }
 
-    private static string FormatValue(double value, double capacity, bool isBytes, bool isBytesPerSecond = false)
-    {
-        if (isBytesPerSecond)
-        {
-            return $"{FormatBytes(value)}/s";
-        }
 
-        if (!isBytes)
-        {
-            return $"{value:0.0}%";
-        }
-
-        return capacity > 0
-            ? $"{FormatBytes(value)} / {FormatBytes(capacity)}"
-            : FormatBytes(value);
-    }
-
-    private static string FormatBytes(double value)
-    {
-        var units = new[] { "B", "KB", "MB", "GB", "TB" };
-        var size = Math.Max(0, value);
-        var unit = 0;
-        while (size >= 1024 && unit < units.Length - 1)
-        {
-            size /= 1024;
-            unit++;
-        }
-
-        var digits = unit == 0 ? 0 : size >= 10 ? 1 : 2;
-        return $"{size.ToString($"F{digits}")} {units[unit]}";
-    }
 
     private static bool MatchesProcessName(string actualName, string declaredName)
     {
@@ -442,7 +412,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         ProcessResourceSample Process,
         double Value,
         double SystemPercent,
-        string DisplayValue,
         double BaseScore);
 
     private static string? CleanMetadata(string? value)
