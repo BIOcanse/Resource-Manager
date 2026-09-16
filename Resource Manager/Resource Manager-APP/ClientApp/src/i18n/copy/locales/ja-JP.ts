@@ -2010,7 +2010,8 @@ const jaJpAppCopy: AppCopy = {
       installerDownloaded: "インストーラーを管理下の依存関係ディレクトリにダウンロードしました。",
       installerDownloadedVersion: (value: string) => `${value} のインストーラーを管理下の依存関係ディレクトリにダウンロードしました。`,
       sharedRuntimeInstalled: "共有 WebView2 ランタイムがインストールされ、検出されました。",
-      installerLaunched: "インストーラーが表示されました。このプロバイダーを使う前にベンダーのインストール手順を完了してください。"
+      installerLaunched: "インストーラーが表示されました。このプロバイダーを使う前にベンダーのインストール手順を完了してください。",
+      componentFilesExtracted: "コンポーネントのファイルをインストール先に展開しました。"
     },
     gpuPlacement: {
       singleAdapter: "このマシンには GPU が 1 つしかないため、GPU スケジューリングに選択肢がありません。"

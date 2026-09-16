@@ -6,6 +6,9 @@ namespace ResourceManager.App.Infrastructure.CpuTopology;
 
 public sealed partial class WindowsCpuTopologyReader
 {
+    /// <summary>第一次采样时用来立刻补上第二次读数的间隔。</summary>
+    private static readonly TimeSpan FirstSampleSpacing = TimeSpan.FromMilliseconds(300);
+
     private IReadOnlyList<double?> ReadLogicalProcessorUsage(
         int logicalProcessorCount,
         ICollection<string> notes)
@@ -16,12 +19,23 @@ public sealed partial class WindowsCpuTopologyReader
             {
                 var current = QueryProcessorTimes();
                 var previous = previousTimes;
-                previousTimes = current;
                 if (previous is null || previous.Count != current.Count)
                 {
-                    notes.Add("每逻辑处理器占用需要两次采样后显示；当前为首次采样。");
-                    return Enumerable.Repeat<double?>(null, Math.Max(logicalProcessorCount, current.Count)).ToArray();
+                    // 占用是两次采样的差值。采样周期可能长达一分钟，如果第一次
+                    // 只记基线就返回，用户打开 CPU 拓扑页后要盯着一整屏「--」
+                    // 等下一个周期。这里直接补第二次采样，让首张快照就有读数。
+                    previous = current;
+                    Thread.Sleep(FirstSampleSpacing);
+                    current = QueryProcessorTimes();
+                    if (previous.Count != current.Count)
+                    {
+                        previousTimes = current;
+                        notes.Add("每逻辑处理器占用需要两次采样后显示；当前为首次采样。");
+                        return Enumerable.Repeat<double?>(null, Math.Max(logicalProcessorCount, current.Count)).ToArray();
+                    }
                 }
+
+                previousTimes = current;
 
                 var result = new double?[Math.Max(logicalProcessorCount, current.Count)];
                 for (var index = 0; index < current.Count; index++)

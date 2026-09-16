@@ -2010,7 +2010,8 @@ const koKrAppCopy: AppCopy = {
       installerDownloaded: "설치 프로그램을 관리되는 종속 항목 디렉터리에 내려받았습니다.",
       installerDownloadedVersion: (value: string) => `${value} 설치 프로그램을 관리되는 종속 항목 디렉터리에 내려받았습니다.`,
       sharedRuntimeInstalled: "공유 WebView2 런타임이 설치되고 감지되었습니다.",
-      installerLaunched: "설치 프로그램이 표시되었습니다. 이 공급자를 사용하기 전에 공급업체 설치 안내를 완료하세요."
+      installerLaunched: "설치 프로그램이 표시되었습니다. 이 공급자를 사용하기 전에 공급업체 설치 안내를 완료하세요.",
+      componentFilesExtracted: "구성 요소 파일을 설치 폴더에 압축 해제했습니다."
     },
     gpuPlacement: {
       singleAdapter: "이 컴퓨터에는 GPU가 하나뿐이어서 GPU 스케줄링에 선택할 대상이 없습니다."

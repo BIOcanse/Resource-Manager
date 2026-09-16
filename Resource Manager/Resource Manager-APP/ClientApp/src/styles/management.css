@@ -67,11 +67,22 @@
   white-space: nowrap;
 }
 
-.management-tab:hover,
 .management-tab.active {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--on-accent);
+}
+
+/* 与顶栏页签同一口径：悬停是淡强调色，实心强调色只留给当前子页。 */
+.management-tab:not(.active):hover {
+  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.management-tab.active:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .management-list {

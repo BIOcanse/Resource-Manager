@@ -1,4 +1,4 @@
-﻿namespace ResourceManager.App.Domain.Messages;
+namespace ResourceManager.App.Domain.Messages;
 
 /// <summary>
 /// 消息域。每个域内的码从 1 开始，0 保留为「未指定」。
@@ -96,6 +96,9 @@ public static class BackendMessageCodes
 
         /// <summary>安装器已可见启动，需要用户完成厂商安装提示。参数：无。</summary>
         public const byte InstallerLaunched = 22;
+
+        /// <summary>压缩包形式的组件已解压到安装目录。参数：无。</summary>
+        public const byte ComponentFilesExtracted = 23;
     }
 
     public static class Software

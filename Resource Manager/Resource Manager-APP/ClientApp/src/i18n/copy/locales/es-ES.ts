@@ -2010,7 +2010,8 @@ const esEsAppCopy: AppCopy = {
       installerDownloaded: "El instalador se ha descargado en el directorio de dependencias gestionado.",
       installerDownloadedVersion: (value: string) => `El instalador de ${value} se ha descargado en el directorio de dependencias gestionado.`,
       sharedRuntimeInstalled: "El runtime compartido de WebView2 está instalado y detectado.",
-      installerLaunched: "El instalador se ha abierto. Completa las indicaciones de instalación del proveedor antes de usarlo."
+      installerLaunched: "El instalador se ha abierto. Completa las indicaciones de instalación del proveedor antes de usarlo.",
+      componentFilesExtracted: "Los archivos del componente se extrajeron en la carpeta de instalación."
     },
     gpuPlacement: {
       singleAdapter: "Esta máquina solo tiene una GPU, así que la programación de GPU no tiene ningún destino que elegir."

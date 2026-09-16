@@ -23,7 +23,8 @@ export const zhBackendMessagesCopy = {
       installerDownloaded: "安装器已下载到托管依赖目录。",
       installerDownloadedVersion: (value: string) => `已下载 ${value} 的安装器到托管依赖目录。`,
       sharedRuntimeInstalled: "共享 WebView2 Runtime 已安装并通过检测。",
-      installerLaunched: "安装器已可见启动。使用该 Provider 前需要完成厂商安装提示。"
+      installerLaunched: "安装器已可见启动。使用该 Provider 前需要完成厂商安装提示。",
+      componentFilesExtracted: "组件文件已解压到安装目录。"
     },
     gpuPlacement: {
       singleAdapter: "这台机器只有一个显卡，GPU 调度没有可选目标。"

@@ -17,6 +17,10 @@
   --accent: color(display-p3 0.055 0.560 0.486);
   --accent-strong: color(display-p3 0.040 0.435 0.380);
   --accent-soft: color(display-p3 0.930 0.982 0.970);
+  /* 按钮 hover 用的强调色。--accent-strong 是给文字用的高对比色，直接拿来刷底
+     会比常态深一大截；这里取两者之间，hover 是「看得出来」而不是「变了一块」。
+     两个来源都在各主题里重定义，这一条只写一次就跟着主题走。 */
+  --accent-hover: color-mix(in oklab, var(--accent-strong) 45%, var(--accent));
   --control-disabled-bg: color-mix(in oklab, var(--surface-strong) 58%, var(--surface));
   --control-disabled-border: color-mix(in oklab, var(--line) 72%, var(--surface));
   --control-disabled-text: var(--muted);
