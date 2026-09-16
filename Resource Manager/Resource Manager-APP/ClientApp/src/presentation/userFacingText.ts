@@ -210,26 +210,19 @@ export function componentDisplayName(componentId: unknown, fallback?: unknown) {
 export function componentPurpose(componentId: unknown) {
   const purposes = uiText.status.component.purposes;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
-    case "amd-smu-pawnio-provider":
-    case "amd-ryzen-master-monitoring-sdk":
-      return purposes.amdCpuSensors;
-    case "msi-afterburner":
-      return purposes.gpuOptionalMonitoring;
-    case "librehardwaremonitor-provider":
-      return purposes.generalHardwareSensors;
-    case "notebook-fancontrol-provider":
-    case "notebook-oem-fan-provider":
-      return purposes.notebookFan;
-    case "windows-performance-toolkit":
-    case "latencymon":
-      return purposes.latencyAnalysis;
-    case "nvidia-nvml-provider":
-    case "nvidia-nvapi-provider":
-      return purposes.nvidiaGpu;
-    case "amd-adlx-provider":
-      return purposes.amdGpu;
-    case "intel-pcm-provider":
-      return purposes.intelCpu;
+    case "msi-afterburner": return purposes.msiAfterburner;
+    case "amd-ryzen-master-monitoring-sdk": return purposes.amdRyzenSdk;
+    case "amd-smu-pawnio-provider": return purposes.amdSmu;
+    case "intel-pcm-provider": return purposes.intelCpu;
+    case "librehardwaremonitor-provider": return purposes.generalHardwareSensors;
+    case "nvidia-nvml-provider": return purposes.nvidiaNvml;
+    case "nvidia-nvapi-provider": return purposes.nvidiaNvapi;
+    case "amd-adlx-provider": return purposes.amdGpu;
+    case "notebook-fancontrol-provider": return purposes.notebookEcFan;
+    case "notebook-oem-fan-provider": return purposes.notebookOemFan;
+    case "latencymon": return purposes.latencyMon;
+    case "windows-performance-toolkit": return purposes.windowsPerformanceToolkit;
+    case "shared-webview2-runtime": return purposes.sharedWebView2Runtime;
     default:
       return uiText.status.component.purposeFallback;
   }

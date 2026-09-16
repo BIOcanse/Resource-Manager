@@ -96,14 +96,19 @@ export const zhStatusCopy = {
         intelPcm: "Intel 处理器监控支持"
       },
       purposes: {
-        amdCpuSensors: "补充 AMD 处理器的功耗、温度、电压和频率信息。",
-        gpuOptionalMonitoring: "提供可选的显卡监控信息。",
-        generalHardwareSensors: "补充风扇、温度、电压和主板等硬件信息。",
-        notebookFan: "补充笔记本风扇转速和运行状态。",
-        latencyAnalysis: "用于进一步分析系统延迟和性能问题。",
-        nvidiaGpu: "补充 NVIDIA 显卡的频率、温度、功耗和风扇信息。",
-        amdGpu: "补充 AMD 显卡的频率、温度、功耗和风扇信息。",
-        intelCpu: "补充 Intel 处理器的功耗、频率和温度信息。"
+        msiAfterburner: "装了 Afterburner 就顺便读它的显卡数据，不装也不影响。",
+        amdRyzenSdk: "AMD 官方 SDK，读功耗、电压、电流和温度。",
+        amdSmu: "直接读 SMU 数据表，比官方 SDK 多出 STAPM 和每核读数。",
+        intelCpu: "读 Intel 处理器的功耗、频率和温度。",
+        generalHardwareSensors: "主板、风扇、温度、电压的通用来源，多数机器够用。",
+        nvidiaNvml: "从显卡驱动读频率、显存、功耗和温度。",
+        nvidiaNvapi: "补上驱动基础接口没给的风扇、电压和电流。",
+        amdGpu: "读 AMD 显卡的频率、温度、功耗和风扇。",
+        notebookEcFan: "从笔记本 EC 读风扇，别的路子都读不到时用它。",
+        notebookOemFan: "走厂商驱动读 CPU/GPU 风扇，认得出的机型更准。",
+        latencyMon: "排查中断延迟和卡顿，看得出是哪个驱动在拖后腿。",
+        windowsPerformanceToolkit: "微软官方的 WPR / Xperf，做更深的系统级追踪。",
+        sharedWebView2Runtime: "界面用的 Chromium 运行时，全机共享。"
       },
       categories: {
         performanceAnalysis: "性能分析工具",

@@ -396,14 +396,19 @@ const koKrAppCopy: AppCopy = {
         intelPcm: "Intel 프로세서 모니터링 지원"
       },
       purposes: {
-        amdCpuSensors: "AMD 프로세서의 전력, 온도, 전압, 클록 정보를 추가합니다.",
-        gpuOptionalMonitoring: "선택적인 GPU 모니터링 정보를 제공합니다.",
-        generalHardwareSensors: "팬, 온도, 전압, 메인보드 하드웨어 정보를 추가합니다.",
-        notebookFan: "노트북 팬 속도와 동작 상태를 추가합니다.",
-        latencyAnalysis: "시스템 지연과 성능 문제를 더 조사하는 데 사용합니다.",
-        nvidiaGpu: "NVIDIA GPU의 클록, 온도, 전력, 팬 정보를 추가합니다.",
-        amdGpu: "AMD GPU의 클록, 온도, 전력, 팬 정보를 추가합니다.",
-        intelCpu: "Intel 프로세서의 전력, 클록, 온도 정보를 추가합니다."
+        msiAfterburner: "Afterburner가 이미 설치돼 있으면 그 GPU 값도 함께 읽습니다. 선택 사항입니다.",
+        amdRyzenSdk: "AMD 공식 SDK. Ryzen의 전력, 전압, 전류, 온도를 읽습니다.",
+        amdSmu: "SMU 테이블을 직접 읽어 SDK에는 없는 STAPM과 코어별 값까지 가져옵니다.",
+        intelCpu: "Intel 프로세서의 전력, 주파수, 온도를 읽습니다.",
+        generalHardwareSensors: "메인보드, 팬, 온도, 전압의 범용 소스. 대부분의 PC는 이것으로 충분합니다.",
+        nvidiaNvml: "설치된 드라이버에서 NVIDIA의 클럭, VRAM, 전력, 온도를 읽습니다.",
+        nvidiaNvapi: "NVIDIA 기본 인터페이스가 주지 않는 팬, 전압, 전류를 채웁니다.",
+        amdGpu: "AMD 그래픽카드의 클럭, 온도, 전력, 팬을 읽습니다.",
+        notebookEcFan: "범용 모니터링과 그래픽 드라이버 모두 팬을 못 읽을 때 노트북 EC에서 읽습니다.",
+        notebookOemFan: "제조사 드라이버로 CPU/GPU 팬 속도를 읽습니다. 인식되는 모델에서 더 정확합니다.",
+        latencyMon: "인터럽트 지연과 끊김을 살펴 어떤 드라이버가 시스템을 붙잡는지까지 확인합니다.",
+        windowsPerformanceToolkit: "Microsoft 공식 WPR / Xperf. 더 깊은 시스템 추적용입니다.",
+        sharedWebView2Runtime: "화면이 돌아가는 Chromium 런타임. PC 전체가 공유합니다."
       },
       categories: {
         performanceAnalysis: "성능 분석 도구",

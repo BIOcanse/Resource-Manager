@@ -63,7 +63,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                 (uint)NativeReportPersistenceKind.Metadata,
                 metadata.OperationKind);
             Assert.True(metadata.MutationVersion > 0);
-            Assert.Equal(7, owner.GetStatus().ConfiguredRuleCount);
+            Assert.Equal(8, owner.GetStatus().ConfiguredRuleCount);
             Assert.Equal(1, metrics.ActiveSubscriptions);
             Assert.Equal(1, resources.ActiveSubscriptions);
             Assert.Equal(1, interrupts.ActiveSubscriptions);
@@ -300,8 +300,10 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                 systemPercent: 18));
             var activated = await owner.RefreshReportsAsync(timeout.Token);
 
+            // 内存有两条规则（百分比与绝对字节），但它们共用一个 family，
+            // 所以同一个软件只出一条报告 —— 任一越线即可，不是各报各的。
             var report = Assert.Single(activated.Reports);
-            Assert.Equal(1, activated.Status.AvailableRuleCount);
+            Assert.Equal(2, activated.Status.AvailableRuleCount);
             Assert.Equal("software:editor", report.Target.SoftwareId);
             Assert.Equal(OptimizationReportTargetTypes.Software, report.Target.TargetType);
             Assert.Equal(OptimizationResourceKinds.Memory, report.Evidence.ResourceKind);
@@ -553,8 +555,11 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
                 resources.Publish(empty with { Bars = [empty.Bars[0] with { Software = [] }] });
                 await owner.RefreshReportsAsync(timeout.Token);
             }
+            // 内存有两条规则（百分比 1037、绝对字节 1038），各自有一行观测。
+            // 这个用例盯的是百分比那条的缺席检查点。
             var before = Assert.Single(await persistence.LoadAsync(timeout.Token),
-                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation);
+                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
+                    && row.RuleHandle == 1037);
             Assert.Equal(7U, before.ConsecutiveMisses);
             Assert.Equal((ulong)initialSamples, before.SampleCount);
             Assert.Equal(0U, before.Flags & (uint)NativeReportPersistenceFlags.Active);
@@ -563,7 +568,8 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             provider.Publish(CompiledRuntimePlan.Default with { Version = 2, HostManager = nextPlan });
             var reloaded = await owner.RefreshReportsAsync(timeout.Token);
             var after = Assert.Single(await persistence.LoadAsync(timeout.Token),
-                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation);
+                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
+                    && row.RuleHandle == 1037);
             Assert.Equal(2UL, deployment.Snapshot.ReportCoordinator.AppliedPlanEpoch);
             Assert.False(deployment.Snapshot.ReportCoordinator.LastFailure?.Active ?? false);
             Assert.Equal(before.IdentityHandle, after.IdentityHandle);
@@ -628,8 +634,10 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             pausedSource.Release();
             await Task.WhenAll(older, newer).WaitAsync(timeout.Token);
 
+            // 内存两条规则各有一行观测，这里只看百分比那条的采样计数。
             var observation = Assert.Single(await persistence.LoadAsync(timeout.Token),
-                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation);
+                row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
+                    && row.RuleHandle == 1037);
             Assert.Equal(2UL, observation.SampleCount);
             Assert.Equal(2U, observation.ConsecutiveHits);
             Assert.Empty((await owner.GetReportsAsync(timeout.Token)).Reports);

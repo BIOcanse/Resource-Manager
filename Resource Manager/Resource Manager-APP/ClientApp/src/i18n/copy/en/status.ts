@@ -97,14 +97,19 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
         intelPcm: "Intel processor monitoring support"
       },
       purposes: {
-        amdCpuSensors: "Adds AMD processor power, temperature, voltage, and frequency information.",
-        gpuOptionalMonitoring: "Provides optional GPU monitoring information.",
-        generalHardwareSensors: "Adds fan, temperature, voltage, and motherboard hardware information.",
-        notebookFan: "Adds notebook fan speed and running state.",
-        latencyAnalysis: "Used to investigate system latency and performance problems further.",
-        nvidiaGpu: "Adds NVIDIA GPU frequency, temperature, power, and fan information.",
-        amdGpu: "Adds AMD GPU frequency, temperature, power, and fan information.",
-        intelCpu: "Adds Intel processor power, frequency, and temperature information."
+        msiAfterburner: "If Afterburner is already installed, its GPU readings are picked up too. Optional.",
+        amdRyzenSdk: "AMD's own SDK. Reads Ryzen power, voltage, current, and temperature.",
+        amdSmu: "Reads the SMU tables directly, adding STAPM and per-core readings the SDK does not expose.",
+        intelCpu: "Reads Intel processor power, frequency, and temperature.",
+        generalHardwareSensors: "The general source for motherboard, fan, temperature, and voltage readings. Enough for most machines.",
+        nvidiaNvml: "Reads NVIDIA clocks, VRAM, power, and temperature from the installed driver.",
+        nvidiaNvapi: "Adds the fan, voltage, and current readings the base NVIDIA interface leaves out.",
+        amdGpu: "Reads AMD GPU clocks, temperature, power, and fan speed.",
+        notebookEcFan: "Reads fans from the notebook's EC, for machines where neither general monitoring nor the GPU driver exposes them.",
+        notebookOemFan: "Uses the vendor's own driver for CPU/GPU fan speed. More accurate on recognised models.",
+        latencyMon: "Investigates interrupt latency and stutter, down to which driver is holding the system up.",
+        windowsPerformanceToolkit: "Microsoft's WPR / Xperf, for deeper system-level tracing.",
+        sharedWebView2Runtime: "The Chromium runtime the interface runs on, shared across the machine."
       },
       categories: {
         performanceAnalysis: "Performance analysis tools",
