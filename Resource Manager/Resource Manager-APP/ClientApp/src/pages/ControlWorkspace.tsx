@@ -20,6 +20,7 @@ import { uiText } from "../text.ts";
 import type {
   ControlActualState,
   ControlInstanceCatalog,
+  ControlPreset,
   ControlObject,
   ControlObjectCatalog,
   ControlObjectDesiredState,
@@ -53,7 +54,6 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const [failed, setFailed] = createSignal(false);
   const [managingInstances, setManagingInstances] = createSignal(false);
   const [presets, setPresets] = createSignal<ControlPresetCatalog | null>(null);
-  const [presetName, setPresetName] = createSignal("");
 
   /**
    * 正在编的那一份，**整页共用一份**。
@@ -195,60 +195,6 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           />
         </Show>
 
-        {/*
-          配置：攒下来的几套方案。**点一份是把它载入草稿，不是直接应用** ——
-          真要落到硬件仍然要点下面的「应用」。应用只有一条路。
-        */}
-        <Show when={(presets()?.presets.length ?? 0) > 0 || pending()}>
-          <div class="control-presets">
-            <For each={presets()?.presets ?? []}>
-              {(preset) => (
-                <span class="control-preset">
-                  <button
-                    type="button"
-                    class="secondary"
-                    onClick={() => setDraft(preset.desired.objects)}
-                  >
-                    {preset.name}
-                  </button>
-                  <button
-                    type="button"
-                    class="control-preset-remove"
-                    aria-label={`${uiText.control.presets.remove}：${preset.name}`}
-                    onClick={() => void deleteControlPreset(
-                      runtime.requestClient,
-                      preset.id)
-                      .then(setPresets)
-                      .catch(() => props.onNotice(uiText.control.saveFailed))}
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
-            </For>
-            <input
-              type="text"
-              class="control-preset-name"
-              placeholder={uiText.control.presets.namePlaceholder}
-              value={presetName()}
-              onInput={(event) => setPresetName(event.currentTarget.value)}
-            />
-            <button
-              type="button"
-              class="secondary"
-              disabled={presetName().trim().length === 0}
-              onClick={() => void saveControlPreset(
-                runtime.requestClient,
-                presetName().trim(),
-                edited())
-                .then((next) => { setPresets(next); setPresetName(""); })
-                .catch(() => props.onNotice(uiText.control.saveFailed))}
-            >
-              {uiText.control.presets.save}
-            </button>
-          </div>
-        </Show>
-
         {/* 改了才出现。没改动时摆一个按不动的按钮只是占地方。 */}
         <Show when={pending()}>
           <div class="control-page-actions">
@@ -271,8 +217,28 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                       state={state()}
                       edited={settingsOf(object.id)}
                       actual={actual()}
+                      presets={(presets()?.presets ?? []).filter(
+                        (preset) => preset.objectId === object.id)}
                       onEdit={(capabilityId, next) =>
                         editCapability(object.id, capabilityId, next)}
+                      onLoadPreset={(settings) => setDraft([
+                        ...edited().filter((entry) => entry.objectId !== object.id),
+                        ...(settings.length > 0
+                          ? [{ objectId: object.id, settings }]
+                          : [])
+                      ])}
+                      onSavePreset={(name) => void saveControlPreset(
+                        runtime.requestClient,
+                        object.id,
+                        name,
+                        settingsOf(object.id))
+                        .then(setPresets)
+                        .catch(() => props.onNotice(uiText.control.saveFailed))}
+                      onDeletePreset={(presetId) => void deleteControlPreset(
+                        runtime.requestClient,
+                        presetId)
+                        .then(setPresets)
+                        .catch(() => props.onNotice(uiText.control.saveFailed))}
                     />
                   )}
                 </For>
@@ -290,8 +256,13 @@ function ControlObjectCard(props: {
   state: ControlStateView | null;
   edited: readonly ControlSetting[];
   actual: ControlActualState | null;
+  presets: readonly ControlPreset[];
   onEdit: (capabilityId: string, next: ControlSetting | null) => void;
+  onLoadPreset: (settings: readonly ControlSetting[]) => void;
+  onSavePreset: (name: string) => void;
+  onDeletePreset: (presetId: string) => void;
 }) {
+  const [presetName, setPresetName] = createSignal("");
   // 用户对这个对象设过什么，以及最近一次施加的回执。
   const saved = () => props.state?.desired.objects
     .find((entry) => entry.objectId === props.object.id)?.settings ?? [];
