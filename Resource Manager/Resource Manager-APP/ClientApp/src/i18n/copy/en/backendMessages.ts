@@ -29,12 +29,12 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       componentFilesExtracted: "The component files were extracted into the install directory."
     },
     gpuPlacement: {
-      singleAdapter: "This machine has a single GPU, so GPU scheduling has no target to choose."
+      singleAdapter: "Only one GPU, nothing to schedule between."
     },
     metric: {
-      notExposed: "The current hardware or provider does not expose this reading.",
-      needsComponent: (value: string) => `The current provider returns no valid reading; a more complete ${value} or the matching hardware or OEM component is needed.`,
-      noValidReading: "The current hardware or provider returns no valid reading."
+      notExposed: "Not readable",
+      needsComponent: (value: string) => `Needs ${value}`,
+      noValidReading: "No reading"
     },
     software: {
       hasUninstallEntry: "Has an uninstall entry",

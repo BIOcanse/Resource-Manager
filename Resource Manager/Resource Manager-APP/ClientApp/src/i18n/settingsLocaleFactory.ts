@@ -34,63 +34,63 @@ const zhCnSettingsCopy: SettingsCopy = {
   },
   performance: {
     smartMonitoringTitle: "按需监控",
-    smartMonitoringDescription: (seconds) => `只在需要显示数据时保持对应监控；连续 ${seconds} 秒未使用后停止。`,
+    smartMonitoringDescription: (seconds) => `只在要显示的时候采，闲置 ${seconds} 秒停。`,
     adaptiveBooleanModeOptions: [
-      { id: "auto", label: "自动调度", description: "根据当前性能模式自动选择。" },
-      { id: "enabled", label: "始终开启", description: "始终启用这项设置。" },
-      { id: "disabled", label: "始终关闭", description: "始终关闭这项设置。" }
+      { id: "auto", label: "自动调度", description: "按性能模式自动选。" },
+      { id: "enabled", label: "始终开启" },
+      { id: "disabled", label: "始终关闭" }
     ],
     gpuPerformanceUseCasesTitle: "GPU 用途",
     gpuPerformanceUseCasesDescription: "选择主要用途，以更合适地比较不同显卡的能力。可多选。",
     automaticSchedulingOptimizationsTitle: "自动调度性能优化",
-    automaticSchedulingOptimizationsDescription: "开启后，处于自动调度模式的机制会按本机实际情况做额外优化，例如只有一个显卡时不再运行 GPU 调度。关闭则一律按设置照常运行。",
+    automaticSchedulingOptimizationsDescription: "按本机情况省掉用不上的机制，例如只有一块显卡就不跑 GPU 调度。",
     onOffOptions: [
       { id: "on", label: "开启", description: "允许按本机实际情况做额外优化。" },
       { id: "off", label: "关闭", description: "一律按设置照常运行。" }
     ],
     preciseGpuPlacementTitle: "精确 GPU 选择",
-    preciseGpuPlacementDescription: "当前精确 Provider 仅支持原生 x64 进程，并只影响后续创建或重建的 D3D11 设备。每个软件可以单独设置。",
+    preciseGpuPlacementDescription: "只对原生 x64 进程生效，作用于之后新建的 D3D11 设备。每个软件可单独设。",
     preciseGpuPlacementModeOptions: {
       basic: { label: "关闭", description: "仅使用 Windows 支持的显卡偏好。" },
       precise: { label: "开启", description: "允许为软件精确选择目标显卡。" }
     },
     automaticMemoryCleanupTitle: "自动清理阈值",
-    automaticMemoryCleanupDescription: "资源不足且无法继续移动时，低于此值会启动后台清理。",
+    automaticMemoryCleanupDescription: "剩余低于这个值就启动后台清理。",
     physicalMemoryAutomaticCleanupLabel: "物理内存剩余 %",
     virtualMemoryAutomaticCleanupLabel: "虚拟内存剩余 %",
     memoryOptimizationTargetTitle: "内存优化目标",
-    memoryOptimizationTargetDescription: "使用率高于目标后持续执行缓慢、保守的一级释放；不会触发紧急清理。",
+    memoryOptimizationTargetDescription: "超过目标后慢慢释放，不做紧急清理。",
     physicalMemoryOptimizationTargetLabel: "物理内存目标使用率 %",
     virtualMemoryOptimizationTargetLabel: "虚拟内存目标使用率 %",
     pauseHiddenTitle: "窗口隐藏时刷新",
-    pauseHiddenDescription: "普通模式下可以暂停隐藏窗口的界面更新；重新显示后立即更新。",
+    pauseHiddenDescription: "窗口看不见时停掉界面更新，重新显示立刻补上。",
     frontendHiddenRefreshModeOptions: [
-      { id: "auto", label: "自动调度", description: "根据当前性能模式自动决定是否暂停。" },
-      { id: "pauseWhenHidden", label: "隐藏时暂停", description: "窗口隐藏时暂停界面更新。" },
-      { id: "continueWhenHidden", label: "隐藏也刷新", description: "窗口隐藏时继续界面更新。" }
+      { id: "auto", label: "自动调度", description: "按性能模式自动决定。" },
+      { id: "pauseWhenHidden", label: "隐藏时暂停" },
+      { id: "continueWhenHidden", label: "隐藏也刷新" }
     ],
     refreshCadenceTitle: "信息更新频率",
-    refreshCadenceDescription: "控制监控信息和状态的更新速度。频率越高，信息更新越快，资源占用也会略有增加。",
+    refreshCadenceDescription: "越快越费资源。",
     presetNumericModeOptions: [
-      { id: "aotu", label: "自动调度", description: "根据当前性能模式和窗口状态自动选择刷新频率。" },
-      { id: "preset", label: "锁定预设", description: "始终使用右侧选定的预设频率。" },
-      { id: "custom", label: "自定义", description: "始终使用手动输入的毫秒值。" }
+      { id: "aotu", label: "自动调度", description: "按性能模式和窗口状态自动选。" },
+      { id: "preset", label: "锁定预设", description: "用右侧选的预设。" },
+      { id: "custom", label: "自定义", description: "用手填的毫秒值。" }
     ],
     refreshCadencePresetLabel: "预设",
     refreshCadenceCustomLabel: "自定义 ms",
     refreshCadencePresetOptions: [
       { id: "responsive", label: "响应", description: "前台交互优先，刷新更快。" },
-      { id: "balanced", label: "平衡", description: "适合日常使用的更新频率。" },
-      { id: "lowPower", label: "低功耗", description: "低功耗后台策略。" },
-      { id: "quiet", label: "静默", description: "最低频率，只保留必要刷新。" }
+      { id: "balanced", label: "平衡", description: "日常用这个。" },
+      { id: "lowPower", label: "低功耗", description: "后台省电。" },
+      { id: "quiet", label: "静默", description: "最低频率，只留必要的。" }
     ],
     refreshCadenceItems: {
-      monitor: { label: "监控快照 / 资源条", description: "监视控制台实时数值和资源条刷新。" },
-      resourceTable: { label: "资源表", description: "软件和进程资源列表更新。" },
-      management: { label: "组件与软件", description: "组件状态、软件列表和操作进度更新。" },
-      discovery: { label: "软件迁移", description: "软件迁移进度和可迁移内容更新。" },
-      optimization: { label: "性能优化", description: "优化报告和智能调度状态更新。" },
-      localSystem: { label: "本机状态", description: "系统开机时间等低频本机状态刷新。" }
+      monitor: { label: "监控快照 / 资源条", description: "监视控制台的数值和资源条" },
+      resourceTable: { label: "资源表", description: "软件和进程列表" },
+      management: { label: "组件与软件", description: "组件状态和操作进度" },
+      discovery: { label: "软件迁移", description: "迁移进度和可迁移内容" },
+      optimization: { label: "性能优化", description: "优化报告和调度状态" },
+      localSystem: { label: "本机状态", description: "开机时间等低频状态" }
     }
   },
   appearance: {
@@ -101,9 +101,9 @@ const zhCnSettingsCopy: SettingsCopy = {
     resourceBarHardwareAccelerationTitle: "资源条硬件加速",
     resourceBarHardwareAccelerationDescription: "使用显卡提升资源条动画流畅度；遇到显示异常时可以关闭。",
     resourceBarHardwareAccelerationModeOptions: [
-      { id: "auto", label: "自动调度", description: "前台操作保持流畅，后台低功耗时降低开销。" },
-      { id: "enabled", label: "始终开启", description: "资源条始终使用硬件加速。" },
-      { id: "disabled", label: "始终关闭", description: "资源条始终使用兼容渲染。" }
+      { id: "auto", label: "自动调度", description: "前台流畅，后台省开销。" },
+      { id: "enabled", label: "始终开启", description: "资源条走硬件加速。" },
+      { id: "disabled", label: "始终关闭", description: "资源条走兼容渲染。" }
     ],
     barColorTitle: "条形图配色",
     barColorDescription: "按软件类型使用固定颜色，或为每个软件分配不同颜色。",
@@ -123,10 +123,10 @@ const zhCnSettingsCopy: SettingsCopy = {
       lowContrast: "低对比"
     },
     animationOptions: {
-      auto: { label: "自动调度", description: "前台使用正常动画，低功耗后台自动切换为超高性能外观。" },
-      normal: { label: "正常动画", description: "启用流畅的全局过渡动画" },
-      none: { label: "无动画", description: "关闭全部过渡与动画，保留精致外观" },
-      ultra: { label: "超高性能", description: "关闭动画并简化视觉（去除阴影 / 高光 / 模糊），开销最低" }
+      auto: { label: "自动调度", description: "前台正常动画，后台自动切超高性能。" },
+      normal: { label: "正常动画", description: "全局过渡动画" },
+      none: { label: "无动画", description: "关掉动画，外观不变" },
+      ultra: { label: "超高性能", description: "关动画并去掉阴影、高光、模糊，开销最低" }
     },
     barColorOptions: {
       type: { label: "类型固定色", description: "按系统、适配和一般应用上色，相邻分段用分隔线区分" },

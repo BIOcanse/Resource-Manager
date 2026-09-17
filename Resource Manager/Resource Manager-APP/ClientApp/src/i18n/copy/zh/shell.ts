@@ -47,8 +47,8 @@ export const zhShellCopy = {
     on: "开启",
     overclock: {
       title: "超频免责声明",
-      body: "调频率、电压、功耗会缩短硬件寿命，也可能使保修失效。"
-        + "英特尔核显的接口在你同意之前一律拒绝调用。",
+      body: "调频率、电压、功耗会缩短硬件寿命，也可能失去保修。"
+        + "Intel 核显在你同意前拒绝一切超频调用。",
       accept: "我知道了，开启",
       revoke: "收回同意",
       accepted: "已同意"
@@ -57,7 +57,7 @@ export const zhShellCopy = {
       label: "控制归属",
       firmware: "固件自动",
       app: "本程序控制",
-      firmwareNote: "现在由固件按温度自己调，下面的设定不会生效。"
+      firmwareNote: "归固件管，下面的设定不生效。"
     },
     createCurve: "新建曲线",
     curvePreview: "曲线预览",

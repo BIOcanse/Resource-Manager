@@ -51,10 +51,10 @@ public sealed class AmdCpuControlWriter(
     /// <summary>回读允许的误差，单位瓦。SMU 报的是浮点，不要求逐位相等。</summary>
     private const double WattTolerance = 1;
 
-    private const string BridgeMissing = "需要先安装硬件写入辅助进程。";
-    private const string BridgeSilent = "硬件写入辅助进程没有应答。";
-    private const string NotSupported = "这颗处理器上没有这一项。";
-    private const string NotEffective = "写下去了，但回读的值没有变。";
+    private const string BridgeMissing = "需要硬件写入辅助进程。";
+    private const string BridgeSilent = "辅助进程没应答。";
+    private const string NotSupported = "这颗处理器没有这一项。";
+    private const string NotEffective = "写下去了，回读没变。";
 
     private readonly object gate = new();
     private readonly Dictionary<string, double> baselinePowerLimitWatts = [];

@@ -27,22 +27,21 @@ body[data-page="components"] .app-shell,
   margin-right: auto;
 }
 
+/*
+  页名不再占一行。
+  顶栏的导航已经把当前页高亮着，标题栏里也写着页名 —— 正文里再写一遍是第三遍。
+  但这个 h1 不能删：它是换页时的焦点落点，也是读屏软件认页面的地方。
+  所以只是**不显示**，留在无障碍树里。
+*/
 .app-page-title {
-  margin-top: 0;
-  margin-bottom: 12px;
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 750;
-  line-height: 1.25;
-}
-
-.app-page-title:focus {
-  outline: none;
-}
-
-.app-page-title:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 body[data-page="components"] .app-header {

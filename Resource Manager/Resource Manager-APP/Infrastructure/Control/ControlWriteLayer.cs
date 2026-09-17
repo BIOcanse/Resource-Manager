@@ -29,7 +29,7 @@ public sealed class ControlWriteLayer(
 {
     private const string ObjectMissing = "这个设备现在不在了，设定暂时生效不了。";
     private const string CapabilityMissing = "这个设备上没有这一项。";
-    private const string WriterMissing = "控制写入尚未接入，当前只能读取。";
+    private const string WriterMissing = "只读，写入未接入。";
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
