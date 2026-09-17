@@ -232,3 +232,43 @@
   gap: 8px;
   margin-top: 12px;
 }
+
+/*
+  配置条：攒下来的几套方案。点一份是把它载入草稿，不是直接应用 ——
+  所以它们长得像可选项，不像执行按钮。
+*/
+.control-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.control-preset {
+  display: inline-flex;
+  align-items: center;
+}
+
+.control-preset-remove {
+  padding: 2px 6px;
+  margin-left: -1px;
+  border: 1px solid var(--line);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface);
+  color: var(--muted);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.control-preset-name {
+  width: 140px;
+}
+
+/* 应用是整页一次的事，所以按钮在页面上而不是每张卡里。 */
+.control-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

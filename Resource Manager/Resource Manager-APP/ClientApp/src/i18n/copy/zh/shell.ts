@@ -38,6 +38,11 @@ export const zhShellCopy = {
       firstSeen: (at: string) => `首次见到 ${at}`,
       open: "实例管理"
     },
+    presets: {
+      save: "存为配置",
+      namePlaceholder: "配置名",
+      remove: "删除配置"
+    },
     on: "开启",
     createCurve: "新建曲线",
     curvePreview: "曲线预览",

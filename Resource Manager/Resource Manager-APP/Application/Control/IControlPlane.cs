@@ -32,6 +32,17 @@ public interface IControlPlane
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// 整份替换期望状态并立刻施加。
+    ///
+    /// 「草稿应用」和「配置应用」走的是同一件事 —— 用户面对的是一整套设定，
+    /// 不是一条条分别提交。**没出现在这一份里的项会被恢复到硬件默认**：
+    /// 只是"以后不再写它"不够，上次写进去的值还留在硬件里。
+    /// </summary>
+    Task<ControlStateView> ApplyDesiredStateAsync(
+        ControlDesiredState desired,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// 把已经存着的期望状态重新施加一遍。
     ///
     /// 启动时、以及设备重新出现时调用 —— 这就是「设定一次就一直维持」的兑现方式。

@@ -13,6 +13,9 @@ import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts"
 import { uiText } from "../text.ts";
 import type {
   ControlApplyOutcome,
+  ControlObjectDesiredState,
+  ControlPreset,
+  ControlPresetCatalog,
   ControlCapability,
   ControlNumberRange,
   ControlObject,
@@ -152,6 +155,42 @@ function readOutcome(value: unknown, path: string): ControlApplyOutcome {
   };
 }
 
+/** 一份期望状态。配置里存的也是这个形状，所以两处共用同一个读法。 */
+function readDesiredObjects(
+  value: unknown,
+  path: string
+): ControlObjectDesiredState[] {
+  return requireArray(value, path).map((row, index) => {
+    const entry = requireRecord(row, `${path}[${index}]`);
+    return {
+      objectId: requireNonEmptyString(entry.objectId, `${path}[${index}].objectId`),
+      settings: requireArray(entry.settings, `${path}[${index}].settings`)
+        .map((setting, at) => readSetting(setting, `${path}[${index}].settings[${at}]`))
+    };
+  });
+}
+
+export const presetCatalogDecoder = defineResponseDecoder<ControlPresetCatalog>(
+  "control.presets.v1",
+  (value) => {
+    const record = requireRecord(value, "$");
+    return {
+      presets: requireArray(record.presets, "$.presets").map((row, index): ControlPreset => {
+        const entry = requireRecord(row, `$.presets[${index}]`);
+        return {
+          id: requireNonEmptyString(entry.id, `$.presets[${index}].id`),
+          name: requireNonEmptyString(entry.name, `$.presets[${index}].name`),
+          desired: {
+            objects: readDesiredObjects(
+              requireRecord(entry.desired, `$.presets[${index}].desired`).objects,
+              `$.presets[${index}].desired.objects`)
+          },
+          updatedAt: requireString(entry.updatedAt, `$.presets[${index}].updatedAt`)
+        };
+      })
+    };
+  });
+
 export const controlStateDecoder = defineResponseDecoder<ControlStateView>(
   "control.state.v1",
   (value) => {
@@ -160,17 +199,7 @@ export const controlStateDecoder = defineResponseDecoder<ControlStateView>(
     const lastApply = requireRecord(record.lastApply, "$.lastApply");
     return {
       desired: {
-        objects: requireArray(desired.objects, "$.desired.objects").map((row, index) => {
-          const entry = requireRecord(row, `$.desired.objects[${index}]`);
-          return {
-            objectId: requireNonEmptyString(
-              entry.objectId,
-              `$.desired.objects[${index}].objectId`),
-            settings: requireArray(entry.settings, `$.desired.objects[${index}].settings`)
-              .map((setting, at) =>
-                readSetting(setting, `$.desired.objects[${index}].settings[${at}]`))
-          };
-        })
+        objects: readDesiredObjects(desired.objects, "$.desired.objects")
       },
       lastApply: {
         outcomes: requireArray(lastApply.outcomes, "$.lastApply.outcomes")
@@ -278,6 +307,76 @@ export function forgetControlInstance(
 }
 
 /** 替换某个对象的设定并立刻施加。后端先存后施加，返回的是存下来的那份。 */
+/**
+ * 整份应用：把草稿里的全部设定一次交上去。
+ *
+ * 「应用」**只有这一条路**。点一份配置只是把它的内容载入草稿，
+ * 落到硬件仍然要用户点应用 —— 多一条捷径就会有两处定义"应用是什么"。
+ */
+export function applyControlDesiredState(
+  requestClient: Pick<RequestClient, "request">,
+  objects: readonly ControlObjectDesiredState[]
+): Promise<ControlStateView> {
+  return requestClient.request({
+    key: "control.state.apply",
+    url: "/api/control/state",
+    fallbackError: uiText.control.saveFailed,
+    decoder: controlStateDecoder,
+    request: {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ objects })
+    }
+  });
+}
+
+/** 存下来的几套方案。读写这些都不动硬件。 */
+export function getControlPresets(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<ControlPresetCatalog> {
+  return requestClient.request({
+    key: "control.presets",
+    url: "/api/control/presets",
+    fallbackError: uiText.control.loadFailed,
+    decoder: presetCatalogDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+/** 把草稿存成一份配置。同名覆盖。**不动硬件。** */
+export function saveControlPreset(
+  requestClient: Pick<RequestClient, "request">,
+  name: string,
+  objects: readonly ControlObjectDesiredState[]
+): Promise<ControlPresetCatalog> {
+  return requestClient.request({
+    key: "control.presets.save",
+    url: `/api/control/presets/${encodeURIComponent(name)}`,
+    fallbackError: uiText.control.saveFailed,
+    decoder: presetCatalogDecoder,
+    request: {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ objects })
+    }
+  });
+}
+
+export function deleteControlPreset(
+  requestClient: Pick<RequestClient, "request">,
+  presetId: string
+): Promise<ControlPresetCatalog> {
+  return requestClient.request({
+    key: "control.presets.delete",
+    url: `/api/control/presets/${encodeURIComponent(presetId)}`,
+    fallbackError: uiText.control.saveFailed,
+    decoder: presetCatalogDecoder,
+    request: { method: "DELETE" }
+  });
+}
+
 export function setControlObjectSettings(
   requestClient: Pick<RequestClient, "request">,
   objectId: string,
