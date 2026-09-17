@@ -9,6 +9,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
 {
     private static IServiceCollection AddResourceManagerComponentsAndTasks(this IServiceCollection services)
     {
+        // 安装器之外的运行时文件（比如 PawnIO 的 RyzenSMU 模块）由它取。
+        services.AddSingleton<IDependencyPayloadAcquisition, DependencyPayloadAcquisition>();
         services.AddSingleton<IComponentManager, ComponentManager>();
         services.AddSingleton<IProviderRuntimeProbe, ProviderRuntimeProbe>();
         return services;
