@@ -142,12 +142,12 @@ public sealed class JsonControlInstanceRegistry(
     /// <summary>
     /// 这个身份能不能唯一认出这台设备。
     ///
-    /// 显卡的 id 里带着 PCI 标识和实例路径，能。像 <c>fan:cpu</c> 这种只有位置和名字，
-    /// 换一个同名的上去我们分辨不出来，所以如实标成不唯一。
+    /// 身份是按出厂唯一标识定的（id 里带 <c>uid:</c>）才算能 ——
+    /// 那种标识不随槽位、驱动、系统重装而变。退到型号的那些标不唯一：
+    /// 换一块一模一样的卡上去我们分辨不出来，**如实标出来，不假装能唯一识别**。
     /// </summary>
     private static bool IdentityIsUnique(ControlObject controlObject)
-        => controlObject.Id.Contains("PCI\\", StringComparison.OrdinalIgnoreCase)
-            || controlObject.Id.Contains("VEN_", StringComparison.OrdinalIgnoreCase);
+        => controlObject.Id.Contains(":uid:", StringComparison.Ordinal);
 
     private static IReadOnlyList<ControlSetting> DefaultSettingsOf(ControlObject controlObject)
         => controlObject.Capabilities
