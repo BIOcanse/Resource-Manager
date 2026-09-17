@@ -105,6 +105,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlWriter, NvidiaGpuControlWriter>();
         // 笔记本的显卡功率预算走厂商固件的 ACPI WMI 接口，不是显卡接口。
         services.AddSingleton<IControlWriter, UniwillGpuPowerWriter>();
+        // 处理器功耗走 SMU 邮箱，内核用已经装着的 PawnIO（本机开着 HVCI，WinRing0 起不来）。
+        services.AddSingleton<IControlWriter, AmdCpuControlWriter>();
+        // 核显和独显不是一条路（AMD 走 SMU、Intel 走显卡驱动的控制库），按接法分流。
+        services.AddSingleton<IControlWriter, IntegratedGpuControlWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
         services.AddSingleton<IControlObjectCatalog, WindowsControlObjectCatalog>();
         // 快速扫描读主文件表，全扫描逐级遍历。进来的请求由前者按模式分派，

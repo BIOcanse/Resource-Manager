@@ -181,7 +181,8 @@ public sealed class WindowsControlObjectCatalog(
         var (componentId, componentName) = vendor switch
         {
             ControlVendors.Amd => ("amd-smu-pawnio-provider", "AMD SMU / PawnIO Provider"),
-            ControlVendors.Intel => ("intel-pcm-provider", "Intel PCM / MSR Provider"),
+            // Intel 核显的控制库（IGCL）随显卡驱动一起装，不是单独的组件。
+            ControlVendors.Intel => ("intel-graphics-driver", "Intel 显卡驱动"),
             _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
         };
         return
