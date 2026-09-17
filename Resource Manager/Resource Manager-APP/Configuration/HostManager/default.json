@@ -2920,6 +2920,25 @@
           "semantic_fingerprint": 1120
         },
         {
+          "template_id": "gpu.graphicsClock.smu",
+          "metric_id_template": "gpu.{gpu}.graphicsClock",
+          "source_id": "amd.smu",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_clock",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 11120
+        },
+        {
           "template_id": "gpu.graphicsClockPercent.adlx",
           "metric_id_template": "gpu.{gpu}.graphicsClockPercent",
           "source_id": "amd.adlx",
@@ -3075,6 +3094,25 @@
           "semantic_fingerprint": 1127
         },
         {
+          "template_id": "gpu.temperature.smu",
+          "metric_id_template": "gpu.{gpu}.temperature",
+          "source_id": "amd.smu",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 11127
+        },
+        {
           "template_id": "gpu.hotspotTemperature.adlx",
           "metric_id_template": "gpu.{gpu}.hotspotTemperature",
           "source_id": "amd.adlx",
@@ -3150,6 +3188,25 @@
           "applicability_mask": 0,
           "maximum_instance_count": 32,
           "semantic_fingerprint": 1131
+        },
+        {
+          "template_id": "gpu.coreVoltage.smu",
+          "metric_id_template": "gpu.{gpu}.coreVoltage",
+          "source_id": "amd.smu",
+          "scope_expansion": "gpu_adapter",
+          "metric_kind": "gpu_sensor",
+          "value_kind": "float64",
+          "retention": "retain_last_good",
+          "capability_mask": 512,
+          "metric_flags": [
+            "nonnegative"
+          ],
+          "minimum_value_bits": 0,
+          "maximum_value_bits": 9218868437227405311,
+          "gpu_vendor_mask": 2,
+          "applicability_mask": 0,
+          "maximum_instance_count": 32,
+          "semantic_fingerprint": 11131
         },
         {
           "template_id": "gpu.power.wmi",
