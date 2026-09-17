@@ -44,6 +44,23 @@ public static class DashboardSettingsDefaults
                     static gpu => gpu.IdentityKey!));
     }
 
+    /// <summary>
+    /// 这台机器开箱该显示哪些卡片。
+    ///
+    /// **只有一套模板，没有按机型分支。** 处理器一张、内存一张，然后每块显卡各来一组
+    /// （占用率 / 显存 / 传感）。每张卡要不要出现，只看**它自己的主指标**读不读得到：
+    ///
+    /// <list type="bullet">
+    /// <item>没有核显的机器，目录里根本没有 <c>gpu.0.*</c>，那几张卡自然不出现。</item>
+    /// <item>多显卡的机器，每块卡都走同一组模板，不是只照顾第一块。</item>
+    /// <item>AI SoC 和处理器共用内存，没有独立显存 —— 显存卡不出现，
+    ///   但它的 GPU 有功耗、有风扇，那两项照常显示。</item>
+    /// </list>
+    ///
+    /// **不拿某个指标去当"这是什么机器"的替代判据。** 先前拿"有没有显存"当过
+    /// "是不是一块独立显卡"，于是 AI SoC 的风扇卡被整张吞掉 ——
+    /// 显存和风扇本来就没有关系。机型是推不出来的，能读到什么才是事实。
+    /// </summary>
     public static DashboardSettings Create(
         IReadOnlyDictionary<string, MetricValue>? items = null,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
@@ -169,10 +186,18 @@ public static class DashboardSettingsDefaults
         int index,
         IReadOnlyDictionary<string, MetricValue>? items)
     {
+        // 想要哪几项就全列出来，读不到的由 GetExistingMetrics 自己滤掉。
+        //
+        // 先前这里按"有没有显存"分两套：有显存才带功耗。那是拿显存当
+        // "这是不是一块独立显卡"的替代判据 —— **AI SoC 就没有显存**，
+        // 核显也没有，但它们的功耗该显示的时候一样要显示。
+        // 一项要不要出现，只看它自己读不读得到。
         var prefix = $"gpu.{index}";
-        return HasMetric(items, $"{prefix}.vram")
-            ? GetExistingMetrics(items, $"{prefix}.graphicsClock", $"{prefix}.power", $"{prefix}.temperature")
-            : GetExistingMetrics(items, $"{prefix}.graphicsClock", $"{prefix}.temperature");
+        return GetExistingMetrics(
+            items,
+            $"{prefix}.graphicsClock",
+            $"{prefix}.power",
+            $"{prefix}.temperature");
     }
 
     internal static void AddCpuSensorCard(
@@ -196,8 +221,13 @@ public static class DashboardSettingsDefaults
         IReadOnlyDictionary<string, MetricValue>? items,
         IReadOnlyDictionary<int, string>? gpuIdentityKeys = null)
     {
+        // 这张卡的主角是**这块卡的风扇**，所以只看风扇转速读不读得到。
+        //
+        // 先前还要求有显存才出这张卡 —— 显存和风扇没有关系。
+        // 那条判据在 AI SoC 上直接判错：它有 GPU、有风扇，就是没有独立显存，
+        // 于是风扇卡被吞掉。多显卡的机器上同理，没显存的那块卡也照样有风扇。
         var prefix = $"gpu.{index}";
-        if (!HasMetric(items, $"{prefix}.vram") || !HasMetric(items, $"{prefix}.fanRpm"))
+        if (!HasMetric(items, $"{prefix}.fanRpm"))
         {
             return;
         }
