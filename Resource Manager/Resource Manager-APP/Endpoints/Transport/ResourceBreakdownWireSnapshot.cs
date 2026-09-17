@@ -48,11 +48,21 @@ public sealed class ResourceBreakdownWireSnapshot
             .ToDictionary(
                 static dataset => dataset.DatasetId,
                 StringComparer.OrdinalIgnoreCase);
+        // **只发布有数的条目。**
+        //
+        // 线上的合同是"条目带着数值总量"，消费端据此直接用，不做空值判断。
+        // 读不到的指标不是"一条总量为 null 的条目"，而是**没有这一条** ——
+        // 发一条空的出去，消费端解码就会失败，而那不是失败一条，是整帧作废：
+        // 一个指标不可用会把同一帧里其它所有指标一起带走。
+        // 实测就这么炸过：核显那条不可用，GPU 调度页整页无限加载。
         var bars = visibleIds.Count == 0
             ? []
             : source.Bars.Where(bar => visibleIds.Contains(bar.MetricId)
                 && currentDatasets.ContainsKey(
-                    SamplingDatasetIds.ForProcessMetric(bar.MetricId)))
+                    SamplingDatasetIds.ForProcessMetric(bar.MetricId))
+                && bar.TotalValue is not null
+                && bar.CapacityValue is not null
+                && bar.TotalSystemPercent is not null)
                 .ToArray();
         var catalog = new List<ResourceSoftwareSegment>();
         var indexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
