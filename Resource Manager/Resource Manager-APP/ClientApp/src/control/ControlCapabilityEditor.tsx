@@ -18,10 +18,13 @@ import type { ControlCapability, ControlSetting } from "./controlTypes.ts";
 export function ControlCapabilityEditor(props: {
   capability: ControlCapability;
   setting: ControlSetting | undefined;
+  /** 这个对象现在归固件管，设了也不生效。 */
+  held?: boolean;
   onChange: (setting: ControlSetting | null) => void;
 }) {
-  // 控不了就置灰。摆一个能拖但拖了没用的控件是骗人。
-  const disabled = () => !props.capability.supported;
+  // 控不了、或者这块硬件现在归固件管，就置灰。
+  // 摆一个能拖但拖了没用的控件是骗人。
+  const disabled = () => !props.capability.supported || props.held === true;
   return (
     <div class="control-editor-shell" classList={{ "control-editor-off": disabled() }}>
       <Show when={props.capability.valueKind === "curve"} fallback={

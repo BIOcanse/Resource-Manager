@@ -48,6 +48,20 @@ const ruRuAppCopy: AppCopy = {
       remove: "Delete preset"
     },
     on: "On",
+    overclock: {
+      title: "Overclocking disclaimer",
+      body: "Changing clocks, voltage or power limits shortens hardware life and may void your warranty."
+        + " Intel's integrated-graphics interface refuses every overclocking call until you accept this.",
+      accept: "I understand, enable it",
+      revoke: "Withdraw consent",
+      accepted: "Accepted"
+    },
+    ownership: {
+      label: "Control owner",
+      firmware: "Firmware",
+      app: "This app",
+      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+    },
     createCurve: "New curve",
     curvePreview: "Curve preview",
     saveFailed: "Save failed",

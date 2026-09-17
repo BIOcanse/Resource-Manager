@@ -22,7 +22,31 @@ public sealed class AmdCpuControlWriter(
     ILogger<AmdCpuControlWriter>? logger = null) : IControlWriter
 {
     internal const string PowerLimitCapabilityId = "cpu.power-limit";
+    internal const string FastPowerLimitCapabilityId = "cpu.fast-power-limit";
     internal const string CurveOptimizerCapabilityId = "cpu.curve-optimizer";
+
+    /// <summary>
+    /// 一项功耗上限：读辅助进程回的哪个字段、写哪几条 SMU 命令、基线记在哪个文件。
+    ///
+    /// 底层本来就是三条独立的命令（持续 / 长时 / 瞬时）。持续和长时合成一项，
+    /// 是因为它们一起决定"机器长期跑在多少瓦"这一件事；瞬时决定的是另一件事
+    /// —— 短暂加速能冲到多高 —— 所以它单独一项，不替用户把这半边砍掉。
+    /// </summary>
+    private sealed record PowerLimitKind(
+        string CapabilityId,
+        string ReadingField,
+        IReadOnlyList<string> Which,
+        string BaselineFileName);
+
+    private static readonly PowerLimitKind[] PowerLimitKinds =
+    [
+        new(PowerLimitCapabilityId, "stapmLimitWatts", ["stapm", "slow"], "cpu-power-baseline.txt"),
+        new(FastPowerLimitCapabilityId, "fastLimitWatts", ["fast"], "cpu-fast-power-baseline.txt")
+    ];
+
+    private static PowerLimitKind? PowerLimitKindOf(string capabilityId)
+        => PowerLimitKinds.FirstOrDefault(
+            (kind) => string.Equals(kind.CapabilityId, capabilityId, StringComparison.Ordinal));
 
     /// <summary>回读允许的误差，单位瓦。SMU 报的是浮点，不要求逐位相等。</summary>
     private const double WattTolerance = 1;
@@ -33,7 +57,7 @@ public sealed class AmdCpuControlWriter(
     private const string NotEffective = "写下去了，但回读的值没有变。";
 
     private readonly object gate = new();
-    private double? baselinePowerLimitWatts;
+    private readonly Dictionary<string, double> baselinePowerLimitWatts = [];
     private int? baselineCurveOptimizerCounts;
 
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
@@ -57,11 +81,8 @@ public sealed class AmdCpuControlWriter(
         }
 
         // 能设什么就显示什么：辅助进程按这代处理器有没有这条 SMU 命令来报。
-        var isPowerLimit = string.Equals(
-            capability.Id,
-            PowerLimitCapabilityId,
-            StringComparison.Ordinal);
-        if (!Flag(description, isPowerLimit ? "powerTable" : "curveOptimizer"))
+        var powerLimit = PowerLimitKindOf(capability.Id);
+        if (!Flag(description, powerLimit is not null ? "powerTable" : "curveOptimizer"))
         {
             return ControlWriteAvailability.No(NotSupported);
         }
@@ -71,8 +92,8 @@ public sealed class AmdCpuControlWriter(
             return ControlWriteAvailability.No(BridgeSilent);
         }
 
-        return isPowerLimit
-            ? PowerLimitAvailability(capability, reading)
+        return powerLimit is { } kind
+            ? PowerLimitAvailability(kind, capability, reading)
             : CurveOptimizerAvailability(capability, reading);
     }
 
@@ -85,15 +106,16 @@ public sealed class AmdCpuControlWriter(
     /// 还报"已应用"，等于悄悄改掉他的意图。
     /// </summary>
     private ControlWriteAvailability PowerLimitAvailability(
+        PowerLimitKind kind,
         ControlCapability capability,
         JsonElement reading)
     {
-        if (Number(reading, "stapmLimitWatts") is not { } current)
+        if (Number(reading, kind.ReadingField) is not { } current)
         {
             return ControlWriteAvailability.No(BridgeSilent);
         }
 
-        var baseline = CaptureBaselinePowerLimit(current);
+        var baseline = CaptureBaselinePowerLimit(kind, current);
         var minimum = capability.Range is { } declared
             ? Math.Min(declared.Minimum, Math.Round(baseline))
             : 5;
@@ -138,25 +160,26 @@ public sealed class AmdCpuControlWriter(
         var bounds = capability.Range;
         var wanted = bounds is null ? value : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
 
-        return string.Equals(capability.Id, PowerLimitCapabilityId, StringComparison.Ordinal)
-            ? await WritePowerLimitAsync(target, capability, wanted, cancellationToken)
+        return PowerLimitKindOf(capability.Id) is { } kind
+            ? await WritePowerLimitAsync(kind, target, capability, wanted, cancellationToken)
                 .ConfigureAwait(false)
             : await WriteCurveOptimizerAsync(target, capability, (int)wanted, cancellationToken)
                 .ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 持续和长时一起设成这个值，**瞬时不动** —— 用户说的"功耗上限"是持续那个，
-    /// 把瞬时也压下去会连短暂加速一起砍掉，那是另一回事。
+    /// 把这一项对应的那几条 SMU 命令都设成这个值，**别的不动**。
+    /// 持续和长时是一项，瞬时是另一项，各写各的。
     /// </summary>
     private async Task<ControlApplyOutcome> WritePowerLimitAsync(
+        PowerLimitKind kind,
         ControlObject target,
         ControlCapability capability,
         double watts,
         CancellationToken cancellationToken)
     {
         JsonElement? last = null;
-        foreach (var which in new[] { "stapm", "slow" })
+        foreach (var which in kind.Which)
         {
             last = await bridge.SendAsync(
                 "set-power-limit",
@@ -170,13 +193,14 @@ public sealed class AmdCpuControlWriter(
 
         // 回执只说"收到了"。真正算数的是回读那个**上限** —— 不是实际功耗，
         // 实际值由固件按温度调度，通常远低于上限。
-        if (Number(last, "stapmLimitWatts") is not { } after
+        if (Number(last, kind.ReadingField) is not { } after
             || Math.Abs(after - watts) > WattTolerance)
         {
             logger?.LogWarning(
-                "处理器功耗上限没写进去：要 {Watts} W，回读 {After}。",
+                "处理器功耗上限（{Field}）没写进去：要 {Watts} W，回读 {After}。",
+                kind.ReadingField,
                 watts,
-                Number(last, "stapmLimitWatts"));
+                Number(last, kind.ReadingField));
             return Failed(target, capability, NotEffective);
         }
 
@@ -233,17 +257,16 @@ public sealed class AmdCpuControlWriter(
                 UnreadableReason: BridgeSilent);
         }
 
-        var isPowerLimit = string.Equals(
-            capability.Id,
-            PowerLimitCapabilityId,
-            StringComparison.Ordinal);
-        var number = Number(result, isPowerLimit ? "stapmLimitWatts" : "curveOptimizerCounts");
+        var powerLimit = PowerLimitKindOf(capability.Id);
+        var number = Number(
+            result,
+            powerLimit?.ReadingField ?? "curveOptimizerCounts");
         return number is { } value
             ? new ControlActualValue(
                 target.Id,
                 capability.Id,
-                Number: isPowerLimit ? Math.Round(value, 1) : Math.Round(value),
-                Unit: isPowerLimit ? ControlUnits.Watt : ControlUnits.Step)
+                Number: powerLimit is not null ? Math.Round(value, 1) : Math.Round(value),
+                Unit: powerLimit is not null ? ControlUnits.Watt : ControlUnits.Step)
             : new ControlActualValue(
                 target.Id,
                 capability.Id,
@@ -256,17 +279,18 @@ public sealed class AmdCpuControlWriter(
     /// 只放在内存里不够：用户调低之后重启，下次读到的"当前值"就是那个低的，
     /// "恢复默认"会回到他调过的数而不是原本的数，而且一次比一次低。
     /// </summary>
-    private double CaptureBaselinePowerLimit(double current)
+    private double CaptureBaselinePowerLimit(PowerLimitKind kind, double current)
     {
         lock (gate)
         {
-            if (baselinePowerLimitWatts is { } captured)
+            if (baselinePowerLimitWatts.TryGetValue(kind.CapabilityId, out var captured))
             {
                 return captured;
             }
-            var baseline = ReadPersisted(PowerLimitBaselinePath) ?? current;
-            baselinePowerLimitWatts = baseline;
-            WritePersisted(PowerLimitBaselinePath, baseline);
+            var path = BaselinePath(kind.BaselineFileName);
+            var baseline = ReadPersisted(path) ?? current;
+            baselinePowerLimitWatts[kind.CapabilityId] = baseline;
+            WritePersisted(path, baseline);
             return baseline;
         }
     }
@@ -320,8 +344,6 @@ public sealed class AmdCpuControlWriter(
         }
     }
 
-    private string PowerLimitBaselinePath => BaselinePath("cpu-power-baseline.txt");
-
     private string CurveOptimizerBaselinePath => BaselinePath("cpu-curve-optimizer-baseline.txt");
 
     private string BaselinePath(string fileName) => Path.Combine(
@@ -358,7 +380,9 @@ public sealed class AmdCpuControlWriter(
     private static bool IsMine(ControlObject target, string capabilityId)
         => string.Equals(target.Kind, ControlObjectKinds.Cpu, StringComparison.Ordinal)
             && string.Equals(target.Platform.Vendor, ControlVendors.Amd, StringComparison.Ordinal)
-            && capabilityId is PowerLimitCapabilityId or CurveOptimizerCapabilityId;
+            && capabilityId is PowerLimitCapabilityId
+                or FastPowerLimitCapabilityId
+                or CurveOptimizerCapabilityId;
 
     private static ControlApplyOutcome Applied(ControlObject target, ControlCapability capability)
         => new(target.Id, capability.Id, ControlApplyStatuses.Applied, null);

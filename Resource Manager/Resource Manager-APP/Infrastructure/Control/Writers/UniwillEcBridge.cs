@@ -44,6 +44,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     private const int ReadAttempts = 6;
 
     private readonly object gate = new();
+    private readonly EcChannelLock channel = new();
     private bool probed;
     private ManagementObject? device;
 
@@ -55,6 +56,9 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     /// 单次读数不可信，见 <see cref="AgreeingReads"/>。
     /// </summary>
     internal byte? Read(ushort address)
+        => channel.Hold(() => ReadHeld(address), out var value) ? value : null;
+
+    private byte? ReadHeld(ushort address)
     {
         lock (gate)
         {
@@ -92,6 +96,10 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     /// 所以"写成功"只能由回读来定义。核对不上就如实说没写进去。
     /// </summary>
     internal bool Write(ushort address, byte value)
+        // 写和回读之间不能松手：松手了回读到的可能是别人写进去的。
+        => channel.Hold(() => WriteHeld(address, value), out var written) && written;
+
+    private bool WriteHeld(ushort address, byte value)
     {
         lock (gate)
         {
@@ -102,7 +110,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
             }
         }
 
-        var readBack = Read(address);
+        var readBack = ReadHeld(address);
         if (readBack == value)
         {
             return true;
