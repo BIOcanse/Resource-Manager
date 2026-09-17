@@ -2,6 +2,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Infrastructure.Control.Writers;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control;
@@ -22,6 +23,12 @@ public sealed class WindowsControlObjectCatalog(
     DashboardMonitoringCatalogState catalogState,
     IEnumerable<IControlWriter> writers) : IControlObjectCatalog
 {
+    /// <summary>读显卡出厂唯一标识用的。读不到就退到型号，见 ControlInstanceIdentity。</summary>
+    private readonly NvidiaNvmlControlBridge uniqueIdReader = new();
+
+    /// <summary>处理器的身份。核显跟着它走 —— 核显没有自己的标识。</summary>
+    private readonly WindowsCpuIdentityReader cpuIdentityReader = new();
+
     /// <summary>没有任何写入器认领这一项时的原因。接进一个就少一条。</summary>
     private const string WriterNotImplemented = "控制写入尚未接入，当前只能读取。";
 
@@ -33,8 +40,11 @@ public sealed class WindowsControlObjectCatalog(
         var objects = new List<ControlObject>();
         if (snapshot is not null)
         {
-            AddGpus(objects, snapshot);
-            AddCpu(objects, snapshot);
+            // 核显没有独立标识，跟着处理器走，所以先把处理器的身份定下来。
+            var cpuIdentity = cpuIdentityReader.Resolve(snapshot.Cpu.Name);
+            var gpuIdentities = ResolveGpuIdentities(snapshot, cpuIdentity);
+            AddGpus(objects, snapshot, gpuIdentities);
+            AddCpu(objects, snapshot, cpuIdentity);
             AddFans(objects, snapshot);
         }
         return new ControlObjectCatalog(
@@ -79,7 +89,43 @@ public sealed class WindowsControlObjectCatalog(
         return capability;
     }
 
-    private static void AddGpus(List<ControlObject> objects, HardwareMetricSnapshot snapshot)
+    /// <summary>
+    /// 每块显卡的身份。独显优先用出厂唯一标识；核显没有自己的标识，跟处理器走。
+    /// </summary>
+    private Dictionary<int, string> ResolveGpuIdentities(
+        HardwareMetricSnapshot snapshot,
+        string cpuIdentity)
+    {
+        // 同型号出现过几次。只有读不到唯一 id 时才用得上 ——
+        // 两个对象必须有两个不同的标识，否则目录里会撞车。
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        var identities = new Dictionary<int, string>();
+        foreach (var gpu in snapshot.Gpus)
+        {
+            if (GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(gpu.Name))
+            {
+                // 核显长在处理器封装里，没有自己的标识 —— 就用处理器那一个。
+                // 前缀不同（gpu: 对 cpu:），所以两者仍然是两个实例，不会混。
+                // 换了处理器，核显自然也跟着换，这正是想要的。
+                identities[gpu.Index] = cpuIdentity;
+                continue;
+            }
+            var uniqueId = uniqueIdReader.FindHandleByAdapterIndex(gpu.Index) is { } device
+                ? uniqueIdReader.ReadUniqueId(device)
+                : null;
+            occurrences[gpu.Name] = occurrences.GetValueOrDefault(gpu.Name) + 1;
+            identities[gpu.Index] = ControlInstanceIdentity.ForGpu(
+                gpu,
+                uniqueId,
+                occurrences[gpu.Name]);
+        }
+        return identities;
+    }
+
+    private void AddGpus(
+        List<ControlObject> objects,
+        HardwareMetricSnapshot snapshot,
+        IReadOnlyDictionary<int, string> gpuIdentities)
     {
         foreach (var gpu in snapshot.Gpus)
         {
@@ -89,9 +135,11 @@ public sealed class WindowsControlObjectCatalog(
             var attachment = GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(gpu.Name)
                 ? ControlGpuAttachments.Integrated
                 : ControlGpuAttachments.Discrete;
+            var identity = gpuIdentities[gpu.Index];
+
             // 每块卡一个对象，各自带自己的 (系统, 厂商) —— 不是全局状态。
             objects.Add(new ControlObject(
-                $"gpu:{gpu.IdentityKey ?? gpu.Index.ToString()}",
+                $"gpu:{identity}",
                 ControlObjectKinds.Gpu,
                 gpu.Name,
                 new ControlObjectPlatform(ControlOperatingSystems.Windows, vendor),
@@ -200,7 +248,10 @@ public sealed class WindowsControlObjectCatalog(
         ];
     }
 
-    private static void AddCpu(List<ControlObject> objects, HardwareMetricSnapshot snapshot)
+    private static void AddCpu(
+        List<ControlObject> objects,
+        HardwareMetricSnapshot snapshot,
+        string cpuIdentity)
     {
         var vendor = VendorOf(snapshot.Cpu.Name);
         var (componentId, componentName) = vendor switch
@@ -211,7 +262,7 @@ public sealed class WindowsControlObjectCatalog(
         };
 
         objects.Add(new ControlObject(
-            "cpu:package",
+            $"cpu:{cpuIdentity}",
             ControlObjectKinds.Cpu,
             snapshot.Cpu.Name.Trim(),
             new ControlObjectPlatform(ControlOperatingSystems.Windows, vendor),
@@ -239,7 +290,19 @@ public sealed class WindowsControlObjectCatalog(
     /// 风扇。现在只认已经在报转速的那些 —— 报得出转速说明采集这一侧通了，
     /// 缺的只是写入。认不出来的风扇不假装存在。
     /// </summary>
-    private static void AddFans(List<ControlObject> objects, HardwareMetricSnapshot snapshot)
+    /// <summary>
+    /// 风扇。
+    ///
+    /// **风扇的身份不跟着显卡走。** 笔记本的风扇往往是整机共用一套散热，
+    /// AI Max 395 这类 SoC 更是把 CPU 和 GPU 放在一颗封装里 —— 哪个风扇吹哪个部件
+    /// 不是"卡上带一个风扇"那么简单，强行挂到显卡身份上只会把关系说错。
+    ///
+    /// 所以风扇就是一个独立实例，按位置定身份。风扇换了之后原来那份设定怎么作废，
+    /// 归后面专门的风扇管理方案 —— 这里不先造一套将来要推翻的规则。
+    /// </summary>
+    private static void AddFans(
+        List<ControlObject> objects,
+        HardwareMetricSnapshot snapshot)
     {
         if (snapshot.Items.TryGetValue("cpu.fanRpm", out var cpuFan)
             && cpuFan.NumericValue is { } rpm
@@ -291,7 +354,7 @@ public sealed class WindowsControlObjectCatalog(
                 _ => ("msi-afterburner", "MSI Afterburner")
             };
             objects.Add(new ControlObject(
-                $"fan:gpu:{gpu.IdentityKey ?? gpu.Index.ToString()}",
+                $"fan:gpu{gpu.Index}",
                 ControlObjectKinds.Fan,
                 $"{gpu.Name} 风扇",
                 new ControlObjectPlatform(ControlOperatingSystems.Windows, vendor),
