@@ -135,14 +135,17 @@ export interface ControlInstanceCatalog {
 /**
  * 一份存下来的配置：用户给它起了名字的一整套设定。
  *
- * 配置和期望状态是两回事：期望状态只有一份，是"机器现在该保持成什么样"；
- * 配置可以有很多份，是"我攒下来的几套方案"。点一份配置只是把内容载入草稿，
- * 落到硬件仍然要点应用。
+ * **配置绑定实例**：一份配置属于某一块卡、某一颗处理器，所以选中一个实例
+ * 就能看到为它存过的几套方案，不必在混着别的设备的配置里挑。
+ *
+ * 点一份配置只是把内容载入草稿，落到硬件仍然要点应用。
  */
 export interface ControlPreset {
   id: string;
+  /** 这份配置属于哪个实例。 */
+  objectId: string;
   name: string;
-  desired: ControlDesiredState;
+  settings: readonly ControlSetting[];
   updatedAt: string;
 }
 
