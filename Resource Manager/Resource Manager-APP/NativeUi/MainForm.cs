@@ -247,8 +247,25 @@ public sealed partial class MainForm : Form
     {
         backendAvailabilityPanel.Visible = false;
         frontendHost.View.Visible = true;
+        // 页面刚显示出来，焦点还停在刚被隐藏的那块面板上。
+        // 不交过去的话，用户得先在页面里点一下滚轮和键盘才生效。
+        frontendHost.FocusContent();
         SetStatusText(NativeUiText.Current.StatusReady);
         SetFrontendConnectionState(FrontendConnectionState.Ready);
+    }
+
+    /// <summary>
+    /// 窗口被激活时，焦点回到页面。
+    ///
+    /// 从别的程序切回来（Alt+Tab、点标题栏、点任务栏）之后，
+    /// WinForms 会把焦点还给上一个活动控件 —— 而这个窗口平时只有页面这一块内容，
+    /// 上一个活动控件可能是早就隐藏掉的面板按钮。那种情况下滚轮和键盘都不进页面，
+    /// 用户要先点一下才行。
+    /// </summary>
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        frontendHost.FocusContent();
     }
 
     private void ShowFrontendUnavailable(string detail)
