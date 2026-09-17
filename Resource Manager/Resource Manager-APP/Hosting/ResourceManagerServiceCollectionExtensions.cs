@@ -92,6 +92,19 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
             services.AddHostedService<ControlDesiredStateReassertion>();
+            // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
+            // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
+            services.AddSingleton<ControlActualStateReader>();
+            services.AddSingleton<IControlActualStateOwner>(static provider =>
+                provider.GetRequiredService<ControlActualStateReader>());
+            services.AddHostedService(static provider =>
+                provider.GetRequiredService<ControlActualStateReader>());
+        }
+        else
+        {
+            // 只读服务图里没有采样那条路，当前值就一直是空的 ——
+            // 订阅端照样能问，只是问到的是"还没采过"。
+            services.AddSingleton<IControlActualStateOwner, EmptyControlActualStateOwner>();
         }
         services.AddSingleton<DashboardSettingsMigrator>();
         return services;

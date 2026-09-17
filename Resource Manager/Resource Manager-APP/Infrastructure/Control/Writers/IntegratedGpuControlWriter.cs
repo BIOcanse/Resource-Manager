@@ -107,6 +107,36 @@ public sealed class IntegratedGpuControlWriter(
             null);
     }
 
+    /// <summary>这一项现在实际是多少。</summary>
+    public async Task<ControlActualValue?> ReadAsync(
+        ControlObject target,
+        ControlCapability capability,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(capability);
+
+        var reading = await bridge.SendAsync("read", null, cancellationToken)
+            .ConfigureAwait(false);
+        if (reading is not { } result || !Flag(result, "ok"))
+        {
+            return new ControlActualValue(
+                target.Id,
+                capability.Id,
+                UnreadableReason: BridgeSilent);
+        }
+        return Number(result, "integratedGpuCurveOptimizerCounts") is { } value
+            ? new ControlActualValue(
+                target.Id,
+                capability.Id,
+                Number: Math.Round(value),
+                Unit: ControlUnits.Step)
+            : new ControlActualValue(
+                target.Id,
+                capability.Id,
+                UnreadableReason: "这颗处理器的核显没有报出这一项的当前值。");
+    }
+
     private JsonElement? Ask(string operation)
         => bridge.SendAsync(operation, null, CancellationToken.None).GetAwaiter().GetResult();
 

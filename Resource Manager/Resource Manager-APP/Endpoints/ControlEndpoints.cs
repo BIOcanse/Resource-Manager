@@ -20,6 +20,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(catalog.ReadObjects());
         }).AllowAnonymous();
 
+        // 实际状态：这台机器现在实际是什么样。
+        //
+        // **它不是期望状态的回声**：固件会按温度自己调度，用户也可能用别的软件改过，
+        // 两者对不上是常态，而且正是用户需要看见的信息。
+        // 只返回当前值，不触发采样 —— 采样是后台那条独立的路。
+        app.MapGet("/api/control/actual", (
+            HttpResponse response,
+            IControlActualStateOwner owner) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(owner.Current);
+        }).AllowAnonymous();
+
         // 期望状态 + 最近一次施加的回执。界面据此算"已应用/正在应用/没应用上"。
         app.MapGet("/api/control/state", async (
             HttpResponse response,
