@@ -41,6 +41,11 @@ const deDeAppCopy: AppCopy = {
       firstSeen: (at: string) => `First seen ${at}`,
       open: "Manage devices"
     },
+    presets: {
+      save: "Save preset",
+      namePlaceholder: "Preset name",
+      remove: "Delete preset"
+    },
     on: "On",
     createCurve: "New curve",
     curvePreview: "Curve preview",

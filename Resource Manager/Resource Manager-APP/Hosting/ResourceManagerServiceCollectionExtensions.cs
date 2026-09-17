@@ -83,6 +83,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 统一写入层：认实例 → 选驱动 → 适配单位 → 下发 → 归一回执。只管写。
         services.AddSingleton<IControlWriteLayer, ControlWriteLayer>();
         services.AddSingleton<IControlPlane, ControlPlane>();
+        // 配置：用户攒下来的几套方案。存一份不动硬件，只有应用才动。
+        services.AddSingleton<IControlPresetStore, JsonControlPresetStore>();
+        services.AddSingleton<IControlPresets, ControlPresets>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
         services.AddSingleton<IControlInstanceRegistry, JsonControlInstanceRegistry>();
         // 设定要一直维持：启动后和之后每隔一段重新施加一次。

@@ -64,6 +64,74 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
 
+        // 整份应用。草稿应用和配置应用走同一条路 —— 用户面对的是一整套设定，
+        // 不是一条条分别提交。这一份里没有的项会被恢复到硬件默认。
+        app.MapPut("/api/control/state", async (
+            ControlDesiredState? desired,
+            IControlPlane plane,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await plane.ApplyDesiredStateAsync(
+                    desired ?? ControlDesiredState.Empty,
+                    cancellationToken));
+            }
+            catch (ArgumentException error)
+            {
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
+
+        // 配置：用户攒下来的几套方案。
+        //
+        // **这里没有"应用某份配置"这样的动作。** 点一份配置是把它的内容载入草稿，
+        // 那一步只发生在前端；真要落到硬件，走上面那条整份应用 —— 应用只有一条路。
+        // 多一条"直接应用配置"的捷径，就会有两处定义"应用是什么"。
+        app.MapGet("/api/control/presets", async (
+            HttpResponse response,
+            IControlPresets presets,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(await presets.ReadAsync(cancellationToken));
+        }).AllowAnonymous();
+
+        // 存一份。同名覆盖 —— 再存一次"游戏"是想更新那一份，不是攒出两个同名的。
+        app.MapPut("/api/control/presets/{name}", async (
+            string name,
+            ControlDesiredState? desired,
+            IControlPresets presets,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await presets.SaveAsync(
+                    name,
+                    desired ?? ControlDesiredState.Empty,
+                    cancellationToken));
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+            {
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
+
+        app.MapDelete("/api/control/presets/{presetId}", async (
+            string presetId,
+            IControlPresets presets,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                return Results.Ok(await presets.DeleteAsync(presetId, cancellationToken));
+            }
+            catch (ArgumentException error)
+            {
+                return Results.BadRequest(new { error = error.Message });
+            }
+        });
+
         // 见过的设备登记表。在场的标激活，不在场的照样列出来 ——
         // 「都能看到连接过什么东西」。
         app.MapGet("/api/control/instances", async (

@@ -1,11 +1,14 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import {
+  applyControlDesiredState,
+  deleteControlPreset,
   forgetControlInstance,
   getControlInstances,
   getControlObjects,
+  getControlPresets,
   getControlState,
   refreshControlInstances,
-  setControlObjectSettings
+  saveControlPreset
 } from "../control/controlApi.ts";
 import { ControlCapabilityEditor } from "../control/ControlCapabilityEditor";
 import {
@@ -18,6 +21,8 @@ import type {
   ControlInstanceCatalog,
   ControlObject,
   ControlObjectCatalog,
+  ControlObjectDesiredState,
+  ControlPresetCatalog,
   ControlSetting,
   ControlStateView
 } from "../control/controlTypes.ts";
@@ -38,6 +43,49 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const [instances, setInstances] = createSignal<ControlInstanceCatalog | null>(null);
   const [failed, setFailed] = createSignal(false);
   const [managingInstances, setManagingInstances] = createSignal(false);
+  const [presets, setPresets] = createSignal<ControlPresetCatalog | null>(null);
+  const [presetName, setPresetName] = createSignal("");
+
+  /**
+   * 正在编的那一份，**整页共用一份**。
+   *
+   * 改动只留在本地，点「应用」才写下去 —— 拖曲线、拉滑块不会每动一下就走一次往返
+   * （那样回包还会把正在拖的值盖掉，反而拖不动）。
+   *
+   * 页面级而不是每张卡一份，是因为用户面对的本来就是一整套设定：
+   * 点一份配置载入的是整套，点应用下发的也是整套。
+   */
+  const [draft, setDraft] = createSignal<readonly ControlObjectDesiredState[] | null>(null);
+  const savedObjects = () => state()?.desired.objects ?? [];
+  const edited = () => draft() ?? savedObjects();
+
+  const settingsOf = (objectId: string) =>
+    edited().find((entry) => entry.objectId === objectId)?.settings ?? [];
+
+  const editCapability = (
+    objectId: string,
+    capabilityId: string,
+    next: ControlSetting | null
+  ) => {
+    const rest = settingsOf(objectId)
+      .filter((entry) => entry.capabilityId !== capabilityId);
+    const settings = next ? [...rest, next] : rest;
+    const others = edited().filter((entry) => entry.objectId !== objectId);
+    // 空设定的对象整条去掉：状态机那边"不管这个对象"就是这么表达的。
+    setDraft(settings.length > 0
+      ? [...others, { objectId, settings }]
+      : others);
+  };
+
+  const pending = () => edited().some((entry) => hasPendingChanges(
+    entry.settings,
+    savedObjects().find((row) => row.objectId === entry.objectId)?.settings ?? []))
+    || savedObjects().some((entry) => !edited().some(
+      (row) => row.objectId === entry.objectId));
+
+  const apply = () => void applyControlDesiredState(runtime.requestClient, edited())
+    .then((next) => { setState(next); setDraft(null); })
+    .catch(() => props.onNotice(uiText.control.saveFailed));
 
   onMount(() => {
     const controller = new AbortController();
@@ -51,6 +99,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
         .catch(() => undefined);
       void getControlInstances(runtime.requestClient, controller.signal)
         .then(setInstances)
+        .catch(() => undefined);
+      void getControlPresets(runtime.requestClient, controller.signal)
+        .then(setPresets)
         .catch(() => undefined);
     };
 
@@ -121,6 +172,70 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           />
         </Show>
 
+        {/*
+          配置：攒下来的几套方案。**点一份是把它载入草稿，不是直接应用** ——
+          真要落到硬件仍然要点下面的「应用」。应用只有一条路。
+        */}
+        <Show when={(presets()?.presets.length ?? 0) > 0 || pending()}>
+          <div class="control-presets">
+            <For each={presets()?.presets ?? []}>
+              {(preset) => (
+                <span class="control-preset">
+                  <button
+                    type="button"
+                    class="secondary"
+                    onClick={() => setDraft(preset.desired.objects)}
+                  >
+                    {preset.name}
+                  </button>
+                  <button
+                    type="button"
+                    class="control-preset-remove"
+                    aria-label={`${uiText.control.presets.remove}：${preset.name}`}
+                    onClick={() => void deleteControlPreset(
+                      runtime.requestClient,
+                      preset.id)
+                      .then(setPresets)
+                      .catch(() => props.onNotice(uiText.control.saveFailed))}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+            </For>
+            <input
+              type="text"
+              class="control-preset-name"
+              placeholder={uiText.control.presets.namePlaceholder}
+              value={presetName()}
+              onInput={(event) => setPresetName(event.currentTarget.value)}
+            />
+            <button
+              type="button"
+              class="secondary"
+              disabled={presetName().trim().length === 0}
+              onClick={() => void saveControlPreset(
+                runtime.requestClient,
+                presetName().trim(),
+                edited())
+                .then((next) => { setPresets(next); setPresetName(""); })
+                .catch(() => props.onNotice(uiText.control.saveFailed))}
+            >
+              {uiText.control.presets.save}
+            </button>
+          </div>
+        </Show>
+
+        {/* 改了才出现。没改动时摆一个按不动的按钮只是占地方。 */}
+        <Show when={pending()}>
+          <div class="control-page-actions">
+            <button class="secondary" type="button" onClick={() => setDraft(null)}>
+              {uiText.control.discard}
+            </button>
+            <button type="button" onClick={apply}>{uiText.control.apply}</button>
+          </div>
+        </Show>
+
         <For each={groups()}>
           {(group) => (
             <section class="control-group">
@@ -131,12 +246,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                     <ControlObjectCard
                       object={object}
                       state={state()}
-                      onSave={(settings) => void setControlObjectSettings(
-                        runtime.requestClient,
-                        object.id,
-                        settings)
-                        .then(setState)
-                        .catch(() => props.onNotice(uiText.control.saveFailed))}
+                      edited={settingsOf(object.id)}
+                      onEdit={(capabilityId, next) =>
+                        editCapability(object.id, capabilityId, next)}
                     />
                   )}
                 </For>
@@ -152,7 +264,8 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
 function ControlObjectCard(props: {
   object: ControlObject;
   state: ControlStateView | null;
-  onSave: (settings: readonly ControlSetting[]) => void;
+  edited: readonly ControlSetting[];
+  onEdit: (capabilityId: string, next: ControlSetting | null) => void;
 }) {
   // 用户对这个对象设过什么，以及最近一次施加的回执。
   const saved = () => props.state?.desired.objects
@@ -160,21 +273,7 @@ function ControlObjectCard(props: {
   const outcomes = () => props.state?.lastApply.outcomes
     .filter((entry) => entry.objectId === props.object.id) ?? [];
 
-  /**
-   * 正在编的那一份。
-   *
-   * 改动**只留在本地**，点「应用」才写下去。这样拖曲线、拉滑块都不会每动一下
-   * 就存一次盘走一次往返（那样回包还会把正在拖的值盖掉，反而拖不动），
-   * 而且用户可以改好几项再一起应用。
-   */
-  const [draft, setDraft] = createSignal<readonly ControlSetting[] | null>(null);
-  const edited = () => draft() ?? saved();
-  const pending = () => hasPendingChanges(edited(), saved());
-
-  const editCapability = (capabilityId: string, next: ControlSetting | null) => {
-    const rest = edited().filter((entry) => entry.capabilityId !== capabilityId);
-    setDraft(next ? [...rest, next] : rest);
-  };
+  const edited = () => props.edited;
 
   const itemStatus = (capabilityId: string) => controlItemStatusOf(
     capabilityId,
@@ -260,34 +359,13 @@ function ControlObjectCard(props: {
               <ControlCapabilityEditor
                 capability={capability}
                 setting={edited().find((entry) => entry.capabilityId === capability.id)}
-                onChange={(next) => editCapability(capability.id, next)}
+                onChange={(next) => props.onEdit(capability.id, next)}
               />
             </li>
           )}
         </For>
       </ul>
 
-      {/* 改了才出现。没改动时摆一个按不动的按钮只是占地方。 */}
-      <Show when={pending()}>
-        <div class="control-object-actions">
-          <button
-            class="secondary"
-            type="button"
-            onClick={() => setDraft(null)}
-          >
-            {uiText.control.discard}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              props.onSave(edited());
-              setDraft(null);
-            }}
-          >
-            {uiText.control.apply}
-          </button>
-        </div>
-      </Show>
     </article>
   );
 }

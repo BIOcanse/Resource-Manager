@@ -24,6 +24,25 @@ public sealed class ControlPlane(
         return new ControlStateView(desired, ReadLastApply());
     }
 
+    /// <summary>
+    /// 整份替换。草稿应用和配置应用都走这里 —— 用户面对的是一整套设定，
+    /// 不是一条条分别提交。
+    /// </summary>
+    public async Task<ControlStateView> ApplyDesiredStateAsync(
+        ControlDesiredState desired,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(desired);
+
+        var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+        // 空设定的对象整条去掉，不留一条空的 —— "不管这个对象"和"管它但什么都没设"
+        // 在状态机里应当是同一件事的同一种写法。
+        var next = new ControlDesiredState(desired.Objects
+            .Where(static entry => entry.Settings.Count > 0)
+            .ToArray());
+        return await SaveAndApplyAsync(current, next, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<ControlStateView> SetObjectSettingsAsync(
         string objectId,
         IReadOnlyList<ControlSetting> settings,
@@ -43,6 +62,19 @@ public sealed class ControlPlane(
         }
 
         var next = new ControlDesiredState(objects);
+        return await SaveAndApplyAsync(current, next, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// **先存后施加。** 写成功但存失败会让下次启动悄悄回到旧值 ——
+    /// 用户设过的东西不该自己变回去。反过来存成功但写失败只是"这次没应用上"，
+    /// 界面看得见，下次重新施加还有机会。
+    /// </summary>
+    private async Task<ControlStateView> SaveAndApplyAsync(
+        ControlDesiredState current,
+        ControlDesiredState next,
+        CancellationToken cancellationToken)
+    {
         await store.SaveAsync(next, cancellationToken).ConfigureAwait(false);
         // 撤掉一项不能只是"以后不再写它"：硬件上还留着上次写进去的值。
         // 所以这一次施加，除了新的期望，还要把撤掉的那些明确写回硬件默认。
