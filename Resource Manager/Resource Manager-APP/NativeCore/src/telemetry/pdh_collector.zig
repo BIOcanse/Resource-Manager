@@ -325,11 +325,19 @@ pub const Collector = struct {
             self.writeHeader(header, FrameFlags.partial);
             return .out_of_memory;
         };
+        // 磁盘这个域**只要有一项读到了就算有数**。
+        //
+        // 先前要求四项全齐（活动时间、读、写、队列），缺一项整个域不上报，
+        // 于是界面上磁盘四项一起变暗 —— 而实测这几个计数器在系统层面都读得出来，
+        // 只是不保证每一帧都同时到齐。
+        //
+        // 哪一项有值由它自己的位说了算（读取端按位取），域的标志只回答
+        // "这条通道这一帧有没有东西"。一个计数器缺席不该把整组打掉。
         const disk_mask = IoValidMask.disk_active |
             IoValidMask.disk_read |
             IoValidMask.disk_write |
             IoValidMask.disk_queue;
-        const disk_complete = (self.system_io.valid_mask & disk_mask) == disk_mask;
+        const disk_complete = (self.system_io.valid_mask & disk_mask) != 0;
         var domain_flags: u32 = 0;
         if (disk_complete) domain_flags |= FrameFlags.disk_complete;
         if (network_complete) domain_flags |= FrameFlags.network_complete;
