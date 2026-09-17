@@ -215,73 +215,89 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
     }
 
+    /// <summary>
+    /// 统一订阅源的**路由表**：一条选择器对应一条订阅源，唯一一条。
+    ///
+    /// **准入和派发是同一张表的两次查询，不是两份名单。**
+    /// 先前这两件事各有一份选择器清单（一份用来判断路径合不合法，一份用来决定调谁），
+    /// 加一条订阅源要同时改两处 —— 漏改一处的结果是路径被判为不支持，
+    /// 而派发那边明明写着它。这种错只会在运行时露面。
+    ///
+    /// 所以：**一级路由**就是拿选择器查这张表，查得到即合法、且已经确定了是哪条源；
+    /// **二级路由**是那条源自己按 query 决定采什么（哪个指标、哪块设备），
+    /// 那是它自己的事，不在这一层展开。
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, SubscriptionSourceRoute>
+        SubscriptionSourceRoutes = new Dictionary<string, SubscriptionSourceRoute>(
+            StringComparer.Ordinal)
+        {
+            ["/api/metrics/subscribe"] = new((subscription, services, interval) =>
+                CompileMetricSubscription(subscription, services, interval)),
+            ["/api/metrics/gpu-specialized/subscribe"] = new((subscription, services, interval) =>
+                CompileGpuSubscription(subscription, services, interval)),
+            ["/api/resource-monitor/subscribe"] = new((subscription, services, interval) =>
+                CompileResourceSubscription(subscription, services, interval)),
+            ["/api/adapters/resource-manager/scheduling/subscribe"] =
+                new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
+                    subscription,
+                    services.GetRequiredService<IResourceManagerSelfSchedulingControl>()
+                        .GetSchedulingSnapshot,
+                    interval)),
+            // 控制面的实际状态：这台机器现在实际是什么样。
+            // 只返回当前值，采样由后台那条独立的路做 —— 订阅者再多也不会多碰一次硬件。
+            ["/api/control/actual/subscribe"] =
+                new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
+                    subscription,
+                    () => services.GetRequiredService<IControlActualStateOwner>().Current,
+                    interval)),
+            ["/api/local-system/status/subscribe"] =
+                new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
+                    subscription,
+                    services.GetRequiredService<ILocalSystemStatusProvider>().GetStatus,
+                    interval)),
+            ["/api/device-topology/state/subscribe"] =
+                new((subscription, services, interval) => CompileDeviceTopologySubscription(
+                    subscription,
+                    services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
+                    interval)),
+            ["/api/cpu/topology/subscribe"] =
+                new((subscription, services, interval) => CompileCpuTopologySubscription(
+                    subscription,
+                    services.GetRequiredService<ICpuTopologyReader>(),
+                    interval)),
+            ["/api/cpu/residency/subscribe"] =
+                new((subscription, services, interval) => CompileCpuResidencySubscription(
+                    subscription,
+                    services.GetRequiredService<ICpuCoreResidencyReader>(),
+                    interval)),
+            ["/api/optimization/smart/state/subscribe"] =
+                new((subscription, services, interval) => CompileAlignedPeriodicAsyncSubscription(
+                    subscription,
+                    services.GetRequiredService<IHostManagerSmartCoordinator>().GetStateAsync,
+                    interval)),
+            // 操作队列不按间隔采样：它是推来的，来一条发一条。
+            ["/api/operations/subscribe"] = new((subscription, services, _) =>
+                CompileOperationSubscription(
+                    subscription,
+                    services.GetService<IHostManagerOperationQueryService>()))
+        };
+
+    /// <summary>
+    /// 一条订阅源：拿到这次订阅的 query 和间隔之后，怎么把它编成一个运行体。
+    /// 选择器不在这里 —— 它是表的键，放两份就又有了漂移的机会。
+    /// </summary>
+    private sealed record SubscriptionSourceRoute(
+        Func<ParsedFrontendSubscription, IServiceProvider, TimeSpan, CompiledFrontendSubscription>
+            Compile);
+
     private static CompiledFrontendSubscription CompileFrontendSubscription(
         ParsedFrontendSubscription subscription,
         IServiceProvider services)
     {
-        var query = subscription.Query;
-        var interval = ParseSamplingSubscriptionInterval(query);
-        return subscription.Selector switch
-        {
-            "/api/metrics/subscribe" => CompileMetricSubscription(
-                subscription,
-                services,
-                interval),
-            "/api/metrics/gpu-specialized/subscribe" => CompileGpuSubscription(
-                subscription,
-                services,
-                interval),
-            "/api/resource-monitor/subscribe" => CompileResourceSubscription(
-                subscription,
-                services,
-                interval),
-            "/api/adapters/resource-manager/scheduling/subscribe" =>
-                CompileAlignedPeriodicSubscription(
-                    subscription,
-                    services.GetRequiredService<
-                        IResourceManagerSelfSchedulingControl>()
-                        .GetSchedulingSnapshot,
-                    interval),
-            // 控制面的实际状态：这台机器现在实际是什么样。
-            // 只返回当前值，采样由后台那条独立的路做 —— 订阅者再多也不会多碰一次硬件。
-            "/api/control/actual/subscribe" =>
-                CompileAlignedPeriodicSubscription(
-                    subscription,
-                    () => services.GetRequiredService<IControlActualStateOwner>().Current,
-                    interval),
-            "/api/local-system/status/subscribe" =>
-                CompileAlignedPeriodicSubscription(
-                    subscription,
-                    services.GetRequiredService<ILocalSystemStatusProvider>()
-                        .GetStatus,
-                    interval),
-            "/api/device-topology/state/subscribe" =>
-                CompileDeviceTopologySubscription(
-                    subscription,
-                    services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
-                    interval),
-            "/api/cpu/topology/subscribe" =>
-                CompileCpuTopologySubscription(
-                    subscription,
-                    services.GetRequiredService<ICpuTopologyReader>(),
-                    interval),
-            "/api/cpu/residency/subscribe" =>
-                CompileCpuResidencySubscription(
-                    subscription,
-                    services.GetRequiredService<ICpuCoreResidencyReader>(),
-                    interval),
-            "/api/optimization/smart/state/subscribe" =>
-                CompileAlignedPeriodicAsyncSubscription(
-                    subscription,
-                    services.GetRequiredService<IHostManagerSmartCoordinator>()
-                        .GetStateAsync,
-                    interval),
-            "/api/operations/subscribe" => CompileOperationSubscription(
-                subscription,
-                services.GetService<IHostManagerOperationQueryService>()),
-            _ => throw new InvalidOperationException(
-                $"Unsupported subscription selector '{subscription.Selector}'.")
-        };
+        var interval = ParseSamplingSubscriptionInterval(subscription.Query);
+        // 能走到这里就说明一级路由已经查到过它了（准入用的是同一张表）。
+        return SubscriptionSourceRoutes[subscription.Selector]
+            .Compile(subscription, services, interval);
     }
 
     private static CompiledFrontendSubscription CompileMetricSubscription(
@@ -570,18 +586,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         var separator = value.IndexOf('?');
         selector = separator < 0 ? value : value[..separator];
-        if (selector is not (
-            "/api/metrics/subscribe"
-            or "/api/metrics/gpu-specialized/subscribe"
-            or "/api/resource-monitor/subscribe"
-            or "/api/adapters/resource-manager/scheduling/subscribe"
-            or "/api/local-system/status/subscribe"
-            or "/api/device-topology/state/subscribe"
-            or "/api/cpu/topology/subscribe"
-            or "/api/cpu/residency/subscribe"
-            or "/api/optimization/smart/state/subscribe"
-            or "/api/control/actual/subscribe"
-            or "/api/operations/subscribe"))
+        // **一级路由**：查路由表。查得到即合法，而且此刻已经确定了是哪条订阅源 ——
+        // 这里不再另有一份选择器名单，加一条源只改一处。
+        if (!SubscriptionSourceRoutes.ContainsKey(selector))
         {
             return false;
         }
