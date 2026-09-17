@@ -5,9 +5,14 @@ using ResourceManager.Shared.BrowserRuntimes;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-public sealed class ProviderRuntimeProbe(IRuntimePlanProvider runtimePlanProvider) : IProviderRuntimeProbe
+public sealed class ProviderRuntimeProbe(
+    IRuntimePlanProvider runtimePlanProvider,
+    IHostEnvironment environment) : IProviderRuntimeProbe
 {
     public ComponentProviderRuntimeProbeResult Probe(string componentId)
+        => Probe(componentId, deepVerify: false);
+
+    public ComponentProviderRuntimeProbeResult Probe(string componentId, bool deepVerify)
     {
         if (componentId.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase))
         {
@@ -46,7 +51,7 @@ public sealed class ProviderRuntimeProbe(IRuntimePlanProvider runtimePlanProvide
 
         if (componentId.Equals("amd-smu-pawnio-provider", StringComparison.OrdinalIgnoreCase))
         {
-            var pawnIo = PawnIoRuntimeProbe.Probe();
+            var pawnIo = PawnIoRuntimeProbe.Probe(environment.ContentRootPath, deepVerify);
             return new ComponentProviderRuntimeProbeResult(
                 pawnIo.RuntimeAvailable,
                 pawnIo.DeviceAvailable,
