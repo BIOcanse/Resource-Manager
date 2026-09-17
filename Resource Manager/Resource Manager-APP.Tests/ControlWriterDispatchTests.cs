@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.Control;
 namespace Resource_Manager_APP.Tests;
 
 /// <summary>
-/// 控制面把设定交给写入器这条路。
+/// 控制面把设定交给写入器这条路 —— 也就是统一写入层。
 ///
 /// 守的是同一条规矩：**"能不能写"只有写入器说了算**。
 /// 目录里的 Supported 和执行器实际走的那条路必须来自同一个回答 ——
@@ -53,9 +53,9 @@ public sealed class ControlWriterDispatchTests
     public async Task ExecutorWritesThroughTheWriterThatClaimsTheCapability()
     {
         var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
-        var executor = new ControlPlanExecutor(new StubCatalog(GpuObject()), [writer]);
+        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
 
-        var report = await executor.ApplyAsync(
+        var report = await executor.WriteAsync(
             new ControlDesiredState([
                 new ControlObjectDesiredState(
                     "gpu:test",
@@ -74,9 +74,9 @@ public sealed class ControlWriterDispatchTests
         {
             Availability = ControlWriteAvailability.No("这块卡不开放这一项。")
         };
-        var executor = new ControlPlanExecutor(new StubCatalog(GpuObject()), [writer]);
+        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
 
-        var report = await executor.ApplyAsync(
+        var report = await executor.WriteAsync(
             new ControlDesiredState([
                 new ControlObjectDesiredState(
                     "gpu:test",
@@ -107,7 +107,7 @@ public sealed class ControlWriterDispatchTests
         ]));
         var plane = new ControlPlane(
             store,
-            new ControlPlanExecutor(catalog, [writer]),
+            new ControlWriteLayer(catalog, [writer]),
             catalog);
 
         await plane.SetObjectSettingsAsync("gpu:test", [], CancellationToken.None);
@@ -116,6 +116,60 @@ public sealed class ControlWriterDispatchTests
         Assert.Equal(0, Assert.Single(writer.Written).Number);
         // 但存起来的期望状态里不该冒出一条用户没设过的"= 0"。
         Assert.Empty(store.Saved.Objects);
+    }
+
+    /// <summary>
+    /// 单位对不上就失败，**不静默照着数字写下去**。
+    ///
+    /// 把"瓦"喂给一个只认"档"的后端，写下去的数字看着合法，含义却完全不是
+    /// 用户要的那个 —— 这种失败必须显性。
+    /// </summary>
+    [Fact]
+    public async Task MismatchedUnitFailsInsteadOfWritingTheRawNumber()
+    {
+        var writer = new FakeWriter
+        {
+            Availability = ControlWriteAvailability.Yes(
+                new ControlNumberRange(-30, 10, 1, ControlUnits.Step, 0))
+        };
+        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+
+        var report = await writeLayer.WriteAsync(
+            new ControlDesiredState([
+                new ControlObjectDesiredState(
+                    "gpu:test",
+                    [new ControlSetting(
+                        "gpu.core-clock-offset",
+                        Number: 60,
+                        Unit: ControlUnits.Watt)])
+            ]),
+            CancellationToken.None);
+
+        Assert.Equal(ControlApplyStatuses.Failed, report.Outcomes[0].Status);
+        Assert.Empty(writer.Written);
+    }
+
+    /// <summary>
+    /// 旧文件里的记录没有单位，按这一项现在的单位解释 ——
+    /// 它是在只有一种单位的年代写下的，不该因为加了字段就全部作废。
+    /// </summary>
+    [Fact]
+    public async Task SettingWithoutUnitIsReadAsTheCapabilityUnit()
+    {
+        var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
+        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+
+        var report = await writeLayer.WriteAsync(
+            new ControlDesiredState([
+                new ControlObjectDesiredState(
+                    "gpu:test",
+                    [new ControlSetting("gpu.core-clock-offset", Number: 45)])
+            ]),
+            CancellationToken.None);
+
+        Assert.Equal(ControlApplyStatuses.Applied, report.Outcomes[0].Status);
+        // 下发给后端的那一条带上了这一项的单位，后端不必再猜。
+        Assert.Equal("MHz", Assert.Single(writer.Written).Unit);
     }
 
     private sealed class FakeWriter : IControlWriter
