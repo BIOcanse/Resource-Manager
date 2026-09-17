@@ -44,6 +44,43 @@ internal sealed class NvidiaNvmlControlBridge
         }
     }
 
+    /// <summary>
+    /// 这块卡的出厂唯一标识（GPU UUID）。
+    ///
+    /// **这是真正的唯一 id**，不随槽位、驱动版本、系统重装而变 ——
+    /// 配置挂在它上面，卡换个位置插回去，原来的设定还在。
+    /// 读不到就返回 null，那时身份退到型号。
+    /// </summary>
+    internal string? ReadUniqueId(IntPtr device)
+    {
+        lock (gate)
+        {
+            if (!EnsureInitialized())
+            {
+                return null;
+            }
+            try
+            {
+                var buffer = new byte[UuidBufferLength];
+                if (NativeMethods.nvmlDeviceGetUUID(device, buffer, (uint)buffer.Length)
+                    != NvmlSuccess)
+                {
+                    return null;
+                }
+                var text = System.Text.Encoding.ASCII.GetString(buffer).TrimEnd('\0').Trim();
+                return text.Length == 0 ? null : text;
+            }
+            catch (Exception error) when (error is DllNotFoundException
+                or EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>NVML 的 UUID 字符串长度上限，官方头文件给的是 96。</summary>
+    private const int UuidBufferLength = 96;
+
     /// <summary>这块卡的功耗上限能设到哪儿、现在是多少、出厂默认是多少。单位瓦。</summary>
     internal NvidiaPowerLimitWatts? ReadPowerLimit(IntPtr device)
     {
@@ -235,6 +272,12 @@ internal sealed class NvidiaNvmlControlBridge
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPciInfo_v3", CharSet = CharSet.Ansi)]
         internal static extern int nvmlDeviceGetPciInfo(IntPtr device, out NvmlPciInfo pciInfo);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetUUID", CharSet = CharSet.Ansi)]
+        internal static extern int nvmlDeviceGetUUID(
+            IntPtr device,
+            [Out] byte[] uuid,
+            uint length);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPowerManagementLimit")]
         internal static extern int nvmlDeviceGetPowerManagementLimit(
