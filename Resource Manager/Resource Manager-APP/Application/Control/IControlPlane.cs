@@ -13,19 +13,6 @@ public interface IControlDesiredStateStore
 }
 
 /// <summary>
-/// 把一份期望状态施加到硬件，并如实回报每一项的结果。
-///
-/// 它**不记**用户想要什么（那是存储的事），也不判断该不该施加（那是调用方的事）。
-/// 它只做一件事：按这份期望去写，然后说每一项写成了没有。
-/// </summary>
-public interface IControlPlanExecutor
-{
-    Task<ControlApplyReport> ApplyAsync(
-        ControlDesiredState desired,
-        CancellationToken cancellationToken);
-}
-
-/// <summary>
 /// 控制面对外的那一层：读当前状态、改设定、重新施加。
 ///
 /// 「改设定」一定是**先存后施加**：先把用户的意图落到持久化存储，再去写硬件。

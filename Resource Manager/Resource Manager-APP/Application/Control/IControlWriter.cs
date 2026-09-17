@@ -21,12 +21,29 @@ public interface IControlWriter
 
     /// <summary>
     /// 把一项设定写下去。只有 <see cref="Probe"/> 说能写的才会走到这里。
+    ///
+    /// 传进来的值**已经由转发层换算成这一项 <see cref="ControlNumberRange.Unit"/> 的量纲**，
+    /// 后端不必也不应再做单位换算 —— 换算只有一个属主。
     /// </summary>
     Task<ControlApplyOutcome> WriteAsync(
         ControlObject target,
         ControlCapability capability,
         ControlSetting setting,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 这一项现在实际是多少。
+    ///
+    /// 实际值和期望值是两回事：固件会按温度自己调度，用户也可能用别的软件改过。
+    /// 读不到就回 null —— 读不到和"读到 0"必须能分开。
+    ///
+    /// 默认读不到：不是每个后端都有回读通道，有的才覆写。
+    /// </summary>
+    Task<ControlActualValue?> ReadAsync(
+        ControlObject target,
+        ControlCapability capability,
+        CancellationToken cancellationToken)
+        => Task.FromResult<ControlActualValue?>(null);
 }
 
 /// <summary>
