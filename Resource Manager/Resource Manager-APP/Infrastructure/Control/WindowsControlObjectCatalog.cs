@@ -148,7 +148,24 @@ public sealed class WindowsControlObjectCatalog(
                 "显卡风扇曲线",
                 ControlValueKinds.Curve,
                 componentId,
-                componentName)
+                componentName),
+            // 笔记本的功率预算不在显卡里，在固件里：EC 把预算报给 ACPI 的 NvPCF 表，
+            // 驱动读到之后才决定 TGP。所以这两项和上面那个"功耗上限"是两条不同的路，
+            // 谁能用由各自的写入器回答。
+            Unsupported(
+                "gpu.ctgp-offset",
+                "cTGP 偏移",
+                ControlValueKinds.Number,
+                "uniwill-ec-provider",
+                "Uniwill 平台接口",
+                new ControlNumberRange(0, 100, 1, "W", 0)),
+            Unsupported(
+                "gpu.dynamic-boost-offset",
+                "Dynamic Boost 额度",
+                ControlValueKinds.Number,
+                "uniwill-ec-provider",
+                "Uniwill 平台接口",
+                new ControlNumberRange(0, 100, 1, "W", 0))
         ];
     }
 
