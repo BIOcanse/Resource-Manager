@@ -40,6 +40,7 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
       firstSeen: (at: string) => `First seen ${at}`,
       open: "Manage devices"
     },
+    actual: "Now ",
     presets: {
       save: "Save preset",
       namePlaceholder: "Preset name",

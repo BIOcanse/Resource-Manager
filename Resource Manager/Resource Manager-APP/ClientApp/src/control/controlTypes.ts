@@ -149,3 +149,30 @@ export interface ControlPreset {
 export interface ControlPresetCatalog {
   presets: readonly ControlPreset[];
 }
+
+/**
+ * 某一项能力**现在实际**是什么值。
+ *
+ * 和期望值并排显示，所以一样自带单位。读不到时给原因 ——
+ * 读不到和"读到 0"是两回事。
+ */
+export interface ControlActualValue {
+  objectId: string;
+  capabilityId: string;
+  number?: number | null;
+  toggle?: boolean | null;
+  curve?: readonly ControlCurvePoint[] | null;
+  unit?: string | null;
+  unreadableReason?: string | null;
+}
+
+/**
+ * 实际状态：这台机器现在实际是什么样。
+ *
+ * **不是期望状态的回声** —— 固件会按温度自己调度，用户也可能用别的软件改过。
+ * 两者对不上是常态，而且正是用户需要看见的信息。
+ */
+export interface ControlActualState {
+  values: readonly ControlActualValue[];
+  readAt: string;
+}

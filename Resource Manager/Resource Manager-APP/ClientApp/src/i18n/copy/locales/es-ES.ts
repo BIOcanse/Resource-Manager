@@ -41,6 +41,7 @@ const esEsAppCopy: AppCopy = {
       firstSeen: (at: string) => `First seen ${at}`,
       open: "Manage devices"
     },
+    actual: "Now ",
     presets: {
       save: "Save preset",
       namePlaceholder: "Preset name",
