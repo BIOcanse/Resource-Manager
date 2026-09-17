@@ -210,6 +210,47 @@ public sealed class AmdCpuControlWriter(
     }
 
     /// <summary>
+    /// 这一项现在实际是多少。
+    ///
+    /// 功耗读的是那个**上限**，不是实际功耗 —— 实际值由固件按温度调度，
+    /// 通常远低于上限，拿它当"当前设定"显示会让用户以为自己的设定没生效。
+    /// </summary>
+    public async Task<ControlActualValue?> ReadAsync(
+        ControlObject target,
+        ControlCapability capability,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(capability);
+
+        var reading = await bridge.SendAsync("read", null, cancellationToken)
+            .ConfigureAwait(false);
+        if (reading is not { } result || !Flag(result, "ok"))
+        {
+            return new ControlActualValue(
+                target.Id,
+                capability.Id,
+                UnreadableReason: BridgeSilent);
+        }
+
+        var isPowerLimit = string.Equals(
+            capability.Id,
+            PowerLimitCapabilityId,
+            StringComparison.Ordinal);
+        var number = Number(result, isPowerLimit ? "stapmLimitWatts" : "curveOptimizerCounts");
+        return number is { } value
+            ? new ControlActualValue(
+                target.Id,
+                capability.Id,
+                Number: isPowerLimit ? Math.Round(value, 1) : Math.Round(value),
+                Unit: isPowerLimit ? ControlUnits.Watt : ControlUnits.Step)
+            : new ControlActualValue(
+                target.Id,
+                capability.Id,
+                UnreadableReason: "这颗处理器没有报出这一项的当前值。");
+    }
+
+    /// <summary>
     /// 我们动手之前的值。**记在盘上，只记一次。**
     ///
     /// 只放在内存里不够：用户调低之后重启，下次读到的"当前值"就是那个低的，
