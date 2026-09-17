@@ -261,20 +261,19 @@ public sealed partial class WindowsResourceBreakdownSampler
              * 已归属份额 ≤ 设备读数，"任一分项 ≤ 总和"恒成立；剩下的那块
              * （归不到进程头上的引擎行）仍然是残差，语义没有丢。
              *
-             * 整卡的 PDH 总和读不到，就没有分母，也就没法把分项放到同一把尺子上 ——
-             * 那时如实报归属不可用，而不是把两个口径的数混在一列里。
+             * 分母是**整卡的 PDH 总和**。它有三种情况，各自的处理是确定的：
+             *
+             *   - 大于 0：正常，按份额把设备读数摊下去。
+             *   - 等于 0：卡闲着。归属本身是好的，只是没有东西可分 ——
+             *     照常发布这条，分项自然为空。**0 是一个正常读数，不是"读不到"。**
+             *   - 读不到（这块卡根本没有 PDH 引擎行）：归属不可用。
+             *     但设备读数仍然是准的，所以这条照常发布，只是没有分项。
+             *
+             * **三种情况都不会把这条指标判成不可用。** 设备读数在，这一项就是可读的；
+             * 归属拿不到是归属的事，由 attributionStatus 如实说，不牵连读数本身。
              */
-            if (gpuAttribution.GetUsagePercentTotal(gpuIndex) is not { } attributionTotal
-                || attributionTotal <= 0)
-            {
-                return CreateUnavailableBar(
-                    metricId,
-                    metric.Label,
-                    "%",
-                    scaleMode,
-                    GpuObservationStatus(hardwareSnapshot, gpuIndex, usage: true),
-                    gpuAttribution.UsageStatus);
-            }
+            var attributionTotal = gpuAttribution.GetUsagePercentTotal(gpuIndex);
+            var canScale = attributionTotal is { } total && total > 0;
 
             return CreateBar(
                 metricId,
@@ -288,9 +287,11 @@ public sealed partial class WindowsResourceBreakdownSampler
                 baseScorePlan,
                 residualBreakdownProvider,
                 isBytes: false,
-                scaleProcessValues: true,
+                scaleProcessValues: canScale,
                 attributionTotalValue: attributionTotal,
-                attributionStatus: gpuAttribution.UsageStatus);
+                attributionStatus: attributionTotal is null
+                    ? SamplingObservationStatus.Unavailable
+                    : gpuAttribution.UsageStatus);
         }
 
         if (gpuMetricName.Equals("vram", StringComparison.OrdinalIgnoreCase))
