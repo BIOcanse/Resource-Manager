@@ -41,6 +41,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddMonitoringSourceZone<WindowsMemoryMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsVirtualMemoryMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsGpuAdapterOrderMonitoringZone>();
+        // 核显的传感路由：哪一块卡的频率/温度/电压走处理器的 SMU。
+        // 启动时按 Windows 给的适配器类型认一次，之后不变。
+        services.AddSingleton<AmdIntegratedGpuSensorRoute>();
         // 频率这条要知道这颗芯片的加速上限 —— Windows 给不出来，只能问 SMU。
         // 它是芯片的固有属性，只问一次。
         services.AddSingleton<CpuMaxBoostFrequency>();
@@ -83,6 +86,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<NvidiaNvapiMonitoringZone>(),
             provider.GetRequiredService<AmdAdlxMonitoringZone>(),
             provider.GetRequiredService<AmdSmuMonitoringZone>(),
+            provider.GetRequiredService<AmdIntegratedGpuSensorRoute>(),
             provider.GetRequiredService<WindowsPlatformSensorReader>(),
             provider.GetRequiredService<HostManagerMetricSnapshotOwner>(),
             provider.GetRequiredService<DashboardMonitoringCatalogState>(),
