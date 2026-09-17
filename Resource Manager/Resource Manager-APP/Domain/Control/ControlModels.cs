@@ -113,7 +113,14 @@ public sealed record ControlObject(
     /// 显卡的接法：核显还是独显。非显卡对象为 null。
     /// 核显能调的比独显少，见 <see cref="ControlGpuAttachments"/>。
     /// </summary>
-    string? GpuAttachment = null)
+    string? GpuAttachment = null,
+    /// <summary>
+    /// 这个对象对应的显示适配器序号，和监控侧的 <c>GpuMetrics.Index</c> 是同一个。
+    ///
+    /// 写入器靠它把对象接回真实的那块卡：NVAPI / ADLX 各有自己的句柄体系，
+    /// 唯一共同的锚点就是系统枚举出来的适配器序号。非显卡对象为 null。
+    /// </summary>
+    int? AdapterIndex = null)
 {
     /// <summary>这个对象现在一项都控不了。界面据此整体标灰。</summary>
     public bool IsControllable => Capabilities.Any(static capability => capability.Supported);

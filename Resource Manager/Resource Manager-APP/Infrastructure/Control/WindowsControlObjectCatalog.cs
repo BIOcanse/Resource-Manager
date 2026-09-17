@@ -13,15 +13,19 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// 同一块卡在监控页和控制页必须是同一个东西，所以身份直接用监控侧的
 /// <see cref="GpuMetrics.IdentityKey"/>，不另造编号。
 ///
-/// **这一片只认对象、只声明能力，不写任何硬件。**
-/// 所以现在每一项能力都是 Supported=false，并说明还缺什么 ——
-/// 这不是占位符，是如实陈述：写入器还没做，用户应该看得出来。
+/// **这一片只认对象、只声明能力的形状，不判断能不能写。**
+/// 「这一项现在能不能调、为什么不能、范围到哪儿」由写入器回答 ——
+/// 它才是真去碰硬件的那个。两边各存一份的话迟早对不上：
+/// 目录说能调，写下去却报不支持。
 /// </summary>
 public sealed class WindowsControlObjectCatalog(
-    DashboardMonitoringCatalogState catalogState) : IControlObjectCatalog
+    DashboardMonitoringCatalogState catalogState,
+    IEnumerable<IControlWriter> writers) : IControlObjectCatalog
 {
-    /// <summary>写入器还没做时统一的原因。做一个就删一个，不允许悄悄留着。</summary>
+    /// <summary>没有任何写入器认领这一项时的原因。接进一个就少一条。</summary>
     private const string WriterNotImplemented = "控制写入尚未接入，当前只能读取。";
+
+    private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
     public ControlObjectCatalog ReadObjects()
     {
@@ -33,7 +37,46 @@ public sealed class WindowsControlObjectCatalog(
             AddCpu(objects, snapshot);
             AddFans(objects, snapshot);
         }
-        return new ControlObjectCatalog(objects, DateTimeOffset.UtcNow);
+        return new ControlObjectCatalog(
+            objects.Select(ResolveAvailability).ToArray(),
+            DateTimeOffset.UtcNow);
+    }
+
+    /// <summary>
+    /// 逐项问写入器：你能写吗？写不了为什么？范围是多少？
+    ///
+    /// 第一个认领这一项的写入器说了算。没人认领就保持目录里那句"还没接"。
+    /// </summary>
+    private ControlObject ResolveAvailability(ControlObject candidate)
+    {
+        var resolved = new List<ControlCapability>(candidate.Capabilities.Count);
+        foreach (var capability in candidate.Capabilities)
+        {
+            resolved.Add(ResolveCapability(candidate, capability));
+        }
+        return candidate with { Capabilities = resolved };
+    }
+
+    private ControlCapability ResolveCapability(
+        ControlObject candidate,
+        ControlCapability capability)
+    {
+        foreach (var writer in writers)
+        {
+            var availability = writer.Probe(candidate, capability);
+            if (!availability.IsMine)
+            {
+                continue;
+            }
+            return capability with
+            {
+                Supported = availability.CanWrite,
+                UnavailableReason = availability.CanWrite ? null : availability.Reason,
+                // 硬件报得出真实范围就用真实的；报不出就保留目录里的形状。
+                Range = availability.Range ?? capability.Range
+            };
+        }
+        return capability;
     }
 
     private static void AddGpus(List<ControlObject> objects, HardwareMetricSnapshot snapshot)
@@ -56,7 +99,8 @@ public sealed class WindowsControlObjectCatalog(
                     ? IntegratedGpuCapabilities(vendor)
                     : DiscreteGpuCapabilities(vendor, gpu),
                 $"GPU{gpu.Index}",
-                attachment));
+                attachment,
+                gpu.Index));
         }
     }
 
@@ -243,7 +287,8 @@ public sealed class WindowsControlObjectCatalog(
                         componentId,
                         componentName)
                 ],
-                $"GPU{gpu.Index}"));
+                $"GPU{gpu.Index}",
+                AdapterIndex: gpu.Index));
         }
     }
 
