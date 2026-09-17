@@ -33,6 +33,24 @@ public sealed record GitHubReleaseSource(
     string VerifiedAssetName,
     IReadOnlyList<string> AssetPatterns);
 
+/// <summary>
+/// 组件除了安装器之外还需要的运行时文件。
+///
+/// 存在的理由很具体：PawnIO 的安装器只装驱动，而读 PM table 要用的模块
+/// 在另一个仓库的发布里。装了安装器却没有模块，这个组件就只装了一半 ——
+/// 设备打得开、读数永远是空的，而且从外面完全看不出差在哪。
+///
+/// 这些文件不进仓库（第三方二进制，另有许可证），所以必须能被获取。
+/// </summary>
+public sealed record DependencyPayloadSource(
+    string Owner,
+    string Repository,
+    string VerifiedTag,
+    /// <summary>发布里的归档名。下载地址和已验证安装器一样是拼出来的，不用调 API。</summary>
+    string VerifiedAssetName,
+    /// <summary>从归档里取哪几个文件，放进该组件的 Dependencies 目录。</summary>
+    IReadOnlyList<string> FileNames);
+
 /// <summary>用户在版本对话框里选的是哪一个。</summary>
 public static class DependencyVersionChoices
 {
@@ -58,7 +76,9 @@ public sealed record OptionalDependencyDefinition(
     bool RequiresElevation,
     IReadOnlyList<string> InstalledProbeRelativePaths,
     string InstallNote,
-    GitHubReleaseSource? ReleaseSource = null)
+    GitHubReleaseSource? ReleaseSource = null,
+    /// <summary>安装器之外还需要的运行时文件；没有就是 null。</summary>
+    DependencyPayloadSource? PayloadSource = null)
 {
     /// <summary>这个依赖的安装器来源形态；目录声明什么就是什么，不做推断以外的猜测。</summary>
     public string InstallerSourceKind =>
