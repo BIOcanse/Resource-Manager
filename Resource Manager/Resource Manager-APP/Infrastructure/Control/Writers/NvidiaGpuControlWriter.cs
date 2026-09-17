@@ -28,6 +28,9 @@ public sealed class NvidiaGpuControlWriter(
 
     private readonly NvidiaNvapiControlBridge bridge = new();
     private readonly NvidiaNvmlControlBridge powerBridge = new();
+    private readonly object gate = new();
+    private bool powerWritableProbed;
+    private string? powerNotWritableReason;
 
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
@@ -60,6 +63,12 @@ public sealed class NvidiaGpuControlWriter(
         if (powerBridge.ReadPowerLimit(device) is not { } limits)
         {
             return ControlWriteAvailability.No(PowerNotExposed);
+        }
+        // 读得到不等于写得进去。很多笔记本显卡读得出范围却拒绝写入，
+        // 而探测说能调、写下去报失败，是这一层最不该出现的事。
+        if (ProbeWritable(device, limits) is { } refused)
+        {
+            return ControlWriteAvailability.No(refused);
         }
         return ControlWriteAvailability.Yes(new ControlNumberRange(
             Math.Round(limits.MinimumWatts),
@@ -143,6 +152,38 @@ public sealed class NvidiaGpuControlWriter(
             capability.Id,
             ControlApplyStatuses.Applied,
             null);
+    }
+
+    /// <summary>
+    /// 这块卡到底让不让改功耗上限。写不了就返回原因，写得了返回 null。
+    ///
+    /// 用「把当前值原样写回去」来问 —— 这是一次空操作，硬件状态不变，
+    /// 但驱动会如实告诉我们它接不接受。只在**读得到当前值**时才问：
+    /// 读不到就没有"原样"可写，那时宁可说验不了，也不拿一个猜来的值去写用户的卡。
+    /// 一个进程只问一次，结果记下来 —— 界面每刷新一次就写一次硬件是不能接受的。
+    /// </summary>
+    private string? ProbeWritable(IntPtr device, NvidiaPowerLimitWatts limits)
+    {
+        lock (gate)
+        {
+            if (powerWritableProbed)
+            {
+                return powerNotWritableReason;
+            }
+
+            powerWritableProbed = true;
+            if (limits.CurrentWatts is not { } current)
+            {
+                powerNotWritableReason = "读不到这块卡当前的功耗上限，没法确认能不能改。";
+                return powerNotWritableReason;
+            }
+
+            var code = powerBridge.WritePowerLimitWatts(device, current);
+            powerNotWritableReason = code == 0
+                ? null
+                : $"这块卡不接受改功耗上限（{DescribeNvmlCode(code)}）。";
+            return powerNotWritableReason;
+        }
     }
 
     private bool WritePowerLimit(int adapterIndex, double watts, out int code)

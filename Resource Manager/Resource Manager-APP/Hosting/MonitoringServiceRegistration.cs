@@ -103,6 +103,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 控制写入器。注册在这里是因为目录要问它们"这一项能不能调" ——
         // 探测本身只读（问驱动要范围），真正的写入要等调用方明确下达。
         services.AddSingleton<IControlWriter, NvidiaGpuControlWriter>();
+        // 笔记本的显卡功率预算走厂商固件的 ACPI WMI 接口，不是显卡接口。
+        services.AddSingleton<IControlWriter, UniwillGpuPowerWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
         services.AddSingleton<IControlObjectCatalog, WindowsControlObjectCatalog>();
         // 快速扫描读主文件表，全扫描逐级遍历。进来的请求由前者按模式分派，
