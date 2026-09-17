@@ -5,24 +5,42 @@ using ResourceManager.App.Domain.Control;
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
 /// <summary>
-/// 核显的电压（Curve Optimizer）。
+/// 核显的调节。
 ///
-/// 核显和独显走的**不是同一条路**，所以按 <see cref="ControlObject.GpuAttachment"/> 分流：
-/// 独显有自己的驱动接口（NVAPI / ADLX），核显跟着它所在的平台走 ——
-/// AMD 的归 CPU 封装里的 SMU（和处理器同一条通道），
-/// Intel 的归显卡驱动自带的控制库（IGCL，随驱动一起装，Alder Lake-P 及以后）。
+/// 核显和独显走的**不是同一条路**，所以按 <see cref="ControlObject.GpuAttachment"/> 分流；
+/// 而两家核显能调的也**不是同一件事**，所以再按厂商分：
+///
+/// <list type="bullet">
+/// <item>AMD 的核显归 CPU 封装里的 SMU 管，能调 Curve Optimizer 的**档位**，
+///   和处理器同一条通道（辅助进程 → ZenStates-Core）。</item>
+/// <item>Intel 的核显走显卡驱动自带的 IGCL，能调频率**偏移（MHz）**。
+///   控制库随驱动一起装，Alder Lake-P 及以后才有。</item>
+/// </list>
+///
+/// 硬凑成同一项只会让其中一边的单位和语义都是错的。
 /// </summary>
 public sealed class IntegratedGpuControlWriter(
     HardwareBridgeClient bridge,
+    IControlOverclockConsent consent,
     ILogger<IntegratedGpuControlWriter>? logger = null) : IControlWriter
 {
     internal const string CurveOptimizerCapabilityId = "gpu.curve-optimizer";
+    internal const string CoreClockOffsetCapabilityId = "gpu.core-clock-offset";
+
+    private readonly IntelGraphicsControlBridge intel = new();
 
     private const string BridgeMissing = "需要先安装硬件写入辅助进程。";
     private const string BridgeSilent = "硬件写入辅助进程没有应答。";
     private const string NotSupported = "这颗处理器的核显上没有这一项。";
     private const string NotEffective = "写下去了，但回读的值没有变。";
-    private const string IntelNotVerified = "Intel 核显的调节还没接上。";
+    private const string IntelDriverMissing =
+        "读不到 Intel 显卡驱动自带的控制库，装上/更新显卡驱动之后才能调。";
+
+    /// <summary>
+    /// 这不是我们发明的流程，是厂商的硬性要求：IGCL 在用户接受免责声明之前
+    /// 拒绝所有超频接口，原文是"用户据此接受部件寿命缩短"。
+    /// </summary>
+    private const string OverclockNotAccepted = "需要先同意超频免责声明。";
 
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
@@ -35,7 +53,7 @@ public sealed class IntegratedGpuControlWriter(
         }
         if (string.Equals(target.Platform.Vendor, ControlVendors.Intel, StringComparison.Ordinal))
         {
-            return ControlWriteAvailability.No(IntelNotVerified);
+            return ProbeIntel();
         }
         if (!bridge.IsInstalled)
         {
@@ -59,7 +77,7 @@ public sealed class IntegratedGpuControlWriter(
         return ControlWriteAvailability.Yes(
             capability.Range is { } declared
                 ? declared with { DefaultValue = current }
-                : new ControlNumberRange(-30, 10, 1, "档", current));
+                : new ControlNumberRange(-30, 10, 1, ControlUnits.Step, current));
     }
 
     public async Task<ControlApplyOutcome> WriteAsync(
@@ -77,10 +95,17 @@ public sealed class IntegratedGpuControlWriter(
             return Failed(target, capability, "这一项要一个数值，收到的不是。");
         }
         var bounds = capability.Range;
-        var counts = (int)(bounds is null
+        var wanted = bounds is null
             ? value
-            : Math.Clamp(value, bounds.Minimum, bounds.Maximum));
+            : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
 
+        // Intel 那条的单位是 MHz，不是档位 —— 别把它当整数档位取整。
+        if (string.Equals(target.Platform.Vendor, ControlVendors.Intel, StringComparison.Ordinal))
+        {
+            return await WriteIntelAsync(target, capability, wanted).ConfigureAwait(false);
+        }
+
+        var counts = (int)wanted;
         var response = await bridge.SendAsync(
             "set-igpu-curve-optimizer",
             new Dictionary<string, object?> { ["counts"] = counts },
@@ -116,6 +141,22 @@ public sealed class IntegratedGpuControlWriter(
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
 
+        // Intel 那条走 IGCL，和辅助进程没关系。
+        if (string.Equals(target.Platform.Vendor, ControlVendors.Intel, StringComparison.Ordinal))
+        {
+            return intel.FirstDevice() is { } device
+                && intel.ReadFrequencyOffsetMhz(device) is { } offset
+                    ? new ControlActualValue(
+                        target.Id,
+                        capability.Id,
+                        Number: offset,
+                        Unit: ControlUnits.Megahertz)
+                    : new ControlActualValue(
+                        target.Id,
+                        capability.Id,
+                        UnreadableReason: IntelDriverMissing);
+        }
+
         var reading = await bridge.SendAsync("read", null, cancellationToken)
             .ConfigureAwait(false);
         if (reading is not { } result || !Flag(result, "ok"))
@@ -135,6 +176,74 @@ public sealed class IntegratedGpuControlWriter(
                 target.Id,
                 capability.Id,
                 UnreadableReason: "这颗处理器的核显没有报出这一项的当前值。");
+    }
+
+    /// <summary>
+    /// Intel 核显：先看控制库在不在，再看用户同意没同意。
+    ///
+    /// 没同意就如实报出来 —— 这既是厂商要求，也是用户应该看见的东西：
+    /// 超频会缩短部件寿命，那不该被一个默认勾选悄悄带过。
+    /// </summary>
+    private ControlWriteAvailability ProbeIntel()
+    {
+        if (!intel.IsAvailable)
+        {
+            return ControlWriteAvailability.No(IntelDriverMissing);
+        }
+        if (!consent.IsAcceptedAsync(CancellationToken.None).GetAwaiter().GetResult())
+        {
+            return ControlWriteAvailability.No(OverclockNotAccepted);
+        }
+        if (intel.FirstDevice() is not { } device)
+        {
+            return ControlWriteAvailability.No(IntelDriverMissing);
+        }
+
+        // 同意过才去把 waiver 交给驱动。交不上说明这块卡不让超，如实说。
+        if (!intel.TryAcceptOverclockWaiver(device))
+        {
+            return ControlWriteAvailability.No("这块核显不接受超频设置。");
+        }
+        return ControlWriteAvailability.Yes();
+    }
+
+    private async Task<ControlApplyOutcome> WriteIntelAsync(
+        ControlObject target,
+        ControlCapability capability,
+        double offsetMhz)
+    {
+        if (intel.FirstDevice() is not { } device)
+        {
+            return Failed(target, capability, IntelDriverMissing);
+        }
+        if (!await consent.IsAcceptedAsync(CancellationToken.None).ConfigureAwait(false))
+        {
+            return Failed(target, capability, OverclockNotAccepted);
+        }
+        if (!intel.TryAcceptOverclockWaiver(device))
+        {
+            return Failed(target, capability, "这块核显不接受超频设置。");
+        }
+
+        var result = intel.WriteFrequencyOffsetMhz(device, offsetMhz);
+        if (result != 0)
+        {
+            logger?.LogWarning(
+                "Intel 核显拒绝了频率偏移写入：{Offset} MHz，结果码 {Result}。",
+                offsetMhz,
+                result);
+            return Failed(target, capability, "驱动拒绝了这次写入。");
+        }
+
+        // 回读核对。驱动会按硬件余量夹值，夹过之后就不是用户要的那个数了。
+        var readBack = intel.ReadFrequencyOffsetMhz(device);
+        return readBack is { } applied && Math.Abs(applied - offsetMhz) > 1
+            ? Failed(target, capability, NotEffective)
+            : new ControlApplyOutcome(
+                target.Id,
+                capability.Id,
+                ControlApplyStatuses.Applied,
+                null);
     }
 
     private JsonElement? Ask(string operation)
@@ -165,8 +274,21 @@ public sealed class IntegratedGpuControlWriter(
                 target.GpuAttachment,
                 ControlGpuAttachments.Integrated,
                 StringComparison.Ordinal)
-            && string.Equals(capabilityId, CurveOptimizerCapabilityId, StringComparison.Ordinal)
-            && target.Platform.Vendor is ControlVendors.Amd or ControlVendors.Intel;
+            // 两家的核显能调的不是同一件事：AMD 是 Curve Optimizer 档位（走 SMU），
+            // Intel 是频率偏移 MHz（走 IGCL）。所以各认各的那一项。
+            && (string.Equals(target.Platform.Vendor, ControlVendors.Amd, StringComparison.Ordinal)
+                    && string.Equals(
+                        capabilityId,
+                        CurveOptimizerCapabilityId,
+                        StringComparison.Ordinal)
+                || string.Equals(
+                        target.Platform.Vendor,
+                        ControlVendors.Intel,
+                        StringComparison.Ordinal)
+                    && string.Equals(
+                        capabilityId,
+                        CoreClockOffsetCapabilityId,
+                        StringComparison.Ordinal));
 
     private static ControlApplyOutcome Failed(
         ControlObject target,

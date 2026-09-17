@@ -3,6 +3,9 @@ using ResourceManager.App.Domain.Control;
 
 namespace ResourceManager.App.Endpoints;
 
+/// <summary>用户对超频免责声明的答复。</summary>
+public sealed record ControlOverclockConsentRequest(bool Accepted);
+
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapControlEndpoints(this IEndpointRouteBuilder app)
@@ -81,6 +84,35 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 return Results.BadRequest(new { error = error.Message });
             }
+        });
+
+        // 超频免责声明的同意状态。
+        //
+        // **这一条不是我们发明的流程，是厂商的硬性要求**：Intel 的 IGCL 在用户
+        // 接受之前拒绝所有超频接口，原文写着设置它表示用户接受部件寿命缩短，
+        // 并要求应用先告知用户。所以界面上要先把后果说清楚，用户点了同意才调这个。
+        app.MapGet("/api/control/overclock-consent", async (
+            HttpResponse response,
+            IControlOverclockConsent consent,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(new
+            {
+                accepted = await consent.IsAcceptedAsync(cancellationToken)
+            });
+        }).AllowAnonymous();
+
+        app.MapPut("/api/control/overclock-consent", async (
+            ControlOverclockConsentRequest? request,
+            IControlOverclockConsent consent,
+            CancellationToken cancellationToken) =>
+        {
+            await consent.SetAcceptedAsync(request?.Accepted == true, cancellationToken);
+            return Results.Ok(new
+            {
+                accepted = await consent.IsAcceptedAsync(cancellationToken)
+            });
         });
 
         // 配置：**绑定实例**的几套方案。选中一个实例就能看到为它存过的那几份。

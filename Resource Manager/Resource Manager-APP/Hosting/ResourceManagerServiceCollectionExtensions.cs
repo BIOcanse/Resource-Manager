@@ -84,6 +84,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlWriteLayer, ControlWriteLayer>();
         services.AddSingleton<IControlPlane, ControlPlane>();
         // 配置：用户攒下来的几套方案。存一份不动硬件，只有应用才动。
+        // 超频免责声明的同意状态。厂商（Intel IGCL）硬性要求用户先明确接受，
+        // 我们不替他默认接受。
+        services.AddSingleton<IControlOverclockConsent, JsonControlOverclockConsent>();
         services.AddSingleton<IControlPresetStore, JsonControlPresetStore>();
         services.AddSingleton<IControlPresets, ControlPresets>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
