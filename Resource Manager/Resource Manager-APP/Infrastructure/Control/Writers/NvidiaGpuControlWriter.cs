@@ -21,9 +21,9 @@ public sealed class NvidiaGpuControlWriter(
     internal const string CoreClockOffsetCapabilityId = "gpu.core-clock-offset";
     internal const string MemoryClockOffsetCapabilityId = "gpu.memory-clock-offset";
 
-    private const string DriverMissing = "读不到 NVAPI，装上 NVIDIA 驱动之后才能调。";
-    private const string GpuMissing = "这块卡现在认不出来，可能已经被切走或者停用了。";
-    private const string PowerNotExposed = "这块卡没有把功耗上限开放出来。";
+    private const string DriverMissing = "读不到 NVAPI，需要 NVIDIA 驱动。";
+    private const string GpuMissing = "认不出这块卡，可能已被切走或停用。";
+    private const string PowerNotExposed = "这块卡没开放功耗上限。";
     private const string WriteRejected = "驱动拒绝了这次写入。";
 
     private readonly NvidiaNvapiControlBridge bridge = new();
@@ -174,7 +174,7 @@ public sealed class NvidiaGpuControlWriter(
             powerWritableProbed = true;
             if (limits.CurrentWatts is not { } current)
             {
-                powerNotWritableReason = "读不到这块卡当前的功耗上限，没法确认能不能改。";
+                powerNotWritableReason = "读不到当前功耗上限，无法确认能否改。";
                 return powerNotWritableReason;
             }
 

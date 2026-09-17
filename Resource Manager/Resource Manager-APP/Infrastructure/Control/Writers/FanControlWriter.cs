@@ -20,10 +20,10 @@ public sealed class FanControlWriter(
     internal const string LockMaximumCapabilityId = "fan.lock-maximum";
     internal const string CurveCapabilityId = "fan.curve";
 
-    private const string CoreMissing = "需要先安装风扇控制核心。";
-    private const string CoreSilent = "风扇控制核心没有应答。";
-    private const string NoChannel = "这台机器上还没有可用的风扇控制通道。";
-    private const string NoDutyControl = "这台机器的风扇只有全速和自动两档，给不了曲线。";
+    private const string CoreMissing = "需要风扇控制核心。";
+    private const string CoreSilent = "风扇控制核心没应答。";
+    private const string NoChannel = "没有可用的风扇控制通道。";
+    private const string NoDutyControl = "这台机器的风扇只有全速和自动两档。";
 
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
@@ -54,7 +54,7 @@ public sealed class FanControlWriter(
         }
         if (!Flag(fan, "writable"))
         {
-            return ControlWriteAvailability.No("这台机器的固件没有声明支持风扇控制，只读。");
+            return ControlWriteAvailability.No("固件没有声明支持风扇控制，只读。");
         }
 
         // 曲线要能给任意占空比才谈得上。只有两档的机器上如实说，不摆一条拖不动的曲线。

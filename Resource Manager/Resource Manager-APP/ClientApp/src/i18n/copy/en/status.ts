@@ -75,8 +75,8 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
       system: "System"
     },
     metricUnavailable: {
-      needsComponent: "Install and enable the matching hardware support component.",
-      deviceNotProvided: "This device does not provide this data."
+      needsComponent: "Needs a hardware support component",
+      deviceNotProvided: "Not readable"
     },
     component: {
       nameFallback: "Hardware support component",

@@ -23,10 +23,10 @@ public sealed class UniwillGpuPowerWriter(
     internal const string CtgpOffsetCapabilityId = "gpu.ctgp-offset";
     internal const string DynamicBoostOffsetCapabilityId = "gpu.dynamic-boost-offset";
 
-    private const string PlatformMissing = "这台机器没有 Uniwill 平台接口，调不了显卡功率预算。";
-    private const string BudgetUnknown = "读不到这块卡的功率预算，暂时调不了。";
-    private const string ReadBackMismatch = "写进去了但回读对不上，固件没有接受这个值。";
-    private const string NotEffective = "这台机器的固件收得下这个值，但显卡的功率预算没有跟着变，先不开放。";
+    private const string PlatformMissing = "没有 Uniwill 平台接口。";
+    private const string BudgetUnknown = "读不到功率预算。";
+    private const string ReadBackMismatch = "写进去了但回读对不上。";
+    private const string NotEffective = "固件收得下，但显卡功率预算不跟着变，暂不开放。";
 
     private readonly UniwillEcBridge bridge = new();
     private readonly NvidiaNvmlControlBridge powerBridge = new();

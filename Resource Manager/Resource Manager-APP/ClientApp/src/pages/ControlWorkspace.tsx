@@ -408,7 +408,10 @@ function ControlObjectCard(props: {
         <SegmentedControl
           value={firmwareOwned() ? "firmware" : "app"}
           ariaLabel={uiText.control.ownership.label}
-          class="control-ownership-choice"
+          // 不给 itemClass 的话，每一段会退化成普通按钮、套上全局的主按钮样式，
+          // 于是两段看起来都是选中的 —— 一组二选一里最不该出问题的就是这个。
+          class="settings-segmented-control control-ownership-choice"
+          itemClass="settings-segment"
           options={[
             { id: "firmware", label: uiText.control.ownership.firmware },
             { id: "app", label: uiText.control.ownership.app }
@@ -434,6 +437,11 @@ function ControlObjectCard(props: {
         为这个实例存过的配置。**点一份只是把它载入草稿**，要落到硬件还得点应用 ——
         应用只有一条路，不给配置开后门。
       */}
+      {/*
+        归固件管、又一份配置都没存过的时候，这一行没有任何用处 ——
+        没东西可载入，也没东西可保存。每张卡都挂一个空输入框只是占地方。
+      */}
+      <Show when={props.presets.length > 0 || !firmwareOwned()}>
       <div class="control-presets">
         <For each={props.presets}>
           {(preset) => (
@@ -479,6 +487,7 @@ function ControlObjectCard(props: {
           {uiText.control.presets.save}
         </button>
       </div>
+      </Show>
 
       <ul class="control-capabilities">
         <For each={props.object.capabilities}>

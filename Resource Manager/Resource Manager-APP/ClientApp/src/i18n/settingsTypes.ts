@@ -59,10 +59,13 @@ export interface SettingsCopy {
     reload: string;
     reapply: string;
   };
+  // 选项的 description 是**可选的补充**，不是必填栏位。
+  // 标题已经说清楚的选项（"始终开启""隐藏时暂停"）再挂一句
+  // "始终启用这项设置"只是把标题重说一遍，那是噪音不是帮助。
   performance: {
     smartMonitoringTitle: string;
     smartMonitoringDescription: (seconds: number) => string;
-    adaptiveBooleanModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description: string }>;
+    adaptiveBooleanModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description?: string }>;
     gpuPerformanceUseCasesTitle: string;
     gpuPerformanceUseCasesDescription: string;
     automaticSchedulingOptimizationsTitle: string;
@@ -84,7 +87,7 @@ export interface SettingsCopy {
     virtualMemoryOptimizationTargetLabel: string;
     pauseHiddenTitle: string;
     pauseHiddenDescription: string;
-    frontendHiddenRefreshModeOptions: Array<{ id: AppFrontendHiddenRefreshMode; label: string; description: string }>;
+    frontendHiddenRefreshModeOptions: Array<{ id: AppFrontendHiddenRefreshMode; label: string; description?: string }>;
     refreshCadenceTitle: string;
     refreshCadenceDescription: string;
     presetNumericModeOptions: Array<{ id: AppPresetNumericSettingMode; label: string; description: string }>;
