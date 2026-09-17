@@ -35,13 +35,15 @@ export const zhShellCopy = {
       absent: "不在场",
       refresh: "重新检测",
       forget: "删除记录",
-      firstSeen: (at: string) => `首次见到 ${at}`
+      firstSeen: (at: string) => `首次见到 ${at}`,
+      open: "实例管理"
     },
-    clear: "取消设定",
     on: "开启",
     createCurve: "新建曲线",
     curvePreview: "曲线预览",
     saveFailed: "保存失败",
+    apply: "应用",
+    discard: "撤销改动",
     attachment: {
       integrated: "核显",
       discrete: "独显",
