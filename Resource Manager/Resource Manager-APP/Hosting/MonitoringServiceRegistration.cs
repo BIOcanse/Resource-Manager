@@ -105,7 +105,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlWriter, NvidiaGpuControlWriter>();
         // 笔记本的显卡功率预算走厂商固件的 ACPI WMI 接口，不是显卡接口。
         services.AddSingleton<IControlWriter, UniwillGpuPowerWriter>();
-        // 处理器功耗走 SMU 邮箱，内核用已经装着的 PawnIO（本机开着 HVCI，WinRing0 起不来）。
+        // 处理器和核显的写入都经过辅助进程：它链接 GPL 的 ZenStates-Core，
+        // 单独一个程序、单独一个许可证，主程序只跟它说话。
+        services.AddSingleton<HardwareBridgeClient>();
         services.AddSingleton<IControlWriter, AmdCpuControlWriter>();
         // 核显和独显不是一条路（AMD 走 SMU、Intel 走显卡驱动的控制库），按接法分流。
         services.AddSingleton<IControlWriter, IntegratedGpuControlWriter>();

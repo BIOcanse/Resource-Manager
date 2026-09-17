@@ -1,52 +1,40 @@
 using System.Globalization;
+using System.Text.Json;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
-using ResourceManager.App.Infrastructure.Monitoring.AmdSmu;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
 /// <summary>
-/// AMD 处理器的功耗上限，走 SMU 邮箱。
+/// AMD 处理器的功耗上限和电压（Curve Optimizer），经由硬件写入辅助进程。
 ///
-/// **内核用的是已经装着的 PawnIO，不是 WinRing0。** 本机开着内存完整性（HVCI）
-/// 并启用了易受攻击驱动阻止列表，WinRing0 在这种机器上根本加载不了 ——
-/// RyzenAdj 实测 <c>init_ryzenadj()</c> 直接返回 NULL。PawnIO 是签名的沙箱化内核模块，
-/// 正是为这种环境做的，而且监控侧读 SMU 用的就是它。
+/// **不自己拼 SMU 邮箱、不自己编码 Curve Optimizer 的负值。** 那些都在辅助进程里
+/// 由 ZenStates-Core 负责 —— 各代处理器的邮箱地址、命令号、参数编码由上游维护，
+/// 内核也由它按机器情况选（开着内存完整性的机器上走 PawnIO）。
+/// 电压调错代价很大，照二手资料猜编码是不能接受的。
 ///
-/// 命令号和邮箱地址取自 RyzenAdj（LGPL）：Dragon Range / Fire Range 上
-/// 持续功耗是 MP1 的 <c>0x4F</c>、长时是 <c>0x5F</c>、瞬时是 <c>0x3E</c>，参数单位毫瓦。
-///
-/// 写完从 PM table 回读核对 —— SMU 回执说收到了，不等于限制真的改了。
+/// **策略全在这一侧。** 辅助进程只回原始状态码和回读值，"算不算写成功"、
+/// "上界是多少"、"撤销恢复到哪儿"由这里判断 —— 两边各存一份迟早对不上。
 /// </summary>
 public sealed class AmdCpuControlWriter(
+    HardwareBridgeClient bridge,
     IHostEnvironment environment,
-    ILogger<AmdCpuControlWriter>? logger = null) : IControlWriter, IDisposable
+    ILogger<AmdCpuControlWriter>? logger = null) : IControlWriter
 {
     internal const string PowerLimitCapabilityId = "cpu.power-limit";
+    internal const string CurveOptimizerCapabilityId = "cpu.curve-optimizer";
 
-    /// <summary>PM table 里这几项的位置，对所有表版本都一样（RyzenAdj 也这么读）。</summary>
-    private const int StapmLimitIndex = 0;
-    private const int FastLimitIndex = 2;
-    private const int SlowLimitIndex = 4;
+    /// <summary>回读允许的误差，单位瓦。SMU 报的是浮点，不要求逐位相等。</summary>
+    private const double WattTolerance = 1;
 
-    /// <summary>Dragon Range / Fire Range 的 MP1 命令号。</summary>
-    private const uint SetStapmLimitMessage = 0x4F;
-    private const uint SetFastLimitMessage = 0x3E;
-    private const uint SetSlowLimitMessage = 0x5F;
-
-    /// <summary>PawnIO 模块里 <c>CPU_Raphael</c> 和 <c>CPU_DragonRange</c> 的枚举值。</summary>
-    private const uint CodeNameRaphael = 16;
-    private const uint CodeNameDragonRange = 28;
-
-    private const string ProviderMissing = "读不到 SMU，装上并验证 AMD SMU / PawnIO Provider 之后才能调。";
-    private const string CodeNameUnsupported = "还没有这颗处理器的 SMU 命令号，不猜着写。";
-    private const string Refused = "SMU 拒绝了这次写入。";
-    private const string NotEffective = "写下去了，但回读的功耗上限没有变。";
+    private const string BridgeMissing = "需要先安装硬件写入辅助进程。";
+    private const string BridgeSilent = "硬件写入辅助进程没有应答。";
+    private const string NotSupported = "这颗处理器上没有这一项。";
+    private const string NotEffective = "写下去了，但回读的值没有变。";
 
     private readonly object gate = new();
-    private AmdSmuPawnIoSession? session;
-    private bool sessionFailed;
-    private double? baselineStapmWatts;
+    private double? baselinePowerLimitWatts;
+    private int? baselineCurveOptimizerCounts;
 
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
@@ -57,47 +45,83 @@ public sealed class AmdCpuControlWriter(
         {
             return ControlWriteAvailability.NotMine;
         }
-
-        lock (gate)
+        if (!bridge.IsInstalled)
         {
-            if (ResolveSession() is not { } open)
-            {
-                return ControlWriteAvailability.No(ProviderMissing);
-            }
-            if (!IsKnownCodeName(open.CodeName))
-            {
-                return ControlWriteAvailability.No(CodeNameUnsupported);
-            }
-            if (CaptureBaseline(open) is not { } baseline)
-            {
-                return ControlWriteAvailability.No(ProviderMissing);
-            }
-
-            /*
-             * 上界就是基线，也就是**只能往下调，不能往上**。
-             *
-             * 这是笔记本。往上加功耗要靠散热和供电扛得住，而那是整机厂在出厂时
-             * 连同散热模组一起定下来的；我们既读不到它的余量，也没资格替它加。
-             * 用户要的是"限功耗"，不是"超功耗" —— 把上界开到一个我们编出来的
-             * 大数字，等于把机器的安全押在猜测上。
-             *
-             * 上界也不能从**当前值**推：先前那样做，把上限调低之后上界跟着变低，
-             * 用户想调回去就被静默夹成低值 —— 报"已应用"，值却不是他要的那个。
-             * 基线是持久化的、我们动手之前的那个数，所以它既稳定又是真实的天花板。
-             */
-            var minimum = capability.Range is { } declared
-                ? Math.Min(declared.Minimum, Math.Round(baseline))
-                : 5;
-            return ControlWriteAvailability.Yes(new ControlNumberRange(
-                minimum,
-                Math.Round(baseline),
-                1,
-                "W",
-                Math.Round(baseline)));
+            return ControlWriteAvailability.No(BridgeMissing);
         }
+
+        var described = Ask("describe", null);
+        if (described is not { } description || !Flag(description, "available"))
+        {
+            return ControlWriteAvailability.No(Text(described, "reason") ?? BridgeSilent);
+        }
+
+        // 能设什么就显示什么：辅助进程按这代处理器有没有这条 SMU 命令来报。
+        var isPowerLimit = string.Equals(
+            capability.Id,
+            PowerLimitCapabilityId,
+            StringComparison.Ordinal);
+        if (!Flag(description, isPowerLimit ? "powerTable" : "curveOptimizer"))
+        {
+            return ControlWriteAvailability.No(NotSupported);
+        }
+
+        if (Ask("read", null) is not { } reading)
+        {
+            return ControlWriteAvailability.No(BridgeSilent);
+        }
+
+        return isPowerLimit
+            ? PowerLimitAvailability(capability, reading)
+            : CurveOptimizerAvailability(capability, reading);
     }
 
-    public Task<ControlApplyOutcome> WriteAsync(
+    /// <summary>
+    /// 功耗上限的范围。
+    ///
+    /// **上界就是基线，只能往下调不能往上。** 这是笔记本：往上加功耗要散热和供电扛得住，
+    /// 那是整机厂连同散热模组定下来的，我们既读不到余量也没资格替它加。
+    /// 上界也不能从当前值推 —— 那样调低之后上界跟着变低，用户想调回去会被静默夹住
+    /// 还报"已应用"，等于悄悄改掉他的意图。
+    /// </summary>
+    private ControlWriteAvailability PowerLimitAvailability(
+        ControlCapability capability,
+        JsonElement reading)
+    {
+        if (Number(reading, "stapmLimitWatts") is not { } current)
+        {
+            return ControlWriteAvailability.No(BridgeSilent);
+        }
+
+        var baseline = CaptureBaselinePowerLimit(current);
+        var minimum = capability.Range is { } declared
+            ? Math.Min(declared.Minimum, Math.Round(baseline))
+            : 5;
+        return ControlWriteAvailability.Yes(new ControlNumberRange(
+            minimum,
+            Math.Round(baseline),
+            1,
+            "W",
+            Math.Round(baseline)));
+    }
+
+    /// <summary>
+    /// Curve Optimizer 的范围。单位是**档**不是伏 —— 一档大概几毫伏，具体多少随体质变，
+    /// 厂商也不给换算，所以照它本来的单位显示，不编一个伏特数出来骗人。
+    /// </summary>
+    private ControlWriteAvailability CurveOptimizerAvailability(
+        ControlCapability capability,
+        JsonElement reading)
+    {
+        var current = (int)(Number(reading, "curveOptimizerCounts") ?? 0);
+        var baseline = CaptureBaselineCurveOptimizer(current);
+        return ControlWriteAvailability.Yes(
+            capability.Range is { } declared
+                ? declared with { DefaultValue = baseline }
+                : new ControlNumberRange(-30, 10, 1, "档", baseline));
+    }
+
+    public async Task<ControlApplyOutcome> WriteAsync(
         ControlObject target,
         ControlCapability capability,
         ControlSetting setting,
@@ -106,204 +130,201 @@ public sealed class AmdCpuControlWriter(
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
         ArgumentNullException.ThrowIfNull(setting);
-        cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(Write(target, capability, setting));
-    }
-
-    private ControlApplyOutcome Write(
-        ControlObject target,
-        ControlCapability capability,
-        ControlSetting setting)
-    {
         if (setting.Number is not { } value || !double.IsFinite(value))
         {
             return Failed(target, capability, "这一项要一个数值，收到的不是。");
         }
+        var bounds = capability.Range;
+        var wanted = bounds is null ? value : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
 
-        lock (gate)
-        {
-            if (ResolveSession() is not { } open || !IsKnownCodeName(open.CodeName))
-            {
-                return Failed(target, capability, ProviderMissing);
-            }
-
-            var bounds = capability.Range;
-            var watts = bounds is null
-                ? value
-                : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
-            var milliwatts = (ulong)Math.Round(watts * 1000);
-
-            // 持续和长时一起设成这个值，瞬时不动 —— 用户说的"功耗上限"是持续那个；
-            // 把瞬时也压下去会连短暂的加速也一并砍掉，那是另一回事。
-            foreach (var message in new[] { SetStapmLimitMessage, SetSlowLimitMessage })
-            {
-                var response = open.SendMailboxCommand(
-                    AmdSmuMailbox.DragonRangeMp1,
-                    message,
-                    [milliwatts]);
-                if (response != AmdSmuPawnIoSession.SmuResponseOk)
-                {
-                    logger?.LogWarning(
-                        "SMU 拒绝了功耗上限写入：命令 0x{Message:X}，回执 {Response}。",
-                        message,
-                        response);
-                    return Failed(target, capability, Refused);
-                }
-            }
-
-            // 回执只说"收到了"。真正算数的是 PM table 里那个上限有没有变。
-            if (ReadLimits(open) is not { } after
-                || Math.Abs(after.StapmWatts - watts) > 1)
-            {
-                return Failed(target, capability, NotEffective);
-            }
-        }
-
-        return new ControlApplyOutcome(
-            target.Id,
-            capability.Id,
-            ControlApplyStatuses.Applied,
-            null);
+        return string.Equals(capability.Id, PowerLimitCapabilityId, StringComparison.Ordinal)
+            ? await WritePowerLimitAsync(target, capability, wanted, cancellationToken)
+                .ConfigureAwait(false)
+            : await WriteCurveOptimizerAsync(target, capability, (int)wanted, cancellationToken)
+                .ConfigureAwait(false);
     }
 
     /// <summary>
-    /// 我们动手之前，这颗处理器的持续功耗上限是多少。
-    ///
-    /// **记在盘上，只记一次。** 只放在内存里不够：用户把上限调低之后重启，
-    /// 下次读到的"当前值"就是那个低的，"恢复默认"会回到他调过的数而不是原厂的数，
-    /// 而且一次比一次低。第一次读到的那个值才是这台机器本来的样子。
+    /// 持续和长时一起设成这个值，**瞬时不动** —— 用户说的"功耗上限"是持续那个，
+    /// 把瞬时也压下去会连短暂加速一起砍掉，那是另一回事。
     /// </summary>
-    private double? CaptureBaseline(AmdSmuPawnIoSession open)
+    private async Task<ControlApplyOutcome> WritePowerLimitAsync(
+        ControlObject target,
+        ControlCapability capability,
+        double watts,
+        CancellationToken cancellationToken)
     {
-        if (baselineStapmWatts is { } captured)
+        JsonElement? last = null;
+        foreach (var which in new[] { "stapm", "slow" })
         {
-            return captured;
+            last = await bridge.SendAsync(
+                "set-power-limit",
+                new Dictionary<string, object?> { ["which"] = which, ["watts"] = watts },
+                cancellationToken).ConfigureAwait(false);
+            if (last is not { } response || !Flag(response, "ok"))
+            {
+                return Failed(target, capability, BridgeSilent);
+            }
         }
-        if (ReadPersistedBaseline() is { } persisted)
+
+        // 回执只说"收到了"。真正算数的是回读那个**上限** —— 不是实际功耗，
+        // 实际值由固件按温度调度，通常远低于上限。
+        if (Number(last, "stapmLimitWatts") is not { } after
+            || Math.Abs(after - watts) > WattTolerance)
         {
-            baselineStapmWatts = persisted;
-            return persisted;
+            logger?.LogWarning(
+                "处理器功耗上限没写进去：要 {Watts} W，回读 {After}。",
+                watts,
+                Number(last, "stapmLimitWatts"));
+            return Failed(target, capability, NotEffective);
         }
-        if (ReadLimits(open) is not { } limits)
-        {
-            return null;
-        }
-        baselineStapmWatts = limits.StapmWatts;
-        WritePersistedBaseline(limits.StapmWatts);
-        return baselineStapmWatts;
+
+        return Applied(target, capability);
     }
 
-    private double? ReadPersistedBaseline()
+    private async Task<ControlApplyOutcome> WriteCurveOptimizerAsync(
+        ControlObject target,
+        ControlCapability capability,
+        int counts,
+        CancellationToken cancellationToken)
+    {
+        var response = await bridge.SendAsync(
+            "set-curve-optimizer",
+            new Dictionary<string, object?> { ["counts"] = counts },
+            cancellationToken).ConfigureAwait(false);
+        if (response is not { } result || !Flag(result, "ok"))
+        {
+            return Failed(target, capability, BridgeSilent);
+        }
+        if (!Flag(result, "accepted"))
+        {
+            return Failed(target, capability, "SMU 拒绝了这次写入。");
+        }
+        // 读得回来就核对；有些处理器读不回来，那时只能以 SMU 的回执为准。
+        if (Number(result, "curveOptimizerCounts") is { } after && (int)after != counts)
+        {
+            return Failed(target, capability, NotEffective);
+        }
+        return Applied(target, capability);
+    }
+
+    /// <summary>
+    /// 我们动手之前的值。**记在盘上，只记一次。**
+    ///
+    /// 只放在内存里不够：用户调低之后重启，下次读到的"当前值"就是那个低的，
+    /// "恢复默认"会回到他调过的数而不是原本的数，而且一次比一次低。
+    /// </summary>
+    private double CaptureBaselinePowerLimit(double current)
+    {
+        lock (gate)
+        {
+            if (baselinePowerLimitWatts is { } captured)
+            {
+                return captured;
+            }
+            var baseline = ReadPersisted(PowerLimitBaselinePath) ?? current;
+            baselinePowerLimitWatts = baseline;
+            WritePersisted(PowerLimitBaselinePath, baseline);
+            return baseline;
+        }
+    }
+
+    private int CaptureBaselineCurveOptimizer(int current)
+    {
+        lock (gate)
+        {
+            if (baselineCurveOptimizerCounts is { } captured)
+            {
+                return captured;
+            }
+            var baseline = (int)(ReadPersisted(CurveOptimizerBaselinePath) ?? current);
+            baselineCurveOptimizerCounts = baseline;
+            WritePersisted(CurveOptimizerBaselinePath, baseline);
+            return baseline;
+        }
+    }
+
+    private double? ReadPersisted(string path)
     {
         try
         {
-            return File.Exists(BaselinePath)
+            return File.Exists(path)
                 && double.TryParse(
-                    File.ReadAllText(BaselinePath).Trim(),
+                    File.ReadAllText(path).Trim(),
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
-                    out var watts)
-                && watts is > 0 and < 1000
-                    ? watts
+                    out var value)
+                    ? value
                     : null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            logger?.LogWarning(error, "读不到处理器功耗基线。");
+            logger?.LogWarning(error, "读不到基线：{Path}", path);
             return null;
         }
     }
 
-    private void WritePersistedBaseline(double watts)
+    private void WritePersisted(string path, double value)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(BaselinePath)!);
-            File.WriteAllText(
-                BaselinePath,
-                watts.ToString("0.###", CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, value.ToString("0.###", CultureInfo.InvariantCulture));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             // 记不下来不影响这次调节，只是下次重启后"恢复默认"可能不准。
-            logger?.LogWarning(error, "存不下处理器功耗基线。");
+            logger?.LogWarning(error, "存不下基线：{Path}", path);
         }
     }
 
-    private string BaselinePath => Path.Combine(
+    private string PowerLimitBaselinePath => BaselinePath("cpu-power-baseline.txt");
+
+    private string CurveOptimizerBaselinePath => BaselinePath("cpu-curve-optimizer-baseline.txt");
+
+    private string BaselinePath(string fileName) => Path.Combine(
         environment.ContentRootPath,
         "UserData",
         "Control",
-        "cpu-power-baseline.txt");
+        fileName);
 
-    private CpuPowerLimits? ReadLimits(AmdSmuPawnIoSession open)
-    {
-        try
-        {
-            var table = open.UpdateAndReadPmTable();
-            if (table.Length <= SlowLimitIndex)
-            {
-                return null;
-            }
-            var stapm = table[StapmLimitIndex];
-            var fast = table[FastLimitIndex];
-            var slow = table[SlowLimitIndex];
-            return float.IsFinite(stapm) && stapm > 0 && float.IsFinite(fast) && fast > 0
-                ? new CpuPowerLimits(stapm, fast, slow)
+    /// <summary>探测在界面读取的路径上，只能同步等 —— 这条通道本来就是串行的。</summary>
+    private JsonElement? Ask(string operation, IReadOnlyDictionary<string, object?>? arguments)
+        => bridge.SendAsync(operation, arguments, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+
+    private static bool Flag(JsonElement? element, string name)
+        => element is { } value
+            && value.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.True;
+
+    private static double? Number(JsonElement? element, string name)
+        => element is { } value
+            && value.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.Number
+                ? property.GetDouble()
                 : null;
-        }
-        catch (AmdSmuProviderUnavailableException error)
-        {
-            logger?.LogWarning(error, "读 PM table 失败。");
-            return null;
-        }
-    }
 
-    private AmdSmuPawnIoSession? ResolveSession()
-    {
-        if (session is not null || sessionFailed)
-        {
-            return session;
-        }
-
-        try
-        {
-            session = AmdSmuPawnIoSession.Open(environment.ContentRootPath);
-        }
-        catch (AmdSmuProviderUnavailableException error)
-        {
-            sessionFailed = true;
-            logger?.LogInformation(error, "打不开 SMU 会话，处理器功耗上限不可调。");
-        }
-        return session;
-    }
-
-    private static bool IsKnownCodeName(uint codeName)
-        => codeName is CodeNameRaphael or CodeNameDragonRange;
+    private static string? Text(JsonElement? element, string name)
+        => element is { } value
+            && value.TryGetProperty(name, out var property)
+            && property.ValueKind == JsonValueKind.String
+                ? property.GetString()
+                : null;
 
     private static bool IsMine(ControlObject target, string capabilityId)
         => string.Equals(target.Kind, ControlObjectKinds.Cpu, StringComparison.Ordinal)
             && string.Equals(target.Platform.Vendor, ControlVendors.Amd, StringComparison.Ordinal)
-            && string.Equals(capabilityId, PowerLimitCapabilityId, StringComparison.Ordinal);
+            && capabilityId is PowerLimitCapabilityId or CurveOptimizerCapabilityId;
+
+    private static ControlApplyOutcome Applied(ControlObject target, ControlCapability capability)
+        => new(target.Id, capability.Id, ControlApplyStatuses.Applied, null);
 
     private static ControlApplyOutcome Failed(
         ControlObject target,
         ControlCapability capability,
         string reason)
         => new(target.Id, capability.Id, ControlApplyStatuses.Failed, reason);
-
-    public void Dispose()
-    {
-        lock (gate)
-        {
-            session?.Dispose();
-            session = null;
-        }
-    }
-
-    private readonly record struct CpuPowerLimits(
-        double StapmWatts,
-        double FastWatts,
-        double SlowWatts);
 }
