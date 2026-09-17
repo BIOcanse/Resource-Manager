@@ -131,3 +131,21 @@ export interface ControlInstanceCatalog {
   instances: readonly ControlInstanceView[];
   readAt: string;
 }
+
+/**
+ * 一份存下来的配置：用户给它起了名字的一整套设定。
+ *
+ * 配置和期望状态是两回事：期望状态只有一份，是"机器现在该保持成什么样"；
+ * 配置可以有很多份，是"我攒下来的几套方案"。点一份配置只是把内容载入草稿，
+ * 落到硬件仍然要点应用。
+ */
+export interface ControlPreset {
+  id: string;
+  name: string;
+  desired: ControlDesiredState;
+  updatedAt: string;
+}
+
+export interface ControlPresetCatalog {
+  presets: readonly ControlPreset[];
+}
