@@ -20,6 +20,47 @@ internal sealed class AmdSmuCpuSensorReader : IDisposable
         physicalCoreCount = ReadPhysicalCoreCount();
     }
 
+    /// <summary>
+    /// 这条路现在到底走到哪一步了：驱动打不开、表读不出、还是版本没映射。
+    /// 诊断用 —— "没读数"有好几种完全不同的原因，得分得开。
+    /// </summary>
+    public AmdSmuSessionDescription DescribeSession()
+    {
+        lock (gate)
+        {
+            var unavailable = EnsureSession();
+            if (unavailable is not null)
+            {
+                return new AmdSmuSessionDescription(false, null, 0, false, unavailable);
+            }
+            try
+            {
+                var table = session!.UpdateAndReadPmTable();
+                var layout = AmdSmuSensorIndexResolver.Resolve(session.TableVersion);
+                // 把前若干项原样带出来。映射一张 PM table 只能看真实数值，
+                // 猜索引会把电流标成温度，那比没有读数更糟。
+                var sample = table
+                    .Take(256)
+                    .Select(static value => Math.Round(value, 3))
+                    .ToArray();
+                return new AmdSmuSessionDescription(
+                    true,
+                    $"0x{session.TableVersion:X8}",
+                    table.Length,
+                    layout is not null,
+                    layout is null
+                        ? "PM table 读得出来，但这个版本还没做索引映射。"
+                        : null,
+                    sample);
+            }
+            catch (AmdSmuProviderUnavailableException error)
+            {
+                ResetSession();
+                return new AmdSmuSessionDescription(false, null, 0, false, error.Message);
+            }
+        }
+    }
+
     public CpuSensorMetrics Read(AmdSmuCpuSensorReadRequest request)
     {
         if (!request.IncludesAnyMetric)
@@ -387,3 +428,12 @@ internal sealed record AmdSmuCpuSensorReadRequest(
         || IncludeApuTemperature
         || IncludeSmuFrequency;
 }
+
+/// <summary>AMD SMU 这条路的现场状态，给诊断端点用。</summary>
+internal sealed record AmdSmuSessionDescription(
+    bool SessionOpen,
+    string? TableVersion,
+    int TableLength,
+    bool LayoutMapped,
+    string? Message,
+    IReadOnlyList<double>? Sample = null);
