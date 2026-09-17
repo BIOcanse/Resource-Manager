@@ -33,6 +33,8 @@ public sealed partial class WindowsHardwareMetricSampler :
     private readonly NvidiaNvapiMonitoringZone nvidiaNvapiZone;
     private readonly AmdAdlxMonitoringZone amdAdlxZone;
     private readonly AmdSmuMonitoringZone amdSmuZone;
+    // 哪一块卡是核显 —— 启动时认一次，之后不变。
+    private readonly AmdIntegratedGpuSensorRoute integratedGpuSensorRoute;
     private readonly WindowsPlatformSensorReader platformSensorReader;
     private readonly HostManagerMetricSnapshotOwner metricSnapshotOwner;
     private readonly DashboardMonitoringCatalogState dashboardMonitoringCatalog;
@@ -70,6 +72,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         NvidiaNvapiMonitoringZone nvidiaNvapiZone,
         AmdAdlxMonitoringZone amdAdlxZone,
         AmdSmuMonitoringZone amdSmuZone,
+        AmdIntegratedGpuSensorRoute integratedGpuSensorRoute,
         WindowsPlatformSensorReader platformSensorReader,
         HostManagerMetricSnapshotOwner metricSnapshotOwner,
         DashboardMonitoringCatalogState dashboardMonitoringCatalog,
@@ -89,6 +92,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         this.nvidiaNvapiZone = nvidiaNvapiZone;
         this.amdAdlxZone = amdAdlxZone;
         this.amdSmuZone = amdSmuZone;
+        this.integratedGpuSensorRoute = integratedGpuSensorRoute;
         this.platformSensorReader = platformSensorReader;
         this.metricSnapshotOwner = metricSnapshotOwner;
         this.dashboardMonitoringCatalog = dashboardMonitoringCatalog;

@@ -461,6 +461,20 @@ public sealed partial class WindowsHardwareMetricSampler
         DateTimeOffset capturedAt)
     {
         var selected = SelectedMetricIds(plan, sourcePlan.SourceHandle);
+
+        // 核显的频率/温度/电压也从这里出。核显没有自己的传感库（ADLX 服务的是独显），
+        // 但那几个量一直躺在处理器的 PM table 里 —— 因为核显就是这颗处理器的一部分。
+        // 哪一块是核显，由启动时认定的路由回答，不按索引猜。
+        var integratedGpuIndex = integratedGpuSensorRoute.Resolve(
+            gpuAdapterOrderZone.ReadInventory(requested: true).Adapters);
+        var integratedGpuSensors = integratedGpuIndex is { } gpuIndex
+            ? selected
+                .Select(id => AmdIntegratedGpuSensorRoute.SensorKindOf(id, gpuIndex))
+                .Where(static kind => kind is not null)
+                .Select(static kind => kind!.Value)
+                .ToHashSet()
+            : [];
+
         var metrics = amdSmuZone.Read(new AmdSmuCpuSensorReadRequest(
             IncludesExact(selected, "cpu.packagePower"),
             IncludesExact(selected, "cpu.coreVoltage"),
@@ -473,9 +487,12 @@ public sealed partial class WindowsHardwareMetricSampler
             IncludesExact(selected, "cpu.edcCurrent"),
             IncludesExact(selected, "cpu.platformPower"),
             IncludesExact(selected, "cpu.platformVoltage"),
-            IncludesExact(selected, "cpu.igpuFrequency"),
-            IncludesExact(selected, "cpu.igpuVoltage"),
-            IncludesExact(selected, "cpu.igpuTemperature"),
+            IncludesExact(selected, "cpu.igpuFrequency")
+                || integratedGpuSensors.Contains(AmdIntegratedGpuSensorKind.GraphicsClock),
+            IncludesExact(selected, "cpu.igpuVoltage")
+                || integratedGpuSensors.Contains(AmdIntegratedGpuSensorKind.CoreVoltage),
+            IncludesExact(selected, "cpu.igpuTemperature")
+                || integratedGpuSensors.Contains(AmdIntegratedGpuSensorKind.Temperature),
             IncludesExact(selected, "cpu.frequency")
                 || IncludesExact(selected, "cpu.smuFrequency")));
         return CompleteWithValues(
@@ -504,7 +521,17 @@ public sealed partial class WindowsHardwareMetricSampler
                 "cpu.igpuTemperature" =>
                     metrics.ApuTemperatureCelsius,
                 "cpu.smuFrequency" => metrics.SmuFrequencyMhz,
-                _ => null
+                // 核显那三项：认出是核显之后就从 PM table 里出，
+                // 和 CPU 的那几个传感量同一次读、同一条路。
+                _ => integratedGpuIndex is { } index
+                    ? AmdIntegratedGpuSensorRoute.SensorKindOf(id, index) switch
+                    {
+                        AmdIntegratedGpuSensorKind.GraphicsClock => metrics.ApuFrequencyMhz,
+                        AmdIntegratedGpuSensorKind.Temperature => metrics.ApuTemperatureCelsius,
+                        AmdIntegratedGpuSensorKind.CoreVoltage => metrics.ApuVoltageVolts,
+                        _ => null
+                    }
+                    : null
             },
             id => string.Equals(
                 id,
