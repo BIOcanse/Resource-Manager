@@ -477,7 +477,7 @@ public sealed class DashboardSettingsDefaultsTests
     {
         var items = CreateAvailableMetrics();
         items["cpu.coreVoltage"] = new MetricValue("cpu.coreVoltage", "CPU 电压", "CPU", "1.0 V", 1.0, "V", null, "AMD SMU / PawnIO");
-        items["cpu.igpuFrequency"] = new MetricValue("cpu.igpuFrequency", "核显频率", "CPU", "N/A", null, "MHz", null, "AMD SMU / PawnIO");
+        items["cpu.stapmPower"] = new MetricValue("cpu.stapmPower", "CPU STAPM 功耗", "CPU", "N/A", null, "W", null, "AMD SMU / PawnIO");
         items["cpu.fanRpm"] = new MetricValue("cpu.fanRpm", "CPU 风扇转速", "CPU", "N/A", null, "RPM", null, "Hardware monitor WMI");
         items["cpu.fanPercent"] = new MetricValue("cpu.fanPercent", "CPU 风扇百分比", "CPU", "N/A", null, "%", null, "Hardware monitor WMI");
         items["gpu.1.usage"] = new MetricValue("gpu.1.usage", "GPU1 占用率", "GPU1", "0%", 0, "%", 0, "NVIDIA GeForce test");
@@ -486,13 +486,13 @@ public sealed class DashboardSettingsDefaultsTests
 
         var catalog = MetricCatalog.FromSnapshot(snapshot);
         var coreVoltage = catalog.Single(static item => item.Id == "cpu.coreVoltage");
-        var igpuFrequency = catalog.Single(static item => item.Id == "cpu.igpuFrequency");
+        var stapmPower = catalog.Single(static item => item.Id == "cpu.stapmPower");
         var cpuFan = catalog.Single(static item => item.Id == "cpu.fanRpm");
         var gpuCurrent = catalog.Single(static item => item.Id == "gpu.1.current");
 
         Assert.True(coreVoltage.Selectable);
-        Assert.False(igpuFrequency.Selectable);
-        Assert.NotNull(igpuFrequency.DisabledReason);
+        Assert.False(stapmPower.Selectable);
+        Assert.NotNull(stapmPower.DisabledReason);
         Assert.Equal("librehardwaremonitor-provider", cpuFan.RequiredComponentId);
         Assert.Equal("nvidia-nvapi-provider", gpuCurrent.RequiredComponentId);
     }
@@ -547,9 +547,9 @@ public sealed class DashboardSettingsDefaultsTests
         var presented = MetricCatalog.ApplyPresentation(CreateSnapshot(items));
 
         Assert.Equal("CPU 温度", presented.Items["cpu.temperature"].Label);
-        Assert.Equal("CPU", presented.Items["cpu.temperature"].Group);
+        Assert.Equal(MetricGroups.Cpu, presented.Items["cpu.temperature"].Group);
         Assert.Equal("GPU0 占用率", presented.Items["gpu.0.usage"].Label);
-        Assert.Equal("GPU0", presented.Items["gpu.0.usage"].Group);
+        Assert.Equal(MetricGroups.Gpu(0), presented.Items["gpu.0.usage"].Group);
         Assert.Equal("8%", presented.Items["gpu.0.usage"].DisplayValue);
     }
 

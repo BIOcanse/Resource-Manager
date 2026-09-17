@@ -10,17 +10,17 @@ public static partial class MetricCatalog
         string? cpuSensorComponentId,
         string? cpuSensorComponentName)
     {
-        AddSnapshotMetric(definitions, items, "cpu.packagePower", "CPU 功耗", "CPU", "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.coreVoltage", "CPU 电压", "CPU", "V", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.packageCurrent", "CPU 电流", "CPU", "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.temperature", "CPU 温度", "CPU", "°C", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.stapmPower", "CPU STAPM 功耗", "CPU", "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.actualPower", "CPU 实际功耗", "CPU", "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.averagePower", "CPU 平均功耗", "CPU", "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.tdcCurrent", "CPU TDC 电流", "CPU", "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.edcCurrent", "CPU EDC 电流", "CPU", "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.platformPower", "平台功耗", "CPU", "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
-        AddSnapshotMetric(definitions, items, "cpu.platformVoltage", "平台电压", "CPU", "V", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.packagePower", "CPU 功耗", MetricGroups.Cpu, "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.coreVoltage", "CPU 电压", MetricGroups.Cpu, "V", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.packageCurrent", "CPU 电流", MetricGroups.Cpu, "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.temperature", "CPU 温度", MetricGroups.Cpu, "°C", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.stapmPower", "CPU STAPM 功耗", MetricGroups.Cpu, "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.actualPower", "CPU 实际功耗", MetricGroups.Cpu, "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.averagePower", "CPU 平均功耗", MetricGroups.Cpu, "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.tdcCurrent", "CPU TDC 电流", MetricGroups.Cpu, "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.edcCurrent", "CPU EDC 电流", MetricGroups.Cpu, "A", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.platformPower", "平台功耗", MetricGroups.Cpu, "W", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.platformVoltage", "平台电压", MetricGroups.Cpu, "V", "small", null, cpuSensorComponentId, cpuSensorComponentName);
         // 核显的频率/电压/温度**不在这里露出**。
         //
         // 核显是一块 GPU，它在目录里的位置就是 GPU 那一组（本机是 GPU0）。
@@ -31,13 +31,13 @@ public static partial class MetricCatalog
         //
         // 按设备归组，不按数据来源归组。采集层那几个字段留着，
         // 等 SMU 这条路真能读出来的时候，接到 GPU 那一组里去。
-        AddSnapshotMetric(definitions, items, "cpu.smuFrequency", "CPU SMU 频率", "CPU", "MHz", "small", null, cpuSensorComponentId, cpuSensorComponentName);
+        AddSnapshotMetric(definitions, items, "cpu.smuFrequency", "CPU SMU 频率", MetricGroups.Cpu, "MHz", "small", null, cpuSensorComponentId, cpuSensorComponentName);
         AddSnapshotMetric(
             definitions,
             items,
             "cpu.fanRpm",
             "CPU 风扇转速",
-            "CPU",
+            MetricGroups.Fan,
             "RPM",
             "small",
             requiredComponentId: RequiredFanComponentWhenUnavailable(items, "cpu.fanRpm"));
@@ -46,7 +46,7 @@ public static partial class MetricCatalog
             items,
             "cpu.fanPercent",
             "CPU 风扇百分比",
-            "CPU",
+            MetricGroups.Fan,
             "%",
             "small",
             requiredComponentId: RequiredFanComponentWhenUnavailable(items, "cpu.fanPercent"));
