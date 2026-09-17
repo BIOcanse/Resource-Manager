@@ -40,6 +40,31 @@ internal sealed class WebView2FrontendHost : IDisposable
 
     public bool IsReady => coreWebView is not null;
 
+    /// <summary>
+    /// 把键盘焦点交给页面。
+    ///
+    /// **窗口是活动窗口的时候，焦点就该在页面里。** 这个窗口平时只有页面这一块内容，
+    /// 焦点停在别处（或者干脆没有）唯一的后果，就是用户得先在页面里点一下、
+    /// 滚轮和键盘才开始生效 —— 那一下点击不传达任何意图，纯粹是在补我们没做的事。
+    ///
+    /// 页面没显示出来的时候不抢：那时候台面上是后端不可用面板，
+    /// 焦点归它的按钮，用户可能正在用键盘操作它们。
+    /// </summary>
+    public void FocusContent()
+    {
+        if (disposed
+            || !surface.IsHandleCreated
+            || !surface.Visible
+            || !IsReady)
+        {
+            return;
+        }
+
+        // WinForms 的 WebView2 在拿到焦点时会自己把焦点移进网页内容里，
+        // 所以聚焦这个控件就够了，不必去碰底层的 controller。
+        surface.Focus();
+    }
+
     public event EventHandler<FrontendMessageReceivedEventArgs>? MessageReceived;
 
     public event EventHandler<FrontendNavigationCompletedEventArgs>? NavigationCompleted;
