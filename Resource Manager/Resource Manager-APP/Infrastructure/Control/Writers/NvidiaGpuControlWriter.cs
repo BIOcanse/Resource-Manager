@@ -186,6 +186,48 @@ public sealed class NvidiaGpuControlWriter(
         }
     }
 
+    /// <summary>
+    /// 这一项现在实际是多少。
+    ///
+    /// 频率偏移从 P-State 表里读回来 —— 用户可能用别的工具改过，
+    /// 界面上要显示的是卡里真实的那个值，不是我们以为写进去的那个。
+    /// </summary>
+    public Task<ControlActualValue?> ReadAsync(
+        ControlObject target,
+        ControlCapability capability,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(capability);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var domain = capability.Id switch
+        {
+            CoreClockOffsetCapabilityId => NvidiaNvapiControlBridge.GraphicsClockDomain,
+            MemoryClockOffsetCapabilityId => NvidiaNvapiControlBridge.MemoryClockDomain,
+            _ => (uint?)null
+        };
+        if (domain is not { } clockDomain
+            || target.AdapterIndex is not { } adapterIndex
+            || bridge.FindHandleByAdapterIndex(adapterIndex) is not { } handle)
+        {
+            return Task.FromResult<ControlActualValue?>(null);
+        }
+
+        return Task.FromResult<ControlActualValue?>(
+            bridge.ReadClockOffsetMhz(handle, clockDomain) is { } offset
+                ? new ControlActualValue(
+                    target.Id,
+                    capability.Id,
+                    Number: offset,
+                    Unit: ControlUnits.Megahertz)
+                // 读不到和"读到 0"是两回事，必须分得开。
+                : new ControlActualValue(
+                    target.Id,
+                    capability.Id,
+                    UnreadableReason: "驱动没有报出这一项的当前值。"));
+    }
+
     private bool WritePowerLimit(int adapterIndex, double watts, out int code)
     {
         if (powerBridge.FindHandleByAdapterIndex(adapterIndex) is not { } device)

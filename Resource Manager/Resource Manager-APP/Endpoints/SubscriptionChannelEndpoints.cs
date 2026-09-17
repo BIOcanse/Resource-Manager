@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.Adaptation;
+using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Application.LocalSystem;
@@ -240,6 +241,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     services.GetRequiredService<
                         IResourceManagerSelfSchedulingControl>()
                         .GetSchedulingSnapshot,
+                    interval),
+            // 控制面的实际状态：这台机器现在实际是什么样。
+            // 只返回当前值，采样由后台那条独立的路做 —— 订阅者再多也不会多碰一次硬件。
+            "/api/control/actual/subscribe" =>
+                CompileAlignedPeriodicSubscription(
+                    subscription,
+                    () => services.GetRequiredService<IControlActualStateOwner>().Current,
                     interval),
             "/api/local-system/status/subscribe" =>
                 CompileAlignedPeriodicSubscription(
@@ -572,6 +580,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             or "/api/cpu/topology/subscribe"
             or "/api/cpu/residency/subscribe"
             or "/api/optimization/smart/state/subscribe"
+            or "/api/control/actual/subscribe"
             or "/api/operations/subscribe"))
         {
             return false;
