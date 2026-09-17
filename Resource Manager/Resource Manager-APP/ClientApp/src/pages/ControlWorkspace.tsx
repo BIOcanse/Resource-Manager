@@ -8,7 +8,10 @@ import {
   setControlObjectSettings
 } from "../control/controlApi.ts";
 import { ControlCapabilityEditor } from "../control/ControlCapabilityEditor";
-import { controlItemStatusOf } from "../control/controlStateMachine.ts";
+import {
+  controlItemStatusOf,
+  hasPendingChanges
+} from "../control/controlStateMachine.ts";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
 import { uiText } from "../text.ts";
 import type {
@@ -34,6 +37,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const [state, setState] = createSignal<ControlStateView | null>(null);
   const [instances, setInstances] = createSignal<ControlInstanceCatalog | null>(null);
   const [failed, setFailed] = createSignal(false);
+  const [managingInstances, setManagingInstances] = createSignal(false);
 
   onMount(() => {
     const controller = new AbortController();
@@ -88,18 +92,34 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           <p class="control-empty">{uiText.control.empty}</p>
         </Show>
 
-        <ControlInstancesPanel
-          catalog={instances()}
-          onRefresh={() => void refreshControlInstances(runtime.requestClient)
-            .then(setInstances)
-            .catch(() => undefined)}
-          onForget={(instanceId) => void forgetControlInstance(
-            runtime.requestClient,
-            instanceId)
-            .then(setInstances)
-            // 删不成是**流程提示**：点了才说，说完就过去，不在页面上留一块常驻的红字。
-            .catch(() => props.onNotice(uiText.control.forgetFailed))}
-        />
+        {/*
+          实例管理平时收着。活动设备的卡片下面本来就会全部列出来，
+          这一块只在要清理插过的旧卡时才用得上，没必要一直占着页面顶部。
+        */}
+        <div class="control-instances-entry">
+          <button
+            class="secondary"
+            type="button"
+            aria-expanded={managingInstances()}
+            onClick={() => setManagingInstances((open) => !open)}
+          >
+            {uiText.control.instances.open}
+          </button>
+        </div>
+        <Show when={managingInstances()}>
+          <ControlInstancesPanel
+            catalog={instances()}
+            onRefresh={() => void refreshControlInstances(runtime.requestClient)
+              .then(setInstances)
+              .catch(() => undefined)}
+            onForget={(instanceId) => void forgetControlInstance(
+              runtime.requestClient,
+              instanceId)
+              .then(setInstances)
+              // 删不成是**流程提示**：点了才说，说完就过去，不在页面上留一块常驻的红字。
+              .catch(() => props.onNotice(uiText.control.forgetFailed))}
+          />
+        </Show>
 
         <For each={groups()}>
           {(group) => (
@@ -140,9 +160,25 @@ function ControlObjectCard(props: {
   const outcomes = () => props.state?.lastApply.outcomes
     .filter((entry) => entry.objectId === props.object.id) ?? [];
 
+  /**
+   * 正在编的那一份。
+   *
+   * 改动**只留在本地**，点「应用」才写下去。这样拖曲线、拉滑块都不会每动一下
+   * 就存一次盘走一次往返（那样回包还会把正在拖的值盖掉，反而拖不动），
+   * 而且用户可以改好几项再一起应用。
+   */
+  const [draft, setDraft] = createSignal<readonly ControlSetting[] | null>(null);
+  const edited = () => draft() ?? saved();
+  const pending = () => hasPendingChanges(edited(), saved());
+
+  const editCapability = (capabilityId: string, next: ControlSetting | null) => {
+    const rest = edited().filter((entry) => entry.capabilityId !== capabilityId);
+    setDraft(next ? [...rest, next] : rest);
+  };
+
   const itemStatus = (capabilityId: string) => controlItemStatusOf(
     capabilityId,
-    saved(),
+    edited(),
     saved(),
     outcomes(),
     false).status;
@@ -223,17 +259,35 @@ function ControlObjectCard(props: {
               </Show>
               <ControlCapabilityEditor
                 capability={capability}
-                setting={saved().find((entry) => entry.capabilityId === capability.id)}
-                onChange={(next) => {
-                  const rest = saved().filter(
-                    (entry) => entry.capabilityId !== capability.id);
-                  props.onSave(next ? [...rest, next] : rest);
-                }}
+                setting={edited().find((entry) => entry.capabilityId === capability.id)}
+                onChange={(next) => editCapability(capability.id, next)}
               />
             </li>
           )}
         </For>
       </ul>
+
+      {/* 改了才出现。没改动时摆一个按不动的按钮只是占地方。 */}
+      <Show when={pending()}>
+        <div class="control-object-actions">
+          <button
+            class="secondary"
+            type="button"
+            onClick={() => setDraft(null)}
+          >
+            {uiText.control.discard}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              props.onSave(edited());
+              setDraft(null);
+            }}
+          >
+            {uiText.control.apply}
+          </button>
+        </div>
+      </Show>
     </article>
   );
 }

@@ -38,13 +38,15 @@ const esEsAppCopy: AppCopy = {
       absent: "Not present",
       refresh: "Detect again",
       forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`
+      firstSeen: (at: string) => `First seen ${at}`,
+      open: "Manage devices"
     },
-    clear: "Clear",
     on: "On",
     createCurve: "New curve",
     curvePreview: "Curve preview",
     saveFailed: "Save failed",
+    apply: "Apply",
+    discard: "Discard",
     attachment: {
       integrated: "Integrated",
       discrete: "Discrete",
