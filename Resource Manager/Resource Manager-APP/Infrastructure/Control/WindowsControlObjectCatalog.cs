@@ -191,12 +191,12 @@ public sealed class WindowsControlObjectCatalog(
             // 一个绝对频率（AMD 的 SMU 是 set_max_gfxclk_freq，Intel 的 IGCL 同理），
             // 写成"偏移"会让用户以为能在出厂曲线上加减，而实际上是封顶。
             Unsupported(
-                "gpu.max-core-clock",
-                "核显最高频率",
+                "gpu.curve-optimizer",
+                "Curve Optimizer 偏移",
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(400, 2400, 25, "MHz"))
+                new ControlNumberRange(-30, 10, 1, "档", 0))
         ];
     }
 
@@ -205,7 +205,7 @@ public sealed class WindowsControlObjectCatalog(
         var vendor = VendorOf(snapshot.Cpu.Name);
         var (componentId, componentName) = vendor switch
         {
-            ControlVendors.Amd => ("amd-smu-pawnio-provider", "AMD SMU / PawnIO Provider"),
+            ControlVendors.Amd => ("hardware-bridge", "硬件写入辅助进程"),
             ControlVendors.Intel => ("intel-pcm-provider", "Intel PCM / MSR Provider"),
             _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
         };
@@ -223,13 +223,15 @@ public sealed class WindowsControlObjectCatalog(
                     componentId,
                     componentName,
                     new ControlNumberRange(5, 200, 1, "W")),
+                // 单位是**档**不是伏：一档大概几毫伏，具体多少随体质变，
+                // 厂商也不给换算，编一个伏特数出来只会骗人。
                 Unsupported(
-                    "cpu.core-voltage-offset",
-                    "核心电压偏移",
+                    "cpu.curve-optimizer",
+                    "Curve Optimizer 偏移",
                     ControlValueKinds.Number,
                     componentId,
                     componentName,
-                    new ControlNumberRange(-0.2, 0.2, 0.005, "V", 0))
+                    new ControlNumberRange(-30, 10, 1, "档", 0))
             ]));
     }
 

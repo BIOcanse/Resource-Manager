@@ -58,6 +58,46 @@ public static class OptionalDependencyCatalog
                 VerifiedAssetName: "release_0_2_11.zip",
                 FileNames: ["RyzenSMU.bin"])),
         new OptionalDependencyDefinition(
+            Id: "hardware-bridge",
+            Name: "硬件写入辅助进程",
+            Vendor: "Resource Manager",
+            Category: "控制写入",
+            SourcePageUrl: "https://github.com/BIOcanse/Resource-Manager-HardwareBridge",
+            DownloadUrl: null,
+            ExternalTermsUrl: null,
+            InstallerFileName: null,
+            InstallerFilePatterns: [],
+            InstallDirectoryName: "HardwareBridge",
+            RequiresExternalTermsAcknowledgement: false,
+            RequiresElevation: false,
+            InstalledProbeRelativePaths: ["ResourceManager.HardwareBridge.exe"],
+            // 它单独一个进程、单独一个仓库，是因为许可证：它链接 ZenStates-Core（GPL-3.0），
+            // 而本程序是 Apache-2.0，直接引用会把整个程序传染成 GPL。
+            // 顺带的好处是隔离 —— 碰内核的代码崩了不拖累主程序。
+            InstallNote: "处理器功耗上限和电压（Curve Optimizer）的写入都经过它。"
+                + "它是独立程序，按 GPL-3.0 发布，由主程序随开随关。",
+            ReleaseSource: null,
+            PayloadSource: new DependencyPayloadSource(
+                Owner: "BIOcanse",
+                Repository: "Resource-Manager-HardwareBridge",
+                VerifiedTag: "v0.1.0",
+                VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip",
+                FileNames:
+                [
+                    "ResourceManager.HardwareBridge.exe",
+                    "ResourceManager.HardwareBridge.dll",
+                    "ResourceManager.HardwareBridge.deps.json",
+                    "ResourceManager.HardwareBridge.runtimeconfig.json",
+                    "ZenStates-Core.dll",
+                    "inpoutx64.dll",
+                    "System.CodeDom.dll",
+                    "System.Management.dll",
+                    "System.Diagnostics.EventLog.dll",
+                    "System.Diagnostics.EventLog.Messages.dll",
+                    "System.ServiceProcess.ServiceController.dll",
+                    "LICENSE"
+                ])),
+        new OptionalDependencyDefinition(
             Id: "msi-afterburner",
             Name: "MSI Afterburner",
             Vendor: "MSI",
