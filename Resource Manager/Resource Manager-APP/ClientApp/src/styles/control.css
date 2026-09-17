@@ -83,6 +83,49 @@
   cursor: default;
 }
 
+/*
+  控制归属：固件自己管，还是本程序管。
+
+  这两个是**并列的两个状态**，所以摆成一组二选一，而不是一个开关 ——
+  开关会读成"打开某个功能"，而这里选的是谁说了算。
+  归固件时下面整列能力压暗：它们设了也不生效，看起来就该是不能动的。
+*/
+.control-ownership {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.control-capability-off {
+  opacity: 0.55;
+}
+
+/*
+  超频免责声明。整机一份，摆在页面上而不是某张卡里。
+  它不是警告横幅：同意之后也留着，因为同意要能收回。
+*/
+.control-overclock-consent {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.control-overclock-consent p {
+  margin: 0;
+}
+
+.control-overclock-consent-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* 识别到过的设备。平时收着，从上面的入口打开。 */
 .control-instances-entry {
   margin-top: 16px;

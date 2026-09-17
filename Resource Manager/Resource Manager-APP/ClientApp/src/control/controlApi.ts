@@ -329,6 +329,50 @@ export function applyControlDesiredState(
   });
 }
 
+/**
+ * 超频免责声明的答复。
+ *
+ * **这不是我们发明的流程，是厂商的硬性要求**：Intel 的 IGCL 在用户接受之前
+ * 拒绝一切超频接口，原文写着设置它表示用户接受部件寿命缩短，并要求应用
+ * 先把这件事告诉用户。所以界面上先把后果说清楚，用户点了同意才轮到后端去调。
+ */
+const overclockConsentDecoder = defineResponseDecoder<boolean>(
+  "control.overclockConsent.v1",
+  (value: unknown) => requireBoolean(
+    requireRecord(value, "overclockConsent").accepted,
+    "overclockConsent.accepted"));
+
+export function getControlOverclockConsent(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<boolean> {
+  return requestClient.request({
+    key: "control.overclockConsent",
+    url: "/api/control/overclock-consent",
+    fallbackError: uiText.control.loadFailed,
+    decoder: overclockConsentDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+export function setControlOverclockConsent(
+  requestClient: Pick<RequestClient, "request">,
+  accepted: boolean
+): Promise<boolean> {
+  return requestClient.request({
+    key: "control.overclockConsent.set",
+    url: "/api/control/overclock-consent",
+    fallbackError: uiText.control.saveFailed,
+    decoder: overclockConsentDecoder,
+    request: {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accepted })
+    }
+  });
+}
+
 /** 存下来的几套方案。读写这些都不动硬件。 */
 export function getControlPresets(
   requestClient: Pick<RequestClient, "request">,

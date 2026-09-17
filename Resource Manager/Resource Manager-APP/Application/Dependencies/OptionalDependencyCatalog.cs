@@ -58,6 +58,43 @@ public static class OptionalDependencyCatalog
                 VerifiedAssetName: "release_0_2_11.zip",
                 FileNames: ["RyzenSMU.bin"])),
         new OptionalDependencyDefinition(
+            Id: "fan-control-core",
+            Name: "风扇控制核心",
+            Vendor: "Resource Manager",
+            Category: "控制写入",
+            SourcePageUrl: "https://github.com/BIOcanse/Fan-Control-Core",
+            DownloadUrl: null,
+            ExternalTermsUrl: null,
+            InstallerFileName: null,
+            InstallerFilePatterns: [],
+            InstallDirectoryName: "FanControlCore",
+            RequiresExternalTermsAcknowledgement: false,
+            RequiresElevation: false,
+            InstalledProbeRelativePaths: ["FanControlCore.exe"],
+            // 它按**控制通道**分类（hwmon / WMI-ACPI / HID / Raw EC / SMM）
+            // 而不按品牌：按品牌分会得到一个永远补不完的驱动库。
+            // 单独一个仓库是为了别人也能直接用 ——
+            // 笔记本风扇控制不该每个软件重造一遍。
+            InstallNote: "机身风扇的读取与控制经过它。"
+                + "它是独立程序，由主程序随开随关；"
+                + "退出时会把风扇交还固件自动控制。",
+            ReleaseSource: null,
+            PayloadSource: new DependencyPayloadSource(
+                Owner: "BIOcanse",
+                Repository: "Fan-Control-Core",
+                VerifiedTag: "v0.1.0",
+                VerifiedAssetName: "FanControlCore-win-x64.zip",
+                FileNames:
+                [
+                    "FanControlCore.exe",
+                    "FanControlCore.dll",
+                    "FanControlCore.deps.json",
+                    "FanControlCore.runtimeconfig.json",
+                    "System.CodeDom.dll",
+                    "System.Management.dll",
+                    "LICENSE"
+                ])),
+        new OptionalDependencyDefinition(
             Id: "hardware-bridge",
             Name: "硬件写入辅助进程",
             Vendor: "Resource Manager",
