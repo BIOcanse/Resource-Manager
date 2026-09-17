@@ -179,12 +179,11 @@ export const presetCatalogDecoder = defineResponseDecoder<ControlPresetCatalog>(
         const entry = requireRecord(row, `$.presets[${index}]`);
         return {
           id: requireNonEmptyString(entry.id, `$.presets[${index}].id`),
+          objectId: requireNonEmptyString(entry.objectId, `$.presets[${index}].objectId`),
           name: requireNonEmptyString(entry.name, `$.presets[${index}].name`),
-          desired: {
-            objects: readDesiredObjects(
-              requireRecord(entry.desired, `$.presets[${index}].desired`).objects,
-              `$.presets[${index}].desired.objects`)
-          },
+          settings: requireArray(entry.settings, `$.presets[${index}].settings`)
+            .map((setting, at) =>
+              readSetting(setting, `$.presets[${index}].settings[${at}]`)),
           updatedAt: requireString(entry.updatedAt, `$.presets[${index}].updatedAt`)
         };
       })
@@ -345,21 +344,24 @@ export function getControlPresets(
   });
 }
 
-/** 把草稿存成一份配置。同名覆盖。**不动硬件。** */
+/**
+ * 给某个实例存一份配置。同一个实例下同名覆盖。**不动硬件。**
+ */
 export function saveControlPreset(
   requestClient: Pick<RequestClient, "request">,
+  objectId: string,
   name: string,
-  objects: readonly ControlObjectDesiredState[]
+  settings: readonly ControlSetting[]
 ): Promise<ControlPresetCatalog> {
   return requestClient.request({
     key: "control.presets.save",
-    url: `/api/control/presets/${encodeURIComponent(name)}`,
+    url: `/api/control/presets/${encodeURIComponent(objectId)}/${encodeURIComponent(name)}`,
     fallbackError: uiText.control.saveFailed,
     decoder: presetCatalogDecoder,
     request: {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ objects })
+      body: JSON.stringify(settings)
     }
   });
 }

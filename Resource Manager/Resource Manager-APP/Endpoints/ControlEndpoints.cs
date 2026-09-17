@@ -83,7 +83,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
         });
 
-        // 配置：用户攒下来的几套方案。
+        // 配置：**绑定实例**的几套方案。选中一个实例就能看到为它存过的那几份。
         //
         // **这里没有"应用某份配置"这样的动作。** 点一份配置是把它的内容载入草稿，
         // 那一步只发生在前端；真要落到硬件，走上面那条整份应用 —— 应用只有一条路。
@@ -97,18 +97,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await presets.ReadAsync(cancellationToken));
         }).AllowAnonymous();
 
-        // 存一份。同名覆盖 —— 再存一次"游戏"是想更新那一份，不是攒出两个同名的。
-        app.MapPut("/api/control/presets/{name}", async (
+        // 给某个实例存一份。同一个实例下同名覆盖 —— 在这块卡上再存一次"游戏"
+        // 是想更新那一份；不同实例下的同名配置互不相干。
+        app.MapPut("/api/control/presets/{objectId}/{name}", async (
+            string objectId,
             string name,
-            ControlDesiredState? desired,
+            ControlSetting[]? settings,
             IControlPresets presets,
             CancellationToken cancellationToken) =>
         {
             try
             {
                 return Results.Ok(await presets.SaveAsync(
+                    objectId,
                     name,
-                    desired ?? ControlDesiredState.Empty,
+                    settings ?? [],
                     cancellationToken));
             }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException)
