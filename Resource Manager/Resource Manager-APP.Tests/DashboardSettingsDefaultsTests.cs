@@ -32,7 +32,10 @@ public sealed class DashboardSettingsDefaultsTests
         var expected = DashboardSettingsDefaults.Create(snapshot);
 
         Assert.True(migrator.AreEquivalent(expected, resolved));
-        Assert.Equal(7, resolved.Cards.Count);
+        // 8 = 原来的 7 加上 gpu0 的风扇卡：那块 GPU 有自己的风扇、没有独立显存，
+        // 先前被"要有显存才出传感卡"那条判据吞掉了。
+        Assert.Equal(8, resolved.Cards.Count);
+        Assert.Contains(resolved.Cards, static card => card.Id == "gpu0-sensors");
         Assert.Contains(resolved.Cards, static card => card.Id == "gpu1-sensors");
     }
 
@@ -115,6 +118,9 @@ public sealed class DashboardSettingsDefaultsTests
             card => AssertCard(card, "gpu1", "gpu.1.usage", "gpu.1.graphicsClock", "gpu.1.power", "gpu.1.temperature"),
             card => AssertCard(card, "vram1", "gpu.1.vram", "gpu.1.vramPercent", "gpu.1.memoryClock", "gpu.1.graphicsClockPercent"),
             card => AssertCard(card, "cpu-sensors", "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent"),
+            // gpu.0 有自己的风扇但没有独立显存。先前"要有显存才出传感卡"的判据
+            // 会把这张风扇卡整张吞掉 —— 显存和风扇没有关系。
+            card => AssertCard(card, "gpu0-sensors", "gpu.0.fanRpm", "gpu.0.coreVoltage", "gpu.0.current"),
             card => AssertCard(card, "gpu1-sensors", "gpu.1.fanRpm", "gpu.1.coreVoltage", "gpu.1.current"));
     }
 
@@ -720,6 +726,141 @@ public sealed class DashboardSettingsDefaultsTests
     private static void AssertCard(DashboardCardSettings card, string id, string main, params string[] small)
     {
         Assert.True(CardEquals(card, id, main, small));
+    }
+
+    /*
+     * 默认卡片按**这台机器实际有什么**生成，不按机型分支。
+     *
+     * 只有一套模板：处理器一张、内存一张，然后每块显卡各来一组
+     * （占用率 / 显存 / 传感），每张卡是否出现只看**它自己的主指标**读不读得到。
+     * 下面这几个用例把各种机型钉住 —— 它们要防的是有人再拿某个指标去当
+     * "这是什么机型"的替代判据（先前就拿显存当过"是不是独立显卡"）。
+     */
+
+    [Fact]
+    public void DefaultCards_StandardDesktop_GivesEveryGpuTheSameSetOfCards()
+    {
+        // 处理器 + 核显 + 独显：核显没有显存也没有自己的风扇，独显两样都有。
+        var settings = DashboardSettingsDefaults.Create(ShapeMetrics(
+            integratedGpu: true,
+            discreteGpuCount: 1));
+
+        var ids = settings.Cards.Select(static card => card.Id).ToArray();
+        Assert.Equal(
+            ["cpu", "memory", "gpu0", "gpu1", "vram1", "cpu-sensors", "gpu1-sensors"],
+            ids);
+    }
+
+    [Fact]
+    public void DefaultCards_NoIntegratedGpu_LeavesOutTheIntegratedCards()
+    {
+        // 没有核显的机器：目录里根本没有 gpu.0.*，所以那几张卡自然不存在。
+        var settings = DashboardSettingsDefaults.Create(ShapeMetrics(
+            integratedGpu: false,
+            discreteGpuCount: 1));
+
+        var ids = settings.Cards.Select(static card => card.Id).ToArray();
+        Assert.Equal(["cpu", "memory", "gpu1", "vram1", "cpu-sensors", "gpu1-sensors"], ids);
+        Assert.DoesNotContain("gpu0", ids);
+    }
+
+    [Fact]
+    public void DefaultCards_MultipleDiscreteGpus_RepeatTheSameTemplatePerCard()
+    {
+        // 多显卡：每块卡都按同一组模板来，不是只照顾第一块。
+        var settings = DashboardSettingsDefaults.Create(ShapeMetrics(
+            integratedGpu: false,
+            discreteGpuCount: 2));
+
+        var ids = settings.Cards.Select(static card => card.Id).ToArray();
+        Assert.Equal(
+            ["cpu", "memory", "gpu1", "gpu2", "vram1", "vram2",
+             "cpu-sensors", "gpu1-sensors", "gpu2-sensors"],
+            ids);
+    }
+
+    [Fact]
+    public void DefaultCards_UnifiedMemorySoc_KeepsTheFanCardWithoutVideoMemory()
+    {
+        // AI SoC：有 GPU、有风扇，但**没有独立显存**（和处理器共用内存）。
+        // 显存卡不该出现，风扇卡该出现 —— 先前用显存当判据时这张风扇卡会被吞掉。
+        var settings = DashboardSettingsDefaults.Create(ShapeMetrics(
+            integratedGpu: false,
+            discreteGpuCount: 0,
+            unifiedMemoryGpu: true));
+
+        var ids = settings.Cards.Select(static card => card.Id).ToArray();
+        Assert.Equal(["cpu", "memory", "gpu0", "cpu-sensors", "gpu0-sensors"], ids);
+        Assert.DoesNotContain("vram0", ids);
+    }
+
+    [Fact]
+    public void DefaultCards_UnifiedMemorySoc_StillShowsGpuPowerOnTheUsageCard()
+    {
+        // 功耗和显存没有关系。没有显存的 GPU 一样可以报功耗。
+        var settings = DashboardSettingsDefaults.Create(ShapeMetrics(
+            integratedGpu: false,
+            discreteGpuCount: 0,
+            unifiedMemoryGpu: true));
+
+        var usage = settings.Cards.Single(static card => card.Id == "gpu0");
+        Assert.Contains("gpu.0.power", usage.Small);
+    }
+
+    /// <summary>
+    /// 按机型拼一份"这台机器读得到哪些指标"。
+    /// 卡片是从这份清单推出来的，所以用例只需要描述硬件，不必描述卡片。
+    /// </summary>
+    private static Dictionary<string, MetricValue> ShapeMetrics(
+        bool integratedGpu,
+        int discreteGpuCount,
+        bool unifiedMemoryGpu = false)
+    {
+        var ids = new List<string>
+        {
+            "cpu.usage", "cpu.frequency", "cpu.temperature", "cpu.actualPower",
+            "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent",
+            "memory.usage", "memory.percent"
+        };
+
+        // 核显：有占用率、频率、温度；没有独立显存，也没有自己的风扇。
+        if (integratedGpu)
+        {
+            ids.AddRange(["gpu.0.usage", "gpu.0.graphicsClock", "gpu.0.temperature"]);
+        }
+
+        // AI SoC 的 GPU：和核显一样没有独立显存，但它有功耗读数和自己的风扇。
+        if (unifiedMemoryGpu)
+        {
+            ids.AddRange(
+            [
+                "gpu.0.usage", "gpu.0.graphicsClock", "gpu.0.power", "gpu.0.temperature",
+                "gpu.0.fanRpm", "gpu.0.coreVoltage"
+            ]);
+        }
+
+        // 独显从 1 号开始编，和"核显占 0 号"的常见排布对齐。
+        for (var index = 1; index <= discreteGpuCount; index++)
+        {
+            ids.AddRange(
+            [
+                $"gpu.{index}.usage",
+                $"gpu.{index}.graphicsClock",
+                $"gpu.{index}.power",
+                $"gpu.{index}.temperature",
+                $"gpu.{index}.vram",
+                $"gpu.{index}.vramPercent",
+                $"gpu.{index}.memoryClock",
+                $"gpu.{index}.fanRpm",
+                $"gpu.{index}.coreVoltage",
+                $"gpu.{index}.current"
+            ]);
+        }
+
+        return ids.Distinct(StringComparer.OrdinalIgnoreCase).ToDictionary(
+            static id => id,
+            static id => new MetricValue(id, id, "test", "--", null, string.Empty, null, null),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     private static bool CardEquals(DashboardCardSettings card, string id, string main, params string[] small)
