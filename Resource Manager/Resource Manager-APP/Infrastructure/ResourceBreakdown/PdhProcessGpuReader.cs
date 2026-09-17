@@ -210,14 +210,31 @@ public sealed class PdhProcessGpuReader
 
         var usageByAdapter =
             new Dictionary<int, Dictionary<int, double>>();
+        // 同一次读、同一个求和口径下的整卡总和。
+        //
+        // **这是分解表的总和，必须从这里出**，不能拿设备自己报的那个占用率去当它。
+        // 那个数（N 卡上是 NVML 的 SM utilization）问的是"卡上有没有核在跑"，
+        // 而这里的分项问的是"这个进程在各引擎上忙了多久"，两个量定义不同、
+        // 采样窗口也不同 —— 拿它当总和，结果就是分项可以比总和还大。
+        var usageTotalByAdapter = new Dictionary<int, double>();
         if (HasPayload(usageStatus))
         {
             foreach (var row in snapshot.EngineRows)
             {
-                if (row.ProcessId is not (> 0 and <= int.MaxValue)
-                    || !adapterIndexByLuid.TryGetValue(
+                if (!adapterIndexByLuid.TryGetValue(
                         row.AdapterLuid,
                         out var adapterIndex))
+                {
+                    continue;
+                }
+
+                // 总和把**所有**引擎行都算进去，包括归不到进程头上的那些 ——
+                // 那部分正是分解表里的"未归属"，不该在这一步就被丢掉。
+                usageTotalByAdapter[adapterIndex] =
+                    usageTotalByAdapter.GetValueOrDefault(adapterIndex)
+                        + Sanitize(row.UsagePercent);
+
+                if (row.ProcessId is not (> 0 and <= int.MaxValue))
                 {
                     continue;
                 }
@@ -258,7 +275,12 @@ public sealed class PdhProcessGpuReader
             usageStatus,
             memoryStatus,
             ToReadOnlyMap(usageByAdapter),
-            ToReadOnlyMap(memoryByAdapter));
+            ToReadOnlyMap(memoryByAdapter),
+            // 总和和分项用同一个上限口径。夹是单调的，所以夹完之后
+            // "任一分项 ≤ 总和"依然成立。
+            usageTotalByAdapter.ToDictionary(
+                static item => item.Key,
+                static item => Math.Clamp(item.Value, 0, 100)));
     }
 
     private static SamplingObservationStatus ObservationStatus(
@@ -346,7 +368,8 @@ internal sealed class ProcessGpuBreakdownRead(
     IReadOnlyDictionary<int, IReadOnlyDictionary<int, double>>
         usageByAdapter,
     IReadOnlyDictionary<int, IReadOnlyDictionary<int, double>>
-        memoryByAdapter)
+        memoryByAdapter,
+    IReadOnlyDictionary<int, double>? usageTotalByAdapter = null)
 {
     private static readonly IReadOnlyDictionary<int, double>
         EmptyValues = new Dictionary<int, double>();
@@ -375,6 +398,21 @@ internal sealed class ProcessGpuBreakdownRead(
         GetUsagePercentByProcess(int adapterIndex)
         => usageByAdapter.GetValueOrDefault(adapterIndex)
             ?? EmptyValues;
+
+    /// <summary>
+    /// 这块卡的占用总和，**和分项出自同一次读、同一个求和口径**。
+    ///
+    /// 分解表的总和要用它，不要用设备自己报的占用率：那个数在 N 卡上是 NVML 的
+    /// SM utilization（"卡上有没有核在跑"），和这里的"各引擎忙了多久"不是一个量，
+    /// 采样窗口也不同。两个量凑在一列里，结果就是单个软件能比总和还大。
+    ///
+    /// 读不到就是 null —— 那时这一列如实报不可用，而不是拿另一个量顶上。
+    /// </summary>
+    internal double? GetUsagePercentTotal(int adapterIndex)
+        => usageTotalByAdapter is not null
+            && usageTotalByAdapter.TryGetValue(adapterIndex, out var total)
+                ? total
+                : null;
 
     internal IReadOnlyDictionary<int, double>
         GetDedicatedMemoryBytesByProcess(int adapterIndex)

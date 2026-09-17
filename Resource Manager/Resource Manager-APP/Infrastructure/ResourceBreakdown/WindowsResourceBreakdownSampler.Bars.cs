@@ -240,6 +240,42 @@ public sealed partial class WindowsResourceBreakdownSampler
 
             var usageByProcess =
                 gpuAttribution.GetUsagePercentByProcess(gpuIndex);
+
+            /*
+             * **量取最准的读数，比例取 PDH。**
+             *
+             * 这两件事先前混在一起，于是界面上出现过"某个软件 8.6%、总和只有 5.0%"：
+             * 总和走的是 gpu.UsagePercent（N 卡上是 NVML 的 SM utilization，
+             * 问的是"卡上有没有核在跑"），分项走的是 PDH 的 GPU Engine 计数器
+             * 按进程把各引擎求和（问的是"这个进程在各引擎上忙了多久"）。
+             * 两个量定义不同、采样窗口也不同，所以部分大于整体是必然会发生的；
+             * 而聚合层算残差时那个负数被静默丢掉，谁也没吭声。
+             *
+             * 分工定死：
+             *   - **量**用设备自己的读数（有 NVML 就是 NVML，它更准，不该被顶掉）。
+             *   - **比例**用 PDH：每个进程占整卡的份额 = 它的引擎和 / 整卡引擎和。
+             *     PDH 的绝对值和 NVML 不同口径，但它的相对份额是可信的，
+             *     而且这是唯一的每进程来源。
+             *
+             * 于是分项 = 设备读数 × 该进程的 PDH 份额。分项之和 = 设备读数 ×
+             * 已归属份额 ≤ 设备读数，"任一分项 ≤ 总和"恒成立；剩下的那块
+             * （归不到进程头上的引擎行）仍然是残差，语义没有丢。
+             *
+             * 整卡的 PDH 总和读不到，就没有分母，也就没法把分项放到同一把尺子上 ——
+             * 那时如实报归属不可用，而不是把两个口径的数混在一列里。
+             */
+            if (gpuAttribution.GetUsagePercentTotal(gpuIndex) is not { } attributionTotal
+                || attributionTotal <= 0)
+            {
+                return CreateUnavailableBar(
+                    metricId,
+                    metric.Label,
+                    "%",
+                    scaleMode,
+                    GpuObservationStatus(hardwareSnapshot, gpuIndex, usage: true),
+                    gpuAttribution.UsageStatus);
+            }
+
             return CreateBar(
                 metricId,
                 metric.Label,
@@ -252,7 +288,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                 baseScorePlan,
                 residualBreakdownProvider,
                 isBytes: false,
-                scaleProcessValues: false,
+                scaleProcessValues: true,
+                attributionTotalValue: attributionTotal,
                 attributionStatus: gpuAttribution.UsageStatus);
         }
 
