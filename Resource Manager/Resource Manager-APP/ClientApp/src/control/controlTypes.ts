@@ -57,12 +57,19 @@ export interface ControlCurvePoint {
   percent: number;
 }
 
-/** 用户对某一项能力的设定。三种取值按能力的 valueKind 三选一。 */
+/**
+ * 用户对某一项能力的设定。三种取值按能力的 valueKind 三选一。
+ *
+ * 数值型自带单位：这条记录要能单独看懂 —— 它会被存下来、保存成配置、
+ * 在机器之间搬。单位挂在能力描述上的话，换台机器同一条记录的含义就变了。
+ */
 export interface ControlSetting {
   capabilityId: string;
   number?: number | null;
   toggle?: boolean | null;
   curve?: readonly ControlCurvePoint[] | null;
+  /** number 的单位，取自能力的 range.unit。非数值型不填。 */
+  unit?: string | null;
 }
 
 export interface ControlObjectDesiredState {

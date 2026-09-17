@@ -12,7 +12,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// </summary>
 public sealed class ControlPlane(
     IControlDesiredStateStore store,
-    IControlPlanExecutor executor,
+    IControlWriteLayer writeLayer,
     IControlObjectCatalog catalog) : IControlPlane
 {
     private readonly object gate = new();
@@ -47,7 +47,7 @@ public sealed class ControlPlane(
         // 撤掉一项不能只是"以后不再写它"：硬件上还留着上次写进去的值。
         // 所以这一次施加，除了新的期望，还要把撤掉的那些明确写回硬件默认。
         var plan = WithReleasedRestoredToDefault(current, next);
-        var report = await executor.ApplyAsync(plan, cancellationToken).ConfigureAwait(false);
+        var report = await writeLayer.WriteAsync(plan, cancellationToken).ConfigureAwait(false);
         WriteLastApply(report);
         return new ControlStateView(next, report);
     }
@@ -60,7 +60,7 @@ public sealed class ControlPlane(
             // 没设过就什么都不做 —— 不去把机器"重置"成我们以为的默认值。
             return ReadLastApply();
         }
-        var report = await executor.ApplyAsync(desired, cancellationToken).ConfigureAwait(false);
+        var report = await writeLayer.WriteAsync(desired, cancellationToken).ConfigureAwait(false);
         WriteLastApply(report);
         return report;
     }

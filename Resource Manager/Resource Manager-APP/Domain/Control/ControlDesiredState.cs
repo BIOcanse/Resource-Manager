@@ -7,12 +7,21 @@ public sealed record ControlCurvePoint(double TemperatureCelsius, double Percent
 /// 用户对某一项能力的设定。
 ///
 /// 三种取值按 <see cref="ControlCapability.ValueKind"/> 三选一，只会有一个非空。
+///
+/// 数值型的那一种**自带单位**：这条记录要能单独看懂，因为它会被存下来、
+/// 被保存成配置、被在机器之间搬。单位挂在能力描述上的话，换台机器
+/// 同一条记录的含义就变了。
 /// </summary>
 public sealed record ControlSetting(
     string CapabilityId,
     double? Number = null,
     bool? Toggle = null,
-    IReadOnlyList<ControlCurvePoint>? Curve = null);
+    IReadOnlyList<ControlCurvePoint>? Curve = null,
+    /// <summary>
+    /// <see cref="Number"/> 的单位，取值见 <see cref="ControlUnits"/>。
+    /// 非数值型为 null。旧文件里没有这个字段，读到 null 时由转发层按能力描述补。
+    /// </summary>
+    string? Unit = null);
 
 /// <summary>一个对象上用户设定的全部项。</summary>
 public sealed record ControlObjectDesiredState(

@@ -80,7 +80,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 期望状态的存储要 IHostEnvironment，而只读服务图里没有它 ——
         // 那张图本来也不该带着一个会写硬件的后台服务。
         services.AddSingleton<IControlDesiredStateStore, JsonControlDesiredStateStore>();
-        services.AddSingleton<IControlPlanExecutor, ControlPlanExecutor>();
+        // 统一写入层：认实例 → 选驱动 → 适配单位 → 下发 → 归一回执。只管写。
+        services.AddSingleton<IControlWriteLayer, ControlWriteLayer>();
         services.AddSingleton<IControlPlane, ControlPlane>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
         services.AddSingleton<IControlInstanceRegistry, JsonControlInstanceRegistry>();

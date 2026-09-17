@@ -71,7 +71,9 @@ function NumberEditor(props: {
             disabled={props.disabled}
             onInput={(event) => props.onChange({
               capabilityId: props.capability.id,
-              number: Number(event.currentTarget.value)
+              number: Number(event.currentTarget.value),
+              // 单位跟着值走，别让后端去猜这个数字是瓦还是档。
+              unit: bounds().unit
             })}
           />
         )}
