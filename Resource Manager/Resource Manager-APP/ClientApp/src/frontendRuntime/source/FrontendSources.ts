@@ -2,6 +2,11 @@ import {
   buildLocalSystemStatusSubscriptionUrl,
   type LocalSystemStatus
 } from "../../data/localSystem/localSystemStatusApi.ts";
+import {
+  buildControlActualStateSubscriptionUrl,
+  controlActualStateDecoder
+} from "../../data/control/controlActualApi.ts";
+import type { ControlActualState } from "../../control/controlTypes.ts";
 import { localSystemStatusDecoder } from
   "../../data/localSystem/localSystemStatusDecoder.ts";
 import { buildDeviceTopologyStateSubscriptionUrl } from
@@ -112,6 +117,7 @@ export interface FrontendSources {
   readonly runtimeCapabilities: SourceHandle<BackendStartupCapabilities>;
   readonly selfScheduling: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
   readonly localSystemStatus: PushValueSource<LocalSystemStatus>;
+  readonly controlActualState: PushValueSource<ControlActualState>;
   readonly deviceTopology: PushValueSource<DeviceTopologySnapshotState>;
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
@@ -167,6 +173,13 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildLocalSystemStatusSubscriptionUrl,
       decoder: localSystemStatusDecoder
+    }),
+    // 控制面的实际状态：机器现在实际是什么样，和期望状态并排显示。
+    controlActualState: new BackendPushValueSource<ControlActualState>({
+      key: "control.actual",
+      channel: subscriptionChannel,
+      buildUrl: buildControlActualStateSubscriptionUrl,
+      decoder: controlActualStateDecoder
     }),
     deviceTopology: new BackendPushValueSource<DeviceTopologySnapshotState>({
       key: "device-topology.state",

@@ -27,12 +27,14 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 10);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 11);
 assert.match(pushValueSources, /this\.channel\.subscribe\(/);
 assert.doesNotMatch(pushValueSources, /BackendSessionOwner|\bfetch\s*\(/);
 assert.match(subscriptionChannel, /const subscriptionEndpoint = "\/api\/subscriptions\/stream"/);
 assert.equal((subscriptionChannel.match(/this\.fetch\(/g) ?? []).length, 1);
 assert.match(sources, /localSystemStatus:\s*new BackendPushValueSource/);
+// 控制面的实际状态也走统一订阅源，和别的读数同一条通道。
+assert.match(sources, /controlActualState:\s*new BackendPushValueSource/);
 assert.match(sources, /deviceTopology:\s*new BackendPushValueSource/);
 assert.match(sources, /cpuTopology:\s*new BackendPushValueSource/);
 assert.match(sources, /cpuResidency:\s*new BackendPushValueSource/);

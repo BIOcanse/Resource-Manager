@@ -18,6 +18,7 @@ import {
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
 import { uiText } from "../text.ts";
 import type {
+  ControlActualState,
   ControlInstanceCatalog,
   ControlObject,
   ControlObjectCatalog,
@@ -36,6 +37,14 @@ import type {
  *
  * 风扇、GPU、CPU 在同一页（按设计文档要求），按对象种类分组。
  */
+/**
+ * 实际状态订多勤。
+ *
+ * 后端那一侧读取只返回当前值、不触发采样（采样是后台独立的一条路），
+ * 所以订得勤一点也不会多碰一次硬件；这个间隔只决定界面多久刷新一次。
+ */
+const ActualStateIntervalMs = 2000;
+
 export function ControlWorkspace(props: { onNotice: (message: string) => void }) {
   const runtime = useFrontendRuntime();
   const [catalog, setCatalog] = createSignal<ControlObjectCatalog | null>(null);
@@ -82,6 +91,20 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     savedObjects().find((row) => row.objectId === entry.objectId)?.settings ?? []))
     || savedObjects().some((entry) => !edited().some(
       (row) => row.objectId === entry.objectId));
+
+  /**
+   * 这台机器**现在实际**是什么样。
+   *
+   * 和期望值并排显示 —— 它不是期望的回声：固件会按温度自己调度，
+   * 用户也可能用别的软件改过，两者对不上是常态，而且正是要让用户看见的信息。
+   */
+  const [actual, setActual] = createSignal<ControlActualState | null>(null);
+  onMount(() => {
+    const unsubscribe = runtime.sources.controlActualState.subscribe(
+      ActualStateIntervalMs,
+      setActual);
+    onCleanup(unsubscribe);
+  });
 
   const apply = () => void applyControlDesiredState(runtime.requestClient, edited())
     .then((next) => { setState(next); setDraft(null); })
@@ -247,6 +270,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                       object={object}
                       state={state()}
                       edited={settingsOf(object.id)}
+                      actual={actual()}
                       onEdit={(capabilityId, next) =>
                         editCapability(object.id, capabilityId, next)}
                     />
@@ -265,6 +289,7 @@ function ControlObjectCard(props: {
   object: ControlObject;
   state: ControlStateView | null;
   edited: readonly ControlSetting[];
+  actual: ControlActualState | null;
   onEdit: (capabilityId: string, next: ControlSetting | null) => void;
 }) {
   // 用户对这个对象设过什么，以及最近一次施加的回执。
@@ -274,6 +299,13 @@ function ControlObjectCard(props: {
     .filter((entry) => entry.objectId === props.object.id) ?? [];
 
   const edited = () => props.edited;
+
+  /** 这一项现在实际是多少。读不到就不显示。 */
+  const actualOf = (capabilityId: string) => {
+    const value = props.actual?.values.find((entry) =>
+      entry.objectId === props.object.id && entry.capabilityId === capabilityId);
+    return value && typeof value.number === "number" ? value : null;
+  };
 
   const itemStatus = (capabilityId: string) => controlItemStatusOf(
     capabilityId,
@@ -345,6 +377,19 @@ function ControlObjectCard(props: {
                   <span class="control-capability-tag">
                     {uiText.control.status[itemStatus(capability.id)]}
                   </span>
+                </Show>
+                {/*
+                  机器现在实际是多少。读得到才显示 —— 读不到时挂一句
+                  "读不到"只是噪音，用户要的是数字。
+                */}
+                <Show when={actualOf(capability.id)}>
+                  {(value) => (
+                    <span class="control-capability-actual">
+                      {uiText.control.actual}
+                      {value().number}
+                      {value().unit ? ` ${value().unit}` : ""}
+                    </span>
+                  )}
                 </Show>
               </span>
               {/*
