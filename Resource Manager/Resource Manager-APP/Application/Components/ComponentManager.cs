@@ -10,15 +10,18 @@ public sealed partial class ComponentManager : IComponentManager
     private readonly IOptionalDependencyManager dependencyManager;
     private readonly IMetricSampler metricSampler;
     private readonly IProviderRuntimeProbe providerRuntimeProbe;
+    private readonly IDependencyPayloadAcquisition payloadAcquisition;
 
     public ComponentManager(
         IOptionalDependencyManager dependencyManager,
         IMetricSampler metricSampler,
-        IProviderRuntimeProbe providerRuntimeProbe)
+        IProviderRuntimeProbe providerRuntimeProbe,
+        IDependencyPayloadAcquisition payloadAcquisition)
     {
         this.dependencyManager = dependencyManager;
         this.metricSampler = metricSampler;
         this.providerRuntimeProbe = providerRuntimeProbe;
+        this.payloadAcquisition = payloadAcquisition;
     }
 
     public async Task<IReadOnlyList<ComponentStatus>> GetStatusesAsync(CancellationToken cancellationToken)

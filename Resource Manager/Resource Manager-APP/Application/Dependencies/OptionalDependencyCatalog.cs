@@ -48,7 +48,15 @@ public static class OptionalDependencyCatalog
                 Repository: "PawnIO.Setup",
                 VerifiedTag: "2.2.0",
                 VerifiedAssetName: "PawnIO_setup.exe",
-                AssetPatterns: ["PawnIO_setup*.exe", "PawnIO*.exe"])),
+                AssetPatterns: ["PawnIO_setup*.exe", "PawnIO*.exe"]),
+            // 安装器只装驱动。读 PM table 要的模块在另一个仓库，
+            // 不取这一份的话设备打得开但读数永远是空的。
+            PayloadSource: new DependencyPayloadSource(
+                Owner: "namazso",
+                Repository: "PawnIO.Modules",
+                VerifiedTag: "0.2.11",
+                VerifiedAssetName: "release_0_2_11.zip",
+                FileNames: ["RyzenSMU.bin"])),
         new OptionalDependencyDefinition(
             Id: "msi-afterburner",
             Name: "MSI Afterburner",

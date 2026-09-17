@@ -1,4 +1,5 @@
-﻿using ResourceManager.App.Domain.Components;
+﻿using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Domain.Components;
 
 using ResourceManager.App.Domain.Messages;
 
@@ -73,6 +74,14 @@ public sealed partial class ComponentManager
         string id,
         CancellationToken cancellationToken)
     {
+        // 验证之前先把安装器之外的运行时文件补齐。
+        // 用户点「验证」的意思就是"把这条路弄通"，而不是"告诉我还差什么文件"。
+        var definition = OptionalDependencyCatalog.Find(id);
+        if (definition is not null)
+        {
+            await payloadAcquisition.EnsureAsync(definition, cancellationToken);
+        }
+
         var status = await GetStatusAsync(id, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown component: {id}");
         return new ComponentActionResult(
