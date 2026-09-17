@@ -224,29 +224,42 @@ public sealed class WindowsControlObjectCatalog(
     /// 所以没有"显存频率偏移"，"功耗上限"也不是这块卡自己的事 ——
     /// 真要限它得去调处理器的封装功耗。与其列一堆它做不到的项，不如如实说清楚。
     /// </summary>
+    /// <summary>
+    /// 核显能调什么，**两家不一样**，所以按厂商给各自的那一项。
+    ///
+    /// AMD 的核显归 CPU 封装里的 SMU 管，能调的是 Curve Optimizer 的**档位**；
+    /// Intel 的核显走显卡驱动自带的 IGCL，能调的是频率**偏移（MHz）**。
+    /// 硬凑成同一项只会让其中一边的单位和语义都是错的。
+    /// </summary>
     private static IReadOnlyList<ControlCapability> IntegratedGpuCapabilities(string vendor)
-    {
-        var (componentId, componentName) = vendor switch
+        => vendor switch
         {
-            ControlVendors.Amd => ("amd-smu-pawnio-provider", "AMD SMU / PawnIO Provider"),
-            // Intel 核显的控制库（IGCL）随显卡驱动一起装，不是单独的组件。
-            ControlVendors.Intel => ("intel-graphics-driver", "Intel 显卡驱动"),
-            _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
+            ControlVendors.Amd =>
+            [
+                // 和处理器同一条通道（辅助进程 → ZenStates-Core → SMU）。
+                // 单位是档不是伏，理由同处理器那一项。
+                Unsupported(
+                    "gpu.curve-optimizer",
+                    "Curve Optimizer 偏移",
+                    ControlValueKinds.Number,
+                    "hardware-bridge",
+                    "硬件写入辅助进程",
+                    new ControlNumberRange(-30, 10, 1, ControlUnits.Step, 0))
+            ],
+            ControlVendors.Intel =>
+            [
+                // IGCL 的核显接口收的是 MHz 偏移（ctlOverclockGpuFrequencyOffsetSet），
+                // 不是绝对频率。控制库随 Intel 显卡驱动一起装，不是单独的组件。
+                Unsupported(
+                    "gpu.core-clock-offset",
+                    "核心频率偏移",
+                    ControlValueKinds.Number,
+                    "intel-graphics-driver",
+                    "Intel 显卡驱动",
+                    new ControlNumberRange(-200, 200, 5, ControlUnits.Megahertz, 0))
+            ],
+            _ => []
         };
-        return
-        [
-            // 核显给的是**最高频率上限**，不是偏移：这两家的核显接口都只接受
-            // 一个绝对频率（AMD 的 SMU 是 set_max_gfxclk_freq，Intel 的 IGCL 同理），
-            // 写成"偏移"会让用户以为能在出厂曲线上加减，而实际上是封顶。
-            Unsupported(
-                "gpu.curve-optimizer",
-                "Curve Optimizer 偏移",
-                ControlValueKinds.Number,
-                componentId,
-                componentName,
-                new ControlNumberRange(-30, 10, 1, "档", 0))
-        ];
-    }
 
     private static void AddCpu(
         List<ControlObject> objects,
