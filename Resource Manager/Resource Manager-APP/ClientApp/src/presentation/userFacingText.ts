@@ -156,19 +156,37 @@ export function userFacingDateTime(value: unknown, fallback = uiText.status.unkn
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString();
 }
 
+/**
+ * 分组键 → 界面上的字样。
+ *
+ * 键是后端定的（见 `MetricGroups`），一个键对应一个**设备**。
+ * 显卡是每块一组，键形如 `gpu.0`，字样就是 `GPU0`。
+ *
+ * **认不出的键原样显示，不再统一叫「系统」。** 先前那个兜底把
+ * `GPU0` / `GPU1` 一起吞进了「系统」—— 分组错了，界面上却看不出错，
+ * 只看得出显卡莫名其妙跑到系统底下。认不出就把键摆出来，
+ * 一眼能看到是哪个键没接上。
+ */
 export function userFacingMetricGroup(value: unknown) {
   const group = uiText.status.metricGroup;
-  switch (String(value ?? "").trim().toLocaleLowerCase()) {
+  const key = String(value ?? "").trim().toLocaleLowerCase();
+  const gpuIndex = /^gpu\.(\d+)$/.exec(key);
+  if (gpuIndex) {
+    return `GPU${gpuIndex[1]}`;
+  }
+
+  switch (key) {
     case "cpu": return group.cpu;
     case "gpu": return group.gpu;
     case "memory": return group.memory;
-    case "virtual memory": return group.virtualMemory;
+    case "virtual-memory": return group.virtualMemory;
     case "disk": return group.disk;
     case "network": return group.network;
     case "motherboard": return group.motherboard;
     case "fan": return group.fan;
     case "hardwaremonitor": return group.hardwareMonitor;
-    default: return group.system;
+    case "system": return group.system;
+    default: return key || group.system;
   }
 }
 

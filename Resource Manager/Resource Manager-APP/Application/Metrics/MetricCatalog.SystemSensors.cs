@@ -9,13 +9,13 @@ public static partial class MetricCatalog
         IReadOnlyDictionary<string, MetricValue> items)
     {
         definitions.AddRange([
-            new("disk.total.activePercent", "磁盘活动时间", "Disk", "%", "main", items.GetValueOrDefault("disk.total.activePercent")?.Detail ?? "PhysicalDisk(_Total)"),
-            new("disk.total.readBytesPerSec", "磁盘读取", "Disk", "B/s", "small", items.GetValueOrDefault("disk.total.readBytesPerSec")?.Detail ?? "PhysicalDisk(_Total)"),
-            new("disk.total.writeBytesPerSec", "磁盘写入", "Disk", "B/s", "small", items.GetValueOrDefault("disk.total.writeBytesPerSec")?.Detail ?? "PhysicalDisk(_Total)"),
-            new("disk.total.queueLength", "磁盘队列", "Disk", "", "small", items.GetValueOrDefault("disk.total.queueLength")?.Detail ?? "PhysicalDisk(_Total)"),
-            new("network.total.receiveBytesPerSec", "网络接收", "Network", "B/s", "small", items.GetValueOrDefault("network.total.receiveBytesPerSec")?.Detail ?? "Network Interface(*)"),
-            new("network.total.sendBytesPerSec", "网络发送", "Network", "B/s", "small", items.GetValueOrDefault("network.total.sendBytesPerSec")?.Detail ?? "Network Interface(*)"),
-            new("network.total.utilizationPercent", "网络利用率", "Network", "%", "main", items.GetValueOrDefault("network.total.utilizationPercent")?.Detail ?? "Network Interface(*)")
+            new("disk.total.activePercent", "磁盘活动时间", MetricGroups.Disk, "%", "main", items.GetValueOrDefault("disk.total.activePercent")?.Detail ?? "PhysicalDisk(_Total)"),
+            new("disk.total.readBytesPerSec", "磁盘读取", MetricGroups.Disk, "B/s", "small", items.GetValueOrDefault("disk.total.readBytesPerSec")?.Detail ?? "PhysicalDisk(_Total)"),
+            new("disk.total.writeBytesPerSec", "磁盘写入", MetricGroups.Disk, "B/s", "small", items.GetValueOrDefault("disk.total.writeBytesPerSec")?.Detail ?? "PhysicalDisk(_Total)"),
+            new("disk.total.queueLength", "磁盘队列", MetricGroups.Disk, "", "small", items.GetValueOrDefault("disk.total.queueLength")?.Detail ?? "PhysicalDisk(_Total)"),
+            new("network.total.receiveBytesPerSec", "网络接收", MetricGroups.Network, "B/s", "small", items.GetValueOrDefault("network.total.receiveBytesPerSec")?.Detail ?? "Network Interface(*)"),
+            new("network.total.sendBytesPerSec", "网络发送", MetricGroups.Network, "B/s", "small", items.GetValueOrDefault("network.total.sendBytesPerSec")?.Detail ?? "Network Interface(*)"),
+            new("network.total.utilizationPercent", "网络利用率", MetricGroups.Network, "%", "main", items.GetValueOrDefault("network.total.utilizationPercent")?.Detail ?? "Network Interface(*)")
         ]);
     }
 
@@ -28,7 +28,7 @@ public static partial class MetricCatalog
             items,
             "memory.temperature",
             "内存温度",
-            "Memory",
+            MetricGroups.Memory,
             "°C",
             "small",
             requiredComponentId: RequiredComponentWhenUnavailable(items, "memory.temperature", "librehardwaremonitor-provider"));
@@ -46,7 +46,7 @@ public static partial class MetricCatalog
             items,
             "system.motherboardTemperature",
             "主板温度",
-            "Motherboard",
+            MetricGroups.Motherboard,
             "°C",
             "small",
             requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardTemperature", "librehardwaremonitor-provider"));
@@ -55,7 +55,7 @@ public static partial class MetricCatalog
             items,
             "system.vrmTemperature",
             "供电温度",
-            "Motherboard",
+            MetricGroups.Motherboard,
             "°C",
             "small",
             requiredComponentId: RequiredComponentWhenUnavailable(items, "system.vrmTemperature", "librehardwaremonitor-provider"));
@@ -64,7 +64,7 @@ public static partial class MetricCatalog
             items,
             "system.chipsetTemperature",
             "芯片组温度",
-            "Motherboard",
+            MetricGroups.Motherboard,
             "°C",
             "small",
             requiredComponentId: RequiredComponentWhenUnavailable(items, "system.chipsetTemperature", "librehardwaremonitor-provider"));
@@ -73,7 +73,7 @@ public static partial class MetricCatalog
             items,
             "system.motherboardVoltage",
             "主板电压",
-            "Motherboard",
+            MetricGroups.Motherboard,
             "V",
             "small",
             requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardVoltage", "librehardwaremonitor-provider"));
@@ -93,7 +93,7 @@ public static partial class MetricCatalog
             definitions.Add(new MetricDefinition(
                 item.Key,
                 $"磁盘{index} 温度",
-                "Disk",
+                MetricGroups.Disk,
                 "°C",
                 "small",
                 item.Value.Detail,

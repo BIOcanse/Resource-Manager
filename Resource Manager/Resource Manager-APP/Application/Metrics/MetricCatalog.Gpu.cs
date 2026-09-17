@@ -28,6 +28,14 @@ public static partial class MetricCatalog
         return end > start && int.TryParse(metricId[start..end], out var index) ? index : null;
     }
 
+    /// <summary>
+    /// 一块显卡的全部监控项。
+    ///
+    /// <paramref name="group"/> 是**分组键**（稳定、给程序看），
+    /// 标签里出现的是 <c>GPU{index}</c> 这个**显示名**（给人看）。
+    /// 先前这两件事共用一个字符串，于是分组键一改，每一条标签跟着变成
+    /// "gpu.1 风扇转速"。键和字样是两回事，分开写。
+    /// </summary>
     private static IReadOnlyList<MetricDefinition> CreateGpuDefinitions(
         int index,
         string group,
@@ -37,6 +45,7 @@ public static partial class MetricCatalog
         bool usageCapabilityKnown = false)
     {
         var prefix = $"gpu.{index}";
+        var displayName = $"GPU{index}";
         var definitions = new List<MetricDefinition>();
         var gpuProviderComponentId = ResolveGpuProviderComponentId(detail);
         var gpuProviderComponentName = ComponentName(gpuProviderComponentId);
@@ -49,30 +58,32 @@ public static partial class MetricCatalog
                 definitions,
                 items,
                 $"{prefix}.usage",
-                $"{group} 占用率",
+                $"{displayName} 占用率",
                 group,
                 detail,
                 identityKey);
         }
         else
         {
-            AddGpuMetric(definitions, items, $"{prefix}.usage", $"{group} 占用率", group, "%", "main", detail, null, null, identityKey);
+            AddGpuMetric(definitions, items, $"{prefix}.usage", $"{displayName} 占用率", group, "%", "main", detail, null, null, identityKey);
         }
-        AddGpuMetric(definitions, items, $"{prefix}.graphicsClock", $"{group} 频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.graphicsClockPercent", $"{group} 频率百分比", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.power", $"{group} 功耗", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.boardPower", $"{group} 总板功耗", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.powerLimit", $"{group} 功耗限制", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.temperature", $"{group} 温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.hotspotTemperature", $"{group} 热点温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.intakeTemperature", $"{group} 进风温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.fanRpm", $"{group} 风扇转速", group, "RPM", "small", detail, gpuFanRpmComponentId, ComponentName(gpuFanRpmComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.fanPercent", $"{group} 风扇百分比", group, "%", "small", detail, gpuFanPercentComponentId, ComponentName(gpuFanPercentComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.coreVoltage", $"{group} 电压", group, "V", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.current", $"{group} 电流", group, "A", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{group} 显存占用", group, MetricUnits.Bytes, "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.vramPercent", $"{group} 显存占用率", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.memoryClock", $"{group} 显存频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.graphicsClock", $"{displayName} 频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.graphicsClockPercent", $"{displayName} 频率百分比", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.power", $"{displayName} 功耗", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.boardPower", $"{displayName} 总板功耗", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.powerLimit", $"{displayName} 功耗限制", group, "W", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.temperature", $"{displayName} 温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.hotspotTemperature", $"{displayName} 热点温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.intakeTemperature", $"{displayName} 进风温度", group, "°C", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        // 风扇归风扇组，不归这块卡 —— 笔记本往往整机共用一套散热，
+        // 控制面那边也是把风扇当独立实例的，两边口径一致。
+        AddGpuMetric(definitions, items, $"{prefix}.fanRpm", $"{displayName} 风扇转速", MetricGroups.Fan, "RPM", "small", detail, gpuFanRpmComponentId, ComponentName(gpuFanRpmComponentId), identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.fanPercent", $"{displayName} 风扇百分比", MetricGroups.Fan, "%", "small", detail, gpuFanPercentComponentId, ComponentName(gpuFanPercentComponentId), identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.coreVoltage", $"{displayName} 电压", group, "V", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.current", $"{displayName} 电流", group, "A", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{displayName} 显存占用", group, MetricUnits.Bytes, "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.vramPercent", $"{displayName} 显存占用率", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.memoryClock", $"{displayName} 显存频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         return definitions;
     }
 
