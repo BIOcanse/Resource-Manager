@@ -44,11 +44,6 @@ public sealed class UniwillGpuPowerWriter(
         {
             return ControlWriteAvailability.No(PlatformMissing);
         }
-        if (ReadBudget(target) is not { } budget)
-        {
-            return ControlWriteAvailability.No(BudgetUnknown);
-        }
-
         /*
          * 这两项现在一律报不可用，**这是刻意的**，不是还没做完。
          *
@@ -63,9 +58,11 @@ public sealed class UniwillGpuPowerWriter(
          * 写得进寄存器不等于用户能得到效果。界面上出现一个"应用成功但什么
          * 都没变"的开关，比没有这个开关更糟，所以在找到并**验证**那一步之前
          * 不开放。上面那些读取和写入的代码留着 —— 它们经过实机验证，
-         * 补上激活步骤之后把这里换成真正的可用性判断即可。
+         * 补上激活步骤之后把这里换成真正的可用性判断即可 —— 那时才需要
+         * 在这里读一次功率预算（<see cref="ReadBudget"/>，写入和读取那两条路上仍然在用）。
+         * 现在不读：结论是固定的，而读一次要走十几次 EC 往返，
+         * 而列可控对象是每次打开页面都会做的事。
          */
-        _ = budget;
         return ControlWriteAvailability.No(NotEffective);
     }
 
