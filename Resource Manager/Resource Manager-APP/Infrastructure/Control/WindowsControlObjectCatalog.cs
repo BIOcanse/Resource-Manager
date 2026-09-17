@@ -187,14 +187,16 @@ public sealed class WindowsControlObjectCatalog(
         };
         return
         [
+            // 核显给的是**最高频率上限**，不是偏移：这两家的核显接口都只接受
+            // 一个绝对频率（AMD 的 SMU 是 set_max_gfxclk_freq，Intel 的 IGCL 同理），
+            // 写成"偏移"会让用户以为能在出厂曲线上加减，而实际上是封顶。
             Unsupported(
-                "gpu.core-clock-offset",
-                "核心频率偏移",
+                "gpu.max-core-clock",
+                "核显最高频率",
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                // 核显的频率余量比独显窄得多。
-                new ControlNumberRange(-200, 200, 5, "MHz", 0))
+                new ControlNumberRange(400, 2400, 25, "MHz"))
         ];
     }
 

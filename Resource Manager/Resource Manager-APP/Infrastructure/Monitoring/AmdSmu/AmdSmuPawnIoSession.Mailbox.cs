@@ -133,6 +133,13 @@ internal readonly record struct AmdSmuMailbox(
     internal static AmdSmuMailbox DragonRangeMp1 { get; } =
         new(0x3B10530, 0x3B1057C, 0x3B109C4);
 
+    /// <summary>
+    /// 其余代号（含 Raven / Picasso / Dali / Lucienne）的 MP1 邮箱。
+    /// 核显频率那条命令走这里。
+    /// </summary>
+    internal static AmdSmuMailbox DefaultMp1 { get; } =
+        new(0x3B10528, 0x3B10564, 0x3B10998);
+
     /// <summary>Dragon Range / Fire Range 的 PSMU 邮箱。PM table 和 Curve Optimizer 走这条。</summary>
     internal static AmdSmuMailbox DragonRangePsmu { get; } =
         new(0x3B10524, 0x3B10570, 0x3B10A40);
