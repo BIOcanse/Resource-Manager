@@ -12,7 +12,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// </summary>
 public sealed class ControlPlane(
     IControlDesiredStateStore store,
-    IControlPlanExecutor executor) : IControlPlane
+    IControlPlanExecutor executor,
+    IControlObjectCatalog catalog) : IControlPlane
 {
     private readonly object gate = new();
     private ControlApplyReport lastApply = ControlApplyReport.Empty;
@@ -43,7 +44,10 @@ public sealed class ControlPlane(
 
         var next = new ControlDesiredState(objects);
         await store.SaveAsync(next, cancellationToken).ConfigureAwait(false);
-        var report = await executor.ApplyAsync(next, cancellationToken).ConfigureAwait(false);
+        // 撤掉一项不能只是"以后不再写它"：硬件上还留着上次写进去的值。
+        // 所以这一次施加，除了新的期望，还要把撤掉的那些明确写回硬件默认。
+        var plan = WithReleasedRestoredToDefault(current, next);
+        var report = await executor.ApplyAsync(plan, cancellationToken).ConfigureAwait(false);
         WriteLastApply(report);
         return new ControlStateView(next, report);
     }
@@ -59,6 +63,63 @@ public sealed class ControlPlane(
         var report = await executor.ApplyAsync(desired, cancellationToken).ConfigureAwait(false);
         WriteLastApply(report);
         return report;
+    }
+
+    /// <summary>
+    /// 在这一次要施加的计划里，补上"撤掉的那些项恢复默认"。
+    ///
+    /// 存下去的期望状态里**不留**这些补充项 —— 用户撤掉了就是撤掉了，
+    /// 不该在他的设定里冒出一条他没设过的"= 默认值"。它们只属于这一次写入。
+    /// 默认值取自目录里那一项的范围；没有默认值的（比如曲线）没法恢复，跳过。
+    /// </summary>
+    private ControlDesiredState WithReleasedRestoredToDefault(
+        ControlDesiredState previous,
+        ControlDesiredState next)
+    {
+        var objects = catalog.ReadObjects().Objects
+            .ToDictionary(static entry => entry.Id, StringComparer.Ordinal);
+        var plan = next.Objects.ToDictionary(
+            static entry => entry.ObjectId,
+            static entry => entry.Settings.ToList(),
+            StringComparer.Ordinal);
+
+        foreach (var before in previous.Objects)
+        {
+            if (!objects.TryGetValue(before.ObjectId, out var controlObject))
+            {
+                continue;
+            }
+            var stillSet = plan.TryGetValue(before.ObjectId, out var kept)
+                ? kept
+                : [];
+            foreach (var setting in before.Settings)
+            {
+                if (stillSet.Any(entry => string.Equals(
+                        entry.CapabilityId,
+                        setting.CapabilityId,
+                        StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+                var capability = controlObject.Capabilities.FirstOrDefault(entry =>
+                    string.Equals(entry.Id, setting.CapabilityId, StringComparison.Ordinal));
+                if (capability?.Range?.DefaultValue is not { } standard)
+                {
+                    continue;
+                }
+                if (!plan.TryGetValue(before.ObjectId, out var settings))
+                {
+                    settings = [];
+                    plan[before.ObjectId] = settings;
+                }
+                settings.Add(new ControlSetting(setting.CapabilityId, Number: standard));
+            }
+        }
+
+        return new ControlDesiredState(plan
+            .Where(static entry => entry.Value.Count > 0)
+            .Select(static entry => new ControlObjectDesiredState(entry.Key, entry.Value))
+            .ToArray());
     }
 
     private ControlApplyReport ReadLastApply()
