@@ -688,9 +688,12 @@ internal sealed partial class LastSuccessfulHardwareMetricSnapshot
             hasUsage ? datasets[usageId].Observation.SourceGeneration : 0,
             hasUsage ? usage.Cpu.SampleDurationMilliseconds : 0,
             hasFrequency ? frequency.Cpu.CurrentFrequencyMhz : 0,
-            hasFrequency ? frequency.Cpu.MaxFrequencyMhz : 0,
+            // 参考频率是这台机器的**固有属性**，不是一次采样的结果 ——
+            // 没人在采频率的时候它也还是那个数。先前这里没采到就归零，
+            // 于是目录里的说明写成"参考 0 MHz"。
+            hasFrequency ? frequency.Cpu.MaxFrequencyMhz : latest.Cpu.MaxFrequencyMhz,
             hasFrequencyPercent ? frequencyPercent.Cpu.FrequencyPercent : 0,
-            hasFrequency ? frequency.Cpu.FrequencySource : string.Empty,
+            hasFrequency ? frequency.Cpu.FrequencySource : latest.Cpu.FrequencySource,
             sensors);
     }
 

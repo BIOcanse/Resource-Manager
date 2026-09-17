@@ -613,12 +613,24 @@ internal sealed class NativePdhCollector : INativePdhSnapshotSource, IDisposable
             NativePdhFrameFlags.GpuEngineComplete);
         var gpuMemoryCurrent = frameFlags.HasFlag(
             NativePdhFrameFlags.GpuMemoryComplete);
+        /*
+         * **一个域只要有一项读到了就算可用。**
+         *
+         * 先前这里要求域里的计数器**全都**有效（磁盘四项、网络四项），
+         * 缺一项整个域判为不可用 —— 于是磁盘四项一起变暗，
+         * 而实测 `% Disk Time`、`Disk Read Bytes/sec`、`Current Disk Queue Length`
+         * 在系统层面都读得出来，只是有一项没到齐。
+         *
+         * 哪一项有值由它自己的位决定（读取端按位取），域的可用性只回答
+         * "这条通道有没有东西"。一个次要计数器缺席不该把整组打掉 ——
+         * 和"一条指标没数把整帧带走"是同一类错误。
+         */
         var diskCurrent = frameFlags.HasFlag(
                 NativePdhFrameFlags.DiskComplete)
-            && HasAllIoFields(systemIo.ValidMask, DiskIoMask);
+            && HasAnyIoField(systemIo.ValidMask, DiskIoMask);
         var networkCurrent = frameFlags.HasFlag(
                 NativePdhFrameFlags.NetworkComplete)
-            && HasAllIoFields(systemIo.ValidMask, NetworkIoMask);
+            && HasAnyIoField(systemIo.ValidMask, NetworkIoMask);
 
         var gpuEngineObservation = ResolveDatasetObservation(
             gpuEngineCurrent,
@@ -818,10 +830,13 @@ internal sealed class NativePdhCollector : INativePdhSnapshotSource, IDisposable
             is NativePdhProviderAvailability.Available
             or NativePdhProviderAvailability.LastGood;
 
-    private static bool HasAllIoFields(
+    /// <summary>
+    /// 这个域里有没有**任何一项**读到了。读到哪一项由各自的位说了算。
+    /// </summary>
+    private static bool HasAnyIoField(
         NativePdhIoValidMask actual,
-        NativePdhIoValidMask required)
-        => (actual & required) == required;
+        NativePdhIoValidMask domain)
+        => (actual & domain) != 0;
 
     private const NativePdhIoValidMask DiskIoMask =
         NativePdhIoValidMask.DiskActive

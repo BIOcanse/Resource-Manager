@@ -41,7 +41,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddMonitoringSourceZone<WindowsMemoryMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsVirtualMemoryMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsGpuAdapterOrderMonitoringZone>();
-        services.AddMonitoringSourceZone<PdhCpuFrequencyMonitoringZone>();
+        // 频率这条要知道这颗芯片的加速上限 —— Windows 给不出来，只能问 SMU。
+        // 它是芯片的固有属性，只问一次。
+        services.AddSingleton<CpuMaxBoostFrequency>();
+        services.AddSingleton<PdhCpuFrequencyMonitoringZone>(static provider =>
+            new PdhCpuFrequencyMonitoringZone(
+                provider.GetRequiredService<CpuMaxBoostFrequency>()));
         services.AddSingleton<PdhGpuEngineMonitoringZone>(static provider =>
             new PdhGpuEngineMonitoringZone(provider.GetRequiredService<NativePdhCollector>()));
         services.AddSingleton<PdhSystemIoMonitoringZone>(static provider =>
