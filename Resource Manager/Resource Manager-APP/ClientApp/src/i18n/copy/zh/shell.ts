@@ -38,6 +38,7 @@ export const zhShellCopy = {
       firstSeen: (at: string) => `首次见到 ${at}`,
       open: "实例管理"
     },
+    actual: "当前 ",
     presets: {
       save: "存为配置",
       namePlaceholder: "配置名",
