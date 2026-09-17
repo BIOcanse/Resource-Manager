@@ -1,6 +1,11 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, Show } from "solid-js";
 import { uiText } from "../text.ts";
-import { defaultCurve, normalizeCurve, percentAt } from "./fanCurve.ts";
+import {
+  curveFromStops,
+  defaultStops,
+  stopsFromCurve
+} from "./fanCurve.ts";
+import { FanCurveChart } from "./FanCurveChart";
 import type { ControlCapability, ControlSetting } from "./controlTypes.ts";
 
 /**
@@ -15,31 +20,38 @@ export function ControlCapabilityEditor(props: {
   setting: ControlSetting | undefined;
   onChange: (setting: ControlSetting | null) => void;
 }) {
+  // 控不了就置灰。摆一个能拖但拖了没用的控件是骗人。
+  const disabled = () => !props.capability.supported;
   return (
-    <Show when={props.capability.valueKind === "curve"} fallback={
-      <Show when={props.capability.valueKind === "toggle"} fallback={
-        <NumberEditor
+    <div class="control-editor-shell" classList={{ "control-editor-off": disabled() }}>
+      <Show when={props.capability.valueKind === "curve"} fallback={
+        <Show when={props.capability.valueKind === "toggle"} fallback={
+          <NumberEditor
+            capability={props.capability}
+            setting={props.setting}
+            disabled={disabled()}
+            onChange={props.onChange}
+          />
+        }>
+          <ToggleEditor setting={props.setting} capability={props.capability}
+            disabled={disabled()} onChange={props.onChange} />
+        </Show>
+      }>
+        <CurveEditor
           capability={props.capability}
           setting={props.setting}
+          disabled={disabled()}
           onChange={props.onChange}
         />
-      }>
-        <ToggleEditor setting={props.setting} capability={props.capability}
-          onChange={props.onChange} />
       </Show>
-    }>
-      <CurveEditor
-        capability={props.capability}
-        setting={props.setting}
-        onChange={props.onChange}
-      />
-    </Show>
+    </div>
   );
 }
 
 function NumberEditor(props: {
   capability: ControlCapability;
   setting: ControlSetting | undefined;
+  disabled: boolean;
   onChange: (setting: ControlSetting | null) => void;
 }) {
   const range = () => props.capability.range;
@@ -56,6 +68,7 @@ function NumberEditor(props: {
             max={bounds().maximum}
             step={bounds().step}
             value={shown()}
+            disabled={props.disabled}
             onInput={(event) => props.onChange({
               capabilityId: props.capability.id,
               number: Number(event.currentTarget.value)
@@ -66,15 +79,6 @@ function NumberEditor(props: {
       <span class="control-editor-value">
         {shown()}{range()?.unit ? ` ${range()!.unit}` : ""}
       </span>
-      <Show when={props.setting}>
-        <button
-          class="secondary"
-          type="button"
-          onClick={() => props.onChange(null)}
-        >
-          {uiText.control.clear}
-        </button>
-      </Show>
     </div>
   );
 }
@@ -82,6 +86,7 @@ function NumberEditor(props: {
 function ToggleEditor(props: {
   capability: ControlCapability;
   setting: ControlSetting | undefined;
+  disabled: boolean;
   onChange: (setting: ControlSetting | null) => void;
 }) {
   return (
@@ -89,6 +94,7 @@ function ToggleEditor(props: {
       <label class="control-editor-toggle">
         <input
           type="checkbox"
+          disabled={props.disabled}
           checked={props.setting?.toggle === true}
           onChange={(event) => props.onChange(
             event.currentTarget.checked
@@ -102,95 +108,38 @@ function ToggleEditor(props: {
   );
 }
 
-/** 曲线编辑：一行一个点，外加一条预览。 */
+/**
+ * 曲线编辑：曲线上的点，上下拖。
+ *
+ * 交互沿用这类工具的通行做法（Afterburner / FanControl）：横轴温度、纵轴转速，
+ * 点就落在曲线上。点的温度固定在每 5 度，只能上下动 —— 所以每次调整都落在
+ * 同一组温度上，可预期、可对比，也不会拖出密度不可控的点。圆滑交给平滑算法。
+ */
 function CurveEditor(props: {
   capability: ControlCapability;
   setting: ControlSetting | undefined;
+  disabled: boolean;
   onChange: (setting: ControlSetting | null) => void;
 }) {
-  const points = createMemo(() => normalizeCurve(props.setting?.curve ?? []));
+  const stops = createMemo(() => stopsFromCurve(props.setting?.curve));
+  const configured = () => props.setting?.curve != null;
 
-  const write = (next: { temperatureCelsius: number; percent: number }[]) =>
-    props.onChange(next.length === 0
-      ? null
-      : { capabilityId: props.capability.id, curve: normalizeCurve(next) });
+  const write = (next: number[]) =>
+    props.onChange({ capabilityId: props.capability.id, curve: curveFromStops(next) });
 
   return (
     <div class="control-curve">
       <Show
-        when={points().length > 0}
+        when={configured()}
         fallback={
-          <button class="secondary" type="button" onClick={() => write(defaultCurve())}>
+          <button class="secondary" type="button" disabled={props.disabled}
+            onClick={() => write(defaultStops())}>
             {uiText.control.createCurve}
           </button>
         }
       >
-        <CurvePreview points={points()} />
-        <ul class="control-curve-points">
-          <For each={points()}>
-            {(point, index) => (
-              <li>
-                <input
-                  type="number"
-                  class="control-curve-number"
-                  value={point.temperatureCelsius}
-                  onChange={(event) => {
-                    const next = [...points()];
-                    next[index()] = {
-                      ...point,
-                      temperatureCelsius: Number(event.currentTarget.value)
-                    };
-                    write(next);
-                  }}
-                />
-                <span class="control-curve-unit">°C</span>
-                <input
-                  type="number"
-                  class="control-curve-number"
-                  value={point.percent}
-                  onChange={(event) => {
-                    const next = [...points()];
-                    next[index()] = { ...point, percent: Number(event.currentTarget.value) };
-                    write(next);
-                  }}
-                />
-                <span class="control-curve-unit">%</span>
-                <button
-                  class="secondary"
-                  type="button"
-                  onClick={() => write(points().filter((_, at) => at !== index()))}
-                >
-                  ×
-                </button>
-              </li>
-            )}
-          </For>
-        </ul>
-        <button class="secondary" type="button" onClick={() => props.onChange(null)}>
-          {uiText.control.clear}
-        </button>
+        <FanCurveChart stops={stops()} disabled={props.disabled} onChange={write} />
       </Show>
     </div>
-  );
-}
-
-/** 曲线预览。按 5 度一格采样，直接用插值结果，和写下去的是同一套算法。 */
-function CurvePreview(props: { points: { temperatureCelsius: number; percent: number }[] }) {
-  const path = createMemo(() => {
-    const samples: string[] = [];
-    for (let temperature = 30; temperature <= 100; temperature += 5) {
-      const x = ((temperature - 30) / 70) * 100;
-      const y = 100 - percentAt(props.points, temperature);
-      samples.push(`${samples.length === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`);
-    }
-    return samples.join(" ");
-  });
-
-  return (
-    <svg class="control-curve-preview" viewBox="0 0 100 100" preserveAspectRatio="none"
-      role="img" aria-label={uiText.control.curvePreview}>
-      <path d={path()} fill="none" stroke="currentColor" stroke-width="2"
-        vector-effect="non-scaling-stroke" />
-    </svg>
   );
 }

@@ -9,9 +9,13 @@
   color: var(--muted);
 }
 
+/*
+  一张卡占满一行，上下排开。
+  多列排版会把一块卡压成窄条，而卡里有曲线图和滑块 —— 横向空间正是它们要的。
+*/
 .control-object-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -65,6 +69,23 @@
 .control-empty {
   margin: 12px 0 0;
   color: var(--muted);
+}
+
+/*
+  控不了的项置灰。
+  能拖但拖了不会生效的控件是在骗人 —— 压暗并挡掉指针，让它看起来就是不能动的。
+*/
+.control-editor-off {
+  opacity: 0.45;
+}
+
+.control-editor-off .fan-curve-chart-off {
+  cursor: default;
+}
+
+/* 识别到过的设备。平时收着，从上面的入口打开。 */
+.control-instances-entry {
+  margin-top: 16px;
 }
 
 /* 识别到过的设备。不在场的压暗但保留，用户要看得见连接过什么。 */
@@ -146,25 +167,68 @@
   border-radius: var(--radius-sm);
 }
 
-.control-curve-points {
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 4px;
+/* 风扇曲线图：点落在曲线上，上下拖。 */
+.fan-curve-chart {
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  touch-action: none; /* 拖点的时候不要让页面跟着滚 */
 }
 
-.control-curve-points li {
+.fan-curve-grid {
+  stroke: var(--line);
+  stroke-width: 0.3;
+}
+
+.fan-curve-axis {
+  fill: var(--muted);
+  font-size: 3px;
+}
+
+.fan-curve-line {
+  fill: none;
+  stroke: var(--accent, #0b7a66);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.fan-curve-handle {
+  cursor: ns-resize;
+}
+
+/* 看不见的大圆：小点不好按，尤其是触屏。 */
+.fan-curve-hit {
+  fill: transparent;
+}
+
+.fan-curve-point {
+  fill: var(--surface);
+  stroke: var(--accent, #0b7a66);
+  stroke-width: 1;
+}
+
+.fan-curve-handle:hover .fan-curve-point,
+.fan-curve-handle:focus-visible .fan-curve-point,
+.fan-curve-handle-active .fan-curve-point {
+  fill: var(--accent, #0b7a66);
+}
+
+.fan-curve-handle:focus-visible {
+  outline: none;
+}
+
+.fan-curve-handle:focus-visible .fan-curve-hit {
+  stroke: var(--accent, #0b7a66);
+  stroke-width: 0.6;
+}
+
+/* 改动之后才出现的操作行。 */
+.control-object-actions {
   display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.control-curve-number {
-  width: 62px;
-}
-
-.control-curve-unit {
-  font-size: 11px;
-  color: var(--muted);
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
