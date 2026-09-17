@@ -287,6 +287,16 @@ public sealed class WindowsControlObjectCatalog(
                     componentId,
                     componentName,
                     new ControlNumberRange(5, 200, 1, "W")),
+                // 瞬时那一条单独露出来。它和上面那个不是一回事：上面管的是持续和长时，
+                // 决定机器长期跑在多少瓦；这一条管的是短暂加速能冲到多高。
+                // 底层本来就是两条 SMU 命令，合成一个滑块等于替用户砍掉一半能力。
+                Unsupported(
+                    "cpu.fast-power-limit",
+                    "瞬时功耗上限",
+                    ControlValueKinds.Number,
+                    componentId,
+                    componentName,
+                    new ControlNumberRange(5, 200, 1, "W")),
                 // 单位是**档**不是伏：一档大概几毫伏，具体多少随体质变，
                 // 厂商也不给换算，编一个伏特数出来只会骗人。
                 Unsupported(
@@ -324,9 +334,9 @@ public sealed class WindowsControlObjectCatalog(
             // 笔记本风扇和台式风扇是两种情况，需要的组件也不同。
             var notebook = cpuFan.Detail?.Contains("notebook", StringComparison.OrdinalIgnoreCase)
                 == true;
-            var (componentId, componentName) = notebook
-                ? ("notebook-fancontrol-provider", "Notebook FanControl Provider")
-                : ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider");
+            // 机身风扇走风扇控制核心：它按控制通道分类，
+            // 不区分笔记本和台式。
+            var (componentId, componentName) = ("fan-control-core", "风扇控制核心");
 
             objects.Add(new ControlObject(
                 "fan:cpu",
