@@ -74,8 +74,8 @@ export const zhStatusCopy = {
       system: "系统"
     },
     metricUnavailable: {
-      needsComponent: "需要安装并启用对应的硬件支持组件。",
-      deviceNotProvided: "当前设备没有提供这项数据。"
+      needsComponent: "需要装上硬件支持组件",
+      deviceNotProvided: "不支持读取"
     },
     component: {
       nameFallback: "硬件支持组件",

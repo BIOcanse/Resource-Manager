@@ -30,7 +30,7 @@ public sealed class WindowsControlObjectCatalog(
     private readonly WindowsCpuIdentityReader cpuIdentityReader = new();
 
     /// <summary>没有任何写入器认领这一项时的原因。接进一个就少一条。</summary>
-    private const string WriterNotImplemented = "控制写入尚未接入，当前只能读取。";
+    private const string WriterNotImplemented = "只读，写入未接入。";
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 

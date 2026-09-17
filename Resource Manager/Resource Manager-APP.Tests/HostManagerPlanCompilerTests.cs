@@ -172,7 +172,8 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(1U, metricSnapshot.HotPublish.CatalogManifestVersion);
         Assert.Equal(64, metricSnapshot.HotPublish.CatalogManifestSha256.Length);
         Assert.Equal(14, metricSnapshot.HotPublish.SourcePolicies.Length);
-        Assert.Equal(79, metricSnapshot.HotPublish.RuleTemplates.Length);
+        // 82 = 原来的 79 加上核显那三条（频率 / 温度 / 电压改走 SMU）。
+        Assert.Equal(82, metricSnapshot.HotPublish.RuleTemplates.Length);
         Assert.Single(
             metricSnapshot.HotPublish.RuleTemplates,
             static rule => string.Equals(
