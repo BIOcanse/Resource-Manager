@@ -126,7 +126,7 @@ public static partial class MetricCatalog
         string? requiredComponentName,
         string? identityKey)
     {
-        AddIfAvailable(
+        AddMetric(
             definitions,
             items,
             id,

@@ -22,8 +22,8 @@ public static partial class MetricCatalog
         AddSystemIoDefinitions(definitions, snapshot.Items);
         AddCpuSensorDefinitions(definitions, snapshot.Items, cpuSensorComponentId, cpuSensorComponentName);
         AddMemoryAndSystemSensorDefinitions(definitions, snapshot.Items);
-        AddIfAvailable(definitions, snapshot.Items, "virtualMemory.usage", "虚拟内存占用", MetricGroups.VirtualMemory, MetricUnits.Bytes, "main", snapshot.VirtualMemory.Detail);
-        AddIfAvailable(definitions, snapshot.Items, "virtualMemory.percent", "虚拟内存占用率", MetricGroups.VirtualMemory, "%", "small", snapshot.VirtualMemory.Detail);
+        AddMetric(definitions, snapshot.Items, "virtualMemory.usage", "虚拟内存占用", MetricGroups.VirtualMemory, MetricUnits.Bytes, "main", snapshot.VirtualMemory.Detail);
+        AddMetric(definitions, snapshot.Items, "virtualMemory.percent", "虚拟内存占用率", MetricGroups.VirtualMemory, "%", "small", snapshot.VirtualMemory.Detail);
 
         var gpuIndexes = snapshot.Gpus
             .Select(static gpu => gpu.Index)
