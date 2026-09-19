@@ -41,6 +41,9 @@
     <None Remove="Shared\**\*" />
     <Content Remove="Shared\**\*" />
     <Content Remove="ClientApp\**" />
+    <!-- Runtime state never belongs to a build or release, even if present beside the project. -->
+    <Content Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
+    <None Remove="Config\**;UserData\**;Dependencies\**;Misc\**" />
     <None Remove="ClientApp\node_modules\**" />
     <Content Remove="Native\GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json;Native\GpuPlacementShim\bin\**\*.json" />
   </ItemGroup>
