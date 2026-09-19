@@ -199,8 +199,8 @@ function drawSegments(
   context.imageSmoothingEnabled = false;
 
   for (const segment of segments) {
-    const leftPx = Math.round(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
-    const rightPx = Math.round(clampNumber(segment.right, 0, 100) * pixelWidth / 100);
+    const leftPx = Math.floor(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
+    const rightPx = Math.floor(clampNumber(segment.right, 0, 100) * pixelWidth / 100);
     if (rightPx <= leftPx) {
       continue;
     }
@@ -237,8 +237,8 @@ function drawSegmentLabels(
       continue;
     }
 
-    const leftPx = Math.round(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
-    const rightPx = Math.round(clampNumber(segment.right, 0, 100) * pixelWidth / 100);
+    const leftPx = Math.floor(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
+    const rightPx = Math.floor(clampNumber(segment.right, 0, 100) * pixelWidth / 100);
     const width = (rightPx - leftPx) / devicePixelRatio;
     const availableWidth = width - 12;
     if (availableWidth < 20) {
@@ -312,7 +312,7 @@ function drawSegmentDividers(
   context.fillStyle = resolveCanvasColor(dividerColor, canvas);
 
   for (let index = 0; index < segments.length - 1; index++) {
-    const boundaryPx = Math.round(clampNumber(segments[index].right, 0, 100) * pixelWidth / 100);
+    const boundaryPx = Math.floor(clampNumber(segments[index].right, 0, 100) * pixelWidth / 100);
     if (boundaryPx <= 0 || boundaryPx >= pixelWidth || drawnBoundaries.has(boundaryPx)) {
       continue;
     }
@@ -394,9 +394,9 @@ function toCanvasSupportedColor(color: string) {
     return color;
   }
 
-  const red = Math.round(clampNumber(Number(match[1]) || 0, 0, 1) * 255);
-  const green = Math.round(clampNumber(Number(match[2]) || 0, 0, 1) * 255);
-  const blue = Math.round(clampNumber(Number(match[3]) || 0, 0, 1) * 255);
+  const red = Math.floor(clampNumber(Number(match[1]) || 0, 0, 1) * 255);
+  const green = Math.floor(clampNumber(Number(match[2]) || 0, 0, 1) * 255);
+  const blue = Math.floor(clampNumber(Number(match[3]) || 0, 0, 1) * 255);
   const alpha = match[4] === undefined ? 1 : clampNumber(Number(match[4]) || 0, 0, 1);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }

@@ -11,12 +11,15 @@ import {
 } from "../frontendRuntime/request/ResponseDecoder.ts";
 import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
 import { uiText } from "../text.ts";
+import { controlAccessLevels, controlUnavailableKinds } from "./controlTypes.ts";
 import type {
+  ControlAccessLevel,
   ControlApplyOutcome,
   ControlObjectDesiredState,
   ControlPreset,
   ControlPresetCatalog,
   ControlCapability,
+  ControlCurvePoint,
   ControlNumberRange,
   ControlObject,
   ControlInstanceCatalog,
@@ -65,11 +68,23 @@ function readCapability(value: unknown, path: string): ControlCapability {
     valueKind: requireOneOf(record.valueKind, `${path}.valueKind`, valueKinds),
     supported,
     unavailableReason,
+    unavailableKind: record.unavailableKind === null
+      || record.unavailableKind === undefined
+      ? null
+      : requireOneOf(
+        record.unavailableKind,
+        `${path}.unavailableKind`,
+        controlUnavailableKinds),
     requiredComponentId: optionalString(record.requiredComponentId, `${path}.requiredComponentId`),
     requiredComponentName: optionalString(
       record.requiredComponentName,
       `${path}.requiredComponentName`),
-    range: readRange(record.range, `${path}.range`)
+    range: readRange(record.range, `${path}.range`),
+    channel: optionalString(record.channel, `${path}.channel`),
+    requiredAccessLevel: requireOneOf(
+      record.requiredAccessLevel,
+      `${path}.requiredAccessLevel`,
+      controlAccessLevels)
   };
 }
 
@@ -89,6 +104,10 @@ function readObject(value: unknown, path: string): ControlObject {
     capabilities: requireArray(record.capabilities, `${path}.capabilities`)
       .map((row, index) => readCapability(row, `${path}.capabilities[${index}]`)),
     detail: optionalString(record.detail, `${path}.detail`),
+    terms: record.terms === null || record.terms === undefined
+      ? []
+      : requireArray(record.terms, `${path}.terms`)
+        .map((term, index) => requireNonEmptyString(term, `${path}.terms[${index}]`)),
     gpuAttachment: optionalString(record.gpuAttachment, `${path}.gpuAttachment`),
     isControllable: requireBoolean(record.isControllable, `${path}.isControllable`)
   };
@@ -119,6 +138,146 @@ export function getControlObjects(
   });
 }
 
+/**
+ * 这个对象**现在跑的**曲线，从固件里读出来的。
+ *
+ * 用户要改曲线，起点必须是机器现在真在跑的那条 —— 给他一条我们编的默认曲线，
+ * 他调出来的东西和这台机器的实际行为毫无关系，也没法判断自己到底改小了还是改大了。
+ *
+ * **不跟对象清单一起取。** 读一次要几十次固件往返，混进清单里打开控制页就得等。
+ * 所以只在用户真去看曲线的时候才走这一条。
+ *
+ * 读不到时后端回 204，这里就是 null —— **和"一条全 0 的曲线"必须分开**，
+ * 后者会画成一条贴地的线，看着像风扇被我们关掉了。
+ */
+export function getControlObjectCurve(
+  requestClient: Pick<RequestClient, "request">,
+  objectId: string,
+  signal?: AbortSignal
+): Promise<readonly ControlCurvePoint[] | null> {
+  return requestClient.request({
+    key: `control.curve.${objectId}`,
+    url: `/api/control/objects/${encodeURIComponent(objectId)}/curve`,
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlCurveDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+const controlCurveDecoder = defineResponseDecoder<readonly ControlCurvePoint[] | null>(
+  "control.curve",
+  (value) => {
+    // 204 没有内容。读不到就是读不到，不编一条。
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+    return requireArray(value, "curve").map((point, index) => {
+      const record = requireRecord(point, `curve[${index}]`);
+      return {
+        temperatureCelsius: requireFiniteNumber(
+          record.temperatureCelsius,
+          `curve[${index}].temperatureCelsius`),
+        percent: requireFiniteNumber(record.percent, `curve[${index}].percent`)
+      };
+    });
+  });
+
+/**
+ * 重新检测这台机器。
+ *
+ * 探测要碰硬件，所以后端都记了缓存；装上组件、插上显卡之后，
+ * 不重新问一遍就看不到变化。这条路让用户自己触发那一次重问。
+ *
+ * 回的就是**重新探过之后的**可控对象清单 —— 不用再单独取一次，
+ * 那样中间还会夹一个旧清单闪一下。
+ */
+export function redetectControlPlatform(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<ControlObjectCatalog> {
+  return requestClient.request({
+    key: "control.redetect",
+    url: "/api/control/redetect",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlObjectsDecoder,
+    signal,
+    request: { method: "POST" }
+  });
+}
+
+const controlNoticeDecoder = defineResponseDecoder<boolean>(
+  "control.notice.v1",
+  (value) => requireBoolean(requireRecord(value, "$").acknowledged, "$.acknowledged"));
+
+export function getControlNoticeAcknowledged(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<boolean> {
+  return requestClient.request({
+    key: "control.notice",
+    url: "/api/control/notice",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlNoticeDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+export function acknowledgeControlNotice(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<boolean> {
+  return requestClient.request({
+    key: "control.notice.acknowledge",
+    url: "/api/control/notice",
+    fallbackError: uiText.control.saveFailed,
+    decoder: controlNoticeDecoder,
+    signal,
+    request: { method: "PUT" }
+  });
+}
+
+export const controlAccessLevelDecoder = defineResponseDecoder<ControlAccessLevel>(
+  "control.accessLevel.v1",
+  (value) => requireOneOf(
+    requireRecord(value, "$").level,
+    "$.level",
+    controlAccessLevels));
+
+export function getControlAccessLevel(
+  requestClient: Pick<RequestClient, "request">,
+  signal?: AbortSignal
+): Promise<ControlAccessLevel> {
+  return requestClient.request({
+    key: "control.accessLevel",
+    url: "/api/control/access-level",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlAccessLevelDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+}
+
+export function setControlAccessLevel(
+  requestClient: Pick<RequestClient, "request">,
+  level: ControlAccessLevel,
+  signal?: AbortSignal
+): Promise<ControlAccessLevel> {
+  return requestClient.request({
+    key: "control.accessLevel.set",
+    url: "/api/control/access-level",
+    fallbackError: uiText.control.loadFailed,
+    decoder: controlAccessLevelDecoder,
+    signal,
+    request: {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ level })
+    }
+  });
+}
+
 const applyStatuses = ["applied", "unsupported", "failed"] as const;
 
 function readSetting(value: unknown, path: string): ControlSetting {
@@ -141,7 +300,8 @@ function readSetting(value: unknown, path: string): ControlSetting {
             `${path}.curve[${index}].temperatureCelsius`),
           percent: requireFiniteNumber(entry.percent, `${path}.curve[${index}].percent`)
         };
-      })
+      }),
+    curveExecution: optionalString(record.curveExecution, `${path}.curveExecution`)
   };
 }
 

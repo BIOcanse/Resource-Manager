@@ -18,6 +18,50 @@ export interface ControlNumberRange {
   defaultValue: number | null;
 }
 
+/**
+ * 调节权限的两档，从低到高。
+ *
+ * - normal：调错了机器会不稳定但硬件不受损（电压、频率偏移、温度墙）。重启能恢复。
+ * - root：没有兜底（直接写电压、改基准时钟）。平时用不到，但确实存在。
+ *
+ * **不是安全闸，是标签。** 程序本来就要管理员才起得来，切档位就在设置里两下的事。
+ * 它管的是别手滑，以及让用户看得出哪些项危险。
+ */
+export type ControlAccessLevel = "normal" | "root";
+
+/** 从低到高。顺序就是包含关系。 */
+export const controlAccessLevels: readonly ControlAccessLevel[] = ["normal", "root"];
+
+/** 处在 current 这一档，够得着要 required 的项吗。 */
+export function controlAccessLevelAllows(
+  current: ControlAccessLevel,
+  required: ControlAccessLevel
+): boolean {
+  return controlAccessLevels.indexOf(current) >= controlAccessLevels.indexOf(required);
+}
+
+/**
+ * 一项能力用不了的种类。和后端 ControlUnavailableKinds 同一串字面量。
+ *
+ * - platform：这台机器或这条通道做不到，换档位装组件都没用 → 打叉
+ * - access-level：档位不够，切一档就能用 → 挂锁
+ * - component：缺个组件，装上就有
+ * - prerequisite：机器上另一个条件没满足，满足了就能用 → 挂锁
+ * - not-implemented：硬件做得到，是我们还没接
+ */
+export type ControlUnavailableKind =
+  | "platform"
+  | "access-level"
+  | "component"
+  | "firmware-owned"
+  | "prerequisite"
+  | "not-implemented";
+
+export const controlUnavailableKinds: readonly ControlUnavailableKind[] = [
+  "platform", "access-level", "component", "firmware-owned",
+  "prerequisite", "not-implemented"
+];
+
 export interface ControlCapability {
   id: string;
   label: string;
@@ -25,9 +69,32 @@ export interface ControlCapability {
   /** 现在能不能用。不能用时一定带着原因。 */
   supported: boolean;
   unavailableReason: string | null;
+  /**
+   * 用不了属于哪一类。能用时为 null。
+   *
+   * **界面靠它选图标**：能解开的挂锁，解不开的打叉。先前全都画成锁，
+   * "切个档位就能用"和"这台机器压根没这功能"长得一模一样。
+   */
+  unavailableKind: ControlUnavailableKind | null;
   requiredComponentId: string | null;
   requiredComponentName: string | null;
   range: ControlNumberRange | null;
+  /**
+   * 这一项实际走哪条链路（nvapi / nvml / oem-ec / amd-smu / fan-core …）。
+   * 还没有写入器认领时为 null。
+   *
+   * **摆在每一行上**，因为同一块卡的不同项走的是完全不同的通道：
+   * 频率偏移走 NVAPI、功耗上限走 NVML、cTGP 走整机厂的 EC。
+   * 看到"这一项调不了"时，第一个该知道的就是是谁说不行。
+   */
+  channel: string | null;
+  /**
+   * 这一项要哪一档调节权限。
+   *
+   * **够得着也要显示。** 这个标记的作用之一就是让用户看出哪些项算危险，
+   * 只在锁着时才冒出来就白设了。
+   */
+  requiredAccessLevel: ControlAccessLevel;
 }
 
 export interface ControlObject {
@@ -37,6 +104,13 @@ export interface ControlObject {
   platform: ControlObjectPlatform;
   capabilities: readonly ControlCapability[];
   detail: string | null;
+  /**
+   * 这个对象属于哪几类。**词条，不是名字。**
+   *
+   * 例如笔记本上的一个风扇：名字是「风扇1」，词条是 portable。
+   * 名字保持中立（我们只知道它是第几个），分类另说。
+   */
+  terms: readonly string[];
   /**
    * 显卡的接法：integrated（核显）/ discrete（独显）。非显卡为 null。
    * 核显的频率和功耗由 CPU 封装管，能调的比独显少。
@@ -68,6 +142,13 @@ export interface ControlSetting {
   number?: number | null;
   toggle?: boolean | null;
   curve?: readonly ControlCurvePoint[] | null;
+  /**
+   * 这条曲线交给谁执行：`firmware` 写进固件、`software` 由本程序跑。
+   *
+   * **是用户的选择，所以跟着设定一起存。** 同一条曲线交给两边，行为完全不同：
+   * 固件那条关掉程序还在跑，软件那条不在。
+   */
+  curveExecution?: string | null;
   /** number 的单位，取自能力的 range.unit。非数值型不填。 */
   unit?: string | null;
 }

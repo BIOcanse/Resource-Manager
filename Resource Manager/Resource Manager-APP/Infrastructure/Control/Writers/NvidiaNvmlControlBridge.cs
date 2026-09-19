@@ -81,7 +81,91 @@ internal sealed class NvidiaNvmlControlBridge
     /// <summary>NVML 的 UUID 字符串长度上限，官方头文件给的是 96。</summary>
     private const int UuidBufferLength = 96;
 
-    /// <summary>这块卡的功耗上限能设到哪儿、现在是多少、出厂默认是多少。单位瓦。</summary>
+    /// <summary>
+    /// 走 NVML 的字段接口一次问齐四个值。四个里少一个就整份放弃 ——
+    /// 半份范围比没有更糟：界面会拿一个编出来的上界去画滑块。
+    /// </summary>
+    private static NvidiaPowerLimitWatts? ReadPowerLimitFields(IntPtr device)
+    {
+        // 字段号取自 nvml.h。作用域 0 是整块 GPU（还有显存、整模组两种，这里不用）。
+        const uint MinimumLimitField = 187;
+        const uint MaximumLimitField = 188;
+        const uint DefaultLimitField = 189;
+        const uint CurrentLimitField = 190;
+
+        var values = new[]
+        {
+            new NativeMethods.NvmlFieldValue { FieldId = MinimumLimitField },
+            new NativeMethods.NvmlFieldValue { FieldId = MaximumLimitField },
+            new NativeMethods.NvmlFieldValue { FieldId = DefaultLimitField },
+            new NativeMethods.NvmlFieldValue { FieldId = CurrentLimitField }
+        };
+
+        try
+        {
+            if (NativeMethods.nvmlDeviceGetFieldValues(device, values.Length, values)
+                != NvmlSuccess)
+            {
+                return null;
+            }
+        }
+        catch (Exception error)
+            when (error is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // 老驱动没有这个接口，退回旧的那几个。
+            return null;
+        }
+
+        var milliwatts = new double[values.Length];
+        for (var index = 0; index < values.Length; index++)
+        {
+            if (FieldMilliwatts(values[index]) is not { } value)
+            {
+                return null;
+            }
+            milliwatts[index] = value;
+        }
+
+        if (milliwatts[1] <= milliwatts[0])
+        {
+            return null;
+        }
+
+        return new NvidiaPowerLimitWatts(
+            milliwatts[0] / 1000.0,
+            milliwatts[1] / 1000.0,
+            milliwatts[2] / 1000.0,
+            milliwatts[3] / 1000.0);
+    }
+
+    /// <summary>
+    /// 一个字段的毫瓦值。这一项本身失败、或者报回来的量纲不是我们认识的整数类型，
+    /// 都返回 null —— **不按"大概是这个意思"去解那 8 个字节**。
+    /// </summary>
+    private static double? FieldMilliwatts(NativeMethods.NvmlFieldValue value)
+    {
+        if (value.NvmlReturn != NvmlSuccess)
+        {
+            return null;
+        }
+        // nvmlValueType_t：1 = unsigned int，2 = unsigned long，3 = unsigned long long。
+        // 功耗字段文档写的是 unsigned int 毫瓦，另外两种一并收下，其余不猜。
+        return value.ValueType is 1 or 2 or 3 ? value.Value : null;
+    }
+
+    /// <summary>
+    /// 这块卡的功耗上限能设到哪儿、现在是多少、出厂默认是多少。单位瓦。
+    ///
+    /// **先问字段接口，再退回旧接口。**
+    /// 本机实测（RTX 5060 Laptop，驱动 610.88）：
+    /// <c>nvmlDeviceGetPowerManagementLimit</c> 直接返回 Not Supported，
+    /// 而字段接口把四个值全给得出来。NVML 把功耗上限挪进了带作用域的字段接口
+    /// （nvidia-smi 里那个 "GPU Ceiling Power Limit" 就是它），
+    /// 旧的那几个在新卡上逐渐没了。
+    ///
+    /// 先前只有旧接口这一条路，读不到就报"读不到当前功耗上限，无法确认能否改" ——
+    /// 用户看到的是"这张卡不给读"，其实是我们问错了地方。
+    /// </summary>
     internal NvidiaPowerLimitWatts? ReadPowerLimit(IntPtr device)
     {
         lock (gate)
@@ -89,6 +173,11 @@ internal sealed class NvidiaNvmlControlBridge
             if (!EnsureInitialized())
             {
                 return null;
+            }
+
+            if (ReadPowerLimitFields(device) is { } fromFields)
+            {
+                return fromFields;
             }
 
             try
@@ -140,6 +229,159 @@ internal sealed class NvidiaNvmlControlBridge
     /// 明确指定要改的是整卡那一个；v2 不在（老驱动）才退回旧接口。
     /// 返回驱动给的原始状态码，0 是成功，其余原样往上报，不改写成一句"失败"。
     /// </summary>
+    /// <summary>
+    /// 温度阈值的种类，照 nvml.h 的 <c>nvmlTemperatureThresholds_t</c>。
+    ///
+    /// 只列我们用得上的三个。本机实测另外四个（显存上限、三个噪声相关的）
+    /// 这块卡直接报不支持 —— 列出来也只会得到一排永远不可用的项。
+    /// </summary>
+    internal static class TemperatureThresholds
+    {
+        /// <summary>撞上就断电保护。**最后一道防线。**</summary>
+        internal const uint Shutdown = 0;
+        /// <summary>撞上就开始强制降频。</summary>
+        internal const uint Slowdown = 1;
+        /// <summary>工作温度上限，也就是通常说的"温度墙"。</summary>
+        internal const uint GpuMaximum = 3;
+    }
+
+    /// <summary>
+    /// 读一个温度阈值。这块卡不支持这一种就返回 null。
+    ///
+    /// **返回的是绝对温度。** 新驱动的 nvidia-smi 会用 T.Limit 口径把它显示成
+    /// 相对值（"离墙还有 40 度"），但 NVML 这个接口给的仍然是绝对度数 ——
+    /// 本机实测 105 / 102 / 89。照显示口径去理解会差出一整个量级。
+    /// </summary>
+    internal double? ReadTemperatureThreshold(IntPtr device, uint thresholdType)
+    {
+        lock (gate)
+        {
+            if (!EnsureInitialized())
+            {
+                return null;
+            }
+            try
+            {
+                return NativeMethods.nvmlDeviceGetTemperatureThreshold(
+                    device,
+                    thresholdType,
+                    out var celsius) == NvmlSuccess
+                        ? celsius
+                        : null;
+            }
+            catch (DllNotFoundException)
+            {
+                return null;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // 老驱动上没有这个入口。不是错误，就是没有。
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 写一个温度阈值。返回 NVML 的原始返回码，0 是成功。
+    ///
+    /// **不在这里判断"应不应该写"** —— 那是上面那层的事（档位、范围、
+    /// 用户有没有勾选）。这里只负责把它交给驱动，并如实把驱动的回答带回去。
+    /// </summary>
+    internal int WriteTemperatureThreshold(IntPtr device, uint thresholdType, int celsius)
+    {
+        lock (gate)
+        {
+            if (!EnsureInitialized())
+            {
+                return -1;
+            }
+            try
+            {
+                var value = celsius;
+                return NativeMethods.nvmlDeviceSetTemperatureThreshold(
+                    device,
+                    thresholdType,
+                    ref value);
+            }
+            catch (DllNotFoundException)
+            {
+                return -1;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return -1;
+            }
+        }
+    }
+
+    /// <summary>时钟域，照 nvml.h 的 <c>nvmlClockType_t</c>。</summary>
+    internal static class ClockTypes
+    {
+        internal const uint Graphics = 0;
+        internal const uint Memory = 2;
+    }
+
+    /// <summary>这块卡这个时钟域最高能到多少 MHz。读不到就是 null。</summary>
+    internal double? ReadMaximumClockMhz(IntPtr device, uint clockType)
+    {
+        lock (gate)
+        {
+            if (!EnsureInitialized())
+            {
+                return null;
+            }
+            try
+            {
+                return NativeMethods.nvmlDeviceGetMaxClockInfo(device, clockType, out var mhz)
+                    == NvmlSuccess
+                        ? mhz
+                        : null;
+            }
+            catch (Exception error) when (error is DllNotFoundException
+                or EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 把某个时钟域锁进一个区间。返回 NVML 的原始返回码，0 是成功。
+    ///
+    /// **下限给 0 就是不设下限** —— 本机实测驱动接受 <c>(0, 最大值)</c>，
+    /// 那等于没有任何限制。所以"只设上限"是表达得出来的，不必编一个最低频率。
+    /// </summary>
+    internal int WriteLockedClocks(IntPtr device, uint clockType, uint minimumMhz, uint maximumMhz)
+        => Invoke(() => clockType == ClockTypes.Memory
+            ? NativeMethods.nvmlDeviceSetMemoryLockedClocks(device, minimumMhz, maximumMhz)
+            : NativeMethods.nvmlDeviceSetGpuLockedClocks(device, minimumMhz, maximumMhz));
+
+    /// <summary>解开某个时钟域的锁，交还驱动自己调度。</summary>
+    internal int ResetLockedClocks(IntPtr device, uint clockType)
+        => Invoke(() => clockType == ClockTypes.Memory
+            ? NativeMethods.nvmlDeviceResetMemoryLockedClocks(device)
+            : NativeMethods.nvmlDeviceResetGpuLockedClocks(device));
+
+    private int Invoke(Func<int> call)
+    {
+        lock (gate)
+        {
+            if (!EnsureInitialized())
+            {
+                return -1;
+            }
+            try
+            {
+                return call();
+            }
+            catch (Exception error) when (error is DllNotFoundException
+                or EntryPointNotFoundException)
+            {
+                return -1;
+            }
+        }
+    }
+
     internal int WritePowerLimitWatts(IntPtr device, double watts)
     {
         lock (gate)
@@ -158,7 +400,19 @@ internal sealed class NvidiaNvmlControlBridge
                     PowerScope = NvmlPowerScopeGpu,
                     PowerValueMilliwatts = milliwatts
                 };
-                return NativeMethods.nvmlDeviceSetPowerManagementLimitV2(device, ref scoped);
+                var v2 = NativeMethods.nvmlDeviceSetPowerManagementLimitV2(device, ref scoped);
+                if (v2 == NvmlSuccess)
+                {
+                    return v2;
+                }
+                /*
+                 * **v2 失败也要试旧接口，不只是"找不到入口"时才试。**
+                 *
+                 * 本机实测（RTX 5060 Laptop，驱动 610.88）：v2 这条路存在、能调用，
+                 * 但这块卡上它报不支持；而旧接口是支持的。先前这里只在
+                 * EntryPointNotFoundException 时才退回去 —— 入口明明在，
+                 * 于是一个"这块卡不支持"就直接回给了用户，旧接口一次都没试过。
+                 */
             }
             catch (EntryPointNotFoundException)
             {
@@ -279,6 +533,30 @@ internal sealed class NvidiaNvmlControlBridge
             [Out] byte[] uuid,
             uint length);
 
+        /// <summary>
+        /// NVML 字段接口的一条记录。前两个字段是入参，其余是出参。
+        /// 布局照 nvml.h 的 nvmlFieldValue_t，不能改顺序。
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct NvmlFieldValue
+        {
+            public uint FieldId;
+            /// <summary>作用域：0 = 整块 GPU。</summary>
+            public uint ScopeId;
+            public long Timestamp;
+            public long LatencyUsec;
+            public int ValueType;
+            public int NvmlReturn;
+            /// <summary>联合体，8 字节。按 ValueType 解释。</summary>
+            public ulong Value;
+        }
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetFieldValues")]
+        internal static extern int nvmlDeviceGetFieldValues(
+            IntPtr device,
+            int count,
+            [In, Out] NvmlFieldValue[] values);
+
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPowerManagementLimit")]
         internal static extern int nvmlDeviceGetPowerManagementLimit(
             IntPtr device,
@@ -299,6 +577,50 @@ internal sealed class NvidiaNvmlControlBridge
         internal static extern int nvmlDeviceSetPowerManagementLimit(
             IntPtr device,
             uint limitMilliwatts);
+
+        /*
+         * 温度阈值。**读和写是两个不同形状的函数**：
+         * 读按值出参，写要传指针进去 —— nvml.h 里就是这么定的，不能想当然对称。
+         */
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetTemperatureThreshold")]
+        internal static extern int nvmlDeviceGetTemperatureThreshold(
+            IntPtr device,
+            uint thresholdType,
+            out uint temperature);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetTemperatureThreshold")]
+        internal static extern int nvmlDeviceSetTemperatureThreshold(
+            IntPtr device,
+            uint thresholdType,
+            ref int temperature);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetMaxClockInfo")]
+        internal static extern int nvmlDeviceGetMaxClockInfo(
+            IntPtr device,
+            uint clockType,
+            out uint clockMhz);
+
+        /*
+         * 时钟锁。**一次调用同时给上下限**，这是驱动那边的形状，不是我们的选择。
+         * 解锁是另一个函数，不是"设成某个特殊值"。
+         */
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetGpuLockedClocks")]
+        internal static extern int nvmlDeviceSetGpuLockedClocks(
+            IntPtr device,
+            uint minimumMhz,
+            uint maximumMhz);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceResetGpuLockedClocks")]
+        internal static extern int nvmlDeviceResetGpuLockedClocks(IntPtr device);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetMemoryLockedClocks")]
+        internal static extern int nvmlDeviceSetMemoryLockedClocks(
+            IntPtr device,
+            uint minimumMhz,
+            uint maximumMhz);
+
+        [DllImport("nvml.dll", EntryPoint = "nvmlDeviceResetMemoryLockedClocks")]
+        internal static extern int nvmlDeviceResetMemoryLockedClocks(IntPtr device);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceSetPowerManagementLimit_v2")]
         internal static extern int nvmlDeviceSetPowerManagementLimitV2(

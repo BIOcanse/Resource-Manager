@@ -114,18 +114,37 @@ public sealed class SoftwareIdentityCatalogCompilerTests
         Assert.Null(match);
     }
 
+    /// <summary>
+    /// 进程识别**只看可执行文件名**：目录里唯一命中就是确定的识别。
+    ///
+    /// 先前要产品名佐证才肯给 Confirmed，只有 exe 名就降成 Candidate。
+    /// 可目录的数据来源（Steam 榜单、WinGet 清单、本机核对）结构上都提供不了
+    /// PE 的 ProductName —— 它只存在于可执行文件自己的版本资源里。
+    /// 于是 104 条带 exe 名的条目里 96 条永远到不了 Confirmed，
+    /// 全被上层降级成"其它软件"。规则要的证据，数据源给不出来。
+    /// </summary>
     [Fact]
-    public void MatchPortableProcess_GradesExecutableOnlyAndProductConfirmedEvidence()
+    public void MatchPortableProcess_ConfirmsOnExecutableNameAlone()
     {
         var catalog = SoftwareIdentityCatalogTestData.Create(CreateSkyrimEntry());
 
-        var candidate = catalog.MatchPortableProcess(new RuntimeProcessIdentity(
+        var match = catalog.MatchPortableProcess(new RuntimeProcessIdentity(
             45,
             null,
             "SkyrimSE",
             @"F:\Portable\SkyrimSE.exe",
             false));
-        var confirmed = catalog.MatchPortableProcess(new RuntimeProcessIdentity(
+
+        Assert.Equal(PortableSoftwareIdentityConfidence.Confirmed, match?.Confidence);
+    }
+
+    /// <summary>产品名对得上也只是多一条证据，结论不变 —— 它不参与判定。</summary>
+    [Fact]
+    public void MatchPortableProcess_IgnoresMatchingProductMetadata()
+    {
+        var catalog = SoftwareIdentityCatalogTestData.Create(CreateSkyrimEntry());
+
+        var match = catalog.MatchPortableProcess(new RuntimeProcessIdentity(
             46,
             null,
             "SkyrimSE",
@@ -133,12 +152,18 @@ public sealed class SoftwareIdentityCatalogCompilerTests
             false,
             ProductName: "The Elder Scrolls V: Skyrim Special Edition"));
 
-        Assert.Equal(PortableSoftwareIdentityConfidence.Candidate, candidate?.Confidence);
-        Assert.Equal(PortableSoftwareIdentityConfidence.Confirmed, confirmed?.Confidence);
+        Assert.Equal(PortableSoftwareIdentityConfidence.Confirmed, match?.Confidence);
     }
 
+    /// <summary>
+    /// **产品名对不上也不再推翻 exe 名。**
+    ///
+    /// 先前这里整个判成不匹配，而那正是把认得出的软件甩成"其它"的那条路：
+    /// 崩坏：星穹铁道的 exe 里写的是 "Star Rail"，商店名是"崩坏：星穹铁道"，
+    /// 两者本来就不是一个字符串。
+    /// </summary>
     [Fact]
-    public void MatchPortableProcess_RejectsConflictingProductMetadata()
+    public void MatchPortableProcess_KeepsExecutableIdentityWhenProductMetadataDiffers()
     {
         var catalog = SoftwareIdentityCatalogTestData.Create(CreateSkyrimEntry());
 
@@ -150,7 +175,7 @@ public sealed class SoftwareIdentityCatalogCompilerTests
             false,
             ProductName: "Unrelated Product"));
 
-        Assert.Null(match);
+        Assert.Equal(PortableSoftwareIdentityConfidence.Confirmed, match?.Confidence);
     }
 
     [Theory]

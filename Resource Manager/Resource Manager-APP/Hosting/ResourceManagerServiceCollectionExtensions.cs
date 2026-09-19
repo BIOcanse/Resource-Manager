@@ -87,6 +87,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 超频免责声明的同意状态。厂商（Intel IGCL）硬性要求用户先明确接受，
         // 我们不替他默认接受。
         services.AddSingleton<IControlOverclockConsent, JsonControlOverclockConsent>();
+        // 安全模式是我们自己那道闸：默认只准往不增加硬件应力的方向调。
+        // 和上面那个 Intel 接口豁免是两件事，互不替代。
+        services.AddSingleton<IControlAccessLevel, JsonControlAccessLevel>();
+        services.AddSingleton<IControlNoticeAcknowledgement, JsonControlNoticeAcknowledgement>();
         services.AddSingleton<IControlPresetStore, JsonControlPresetStore>();
         services.AddSingleton<IControlPresets, ControlPresets>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
@@ -98,6 +102,19 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
             services.AddHostedService<ControlDesiredStateReassertion>();
+            /*
+             * 给软件风扇曲线喂温度。
+             *
+             * **和上面那条同一个闸**：它自己不写硬件，但它驱动的那个曲线引擎写。
+             * 只读服务图里不该有这条 —— 那正是服务图测试守着的东西。
+             *
+             * 这台机器用不上的话它一次都不推（核心会在 describe 里说要不要），
+             * 所以注册它不等于一定会跑起来。
+             */
+            services.AddHostedService<FanCurveTemperatureFeed>();
+            // 开机后把固件里现在跑的那条曲线先读进缓存，否则用户第一次勾选
+            // 要干等十几秒，等到的还是一条超时之后退回的默认曲线。
+            services.AddHostedService<FanCurveCacheWarmer>();
             // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
             // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
             services.AddSingleton<ControlActualStateReader>();

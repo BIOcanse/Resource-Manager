@@ -30,7 +30,8 @@ export interface ControlItemView {
 }
 
 function sameValue(left: ControlSetting, right: ControlSetting): boolean {
-  if (left.number !== right.number || left.toggle !== right.toggle) {
+  if (left.number !== right.number || left.toggle !== right.toggle
+    || left.unit !== right.unit || left.curveExecution !== right.curveExecution) {
     return false;
   }
   const leftCurve = left.curve ?? null;
@@ -67,7 +68,7 @@ export function controlItemStatusOf(
   const editedSetting = find(edited, capabilityId);
   const savedSetting = find(saved, capabilityId);
 
-  if (editedSetting && (!savedSetting || !sameValue(editedSetting, savedSetting))) {
+  if ((!editedSetting && savedSetting) || (editedSetting && (!savedSetting || !sameValue(editedSetting, savedSetting)))) {
     return {
       capabilityId,
       status: submitting ? "applying" : "edited",
@@ -78,6 +79,8 @@ export function controlItemStatusOf(
     return { capabilityId, status: "applying", message: null };
   }
   if (!savedSetting) {
+    const failedRelease = outcomes.find((entry) => entry.capabilityId === capabilityId && entry.status === "failed");
+    if (failedRelease) return { capabilityId, status: "failed", message: failedRelease.message };
     return { capabilityId, status: "unset", message: null };
   }
 

@@ -65,9 +65,6 @@ export function DiskUsagePage(props: {
     <div class="disk-usage-page">
       <div class="panel disk-usage-setup" classList={{ collapsed: collapsed() }}>
         <div class="panel-header">
-          <div class="optimization-heading">
-            <span>{uiText.diskUsage.intro}</span>
-          </div>
           <div class="disk-usage-setup-actions">
             <Show when={props.children}>
               <button
@@ -121,11 +118,6 @@ export function DiskUsagePage(props: {
         <div class="settings-row">
           <div class="settings-row-copy">
             <strong>{uiText.diskUsage.modeLabel}</strong>
-            <span>
-              {mode() === "fast"
-                ? uiText.diskUsage.modeFastHint
-                : uiText.diskUsage.modeFullHint}
-            </span>
           </div>
           <SegmentedControl<DiskUsageScanMode>
             class="settings-segmented-control"

@@ -44,26 +44,117 @@ export const zhShellCopy = {
       namePlaceholder: "配置名",
       remove: "删除配置"
     },
-    on: "开启",
     overclock: {
-      title: "超频免责声明",
-      body: "调频率、电压、功耗会缩短硬件寿命，也可能失去保修。"
-        + "Intel 核显在你同意前拒绝一切超频调用。",
-      accept: "我知道了，开启",
+      title: "Intel 核显调节授权",
+      body: "Intel 的核显控制库要求先取得你的同意才允许改动频率，"
+        + "负向偏移也不例外。这是它那一侧的硬性要求，和其他显卡无关。",
+      accept: "同意",
       revoke: "收回同意",
       accepted: "已同意"
     },
     ownership: {
       label: "控制归属",
-      firmware: "固件自动",
-      app: "本程序控制",
+      firmware: "固件自动管理",
+      app: "软件管理",
       firmwareNote: "归固件管，下面的设定不生效。"
     },
+    /*
+     * 第一次进控制页说的两屏。
+     *
+     * 先说保修，再说风险。**不叫"超频免责声明"** —— 这一页大部分事情不是超频：
+     * 降压、降频、往下收功耗墙都在厂商设定的范围之内。把它们和超频写成一句话，
+     * 用户就无法判断自己正在做的到底是哪一种。
+     */
+    notice: {
+      warrantyTitle: "关于保修",
+      warrantyBody: [
+        "厂商条款通常把任何超出规格的运行都算作改动，不分方向 —— 按字面说，降压也在内。",
+        "实际差别在留不留痕迹：降压、降频、往下收功耗墙断电即失效，处理器里不留记录；"
+          + "正向超频和加电压会置位处理器里的标记，送修可查。",
+        "笔记本上不少限制是整机厂商在 BIOS 里设的，不是芯片厂商的默认值，"
+          + "所以这一页能调到多少也由整机厂商决定。"
+      ],
+      riskTitle: "开始之前",
+      next: "下一步",
+      accept: "我已知悉"
+    },
+    accessLevel: {
+      title: "调节权限",
+      intro: "决定控制页里哪些项可以调。切到更高一档不会改动任何已有设定，"
+        + "只是把更多项放出来。",
+      name: { normal: "普通", root: "root" },
+      summary: {
+        normal: "功耗、电流、风扇及常规频率调节。设置不当可能造成运行不稳定。",
+        root: "放开没有兜底的项：直接写电压、改基准时钟。平时用不到。"
+      },
+      hint: {
+        normal: "调错了机器会不稳定，重启能恢复，硬件不受损。要先在设置里切到普通档。",
+        root: "这一项没有硬件保护兜底，写错可能开不了机。要先在设置里切到 root 档。"
+      },
+      consequences: {
+        normal: [
+          "电压调得过低会突然关机，频率偏移过头会花屏或算错 —— 都是重启就好，不伤硬件。",
+          "温度墙调高是把过热保护往外挪，长期这么跑会加速老化。"
+        ],
+        root: [
+          "直接写电压和改基准时钟没有任何软件保护，写错一个数可能开不了机。",
+          "这一档的项平时用不到；要调的话先确认你知道那个数字的含义。"
+        ]
+      },
+      /*
+       * 免责声明。**两档各一句，用户给的原话，不改写。**
+       * 普通档那句在第一次进控制页时就要说 —— 默认这一档也是在动硬件配置。
+       */
+      disclaimer: {
+        normal: "某些设置可能会导致电脑不稳定，对于本就有设计问题的电脑可能会有一定损伤风险，"
+          + "调整硬件配置造成的一切后果本软件概不负责。",
+        root: "root 模式下某些设置调整极度危险，极大可能造成系统不稳定或者永久性硬件损伤，"
+          + "调整硬件配置造成的一切后果本软件概不负责。"
+      },
+      confirmTitle: (name: string) => `切到${name}档？`,
+      confirmAction: "切过去",
+      cancel: "取消",
+      saveFailed: "切换失败，还在原来那一档。"
+    },
+    channel: {
+      nvapi: "NVAPI",
+      "nvapi-drs": "驱动 Profile",
+      nvml: "NVML",
+      "oem-ec": "整机固件",
+      "amd-smu": "AMD SMU",
+      "fan-core": "风扇核心",
+      igcl: "Intel 显卡库",
+      adlx: "AMD ADLX"
+    } as Record<string, string>,
+    channelHint: "这一项实际走哪条链路写下去。",
+    detect: "重新检测硬件",
+    detecting: "检测中",
+    readings: "只读数值",
+    curveExecutionLabel: "曲线交给谁执行",
+    takeoverCoversOthers: (others: string) =>
+      `这台机器上「交给软件管」是整机一个开关：选了软件接管，${others} 也会一起脱离固件自动控制，停在当时的转速上，除非也给它设一条曲线。`,
+    curveExecutionFirmware: "写入固件",
+    curveExecutionFirmwareHint: "固件自己按表调速。关掉本程序、重启之后依然有效。",
+    curveExecutionSoftware: "软件接管",
+    curveExecutionSoftwareHint: "本程序每 0.1 秒算一次并写下去。程序不在时风扇交还固件。",
     createCurve: "新建曲线",
+    readingFirmwareCurve: "正在读取固件当前曲线…",
+    fixedStepsCurveNote: "这台机器的固件表只让改每一档的转速，温度断点是固件定死的，改不了。",
     curvePreview: "曲线预览",
     saveFailed: "保存失败",
     apply: "应用",
     discard: "撤销改动",
+    term: {
+      portable: "笔记本电脑",
+      fixed: "桌面主机",
+      cpu: "CPU风扇",
+      "curve-firmware": "固件跑曲线",
+      "curve-software": "软件跑曲线",
+      "curve-fixed-steps": "固件档位表",
+      gpu: "显卡风扇",
+      intake: "内吹风扇",
+      case: "机箱风扇"
+    } as Record<string, string>,
     attachment: {
       integrated: "核显",
       discrete: "独显",
@@ -92,7 +183,7 @@ export const zhShellCopy = {
     scopeFolder: "指定文件夹",
     modeLabel: "扫描方式",
     modeFast: "快速扫描",
-    modeFastHint: "读文件系统索引，整盘几秒扫完。只适用于 NTFS，且需要管理员权限。",
+    modeFastHint: "只适用于 NTFS，需要管理员权限。",
     modeFull: "全扫描",
     modeFullHint: "逐级遍历目录。慢，但任何磁盘都能扫。",
     chooseFolder: "选择文件夹",

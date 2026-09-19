@@ -51,6 +51,29 @@ function dependencyRenderers(): Record<number, Renderer> {
   };
 }
 
+/**
+ * 这条依赖消息只是在复述一个已经安定下来的状态吗。
+ *
+ * **状态已经由按钮说了**（"已安装" / "一键卸载"）。卡片上再挂一句
+ * "已安装在 Dependencies 软件根目录。"、"可从官方来源下载安装器。"、
+ * "检测到系统已有安装，直接复用：D:\Software\LatencyMon"，
+ * 既没告诉用户任何要做的事，也没告诉他任何按钮没说的事 ——
+ * 十几张卡片叠起来就是一屏废话。安装路径要看的时候在详情里。
+ *
+ * 留下来的是**要用户知道或要他动手**的那些：安装器还要人工去取、
+ * 组件在但还没通过实时读数验证、桥接没接上。那些不说用户就不知道。
+ */
+export function isSettledDependencyMessage(
+  message: BackendMessage | null | undefined
+): boolean {
+  if (!message || message.domain !== backendMessageDomains.dependency) {
+    return false;
+  }
+  // 5 已安装在受管根目录 / 7 可下载（可选版本）/ 8 可下载 / 10 复用系统已有安装
+  // 11 Provider 已验证 / 16 内置组件已验证 / 18 已安装，直接复用
+  return [5, 7, 8, 10, 11, 16, 18].includes(message.code);
+}
+
 function softwareRenderers(): Record<number, Renderer> {
   const copy = uiText.backendMessage.software;
   return {

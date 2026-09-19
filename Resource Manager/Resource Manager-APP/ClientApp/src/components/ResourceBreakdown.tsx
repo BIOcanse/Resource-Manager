@@ -111,9 +111,13 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
           <Show when={props.saveState === "error"}>
             <span class="save-state error">{uiText.common.saveFailed}</span>
           </Show>
-          <span id="resourceBreakdownStatus">
-            {props.snapshotBars.length > 0 ? uiText.resourceBreakdownView.itemCount(props.snapshotBars.length) : uiText.resourceBreakdown.statusFallback}
-          </span>
+          {/*
+            只在**没数据**的时候说一句。有几条一数就知道，
+            在标题旁边挂个"6 个项目"是重复屏幕上已有的信息。
+          */}
+          <Show when={props.snapshotBars.length === 0}>
+            <span>{uiText.resourceBreakdown.statusFallback}</span>
+          </Show>
           <Show when={props.editMode}>
             <button
               class="secondary"
@@ -792,7 +796,7 @@ function resourceSelectableSoftwareSegments(bar: ResourceBreakdownBar): Resource
     .filter((segment) => segment?.softwareId && Number(segment.value) > 0)
     .map((segment) => ({
       ...segment,
-      className: `resource-segment ${resourceSoftwareClass(segment.kind)}`,
+      className: `resource-segment ${resourceSoftwareBucket(segment.displayKind)}`,
       isEmpty: false as const
     }));
 
@@ -862,8 +866,7 @@ function resourceSegmentPercent(value: number, denominator: number) {
 
 function resourceBarLayoutOptions(bar: ResourceBreakdownBar, segments: ResourceSelectableSegment[]) {
   return {
-    fill: bar.scaleMode === "active",
-    emptyId: segments.find((segment) => segment.isEmpty)?.softwareId
+    fill: bar.scaleMode === "active"
   };
 }
 
@@ -900,7 +903,7 @@ function resourceSegmentPaintColor(segment: ResourceSelectableSegment, mode: "ty
     return distinctPalette[hashKey(segment.softwareId) % distinctPalette.length].bg;
   }
 
-  return resourceTypeColor(segment.kind).bg;
+  return resourceTypeColor(segment.displayKind).bg;
 }
 
 function resourceSegmentPaintTextColor(segment: ResourceSelectableSegment, mode: "type" | "distinct") {
@@ -912,7 +915,7 @@ function resourceSegmentPaintTextColor(segment: ResourceSelectableSegment, mode:
     return distinctPalette[hashKey(segment.softwareId) % distinctPalette.length].text;
   }
 
-  return resourceTypeColor(segment.kind).text;
+  return resourceTypeColor(segment.displayKind).text;
 }
 
 function resourceEntryAtTrackPoint<T extends { value: number }>(
@@ -931,12 +934,26 @@ function resourceEntryAtTrackPoint<T extends { value: number }>(
     resourceTrackPercentAtClientX(clientX, left, width));
 }
 
-function resourceSoftwareClass(kind: string) {
-  if (kind === "WindowsSystem" || kind === "WindowsComponent" || kind === "WindowsService") {
+/*
+  展示分组里哪些算"系统"。
+
+  **这里认的是 displayKind，不是 kind。** 哪些原始类别该并成一类是后端的事
+  （SoftwareDisplayKinds.Project：RuntimeProduct 和 RuntimeRoot 并进 General、
+  RuntimePackage 并成 WindowsApp……）。前端再照着 kind 自己并一遍，
+  就是同一条规则两个属主 —— 后端加一个类别，前端不改就悄悄把它落进"其它"。
+
+  前端这一层只决定**展示分组用什么颜色**，那才是画面该管的事。
+*/
+const systemDisplayKinds = new Set(["WindowsSystem", "WindowsComponent", "WindowsService"]);
+
+type ResourceSoftwareBucket = "system" | "adapted" | "other";
+
+function resourceSoftwareBucket(displayKind: string): ResourceSoftwareBucket {
+  if (systemDisplayKinds.has(displayKind)) {
     return "system";
   }
 
-  return kind === "Adapted" ? "adapted" : "other";
+  return displayKind === "Adapted" ? "adapted" : "other";
 }
 
 // Wide-gamut (display-p3) segment palette. Each entry carries its own foreground
@@ -961,15 +978,16 @@ const distinctPalette: SegmentColor[] = [
   { bg: "color(display-p3 0.447 0.553 0.267)", text: white }
 ];
 
-// Fixed colour by software kind (system / adapted / other) for the type mode.
-function resourceTypeColor(kind: string): SegmentColor {
-  if (kind === "WindowsSystem" || kind === "WindowsComponent" || kind === "WindowsService") {
-    return { bg: "color(display-p3 0.541 0.388 0.820)", text: white };
-  }
+// 按展示分组配色（系统 / 已适配 / 其它）。分组本身由上面那一个函数定，
+// 不在这里再判一遍 —— 先前这两处各写了一份一模一样的判断。
+const bucketColors: Record<ResourceSoftwareBucket, SegmentColor> = {
+  system: { bg: "color(display-p3 0.541 0.388 0.820)", text: white },
+  adapted: { bg: "color(display-p3 0.184 0.620 0.435)", text: white },
+  other: { bg: "color(display-p3 0.816 0.651 0.220)", text: ink }
+};
 
-  return kind === "Adapted"
-    ? { bg: "color(display-p3 0.184 0.620 0.435)", text: white }
-    : { bg: "color(display-p3 0.816 0.651 0.220)", text: ink };
+function resourceTypeColor(displayKind: string): SegmentColor {
+  return bucketColors[resourceSoftwareBucket(displayKind)];
 }
 
 function resourceSegmentStyle(segment: ResourceSelectableSegment): CssVars {
@@ -977,7 +995,7 @@ function resourceSegmentStyle(segment: ResourceSelectableSegment): CssVars {
     return { "--segment-bg": "var(--resource-empty)", "--segment-text": "var(--text)" };
   }
 
-  const type = resourceTypeColor(segment.kind);
+  const type = resourceTypeColor(segment.displayKind);
   const distinct = distinctPalette[hashKey(segment.softwareId) % distinctPalette.length];
   return {
     "--segment-bg": type.bg,

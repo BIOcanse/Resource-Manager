@@ -68,4 +68,8 @@ const curve = (percent: number): ControlSetting => ({
 assert.equal(hasPendingChanges([curve(40)], [curve(40)]), false);
 assert.equal(hasPendingChanges([curve(50)], [curve(40)]), true);
 
+assert.equal(hasPendingChanges([{ ...curve(40), curveExecution: "software" }], [{ ...curve(40), curveExecution: "firmware" }]), true);
+assert.equal(hasPendingChanges([{ ...setting(40), unit: "W" }], [{ ...setting(40), unit: "MHz" }]), true);
+assert.equal(controlItemStatusOf(capability, [], [setting(40)], [], false).status, "edited");
+assert.equal(controlItemStatusOf(capability, [], [], [outcome("failed", "release failed")], false).status, "failed");
 console.log("controlStateMachine: ok");

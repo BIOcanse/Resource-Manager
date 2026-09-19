@@ -20,7 +20,7 @@ export interface ResourceSegmentLayout<T extends { value: number }> {
 export function resourceSegmentLayout<T extends { value: number }>(
   segments: T[],
   denominator: number,
-  options: { fill?: boolean; emptyId?: string } = {})
+  options: { fill?: boolean } = {})
 : ResourceSegmentLayout<T>[] {
   const positiveSegments = segments.filter((segment) => Number(segment.value) > 0);
   if (positiveSegments.length === 0) {
@@ -36,10 +36,10 @@ export function resourceSegmentLayout<T extends { value: number }>(
   let left = 0;
   return positiveSegments.map((segment, index) => {
     const isLast = index === positiveSegments.length - 1;
-    const width = isLast
+    const width = isLast && options.fill
       ? Math.max(0, 100 - left)
       : Math.max(0, Math.min(100 - left, Number(segment.value) * 100 / layoutDenominator));
-    const right = isLast ? 100 : left + width;
+    const right = left + width;
     const item = {
       segment,
       index,
@@ -102,7 +102,7 @@ function resourceSegmentPixelVars<T extends { value: number }>(
 }
 
 function alignToDevicePixel(value: number, devicePixelRatio: number) {
-  return Math.round(value * devicePixelRatio) / devicePixelRatio;
+  return Math.floor(value * devicePixelRatio) / devicePixelRatio;
 }
 
 function clampNumber(value: number, min: number, max: number) {

@@ -22,6 +22,7 @@ const defaultScenario = {
   gpuGrade: "normal",
   resourceBreakdownGeneration: 0,
   resourceSegmentCount: 1,
+  resourceCpuValue: null,
   resourceTableVariant: "normal",
   resourceTableRowCount: null,
   debugMode: false,
@@ -177,6 +178,23 @@ server.listen(port, "127.0.0.1", () => {
 
 async function handleApi(request, response, url) {
   const path = url.pathname;
+  if (path === "/api/control/objects") {
+    return json(response, 200, { readAt: now(), objects: [{
+      id: "gpu:test", kind: "gpu", displayName: "Fixture GPU",
+      platform: { operatingSystem: "windows", vendor: "nvidia" }, isControllable: true,
+      capabilities: [
+        { id: "gpu.temperature-limit", label: "Temperature limit", valueKind: "number", supported: false, unavailableReason: "Read-only hardware reading", unavailableKind: "platform", requiredAccessLevel: "normal" },
+        { id: "gpu.dynamic-boost-enabled", label: "Dynamic Boost", valueKind: "toggle", supported: true, requiredAccessLevel: "normal" },
+        { id: "gpu.voltage-offset", label: "Voltage", valueKind: "number", supported: false, unavailableReason: "Requires Root", unavailableKind: "access-level", requiredAccessLevel: "root", range: { minimum: -100, maximum: 100, step: 1, unit: "mV", defaultValue: 0 } }
+      ]
+    }] });
+  }
+  if (path === "/api/control/state") return json(response, 200, { desired: { objects: [] }, lastApply: { outcomes: [], appliedAt: now() } });
+  if (path === "/api/control/instances") return json(response, 200, { instances: [], readAt: now() });
+  if (path === "/api/control/presets") return json(response, 200, { presets: [], readAt: now() });
+  if (path === "/api/control/notice") return json(response, 200, { acknowledged: true });
+  if (path === "/api/control/overclock-consent") return json(response, 200, { accepted: false });
+  if (path === "/api/control/access-level") return json(response, 200, { level: "normal" });
   if (path === "/api/subscriptions/stream" && request.method === "POST") {
     return subscriptionChannelStream(request, response);
   }
@@ -309,7 +327,7 @@ async function handleApi(request, response, url) {
       capturedAt,
       new Set(url.searchParams.getAll("processDetails")));
     return json(response, 200, {
-      version: 8,
+      version: 9,
       capturedAt,
       breakdown,
       table: resourceTable(
@@ -976,7 +994,7 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
-  const cpuValue = [12, 38, 21, 55][generation % 4];
+  const cpuValue = scenario.resourceCpuValue ?? [12, 38, 21, 55][generation % 4];
   const segmentCount = normalizeFixtureCount(scenario.resourceSegmentCount, 1, 1000);
   const softwareCatalog = Array.from({ length: segmentCount }, (_, index) => [
     index === 0 ? "frontend-harness.software" : `frontend-harness.software.${index}`,
@@ -985,7 +1003,7 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
     "普通软件"
   ]);
   return {
-    version: 7,
+    version: 8,
     capturedAt,
     softwareCatalog,
     bars: [
@@ -1046,8 +1064,8 @@ function resourceTable(processMode, capturedAt = now()) {
     impactScore: 12,
     status: "running",
     values: {
-      cpu: { displayValue: "12%", value: 12, percent: 12, heatPercent: 12 },
-      memory: { displayValue: "512 MB", value: 536870912, sharedValue: 134217728, heatPercent: 10 }
+      cpu: { displayValue: "", unit: "%", value: 12, percent: 12, heatPercent: 12 },
+      memory: { displayValue: "", unit: "B", value: 536870912, sharedValue: 134217728, heatPercent: 10 }
     }
   };
   const rows = resourceTableRows(processMode, common);
@@ -1159,12 +1177,10 @@ function createResourceSoftwareRows(
     const softwareId = index === 0
       ? "frontend-harness.software"
       : `frontend-harness.software.${index}`;
-    const displayValue = formatDisplay(value);
     return [
       index,
       value,
       systemPercent,
-      displayValue,
       1,
       index % 3,
       processDetailSoftwareIds.has(softwareId) ? [[
@@ -1174,7 +1190,6 @@ function createResourceSoftwareRows(
         value,
         systemPercent,
         100,
-        displayValue,
         "测试用户",
         "x64",
         "direct",
@@ -1340,6 +1355,7 @@ async function subscriptionChannelStream(request, response) {
 }
 
 const subscriptionChannelSelectors = new Set([
+  "/api/control/actual/subscribe",
   "/api/metrics/subscribe",
   "/api/metrics/gpu-specialized/subscribe",
   "/api/resource-monitor/subscribe",
@@ -1375,6 +1391,12 @@ function writeSubscriptionChannelFrame(response, subscriptionId, value) {
 
 function subscriptionPayloadFactory(url) {
   switch (url.pathname) {
+    case "/api/control/actual/subscribe":
+      return publishedAt => ({ readAt: publishedAt, values: [
+        { objectId: "gpu:test", capabilityId: "gpu.temperature-limit", number: 89, unit: "°C" },
+        { objectId: "gpu:test", capabilityId: "gpu.dynamic-boost-enabled", toggle: false },
+        { objectId: "gpu:test", capabilityId: "gpu.voltage-offset", number: 0, unit: "mV" }
+      ] });
     case "/api/metrics/subscribe": {
       const ids = url.searchParams.getAll("ids");
       return (publishedAt) => {
@@ -1395,7 +1417,7 @@ function subscriptionPayloadFactory(url) {
         resourceSlotCapturedAt = publishedAt;
         const capturedAt = resourceSlotCapturedAt;
         return {
-          version: 8,
+          version: 9,
           capturedAt,
           breakdown: resourceBreakdown(capturedAt, processDetails),
           table: resourceTable(processMode, capturedAt)

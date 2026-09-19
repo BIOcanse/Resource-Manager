@@ -96,32 +96,37 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     /// 所以"写成功"只能由回读来定义。核对不上就如实说没写进去。
     /// </summary>
     internal bool Write(ushort address, byte value)
-        // 写和回读之间不能松手：松手了回读到的可能是别人写进去的。
-        => channel.Hold(() => WriteHeld(address, value), out var written) && written;
+        => WriteReadingBack(address, value) == value;
 
-    private bool WriteHeld(ushort address, byte value)
+    /// <summary>
+    /// 写一个 EC 字节，返回随后观测到的寄存器值；通道失败返回 null。
+    /// 回读不同不能区分固件限幅、写入未生效或其他写入者覆盖。
+    /// </summary>
+    internal byte? WriteReadingBack(ushort address, byte value)
+        // Serializes our cooperating clients, not the OEM service or firmware.
+        => channel.Hold(() => WriteHeld(address, value), out var readBack) ? readBack : null;
+
+    private byte? WriteHeld(ushort address, byte value)
     {
         lock (gate)
         {
             var argument = (ulong)address | ((ulong)value << 16);
             if (Invoke(argument | (FunctionWrite << FunctionBitShift)) is null)
             {
-                return false;
+                return null;
             }
         }
 
         var readBack = ReadHeld(address);
-        if (readBack == value)
+        if (readBack != value)
         {
-            return true;
+            logger?.LogWarning(
+                "EC 写入没有原样生效：地址 0x{Address:X4} 写 {Value}，回读 {ReadBack}。",
+                address,
+                value,
+                readBack?.ToString() ?? "读不到");
         }
-
-        logger?.LogWarning(
-            "EC 写入没有生效：地址 0x{Address:X4} 写 {Value}，回读 {ReadBack}。",
-            address,
-            value,
-            readBack?.ToString() ?? "读不到");
-        return false;
+        return readBack;
     }
 
     private uint? Invoke(ulong data)

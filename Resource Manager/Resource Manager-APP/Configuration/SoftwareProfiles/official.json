@@ -1,0 +1,1578 @@
+{
+  "softwareGroups": [
+    {
+      "groupId": "adapted.resource-manager",
+      "displayName": "资源管理器",
+      "role": "AdaptedSoftware",
+      "defaultPolicy": "Protection",
+      "constraints": {
+        "externalGovernance": false,
+        "blockedPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "本软件自身不作为普通后台压制对象。"
+      ]
+    },
+    {
+      "groupId": "dependency.telemetry-provider",
+      "displayName": "依赖软件/支持组件",
+      "role": "DependencySupport",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "DependencyManagedInstall"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "依赖/支持组件由组件安装页管理，不由游戏模式自动压制。"
+      ]
+    },
+    {
+      "groupId": "targets.games",
+      "displayName": "游戏目标",
+      "role": "TargetCandidate",
+      "policySource": "targetPolicyByState",
+      "capabilities": [
+        "AllowA1",
+        "AllowA2"
+      ],
+      "constraints": {
+        "blockedPolicies": [
+          "Level1Optimization",
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "游戏本体不走压制矩阵。"
+      ]
+    },
+    {
+      "groupId": "game.launchers",
+      "displayName": "游戏平台和游戏管理器",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2",
+        "AllowLongIdleFreeze"
+      ],
+      "constraints": {
+        "conditionalLevel4Requires": [
+          "NoRunningDependentGame",
+          "NoDownload",
+          "NoUpdate",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "Steam 主进程等依赖路径可由 processOverrides 进一步保护。"
+      ]
+    },
+    {
+      "groupId": "game.runtime-support",
+      "displayName": "游戏运行库和游戏依赖",
+      "role": "ProtectedPath",
+      "defaultPolicy": "Protection",
+      "constraints": {
+        "blockedPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "GameInput、XNA、OpenAL、PhysX、EOS、Rockstar SDK 等不作为普通后台冻结对象。"
+      ]
+    },
+    {
+      "groupId": "background.freeze-preferred",
+      "displayName": "后台视觉和装饰软件",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2",
+        "AllowBackgroundFreeze",
+        "AllowLongIdleFreeze",
+        "AllowTrayFreeze"
+      ],
+      "constraints": {
+        "level4DefaultSubjectStates": [
+          "SubjectBackground",
+          "SubjectLongIdleBackground",
+          "SubjectTrayOnly"
+        ]
+      },
+      "notes": [
+        "动态壁纸和纯装饰组件在游戏模式下优先冷藏。"
+      ]
+    },
+    {
+      "groupId": "ordinary.browser-chat-download",
+      "displayName": "浏览器、聊天、下载和同步",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2"
+      ],
+      "constraints": {
+        "conditionalCapabilities": [
+          {
+            "capability": "AllowLongIdleFreeze",
+            "requires": [
+              "NoVisibleWindow",
+              "NoActiveDownload",
+              "NoActiveUpload",
+              "NoAudioPlayback",
+              "NoCall",
+              "NoFileTransfer",
+              "UserConfirms"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "常见后台消耗项，冻结需要确认没有活动任务。"
+      ]
+    },
+    {
+      "groupId": "meeting-capture-password",
+      "displayName": "会议、课堂、录制和密码管理",
+      "role": "ProtectedOrManualSubject",
+      "defaultPolicy": "Protection",
+      "capabilities": [
+        "AllowLevel1WhenInactive"
+      ],
+      "constraints": {
+        "blockedPolicies": [
+          "Level4Freeze"
+        ],
+        "conditionalLevel2Requires": [
+          "NoMeeting",
+          "NoAudioCapture",
+          "NoScreenShare",
+          "NoRecording",
+          "NoStreaming",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "活动会话时保护；不默认冻结。"
+      ]
+    },
+    {
+      "groupId": "developer.runtime",
+      "displayName": "开发工具、运行时和本地服务",
+      "role": "ProcessLevelSubject",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "ProcessLevelRequired"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "用途差异大，必须由进程级报告决定。"
+      ]
+    },
+    {
+      "groupId": "driver-input-hardware",
+      "displayName": "驱动、输入、显示、网络和硬件控制",
+      "role": "ProtectedPath",
+      "defaultPolicy": "Protection",
+      "constraints": {
+        "blockedPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "底层路径不由游戏模式默认压制或冻结。"
+      ]
+    },
+    {
+      "groupId": "hardware-tuning.manual",
+      "displayName": "超频、风扇和硬件调校",
+      "role": "ManualProtectedSubject",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "ManualOnly"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "硬件调校工具状态敏感，只报告或用户手动保护。"
+      ]
+    },
+    {
+      "groupId": "telemetry.diagnostics",
+      "displayName": "监控、诊断、调试和性能工具",
+      "role": "ManualSubject",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "ManualOnly"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "这些工具常用于观察优化效果，不默认压制。"
+      ]
+    },
+    {
+      "groupId": "system.runtime-redistributable",
+      "displayName": "系统运行库和可再发行组件",
+      "role": "ProtectedPath",
+      "defaultPolicy": "Protection",
+      "constraints": {
+        "blockedPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "运行库不是用户软件会话，不参与游戏模式调度。"
+      ]
+    },
+    {
+      "groupId": "network.remote-support",
+      "displayName": "网络、远程和代理支撑",
+      "role": "ProtectedOrManualSubject",
+      "defaultPolicy": "Protection",
+      "capabilities": [
+        "AllowLevel1WhenInactive"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "网络/远程支撑不能因为游戏模式自动中断。"
+      ]
+    },
+    {
+      "groupId": "creative.media",
+      "displayName": "创作、音频、视频和专业工具",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2",
+        "HighPerformanceCandidate"
+      ],
+      "constraints": {
+        "conditionalLevel4Requires": [
+          "NoRender",
+          "NoExport",
+          "NoAudioPlayback",
+          "NoProjectOpen",
+          "NoVisibleWindow",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "这些可能成为高性能软件目标；非目标时按状态矩阵治理。"
+      ]
+    },
+    {
+      "groupId": "game.mod-tools",
+      "displayName": "游戏模组、注入和辅助工具",
+      "role": "ManualSubject",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2"
+      ],
+      "constraints": {
+        "conditionalLevel4Requires": [
+          "NoRunningDependentGame",
+          "NoPatchOperation",
+          "NoVisibleWindow",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "可能和游戏进程耦合，默认不激进冻结。"
+      ]
+    },
+    {
+      "groupId": "security-maintenance",
+      "displayName": "安全、维护和清理工具",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2"
+      ],
+      "constraints": {
+        "conditionalLevel4Requires": [
+          "NoScan",
+          "NoDriverOperation",
+          "NoRepairTask",
+          "NoVisibleWindow",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "后台扫描可压制；冻结必须确认。"
+      ]
+    },
+    {
+      "groupId": "productivity.utilities",
+      "displayName": "办公和普通工具",
+      "role": "SubjectSoftware",
+      "policySource": "statePolicyMatrix",
+      "capabilities": [
+        "AllowLevel2",
+        "AllowLongIdleFreeze"
+      ],
+      "constraints": {
+        "conditionalLevel4Requires": [
+          "NoVisibleWindow",
+          "NoActiveFileOperation",
+          "NoExport",
+          "UserConfirms"
+        ]
+      },
+      "notes": [
+        "普通工具按状态矩阵治理。"
+      ]
+    },
+    {
+      "groupId": "automation.user-scripts",
+      "displayName": "用户脚本和自动化工具",
+      "role": "ProcessLevelSubject",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "ProcessLevelRequired"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "AutoHotkey 等可能承载用户正在依赖的输入脚本，需进程级判断。"
+      ]
+    },
+    {
+      "groupId": "oem.vendor-utility",
+      "displayName": "厂商工具和保修/控制附属项",
+      "role": "ProtectedOrManualSubject",
+      "defaultPolicy": "ReportOnly",
+      "capabilities": [
+        "AllowLevel1WhenInactive"
+      ],
+      "constraints": {
+        "blockedAutomaticPolicies": [
+          "Level2Optimization",
+          "Level4Freeze"
+        ]
+      },
+      "notes": [
+        "OEM 附属工具默认只报告，避免误伤设备控制链路。"
+      ]
+    }
+  ],
+  "softwareAssignments": [
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-360安全卫士",
+      "displayName": "360安全卫士极速2025",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "security-maintenance",
+      "assignmentReason": "安全、驱动维护或磁盘维护工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-360drvmgr",
+      "displayName": "360驱动大师",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "security-maintenance",
+      "assignmentReason": "安全、驱动维护或磁盘维护工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-360压缩",
+      "displayName": "360压缩",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "productivity.utilities",
+      "assignmentReason": "办公或普通工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-7-zip",
+      "displayName": "7-Zip 26.01 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "productivity.utilities",
+      "assignmentReason": "办公或普通工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-amd-chipset-iodrivers",
+      "displayName": "AMD Chipset Software",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--c2c00749-ec1b-4833-a30f-ef846617e2b3",
+      "displayName": "AMD Install Manager",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "dependency-support:amd-ryzen-master-monitoring-sdk",
+      "displayName": "AMD Ryzen Master Monitoring SDK",
+      "kind": "DependencySupport",
+      "state": "downloadable",
+      "assignedGroupId": "dependency.telemetry-provider",
+      "assignmentReason": "依赖/支持组件由组件页管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-amd-catalyst-install-manager",
+      "displayName": "AMD Software",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--6310e157-aaeb-4d67-b4f0-0cefc88f732c",
+      "displayName": "AMD uProf",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--d0b56886-c756-4025-8cc4-7a25a4589171--is1",
+      "displayName": "Attracktive version 1.1.1.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-autohotkey",
+      "displayName": "AutoHotkey",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "automation.user-scripts",
+      "assignmentReason": "用户脚本/自动化运行时。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-aventuras",
+      "displayName": "Aventuras",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-375480",
+      "displayName": "Chronicon - 英雄旧忆",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-cisco-packet-tracer-9-0-0-64bit-is1",
+      "displayName": "Cisco Packet Tracer 9.0.0 64Bit",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-classin",
+      "displayName": "ClassIn",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "meeting-capture-password",
+      "assignmentReason": "会议、录制或密码管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--a89f4446-3b75-433b-91b3-c88868ca8544",
+      "displayName": "ClickOnce Bootstrapper Package for Microsoft .NET Framework 4.8 on Visual Studio 2017",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--38ab0eba-9c31-4553-b486-90925f60a118",
+      "displayName": "cloudflared",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "network.remote-support",
+      "assignmentReason": "网络、远程或代理支撑。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--214f07e6-6675-4af5-8342-c081b182205d--is1",
+      "displayName": "Collective version 2.0.4.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-cpuid-cpu-z-is1",
+      "displayName": "CPUID CPU-Z 2.18",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-588650",
+      "displayName": "Dead Cells",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-docker-desktop",
+      "displayName": "Docker Desktop",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--8cc872cb-955f-418a-aa13-6d1610dc2e49",
+      "displayName": "Epic Games Launcher",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.launchers",
+      "assignmentReason": "游戏平台、启动器或游戏管理器。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--6300a8e0-851b-4638-adbb-1385dcf1248d",
+      "displayName": "Epic Online Services",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-gyan-ffmpeg-microsoft-winget-source-8wekyb3d8bbwe",
+      "displayName": "FFmpeg",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--5baabd3d-cc88-4a56-9190-67236577afa1---is1",
+      "displayName": "Flydigi Space Station 4.2.1.1",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--5c03b390-a762-4c43-b0a3-43166e612476",
+      "displayName": "Futuremark SystemInfo",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-git-is1",
+      "displayName": "Git",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--22b1775a-6f83-4bc4-9330-0f10ce026003",
+      "displayName": "GitHub CLI",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-google-chrome",
+      "displayName": "Google Chrome",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--01e0ab21-d1cc-42b4-9dff-84ffe4f26daf",
+      "displayName": "HidHide",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-7cc99ea5-8362-58dc-aab5-13f0a1c6fc2d",
+      "displayName": "ICAT 0.6.17",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--da08718e-972a-58e7-ae7e-c45114c82e13",
+      "displayName": "Java(TM) SE Development Kit 17.0.12 (64-bit)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--638cbff8-d709-4e43-8b2b-ab97a8e0f2ed",
+      "displayName": "KeePassXC",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "meeting-capture-password",
+      "assignmentReason": "会议、录制或密码管理。"
+    },
+    {
+      "softwareId": "dependency-support:latencymon",
+      "displayName": "LatencyMon",
+      "kind": "DependencySupport",
+      "state": "installed",
+      "assignedGroupId": "dependency.telemetry-provider",
+      "assignmentReason": "依赖/支持组件由组件页管理。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-c6dbe996-22a9-5998-b542-7abe33da3b83",
+      "displayName": "LM Studio 0.4.12+1",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-lmms",
+      "displayName": "LMMS 1.2.2",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--3428e9c1-638b-4410-bc11-edb2b8ecfe3b",
+      "displayName": "Microsoft .NET Framework 4.7 SDK",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--e63e3ad8-2481-40f5-a5f3-b2f189c6e90a",
+      "displayName": "Microsoft .NET Framework 4.7 SDK (简体中文)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--ec073c7e-990d-4bb1-bfa9-45c6704e3571",
+      "displayName": "Microsoft .NET Framework 4.7 Targeting Pack",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--829cb0f4-ab51-4db7-8ca2-1c93ccc36d5e",
+      "displayName": "Microsoft .NET Framework 4.7 Targeting Pack (ENU)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--cc078001-8a9d-4635-8761-b03ae5f42884",
+      "displayName": "Microsoft .NET Framework 4.7 目标包(简体中文)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--949c0535-171c-480f-9cf4-d25c9e60fe88",
+      "displayName": "Microsoft .NET Framework 4.8 SDK",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--baaf5851-0759-422d-a1e9-90061b597188",
+      "displayName": "Microsoft .NET Framework 4.8 Targeting Pack",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--a4ea9ee5-7cff-4c5f-b159-b9b4e5d2bde2",
+      "displayName": "Microsoft .NET Framework 4.8 Targeting Pack (ENU)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--18c18035-11c6-4e27-afa8-ae754cff3ff6",
+      "displayName": "Microsoft .NET SDK 10.0.300 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--728a4ac7-b98d-4db1-90d5-149540ba0a9c",
+      "displayName": "Microsoft .NET SDK 7.0.410 (x86)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-microsoft-edge",
+      "displayName": "Microsoft Edge",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--14edf950-06b9-415f-862c-1d5dec321ae6",
+      "displayName": "Microsoft GameInput",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--710f4c1c-cc18-4c49-8cbf-51240c89a1a2",
+      "displayName": "Microsoft Visual C++ 2005 Redistributable",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--ad8a2fa1-06e7-4b0d-927d-6e54b3d31028",
+      "displayName": "Microsoft Visual C++ 2005 Redistributable (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--5fce6d76-f5dc-37ab-b2b8-22ab8cedb1d4",
+      "displayName": "Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729.6161",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--9be518e6-ecc6-35a9-88e4-87755c07200f",
+      "displayName": "Microsoft Visual C++ 2008 Redistributable - x86 9.0.30729.6161",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--1d8e6291-b0d5-35ec-8441-6616f567a0f7",
+      "displayName": "Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--f0c3e5d1-1ade-321e-8167-68ef0de699a5",
+      "displayName": "Microsoft Visual C++ 2010  x86 Redistributable - 10.0.40219",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--9bd48a22-fe5a-457c-8f10-da6c2be89eee",
+      "displayName": "Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--ca67548a-5ebe-413a-b50c-4b9ceb6d66c6",
+      "displayName": "Microsoft Visual C++ 2012 Redistributable (x64) - 11.0.61030",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--33d1fd90-4274-48a1-9bc1-97e33d9c2d6f",
+      "displayName": "Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--a55ac379-46b0-461a-95b1-fef5c08443f2",
+      "displayName": "Microsoft Visual C++ 2012 Redistributable (x86) - 11.0.61030",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--050d4fc8-5d48-4b8f-8972-47c82c46020f",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.30501",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--1b103cea-f037-4504-81de-956057b442c3",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.30501",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--e1daf4c4-2b9a-4140-8c2b-b96d404f54b3",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--5e4b593b-ca3c-429c-bc49-b51cbf46e72a",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.30501",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--f65db027-aff3-4070-886a-0d87064aabb1",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.30501",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--21f70a0b-e7bf-43cf-96d8-c6145bc5c269",
+      "displayName": "Microsoft Visual C++ 2013 Redistributable (x86) - 12.0.40664",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--0b5169e3-39da-4313-808e-1f9c0407f3bf",
+      "displayName": "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--91ee571b-0e8a-4c65-9eaf-2e2f5fc60c00",
+      "displayName": "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--85467cbc-7a39-33c9-8940-d72d9269b84f",
+      "displayName": "Microsoft Visual F# 2.0 Runtime",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-microsoft-visual-j--2-0-redistributable-package---se--x64",
+      "displayName": "Microsoft Visual J# 2.0 可再发行组件包 - SE (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--771fd6b0-fa20-440a-a002-3b3bac16dc50--is1",
+      "displayName": "Microsoft Visual Studio Code (User)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--0532b8f2-12d7-43de-95fc-7b87006758a8",
+      "displayName": "Microsoft Windows Desktop Runtime - 6.0.36 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--01b47e23-4226-4094-9c19-400f12efee57",
+      "displayName": "Microsoft Windows Desktop Runtime - 7.0.0 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--ecdcf22d-1da8-4261-9a37-1db03fbc1d73",
+      "displayName": "Microsoft Windows Desktop Runtime - 7.0.0 (x86)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--a3899eef-6164-4d42-b8c3-95ae6a844821",
+      "displayName": "Microsoft Windows Desktop Runtime - 8.0.22 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--8208f29e-493c-4b73-bcd7-e3fa085fc1a2",
+      "displayName": "Microsoft Windows Desktop Runtime 10.0.5 (x64)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "system.runtime-redistributable",
+      "assignmentReason": "系统运行库或可再发行组件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--245f6c7a-0c22-4de0-8202-2aaa620a1d3a",
+      "displayName": "Microsoft XNA Framework Redistributable 2.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--19bfda5d-1fe2-4f25-97f9-1a79dd04ee20",
+      "displayName": "Microsoft XNA Framework Redistributable 3.1",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--d69c8ede-bbc5-436b-8e0e-c5a6d311cf4f",
+      "displayName": "Microsoft XNA Framework Redistributable 4.0 Refresh",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-miniconda3-py313-25-9-1-3--python-3-13-9-64-bit",
+      "displayName": "Miniconda3 py313_25.9.1-3 (Python 3.13.9 64-bit)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-motorcomm-ethernet-adapter",
+      "displayName": "Motorcomm_Ethernet_Adapter 1.0.1.41",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "dependency-support:msi-afterburner",
+      "displayName": "MSI Afterburner",
+      "kind": "DependencySupport",
+      "state": "installed",
+      "assignedGroupId": "dependency.telemetry-provider",
+      "assignmentReason": "依赖/支持组件由组件页管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--c8a53c34-e7c8-43d1-955b-a535a94082f0",
+      "displayName": "Node.js",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--6ccab7ac-feb0-4395-97e3-75cd6f6c407b",
+      "displayName": "NoteBook FanControl",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "hardware-tuning.manual",
+      "assignmentReason": "硬件调校工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--display-nvapp",
+      "displayName": "NVIDIA App 11.0.8.244",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--frameview",
+      "displayName": "NVIDIA FrameView 1.6.10929.35462032",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--frameviewsdk",
+      "displayName": "NVIDIA FrameView SDK 1.8.12421.37835365",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--hdaudio-driver",
+      "displayName": "NVIDIA HD 音频驱动程序 1.4.5.7",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--e7784432-22ba-4fde-846d-668ee15b665b",
+      "displayName": "NVIDIA Nsight Systems 2026.1.2",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--display-physx",
+      "displayName": "NVIDIA PhysX 系统软件 9.23.1019",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--usbc",
+      "displayName": "NVIDIA USBC Driver 1.52.831.832",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--b2fe1952-0186-46c3-baec-a80aa35ac5b8--display-driver",
+      "displayName": "NVIDIA 图形驱动程序 610.62",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-obs-studio",
+      "displayName": "OBS Studio",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "meeting-capture-password",
+      "assignmentReason": "会议、录制或密码管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-openal",
+      "displayName": "OpenAL",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--acdb3a73-23cb-4282-8c5c-fde887e193ac",
+      "displayName": "Paradox Launcher v2",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.launchers",
+      "assignmentReason": "游戏平台、启动器或游戏管理器。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-pawnio",
+      "displayName": "PawnIO",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-sogoupdf",
+      "displayName": "PDF编辑转换器",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "productivity.utilities",
+      "assignmentReason": "办公或普通工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-proxybridge",
+      "displayName": "ProxyBridge 3.2.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "network.remote-support",
+      "assignmentReason": "网络、远程或代理支撑。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--b6ce88eb-2ce3-4d91-8efc-425ae1f48caf",
+      "displayName": "Python 3.12.10 (64-bit)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--5f75c346-3aaf-4f17-8545-2a21a740bb7a",
+      "displayName": "Python 3.13.0 (64-bit)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--0ef3959c-4dd0-4cd2-9d49-307eaf0a2bff",
+      "displayName": "Python 3.14.2 (64-bit)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--9b55b41c-b3db-4778-b9ed-443eff0d721a",
+      "displayName": "Python Launcher",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-qbittorrent",
+      "displayName": "qBittorrent",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--d2fca41e-ac01-4dcd-b3a7-dc9e32363065---is1",
+      "displayName": "Rapture3D 2.7.4 Game",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-3764200",
+      "displayName": "Resident Evil Requiem",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--6411d779-968d-483a-adcf-04cc65c83d50--is1",
+      "displayName": "RetroMod Lead version 1.2.1.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-rtss",
+      "displayName": "RivaTuner Statistics Server 7.3.7",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-rockstar-games-launcher",
+      "displayName": "Rockstar Games Launcher",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.launchers",
+      "assignmentReason": "游戏平台、启动器或游戏管理器。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-rockstar-games-social-club",
+      "displayName": "Rockstar Games SDK",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.runtime-support",
+      "assignmentReason": "游戏运行库或游戏依赖。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-rustup",
+      "displayName": "Rustup: the Rust toolchain installer",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--5efda1b5-690e-4552-8a8d-1d4f612113c8",
+      "displayName": "Saku Overclock",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "hardware-tuning.manual",
+      "assignmentReason": "硬件调校工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-2868840",
+      "displayName": "Slay the Spire 2",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam",
+      "displayName": "Steam",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.launchers",
+      "assignmentReason": "游戏平台、启动器或游戏管理器。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steelseries-gg",
+      "displayName": "SteelSeries GG 102.0.0",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--78ca3586-0715-4862-b091-200565e3bc87",
+      "displayName": "TightVNC",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "network.remote-support",
+      "assignmentReason": "网络、远程或代理支撑。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--6ede17ac-3057-4882-a44b-a82af4cb8744--is1",
+      "displayName": "Tracktion Download Manager",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--23e0e350-40a6-4287-9d70-ac11920e856f",
+      "displayName": "Universal x86 Tuning Utility",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "hardware-tuning.manual",
+      "assignmentReason": "硬件调校工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-view-more-widget-is1",
+      "displayName": "VIEW MORE WIDGET Setup",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "background.freeze-preferred",
+      "assignmentReason": "后台视觉/装饰软件。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-virtualdrivers-virtual-display-driver-microsoft-winget-source-8wekyb3d8bbwe",
+      "displayName": "Virtual Display Driver",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-57979c68-f490-55b8-8fed-8b017a5af2fe",
+      "displayName": "Vortex",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.mod-tools",
+      "assignmentReason": "游戏模组、注入或辅助工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-431960",
+      "displayName": "Wallpaper Engine：壁纸引擎",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "background.freeze-preferred",
+      "assignmentReason": "后台视觉/装饰软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--577b9e27-89ca-4655-83b4-dacc6012a959--is1",
+      "displayName": "Waveform 13",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--5cc7acea-bd18-4cd6-a6c8-510848601b9f",
+      "displayName": "Windows MIDI Services Runtime and Tools",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "dependency-support:windows-performance-toolkit",
+      "displayName": "Windows Performance Toolkit",
+      "kind": "DependencySupport",
+      "state": "installed",
+      "assignedGroupId": "dependency.telemetry-provider",
+      "assignmentReason": "依赖/支持组件由组件页管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--b09b3bef-7c75-4e26-ae6b-f6cdeb0fb071",
+      "displayName": "Windows 评估和部署工具包",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-brechtsanders-winlibs-mcf-ucrt-microsoft-winget-source-8wekyb3d8bbwe",
+      "displayName": "WinLibs (MCF 线程库, UCRT 运行时库)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-brechtsanders-winlibs-posix-ucrt-microsoft-winget-source-8wekyb3d8bbwe",
+      "displayName": "WinLibs (POSIX 线程库, UCRT 运行时库)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-wiztree-is1",
+      "displayName": "WizTree v4.28",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "security-maintenance",
+      "assignmentReason": "安全、驱动维护或磁盘维护工具。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-kingsoft-office",
+      "displayName": "WPS Office (12.1.0.26895)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "productivity.utilities",
+      "assignmentReason": "办公或普通工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--70df4503-3d36-6efd-f79c-4a7e74b21b43",
+      "displayName": "X64 Debuggers And Tools",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "developer.runtime",
+      "assignmentReason": "开发工具、运行时或本地服务。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-xxmi-launcher-2-2-1",
+      "displayName": "XXMI Launcher",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.mod-tools",
+      "assignmentReason": "游戏模组、注入或辅助工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-百度云管家",
+      "displayName": "百度网盘",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-hkrpg-cn-1-1-jghbhlcoq1-production",
+      "displayName": "崩坏：星穹铁道",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--e48cc620-69f6-41a8-ad62-1853ff01106d",
+      "displayName": "机械革命电子保修卡",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "oem.vendor-utility",
+      "assignmentReason": "OEM 厂商附属工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--6ea3ce12-b991-4b65-9f8d-b148eaaecd87--is1",
+      "displayName": "机械革命控制中心 Service",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "oem.vendor-utility",
+      "assignmentReason": "OEM 厂商附属工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-2483190",
+      "displayName": "极限竞速：地平线 6",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-jianyingpro",
+      "displayName": "剪映专业版",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "creative.media",
+      "assignmentReason": "创作、音频、视频或专业工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-nap-cn-1-1-jghbhlcoq1-production",
+      "displayName": "绝区零",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall--fb7670c2-7f99-426d-b687-21bb585a5c73--is1",
+      "displayName": "夸克",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-hyp-1-1-cn",
+      "displayName": "米哈游启动器",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "game.launchers",
+      "assignmentReason": "游戏平台、启动器或游戏管理器。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-686060",
+      "displayName": "喵喵的结合",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-sogou-input",
+      "displayName": "搜狗输入法 16.5.0正式版",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-wemeet",
+      "displayName": "腾讯会议",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "meeting-capture-password",
+      "assignmentReason": "会议、录制或密码管理。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--7b0cc9b6-78d5-4103-a070-ec35b69e92b8--is1",
+      "displayName": "图吧工具箱202601",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "telemetry.diagnostics",
+      "assignmentReason": "监控、诊断、调试或性能工具。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-1942280",
+      "displayName": "土豆兄弟(Brotato)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-weixin",
+      "displayName": "微信",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-wetype",
+      "displayName": "微信输入法",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "ordinary.browser-chat-download",
+      "assignmentReason": "浏览器、聊天、下载或同步软件。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-346010",
+      "displayName": "围攻",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "targets.games",
+      "assignmentReason": "游戏目标候选。"
+    },
+    {
+      "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--00000100-0230-2052-84c8-b8d95fa3c8c3",
+      "displayName": "英特尔(R) 无线 Bluetooth(R)",
+      "kind": "Other",
+      "state": "installed",
+      "assignedGroupId": "driver-input-hardware",
+      "assignmentReason": "驱动、输入、显示或硬件控制路径。"
+    },
+    {
+      "softwareId": "resource-manager:self",
+      "displayName": "资源管理器",
+      "kind": "Adapted",
+      "state": "active",
+      "assignedGroupId": "adapted.resource-manager",
+      "assignmentReason": "适配软件自身。"
+    }
+  ]
+}

@@ -8,21 +8,22 @@ import { curveStops, percentAt } from "./fanCurve.ts";
  * 交互沿用这类工具的通行做法（Afterburner / FanControl）：横轴温度、纵轴转速，
  * 曲线上每 5 度一个控制点。点的温度固定，只能上下动 ——
  * 所以每次调整都落在同一组温度上，可预期、可对比，也不会拖出密度不可控的点。
- * 曲线的圆滑交给平滑算法，不靠手稳。
+ * 相邻点直线连接，与执行端一致。
  *
  * 改动只改本地，什么时候写下去由外面的「应用」决定。
  */
 
-/** 画布坐标系。固定视框等比缩放，指针换算只要一次 getBoundingClientRect。 */
+/** Fixed plot geometry; pointer coordinates use the actual SVG transform. */
 const viewWidth = 100;
 const viewHeight = 56;
-const padding = { left: 7, right: 3, top: 4, bottom: 8 };
+const padding = { left: 10, right: 5, top: 5, bottom: 8 };
 
 const plotWidth = viewWidth - padding.left - padding.right;
 const plotHeight = viewHeight - padding.top - padding.bottom;
 
-const firstStop = curveStops[0];
-const lastStop = curveStops[curveStops.length - 1];
+const firstStop = 0;
+const lastStop = 100;
+const ticks = Array.from({ length: 11 }, (_, index) => index * 10);
 
 function xOf(temperature: number): number {
   const ratio = (temperature - firstStop) / (lastStop - firstStop);
@@ -40,6 +41,7 @@ export function FanCurveChart(props: {
 }) {
   let surface: SVGSVGElement | undefined;
   const [dragging, setDragging] = createSignal(-1);
+  let pointerId: number | null = null;
 
   const path = createMemo(() => {
     const points = curveStops.map((stop, index) => ({
@@ -55,13 +57,9 @@ export function FanCurveChart(props: {
     return samples.join(" ");
   });
 
-  /** 客户端坐标 → 视框坐标。视框等比铺满，两个方向各自按比例换算。 */
+  /** Includes borders, scaling, and any SVG letterboxing. */
   function toView(clientX: number, clientY: number) {
-    const rect = surface!.getBoundingClientRect();
-    return {
-      x: ((clientX - rect.left) / rect.width) * viewWidth,
-      y: ((clientY - rect.top) / rect.height) * viewHeight
-    };
+    return new DOMPoint(clientX, clientY).matrixTransform(surface!.getScreenCTM()!.inverse());
   }
 
   /** 离这个横坐标最近的控制点。点哪儿就调哪个，不用精确按中那个小圆。 */
@@ -89,12 +87,16 @@ export function FanCurveChart(props: {
   // 拖动期间在 window 上听：指针会跑出图外，只在 svg 上听会中途断掉。
   const onWindowMove = (event: PointerEvent) => {
     const index = dragging();
-    if (index < 0 || !surface) {
+    if (index < 0 || !surface || props.disabled || event.pointerId !== pointerId) {
       return;
     }
     write(index, toView(event.clientX, event.clientY).y);
   };
-  const onWindowUp = () => setDragging(-1);
+  const onWindowUp = (event: PointerEvent) => {
+    if (event.pointerId !== pointerId) return;
+    pointerId = null;
+    setDragging(-1);
+  };
 
   window.addEventListener("pointermove", onWindowMove);
   window.addEventListener("pointerup", onWindowUp);
@@ -114,18 +116,22 @@ export function FanCurveChart(props: {
       role="group"
       aria-label={uiText.control.curvePreview}
       onPointerDown={(event) => {
-        if (props.disabled) {
+        if (props.disabled || event.button !== 0 || pointerId !== null) {
           return;
         }
-        event.preventDefault();
         const point = toView(event.clientX, event.clientY);
+        if (point.x < padding.left || point.x > viewWidth - padding.right
+          || point.y < padding.top || point.y > viewHeight - padding.bottom) return;
+        event.preventDefault();
+        pointerId = event.pointerId;
         const index = nearestStop(point.x);
         setDragging(index);
         write(index, point.y);
       }}
     >
-      {/* 横向刻度：0 / 50 / 100 %，给拖动一个参照。 */}
-      <For each={[0, 50, 100]}>
+      <text class="fan-curve-axis" x={padding.left - 2} y={3} text-anchor="end">%</text>
+      <text class="fan-curve-axis" x={viewWidth - padding.right} y={viewHeight - 0.5} text-anchor="end">°C</text>
+      <For each={ticks}>
         {(percent) => (
           <>
             <line class="fan-curve-grid" x1={padding.left} x2={viewWidth - padding.right}
@@ -136,11 +142,14 @@ export function FanCurveChart(props: {
         )}
       </For>
 
-      {/* 温度只标首尾和中间，十个全标会糊成一片。 */}
-      <For each={[firstStop, curveStops[Math.floor(curveStops.length / 2)], lastStop]}>
+      <For each={ticks}>
         {(temperature) => (
-          <text class="fan-curve-axis" x={xOf(temperature)} y={viewHeight - 1.5}
-            text-anchor="middle">{temperature}°</text>
+          <>
+            <line class="fan-curve-grid" x1={xOf(temperature)} x2={xOf(temperature)}
+              y1={padding.top} y2={viewHeight - padding.bottom} />
+            <text class="fan-curve-axis" x={xOf(temperature)} y={viewHeight - 3.5}
+              text-anchor="middle">{temperature}</text>
+          </>
         )}
       </For>
 
@@ -153,12 +162,15 @@ export function FanCurveChart(props: {
             <g
               class="fan-curve-handle"
               classList={{ "fan-curve-handle-active": dragging() === index() }}
-              tabindex={0}
+              tabindex={props.disabled ? -1 : 0}
               role="slider"
+              aria-disabled={props.disabled === true}
+              aria-orientation="vertical"
               aria-label={`${temperature} °C`}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={percent()}
+              aria-valuetext={`${temperature} °C, ${percent()}%`}
               onKeyDown={(event) => {
                 if (props.disabled) {
                   return;
@@ -166,7 +178,11 @@ export function FanCurveChart(props: {
                 // 键盘也能调。按住 Shift 走大步。
                 const step = event.shiftKey ? 10 : 1;
                 const next = curveStops.map((_, at) => props.stops[at] ?? 0);
-                if (event.key === "ArrowUp") {
+                if (event.key === "Home" || event.key === "End") {
+                  event.preventDefault();
+                  next[index()] = event.key === "Home" ? 0 : 100;
+                  props.onChange(next);
+                } else if (event.key === "ArrowUp") {
                   event.preventDefault();
                   next[index()] = Math.min(100, percent() + step);
                   props.onChange(next);
@@ -177,7 +193,9 @@ export function FanCurveChart(props: {
                 }
               }}
             >
-              <circle class="fan-curve-point" cx={xOf(temperature)} cy={yOf(percent())} r={1.6} />
+              <title>{`${temperature} °C: ${percent()}%`}</title>
+              <circle class="fan-curve-hit" cx={xOf(temperature)} cy={yOf(percent())} r={2} />
+              <circle class="fan-curve-point" cx={xOf(temperature)} cy={yOf(percent())} r={1} />
             </g>
           );
         }}
