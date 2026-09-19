@@ -18,6 +18,15 @@ public sealed record ControlSetting(
     bool? Toggle = null,
     IReadOnlyList<ControlCurvePoint>? Curve = null,
     /// <summary>
+    /// 这条曲线交给谁执行，取值见 <see cref="ControlFanCurveExecutions"/>。
+    /// 非曲线型为 null。
+    ///
+    /// **这是用户的选择，所以要跟着设定一起存。** 同一条曲线交给固件和交给软件，
+    /// 行为完全不同（前者关了程序还在跑，后者不在）—— 只存曲线不存这个选择，
+    /// 下次重新施加时就只能替他猜一个。
+    /// </summary>
+    string? CurveExecution = null,
+    /// <summary>
     /// <see cref="Number"/> 的单位，取值见 <see cref="ControlUnits"/>。
     /// 非数值型为 null。旧文件里没有这个字段，读到 null 时由转发层按能力描述补。
     /// </summary>
@@ -40,6 +49,9 @@ public sealed record ControlDesiredState(
     IReadOnlyList<ControlObjectDesiredState> Objects)
 {
     public static ControlDesiredState Empty { get; } = new([]);
+
+    /// <summary>Owned settings awaiting confirmed release; persisted by the control plane with desired state.</summary>
+    public IReadOnlyList<ControlObjectDesiredState> PendingReleases { get; init; } = [];
 
     public ControlObjectDesiredState? ForObject(string objectId)
         => Objects.FirstOrDefault(entry => string.Equals(

@@ -11,6 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 try {
     . (Join-Path $PSScriptRoot 'ResourceManager.DirectoryRegistration.ps1')
+    . (Join-Path $PSScriptRoot 'ResourceManager.LegacyStartup.ps1')
     $registration = New-ResourceManagerDirectoryRegistration -PackageRoot $PackageRoot `
         -RegistrationScriptPath $PSCommandPath -Unregister:$Unregister
     if ($PlanOnly) {
@@ -39,6 +40,7 @@ try {
     try {
         Invoke-ResourceManagerDirectoryRegistration -Registration $registration -RegistryRoot $root `
             -Unregister:$Unregister
+        Remove-ResourceManagerLegacyStartupTask
     }
     finally { $root.Dispose() }
     [pscustomobject]@{

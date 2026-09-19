@@ -13,7 +13,9 @@ namespace Resource_Manager_APP.Tests;
 /// </summary>
 public sealed class ControlWriterDispatchTests
 {
-    private static ControlObject GpuObject(ControlNumberRange? range = null) => new(
+    private static ControlObject GpuObject(
+        ControlNumberRange? range = null,
+        string accessLevel = ControlAccessLevels.Normal) => new(
         "gpu:test",
         ControlObjectKinds.Gpu,
         "Test GPU",
@@ -25,7 +27,8 @@ public sealed class ControlWriterDispatchTests
                 ControlValueKinds.Number,
                 Supported: false,
                 UnavailableReason: "写入器还没接",
-                Range: range ?? new ControlNumberRange(-500, 500, 5, "MHz", 0))
+                Range: range ?? new ControlNumberRange(-500, 500, 5, "MHz", 0),
+                RequiredAccessLevel: accessLevel)
         ],
         AdapterIndex: 0);
 
@@ -49,11 +52,62 @@ public sealed class ControlWriterDispatchTests
         Assert.Equal("W", resolved.Range.Unit);
     }
 
+    /// <summary>
+    /// 档位够不着的项，写入层直接拒，硬件一次都不碰。
+    ///
+    /// 界面上那一项本来就是灰的，勾选框也勾不上。之所以这里还要判一次，
+    /// 是因为"这一项属于哪一档"是这条数据自己的属性 —— 走预设、走导入的配置
+    /// 都是同一个答案，不是只有画面那条路才算数。
+    /// </summary>
+    [Fact]
+    public async Task ASettingAboveTheCurrentAccessLevelIsRefusedWithoutTouchingTheHardware()
+    {
+        var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
+        var writeLayer = new ControlWriteLayer(
+            new StubCatalog(GpuObject(accessLevel: ControlAccessLevels.Root)),
+            [writer],
+            StubAccessLevel.Normal);
+
+        var report = await writeLayer.WriteAsync(
+            new ControlDesiredState([
+                new ControlObjectDesiredState(
+                    "gpu:test",
+                    [new ControlSetting("gpu.core-clock-offset", Number: 45)])
+            ]),
+            CancellationToken.None);
+
+        Assert.Equal(ControlApplyStatuses.Unsupported, report.Outcomes[0].Status);
+        Assert.Contains("Root", report.Outcomes[0].Message);
+        Assert.Empty(writer.Written);
+    }
+
+    /// <summary>切到那一档之后同一条设定就写得下去了。</summary>
+    [Fact]
+    public async Task TheSameSettingGoesThroughOnceTheAccessLevelCoversIt()
+    {
+        var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
+        var writeLayer = new ControlWriteLayer(
+            new StubCatalog(GpuObject(accessLevel: ControlAccessLevels.Normal)),
+            [writer],
+            new StubAccessLevel(ControlAccessLevels.Normal));
+
+        var report = await writeLayer.WriteAsync(
+            new ControlDesiredState([
+                new ControlObjectDesiredState(
+                    "gpu:test",
+                    [new ControlSetting("gpu.core-clock-offset", Number: 45)])
+            ]),
+            CancellationToken.None);
+
+        Assert.Equal(ControlApplyStatuses.Applied, report.Outcomes[0].Status);
+        Assert.Equal(45, Assert.Single(writer.Written).Number);
+    }
+
     [Fact]
     public async Task ExecutorWritesThroughTheWriterThatClaimsTheCapability()
     {
         var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
-        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer], StubAccessLevel.Normal);
 
         var report = await executor.WriteAsync(
             new ControlDesiredState([
@@ -74,7 +128,7 @@ public sealed class ControlWriterDispatchTests
         {
             Availability = ControlWriteAvailability.No("这块卡不开放这一项。")
         };
-        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+        var executor = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer], StubAccessLevel.Normal);
 
         var report = await executor.WriteAsync(
             new ControlDesiredState([
@@ -107,8 +161,7 @@ public sealed class ControlWriterDispatchTests
         ]));
         var plane = new ControlPlane(
             store,
-            new ControlWriteLayer(catalog, [writer]),
-            catalog);
+            new ControlWriteLayer(catalog, [writer], StubAccessLevel.Normal));
 
         await plane.SetObjectSettingsAsync("gpu:test", [], CancellationToken.None);
 
@@ -132,7 +185,7 @@ public sealed class ControlWriterDispatchTests
             Availability = ControlWriteAvailability.Yes(
                 new ControlNumberRange(-30, 10, 1, ControlUnits.Step, 0))
         };
-        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer], StubAccessLevel.Normal);
 
         var report = await writeLayer.WriteAsync(
             new ControlDesiredState([
@@ -157,7 +210,7 @@ public sealed class ControlWriterDispatchTests
     public async Task SettingWithoutUnitIsReadAsTheCapabilityUnit()
     {
         var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
-        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer]);
+        var writeLayer = new ControlWriteLayer(new StubCatalog(GpuObject()), [writer], StubAccessLevel.Normal);
 
         var report = await writeLayer.WriteAsync(
             new ControlDesiredState([
@@ -253,5 +306,16 @@ public sealed class ControlWriterDispatchTests
             Saved = desired;
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>档位替身。真的那个存在文件里，这里只要一个固定值。</summary>
+    private sealed class StubAccessLevel(string level) : IControlAccessLevel
+    {
+        public static StubAccessLevel Normal { get; } = new(ControlAccessLevels.Normal);
+
+        public string Current => level;
+
+        public Task SetAsync(string value, CancellationToken cancellationToken)
+            => throw new NotSupportedException("测试不改档位。");
     }
 }

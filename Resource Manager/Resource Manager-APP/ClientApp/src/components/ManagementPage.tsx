@@ -11,6 +11,7 @@ import {
   useFrontendVisibilityDemand
 } from "../frontendWork/useFrontendVisibilityDemand";
 import { componentDisplayName, componentPurpose, userFacingMessage } from "../presentation/userFacingText";
+import { isSettledDependencyMessage } from "../presentation/backendMessage";
 import type { SoftwareContextMenuTarget } from "./SoftwareContextMenu";
 import {
   browserRuntimeManagementSubpageId,
@@ -312,6 +313,18 @@ function SoftwareCard(props: {
   const demandId = frontendVisibilityDemandId("management.software", props.software.id);
   const key = () => managementActionKey("software", props.software.id);
   const activeLabel = () => props.actionLabels[key()];
+  // 这张卡要不要说话：状态已经由按钮表达，只复述状态的消息一律不显示。
+  const cardPurpose = () => {
+    if (isSettledDependencyMessage(props.software.messageCode)) {
+      return "";
+    }
+    return props.software.messageCode
+      ? softwareSummary(props.software)
+      : userFacingMessage(
+        props.software.message,
+        softwareDisplayKindLabel(props.software.kind, props.software.displayKind));
+  };
+
   return (
     <article
       {...frontendVisibilitySurface(`visible.${demandId}.surface`, [demandId])}
@@ -334,13 +347,13 @@ function SoftwareCard(props: {
           </Show>
         </div>
         <SoftwareIssueTagStrip issues={props.software.issues} />
-        <div class="management-card-purpose">
-          {props.software.messageCode
-            ? softwareSummary(props.software)
-            : userFacingMessage(
-              props.software.message,
-              softwareDisplayKindLabel(props.software.kind, props.software.displayKind))}
-        </div>
+        {/*
+          这一行**只在有话要说时才出现**。状态由右边的按钮表达，
+          再用一句话复述"已安装在哪个目录"、"可以从官方下载"只是重复。
+        */}
+        <Show when={cardPurpose()}>
+          <div class="management-card-purpose">{cardPurpose()}</div>
+        </Show>
       </div>
       <div class="software-actions">
         <Show

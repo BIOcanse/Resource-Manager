@@ -567,7 +567,7 @@ function buildGpuSpecializedUsages(snapshot: GpuSpecializedTelemetrySnapshot | u
     const usages = adapter.counters
       .map((counter) => ({
         counterId: counter.counterId,
-        label: counter.displayName || labelForSpecializedCounter(counter.counterId),
+        label: labelForSpecializedCounter(counter.counterId, counter.displayName),
         value: sanitizePercent(counter.value),
         unit: counter.unit || "%",
         providerId: counter.providerId,
@@ -611,7 +611,7 @@ function specializedCounterOrder(counterId: string) {
   return 100;
 }
 
-function labelForSpecializedCounter(counterId: string) {
+function labelForSpecializedCounter(counterId: string, fallback?: string) {
   const normalized = counterId.toLowerCase();
   if (normalized.includes(".nvidia.rt.")) {
     return uiText.gpuScheduling.rtUsage;
@@ -632,7 +632,7 @@ function labelForSpecializedCounter(counterId: string) {
     return uiText.gpuScheduling.cdnaUsage;
   }
 
-  return uiText.gpuScheduling.specializedUsage;
+  return fallback || uiText.gpuScheduling.specializedUsage;
 }
 
 function compareGpuPositions(

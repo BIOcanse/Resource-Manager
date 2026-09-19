@@ -125,6 +125,22 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<FanControlCoreClient>();
         services.AddSingleton<IControlWriter, FanControlWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
+        // 机箱形态读一次就够，所以做成单例 —— 见 WindowsChassisKindReader。
+        services.AddSingleton<WindowsChassisKindReader>();
+        /*
+         * 「重新检测」要清的那些缓存。
+         *
+         * 都注册到同一个接口上，端点遍历一遍就够 —— 以后谁记了探测缓存，
+         * 只要实现这个接口就自动被清到，不用回头改端点。
+         */
+        services.AddSingleton<IControlDetectionCache>(
+            provider => provider.GetRequiredService<WindowsChassisKindReader>());
+        services.AddSingleton<IControlDetectionCache>(
+            provider => provider.GetRequiredService<FanControlCoreClient>());
+        services.AddSingleton<IControlDetectionCache>(
+            provider => provider.GetServices<IControlWriter>()
+                .OfType<NvidiaGpuControlWriter>()
+                .First());
         services.AddSingleton<IControlObjectCatalog, WindowsControlObjectCatalog>();
         // 快速扫描读主文件表，全扫描逐级遍历。进来的请求由前者按模式分派，
         // 不匹配就把请求原样交给后者 —— 模式是用户选的，程序不替他改。

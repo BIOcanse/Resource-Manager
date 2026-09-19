@@ -102,8 +102,17 @@ public sealed class ControlActualStateReader(
             {
                 continue;
             }
-            // 调不了的项也不去读 —— 读不到是必然的，徒增一次硬件调用。
-            return availability.CanWrite
+            /*
+             * **判据是"读不读得到"，不是"能不能写"。**
+             *
+             * 先前这里写的是"调不了的项也不去读，读不到是必然的" —— 那个前提是错的：
+             * 显卡的温度墙、降速阈值、保护关机阈值在消费级卡上全都读得到
+             * （89 / 102 / 105），只是驱动不接受改。那几个数对用户有用，
+             * 界面会把它们单独列成只读项。
+             *
+             * 仍然不去读"既写不了也读不到"的那些 —— 那才是徒增一次硬件调用。
+             */
+            return availability.IsReadable
                 ? writer.ReadAsync(controlObject, capability, cancellationToken)
                 : null;
         }

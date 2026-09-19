@@ -12,16 +12,24 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// </summary>
 public sealed class ControlPlane(
     IControlDesiredStateStore store,
-    IControlWriteLayer writeLayer,
-    IControlObjectCatalog catalog) : IControlPlane
+    IControlWriteLayer writeLayer) : IControlPlane
 {
     private readonly object gate = new();
+    private readonly SemaphoreSlim operations = new(1, 1);
     private ControlApplyReport lastApply = ControlApplyReport.Empty;
 
     public async Task<ControlStateView> ReadStateAsync(CancellationToken cancellationToken)
     {
-        var desired = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        return new ControlStateView(desired, ReadLastApply());
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var desired = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            return new ControlStateView(desired, ReadLastApply());
+        }
+        finally
+        {
+            operations.Release();
+        }
     }
 
     /// <summary>
@@ -32,15 +40,23 @@ public sealed class ControlPlane(
         ControlDesiredState desired,
         CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(desired);
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ArgumentNullException.ThrowIfNull(desired);
 
-        var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        // 空设定的对象整条去掉，不留一条空的 —— "不管这个对象"和"管它但什么都没设"
-        // 在状态机里应当是同一件事的同一种写法。
-        var next = new ControlDesiredState(desired.Objects
-            .Where(static entry => entry.Settings.Count > 0)
-            .ToArray());
-        return await SaveAndApplyAsync(current, next, cancellationToken).ConfigureAwait(false);
+            var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            // 空设定的对象整条去掉，不留一条空的 —— "不管这个对象"和"管它但什么都没设"
+            // 在状态机里应当是同一件事的同一种写法。
+            var next = new ControlDesiredState(desired.Objects
+                .Where(static entry => entry.Settings.Count > 0)
+                .ToArray());
+            return await SaveAndApplyAsync(current, next, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            operations.Release();
+        }
     }
 
     public async Task<ControlStateView> SetObjectSettingsAsync(
@@ -48,21 +64,29 @@ public sealed class ControlPlane(
         IReadOnlyList<ControlSetting> settings,
         CancellationToken cancellationToken)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(objectId);
-        ArgumentNullException.ThrowIfNull(settings);
-
-        var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        var objects = current.Objects
-            .Where(entry => !string.Equals(entry.ObjectId, objectId, StringComparison.Ordinal))
-            .ToList();
-        // 空设定表示"别管这个对象了"，所以整条去掉而不是留一条空的。
-        if (settings.Count > 0)
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            objects.Add(new ControlObjectDesiredState(objectId, settings));
-        }
+            ArgumentException.ThrowIfNullOrWhiteSpace(objectId);
+            ArgumentNullException.ThrowIfNull(settings);
 
-        var next = new ControlDesiredState(objects);
-        return await SaveAndApplyAsync(current, next, cancellationToken).ConfigureAwait(false);
+            var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            var objects = current.Objects
+                .Where(entry => !string.Equals(entry.ObjectId, objectId, StringComparison.Ordinal))
+                .ToList();
+            // 空设定表示"别管这个对象了"，所以整条去掉而不是留一条空的。
+            if (settings.Count > 0)
+            {
+                objects.Add(new ControlObjectDesiredState(objectId, settings));
+            }
+
+            var next = new ControlDesiredState(objects);
+            return await SaveAndApplyAsync(current, next, cancellationToken, objectId).ConfigureAwait(false);
+        }
+        finally
+        {
+            operations.Release();
+        }
     }
 
     /// <summary>
@@ -73,85 +97,64 @@ public sealed class ControlPlane(
     private async Task<ControlStateView> SaveAndApplyAsync(
         ControlDesiredState current,
         ControlDesiredState next,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? objectId = null)
     {
+        var pending = current.PendingReleases.Concat(current.Objects)
+            .GroupBy(target => target.ObjectId, StringComparer.Ordinal)
+            .Select(group => new ControlObjectDesiredState(group.Key, group.SelectMany(target => target.Settings)
+                .DistinctBy(setting => setting.CapabilityId)
+                .Where(setting => !next.Objects.Any(target => target.ObjectId == group.Key
+                    && target.Settings.Any(kept => kept.CapabilityId == setting.CapabilityId))).ToArray()))
+            .Where(target => target.Settings.Count > 0).ToArray();
+        next = next with { PendingReleases = pending };
         await store.SaveAsync(next, cancellationToken).ConfigureAwait(false);
-        // 撤掉一项不能只是"以后不再写它"：硬件上还留着上次写进去的值。
-        // 所以这一次施加，除了新的期望，还要把撤掉的那些明确写回硬件默认。
-        var plan = WithReleasedRestoredToDefault(current, next);
-        var report = await writeLayer.WriteAsync(plan, cancellationToken).ConfigureAwait(false);
+        return await ApplyStoredAsync(next, cancellationToken, objectId).ConfigureAwait(false);
+    }
+
+    private async Task<ControlStateView> ApplyStoredAsync(
+        ControlDesiredState next, CancellationToken cancellationToken, string? objectId = null)
+    {
+        var releases = next.PendingReleases.Where(target => objectId is null || target.ObjectId == objectId).ToArray();
+        var releaseReport = releases.Length == 0
+            ? ControlApplyReport.Empty
+            : await writeLayer.ReleaseAsync(new(releases), next, cancellationToken).ConfigureAwait(false);
+        var pending = next.PendingReleases.Select(target => new ControlObjectDesiredState(target.ObjectId,
+            target.Settings.Where(setting => !releaseReport.Outcomes.Any(outcome =>
+                outcome.ObjectId == target.ObjectId && outcome.CapabilityId == setting.CapabilityId
+                && outcome.Status == ControlApplyStatuses.Applied)).ToArray()))
+            .Where(target => target.Settings.Count > 0).ToArray();
+        if (pending.Sum(target => target.Settings.Count) != next.PendingReleases.Sum(target => target.Settings.Count))
+        {
+            next = next with { PendingReleases = pending };
+            await store.SaveAsync(next, cancellationToken).ConfigureAwait(false);
+        }
+        var selected = objectId is null ? next : new ControlDesiredState(
+            next.Objects.Where(target => target.ObjectId == objectId).ToArray());
+        var applied = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
+        var retained = ReadLastApply().Outcomes.Where(outcome => objectId is not null && outcome.ObjectId != objectId);
+        var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).ToArray(), DateTimeOffset.UtcNow);
         WriteLastApply(report);
         return new ControlStateView(next, report);
     }
 
     public async Task<ControlApplyReport> ReassertAsync(CancellationToken cancellationToken)
     {
-        var desired = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (desired.Objects.Count == 0)
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            // 没设过就什么都不做 —— 不去把机器"重置"成我们以为的默认值。
-            return ReadLastApply();
+            var desired = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (desired.Objects.Count == 0 && desired.PendingReleases.Count == 0)
+            {
+                // 没设过就什么都不做 —— 不去把机器"重置"成我们以为的默认值。
+                return ReadLastApply();
+            }
+            return (await ApplyStoredAsync(desired, cancellationToken).ConfigureAwait(false)).LastApply;
         }
-        var report = await writeLayer.WriteAsync(desired, cancellationToken).ConfigureAwait(false);
-        WriteLastApply(report);
-        return report;
-    }
-
-    /// <summary>
-    /// 在这一次要施加的计划里，补上"撤掉的那些项恢复默认"。
-    ///
-    /// 存下去的期望状态里**不留**这些补充项 —— 用户撤掉了就是撤掉了，
-    /// 不该在他的设定里冒出一条他没设过的"= 默认值"。它们只属于这一次写入。
-    /// 默认值取自目录里那一项的范围；没有默认值的（比如曲线）没法恢复，跳过。
-    /// </summary>
-    private ControlDesiredState WithReleasedRestoredToDefault(
-        ControlDesiredState previous,
-        ControlDesiredState next)
-    {
-        var objects = catalog.ReadObjects().Objects
-            .ToDictionary(static entry => entry.Id, StringComparer.Ordinal);
-        var plan = next.Objects.ToDictionary(
-            static entry => entry.ObjectId,
-            static entry => entry.Settings.ToList(),
-            StringComparer.Ordinal);
-
-        foreach (var before in previous.Objects)
+        finally
         {
-            if (!objects.TryGetValue(before.ObjectId, out var controlObject))
-            {
-                continue;
-            }
-            var stillSet = plan.TryGetValue(before.ObjectId, out var kept)
-                ? kept
-                : [];
-            foreach (var setting in before.Settings)
-            {
-                if (stillSet.Any(entry => string.Equals(
-                        entry.CapabilityId,
-                        setting.CapabilityId,
-                        StringComparison.Ordinal)))
-                {
-                    continue;
-                }
-                var capability = controlObject.Capabilities.FirstOrDefault(entry =>
-                    string.Equals(entry.Id, setting.CapabilityId, StringComparison.Ordinal));
-                if (capability?.Range?.DefaultValue is not { } standard)
-                {
-                    continue;
-                }
-                if (!plan.TryGetValue(before.ObjectId, out var settings))
-                {
-                    settings = [];
-                    plan[before.ObjectId] = settings;
-                }
-                settings.Add(new ControlSetting(setting.CapabilityId, Number: standard));
-            }
+            operations.Release();
         }
-
-        return new ControlDesiredState(plan
-            .Where(static entry => entry.Value.Count > 0)
-            .Select(static entry => new ControlObjectDesiredState(entry.Key, entry.Value))
-            .ToArray());
     }
 
     private ControlApplyReport ReadLastApply()

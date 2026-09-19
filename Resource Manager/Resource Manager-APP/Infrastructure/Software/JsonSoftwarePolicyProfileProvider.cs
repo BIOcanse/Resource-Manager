@@ -1,63 +1,60 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Software;
-using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
-public sealed class JsonSoftwarePolicyProfileProvider(IHostEnvironment environment) : ISoftwarePolicyProfileProvider
+/// <summary>
+/// 软件策略档案：**随发行版发出去的那一份标准配置，就这一份。**
+///
+/// 它打在程序集里，解压即用 —— 这是便携软件，没有安装期，
+/// 也就没有"用户那份和自带那份打架"这种事，不需要导入、合并或覆盖。
+///
+/// 先前这里读的是 <c>UserData/SoftwareProfiles/game-mode.local.json</c>，
+/// 那个目录在 .gitignore 里、也不随发行版走，于是任何一份新解压出来的程序
+/// **一条策略都没有**：分组、状态矩阵、名单全是空的。
+///
+/// 档案里那份 <c>softwareAssignments</c> 也是配置的一部分：它的
+/// <c>softwareId</c> 是产品级的卸载注册表键（装在哪台机器上都一样），
+/// 所以带得走。各机器的安装路径不带 —— 那个在本机发现时自己查。
+/// </summary>
+public sealed class JsonSoftwarePolicyProfileProvider : ISoftwarePolicyProfileProvider
 {
+    private const string ProfileResourceName =
+        "ResourceManager.Configuration.SoftwareProfiles.official.json";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly string profilePath = Path.Combine(
-        PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-        "UserData",
-        "SoftwareProfiles",
-        "game-mode.local.json");
-    private DateTime cachedLastWriteUtc = DateTime.MinValue;
-    private SoftwarePolicyProfile cachedProfile = SoftwarePolicyProfile.Empty;
+    /// <summary>
+    /// 读一次就够：它是随程序集发出来的，运行期间不会变。
+    /// </summary>
+    private static readonly Lazy<SoftwarePolicyProfile> Profile = new(Load);
 
-    public async Task<SoftwarePolicyProfile> GetProfileAsync(CancellationToken cancellationToken)
+    public Task<SoftwarePolicyProfile> GetProfileAsync(CancellationToken cancellationToken)
+        => Task.FromResult(Profile.Value);
+
+    private static SoftwarePolicyProfile Load()
     {
-        if (!File.Exists(profilePath))
+        using var stream = typeof(JsonSoftwarePolicyProfileProvider).Assembly
+            .GetManifestResourceStream(ProfileResourceName);
+        if (stream is null)
         {
+            // 读不出来只有一种可能：打包漏了它。这不是"这台机器没配"，是发行版坏了。
             return SoftwarePolicyProfile.Empty;
         }
 
-        var lastWriteUtc = File.GetLastWriteTimeUtc(profilePath);
-        if (cachedLastWriteUtc == lastWriteUtc)
-        {
-            return cachedProfile;
-        }
-
-        await gate.WaitAsync(cancellationToken);
         try
         {
-            lastWriteUtc = File.GetLastWriteTimeUtc(profilePath);
-            if (cachedLastWriteUtc == lastWriteUtc)
-            {
-                return cachedProfile;
-            }
-
-            await using var stream = File.OpenRead(profilePath);
-            var document = await JsonSerializer.DeserializeAsync<SoftwarePolicyProfileDocument>(stream, JsonOptions, cancellationToken);
-            var profile = document is null ? SoftwarePolicyProfile.Empty : ToProfile(document);
-            cachedProfile = profile;
-            cachedLastWriteUtc = lastWriteUtc;
-            return profile;
+            var document = JsonSerializer.Deserialize<SoftwarePolicyProfileDocument>(
+                stream,
+                JsonOptions);
+            return document is null ? SoftwarePolicyProfile.Empty : ToProfile(document);
         }
         catch (JsonException)
         {
-            cachedProfile = SoftwarePolicyProfile.Empty;
-            cachedLastWriteUtc = lastWriteUtc;
-            return cachedProfile;
-        }
-        finally
-        {
-            gate.Release();
+            return SoftwarePolicyProfile.Empty;
         }
     }
 

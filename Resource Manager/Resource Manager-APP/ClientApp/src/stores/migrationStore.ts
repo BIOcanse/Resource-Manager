@@ -130,7 +130,8 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
   const [discoveryProcessNames, setDiscoveryProcessNames] = createSignal("");
   const [allowMediumRisk, setAllowMediumRisk] = createSignal(false);
   const [plan, setPlan] = createSignal<MigrationPlan | null>(null);
-  const [status, setStatus] = createSignal(uiText.stores.notPreviewed);
+  const [statusMessage, setStatus] = createSignal<string | null>(null);
+  const status = () => statusMessage() ?? uiText.stores.notPreviewed;
   const [taskRevision, setTaskRevision] = createSignal(0);
   const unsubscribeOperations = options.operations.subscribe(setOperationProjection);
   const unsubscribeTasks = options.tasks.subscribe(() => {
@@ -159,7 +160,7 @@ export function createMigrationStore(options: MigrationStoreOptions): MigrationW
 
   function resetPlan() {
     setPlan(null);
-    setStatus(uiText.stores.notPreviewed);
+    setStatus(null);
   }
 
   async function refreshRoots() {
