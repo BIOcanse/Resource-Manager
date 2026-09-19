@@ -14,6 +14,9 @@ import frontendVisibilityDemandJourney from "./frontendVisibilityDemandJourney.j
 import optimizationReportsJourney from "./optimizationReportsJourney.js";
 import r2RemediationJourney from "./r2RemediationJourney.js";
 import resourceBarColorModesJourney from "./resourceBarColorModesJourney.js";
+import resourceBarProportionJourney from "./resourceBarProportionJourney.js";
+import controlReadingsJourney from "./controlReadingsJourney.js";
+import controlCardJourney from "./controlCardJourney.js";
 import resourceLayoutTaskJourney from "./resourceLayoutTaskJourney.js";
 import resourceTableContentStateJourney from "./resourceTableContentStateJourney.js";
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
@@ -31,6 +34,9 @@ const allJourneys = [
   ["ui-primitives", uiPrimitivesJourney],
   ["settings-source", settingsSourceJourney],
   ["resource-bar-color-modes", resourceBarColorModesJourney],
+  ["resource-bar-proportion", resourceBarProportionJourney],
+  ["control-readings", controlReadingsJourney],
+  ["control-card", controlCardJourney],
   ["theme-consistency", themeConsistencyJourney],
   ["software-issues", softwareIssueJourney],
   ["device-topology-source", deviceTopologySourceJourney],
@@ -102,7 +108,7 @@ try {
       ]);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}\n`
-        + `Browser gate diagnostic: ${JSON.stringify({ name, requests, pageState })}`,
+        + `Browser gate diagnostic: ${JSON.stringify({ name, requests, pageState, serverOutput })}`,
         { cause: error });
     } finally {
       await context.close();

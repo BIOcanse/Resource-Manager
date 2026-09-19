@@ -55,24 +55,26 @@ const Accumulator = struct {
         }
     }
 
-    fn decide(self: *const Accumulator, bank: *const Bank, mode: protocol.MatchMode) Decision {
+    fn decide(self: *const Accumulator, mode: protocol.MatchMode) Decision {
         if (mode != .portable_process) {
             if (self.distinct_entry_count == 0) return .noMatch(self);
             if (self.distinct_entry_count != 1) return .conflict(self);
             return .matched(self, self.first_entry_index.?, .confirmed);
         }
 
+        // 进程模式**只看可执行文件名**。
+        //
+        // 先前还要求产品名佐证才肯给 confirmed，只有 exe 名就降成 candidate。
+        // 问题是目录的数据来源（Steam 榜单、WinGet 清单、本机核对）结构上都不提供
+        // PE 的 ProductName —— 它只存在于可执行文件自己的版本资源里。
+        // 结果是 104 条带 exe 名的条目里 96 条永远到不了 confirmed，
+        // 全被上层降级显示成"其它软件"。规则要的证据，数据源给不出来。
+        //
+        // exe 名在目录里唯一命中已经是确定的识别。重名才是真正说不清的情况，
+        // 那时返回冲突，由上层决定（见 decide 的调用方）。
         const executable_index = self.executable_entry_index orelse return .noMatch(self);
-        if (self.executable_conflict or self.product_conflict or
-            (self.product_entry_index != null and self.product_entry_index.? != executable_index))
-        {
-            return .conflict(self);
-        }
-        if (self.matched_product_fact) return .matched(self, executable_index, .confirmed);
-        if (self.saw_product_fact and bank.entries[executable_index].product_alias_count != 0) {
-            return .noMatch(self);
-        }
-        return .matched(self, executable_index, .candidate);
+        if (self.executable_conflict) return .conflict(self);
+        return .matched(self, executable_index, .confirmed);
     }
 };
 
@@ -182,7 +184,7 @@ pub fn match(
         );
     }
 
-    const decision = accumulator.decide(bank, mode);
+    const decision = accumulator.decide(mode);
     return .{
         .code = .ok,
         .output = decision.toOutput(config, bank, catalog_generation, input.query_epoch),

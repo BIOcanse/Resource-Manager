@@ -63,14 +63,12 @@ curveStops.forEach((temperature, index) => {
     `${temperature} 度上曲线要正好落在控制点 ${shape[index]}`);
 });
 
-// 两点之间是平滑过渡，不是折线。
-// 中点不能用来判断：邻居对称时样条在中点本来就等于中值。
-// 看四分之一点 —— 折线会给 25，样条不会。
+// 两点之间严格直线插值，不受相邻段斜率影响。
 const kink = curveFromStops([0, 0, 0, 100, 100, 100, 100, 100, 100, 100]);
-assert.notEqual(
+assert.equal(
   Math.round(percentAt(kink, 51.25)),
   25,
-  "折线才会在四分之一点正好取到 25");
+  "四分之一点正好取到 25");
 
 // 样条在陡峭处会冲出范围，必须夹回来 —— 转速没有负的，也没有超过满转的。
 for (let temperature = 40; temperature <= 85; temperature += 0.5) {

@@ -51,6 +51,13 @@
                       LogicalName="ResourceManager.Configuration.FreedomPoints.backend.json" />
     <EmbeddedResource Include="Configuration\Cpu\baseline-defaults.json"
                       LogicalName="ResourceManager.Configuration.Cpu.baseline-defaults.json" />
+    <!--
+      随发行版提供的软件策略档案（mergeOrder 里 OfficialResourceManagerProfile 那一层）。
+      它是产品数据，不是运行时状态 —— 所以随程序集发出去，
+      而不是躺在 UserData 下面等用户自己有。
+    -->
+    <EmbeddedResource Include="Configuration\SoftwareProfiles\official.json"
+                      LogicalName="ResourceManager.Configuration.SoftwareProfiles.official.json" />
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="ThirdPartyNotices\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

@@ -47,26 +47,116 @@ const deDeAppCopy: AppCopy = {
       namePlaceholder: "Preset name",
       remove: "Delete preset"
     },
-    on: "On",
     overclock: {
-      title: "Overclocking disclaimer",
-      body: "Changing clocks, voltage or power limits shortens hardware life and may void your warranty."
-        + " Intel's integrated-graphics interface refuses every overclocking call until you accept this.",
-      accept: "I understand, enable it",
+      title: "Intel integrated graphics authorization",
+      body: "Intel's integrated-graphics control library requires your consent before it "
+        + "allows any clock change, negative offsets included. That is its own requirement "
+        + "and has nothing to do with other graphics cards.",
+      accept: "Accept",
       revoke: "Withdraw consent",
       accepted: "Accepted"
     },
     ownership: {
       label: "Control owner",
-      firmware: "Firmware",
-      app: "This app",
+      firmware: "Firmware-managed",
+      app: "App-managed",
       firmwareNote: "The firmware is managing this right now; the settings below have no effect."
     },
+    notice: {
+      warrantyTitle: "About your warranty",
+      warrantyBody: [
+        "Vendor terms usually count any out-of-spec operation as a modification, in either "
+          + "direction — taken literally, that includes undervolting.",
+        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
+          + "walls stops at power-off and records nothing in the processor; raising clocks or "
+          + "voltage sets a flag in the processor that service can read.",
+        "On laptops many of these limits come from the system vendor's BIOS rather than the "
+          + "chip vendor's defaults, so how far this page can go is their decision too."
+      ],
+      riskTitle: "Before you start",
+      next: "Next",
+      accept: "Understood"
+    },
+    accessLevel: {
+      title: "Adjustment access",
+      intro: "Decides which items the Control page lets you change. Moving up a level "
+        + "changes none of your existing settings; it only unlocks more items.",
+      name: { normal: "Normal", root: "root" },
+      summary: {
+        normal: "Power, current, fan and standard clock adjustments. "
+          + "Incorrect settings can cause instability.",
+        root: "Items nothing catches: writing voltage directly, changing the base clock. "
+          + "Rarely needed."
+      },
+      hint: {
+        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
+        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+      },
+      consequences: {
+        normal: [
+          "Too little voltage shuts the machine off; too much clock offset corrupts or "
+            + "blanks the screen. Both clear on reboot and harm nothing.",
+          "Raising the thermal limit moves the overheat protection outward; running that "
+            + "way for long ages the silicon faster."
+        ],
+        root: [
+          "Writing voltage and base clock directly has no software guard at all; one wrong "
+            + "number can leave the machine unable to boot.",
+          "Nothing here is needed day to day. Only change a value you already understand."
+        ]
+      },
+      disclaimer: {
+        normal: "Some settings can make the computer unstable, and on a machine with an "
+          + "existing design fault they carry some risk of damage. This software accepts "
+          + "no responsibility for any consequence of changing hardware configuration.",
+        root: "In root mode some adjustments are extremely dangerous and are very likely "
+          + "to cause system instability or permanent hardware damage. This software accepts "
+          + "no responsibility for any consequence of changing hardware configuration."
+      },
+      confirmTitle: (name: string) => `Switch to ${name}?`,
+      confirmAction: "Switch",
+      cancel: "Cancel",
+      saveFailed: "Could not switch; still on the previous level."
+    },
+    channel: {
+      nvapi: "NVAPI",
+      "nvapi-drs": "Driver profile",
+      nvml: "NVML",
+      "oem-ec": "System firmware",
+      "amd-smu": "AMD SMU",
+      "fan-core": "Fan core",
+      igcl: "Intel graphics",
+      adlx: "AMD ADLX"
+    } as Record<string, string>,
+    channelHint: "Which channel this setting is actually written through.",
+    detect: "Re-detect hardware",
+    detecting: "Detecting",
+    readings: "Read-only readings",
+    curveExecutionLabel: "Who runs the curve",
+    takeoverCoversOthers: (others: string) =>
+      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
+    curveExecutionFirmware: "Write to firmware",
+    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
+    curveExecutionSoftware: "Software takeover",
+    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
     createCurve: "New curve",
+    readingFirmwareCurve: "Reading the firmware curve…",
+    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
     curvePreview: "Curve preview",
     saveFailed: "Save failed",
     apply: "Apply",
     discard: "Discard",
+    term: {
+      portable: "Laptop",
+      fixed: "Desktop",
+      cpu: "CPU fan",
+      "curve-firmware": "Firmware curve",
+      "curve-software": "Software curve",
+      "curve-fixed-steps": "Fixed-step firmware table",
+      gpu: "GPU fan",
+      intake: "Intake fan",
+      case: "Case fan"
+    } as Record<string, string>,
     attachment: {
       integrated: "Integrated",
       discrete: "Discrete",

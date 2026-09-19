@@ -15,26 +15,33 @@
 */
 .control-object-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 
 .control-object {
-  padding: 12px 14px;
+  min-width: 0;
+  container-type: inline-size;
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface);
+  box-shadow: var(--elev-1);
 }
 
-/* 一项都控不了：压暗，但不隐藏 —— 用户要看得见它存在以及为什么。 */
-.control-object-inactive {
-  opacity: 0.72;
-}
+/*
+  一项都控不了的卡。**不压暗整张卡** —— 用户要看得见它存在以及为什么，
+  而压暗恰恰让那个"为什么"最难读。卡里每一行自己会说明状态。
+*/
 
 .control-object header {
   display: grid;
   gap: 2px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.control-object header strong {
+  font-size: 14px;
 }
 
 .control-object-platform {
@@ -42,22 +49,82 @@
   color: var(--muted);
 }
 
+/*
+  能力列表。**行与行之间用细线分，不是留空。**
+  留空的话一行里的名称、说明、滑块在视觉上和相邻行黏在一起，
+  分不清哪句说明属于哪一项；细线一画，每一行是一行。
+*/
 .control-capabilities {
   margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 8px;
 }
 
-.control-capabilities li {
+/*
+  一行三栏：名称 | 编辑器 | 状态与实际值。说明单独占一整行。
+
+  编辑器那一栏**有上限宽度**：一条 ±30 档的滑块铺满一米宽既不好按，
+  也让人误以为分辨率很高。右栏定宽，于是所有行的状态和读数竖着对齐，
+  一眼扫得下来。
+*/
+.control-capability {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(180px, 17rem) minmax(0, 18rem) minmax(0, 1fr);
+  grid-template-areas:
+    "label editor meta"
+    "reason reason reason";
+  align-items: center;
+  gap: 4px 16px;
+  padding: 10px 0;
   font-size: 13px;
 }
 
+.control-capability + .control-capability {
+  border-top: 1px solid var(--line-soft);
+}
+
 .control-capability-label {
+  grid-area: label;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
   font-weight: 600;
+}
+
+.control-capability-meta {
+  grid-area: meta;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.control-capability > .control-editor-shell {
+  grid-area: editor;
+}
+
+/* 曲线要横向空间：让它自己占满一整行，不挤在中间那栏里。 */
+.control-capability > .control-editor-shell-wide {
+  grid-area: editor;
+  min-width: 0;
+}
+
+.control-capability:has(> .control-editor-shell-wide) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label meta" "editor editor" "reason reason";
+}
+
+@container (max-width: 600px) {
+  .control-capability {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "label meta" "editor editor" "reason reason";
+  }
+}
+
+.control-capability > .control-capability-reason {
+  grid-area: reason;
 }
 
 .control-capability-reason,
@@ -73,10 +140,15 @@
 
 /*
   控不了的项置灰。
-  能拖但拖了不会生效的控件是在骗人 —— 压暗并挡掉指针，让它看起来就是不能动的。
+  能拖但拖了不会生效的控件是在骗人 —— 让它看起来就是不能动的。
+
+  用禁用态的设计令牌，不用透明度：透明度会把底下的分隔线一起冲淡，
+  几十行叠起来就是整页发灰。
 */
-.control-editor-off {
-  opacity: 0.45;
+.control-editor-off input[type="range"],
+.control-editor-off button {
+  filter: grayscale(1);
+  opacity: 0.55;
 }
 
 .control-editor-off .fan-curve-chart-off {
@@ -98,8 +170,19 @@
   margin-bottom: 12px;
 }
 
-.control-capability-off {
-  opacity: 0.55;
+/*
+  不能调的那一行。
+
+  **压暗的是控件，不是这一行的信息。** 这一页大部分对象默认归固件管，
+  于是几乎每一行都命中这条 —— 整行压暗的结果就是整页灰蒙蒙，
+  而用户最需要读的恰恰是行名和"为什么不能调"那句话。
+
+  控件本身有原生的禁用样式（下面 .control-editor-off），足够说明它动不了；
+  文字保持正常对比度。
+*/
+.control-capability-off .control-capability-label,
+.control-capability-off .control-capability-meta {
+  color: var(--muted);
 }
 
 /*
@@ -110,10 +193,11 @@
   display: grid;
   gap: 6px;
   margin-top: 16px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface);
+  box-shadow: var(--elev-1);
 }
 
 .control-overclock-consent p {
@@ -170,10 +254,91 @@
 
 /* 能力编辑器：滑块/开关/曲线。 */
 .control-capability-tag {
-  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-strong);
   font-size: 11px;
   font-weight: 400;
+  white-space: nowrap;
   color: var(--muted);
+}
+
+/* 改动还没应用、正在应用：这是要用户接着做点什么的状态，给强调色。 */
+.control-capability-tag-live {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* 没应用上、控不了：安静的红，不是警报。 */
+.control-capability-tag-bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/*
+ * 勾选框：勾上才是下次应用会落实的项。它在标题最前面，
+ * 因为整行的意义都跟着它 —— 没勾的那一行下面的控件是灰的。
+ */
+/*
+  行首那一格：勾选框，或者一把锁。
+
+  两者宽度相同，所以不管哪种状态，名称都从同一个位置起排 ——
+  一列扫下来不会因为图标换了就参差。
+*/
+.control-capability-check,
+.control-capability-lock {
+  flex: none;
+  width: 13px;
+  margin: 0 4px 0 0;
+}
+
+.control-capability-lock {
+  color: var(--muted);
+}
+
+/*
+  **三种状态三种样子。**
+
+  锁住的：名称压成次要色，整行不参与选择。
+  可勾没勾的：常态，勾选框是空的。
+  勾上的：左边一道强调色竖条 + 名称用强调色 —— 扫一眼就知道
+  这次应用会落实哪几项，不用逐个去看方框里有没有勾。
+*/
+.control-capability-locked .control-capability-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.control-capability-on {
+  box-shadow: inset 2px 0 0 var(--accent);
+  padding-left: 10px;
+}
+
+.control-capability-on .control-capability-label {
+  color: var(--accent-strong);
+}
+
+/*
+ * 档位标记。**够得着也挂着**，它本来就是用来指出哪些项危险的。
+ * 所以做成安静的边框字，不是警告色块 —— 一屏好几个的东西不能每个都在喊。
+ */
+/*
+  档位标记：一个点。
+
+  它一直挂着（用户要看得出哪些项危险），所以必须**安静**——
+  一屏十来个，写成"普通"两个字就是十来处重复的噪音，
+  而那两个字本身也说不出危险在哪。颜色说程度，悬停说细节。
+*/
+.control-capability-level {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+.control-capability-level-root {
+  background: var(--danger);
 }
 
 .control-editor {
@@ -182,24 +347,79 @@
   gap: 8px;
 }
 
-.control-editor input[type="range"] {
-  flex: 1;
-  min-width: 0;
+/*
+  锁 / 叉 / 虚圈 / 下载这几个图标的外壳，只为了挂 title ——
+  svg 的 title 属性不弹提示，得由外面这层 span 来弹。
+  布局上完全透明：和它取代的那个图标占一样的位置。
+*/
+.control-capability-lock-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .control-editor-value {
-  min-width: 68px;
+  min-width: 56px;
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 3px;
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--muted);
 }
 
-.control-editor-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
+/*
+  能打字的数值框。
+
+  平时长得和原来那行只读数字一样（无边框、贴右），聚焦或悬停才显出边框 ——
+  它首先是"这一项现在是多少"的读数，其次才是输入框，不该在一屏几十项里
+  排成一片框子抢视线。
+*/
+.control-editor-value-input {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 1px 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.control-editor-value-input:hover:not(:disabled) {
+  border-color: var(--line);
+}
+
+.control-editor-value-input:focus {
+  border-color: var(--accent, #0b7a66);
+  background: var(--surface, transparent);
+  color: var(--fg, inherit);
+  outline: none;
+}
+
+.control-editor-value-input:disabled {
+  color: var(--muted);
+}
+
+/* 微调钮平时藏着，聚焦或悬停再出来，免得一片上下箭头。 */
+.control-editor-value-input::-webkit-inner-spin-button {
+  opacity: 0;
+}
+
+.control-editor-value-input:hover::-webkit-inner-spin-button,
+.control-editor-value-input:focus::-webkit-inner-spin-button {
+  opacity: 1;
+}
+
+.control-editor-value-unit {
+  flex: none;
+  color: var(--muted);
 }
 
 .control-curve-preview {
@@ -210,15 +430,30 @@
   border-radius: var(--radius-sm);
 }
 
-/* 风扇曲线图：点落在曲线上，上下拖。 */
+/*
+  风扇曲线图：点落在曲线上，上下拖。
+
+  **要限宽。** 它的 viewBox 是 100×56，`width: 100%` 加 `height: auto`
+  意味着卡有多宽它就有多高 —— 在一张一千四百像素宽的卡里，这张图会长到
+  七百多像素高，占掉整屏。曲线在四百像素上已经读得清楚了。
+*/
 .fan-curve-chart {
+  display: block;
   width: 100%;
+  max-width: 38rem;
   height: auto;
   margin-top: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   touch-action: none; /* 拖点的时候不要让页面跟着滚 */
+}
+
+.control-curve {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
 }
 
 .fan-curve-grid {
@@ -234,7 +469,7 @@
 .fan-curve-line {
   fill: none;
   stroke: var(--accent, #0b7a66);
-  stroke-width: 1.2;
+  stroke-width: 0.6;
   stroke-linejoin: round;
 }
 
@@ -250,7 +485,7 @@
 .fan-curve-point {
   fill: var(--surface);
   stroke: var(--accent, #0b7a66);
-  stroke-width: 1;
+  stroke-width: 0.5;
 }
 
 .fan-curve-handle:hover .fan-curve-point,
@@ -268,7 +503,7 @@
   stroke-width: 0.6;
 }
 
-/* 改动之后才出现的操作行。 */
+/* Stable card-local commands; disabled controls keep the layout stationary. */
 .control-object-actions {
   display: flex;
   justify-content: flex-end;
@@ -308,22 +543,295 @@
   width: 140px;
 }
 
-/* 应用是整页一次的事，所以按钮在页面上而不是每张卡里。 */
-.control-page-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
-
 /*
   机器现在实际的值，跟在能力名后面。
   它和用户设的值是两回事，所以用弱化的样式 —— 用户设的那个才是可操作的主体。
 */
+/*
+  机器现在实际是多少。
+
+  **不写"当前"两个字**：一个实时点加上位置就说清楚了，而且同一个值
+  还标在滑轨上 —— 设定值和实际值在同一条量纲上，摆在同一条轨道上
+  才看得出差多少。这是恒温器和工控界面里 setpoint/actual 的通行做法。
+*/
 .control-capability-actual {
-  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+
+/* 实时点。它说的是"这是机器此刻的值"，不是某个状态好坏，所以用中性的强调色。 */
+.control-capability-live {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: none;
+}
+
+/*
+  滑轨上的实际值刻度。
+
+  原生 range 的滑块占着两端各半个身位，所以刻度的位置要把那段让出来，
+  否则两端会差半个滑块 —— 标错位置比不标更糟。
+*/
+.control-editor-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.control-editor-track input[type="range"] {
+  width: 100%;
+}
+
+.control-editor-actual-mark {
+  position: absolute;
+  top: 50%;
+  left: calc(8px + (100% - 16px) * var(--control-actual-percent) / 100);
+  width: 2px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/*
+ * 设置页里的调节权限三档。
+ *
+ * 竖着排、每档带一句它放开了什么 —— 用户要选的不是一个抽象等级，
+ * 而是"我愿意看到哪些项"。只给「安全/普通/root」三个词的话等于让人猜。
+ */
+.control-access-level-choices {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/*
+  RadioGroupItem 渲染的是**裸 button**，不给就套上全局主按钮那套样式
+  —— 白底上写白字，档位名就凭空消失了。所以颜色、字重、边框都要自己写全，
+  不能只写背景。和 SegmentedControl 不给 itemClass 是同一个坑。
+*/
+.control-access-level-choice {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.control-access-level-choice:hover:not(.active) {
+  border-color: var(--line);
+  background: var(--hover-bg);
+}
+
+.control-access-level-choice.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.control-access-level-choice-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.control-access-level-choice.active .control-access-level-choice-name {
+  color: var(--accent-strong);
+}
+
+.control-access-level-failed {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.control-access-level-choice-summary {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.control-access-level-confirm {
+  max-width: 480px;
+}
+
+.control-access-level-confirm p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* 后果那几条是补充说明，不是和摘要并列的正文。 */
+.control-access-level-confirm .settings-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/*
+ * 免责声明。首次须知的第二屏，以及切档确认里的那一句。
+ *
+ * 比正文略重但不是警告色块：它是要读完的一句话，不是一个要躲开的红牌。
+ */
+.control-first-run-notice-disclaimer,
+.control-access-level-disclaimer {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--danger) 6%, var(--surface));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.control-first-run-notice {
+  max-width: 520px;
+}
+
+.control-first-run-notice p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+}
+
+/*
+  整张卡都卡在同一件事上时说的那一句（多半是"缺某个组件"）。
+  它是卡片级的说明，不是某一行的注脚，所以做成一条带底的提示条，
+  和下面逐项的小字分开 —— 先前两者长得一模一样，看不出层级。
+*/
+.control-object-note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 归属选择和它的说明之间留一条线：上面是"谁说了算"，下面是"调什么"。 */
+.control-ownership {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/*
+  这台机器做不到的那一项：红叉，不是锁。
+
+  锁的意思是"你可以解开"，叉的意思是"没得解"。两者混用的代价是
+  用户拿着钥匙去开一把根本没有锁孔的门。
+*/
+.control-capability-x {
+  flex: none;
+  width: 13px;
+  margin: 0 4px 0 0;
+  color: var(--danger);
+}
+
+/*
+  还没接入 / 缺组件，各有各的图标。
+
+  和锁、叉一样宽，所以四种状态混在一列里名称仍然对齐。
+  颜色都克制：它们是状态，不是警报。
+*/
+.control-capability-pending,
+.control-capability-needs {
+  flex: none;
+  width: 13px;
+  margin: 0 4px 0 0;
+  color: var(--muted);
+}
+
+.control-capability-needs {
+  color: var(--accent);
+}
+
+/* 重新检测。放在页面级而不是某张卡里：它重探的是整台机器。 */
+.control-detect {
+  margin-top: 16px;
+}
+
+/*
+  这一项走哪条链路。
+
+  等宽小字 + 边框，读起来像个技术标签而不是一句话 —— 它本来就是给
+  "我要知道后端在干什么"的人看的。颜色克制：一屏十几个，每个都不该抢戏。
+*/
+.control-capability-channel {
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/*
+  软件接管会连带别的风扇时的那句提醒。
+  这是**说明后果**，不是报错，所以不用警告色的底 —— 但要比正文明显一点，
+  否则夹在图表旁边根本不会被看见。
+*/
+.control-curve-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  border-left: 2px solid var(--color-accent);
+  padding-left: 0.625rem;
+}
+
+/*
+  只读数值。**和可调项分开的一块。**
+
+  它们改不了，但数本身有用（"这张卡 89 度就开始降频"）。和可调项混排的话
+  既看不清也白占位置；所以单独成块，排版也不一样 —— 那些是名称加控件，
+  这些是名称加数值。
+*/
+.control-readings {
+  margin: 0 0 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-surface-sunken, rgba(127, 127, 127, 0.06));
+}
+
+.control-readings dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+/* 每一条自己占满一行的两列，名称在左、数值在右。 */
+.control-reading {
+  display: contents;
+}
+
+.control-reading dt {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+}
+
+.control-reading dd {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
 }

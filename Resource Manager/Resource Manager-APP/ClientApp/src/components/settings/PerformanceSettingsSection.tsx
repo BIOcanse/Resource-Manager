@@ -17,6 +17,7 @@ import type {
   AppPresetNumericSetting,
   AppPresetNumericSettingMode
 } from "../../types";
+import { ControlAccessLevelSetting } from "./ControlAccessLevelSetting";
 import { NumberField, SegmentedControl } from "./SettingsControls";
 import { uiText } from "../../text.ts";
 
@@ -278,6 +279,12 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           </For>
         </div>
       </div>
+
+      {/*
+        调节权限档位。放在性能这一节，因为它管的就是控制页里那些调频调压的项。
+        它不走这一页的草稿-保存：值存在控制面那边，选完就生效（见组件自己的说明）。
+      */}
+      <ControlAccessLevelSetting />
     </div>
   );
 }

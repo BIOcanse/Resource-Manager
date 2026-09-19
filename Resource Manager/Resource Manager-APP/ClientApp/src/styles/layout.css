@@ -33,7 +33,14 @@ body[data-page="components"] .app-shell,
   但这个 h1 不能删：它是换页时的焦点落点，也是读屏软件认页面的地方。
   所以只是**不显示**，留在无障碍树里。
 */
-.app-page-title {
+/*
+  只给读屏看的文字。
+
+  界面上用符号、位置、颜色表达的意思，读屏读不出来 —— 那些地方要补一句话，
+  但不该让它占版面。先前这条规则只服务页面标题，现在是通用的。
+*/
+.app-page-title,
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;

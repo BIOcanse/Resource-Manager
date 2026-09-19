@@ -22,7 +22,7 @@ Start using Resource Manager and take real control of your PC! 🚀
 
 > ⚠️ Hardware readings depend on the drivers and providers available on your system. GPU placement depends on application and driver support — not every running application can switch GPUs.
 
-> 🌐 The interface language follows your system by default and can be set explicitly in Settings → Appearance → Interface language. The screenshots below are from the running application in English; machine model, peripherals and personal paths are covered with solid bars.
+> 🌐 The interface language follows your system by default and can be set explicitly in Settings → Appearance → Interface language. Screenshots show the application with identifying details anonymized: device models, peripheral names, application names and personal paths use generic labels. Readings illustrate the interface, not benchmark results.
 
 ---
 
@@ -105,6 +105,24 @@ Monitoring history is used to identify abnormal software, or software that is qu
 This helps you catch **memory leaks**, **misbehaving software**, **disk killers**, **problematic drivers**, and software that keeps talking to the network in the background.
 
 > 📌 Abnormal network behavior points you at software worth investigating, but Resource Manager does not automatically decide that such communication is telemetry, nor infer what the transmitted data is for.
+
+---
+
+## 🎛️ Hardware Control
+
+Balance performance, power and noise from one place. The control page brings together the CPU, GPU and fan adjustments available on your hardware, with live readings beside the controls so you can see the current state before changing it.
+
+![Hardware control](docs/screenshots/en/11-hardware-control.png)
+
+Each device has its own **Apply** and **Discard changes** buttons. Prepare several changes, apply just that device, or discard its draft without losing work on another card. Save settings as a profile to reuse them later. Controls that cannot be changed explain why when you hover over their icon; **Normal** and **Root** access levels distinguish ordinary adjustments from advanced controls.
+
+### 🌡️ Fan curves
+
+Choose the cooling response you want at each temperature. Drag a point or adjust it with the keyboard; neighboring points use **straight-line interpolation**, with a temperature and percentage grid for precise adjustments.
+
+![Fan curve editor](docs/screenshots/en/12-fan-curve.png)
+
+Where supported, choose between writing the curve to firmware and letting Resource Manager manage it in software. Editing stays in the card's draft until you apply it. You can also return a device to firmware control. Available settings, firmware curve steps and shared fan-control behavior depend on the hardware and driver.
 
 ---
 

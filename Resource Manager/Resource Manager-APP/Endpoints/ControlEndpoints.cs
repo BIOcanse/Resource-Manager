@@ -6,6 +6,9 @@ namespace ResourceManager.App.Endpoints;
 /// <summary>用户对超频免责声明的答复。</summary>
 public sealed record ControlOverclockConsentRequest(bool Accepted);
 
+/// <summary>切到哪一档调节权限。认不出来的值按最低那一档处理。</summary>
+public sealed record ControlAccessLevelRequest(string? Level);
+
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapControlEndpoints(this IEndpointRouteBuilder app)
@@ -21,6 +24,44 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             DisableResponseCache(response);
             return Results.Ok(catalog.ReadObjects());
+        }).AllowAnonymous();
+
+        /*
+         * 某个对象现在跑的曲线。
+         *
+         * **单独一条路，不进对象清单。** 读一条曲线要把固件的三张表都过一遍，
+         * 几十次 EC 往返；对象清单是打开控制页就要拉一次的，混进去整页都得等。
+         * 所以只在用户真去看曲线的时候才走这里。
+         *
+         * 读不到就回 204：**"读不到"和"读到一条空曲线"必须能分开** ——
+         * 后者会让界面画出一条水平在 0% 的线，看着像风扇被我们关了。
+         */
+        app.MapGet("/api/control/objects/{objectId}/curve", async (
+            string objectId,
+            HttpResponse response,
+            IControlObjectCatalog catalog,
+            IEnumerable<IControlWriter> writers,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            var target = catalog.ReadObjects().Objects
+                .FirstOrDefault(entry => string.Equals(
+                    entry.Id,
+                    objectId,
+                    StringComparison.Ordinal));
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+            foreach (var writer in writers)
+            {
+                if (await writer.ReadCurveAsync(target, cancellationToken).ConfigureAwait(false)
+                    is { } curve)
+                {
+                    return Results.Ok(curve);
+                }
+            }
+            return Results.NoContent();
         }).AllowAnonymous();
 
         // 实际状态：这台机器现在实际是什么样。
@@ -113,6 +154,84 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 accepted = await consent.IsAcceptedAsync(cancellationToken)
             });
+        });
+
+        /*
+         * 重新检测这台机器。
+         *
+         * 探测要碰硬件（问辅助进程、起风扇核心、用空写问驱动），所以都记了缓存。
+         * 缓存一记，用户装上组件、插上显卡之后就看不到变化，只能重启程序。
+         * 这条路把缓存清掉，下一次列可控对象时重新问一遍。
+         *
+         * **只清缓存，不改任何设定。** 重新检测不该顺手把用户调过的东西动了。
+         */
+        app.MapPost("/api/control/redetect", (
+            IEnumerable<IControlDetectionCache> caches,
+            IControlObjectCatalog catalog) =>
+        {
+            foreach (var cache in caches)
+            {
+                cache.ResetDetection();
+            }
+            return Results.Ok(catalog.ReadObjects());
+        });
+
+        /*
+         * 首次须知看过没有。第一次进控制页要把保修和风险说清楚，说过一次就不再拦。
+         *
+         * 和上面那个超频同意不是一回事：那个是 Intel IGCL 的硬性要求、必须可以收回；
+         * 这个只是"我看过了"，没有收回一说。
+         */
+        app.MapGet("/api/control/notice", async (
+            HttpResponse response,
+            IControlNoticeAcknowledgement notice,
+            CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(new
+            {
+                acknowledged = await notice.IsAcknowledgedAsync(cancellationToken)
+            });
+        }).AllowAnonymous();
+
+        app.MapPut("/api/control/notice", async (
+            IControlNoticeAcknowledgement notice,
+            CancellationToken cancellationToken) =>
+        {
+            await notice.AcknowledgeAsync(cancellationToken);
+            return Results.Ok(new { acknowledged = true });
+        });
+
+        /*
+         * 调节权限档位：安全 / 普通 / root。每一项能力声明自己要哪一档。
+         *
+         * **这不是一道安全闸。** 程序本来就要管理员才起得来，想调的人在设置里
+         * 两下就切到最高档。它管的是别手滑点到危险的项，以及让用户看得出哪些项危险。
+         *
+         * 和 Intel 核显那个豁免是两件事：那个是厂商 API 的硬性要求，
+         * 调它的频率偏移哪怕是负向的都要先接受。
+         */
+        app.MapGet("/api/control/access-level", (
+            HttpResponse response,
+            IControlAccessLevel accessLevel) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(new
+            {
+                level = accessLevel.Current,
+                levels = ControlAccessLevels.All
+            });
+        }).AllowAnonymous();
+
+        app.MapPut("/api/control/access-level", async (
+            ControlAccessLevelRequest? request,
+            IControlAccessLevel accessLevel,
+            CancellationToken cancellationToken) =>
+        {
+            await accessLevel.SetAsync(
+                request?.Level ?? ControlAccessLevels.Normal,
+                cancellationToken);
+            return Results.Ok(new { level = accessLevel.Current });
         });
 
         // 配置：**绑定实例**的几套方案。选中一个实例就能看到为它存过的那几份。

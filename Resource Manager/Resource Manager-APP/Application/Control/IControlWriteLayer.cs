@@ -18,6 +18,11 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlWriteLayer
 {
+    Task<ControlApplyReport> ReleaseAsync(
+        ControlDesiredState removed,
+        ControlDesiredState remaining,
+        CancellationToken cancellationToken);
+
     /// <summary>把一份期望状态写到硬件，逐项回报结果。</summary>
     Task<ControlApplyReport> WriteAsync(
         ControlDesiredState desired,

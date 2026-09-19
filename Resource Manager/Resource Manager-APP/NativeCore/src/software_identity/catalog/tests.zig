@@ -36,29 +36,29 @@ test "installed process and portable exact evidence keep strict catalog semantic
     try std.testing.expectEqual(ResultCode.ok, prohibited_result.code);
     try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), prohibited_result.output.status);
 
-    var candidate = QueryFixture.init(.portable_process);
-    candidate.appendKey(.executable_name, "skyrimse");
-    try expectExactMatched(runQuery(session, 4, &candidate).output, 10, .candidate);
+    // 进程模式只看 exe 名：唯一命中就是确定的识别，不再要产品名佐证。
+    var by_executable = QueryFixture.init(.portable_process);
+    by_executable.appendKey(.executable_name, "skyrimse");
+    try expectExactMatched(runQuery(session, 4, &by_executable).output, 10, .confirmed);
 
-    var confirmed = QueryFixture.init(.portable_process);
-    confirmed.appendKey(.executable_name, "skyrimse");
-    confirmed.appendKey(.product_name, "the elder scrolls v: skyrim special edition");
-    try expectExactMatched(runQuery(session, 5, &confirmed).output, 10, .confirmed);
+    // 产品名对得上，结论不变 —— 它现在不参与判定。
+    var with_product = QueryFixture.init(.portable_process);
+    with_product.appendKey(.executable_name, "skyrimse");
+    with_product.appendKey(.product_name, "the elder scrolls v: skyrim special edition");
+    try expectExactMatched(runQuery(session, 5, &with_product).output, 10, .confirmed);
 
-    var unmatched = QueryFixture.init(.portable_process);
-    unmatched.appendKey(.executable_name, "skyrimse");
-    unmatched.appendKey(.product_name, "unknown product");
-    try std.testing.expectEqual(
-        @intFromEnum(protocol.MatchStatus.no_match),
-        runQuery(session, 6, &unmatched).output.status,
-    );
+    // 产品名对不上也不再推翻 exe 名。先前这里会整个判成不匹配，
+    // 而那正是把认得出的软件甩成"其它"的那条路。
+    var mismatched_product = QueryFixture.init(.portable_process);
+    mismatched_product.appendKey(.executable_name, "skyrimse");
+    mismatched_product.appendKey(.product_name, "unknown product");
+    try expectExactMatched(runQuery(session, 6, &mismatched_product).output, 10, .confirmed);
 
-    var conflict = QueryFixture.init(.portable_process);
-    conflict.appendKey(.executable_name, "skyrimse");
-    conflict.appendKey(.product_name, "vlc media player");
-    const conflict_result = runQuery(session, 7, &conflict);
-    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.conflict), conflict_result.output.status);
-    try std.testing.expectEqual(@as(u32, 2), conflict_result.output.conflict_count);
+    // 产品名指向别的条目也一样：判定只认 exe。
+    var other_product = QueryFixture.init(.portable_process);
+    other_product.appendKey(.executable_name, "skyrimse");
+    other_product.appendKey(.product_name, "vlc media player");
+    try expectExactMatched(runQuery(session, 7, &other_product).output, 10, .confirmed);
 }
 
 test "catalog replacement validates roots rules and identities before active swap" {

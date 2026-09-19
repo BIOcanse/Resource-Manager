@@ -42,6 +42,18 @@ public sealed class IntegratedGpuControlWriter(
     /// </summary>
     private const string OverclockNotAccepted = "需要先同意超频免责声明。";
 
+    /// <summary>
+    /// 核显两家走的是两条路：AMD 的 Curve Optimizer 归 CPU 封装里的 SMU，
+    /// Intel 的频率偏移走它自带的控制库。**同一个名字的项，链路完全不同。**
+    /// </summary>
+    public string? ChannelOf(ControlObject target, string capabilityId)
+        => !IsMine(target, capabilityId) ? null : capabilityId switch
+    {
+        CurveOptimizerCapabilityId => ControlChannels.AmdSmu,
+        CoreClockOffsetCapabilityId => ControlChannels.Igcl,
+        _ => null
+    };
+
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -57,7 +69,7 @@ public sealed class IntegratedGpuControlWriter(
         }
         if (!bridge.IsInstalled)
         {
-            return ControlWriteAvailability.No(BridgeMissing);
+            return ControlWriteAvailability.No(BridgeMissing, kind: ControlUnavailableKinds.Component);
         }
 
         var described = Ask("describe");
@@ -188,22 +200,18 @@ public sealed class IntegratedGpuControlWriter(
     {
         if (!intel.IsAvailable)
         {
-            return ControlWriteAvailability.No(IntelDriverMissing);
+            return ControlWriteAvailability.No(IntelDriverMissing, kind: ControlUnavailableKinds.Component);
         }
         if (!consent.IsAcceptedAsync(CancellationToken.None).GetAwaiter().GetResult())
         {
-            return ControlWriteAvailability.No(OverclockNotAccepted);
+            return ControlWriteAvailability.No(OverclockNotAccepted, kind: ControlUnavailableKinds.Prerequisite);
         }
         if (intel.FirstDevice() is not { } device)
         {
-            return ControlWriteAvailability.No(IntelDriverMissing);
+            return ControlWriteAvailability.No(IntelDriverMissing, kind: ControlUnavailableKinds.Component);
         }
 
-        // 同意过才去把 waiver 交给驱动。交不上说明这块卡不让超，如实说。
-        if (!intel.TryAcceptOverclockWaiver(device))
-        {
-            return ControlWriteAvailability.No("这块核显不接受超频设置。");
-        }
+        // Driver consent is submitted only by the explicit write operation.
         return ControlWriteAvailability.Yes();
     }
 
