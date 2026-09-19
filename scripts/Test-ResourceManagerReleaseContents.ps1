@@ -10,6 +10,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate universal source data.' }
 foreach ($relative in $trackedJson) {
     [void]$jsonHashes.Add((Get-FileHash -LiteralPath (Join-Path $repository $relative) -Algorithm SHA256).Hash)
 }
+# Vite and the Web SDK generate these manifests; their build outputs, not local settings, are authoritative.
+foreach ($relative in @('Resource Manager\Resource Manager-APP\wwwroot\frontend-build.json',
+        'Resource Manager\Resource Manager-APP\obj\Release\net10.0-windows\win-x64\staticwebassets.publish.endpoints.json')) {
+    [void]$jsonHashes.Add((Get-FileHash -LiteralPath (Join-Path $repository $relative) -Algorithm SHA256).Hash)
+}
 $queue = [Collections.Generic.Queue[string]]::new()
 $queue.Enqueue($root)
 $count = 0
