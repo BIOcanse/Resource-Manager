@@ -116,7 +116,7 @@ public sealed partial class HostManagerSmartCoordinator
         bool realtimeCycle,
         HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPreferencePlacement> firstUse)
+        List<HostManagerAutomaticGpuPlacement> firstUse)
     {
         ObserveOuterLoop(
             outerLoopContext,
@@ -142,7 +142,7 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerSmartCoordinatorOuterLoopPhase.ProfilerCreated,
             diagnosticCycleSequence: cycleDiagnostics?.CycleSequence,
             producerInstanceId: cycleDiagnostics?.ProducerInstanceId);
-        if (!TrySettleGpuCallbackPreparation() || !TrySettleGpuWindowExecution() || !await TrySettleGpuActionCheckpointAsync())
+        if (runningGpuPlacementActions.HasUnreleasedExternalControl || !TrySettleGpuCallbackPreparation() || !TrySettleGpuWindowExecution() || !await TrySettleGpuActionCheckpointAsync())
         {
             cycleDiagnostics?.Defer("window-checkpoint-not-settled");
             return new(TimeSpan.FromMilliseconds(

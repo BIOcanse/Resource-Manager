@@ -40,6 +40,14 @@ class CallStore
     }
 
 public:
+    bool Recording() noexcept
+    {
+        AcquireSRWLockShared(&lock_);
+        const bool recording = IsRecording();
+        ReleaseSRWLockShared(&lock_);
+        return recording;
+    }
+
     DWORD Start(uint32_t apis, uint32_t durationMilliseconds) noexcept
     {
         if (!apis || (apis & ~uint32_t{31}) || !durationMilliseconds) return ERROR_INVALID_PARAMETER;

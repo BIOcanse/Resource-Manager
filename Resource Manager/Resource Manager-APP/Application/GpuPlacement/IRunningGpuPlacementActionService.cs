@@ -4,6 +4,7 @@ namespace ResourceManager.App.Application.GpuPlacement;
 
 public interface IRunningGpuPlacementActionService
 {
+    bool HasUnreleasedExternalControl => false;
     Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken);
 
@@ -24,7 +25,11 @@ public sealed record RunningGpuPlacementExecution(
     int MaximumWindowCount,
     Func<GpuWindowActionRequest, Task<RunningGpuPlacementWindowResult>> ExecuteAsync,
     Func<GpuRemoteCallExecution, CancellationToken, Task<GpuRemoteCallSnapshot>> ExecuteRemoteCallAsync,
-    Func<GpuPlacementProcessInstance, ulong, CancellationToken, Task<PreparedOpenGlCallbacks?>> PrepareOpenGlAsync);
+    Func<GpuPlacementProcessInstance, ulong, CancellationToken, Task<PreparedOpenGlCallbacks?>> PrepareOpenGlAsync)
+{
+    public ulong RecreationDeadlineMilliseconds { get; init; }
+    public ulong CleanupDeadlineMilliseconds { get; init; }
+}
 
 public sealed record RunningGpuApiObservationExecution(
     int DurationMilliseconds,
@@ -42,7 +47,18 @@ public sealed record RunningGpuPlacementWindowResult(
 public sealed record RunningGpuPlacementActionPlan(
     RunningGpuPlacementActionRequest Request,
     byte[] PolicyValue,
-    IReadOnlyDictionary<int, GpuGraphicsApi> GraphicsApis);
+    IReadOnlyDictionary<int, GpuGraphicsApi> GraphicsApis)
+{
+    public ExternalGpuPlacementPlan? External { get; init; }
+}
+
+public sealed record ExternalGpuPlacementPlan(
+    GpuPlacementProcessInstance Root, GpuPlacementProcessInstance GpuProcess)
+{
+    public ExternalGpuRenderer Renderer { get; init; } = ExternalGpuRenderer.ChromiumAngle;
+}
+
+public enum ExternalGpuRenderer { ChromiumAngle, QtQuickD3D12, QtQuickVulkan }
 
 public sealed record RunningGpuPlacementPreparation(
     RunningGpuPlacementActionPlan? Plan,
@@ -57,7 +73,10 @@ public sealed record RunningGpuPlacementProcessResult(
     string ConfigurationStatus,
     int? ConfigurationError,
     GpuDeviceObservationReadResult? Before,
-    GpuDeviceObservationReadResult? After);
+    GpuDeviceObservationReadResult? After)
+{
+    public GpuRecreationResult? Recreation { get; init; }
+}
 
 public sealed record RunningGpuPlacementActionRequest(
     string TargetId,
@@ -68,6 +87,7 @@ public sealed record RunningGpuPlacementActionRequest(
     ulong TargetAdapterKey,
     string PreferredRuntimeSwitchMethod)
 {
+    public string? SoftwareKind { get; init; }
     public string AssignedPositionId => $"gpu-luid:{TargetAdapterKey:x16}";
 }
 

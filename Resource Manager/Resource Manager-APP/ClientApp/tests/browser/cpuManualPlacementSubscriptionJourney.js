@@ -6,7 +6,7 @@ export default async function cpuManualPlacementSubscriptionJourney(page, baseUr
   await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  await page.getByRole("navigation", { name: "组件与软件分类" })
+  await page.getByRole("navigation", { name: "组件和软件分类" })
     .getByRole("button", { name: /一般应用/ }).click();
   const card = page.locator(".software-item").filter({ hasText: "示例软件" });
   await card.getByRole("button", { name: "设置和迁移" }).click();

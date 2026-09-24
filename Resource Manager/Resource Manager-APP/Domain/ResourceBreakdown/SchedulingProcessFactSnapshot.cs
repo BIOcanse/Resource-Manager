@@ -28,7 +28,13 @@ public sealed record SchedulingProcessGpuFact(
 {
     public double? PrivateMemoryBytes { get; init; }
     public double? SharedMemoryBytes { get; init; }
-    public double? AllocatedMemoryBytes => PrivateMemoryBytes + SharedMemoryBytes;
+    public double? ResidentMemoryBytes => PrivateMemoryBytes + SharedMemoryBytes;
+
+    // UMA residency is meaningful even when no dedicated-capacity percentage exists.
+    public bool HasMetric(SchedulingProcessMetricMask metric)
+        => ValidMetricMask.HasFlag(metric)
+            || metric == SchedulingProcessMetricMask.GpuDedicatedMemory
+                && ResidentMemoryBytes is not null;
 }
 
 public sealed record SchedulingProcessDatasetObservation(
@@ -416,7 +422,7 @@ public sealed record SchedulingProcessFactSnapshot(
             || !RequestedMetricMask.HasFlag(metric)
             || !CurrentMetricMask.HasFlag(metric)
             || !TryGetCurrentDataset(metric, out var dataset)
-            || dataset.TopologyGeneration != inventory.Generation
+            || dataset.TopologyFingerprint == 0
             || dataset.TopologyFingerprint != inventory.TopologyFingerprint)
         {
             return false;
@@ -434,10 +440,14 @@ public sealed record SchedulingProcessFactSnapshot(
 
             var found = false;
             foreach (var gpu in process.Gpus.Where(gpu =>
-                         gpu.ValidMetricMask.HasFlag(metric)))
+                         gpu.HasMetric(metric)))
             {
                 found = true;
-                if (!adapters.Any(adapter =>
+                var eligibleAdapters = metric == SchedulingProcessMetricMask.GpuDedicatedMemory
+                    && !gpu.ValidMetricMask.HasFlag(metric)
+                        ? inventory.Adapters
+                        : adapters;
+                if (!eligibleAdapters.Any(adapter =>
                         adapter.AdapterKey == gpu.AdapterKey
                         && adapter.Index == gpu.GpuIndex)
                     || SourceGenerationFor(gpu, metric) != dataset.SourceGeneration
@@ -467,6 +477,10 @@ public sealed record SchedulingProcessFactSnapshot(
                 || gpu.AdapterKey == 0
                 || !indexes.Add(gpu.GpuIndex)
                 || !keys.Add(gpu.AdapterKey)
+                || gpu.PrivateMemoryBytes is double privateBytes
+                    && (!double.IsFinite(privateBytes) || privateBytes < 0)
+                || gpu.SharedMemoryBytes is double sharedBytes
+                    && (!double.IsFinite(sharedBytes) || sharedBytes < 0)
                 || !IsGpuLineageValid(
                     gpu,
                     SchedulingProcessMetricMask.GpuUsage)
@@ -490,7 +504,7 @@ public sealed record SchedulingProcessFactSnapshot(
         SchedulingProcessGpuFact gpu,
         SchedulingProcessMetricMask metric)
     {
-        var present = gpu.ValidMetricMask.HasFlag(metric);
+        var present = gpu.HasMetric(metric);
         var sourceGeneration = SourceGenerationFor(gpu, metric);
         var topologyGeneration = TopologyGenerationFor(gpu, metric);
         if (!present)

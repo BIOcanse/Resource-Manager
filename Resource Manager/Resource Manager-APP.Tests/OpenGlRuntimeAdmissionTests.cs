@@ -8,7 +8,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class OpenGlRuntimeAdmissionTests
 {
     [Theory]
-    [InlineData("allowed", true)]
+    [InlineData("allowed", false)]
     [InlineData("global-off", false)]
     [InlineData("disabled", false)]
     [InlineData("preview", false)]

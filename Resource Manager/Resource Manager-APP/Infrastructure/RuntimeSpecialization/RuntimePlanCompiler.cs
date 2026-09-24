@@ -200,7 +200,7 @@ public sealed class RuntimePlanCompiler(
             supportedGpuGrades);
     }
 
-    private static CompiledGpuPlacementPlan CompileGpuPlacementPlan(
+    internal static CompiledGpuPlacementPlan CompileGpuPlacementPlan(
         bool globalPreciseProviderEnabled,
         GpuPlacementPolicyDocument gpuPolicyDocument,
         CpuTopologySnapshot cpuTopology)
@@ -238,7 +238,13 @@ public sealed class RuntimePlanCompiler(
         return new CompiledGpuPlacementPlan(
             globalPreciseProviderEnabled,
             resolvedSoftwarePolicies,
-            processPolicies);
+            processPolicies)
+        {
+            KindDefaultRuntimeHotSwitchSoftwareIds = softwarePolicies.Values
+                .Where(static policy => policy.RuntimeHotSwitchEnabled is null)
+                .Select(static policy => policy.SoftwareId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+        };
     }
 
     private static ResolvedGpuPlacementPolicy CompileResolvedGpuPlacementPolicy(

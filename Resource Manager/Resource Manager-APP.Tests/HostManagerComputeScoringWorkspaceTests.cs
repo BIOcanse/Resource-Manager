@@ -10,6 +10,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerComputeScoringWorkspaceTests
 {
     [Fact]
+    public void GpuScoringProjectionDoesNotRetainMemoryValuesWithoutTheirSource()
+    {
+        var configuration = CreateConfiguration();
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+        var inventory = CreateInventory();
+        var facts = CreateFacts(inventory, 10);
+        facts = facts with { Processes = facts.Processes.Select(p => p with
+        {
+            Gpus = p.Gpus.Select(g => g with { PrivateMemoryBytes = 1024, SharedMemoryBytes = 512 }).ToArray()
+        }).ToArray() };
+        var result = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), null);
+        Assert.NotNull(result?.Gpu);
+        Assert.Null(result.Cpu);
+        Assert.All(facts.Processes.SelectMany(p => p.Gpus), g => Assert.Equal(1536, g.ResidentMemoryBytes));
+    }
+
+    [Fact]
     public void Score_UsesCpuOccupancyOnlyAndSumsAllSameSoftwareProcesses()
     {
         var configuration = CreateConfiguration();

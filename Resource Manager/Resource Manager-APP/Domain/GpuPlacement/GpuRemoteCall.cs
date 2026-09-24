@@ -8,7 +8,10 @@ public enum GpuRemoteCallKind
     LoadObservationProvider,
     StartApiObservation,
     ReadApiObservation,
-    StopApiObservation
+    StopApiObservation,
+    ArmRecreation,
+    FinishRecreation,
+    CancelRecreation
 }
 
 public sealed record GpuRemoteCallRequest(

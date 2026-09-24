@@ -9,6 +9,7 @@
     <GpuPlacementShimRoot>$(MSBuildProjectDirectory)\Native\GpuPlacementShim</GpuPlacementShimRoot>
     <GpuLaunchBrokerRoot>$(MSBuildProjectDirectory)\Native\GpuLaunchBroker</GpuLaunchBrokerRoot>
     <GpuWindowActionRoot>$(MSBuildProjectDirectory)\Native\GpuWindowAction</GpuWindowActionRoot>
+    <GpuPlacementExternalRoot>$(MSBuildProjectDirectory)\Native\GpuPlacementExternal</GpuPlacementExternalRoot>
     <GpuPlacementPreparationRoot>$(MSBuildProjectDirectory)\Native\GpuPlacementPreparation</GpuPlacementPreparationRoot>
     <NativeCoreRoot>$(MSBuildProjectDirectory)\NativeCore</NativeCoreRoot>
     <NativeCoreZigExecutable Condition="'$(NativeCoreZigExecutable)' == ''">zig</NativeCoreZigExecutable>
@@ -74,6 +75,8 @@
     <None Include="Native\GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.VulkanPlacementLayer.json" ExcludeFromSingleFile="true" />
     <None Include="Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchBroker.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.GpuLaunchBroker.exe" ExcludeFromSingleFile="true" />
     <None Include="$(GpuWindowActionRoot)\bin\win-x64\ResourceManager.GpuWindowAction.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuWindowAction.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuPlacementExternal.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementExternal.exe" ExcludeFromSingleFile="true" />
+    <None Include="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuRendererExternal.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuRendererExternal.exe" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementPreparationRoot)\bin\win-x64\ResourceManager.GpuPlacementPreparation.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementPreparation.exe" ExcludeFromSingleFile="true" />
     <None Include="Native\GpuPlacementShim\third_party\minhook\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MinHook.LICENSE.txt" />
     <None Include="Native\GpuPlacementShim\third_party\detours\LICENSE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MicrosoftDetours.LICENSE.md" />
@@ -149,6 +152,15 @@
           Outputs="$(GpuWindowActionRoot)\bin\win-x64\ResourceManager.GpuWindowAction.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuWindowActionNativeBuild)' != 'true'">
     <Exec WorkingDirectory="$(GpuWindowActionRoot)" Command="cmd.exe /d /c build.cmd" />
+  </Target>
+  <ItemGroup>
+    <GpuPlacementExternalSource Include="$(GpuPlacementExternalRoot)\*.cpp;$(GpuPlacementExternalRoot)\*.h;$(GpuPlacementExternalRoot)\build.cmd" />
+  </ItemGroup>
+  <Target Name="BuildGpuPlacementExternal" BeforeTargets="PrepareForBuild"
+          Inputs="@(GpuPlacementExternalSource)"
+          Outputs="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuPlacementExternal.exe;$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuRendererExternal.exe"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementExternalNativeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(GpuPlacementExternalRoot)" Command="cmd.exe /d /c build.cmd" />
   </Target>
   <Target Name="BuildClientApp"
           BeforeTargets="ComputeFilesToPublish"

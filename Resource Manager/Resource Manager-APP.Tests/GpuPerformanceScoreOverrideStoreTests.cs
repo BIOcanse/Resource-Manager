@@ -1,5 +1,6 @@
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using System.Text.Json;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Optimization;
 
@@ -55,6 +56,30 @@ public sealed class GpuPerformanceScoreOverrideStoreTests
 
             Assert.Empty(result.ScoresByGpuId);
             Assert.Empty(new JsonGpuPerformanceScoreOverrideStore(new TestHostEnvironment(root)).LoadScores());
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void CorruptExistingScoreFileCannotBeReadSavedOrResetAsEmpty()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"resource-manager-gpu-overrides-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var first = new JsonGpuPerformanceScoreOverrideStore(new TestHostEnvironment(root));
+            var path = first.Save(new GpuPerformanceScoreOverrideRequest(
+                [new GpuPerformanceScoreOverrideItem("gpu:0", 80)])).StoragePath;
+            File.WriteAllText(path, "{invalid");
+            var reopened = new JsonGpuPerformanceScoreOverrideStore(new TestHostEnvironment(root));
+
+            Assert.Throws<JsonException>(() => reopened.LoadScores());
+            Assert.Throws<JsonException>(() => reopened.Save(new GpuPerformanceScoreOverrideRequest([])));
+            Assert.Throws<JsonException>(() => reopened.Reset());
+            Assert.Equal("{invalid", File.ReadAllText(path));
         }
         finally
         {

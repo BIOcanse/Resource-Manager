@@ -10,6 +10,25 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ResourceTableProjectorTests
 {
+    [Theory]
+    [InlineData("disk.io", "disk.read", "disk.write", "disk")]
+    [InlineData("network.traffic", "network.receive", "network.send", "network")]
+    public void DirectionalBarsDoNotDoubleCountCombinedTableColumn(
+        string total, string incoming, string outgoing, string column)
+    {
+        ResourceBreakdownBar Bar(string id, double value) => new(
+            id, id, "B/s", ResourceBreakdownScaleModes.Capacity, value, 1000, value / 10,
+            [new ResourceSoftwareSegment("app", "App", "Other", "Other", value, value / 10, 1,
+                [new ResourceProcessSegment(42, "app", null, value, value / 10, 100)])]);
+        var snapshot = new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow,
+            [Bar(total, 100), Bar(incoming, 30), Bar(outgoing, 70)]);
+        var result = new ResourceTableProjector().Project(snapshot,
+            new ResourceTableRequest([column], column, "desc", ResourceTableViewModes.Software,
+                new HashSet<string>(), true));
+        Assert.Equal(3, result.Rows.Count);
+        Assert.All(result.Rows, row => Assert.Equal(100, row.Values[column].Value));
+    }
+
     [Fact]
     public void Project_MixedDatasetGenerationsRemainVisibleAndTraceable()
     {

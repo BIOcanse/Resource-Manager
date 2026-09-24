@@ -415,7 +415,7 @@ function ResourceBreakdownItem(props: {
       <div class="resource-breakdown-header">
         <strong>{label()}</strong>
         <span>
-          {formatResourceBarValue(props.bar, props.bar.totalValue ?? 0)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+          {formatResourceBarValue(props.bar, props.bar.totalValue)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
         <Show when={props.editMode}>
           <span class="resource-breakdown-order-actions">
@@ -702,7 +702,7 @@ function resourceProcessTooltip(bar: ResourceBreakdownBar, process: ResourceProc
     : isEtwResidualProcess(process)
       ? `\n${uiText.resourceBreakdown.etwSupplement}`
       : "";
-  return `${process.name} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${formatResourceBarValue(bar, process.value)}${extra}`;
+  return `${process.name} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${resourceMemoryDetail(bar, process)}${extra}`;
 }
 
 function isSystemResidualProcess(process: ResourceProcessSegment) {
@@ -838,10 +838,20 @@ function segmentLabel(segment: ResourceSelectableSegment) {
 
 function resourceSegmentTooltip(bar: ResourceBreakdownBar, segment: ResourceSelectableSegment) {
   const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
-  return `${segmentLabel(segment)}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${formatResourceBarValue(bar, segment.value)}`;
+  return `${segmentLabel(segment)}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${resourceMemoryDetail(bar, segment)}`;
 }
 
-function formatResourceBarValue(bar: ResourceBreakdownBar, value: number) {
+function resourceMemoryDetail(bar: ResourceBreakdownBar, segment: { value: number; sharedValue?: number | null }) {
+  return bar.unit === "B" && segment.sharedValue != null
+    ? uiText.resourceTableView.memoryBreakdown(bar.label,
+      formatResourceBarValue(bar, segment.value),
+      formatResourceBarValue(bar, segment.value - segment.sharedValue),
+      formatResourceBarValue(bar, segment.sharedValue))
+    : formatResourceBarValue(bar, segment.value);
+}
+
+function formatResourceBarValue(bar: ResourceBreakdownBar, value: number | null) {
+  if (value === null) return "-";
   if (bar.unit === "B") {
     // 条形本身知道自己是哪条指标：内存类走二进制天性，其余（磁盘、网络流量）走十进制天性。
     return formatBytes(value, byteQuantityKindForMetric(bar.metricId));
@@ -873,6 +883,7 @@ function resourceBarLayoutOptions(bar: ResourceBreakdownBar, segments: ResourceS
 function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSelectableSegment>[]): ResourcePaintSegment[] {
   return items.map((item) => ({
     key: item.segment.softwareId,
+    sharedFraction: !item.segment.isEmpty && item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
     left: item.left,
     right: item.right,
     color: resourceSegmentPaintColor(item.segment, "type"),
@@ -886,6 +897,7 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
 function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProcessSegment>[]): ResourcePaintSegment[] {
   return items.map((item) => ({
     key: processKey(item.segment),
+    sharedFraction: item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
     left: item.left,
     right: item.right,
     color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length].bg,

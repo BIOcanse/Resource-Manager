@@ -42,6 +42,16 @@ assert.equal(process?.executablePath, "C:\\Apps\\worker.exe");
 assert.equal(process?.attributionKind, "process");
 assert.equal(process?.baseScore, 125);
 
+const sharedWire = structuredClone(wire);
+sharedWire.bars[0].sharedValue = 24;
+sharedWire.bars[0].software[0][6] = 24;
+sharedWire.bars[0].software[0][5][0][11] = 24;
+const sharedBar = decodeResourceBreakdownWireSnapshot(sharedWire).bars![0];
+assert.equal(sharedBar.sharedValue, 24);
+assert.equal(sharedBar.software[0].sharedValue, 24);
+assert.equal(sharedBar.software[0].processes[0].sharedValue, 24);
+assert.equal(sharedBar.software[0].value, 64);
+
 const emptyValueWire: ResourceBreakdownWireSnapshot = {
   ...wire,
   bars: [{

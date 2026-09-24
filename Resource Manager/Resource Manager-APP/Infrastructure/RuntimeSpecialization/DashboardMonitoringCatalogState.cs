@@ -24,7 +24,7 @@ public sealed class DashboardMonitoringCatalogState
         var snapshot = Current;
         if (snapshot is null)
         {
-            return MetricSampleRequest.ForIds([]);
+            return request;
         }
 
         var available = MetricCatalog.FromSnapshot(snapshot)

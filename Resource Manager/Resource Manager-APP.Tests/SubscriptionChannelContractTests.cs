@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Endpoints;
 
 namespace ResourceManager.App.Tests;
@@ -133,5 +135,22 @@ public sealed class SubscriptionChannelContractTests
                 .GetProperty("value")
                 .GetProperty("displayValue")
                 .GetString());
+    }
+
+    [Fact]
+    public async Task FailedLogicalCallbackClosesStreamSoExistingClientCanReconnect()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var context = new DefaultHttpContext();
+        context.Response.Body = new MemoryStream();
+        using var writer = new ResourceManagerEndpointRouteBuilderExtensions.FrontendSubscriptionChannelWriter(
+            context.Response, WebJson);
+        var subscription = new ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription(
+            "cpu", "/api/metrics/subscribe", (_, _) => throw new IOException("Transient source failure."));
+
+        await ResourceManagerEndpointRouteBuilderExtensions.RunSubscriptionChannelWorkerAsync(
+            subscription, writer, cancellation, NullLogger.Instance, "fixture").WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(cancellation.IsCancellationRequested);
     }
 }

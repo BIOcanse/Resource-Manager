@@ -204,6 +204,8 @@ $requiredInputs = @(
     (Join-Path $backend 'wwwroot\index.html')
     (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuWindowAction.exe')
     (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuPlacementPreparation.exe')
+    (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuPlacementExternal.exe')
+    (Join-Path $backend 'GpuPlacementShim\ResourceManager.GpuRendererExternal.exe')
     (Join-Path $nativeUi 'ResourceManager.NativeUi.exe')
     (Join-Path $nativeUi 'InstallWebView2Runtime.ps1')
     (Join-Path $launcher 'ResourceManager.Launcher.exe')

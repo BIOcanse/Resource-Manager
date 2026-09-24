@@ -91,13 +91,17 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 .ToArray();
 
             registeredSoftware = software.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+            var prohibitedAliases = acquiredLease.CatalogPlan.Recreate.ProhibitedExecutableAliases
+                .ToHashSet(StringComparer.Ordinal);
             var adapted = BuildAdaptedDefinitions(
                 adapterRegistrations,
                 software,
+                prohibitedAliases,
                 out adaptedBindings);
             var controlled = BuildControlledDefinitions(
                 controlledRegistrations,
                 software,
+                prohibitedAliases,
                 out controlledBindings);
             var self = BuildSelfDefinitions();
 
@@ -552,6 +556,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         BuildAdaptedDefinitions(
             IReadOnlyList<AdapterSoftwareRegistration> registrations,
             IReadOnlyList<RuntimeSoftwareAttribution> software,
+            IReadOnlySet<string> prohibitedAliases,
             out IReadOnlyList<DirectProcessBinding> bindings)
     {
         var direct = new List<DirectProcessBinding>();
@@ -591,7 +596,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 NativeSoftwareIdentitySources.Adapted,
                 registration.Processes.Select(static process =>
                     (process.Name, process.ExecutablePath)),
-                roots));
+                roots, prohibitedAliases));
         }
         bindings = direct;
         return definitions;
@@ -601,6 +606,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         BuildControlledDefinitions(
             IReadOnlyList<ControlledSoftwareRegistration> registrations,
             IReadOnlyList<RuntimeSoftwareAttribution> software,
+            IReadOnlySet<string> prohibitedAliases,
             out IReadOnlyList<DirectProcessBinding> bindings)
     {
         var direct = new List<DirectProcessBinding>();
@@ -643,7 +649,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 NativeSoftwareIdentitySources.Controlled,
                 registration.Processes.Select(static process =>
                     (process.Name, process.ExecutablePath)),
-                roots));
+                roots, prohibitedAliases));
         }
         bindings = direct;
         return definitions;
@@ -665,7 +671,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         RuntimeSoftwareAttribution attribution,
         uint source,
         IEnumerable<(string Name, string? ExecutablePath)> processes,
-        IReadOnlyList<string> roots)
+        IReadOnlyList<string> roots,
+        IReadOnlySet<string>? prohibitedAliases = null)
     {
         var aliases = processes
             .SelectMany(static process => new[]
@@ -674,7 +681,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 NativeSoftwareIdentityCatalogProjector.CanonicalExecutableName(
                     process.ExecutablePath)
             })
-            .Where(static value => value is not null)
+            .Where(value => value is not null && prohibitedAliases?.Contains(value) != true)
             .Distinct(StringComparer.Ordinal)
             .Select(static value => new NativeSoftwareIdentityCatalogAliasDefinition(
                 NativeSoftwareIdentityAliasKind.ExecutableName,

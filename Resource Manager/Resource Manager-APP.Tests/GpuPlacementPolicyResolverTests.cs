@@ -62,6 +62,23 @@ public sealed class GpuPlacementPolicyResolverTests
     }
 
     [Fact]
+    public void ExternalRuntimePermissionDoesNotBorrowLegacyShimProviders()
+    {
+        var policy = ResolvedGpuPlacementPolicy.FromSoftware(
+            GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software-a", "Software A") with
+            {
+                AllowedProviders = [GpuPlacementProviderIds.WindowsGraphicsPreference]
+            });
+
+        Assert.False(policy.AcceptsRuntimeGpuScheduling());
+        Assert.True(policy.AcceptsExternalRuntimeGpuScheduling());
+        Assert.False((policy with { RuntimeHotSwitchEnabled = false }).AcceptsExternalRuntimeGpuScheduling());
+        Assert.False((policy with { EnabledMode = GpuPlacementPolicyModes.Disabled }).AcceptsExternalRuntimeGpuScheduling());
+        Assert.False((policy with { RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Ordinary })
+            .AcceptsExternalRuntimeGpuScheduling());
+    }
+
+    [Fact]
     public void CreateProcessPolicy_DefaultsToSystemGpuTarget()
     {
         var policy = GpuPlacementPolicyDefaults.CreateProcessPolicy(
@@ -133,6 +150,53 @@ public sealed class GpuPlacementPolicyResolverTests
         Assert.True(resolved.AllowsRuntimeShimExecution());
         Assert.True(resolved.RuntimeHotSwitchEnabled);
         Assert.False(resolved.GpuExclusive);
+    }
+
+    [Fact]
+    public void Resolve_ProcessModeInheritUsesSoftwareModeWhenOtherProcessSettingsOverride()
+    {
+        var softwarePolicy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software-a", "Software A") with
+        {
+            EnabledMode = GpuPlacementPolicyModes.Auto,
+            ProcessOverrideAllowed = true
+        };
+        var processPolicy = GpuPlacementPolicyDefaults.CreateProcessPolicy(
+            "software-a",
+            Process("renderer", "C:\\Apps\\SoftwareA\\renderer.exe")) with
+        {
+            Inherit = false,
+            EnabledMode = GpuPlacementPolicyModes.Inherit,
+            TargetGpu = GpuPlacementTargets.IntegratedGpu
+        };
+        var resolver = new GpuPlacementPolicyResolver(Document([softwarePolicy], [processPolicy]));
+
+        var resolved = resolver.Resolve("software-a", "Software A", SoftwareKinds.Other,
+            "renderer", "C:\\Apps\\SoftwareA\\renderer.exe");
+
+        Assert.Equal(GpuPlacementPolicyModes.Auto, resolved.EnabledMode);
+        Assert.Equal(GpuPlacementTargets.IntegratedGpu, resolved.TargetGpu);
+        Assert.True(resolved.AcceptsExternalRuntimeGpuScheduling());
+
+        var disabled = new GpuPlacementPolicyResolver(Document(
+            [softwarePolicy with { EnabledMode = GpuPlacementPolicyModes.Disabled }], [processPolicy]));
+        Assert.Equal(GpuPlacementPolicyModes.Disabled, disabled.Resolve("software-a", "Software A",
+            SoftwareKinds.Other, "renderer", "C:\\Apps\\SoftwareA\\renderer.exe").EnabledMode);
+    }
+
+    [Fact]
+    public void Resolve_SoftwareModeInheritUsesBundledDefault()
+    {
+        var softwarePolicy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software-a", "Software A") with
+        {
+            EnabledMode = GpuPlacementPolicyModes.Inherit
+        };
+        var resolver = new GpuPlacementPolicyResolver(Document([softwarePolicy]));
+
+        var resolved = resolver.Resolve("software-a", "Software A", SoftwareKinds.Other,
+            "renderer", "C:\\Apps\\SoftwareA\\renderer.exe");
+
+        Assert.Equal(GpuPlacementPolicyModes.Auto, resolved.EnabledMode);
+        Assert.True(resolved.AcceptsExternalRuntimeGpuScheduling());
     }
 
     [Fact]

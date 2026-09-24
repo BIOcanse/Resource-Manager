@@ -16,6 +16,27 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class WindowsResourceBreakdownSamplerLifecycleTests
 {
+    [Fact]
+    public async Task ColdSchedulingCaptureIncludesExecutableIdentityWithoutResourceTable()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
+        using var sampler = new WindowsResourceBreakdownSampler(
+            new StaticMetricSampler(CreateMemorySnapshot()), catalogProvider,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var request = new SchedulingProcessFactRequest(
+            SchedulingProcessMetricMask.CpuUsage, null, CreateMemorySnapshot().GpuInventory);
+
+        var snapshot = await sampler.CaptureAsync(request, CancellationToken.None);
+
+        var process = Assert.Single(snapshot.InventoryProcesses);
+        Assert.Equal(Environment.ProcessId, process.ProcessId);
+        Assert.Equal(Environment.ProcessPath, process.ExecutablePath);
+        Assert.True(process.ProcessStartKey > 0);
+    }
+
     [Theory]
     [InlineData(SamplingDatasetIds.ProcessGpuUsage, SchedulingProcessMetricMask.GpuUsage)]
     [InlineData(SamplingDatasetIds.ProcessGpuVram, SchedulingProcessMetricMask.GpuDedicatedMemory)]

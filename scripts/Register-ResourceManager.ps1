@@ -35,14 +35,25 @@ try {
         exit $process.ExitCode
     }
 
-    $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
-        [Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+    $userRoot = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
     try {
-        Invoke-ResourceManagerDirectoryRegistration -Registration $registration -RegistryRoot $root `
-            -Unregister:$Unregister
+        if (-not $Unregister) {
+            $null = Assert-ResourceManagerLegacyUserRegistration -RegistryRoot $userRoot
+        }
+        $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+        try {
+            Invoke-ResourceManagerDirectoryRegistration -Registration $registration -RegistryRoot $root `
+                -Unregister:$Unregister
+        }
+        finally { $root.Dispose() }
+        if (-not $Unregister) {
+            Remove-ResourceManagerLegacyUserRegistration -RegistryRoot $userRoot
+        }
         Remove-ResourceManagerLegacyStartupTask
     }
-    finally { $root.Dispose() }
+    finally { $userRoot.Dispose() }
     [pscustomobject]@{
         Action = $(if ($Unregister) { 'Unregistered' } else { 'Registered' })
         InstallRoot = $registration.InstallRoot

@@ -49,14 +49,14 @@ public static class GpuPerformanceScorePresetResolver
     public static GpuPerformanceScorePresetResult Resolve(string gpuName, ulong totalMemoryBytes,
         int standardGraphicsFrequencyMhz, IEnumerable<string>? gpuPerformanceUseCases) => ResolveRaster(gpuName, totalMemoryBytes);
 
-    private static GpuPerformanceScorePresetResult ResolveRaster(string gpuName, ulong totalMemoryBytes)
+    private static GpuPerformanceScorePresetResult ResolveRaster(string gpuName, ulong _)
     {
         var normalized = Normalize(gpuName);
         var matched = GpuSteelNomadDefaults.TryGet(normalized, out var model, out var score);
         var integrated = IntegratedModels.Any(model => normalized == model || normalized.StartsWith(model + " ", StringComparison.Ordinal))
-            || IsIntegratedNameFallback(gpuName, totalMemoryBytes);
+            || IsIntegratedNameFallback(gpuName);
         return new(score, score, 0, 0, [AppGpuPerformanceUseCases.General],
-            matched ? GpuSteelNomadDefaults.Source : "unavailable:steel-nomad-dx12",
+            matched ? GpuSteelNomadDefaults.GetSource(normalized) : "unavailable:steel-nomad-dx12",
             model, matched, integrated);
     }
 
@@ -64,9 +64,7 @@ public static class GpuPerformanceScorePresetResolver
 
     public static double NormalizeManualScore(double value) => double.IsFinite(value) ? Math.Max(0, value) : 0;
 
-    private static bool IsIntegratedNameFallback(
-        string gpuName,
-        ulong totalMemoryBytes)
+    private static bool IsIntegratedNameFallback(string gpuName)
     {
         var normalized = Normalize(gpuName);
         if (normalized.Contains("RTX ", StringComparison.OrdinalIgnoreCase)
@@ -83,8 +81,7 @@ public static class GpuPerformanceScorePresetResolver
             return false;
         }
 
-        return totalMemoryBytes == 0
-            || normalized.Contains("INTEGRATED", StringComparison.OrdinalIgnoreCase)
+        return normalized.Contains("INTEGRATED", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("IRIS", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("UHD", StringComparison.OrdinalIgnoreCase)
             || normalized.Contains("RADEON GRAPHICS", StringComparison.OrdinalIgnoreCase)

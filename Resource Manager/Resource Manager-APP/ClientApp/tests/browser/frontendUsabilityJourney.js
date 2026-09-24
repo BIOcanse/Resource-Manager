@@ -163,7 +163,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await page.getByRole("button", { name: "取消监控面板布局编辑", exact: true }).click();
 
   await page.getByRole("button", { name: "组件与软件" }).click();
-  const managementNavigation = page.getByRole("navigation", { name: "组件与软件分类" });
+  const managementNavigation = page.getByRole("navigation", { name: "组件和软件分类" });
   await managementNavigation.waitFor({ state: "visible", timeout: 5000 });
   const generalAppsButton = managementNavigation.getByRole("button", { name: /一般应用/ });
   await generalAppsButton.click();

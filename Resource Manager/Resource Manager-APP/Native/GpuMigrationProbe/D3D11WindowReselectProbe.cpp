@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dxgi.h>
+#include <dxgi1_4.h>
 #include <d3d11.h>
 
 #include <algorithm>
@@ -36,6 +37,16 @@ struct D3DState
     int recreateCount = 0;
     int simulatedPresentDeviceRemovedCount = 0;
     int simulatedResizeBuffersDeviceRemovedCount = 0;
+    int actualPresentDeviceRemovedCount = 0;
+    int actualResizeBuffersDeviceRemovedCount = 0;
+    uint64_t successfulPresents = 0;
+    uint64_t presentsAfterRecovery = 0;
+    bool recoveryFailed = false;
+    uint64_t presentAttemptsAfterRecovery = 0;
+    HRESULT lastPresentResult = S_OK;
+    HRESULT lastResizeResult = S_OK;
+    uint64_t resizeAttempts = 0;
+    uint64_t skippedRenderCalls = 0;
     std::string lastRecreateReason = "initial-create";
     HWND foregroundBeforeAutoTrigger = nullptr;
     HWND foregroundAfterAutoTrigger = nullptr;
@@ -54,6 +65,7 @@ struct ProbeOptions
     bool explicitLowPowerAdapterOnStart = false;
     bool explicitLowPowerAdapterOnRecreate = false;
     bool noActivate = false;
+    bool extendedSwapChain = false;
     int autoTriggerMs = 0;
     int frameIntervalMs = 33;
     int presentSyncInterval = 1;
@@ -200,6 +212,27 @@ static bool CreateRenderTarget()
     return SUCCEEDED(hr);
 }
 
+static bool DeviceAndSwapChainFactoryMatch()
+{
+    if (!g_state.device || !g_state.swapChain) return false;
+    IDXGIDevice* device = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    IUnknown* deviceFactory = nullptr;
+    IUnknown* chainFactory = nullptr;
+    if (SUCCEEDED(g_state.device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void**>(&device))))
+    {
+        if (SUCCEEDED(device->GetAdapter(&adapter)))
+            adapter->GetParent(__uuidof(IUnknown), reinterpret_cast<void**>(&deviceFactory));
+    }
+    g_state.swapChain->GetParent(__uuidof(IUnknown), reinterpret_cast<void**>(&chainFactory));
+    const bool match = deviceFactory && chainFactory && deviceFactory == chainFactory;
+    if (chainFactory) chainFactory->Release();
+    if (deviceFactory) deviceFactory->Release();
+    if (adapter) adapter->Release();
+    if (device) device->Release();
+    return match;
+}
+
 static bool CreateWorkloadTextures()
 {
     if (g_options.copyPasses <= 0)
@@ -277,6 +310,7 @@ static IDXGIAdapter1* SelectLowPowerAdapter()
 
 static void ReleaseD3D()
 {
+    if (g_state.context) g_state.context->ClearState();
     IUnknown* workloadTextureB = reinterpret_cast<IUnknown*>(g_state.workloadTextureB);
     SafeRelease(workloadTextureB);
     g_state.workloadTextureB = nullptr;
@@ -292,6 +326,9 @@ static void ReleaseD3D()
     IUnknown* swapChain = reinterpret_cast<IUnknown*>(g_state.swapChain);
     SafeRelease(swapChain);
     g_state.swapChain = nullptr;
+
+    // Finish deferred destruction before creating a swap chain for the same HWND.
+    if (g_state.context) g_state.context->Flush();
 
     IUnknown* context = reinterpret_cast<IUnknown*>(g_state.context);
     SafeRelease(context);
@@ -323,7 +360,16 @@ static void ResizeSwapChain(UINT width, UINT height)
     SafeRelease(target);
     g_state.renderTarget = nullptr;
 
-    HRESULT hr = g_state.swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+    // ResizeBuffers1 requires a D3D12 command queue, including for flip-model chains.
+    const HRESULT hr = g_state.swapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
+    g_state.lastResizeResult = hr;
+    ++g_state.resizeAttempts;
+    if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+    {
+        ++g_state.actualResizeBuffersDeviceRemovedCount;
+        g_state.recoveryFailed |= !RecreateD3D(g_state.hwnd, "actual-resizebuffers-device-removed");
+        return;
+    }
     if (SUCCEEDED(hr))
     {
         CreateRenderTarget();
@@ -346,7 +392,7 @@ static bool CreateD3D(HWND hwnd)
     swapDesc.OutputWindow = hwnd;
     swapDesc.SampleDesc.Count = 1;
     swapDesc.Windowed = TRUE;
-    swapDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    swapDesc.SwapEffect = g_options.extendedSwapChain ? DXGI_SWAP_EFFECT_FLIP_DISCARD : DXGI_SWAP_EFFECT_DISCARD;
 
     static const D3D_FEATURE_LEVEL levels[] = {
         D3D_FEATURE_LEVEL_11_0,
@@ -423,6 +469,7 @@ static void Render()
 {
     if (g_state.context == nullptr || g_state.renderTarget == nullptr || g_state.swapChain == nullptr)
     {
+        ++g_state.skippedRenderCalls;
         return;
     }
 
@@ -448,7 +495,33 @@ static void Render()
             g_state.context->CopyResource(destination, source);
         }
     }
-    g_state.swapChain->Present(static_cast<UINT>(g_options.presentSyncInterval), 0);
+    HRESULT result;
+    if (g_options.extendedSwapChain)
+    {
+        IDXGISwapChain1* chain = nullptr;
+        result = g_state.swapChain->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&chain));
+        if (SUCCEEDED(result))
+        {
+            const DXGI_PRESENT_PARAMETERS parameters{};
+            result = chain->Present1(static_cast<UINT>(g_options.presentSyncInterval), 0, &parameters);
+            chain->Release();
+        }
+    }
+    else result = g_state.swapChain->Present(static_cast<UINT>(g_options.presentSyncInterval), 0);
+    g_state.lastPresentResult = result;
+    if (g_state.recreateCount > 0)
+        ++g_state.presentAttemptsAfterRecovery;
+    if (result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET)
+    {
+        ++g_state.actualPresentDeviceRemovedCount;
+        g_state.recoveryFailed |= !RecreateD3D(g_state.hwnd, "actual-present-device-removed");
+    }
+    else if (result == S_OK)
+    {
+        ++g_state.successfulPresents;
+        if (g_state.recreateCount > 0)
+            ++g_state.presentsAfterRecovery;
+    }
 }
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -671,6 +744,7 @@ int main(int argc, char** argv)
     g_options.explicitLowPowerAdapterOnStart = HasArg(argc, argv, "--explicit-low-power-adapter-on-start");
     g_options.explicitLowPowerAdapterOnRecreate = HasArg(argc, argv, "--explicit-low-power-adapter-on-recreate");
     g_options.noActivate = HasArg(argc, argv, "--no-activate");
+    g_options.extendedSwapChain = HasArg(argc, argv, "--extended-swap-chain");
     g_options.autoTriggerMs = IntArg(argc, argv, "--auto-trigger-ms", 0);
     g_options.frameIntervalMs = std::clamp(IntArg(argc, argv, "--frame-interval-ms", 33), 8, 1000);
     g_options.presentSyncInterval = std::clamp(IntArg(argc, argv, "--present-sync-interval", 1), 0, 1);
@@ -737,6 +811,14 @@ int main(int argc, char** argv)
         return 3;
     }
 
+    if (HasArg(argc, argv, "--ready-stdout"))
+    {
+        std::printf("{\"ready\":true,\"pid\":%lu,\"hwnd\":%llu,\"initialLuid\":\"%s\"}\n",
+            static_cast<unsigned long>(pid), static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(hwnd)),
+            g_state.initialAdapter.luidToken.c_str());
+        std::fflush(stdout);
+    }
+
     MSG message{};
     bool autoTriggered = false;
     while ((GetTickCount() - started) < static_cast<DWORD>(durationMs))
@@ -767,7 +849,8 @@ done:
 
     std::ostringstream output;
     output
-        << "{\"success\":true"
+        << "{\"success\":" << ((finalAdapter.valid && g_state.renderTarget && !g_state.recoveryFailed && g_state.successfulPresents > 0
+            && (g_state.recreateCount == 0 || g_state.presentsAfterRecovery > 0) && g_state.lastPresentResult == S_OK) ? "true" : "false")
         << ",\"pid\":" << static_cast<unsigned long>(pid)
         << ",\"initialAdapter\":\"" << JsonEscape(g_state.initialAdapter.name) << "\""
         << ",\"initialLuid\":\"" << JsonEscape(g_state.initialAdapter.luidToken) << "\""
@@ -777,10 +860,23 @@ done:
         << ",\"recreateCount\":" << g_state.recreateCount
         << ",\"simulatedPresentDeviceRemovedCount\":" << g_state.simulatedPresentDeviceRemovedCount
         << ",\"simulatedResizeBuffersDeviceRemovedCount\":" << g_state.simulatedResizeBuffersDeviceRemovedCount
+        << ",\"actualPresentDeviceRemovedCount\":" << g_state.actualPresentDeviceRemovedCount
+        << ",\"actualResizeBuffersDeviceRemovedCount\":" << g_state.actualResizeBuffersDeviceRemovedCount
+        << ",\"successfulPresents\":" << g_state.successfulPresents
+        << ",\"presentsAfterRecovery\":" << g_state.presentsAfterRecovery
+        << ",\"recoveryFailed\":" << (g_state.recoveryFailed ? "true" : "false")
+        << ",\"presentAttemptsAfterRecovery\":" << g_state.presentAttemptsAfterRecovery
+        << ",\"lastPresentResult\":" << static_cast<uint32_t>(g_state.lastPresentResult)
+        << ",\"lastResizeResult\":" << static_cast<uint32_t>(g_state.lastResizeResult)
+        << ",\"resizeAttempts\":" << g_state.resizeAttempts
+        << ",\"renderTargetReady\":" << (g_state.renderTarget ? "true" : "false")
+        << ",\"skippedRenderCalls\":" << g_state.skippedRenderCalls
+        << ",\"deviceAndSwapChainFactoryMatch\":" << (DeviceAndSwapChainFactoryMatch() ? "true" : "false")
         << ",\"lastRecreateReason\":\"" << JsonEscape(g_state.lastRecreateReason) << "\""
         << ",\"autoTriggerMethod\":\"" << JsonEscape(g_options.autoTriggerMethod) << "\""
         << ",\"explicitLowPowerAdapterOnRecreate\":" << (g_options.explicitLowPowerAdapterOnRecreate ? "true" : "false")
         << ",\"presentSyncInterval\":" << g_options.presentSyncInterval
+        << ",\"extendedSwapChain\":" << (g_options.extendedSwapChain ? "true" : "false")
         << ",\"copyPasses\":" << g_options.copyPasses
         << ",\"copyTextureSize\":" << g_options.copyTextureSize
         << ",\"triggerUsedNoActivateRestore\":" << (g_state.triggerUsedNoActivateRestore ? "true" : "false")

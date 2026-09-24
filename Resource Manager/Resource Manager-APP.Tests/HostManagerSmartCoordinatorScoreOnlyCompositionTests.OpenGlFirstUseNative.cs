@@ -116,6 +116,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             };
             fixture.RuntimePlanProvider.Publish(enabled);
             _ = await fixture.Coordinator.RunOnceAsync(default);
+            Assert.Equal(0, actions.ApplyCount);
+            _ = await fixture.Coordinator.RunOnceAsync(default);
             Assert.Equal(1, actions.FirstUseCalls);
             Assert.Equal(1, actions.ObservationWaits);
             Assert.Equal(1, actions.ApplyCount);

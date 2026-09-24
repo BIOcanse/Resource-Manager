@@ -346,9 +346,8 @@ internal sealed class ResourceBreakdownSnapshotState
                 continue;
             }
 
-            if (replacement.Any(static bar =>
-                    bar.ObservationStatus != SamplingObservationStatus.Current
-                    || bar.AttributionStatus != SamplingObservationStatus.Current))
+            if (replacement.All(static bar =>
+                    bar.ObservationStatus != SamplingObservationStatus.Current))
             {
                 SetDatasetFailure(
                     dataset,
