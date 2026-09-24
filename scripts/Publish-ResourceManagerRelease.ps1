@@ -6,6 +6,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $app = Join-Path (Split-Path -Parent $PSScriptRoot) 'Resource Manager\Resource Manager-APP'
+$clientApp = Join-Path $app 'ClientApp'
 if (-not ('ResourceManagerReleaseErrorMode' -as [type])) { Add-Type -TypeDefinition @'
 using System.Runtime.InteropServices;
 public static class ResourceManagerReleaseErrorMode {
@@ -14,6 +15,18 @@ public static class ResourceManagerReleaseErrorMode {
 '@
 }
 [void][ResourceManagerReleaseErrorMode]::SetErrorMode(32771)
+# The Web SDK snapshots wwwroot items when the project is evaluated. Build the
+# frontend before dotnet publish so a clean checkout includes its generated assets.
+Push-Location $clientApp
+try {
+    if (-not (Test-Path -LiteralPath 'node_modules' -PathType Container)) {
+        & npm install
+        if ($LASTEXITCODE -ne 0) { throw "Frontend dependency installation failed: $LASTEXITCODE" }
+    }
+    & npm run build
+    if ($LASTEXITCODE -ne 0) { throw "Frontend publication build failed: $LASTEXITCODE" }
+}
+finally { Pop-Location }
 $projects = @(
     @{ Project = 'ResourceManager.App.csproj'; Directory = 'backend' },
     @{ Project = 'NativeUi\ResourceManager.NativeUi.csproj'; Directory = 'ui' },
@@ -26,6 +39,7 @@ foreach ($project in $projects) {
     & dotnet publish (Join-Path $app $project.Project) -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
         -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true `
+        -p:SkipClientAppBuild=true `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
 }
