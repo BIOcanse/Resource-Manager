@@ -184,18 +184,20 @@ The release package includes the required .NET runtime. It uses your system's We
 ## 📦 Installation
 
 1. Download the latest Windows x64 release archive.
-2. Extract the **complete folder** to a permanent location.
-3. Run `Install.cmd` to register that directory.
+2. Extract the **complete folder** to a permanent location. For an update, extract it to a new folder outside the current installation.
+3. Run `Install.cmd`. On an update it verifies the existing installation, backs up and replaces its program files, and preserves its configuration and data.
 4. Run `Start.cmd` to start the service and the desktop interface.
 5. Run `Restart.cmd` to restart the service when needed.
 
 Service management requests administrator permission; the interface runs as a standard user.
 
-When updating, preserve:
+Close the desktop interface before an update. Do not extract an update over a running installation. The installer preserves these directories in the existing installation:
 
 ```text
 Config/
 UserData/
+Dependencies/
+Misc/
 ```
 
 ---
