@@ -23,8 +23,10 @@ public sealed class GpuGraphicsApiIdentificationTests
         var api = new WindowsGpuGraphicsApiDetector((_, _) => modules.Split(',')).Detect(42, "target.exe");
         Assert.Equal(expected, api);
         Assert.Equal(provider, GpuGraphicsApiRoutes.StartupProvider(api));
-        Assert.Equal(expected == GpuGraphicsApi.Vulkan ? GpuPlacementProviderIds.VulkanExplicitLayer
-            : GpuPlacementProviderIds.D3dDeviceCreateShim, GpuGraphicsApiRoutes.RuntimeProvider(api));
+        var runtimeProvider = expected == GpuGraphicsApi.Vulkan ? GpuPlacementProviderIds.VulkanExplicitLayer
+            : expected is GpuGraphicsApi.D3D11 or GpuGraphicsApi.D3D12 or (GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12)
+                ? GpuPlacementProviderIds.D3dDeviceCreateShim : null;
+        Assert.Equal(runtimeProvider, GpuGraphicsApiRoutes.RuntimeProvider(api));
     }
 
     [Theory]
@@ -126,11 +128,11 @@ public sealed class GpuGraphicsApiIdentificationTests
     }
 
     [Theory]
-    [InlineData(GpuGraphicsApi.D3D9)]
-    [InlineData(GpuGraphicsApi.D3D11)]
-    [InlineData(GpuGraphicsApi.D3D12)]
-    [InlineData(GpuGraphicsApi.OpenGL)]
-    public async Task RuntimeSelectionKeepsAllCurrentInstancesOfTheSameExecutable(GpuGraphicsApi api)
+    [InlineData(GpuGraphicsApi.D3D9, false)]
+    [InlineData(GpuGraphicsApi.D3D11, true)]
+    [InlineData(GpuGraphicsApi.D3D12, true)]
+    [InlineData(GpuGraphicsApi.OpenGL, false)]
+    public async Task RuntimeSelectionKeepsOnlySupportedCurrentInstancesOfTheSameExecutable(GpuGraphicsApi api, bool supported)
     {
         using var files = new Fixture();
         var inputs = new[] { files.Input(42), files.Input(43) };
@@ -139,8 +141,12 @@ public sealed class GpuGraphicsApiIdentificationTests
         var history = await store.ObserveAsync(files.Request() with { Processes = inputs }, default);
         Assert.Single(history.Processes);
         var selected = WindowsRunningGpuPlacementActionService.SelectRuntimeGraphicsApis(inputs, history);
-        Assert.Equal(new[] { 42, 43 }, selected.Keys.Order());
-        Assert.All(selected.Values, value => Assert.Equal(api, value));
+        if (supported)
+        {
+            Assert.Equal(new[] { 42, 43 }, selected.Keys.Order());
+            Assert.All(selected.Values, value => Assert.Equal(api, value));
+        }
+        else Assert.Empty(selected);
     }
 
     [Theory]
@@ -160,7 +166,7 @@ public sealed class GpuGraphicsApiIdentificationTests
         Assert.Equal(2, history.Processes.Count);
         Assert.All(history.Processes, process => Assert.Equal(42, process.LastProcessId));
         var selected = WindowsRunningGpuPlacementActionService.SelectRuntimeGraphicsApis([current], history);
-        if (currentApi is GpuGraphicsApi.Vulkan or GpuGraphicsApi.OpenGL)
+        if (currentApi is GpuGraphicsApi.Vulkan)
             Assert.Equal(currentApi, Assert.Single(selected).Value);
         else
             Assert.Empty(selected);

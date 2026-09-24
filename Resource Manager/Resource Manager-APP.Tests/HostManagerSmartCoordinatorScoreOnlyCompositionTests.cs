@@ -1696,20 +1696,37 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(shortage.MemoryAfterNormalReleaseRounds);
     }
 
-    [Fact]
-    public async Task ExecuteCycle_SameIncarnationProcessAttributionDrift_UsesOwnedAnchor()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExecuteCycle_SameIncarnationProcessAttributionDrift_UsesOwnedAnchor(bool withCpuScore)
     {
         const int processId = 4_243;
         const ulong processStartKey = 132_537_600_100_000_000;
         const string ownedSoftwareId = "software:owned";
         const string currentSoftwareId = "software:reattributed";
+        var topology = CreateAutomaticPlacementTopology();
+        var residency = CpuCoreResidencyTestValues.Create(
+            91, DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(processId, processStartKey, ("core:0", 50)),
+            CpuCoreResidencyTestValues.Process(processId + 1, processStartKey + 1, ("core:0", 10)),
+            CpuCoreResidencyTestValues.Process(processId + 2, processStartKey + 2, ("core:0", 10)));
+        var facts = CreateProcessFacts(processId, processStartKey, currentSoftwareId);
+        facts = facts with
+        {
+            EnumeratedCount = 3,
+            EmittedCount = 3,
+            Processes =
+            [
+                facts.Processes[0],
+                CreateProcessFacts(processId + 1, processStartKey + 1, currentSoftwareId).Processes[0],
+                CreateProcessFacts(processId + 2, processStartKey + 2, "software:unaffected").Processes[0]
+            ]
+        };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            processFactsSnapshot: CreateProcessFacts(
-                processId,
-                processStartKey,
-                currentSoftwareId),
+            processFactsSnapshot: facts,
             processRecoveryRead: requestedProcessId =>
             {
                 Assert.Equal(processId, requestedProcessId);
@@ -1718,7 +1735,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         processId,
                         DateTimeOffset.FromFileTime(checked((long)processStartKey))));
             },
-            policyExecutionEnabled: false);
+            policyExecutionEnabled: false,
+            cpuCoreReader: withCpuScore ? new RecordingCpuCoreResidencyReader(() => residency) : null,
+            cpuTopology: withCpuScore ? topology : null,
+            cpuScoring: withCpuScore ? HostManagerTestPlanFactory.CreateCpuScoring(topology) : null);
         var seeded = new List<SeededProcessOwnership>
         {
             await fixture.SeedProcessOwnershipAsync(
@@ -1764,6 +1784,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             row.SoftwareKey);
         Assert.True(row.Flags.HasFlag(
             NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned));
+        if (withCpuScore)
+        {
+            var unaffected = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(),
+                candidate => candidate.ProcessId == processId + 2);
+            Assert.True(unaffected.CpuScore > 0);
+            Assert.Equal(0, row.CpuScore);
+        }
 
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
 
@@ -5127,7 +5154,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              Func<string, IRuntimePlanProvider, ResourceManager.App.Application.GpuPlacement.IRunningGpuPlacementActionService>?
                  runningGpuActionsFactory = null,
              ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution.WindowsGpuWindowActionRuntime? gpuWindowRuntime = null,
-             ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null)
+             ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null,
+             Microsoft.Extensions.Logging.ILogger<HostManagerSmartCoordinator>? coordinatorLogger = null,
+             ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -5320,8 +5349,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 gpuCallbackRuntime ?? new ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime(),
                 runningGpuActions ?? runningGpuActionsFactory?.Invoke(root, runtimePlanProvider) ?? new RecordingRunningGpuActions(),
                 debugLogWriter,
-                NullLogger<HostManagerSmartCoordinator>.Instance,
-                (ResourceManagerSelfLocalResourceManager)RuntimeHelpers.GetUninitializedObject(
+                coordinatorLogger ?? NullLogger<HostManagerSmartCoordinator>.Instance,
+                selfLocalResourceManager ?? (ResourceManagerSelfLocalResourceManager)RuntimeHelpers.GetUninitializedObject(
                     typeof(ResourceManagerSelfLocalResourceManager)),
                 publicResourceManager,
                 new HostManagerSchedulingAuthority(),

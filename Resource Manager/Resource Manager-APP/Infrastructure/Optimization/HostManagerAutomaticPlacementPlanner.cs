@@ -19,7 +19,13 @@ internal sealed record HostManagerAutomaticPlacementProcess(
     ResolvedGpuPlacementPolicy Policy,
     double? CanonicalCpuScore,
     IReadOnlyDictionary<ulong, double> CanonicalGpuScores,
-    IReadOnlyDictionary<ulong, double> ObservedGpuUsagePercent);
+    IReadOnlyDictionary<ulong, double> ObservedGpuUsagePercent)
+{
+    internal string? SoftwareKind { get; init; }
+    internal IReadOnlyDictionary<ulong, double> ObservedDedicatedMemoryBytes { get; init; }
+        = new Dictionary<ulong, double>();
+    internal bool CanMigrateGpu { get; init; } = true;
+}
 
 internal sealed record HostManagerAutomaticCpuPlacement(
     HostManagerAutomaticPlacementProcess Process,
@@ -28,16 +34,19 @@ internal sealed record HostManagerAutomaticCpuPlacement(
     CpuAffinityPlan Selector,
     string Source);
 
-internal sealed record HostManagerAutomaticGpuPreferencePlacement(
+internal sealed record HostManagerAutomaticGpuPlacement(
     HostManagerAutomaticPlacementProcess Process,
     double CanonicalProcessScore,
     bool PreferIntegratedGpu,
     ulong TargetAdapterKey,
-    string Source);
+    string Source)
+{
+    internal ulong ObservedAdapterKey { get; init; }
+}
 
 internal sealed record HostManagerAutomaticPlacementPlan(
     IReadOnlyList<HostManagerAutomaticCpuPlacement> Cpu,
-    IReadOnlyList<HostManagerAutomaticGpuPreferencePlacement> GpuPreferences);
+    IReadOnlyList<HostManagerAutomaticGpuPlacement> Gpu);
 
 internal static class HostManagerAutomaticPlacementPlanner
 {
@@ -47,7 +56,8 @@ internal static class HostManagerAutomaticPlacementPlanner
         CompiledHardwareScorePlan hardwareScores,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         CompiledHostManagerPlacementCoordinatorRecreatePlan capacity,
-        bool runtimeGpuShimEnabled = false)
+        bool runtimeGpuShimEnabled = false,
+        CompiledGpuOverflowPolicy? gpuOverflow = null)
     {
         ArgumentNullException.ThrowIfNull(topology);
         ArgumentNullException.ThrowIfNull(hardware);
@@ -58,7 +68,7 @@ internal static class HostManagerAutomaticPlacementPlanner
 
         return new HostManagerAutomaticPlacementPlan(
             PlanCpu(topology, hardwareScores, processes),
-            PlanGpuPreferences(hardware, hardwareScores, processes, runtimeGpuShimEnabled));
+            PlanGpu(hardware, hardwareScores, processes, runtimeGpuShimEnabled, gpuOverflow));
     }
 
     private static IReadOnlyList<HostManagerAutomaticCpuPlacement> PlanCpu(
@@ -80,7 +90,6 @@ internal static class HostManagerAutomaticPlacementPlanner
         var candidates = processes
             .Where(static process => process.CanApplyPhysicalPlacement)
             .Where(static process => process.CanonicalCpuScore is >= 0)
-            .Where(static process => AllowsPlacementWrite(process.Policy.EnabledMode))
             .OrderByDescending(static process => process.CanonicalCpuScore!.Value)
             .ThenBy(static process => process.TargetId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static process => process.ProcessId)
@@ -117,9 +126,6 @@ internal static class HostManagerAutomaticPlacementPlanner
         foreach (var process in candidates)
         {
             if (process.Policy.CpuManualLockedPositionIds.Count != 0
-                || !process.Policy.EnabledMode.Equals(
-                    GpuPlacementPolicyModes.Auto,
-                    StringComparison.OrdinalIgnoreCase)
                 || !process.Policy.CpuMaximumOccupancyMode.Equals(
                     CpuMaximumOccupancyModes.SingleCcd,
                     StringComparison.OrdinalIgnoreCase))
@@ -159,13 +165,14 @@ internal static class HostManagerAutomaticPlacementPlanner
         return result;
     }
 
-    private static IReadOnlyList<HostManagerAutomaticGpuPreferencePlacement> PlanGpuPreferences(
+    private static IReadOnlyList<HostManagerAutomaticGpuPlacement> PlanGpu(
         HardwareMetricSnapshot hardware,
         CompiledHardwareScorePlan hardwareScores,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
-        bool runtimeGpuShimEnabled)
+        bool runtimeGpuShimEnabled,
+        CompiledGpuOverflowPolicy? overflow)
     {
-        if (!hardware.GpuInventory.IsCurrentComplete())
+        if (!hardware.GpuInventory.IsCurrentComplete() || overflow is not { IsValid: true })
         {
             return [];
         }
@@ -179,12 +186,8 @@ internal static class HostManagerAutomaticPlacementPlanner
                     : new GpuPlacementState(
                         observation.AdapterKey,
                         GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(metrics.Name),
-                        Math.Max(1, hardwareScores.ResolveGpuPerformanceScore(metrics)),
-                        observation.UsageStatus == SamplingObservationStatus.Current
-                            ? observation.UsagePercent
-                                * Math.Max(1, hardwareScores.ResolveGpuPerformanceScore(metrics))
-                                / 100d
-                            : 0);
+                        hardwareScores.ResolveGpuPerformanceScore(metrics),
+                        observation);
             })
             .Where(static state => state is not null)
             .Select(static state => state!)
@@ -195,12 +198,11 @@ internal static class HostManagerAutomaticPlacementPlanner
         }
 
         var candidates = processes
-            .Where(static process => process.CanApplyPhysicalPlacement)
             .Where(static process => process.ExecutablePath is not null)
+            .Where(static process => process.CanMigrateGpu)
             .Where(static process => process.CanonicalGpuScores.Count != 0)
             .Where(static process => AllowsPlacementWrite(process.Policy.EnabledMode))
-            .Where(process => process.Policy.AllowsProvider(GpuPlacementProviderIds.WindowsGraphicsPreference)
-                || runtimeGpuShimEnabled && process.Policy.AcceptsRuntimeGpuScheduling())
+            .Where(process => runtimeGpuShimEnabled && process.Policy.AcceptsExternalRuntimeGpuScheduling())
             .Select(static process => new GpuCandidate(
                 process,
                 process.CanonicalGpuScores.Values.Max()))
@@ -213,16 +215,6 @@ internal static class HostManagerAutomaticPlacementPlanner
             return [];
         }
 
-        foreach (var adapter in adapters)
-        {
-            var candidateUsage = candidates.Sum(candidate =>
-                candidate.Process.ObservedGpuUsagePercent.GetValueOrDefault(adapter.AdapterKey));
-            adapter.ProjectedDemand = Math.Max(
-                0,
-                adapter.ProjectedDemand
-                    - candidateUsage * adapter.PerformanceCapacity / 100d);
-        }
-
         var integrated = adapters
             .Where(static adapter => adapter.IsIntegrated)
             .OrderByDescending(static adapter => adapter.PerformanceCapacity)
@@ -233,72 +225,69 @@ internal static class HostManagerAutomaticPlacementPlanner
             .OrderByDescending(static adapter => adapter.PerformanceCapacity)
             .ThenBy(static adapter => adapter.AdapterKey)
             .ToArray();
-        var result = new List<HostManagerAutomaticGpuPreferencePlacement>();
-
+        var ordered = adapters.Where(a => double.IsFinite(a.PerformanceCapacity) && a.PerformanceCapacity > 0)
+            .OrderByDescending(a => a.PerformanceCapacity).ThenBy(a => a.AdapterKey).ToArray();
+        var selectedByProcess = new Dictionary<int, GpuPlacementState>();
+        var observedByProcess = new Dictionary<int, ulong>();
+        var automatic = new List<(GpuCandidate Candidate, GpuPlacementState Current)>();
         foreach (var candidate in candidates)
         {
             var target = GpuPlacementTargets.Normalize(candidate.Process.Policy.TargetGpu);
-            bool? preferIntegrated = target switch
+            var current = adapters.Where(a => candidate.Process.ObservedGpuUsagePercent.GetValueOrDefault(a.AdapterKey) > 0
+                    || candidate.Process.ObservedDedicatedMemoryBytes.GetValueOrDefault(a.AdapterKey) > 0)
+                .OrderByDescending(a => candidate.Process.ObservedGpuUsagePercent.GetValueOrDefault(a.AdapterKey))
+                .ThenByDescending(a => candidate.Process.ObservedDedicatedMemoryBytes.GetValueOrDefault(a.AdapterKey))
+                .FirstOrDefault();
+            if (current is not null) observedByProcess[candidate.Process.ProcessId] = current.AdapterKey;
+            if (target == GpuPlacementTargets.AutoIdleGpu)
             {
-                GpuPlacementTargets.IntegratedGpu when integrated.Length != 0 => true,
-                GpuPlacementTargets.HighPerformanceGpu when highPerformance.Length != 0 => false,
-                GpuPlacementTargets.AutoIdleGpu when integrated.Length != 0 && highPerformance.Length != 0 =>
-                    SelectAutomaticGpuClass(
-                        integrated,
-                        highPerformance,
-                        candidate.CanonicalScore),
-                _ => null
-            };
-            if (!preferIntegrated.HasValue)
-            {
+                if (current is null || !ordered.Contains(current)) continue;
+                selectedByProcess[candidate.Process.ProcessId] = current;
+                automatic.Add((candidate, current));
                 continue;
             }
-
-            var selectedClass = preferIntegrated.Value ? integrated : highPerformance;
-            var selected = selectedClass
-                .OrderBy(adapter =>
-                    (adapter.ProjectedDemand + candidate.CanonicalScore)
-                    / adapter.PerformanceCapacity)
-                .ThenByDescending(static adapter => adapter.PerformanceCapacity)
-                .ThenBy(static adapter => adapter.AdapterKey)
-                .First();
-            selected.ProjectedDemand += candidate.CanonicalScore;
-            selected.AssignedCount++;
-            result.Add(new HostManagerAutomaticGpuPreferencePlacement(
-                candidate.Process,
-                candidate.CanonicalScore,
-                preferIntegrated.Value,
-                selected.AdapterKey,
-                target.Equals(GpuPlacementTargets.AutoIdleGpu, StringComparison.OrdinalIgnoreCase)
-                    ? "automatic-gpu-class"
-                    : "explicit-gpu-class"));
+            var selected = target switch
+            {
+                GpuPlacementTargets.IntegratedGpu => integrated.FirstOrDefault(),
+                GpuPlacementTargets.HighPerformanceGpu => highPerformance.FirstOrDefault(),
+                _ => null
+            };
+            if (selected is not null) selectedByProcess[candidate.Process.ProcessId] = selected;
         }
 
-        return result;
-    }
-
-    private static bool SelectAutomaticGpuClass(
-        IReadOnlyList<GpuPlacementState> integrated,
-        IReadOnlyList<GpuPlacementState> highPerformance,
-        double canonicalScore)
-    {
-        var integratedBest = integrated
-            .OrderBy(static adapter => adapter.ProjectedDemand / adapter.PerformanceCapacity)
-            .ThenByDescending(static adapter => adapter.PerformanceCapacity)
-            .First();
-        var highBest = highPerformance
-            .OrderBy(static adapter => adapter.ProjectedDemand / adapter.PerformanceCapacity)
-            .ThenByDescending(static adapter => adapter.PerformanceCapacity)
-            .First();
-        var integratedLoad = (integratedBest.ProjectedDemand + canonicalScore)
-            / integratedBest.PerformanceCapacity;
-        var highLoad = (highBest.ProjectedDemand + canonicalScore)
-            / highBest.PerformanceCapacity;
-        if (Math.Abs(integratedLoad - highLoad) < 0.000001)
+        // Shared usage is not releasable byte-for-byte. Drain a source, then let the
+        // next actual observation establish whether another migration is needed.
+        var destinations = new HashSet<ulong>();
+        foreach (var source in ordered.Where(a => a.IsOverflowing(overflow)))
         {
-            return false;
+            foreach (var item in automatic.Where(x => x.Current == source && x.Candidate.Process.CanMigrateGpu
+                    && source.ContributesToOverflow(x.Candidate.Process, overflow))
+                .OrderBy(x => x.Candidate.CanonicalScore).ThenBy(x => x.Candidate.Process.ProcessId))
+            {
+                var destination = ordered.FirstOrDefault(a => a.PerformanceCapacity < source.PerformanceCapacity
+                    && !destinations.Contains(a.AdapterKey) && a.CanReceive(item.Candidate.Process, source, overflow));
+                if (destination is null) continue;
+                selectedByProcess[item.Candidate.Process.ProcessId] = destination;
+                destinations.Add(destination.AdapterKey);
+                break;
+            }
         }
-        return integratedLoad < highLoad;
+        foreach (var item in automatic.Where(x => x.Candidate.Process.CanMigrateGpu && !x.Current.IsOverflowing(overflow)))
+        {
+            var destination = ordered.FirstOrDefault(a => a.PerformanceCapacity > item.Current.PerformanceCapacity
+                && !destinations.Contains(a.AdapterKey) && a.CanReceive(item.Candidate.Process, item.Current, overflow));
+            if (destination is null) continue;
+            selectedByProcess[item.Candidate.Process.ProcessId] = destination;
+            destinations.Add(destination.AdapterKey);
+        }
+        return candidates.Where(c => selectedByProcess.ContainsKey(c.Process.ProcessId)).Select(c =>
+        {
+            var selected = selectedByProcess[c.Process.ProcessId];
+            return new HostManagerAutomaticGpuPlacement(c.Process, c.CanonicalScore, selected.IsIntegrated,
+                selected.AdapterKey, c.Process.Policy.TargetGpu == GpuPlacementTargets.AutoIdleGpu
+                    ? "automatic-gpu-performance-overflow" : "explicit-gpu-class")
+            { ObservedAdapterKey = observedByProcess.GetValueOrDefault(c.Process.ProcessId) };
+        }).ToArray();
     }
 
     private static double ResolveCcdCapacity(
@@ -371,13 +360,38 @@ internal static class HostManagerAutomaticPlacementPlanner
         ulong adapterKey,
         bool isIntegrated,
         double performanceCapacity,
-        double projectedDemand)
+        SchedulingGpuAdapterObservation observation)
     {
         internal ulong AdapterKey { get; } = adapterKey;
         internal bool IsIntegrated { get; } = isIntegrated;
         internal double PerformanceCapacity { get; } = performanceCapacity;
-        internal double ProjectedDemand { get; set; } = projectedDemand;
-        internal int AssignedCount { get; set; }
+        internal bool IsOverflowing(CompiledGpuOverflowPolicy policy)
+            => observation.UsageStatus == SamplingObservationStatus.Current && observation.UsagePercent >= policy.UsagePercent
+                || observation.CapacityStatus == SamplingObservationStatus.Current && observation.TotalDedicatedMemoryBytes > 0
+                    && observation.UsedDedicatedMemoryBytes * 100d / observation.TotalDedicatedMemoryBytes >= policy.DedicatedMemoryPercent;
+
+        internal bool ContributesToOverflow(HostManagerAutomaticPlacementProcess process, CompiledGpuOverflowPolicy policy)
+            => observation.UsageStatus == SamplingObservationStatus.Current && observation.UsagePercent >= policy.UsagePercent
+                && process.ObservedGpuUsagePercent.GetValueOrDefault(AdapterKey) > 0
+                || observation.CapacityStatus == SamplingObservationStatus.Current && observation.TotalDedicatedMemoryBytes > 0
+                    && observation.UsedDedicatedMemoryBytes * 100d / observation.TotalDedicatedMemoryBytes >= policy.DedicatedMemoryPercent
+                    && process.ObservedDedicatedMemoryBytes.GetValueOrDefault(AdapterKey) > 0;
+
+        internal bool CanReceive(HostManagerAutomaticPlacementProcess process, GpuPlacementState source,
+            CompiledGpuOverflowPolicy policy)
+        {
+            if (observation.UsageStatus != SamplingObservationStatus.Current || IsOverflowing(policy)
+                || !process.ObservedGpuUsagePercent.TryGetValue(source.AdapterKey, out var usage)
+                || observation.UsagePercent + usage * source.PerformanceCapacity / PerformanceCapacity >= policy.UsagePercent)
+                return false;
+            if (!observation.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.DedicatedMemory))
+                return IsIntegrated;
+            // Dedicated bytes on an iGPU do not describe its system-memory backing demand.
+            if (source.IsIntegrated && !IsIntegrated) return false;
+            return observation.CapacityStatus == SamplingObservationStatus.Current && observation.TotalDedicatedMemoryBytes > 0
+                && process.ObservedDedicatedMemoryBytes.TryGetValue(source.AdapterKey, out var bytes)
+                && (observation.UsedDedicatedMemoryBytes + bytes) * 100d / observation.TotalDedicatedMemoryBytes < policy.DedicatedMemoryPercent;
+        }
     }
 
     private sealed record GpuCandidate(

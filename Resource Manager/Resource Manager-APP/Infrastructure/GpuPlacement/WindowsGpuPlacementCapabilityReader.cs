@@ -1,15 +1,17 @@
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
 public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilityReader
 {
     private const ushort ImageFileMachineAmd64 = 0x8664;
-    private const string SupportedGraphicsApis = "D3D9/D3D11/D3D12/Vulkan";
+    private const string SupportedGraphicsApis = "D3D11/D3D12/Vulkan";
 
     private readonly string baseDirectory;
     private readonly string runtimeProviderPath;
+    private readonly string rendererRuntimePath;
 
     public WindowsGpuPlacementCapabilityReader()
         : this(AppContext.BaseDirectory)
@@ -24,7 +26,8 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
         runtimeProviderPath = Path.Combine(
             root,
             "GpuPlacementShim",
-            WindowsGpuPlacementInjector.RuntimeProviderFileName);
+            WindowsExternalGpuPlacementRuntime.FileName);
+        rendererRuntimePath = Path.Combine(root, "GpuPlacementShim", WindowsExternalGpuPlacementRuntime.RendererFileName);
     }
 
     public GpuPlacementProcessCapabilities Evaluate(
@@ -41,7 +44,6 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
         }
 
         var startupApi = EvaluateGraphicsApi(graphicsApi, forStartup: true);
-        var runtimeApi = EvaluateGraphicsApi(graphicsApi, forStartup: false);
         var startupMissing = GpuStartupProviderArtifacts.MissingFiles(baseDirectory, [startupApi.ProviderId]);
         var startup = startupApi.State != GpuPlacementCapabilityStates.Supported
             ? Capability(startupApi.State, executable.Architecture, startupApi.Reason,
@@ -58,21 +60,19 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
                 $"启动期精确 Provider 文件缺失：{string.Join("、", startupMissing)}。已保存设置不会执行。",
                 startupApi.GraphicsApi, startupApi.ProviderId);
 
-        var missingRuntimeFiles = new List<string>();
-        if (!File.Exists(runtimeProviderPath)) missingRuntimeFiles.Add(Path.GetFileName(runtimeProviderPath));
-        var runtime = runtimeApi.State != GpuPlacementCapabilityStates.Supported
-            ? Capability(runtimeApi.State, executable.Architecture, runtimeApi.Reason, runtimeApi.GraphicsApi, runtimeApi.ProviderId)
-            : missingRuntimeFiles.Count == 0
-            ? Capability(
-                GpuPlacementCapabilityStates.Supported,
-                executable.Architecture,
-                $"{runtimeApi.Reason}运行期 Provider 只影响这些入口之后创建或重建的设备，不迁移既有设备。",
-                runtimeApi.GraphicsApi, runtimeApi.ProviderId)
-            : Capability(
-                GpuPlacementCapabilityStates.Unsupported,
-                executable.Architecture,
-                $"运行期精确 Provider 文件缺失：{string.Join("、", missingRuntimeFiles)}。已保存设置不会执行。",
-                runtimeApi.GraphicsApi, runtimeApi.ProviderId);
+        var (runtimeFile, runtimeProvider) = graphicsApi switch
+        {
+            GpuGraphicsApi.D3D11 => (runtimeProviderPath, WindowsExternalGpuPlacementRuntime.ProviderId),
+            GpuGraphicsApi.D3D12 => (rendererRuntimePath, WindowsExternalGpuPlacementRuntime.QtProviderId),
+            GpuGraphicsApi.Vulkan => (rendererRuntimePath, WindowsExternalGpuPlacementRuntime.QtVulkanProviderId),
+            _ => (string.Empty, WindowsExternalGpuPlacementRuntime.ProviderId)
+        };
+        var needsRuntimeObservation = runtimeFile.Length != 0 && File.Exists(runtimeFile);
+        var runtime = Capability(needsRuntimeObservation ? GpuPlacementCapabilityStates.Unknown : GpuPlacementCapabilityStates.Unsupported,
+            executable.Architecture, needsRuntimeObservation
+                ? "等待当前 GPU 进程和渲染器的精确确认；仅确认过的外部重建路径可执行。"
+                : "此软件尚无已验证的无注入运行期换卡路径。",
+            GpuGraphicsApiRoutes.DisplayName(graphicsApi), runtimeProvider);
 
         return new GpuPlacementProcessCapabilities(processKey, startup, runtime);
     }
@@ -178,15 +178,6 @@ public sealed class WindowsGpuPlacementCapabilityReader : IGpuPlacementCapabilit
                 "已观察到 Vulkan。启动路径使用普通权限新进程的 explicit layer 与 API 1.1+ instance 选卡，不迁移既有设备。",
                 GpuPlacementProviderIds.VulkanExplicitLayer);
         }
-
-        if (!forStartup && api == GpuGraphicsApi.Vulkan)
-            return new GraphicsApiCapability(GpuPlacementCapabilityStates.Supported, "Vulkan",
-                "使用已加载的产品 layer，否则由公共 DLL 接入 Vulkan 1.1+ Loader 公开入口。仅覆盖已验证的枚举路径；缓存的旧 physical-device 不换卡，须重新枚举并创建设备。",
-                GpuPlacementProviderIds.VulkanExplicitLayer);
-
-        if (!forStartup && api == GpuGraphicsApi.D3D9)
-            return new GraphicsApiCapability(GpuPlacementCapabilityStates.Supported, "D3D9/9Ex",
-                "覆盖 Direct3DCreate9/Ex 与原工厂的 CreateDevice/Ex；当前仅适用已验证的系统 D3D9 映像，配置时实际校验。旧工厂与 Reset 不换卡。");
 
         var supportedApis = new List<string>();
         var entryPoints = new List<string>();

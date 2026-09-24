@@ -595,10 +595,14 @@ internal sealed class SchedulingProcessFactSnapshotState
             Gpus = bit is SchedulingProcessMetricMask.GpuUsage
                 or SchedulingProcessMetricMask.GpuDedicatedMemory
                     ? process.Gpus
-                        .Where(gpu => gpu.ValidMetricMask.HasFlag(bit))
+                        .Where(gpu => gpu.HasMetric(bit))
                         .Select(gpu => gpu with
                         {
-                            ValidMetricMask = bit,
+                            ValidMetricMask = gpu.ValidMetricMask & bit,
+                            PrivateMemoryBytes = bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                                ? gpu.PrivateMemoryBytes : null,
+                            SharedMemoryBytes = bit == SchedulingProcessMetricMask.GpuDedicatedMemory
+                                ? gpu.SharedMemoryBytes : null,
                             UsagePercent = bit == SchedulingProcessMetricMask.GpuUsage
                                 ? gpu.UsagePercent
                                 : 0,
@@ -890,6 +894,10 @@ internal sealed class SchedulingProcessFactSnapshotState
                 gpus[key] = current with
                 {
                     ValidMetricMask = current.ValidMetricMask | gpu.ValidMetricMask,
+                    PrivateMemoryBytes = process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
+                        ? gpu.PrivateMemoryBytes : current.PrivateMemoryBytes,
+                    SharedMemoryBytes = process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
+                        ? gpu.SharedMemoryBytes : current.SharedMemoryBytes,
                     UsagePercent = gpu.ValidMetricMask.HasFlag(
                         SchedulingProcessMetricMask.GpuUsage)
                             ? gpu.UsagePercent
@@ -903,7 +911,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                             ? gpu.UsageSourceGeneration
                             : current.UsageSourceGeneration,
                     DedicatedMemorySourceGeneration =
-                        gpu.ValidMetricMask.HasFlag(
+                        gpu.HasMetric(
                             SchedulingProcessMetricMask.GpuDedicatedMemory)
                             ? gpu.DedicatedMemorySourceGeneration
                             : current.DedicatedMemorySourceGeneration,
@@ -912,7 +920,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                             ? gpu.UsageTopologyGeneration
                             : current.UsageTopologyGeneration,
                     DedicatedMemoryTopologyGeneration =
-                        gpu.ValidMetricMask.HasFlag(
+                        gpu.HasMetric(
                             SchedulingProcessMetricMask.GpuDedicatedMemory)
                             ? gpu.DedicatedMemoryTopologyGeneration
                             : current.DedicatedMemoryTopologyGeneration

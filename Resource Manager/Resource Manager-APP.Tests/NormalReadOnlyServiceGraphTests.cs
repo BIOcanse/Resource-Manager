@@ -33,11 +33,11 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NormalReadOnlyServiceGraphTests
 {
     [Fact]
-    public async Task DefaultProfileDoesNotRegisterAutomaticWriteOwners()
+    public async Task NormalReadOnlyProfileDoesNotRegisterAutomaticWriteOwners()
     {
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(static services =>
-                services.AddResourceManagerApp(["--no-native-ui"]))
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
             .Build();
 
         var capabilities = host.Services.GetRequiredService<StartupCapabilitySet>();
@@ -159,7 +159,7 @@ public sealed class NormalReadOnlyServiceGraphTests
     }
 
     [Fact]
-    public async Task DefaultProfileSoftwareAttributionReadDoesNotMutatePackageRoot()
+    public async Task NormalReadOnlyProfileSoftwareAttributionReadDoesNotMutatePackageRoot()
     {
         var packageRoot = Path.Combine(
             Path.GetTempPath(),
@@ -170,7 +170,7 @@ public sealed class NormalReadOnlyServiceGraphTests
             using var host = Host.CreateDefaultBuilder()
                 .UseContentRoot(packageRoot)
                 .ConfigureServices(static services =>
-                    services.AddResourceManagerApp(["--no-native-ui"]))
+                    services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
                 .Build();
             var before = EnumerateRelativePaths(packageRoot);
             var runtimeCoordinator = host.Services

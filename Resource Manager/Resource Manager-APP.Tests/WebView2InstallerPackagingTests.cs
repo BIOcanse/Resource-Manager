@@ -19,6 +19,8 @@ public sealed class WebView2InstallerPackagingTests
             var paths = new List<string> { "backend/ResourceManager.exe", "backend/wwwroot/index.html",
                 "backend/GpuPlacementShim/ResourceManager.GpuWindowAction.exe",
                 "backend/GpuPlacementShim/ResourceManager.GpuPlacementPreparation.exe",
+                "backend/GpuPlacementShim/ResourceManager.GpuPlacementExternal.exe",
+                "backend/GpuPlacementShim/ResourceManager.GpuRendererExternal.exe",
                 "native/ResourceManager.NativeUi.exe", "launcher/ResourceManager.Launcher.exe" };
             if (includeInstaller) paths.Add("native/InstallWebView2Runtime.ps1");
             if (includeDevelopmentScript) paths.Add("native/Development.ps1");

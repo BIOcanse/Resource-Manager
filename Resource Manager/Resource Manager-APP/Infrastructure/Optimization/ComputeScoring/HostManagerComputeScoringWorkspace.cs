@@ -146,6 +146,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 gpuSourceIdentity,
                 null,
                 welfare);
+        if (cpuResult is null && gpuResult is null) return null;
         var welfareSnapshot = cpuResult is not null
             ? cpuResult.Welfare
             : gpuResult!.Welfare;
@@ -494,7 +495,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                             ValidMetricMask = SchedulingProcessMetricMask.GpuUsage,
                             DedicatedMemoryUsedPercent = 0,
                             DedicatedMemorySourceGeneration = 0,
-                            DedicatedMemoryTopologyGeneration = 0
+                            DedicatedMemoryTopologyGeneration = 0,
+                            PrivateMemoryBytes = null,
+                            SharedMemoryBytes = null
                         })
                         .ToArray()
             })

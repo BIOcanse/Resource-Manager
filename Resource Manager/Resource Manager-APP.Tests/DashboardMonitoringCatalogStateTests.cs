@@ -77,6 +77,31 @@ public sealed class DashboardMonitoringCatalogStateTests
         await synchronizer.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task FailedInitialProbeRetainsLogicalRequestAndRetriesInBackend()
+    {
+        var state = new DashboardMonitoringCatalogState();
+        var request = MetricSampleRequest.ForIds(["gpu.0.usage"]);
+        Assert.False(state.SelectSubscribable(request).IsEmpty);
+        var sampler = new FailOnceMetricSampler(CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage"));
+        var coordinator = new RecordingRuntimeSpecializationCoordinator();
+        using var synchronizer = new DashboardMonitoringPlanSynchronizer(
+            sampler, state, coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
+
+        await synchronizer.StartAsync(CancellationToken.None);
+        try
+        {
+            await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(2, sampler.Attempts);
+            Assert.NotNull(state.Current);
+            Assert.False(state.SelectSubscribable(request).IsEmpty);
+        }
+        finally
+        {
+            await synchronizer.StopAsync(CancellationToken.None);
+        }
+    }
+
     private static HardwareMetricSnapshot CreateSnapshot(
         ulong catalogGeneration,
         string gpuIdentity,
@@ -179,6 +204,27 @@ public sealed class DashboardMonitoringCatalogStateTests
             GetSnapshotAsync(request, cancellationToken);
     }
 
+    private sealed class FailOnceMetricSampler(HardwareMetricSnapshot snapshot) : IMetricSampler
+    {
+        public int Attempts { get; private set; }
+
+        public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken) =>
+            GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
+
+        public Task<HardwareMetricSnapshot> GetSnapshotAsync(
+            MetricSampleRequest request, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Assert.True(request.IsCatalogProbe);
+            if (++Attempts == 1) throw new IOException("Transient catalog probe failure.");
+            return Task.FromResult(snapshot);
+        }
+
+        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(
+            MetricSampleRequest request, CancellationToken cancellationToken) =>
+            GetSnapshotAsync(request, cancellationToken);
+    }
+
     private sealed class RecordingRuntimeSpecializationCoordinator
         : IRuntimeSpecializationCoordinator
     {
@@ -200,6 +246,8 @@ public sealed class DashboardMonitoringCatalogStateTests
 
         public TaskCompletionSource<string> CatalogChanged { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<string> CatalogReady { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<RuntimePlanPublicationResult> RebuildAsync(
             string reason,
@@ -212,6 +260,10 @@ public sealed class DashboardMonitoringCatalogStateTests
             if (reason == "monitoring-catalog-changed")
             {
                 CatalogChanged.TrySetResult(reason);
+            }
+            if (reason == "monitoring-catalog-ready")
+            {
+                CatalogReady.TrySetResult(reason);
             }
             return Task.FromResult<RuntimePlanPublicationResult>(null!);
         }

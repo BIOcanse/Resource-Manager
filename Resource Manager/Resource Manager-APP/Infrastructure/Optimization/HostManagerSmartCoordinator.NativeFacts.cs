@@ -59,6 +59,19 @@ public sealed partial class HostManagerSmartCoordinator
         var seenGpuProcessScores = new HashSet<NativeGpuScoreKey>();
         var observedCpuSoftwareMembers = new Dictionary<ulong, uint>();
         var observedGpuSoftwareMembers = new Dictionary<NativeSoftwareGpuScoreKey, uint>();
+        var reattributedSoftwareKeys = new HashSet<ulong>();
+        foreach (var process in sample.ProcessFacts.Processes)
+        {
+            var incarnation = new NativeAppliedOwnershipProcessIncarnation(
+                checked((uint)process.ProcessId), process.ProcessStartKey);
+            var currentKey = NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
+            if (ownership.ProcessAnchors.TryGetValue(incarnation, out var anchor)
+                && anchor.SoftwareKey != currentKey)
+            {
+                reattributedSoftwareKeys.Add(currentKey);
+                reattributedSoftwareKeys.Add(anchor.SoftwareKey);
+            }
+        }
         var fullProcessSnapshot = sample.ProcessFacts.IsInventoryCurrentComplete();
         var seenProcessOwnership = new HashSet<NativeAppliedOwnershipProcessIdentity>();
         var seenMemoryProcessOwnership = new HashSet<NativeAppliedOwnershipProcessIdentity>();
@@ -90,8 +103,8 @@ public sealed partial class HostManagerSmartCoordinator
                 var softwareKey = hasAnchor
                     ? anchor.SoftwareKey
                     : attributedSoftwareKey;
-                var attributionDrifted = hasAnchor
-                    && softwareKey != attributedSoftwareKey;
+                var scoreMembershipConsistent = !reattributedSoftwareKeys.Contains(softwareKey)
+                    && !reattributedSoftwareKeys.Contains(attributedSoftwareKey);
                 var hasAdapterRecord = ownership.AdapterRecords.TryGetValue(
                     softwareKey,
                     out var adapterRecord);
@@ -159,14 +172,16 @@ public sealed partial class HostManagerSmartCoordinator
                     cpuOwned,
                     gpuOwned,
                     policyExecutionEnabled
+                        && scoreMembershipConsistent
                         && CanExecuteAutomaticProcessPolicyForMode(modePlan, target),
                     policyExecutionEnabled
-                        && !attributionDrifted
+                        && scoreMembershipConsistent
                         && CanExecuteSoftwareLevelAdapterModesForMode(modePlan, target),
                     hardwareSchedulingEnabled
+                        && scoreMembershipConsistent
                         && target.CanApplyPhysicalCorePlacement,
-                    processCpuMetricsComplete,
-                    processGpuMetricsComplete);
+                    processCpuMetricsComplete && scoreMembershipConsistent,
+                    processGpuMetricsComplete && scoreMembershipConsistent);
                 Append(identity);
                 if (hasAdapterRecord)
                 {
@@ -174,14 +189,21 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 if (processCpuMetricsComplete)
                 {
-                    if (!scoreProjection.SoftwareCpu.TryGetValue(softwareKey, out var softwareScore)
+                    if (!scoreProjection.SoftwareCpu.TryGetValue(attributedSoftwareKey, out var softwareScore)
+                        || cpuScore!.SoftwareKey != attributedSoftwareKey
                         || !seenCpuProcessScores.Add(processScoreKey))
                     {
                         throw new InvalidDataException("The canonical CPU software score does not match its process membership.");
                     }
-                    IncrementMemberCount(observedCpuSoftwareMembers, softwareKey);
-                    AppendMetric(identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent,
-                        rawCpuAvailable ? target.CpuUsagePercent : null, 0, cpuScore, softwareScore);
+                    IncrementMemberCount(observedCpuSoftwareMembers, attributedSoftwareKey);
+                    // Historical ownership must not receive another software's current score.
+                    if (scoreMembershipConsistent || rawCpuAvailable)
+                    {
+                        AppendMetric(identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent,
+                            rawCpuAvailable ? target.CpuUsagePercent : null, 0,
+                            scoreMembershipConsistent ? cpuScore : null,
+                            scoreMembershipConsistent ? softwareScore : null);
+                    }
                 }
                 else if (rawCpuAvailable)
                 {
@@ -205,7 +227,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 startKey,
                                 gpu.AdapterKey);
                             var softwareScoreKey = new NativeSoftwareGpuScoreKey(
-                                softwareKey,
+                                attributedSoftwareKey,
                                 gpu.AdapterKey);
                             if (!scoreProjection.ProcessGpu.TryGetValue(
                                     gpuProcessScoreKey,
@@ -213,6 +235,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 || !scoreProjection.SoftwareGpu.TryGetValue(
                                     softwareScoreKey,
                                     out var softwareScore)
+                                || processScore.SoftwareKey != attributedSoftwareKey
                                 || !seenGpuProcessScores.Add(gpuProcessScoreKey))
                             {
                                 throw new InvalidDataException(
@@ -226,8 +249,8 @@ public sealed partial class HostManagerSmartCoordinator
                                 NativeSmartCoordinatorMetricKind.GpuUsagePercent,
                                 gpu.GpuUsagePercent,
                                 usageGpuIndex,
-                                processScore,
-                                softwareScore);
+                                scoreMembershipConsistent ? processScore : null,
+                                scoreMembershipConsistent ? softwareScore : null);
                         }
                         else
                         {
@@ -1228,7 +1251,7 @@ public sealed partial class HostManagerSmartCoordinator
             if (!byAdapterKey.TryGetValue(adapter.AdapterKey, out var fact)
                 || fact.GpuIndex != adapter.Index
                 || fact.UsageSourceGeneration != usageDataset.SourceGeneration
-                || fact.UsageTopologyGeneration != inventory.Generation
+                || fact.UsageTopologyGeneration != usageDataset.TopologyGeneration
                 || adapter.UsageStatus != SamplingObservationStatus.Current
                 || !fact.HasUsageMetric
                 || !IsPercent(fact.GpuUsagePercent))
@@ -1243,7 +1266,7 @@ public sealed partial class HostManagerSmartCoordinator
                     || fact.DedicatedMemorySourceGeneration !=
                         dedicatedMemoryDataset.SourceGeneration
                     || fact.DedicatedMemoryTopologyGeneration !=
-                        inventory.Generation
+                        dedicatedMemoryDataset.TopologyGeneration
                     || !IsPercent(fact.VramUsedPercent)))
             {
                 return false;
@@ -1264,16 +1287,16 @@ public sealed partial class HostManagerSmartCoordinator
         var processFacts = sample.ProcessFacts;
         if (!inventory.IsCurrentComplete()
             || !processFacts.TryGetCurrentDataset(metric, out var dataset)
-            || dataset.TopologyGeneration != inventory.Generation
+            || dataset.TopologyFingerprint == 0
             || dataset.TopologyFingerprint != inventory.TopologyFingerprint
             || metric == SchedulingProcessMetricMask.GpuUsage
                 && (fact.UsageSourceGeneration != dataset.SourceGeneration
-                    || fact.UsageTopologyGeneration != inventory.Generation)
+                    || fact.UsageTopologyGeneration != dataset.TopologyGeneration)
             || metric == SchedulingProcessMetricMask.GpuDedicatedMemory
                 && (fact.DedicatedMemorySourceGeneration !=
                         dataset.SourceGeneration
                     || fact.DedicatedMemoryTopologyGeneration !=
-                        inventory.Generation))
+                        dataset.TopologyGeneration))
         {
             return false;
         }

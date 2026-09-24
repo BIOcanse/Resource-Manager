@@ -120,25 +120,19 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
 
     private async Task<GpuPlacementPolicyDocument> LoadCoreAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(storagePath))
-        {
-            return GpuPlacementPolicyDocument.Empty;
-        }
-
         try
         {
-            await using var stream = File.OpenRead(storagePath);
+            await using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var document = await JsonSerializer.DeserializeAsync<GpuPlacementPolicyDocument>(
-                stream,
-                JsonOptions,
-                cancellationToken);
+                stream, JsonOptions, cancellationToken);
+            if (document is null) throw new InvalidDataException("The GPU placement policy file is empty.");
             return NormalizeDocument(document);
         }
-        catch (JsonException)
+        catch (FileNotFoundException)
         {
             return GpuPlacementPolicyDocument.Empty;
         }
-        catch (IOException)
+        catch (DirectoryNotFoundException)
         {
             return GpuPlacementPolicyDocument.Empty;
         }
@@ -154,9 +148,15 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             Directory.CreateDirectory(directory);
         }
 
-        await using var stream = File.Create(storagePath);
-        await JsonSerializer.SerializeAsync(stream, NormalizeDocument(document), JsonOptions, cancellationToken);
-        await stream.FlushAsync(cancellationToken);
+        var temporaryPath = $"{storagePath}.{Guid.NewGuid():N}.tmp";
+        await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(stream, NormalizeDocument(document), JsonOptions, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+            stream.Flush(flushToDisk: true);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, storagePath);
     }
 
     private static GpuPlacementPolicyDocument NormalizeDocument(GpuPlacementPolicyDocument? document)

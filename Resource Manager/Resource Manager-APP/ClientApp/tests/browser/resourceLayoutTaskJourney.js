@@ -25,10 +25,10 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     assert(result.ok, `Unable to set frontend scenario: ${JSON.stringify(result)}`);
   };
   const waitForCpuTotal = (displayValue) => page.waitForFunction((expected) => {
-    const item = [...document.querySelectorAll(".resource-breakdown-item")]
-      .find((element) => element.querySelector("strong")?.textContent?.trim() === "处理器");
-    return item?.querySelector(".resource-breakdown-header span")
-      ?.textContent?.trim().startsWith(expected) === true;
+    const item = document.querySelector('.resource-bar-track[data-metric-id="cpu.usage"]')
+      ?.closest(".resource-breakdown-item");
+    const value = item?.querySelector(".resource-breakdown-header span")?.textContent?.trim();
+    return Number.parseFloat(value ?? "") === Number.parseFloat(expected);
   }, displayValue, { timeout: 6000 });
   const installMotionObserver = async () => page.evaluate(() => {
     const track = document.querySelector('[data-metric-id="cpu.usage"].resource-bar-track');

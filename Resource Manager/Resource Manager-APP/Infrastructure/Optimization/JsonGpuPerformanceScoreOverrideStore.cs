@@ -67,6 +67,7 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
     {
         lock (gate)
         {
+            _ = LoadDocument();
             var updatedAt = DateTimeOffset.UtcNow;
             var updated = new GpuPerformanceScoreOverrideDocument(
                 CurrentVersion,
@@ -87,29 +88,20 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
             return cachedDocument;
         }
 
-        if (!File.Exists(storagePath))
-        {
-            cachedDocument = new GpuPerformanceScoreOverrideDocument(
-                CurrentVersion,
-                new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
-                DateTimeOffset.MinValue);
-            return cachedDocument;
-        }
-
         try
         {
-            using var stream = File.OpenRead(storagePath);
-            var document = JsonSerializer.Deserialize<GpuPerformanceScoreOverrideDocument>(stream, JsonOptions);
+            using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var document = JsonSerializer.Deserialize<GpuPerformanceScoreOverrideDocument>(stream, JsonOptions)
+                ?? throw new InvalidDataException("The GPU performance score file is empty.");
             cachedDocument = NormalizeDocument(document);
         }
-        catch
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
             cachedDocument = new GpuPerformanceScoreOverrideDocument(
                 CurrentVersion,
                 new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
                 DateTimeOffset.MinValue);
         }
-
         return cachedDocument;
     }
 
@@ -122,9 +114,13 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
             Directory.CreateDirectory(directory);
         }
 
-        using var stream = File.Create(storagePath);
-        JsonSerializer.Serialize(stream, normalized, JsonOptions);
-        stream.Flush();
+        var temporaryPath = $"{storagePath}.{Guid.NewGuid():N}.tmp";
+        using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            JsonSerializer.Serialize(stream, normalized, JsonOptions);
+            stream.Flush(flushToDisk: true);
+        }
+        NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, storagePath);
         cachedDocument = normalized;
     }
 

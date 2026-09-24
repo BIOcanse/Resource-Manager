@@ -122,6 +122,21 @@ public sealed class RuntimeProcessAttributionCatalogTests
         Assert.Equal(RuntimeAttributionIds.Unattributed, attribution.Id);
     }
 
+    [Theory]
+    [InlineData("python")]
+    [InlineData("python3")]
+    public void ControlledGenericExecutableKeepsPathAttributionWithoutNameAttribution(string name)
+    {
+        var id = Guid.Parse("10000000-0000-0000-0000-000000000003");
+        var catalog = CreateCatalog(null, [], [],
+            [CreateControlled(id, [], [new ControlledProcessDeclaration(name, null, $@"D:\Apps\OwnedRuntime\{name}.exe")])]);
+
+        Assert.Equal($"controlled-registration:{id}", catalog.Pipeline.Match(
+            CreateProcess(21, name, $@"D:\Apps\OwnedRuntime\{name}.exe")).Id);
+        Assert.Equal(RuntimeAttributionIds.Unattributed, catalog.Pipeline.Match(
+            CreateProcess(22, name, $@"D:\Elsewhere\{name}.exe")).Id);
+    }
+
     private RuntimeProcessAttributionCatalog CreateCatalog(
         RuntimeProcessAttributionCatalog? current,
         IReadOnlyList<SoftwareRecord> software,

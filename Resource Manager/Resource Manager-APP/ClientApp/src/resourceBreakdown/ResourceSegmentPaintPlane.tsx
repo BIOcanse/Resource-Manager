@@ -7,6 +7,7 @@ export interface ResourcePaintSegment {
   left: number;
   right: number;
   color: string;
+  sharedFraction?: number;
   distinctColor?: string;
   label?: string;
   labelColor?: string;
@@ -207,6 +208,11 @@ function drawSegments(
 
     context.fillStyle = resolveCanvasColor(segmentPaintColor(segment, presentation), canvas);
     context.fillRect(leftPx / geometry.devicePixelRatio, 0, (rightPx - leftPx) / geometry.devicePixelRatio, height);
+    if (segment.sharedFraction) {
+      const sharedLeft = Math.floor(rightPx - (rightPx - leftPx) * segment.sharedFraction);
+      context.fillStyle = "rgb(211 171 48)";
+      context.fillRect(sharedLeft / geometry.devicePixelRatio, 0, (rightPx - sharedLeft) / geometry.devicePixelRatio, height);
+    }
   }
 
   if (paintOptions.drawDividers) {
@@ -344,7 +350,7 @@ function normalizePaintGeometry(width: number, height: number, devicePixelRatio:
 
 function paintSegmentSignature(segments: ResourcePaintSegment[]) {
   return segments
-    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}`)
+    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}`)
     .join("|");
 }
 

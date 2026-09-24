@@ -44,6 +44,10 @@ public sealed partial class WindowsGpuPlacementInjector(
 
     public string RuntimeProviderPath => runtimeProviderPath;
 
+    internal RuntimeGpuProviderInjectionResult? GetKnownProcessFailure(GpuPlacementProcessInstance target)
+        => failuresByProcessId.TryGetValue(target.ProcessId, out var failure)
+            && failure.ProcessStartKey == target.ProcessStartKey ? failure.Result : null;
+
     internal Task<ProviderProcess> OpenAndConfigureAsync(
         GpuPlacementProcessInstance target,
         GpuGraphicsApi api,
@@ -127,13 +131,12 @@ public sealed partial class WindowsGpuPlacementInjector(
     {
         var target = owner.Identity;
         var processId = target.ProcessId;
-        if (failuresByProcessId.TryGetValue(processId, out var cachedFailure)
-            && cachedFailure.ProcessStartKey == target.ProcessStartKey)
+        if (GetKnownProcessFailure(target) is { } cachedFailure)
         {
-            return cachedFailure.Result with
+            return cachedFailure with
             {
                 Status = "retry-suppressed-until-process-restart",
-                Message = $"同一进程实例此前注入失败，本轮不重复尝试：{cachedFailure.Result.Status} ({cachedFailure.Result.Message})"
+                Message = $"同一进程实例此前注入失败，本轮不重复尝试：{cachedFailure.Status} ({cachedFailure.Message})"
             };
         }
 
@@ -214,6 +217,9 @@ public sealed partial class WindowsGpuPlacementInjector(
         var configureAddress = providerModule.BaseAddress + checked((int)configureRva);
         if (PortableExecutableExportReader.TryGetExportRva(binding.Path, ReadObservationsExportName, out var readRva, out _))
             owner.ReadObservationsAddress = providerModule.BaseAddress + checked((int)readRva);
+        owner.RecreationAddresses = new[] { "Arm", "Finish", "Cancel" }.Select(operation =>
+            PortableExecutableExportReader.TryGetExportRva(binding.Path, $"ResourceManagerGpuPlacement{operation}Recreation", out var rva, out _)
+                ? providerModule.BaseAddress + checked((int)rva) : IntPtr.Zero).ToArray();
         var configureResult = await owner.InvokeAsync(
             GpuRemoteCallKind.ConfigureProvider,
             configureAddress,

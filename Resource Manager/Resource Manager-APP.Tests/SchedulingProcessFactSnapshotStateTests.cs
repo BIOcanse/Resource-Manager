@@ -400,6 +400,72 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         Assert.Equal(23, Assert.Single(current.Processes).CpuUsagePercent);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ResidencyBelongsOnlyToMemoryPublication(bool hasDedicatedCapacity)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var usage = SchedulingProcessMetricMask.GpuUsage;
+        var memory = SchedulingProcessMetricMask.GpuDedicatedMemory;
+        var gpu = new SchedulingProcessGpuFact(1, 23, usage, 0, 0, 1, 0, 9, 0)
+        {
+            PrivateMemoryBytes = 999,
+            SharedMemoryBytes = 999
+        };
+        void Publish(SchedulingProcessMetricMask metric, ulong generation, params SchedulingProcessGpuFact[] values)
+        {
+            var sample = Sample(now, generation, metric, Fact(42, 100, metric, 0, 0) with { Gpus = values });
+            sample = sample with
+            {
+                DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
+                {
+                    [metric] = SchedulingProcessDatasetObservation.CreateCurrent(metric, generation,
+                        now.UtcTicks, generation, now.UtcTicks, topologyGeneration: 9, topologyFingerprint: 17)
+                }
+            };
+            state.ApplyScheduled(Request(metric), sample, now, Schedule(now));
+        }
+        SchedulingProcessFactSnapshot Read() => Assert.IsType<SchedulingProcessFactSnapshot>(
+            state.ReadLatest(FactRequest(usage | memory), now));
+        Publish(usage, 1, gpu);
+        Assert.Null(Assert.Single(Assert.Single(Read().Processes).Gpus).ResidentMemoryBytes);
+
+        var memoryGpu = gpu with
+        {
+            ValidMetricMask = hasDedicatedCapacity ? memory : SchedulingProcessMetricMask.None,
+            UsageSourceGeneration = 0,
+            UsageTopologyGeneration = 0,
+            DedicatedMemorySourceGeneration = 2,
+            DedicatedMemoryTopologyGeneration = 9,
+            PrivateMemoryBytes = 10,
+            SharedMemoryBytes = 20
+        };
+        Publish(memory, 2, memoryGpu);
+        Assert.Equal(30, Assert.Single(Assert.Single(Read().Processes).Gpus).ResidentMemoryBytes);
+        Publish(memory, 3, memoryGpu with { DedicatedMemorySourceGeneration = 3, PrivateMemoryBytes = 40 });
+        var updated = Read();
+        Assert.Equal(60, Assert.Single(Assert.Single(updated.Processes).Gpus).ResidentMemoryBytes);
+        var inventory = new SchedulingGpuInventorySnapshot(SamplingObservationStatus.Current, 9, now.UtcTicks,
+            1, 0, 0, 17,
+            [new SchedulingGpuAdapterObservation(1, 23,
+                hasDedicatedCapacity ? SchedulingGpuCapabilityMask.DedicatedMemory : SchedulingGpuCapabilityMask.None,
+                SchedulingGpuMetricMask.Usage | (hasDedicatedCapacity
+                    ? SchedulingGpuMetricMask.TotalDedicatedMemory | SchedulingGpuMetricMask.UsedDedicatedMemory
+                    : SchedulingGpuMetricMask.None), SamplingObservationStatus.Current,
+                hasDedicatedCapacity ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable,
+                0, 0, hasDedicatedCapacity ? 8192UL : 0UL, 9, now.UtcTicks)]);
+        Assert.True(updated.IsGpuDedicatedMemoryCurrentComplete(inventory));
+
+        Publish(memory, 4);
+        var cleared = Assert.Single(Assert.Single(Read().Processes).Gpus);
+        Assert.Null(cleared.ResidentMemoryBytes);
+        Assert.Equal(0UL, cleared.DedicatedMemorySourceGeneration);
+        Publish(usage, 5, gpu with { UsageSourceGeneration = 5 });
+        Assert.Null(Assert.Single(Assert.Single(Read().Processes).Gpus).ResidentMemoryBytes);
+    }
+
     private static ResourceBreakdownSampleRequest Request(
         SchedulingProcessMetricMask metric,
         params string[] publicationDatasetIds)
@@ -537,6 +603,8 @@ public sealed class SchedulingProcessFactSnapshotStateTests
                 SamplingDatasetIds.ProcessCpuUsage,
             SchedulingProcessMetricMask.MemoryUsage =>
                 SamplingDatasetIds.ProcessMemoryUsage,
+            SchedulingProcessMetricMask.GpuUsage => SamplingDatasetIds.ProcessGpuUsage,
+            SchedulingProcessMetricMask.GpuDedicatedMemory => SamplingDatasetIds.ProcessGpuVram,
             _ => throw new ArgumentOutOfRangeException(nameof(metric))
         };
 }

@@ -32,6 +32,7 @@ public sealed partial class WindowsRunningGpuPlacementActionService
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(observeAsync);
         cancellationToken.ThrowIfCancellationRequested();
+        if (externalRuntime is not null) return await PrepareAsync(request, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(request.TargetId) || string.IsNullOrWhiteSpace(request.SoftwareId)
             || request.TargetAdapterKey == 0)
             return new(null, "目标缺少软件身份或精确 GPU 位置。");

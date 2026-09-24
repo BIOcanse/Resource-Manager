@@ -9,7 +9,7 @@ public sealed partial class WindowsGpuPlacementInjector
     {
         var processId = owner.Identity.ProcessId;
         if (CheckRuntimeProviderEligibility(handle, owner.Identity) is { } rejected) return rejected;
-        var actualCandidates = candidates ?? ReadApiObservationCandidates(processId);
+        var actualCandidates = (candidates ?? ReadApiObservationCandidates(processId)) & ~GpuGraphicsApi.D3D9;
         if (actualCandidates == 0)
             return Failed(processId, "api-observation-no-candidates", "目标尚未加载可观察的图形运行库。");
         var providers = SelectApiObservationProviders(actualCandidates, AppContext.BaseDirectory,

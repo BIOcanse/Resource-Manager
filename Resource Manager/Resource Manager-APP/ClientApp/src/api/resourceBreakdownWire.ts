@@ -41,7 +41,8 @@ type ProcessRow = [
   architecture: string | null,
   attributionKind: string,
   baseScore: number,
-  processStartKey: string | null
+  processStartKey: string | null,
+  sharedValue?: number
 ];
 
 type SoftwareValueRow = [
@@ -50,7 +51,8 @@ type SoftwareValueRow = [
   systemPercent: number,
   processCount: number,
   baseScore: number,
-  processes: ProcessRow[]
+  processes: ProcessRow[],
+  sharedValue?: number
 ];
 
 interface ResourceBreakdownBarWire {
@@ -61,6 +63,7 @@ interface ResourceBreakdownBarWire {
   totalValue: number | null;
   capacityValue: number | null;
   totalSystemPercent: number | null;
+  sharedValue?: number | null;
   software: SoftwareValueRow[];
 }
 
@@ -170,6 +173,7 @@ function decodeBar(
     totalValue,
     capacityValue,
     totalSystemPercent,
+    sharedValue: optionalNullableFiniteNumber(bar.sharedValue, `${path}.sharedValue`),
     software: requireArray(bar.software, `${path}.software`)
       .map((row, index) => decodeSoftware(
         row,
@@ -183,7 +187,7 @@ function decodeSoftware(
   softwareCatalog: SoftwareIdentityRow[],
   path: string
 ): ResourceSoftwareSegment {
-  const row = requireTuple(value, path, 6);
+  const row = requireTuple(value, path, 6, 7);
   const softwareIndex = requireSafeInteger(row[0], `${path}[0]`);
   const identity = softwareCatalog[softwareIndex];
   if (!identity) {
@@ -200,15 +204,17 @@ function decodeSoftware(
     systemPercent: requireFiniteNumber(row[2], `${path}[2]`),
     processCount: requireSafeInteger(row[3], `${path}[3]`),
     baseScore: requireFiniteNumber(row[4], `${path}[4]`),
+    sharedValue: optionalNullableFiniteNumber(row[6], `${path}[6]`),
     processes: requireArray(row[5], `${path}[5]`)
       .map((process, index) => decodeProcess(process, `${path}[5][${index}]`))
   };
 }
 
 function decodeProcess(value: unknown, path: string): ResourceProcessSegment {
-  const row = requireTuple(value, path, 11);
+  const row = requireTuple(value, path, 11, 12);
   return {
     processId: requireSafeInteger(row[0], `${path}[0]`),
+    sharedValue: optionalNullableFiniteNumber(row[11], `${path}[11]`),
     processStartKey: requireNullable(
       row[10],
       `${path}[10]`,
@@ -307,9 +313,9 @@ function decodeTableValue(value: unknown, path: string): ResourceTableValue {
   };
 }
 
-function requireTuple(value: unknown, path: string, length: number): unknown[] {
+function requireTuple(value: unknown, path: string, length: number, optionalLength = length): unknown[] {
   const row = requireArray(value, path);
-  if (row.length !== length) {
+  if (row.length !== length && row.length !== optionalLength) {
     throw new ResponseDecodeError(path, `${length}-item tuple`);
   }
   return row;

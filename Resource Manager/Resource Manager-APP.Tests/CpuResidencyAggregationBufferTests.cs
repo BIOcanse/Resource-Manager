@@ -5,6 +5,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed class CpuResidencyAggregationBufferTests
 {
     [Fact]
+    public void UnattributedThreadDoesNotDiscardKnownProcessExecutionWindow()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        StartProcess(buffer, 0, 100, 1000, "Known", 10);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 400, 0, 100, 10, -1, 999);
+        Switch(buffer, 600, 0, -1, 999, 100, 10);
+        Switch(buffer, 1000, 0, 100, 10, 0, 0);
+
+        var snapshot = buffer.Snapshot([0]);
+        Assert.True(snapshot.IsComplete);
+        var known = Assert.Single(snapshot.Records);
+        Assert.Equal(100, known.ProcessId);
+        Assert.Equal(800, known.ExecutionTimeQpc);
+    }
+
+    [Fact]
     public void SameSwitchCountsUseExecutionTimeForDistribution()
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000);
@@ -206,7 +223,7 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
-    public void UnknownNonIdleThreadBreaksContinuityUntilOneCleanWindowCloses()
+    public void UnattributedTimeIsNotBackfilledWhenACompleteWindowLaterCloses()
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000);
         StartProcess(buffer, 0, 100, 1000, "Game", 10);
