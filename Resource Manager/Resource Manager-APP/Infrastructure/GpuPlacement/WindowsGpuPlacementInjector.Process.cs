@@ -18,6 +18,10 @@ public sealed partial class WindowsGpuPlacementInjector
         private GpuRemoteCallSnapshot? stoppedCall;
         internal bool CallsStopped => stoppedCall is not null;
         internal IReadOnlyList<ApiObservationEntries> ApiObservations { get; set; } = [];
+        internal IntPtr[] RecreationAddresses { get; set; } = [];
+
+        internal Task<GpuRecreationResult> RecreateAsync(GpuRemoteCallKind kind, byte[] request, CancellationToken token)
+            => ExecuteRecreationAsync(this, kind, request, token);
 
         public Task<GpuDeviceObservationReadResult> ReadDeviceObservationsAsync(CancellationToken token)
             => handle is { IsClosed: false, IsInvalid: false }
@@ -44,7 +48,7 @@ public sealed partial class WindowsGpuPlacementInjector
         internal async Task<GpuRemoteCallSnapshot> InvokeAsync(GpuRemoteCallKind kind, IntPtr function,
             byte[] payload, bool readResponse, CancellationToken token)
         {
-            if ((CallsStopped && !(kind == GpuRemoteCallKind.StopApiObservation && stoppedCall!.ResourcesReleased))
+            if ((CallsStopped && !((kind is GpuRemoteCallKind.StopApiObservation or GpuRemoteCallKind.CancelRecreation) && stoppedCall!.ResourcesReleased))
                 || token.IsCancellationRequested)
                 return new(0, null, null, null, null, true, "remote-action-stopped", null);
             if (handle is null || handle.IsClosed || handle.IsInvalid)

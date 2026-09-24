@@ -104,19 +104,39 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden", timeout: 3000 });
   const resourceRequestBaseline = await requestCount("/api/resource-monitor/snapshot");
+  await taskButton.click();
+  const diagnosticsTab = dialog.getByRole("tab", { name: /诊断/ });
+  await diagnosticsTab.click();
+  assert(await diagnosticsTab.getAttribute("aria-selected") === "true",
+    "Task Center did not select the diagnostics tab");
+  const diagnosticsPanel = dialog.getByRole("tabpanel", { name: /诊断/ });
+  await diagnosticsPanel.waitFor({ state: "visible", timeout: 2000 });
+  await diagnosticsPanel.evaluate((element) => {
+    window.__resourceLayoutTaskSeen = element.textContent?.includes("资源布局过渡") ?? false;
+    window.__resourceLayoutTaskObserver = new MutationObserver(() => {
+      if (element.textContent?.includes("资源布局过渡")) {
+        window.__resourceLayoutTaskSeen = true;
+      }
+    });
+    window.__resourceLayoutTaskObserver.observe(element, { childList: true, subtree: true });
+  });
   await setScenario({ resourceBreakdownGeneration: 1 });
   await page.waitForFunction(() => {
-    const item = [...document.querySelectorAll(".resource-breakdown-item")]
-      .find((element) => element.querySelector("strong")?.textContent?.trim() === "处理器");
-    return item?.querySelector(".resource-breakdown-header span")
-      ?.textContent?.trim().startsWith("38%") === true;
+    const item = document.querySelector('.resource-bar-track[data-metric-id="cpu.usage"]')
+      ?.closest(".resource-breakdown-item");
+    const value = item?.querySelector(".resource-breakdown-header span")?.textContent?.trim();
+    return /^38(?:\.0+)?%/.test(value ?? "");
   }, null, { timeout: 6000 });
   assert(await requestCount("/api/resource-monitor/snapshot") === resourceRequestBaseline,
     "Pushed resource update unexpectedly used a resource snapshot request.");
-  await taskButton.click();
-  await dialog.getByRole("tab", { name: /诊断/ }).click();
-  await dialog.getByText("资源布局过渡", { exact: true }).first()
-    .waitFor({ state: "visible", timeout: 2000 });
+  await page.waitForFunction(() => window.__resourceLayoutTaskSeen === true, null, {
+    timeout: 2000
+  });
+  await page.evaluate(() => {
+    window.__resourceLayoutTaskObserver?.disconnect();
+    delete window.__resourceLayoutTaskObserver;
+    delete window.__resourceLayoutTaskSeen;
+  });
 
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden", timeout: 3000 });

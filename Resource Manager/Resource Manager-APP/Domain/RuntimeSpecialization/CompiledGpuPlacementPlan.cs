@@ -7,6 +7,9 @@ public sealed record CompiledGpuPlacementPlan(
     IReadOnlyDictionary<string, ResolvedGpuPlacementPolicy> SoftwarePoliciesBySoftwareId,
     IReadOnlyDictionary<string, ResolvedGpuPlacementPolicy> ProcessPoliciesBySoftwareAndProcessKey)
 {
+    public IReadOnlySet<string> KindDefaultRuntimeHotSwitchSoftwareIds { get; init; }
+        = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     public static CompiledGpuPlacementPlan Default { get; } = new(
         false,
         new Dictionary<string, ResolvedGpuPlacementPolicy>(StringComparer.OrdinalIgnoreCase),
@@ -30,11 +33,11 @@ public sealed record CompiledGpuPlacementPlan(
                 CompiledBaseScorePlan.CreateProcessPolicyKey(softwareId, processKey),
                 out var processPolicy))
         {
-            return processPolicy;
+            return ApplyKindDefault(softwareId, softwareKind, processPolicy);
         }
 
         return SoftwarePoliciesBySoftwareId.TryGetValue(softwareId, out var softwarePolicy)
-            ? softwarePolicy
+            ? ApplyKindDefault(softwareId, softwareKind, softwarePolicy)
             : ResolvedGpuPlacementPolicy.FromSoftware(
                 GpuPlacementPolicyDefaults.CreateSoftwarePolicy(
                     softwareId,
@@ -42,4 +45,13 @@ public sealed record CompiledGpuPlacementPlan(
                     softwareKind),
                 softwareKind);
     }
+
+    private ResolvedGpuPlacementPolicy ApplyKindDefault(
+        string softwareId, string? softwareKind, ResolvedGpuPlacementPolicy policy)
+        => KindDefaultRuntimeHotSwitchSoftwareIds.Contains(softwareId)
+            ? policy with
+            {
+                RuntimeHotSwitchEnabled = GpuPlacementPolicyDefaults.ResolveDefaultRuntimeHotSwitchEnabled(softwareKind)
+            }
+            : policy;
 }

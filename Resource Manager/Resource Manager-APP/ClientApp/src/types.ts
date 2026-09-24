@@ -338,6 +338,7 @@ export interface AppSettingsResult {
 }
 
 export interface ResourceProcessSegment {
+  sharedValue?: number | null;
   processId: number;
   processStartKey?: string | null;
   name: string;
@@ -381,6 +382,7 @@ export interface AiGatewayCredentialCreatedView {
 }
 
 export interface ResourceSoftwareSegment {
+  sharedValue?: number | null;
   softwareId: string;
   name: string;
   kind: string;
@@ -393,6 +395,7 @@ export interface ResourceSoftwareSegment {
 }
 
 export interface ResourceBreakdownBar {
+  sharedValue?: number | null;
   metricId: string;
   label: string;
   unit: string;

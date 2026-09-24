@@ -61,6 +61,12 @@ internal sealed class WindowsMftDiskUsageScanner(
         foreach (var volume in ResolveVolumes(request, skipped, ref knownTotalBytes))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var folderPath = request.Scope == DiskUsageScanScopes.Folder ? request.Target : null;
+            if (folderPath is not null && !IsPhysicalFolderPath(volume.VolumeId, folderPath))
+            {
+                skipped.Add(new DiskUsageSkippedTarget(folderPath, DiskUsageSkipReasons.TargetUnavailable));
+                continue;
+            }
             using var reader = NtfsVolumeReader.TryOpen(volume.VolumeId);
             if (reader is null)
             {
@@ -79,7 +85,10 @@ internal sealed class WindowsMftDiskUsageScanner(
                     DiskUsageSkipReasons.TargetUnavailable));
                 continue;
             }
-            BuildSubtree(volume.VolumeId, records, builder, totals, cancellationToken);
+            if (!BuildSubtree(volume.VolumeId, folderPath, records, builder, totals, cancellationToken))
+            {
+                skipped.Add(new DiskUsageSkippedTarget(folderPath!, DiskUsageSkipReasons.TargetUnavailable));
+            }
         }
 
         var tree = builder.Build();
@@ -118,7 +127,8 @@ internal sealed class WindowsMftDiskUsageScanner(
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray(),
             DiskUsageScanScopes.Folder => all
-                .Where(volume => request.Target.StartsWith(
+                .Where(volume => string.Equals(
+                    Path.GetPathRoot(request.Target)?.TrimEnd(Path.DirectorySeparatorChar),
                     volume.VolumeId,
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray(),
@@ -147,7 +157,10 @@ internal sealed class WindowsMftDiskUsageScanner(
                         : DiskUsageSkipReasons.NoFileSystemIndex));
                 continue;
             }
-            knownTotalBytes += volume.TotalBytes - volume.FreeBytes;
+            if (request.Scope != DiskUsageScanScopes.Folder)
+            {
+                knownTotalBytes += volume.TotalBytes - volume.FreeBytes;
+            }
             selected.Add(volume);
         }
 
@@ -282,8 +295,9 @@ internal sealed class WindowsMftDiskUsageScanner(
     /// 从根目录出发按先序把记录喂进树构造器。
     /// 显式栈，不递归；带访问集合，防止父子引用成环时转不出来。
     /// </summary>
-    private static void BuildSubtree(
+    internal static bool BuildSubtree(
         string volumeId,
+        string? folderPath,
         Dictionary<long, NtfsFileRecord> records,
         DiskUsageTreeBuilder builder,
         ScanTotals totals,
@@ -304,16 +318,31 @@ internal sealed class WindowsMftDiskUsageScanner(
             list.Add(number);
         }
 
-        var rootNode = builder.Add(-1, volumeId + Path.DirectorySeparatorChar, true, 0, 0);
+        var rootRecord = RootRecordNumber;
+        if (folderPath is not null)
+        {
+            var relative = Path.GetRelativePath(volumeId + Path.DirectorySeparatorChar, folderPath);
+            foreach (var component in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (component == ".") continue;
+                if (!childrenByParent.TryGetValue(rootRecord, out var children)) return false;
+                var next = children.FirstOrDefault(number => records.TryGetValue(number, out var entry)
+                    && entry.IsDirectory && entry.Name.Equals(component, StringComparison.OrdinalIgnoreCase));
+                if (next == 0) return false;
+                rootRecord = next;
+            }
+        }
+
+        var rootNode = builder.Add(-1, folderPath ?? volumeId + Path.DirectorySeparatorChar, true, 0, 0);
         if (rootNode < 0)
         {
-            return;
+            return true;
         }
         totals.Directories++;
 
-        var visited = new HashSet<long> { RootRecordNumber };
+        var visited = new HashSet<long> { rootRecord };
         var pending = new Stack<(long Record, int Node)>();
-        pending.Push((RootRecordNumber, rootNode));
+        pending.Push((rootRecord, rootNode));
 
         while (pending.Count > 0)
         {
@@ -340,7 +369,7 @@ internal sealed class WindowsMftDiskUsageScanner(
                     entry.IsDirectory ? 0 : entry.AllocatedBytes);
                 if (node < 0)
                 {
-                    return;
+                    return true;
                 }
 
                 if (entry.IsDirectory)
@@ -355,9 +384,35 @@ internal sealed class WindowsMftDiskUsageScanner(
                 }
             }
         }
+        return true;
     }
 
-    private sealed class ScanTotals
+    private static bool IsPhysicalFolderPath(string volumeId, string folderPath)
+    {
+        var current = volumeId + Path.DirectorySeparatorChar;
+        var relative = Path.GetRelativePath(current, folderPath);
+        if (Path.IsPathRooted(relative) || relative == ".."
+            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            return false;
+        try
+        {
+            foreach (var component in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (component == ".") continue;
+                current = Path.Combine(current, component);
+                var attributes = File.GetAttributes(current);
+                if (!attributes.HasFlag(FileAttributes.Directory)
+                    || attributes.HasFlag(FileAttributes.ReparsePoint)) return false;
+            }
+            return Directory.Exists(current);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    internal sealed class ScanTotals
     {
         public long Bytes;
         public long Files;

@@ -127,9 +127,10 @@ public sealed partial class WindowsResourceBreakdownSampler
             .ToArray();
         var gpuRead = requestedGpuMask == SchedulingProcessMetricMask.None
             ? SchedulingProcessGpuRead.NotRequested
-            : processGpuReader.ReadSchedulingSnapshot(request.GpuInventory, processInstances, includeDedicatedMemory: false);
+            : processGpuReader.ReadSchedulingSnapshot(request.GpuInventory, processInstances,
+                includeDedicatedMemory: false);
         if (requestedGpuMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory))
-            gpuRead = GpuAllocationSchedulingProjection.Apply(gpuRead, allocationReading, processInstances, generation, observedAtUtcTicks);
+            gpuRead = GpuAllocationSchedulingProjection.Apply(gpuRead, allocationReading, processInstances);
         var runtimeStateRead = request.RequestedMetricMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState)
             ? WindowsProcessRuntimeStateSnapshot.Capture(processInstances)
@@ -446,6 +447,16 @@ public sealed partial class WindowsResourceBreakdownSampler
             var dedicatedMemoryPercent = 0d;
             var dedicatedMemorySourceGeneration = 0UL;
             var dedicatedMemoryTopologyGeneration = 0UL;
+            var allocation = request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
+                && gpuRead.DedicatedMemoryStatus == SamplingObservationStatus.Current
+                && gpuRead.DedicatedMemoryGeneration > 0
+                    ? gpuRead.AllocationAmounts.GetValueOrDefault(key)
+                    : null;
+            if (allocation is not null)
+            {
+                dedicatedMemorySourceGeneration = gpuRead.DedicatedMemoryGeneration;
+                dedicatedMemoryTopologyGeneration = request.GpuInventory.Generation;
+            }
             if (request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory)
                 && gpuRead.DedicatedMemoryStatus
                     == SamplingObservationStatus.Current
@@ -468,7 +479,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     100);
             }
 
-            if (validMask != SchedulingProcessMetricMask.None)
+            if (validMask != SchedulingProcessMetricMask.None || allocation is not null)
             {
                 facts.Add(new SchedulingProcessGpuFact(
                     adapter.Index,
@@ -481,8 +492,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     usageTopologyGeneration,
                     dedicatedMemoryTopologyGeneration)
                 {
-                    PrivateMemoryBytes = gpuRead.AllocationAmounts.GetValueOrDefault(key)?.PrivateBytes,
-                    SharedMemoryBytes = gpuRead.AllocationAmounts.GetValueOrDefault(key)?.SharedBytes
+                    PrivateMemoryBytes = allocation?.PrivateBytes,
+                    SharedMemoryBytes = allocation?.SharedBytes
                 });
             }
         }
@@ -555,12 +566,13 @@ public sealed partial class WindowsResourceBreakdownSampler
         }
 
         return facts.Any(fact =>
-            fact.ValidMetricMask.HasFlag(metric)
+            fact.HasMetric(metric)
             && inventory.Adapters.Any(adapter =>
                 adapter.AdapterKey == fact.AdapterKey
                 && adapter.Index == fact.GpuIndex
                 && (requireDedicatedCapability
-                    ? adapter.CapabilityMask.HasFlag(
+                    ? !fact.ValidMetricMask.HasFlag(metric)
+                        || adapter.CapabilityMask.HasFlag(
                             SchedulingGpuCapabilityMask.DedicatedMemory)
                         && adapter.CapacityStatus == SamplingObservationStatus.Current
                         && adapter.TotalDedicatedMemoryBytes > 0

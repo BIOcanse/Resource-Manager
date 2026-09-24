@@ -9,6 +9,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeMetricSnapshotCatalogProjectionTests
 {
     [Fact]
+    public void GpuOnlyWildcardProjectsActualGpuHandlesAndCapacity()
+    {
+        var projection = NativeMetricSnapshotCatalogProjection.Create(
+            HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
+            [new(0, "GPU", "gpu-test", 0x101UL, 1, VendorNvidia, true)], [], [],
+            NativeMetricSnapshotCatalogHandleMap.Empty);
+        var ids = NativeMetricSnapshotRequestProjection.CreateMetricHandles(
+            MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([]), projection)
+            .Select(handle => projection.MetricIds[handle]).ToHashSet();
+        Assert.Contains("gpu.0.usage", ids);
+        Assert.Contains("gpu.0.vram", ids);
+        Assert.Contains("gpu.0.vramTotal", ids);
+        Assert.DoesNotContain("cpu.usage", ids);
+        Assert.DoesNotContain("memory.usage", ids);
+    }
+
+    [Fact]
     public void CatalogProbeProjectsEveryActiveMetricHandle()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;

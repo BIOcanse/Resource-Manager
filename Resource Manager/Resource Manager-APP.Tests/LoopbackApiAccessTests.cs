@@ -29,6 +29,8 @@ using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 using ResourceManager.App.Infrastructure.Security;
+using ResourceManager.App.Infrastructure.Optimization.Transactions;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -51,7 +53,8 @@ public sealed class LoopbackApiAccessTests
             Assert.True(response.Headers.CacheControl?.NoStore);
             var tree = (await response.Content.ReadFromJsonAsync<CompiledFreedomPointTree>())!;
             Assert.Equal(plan.FreedomPoints.DeclarationSha256, tree.DeclarationSha256);
-            Assert.Equal(12, tree.EnumeratePoints().Count(point => point.Status == "active"));
+            Assert.Equal(plan.FreedomPoints.EnumeratePoints().Select(point => (point.Address, point.Status)),
+                tree.EnumeratePoints().Select(point => (point.Address, point.Status)));
             var welfare = Assert.Single(tree.EnumeratePoints(), point =>
                 point.Address == BackendFreedomPointPaths.SoftwareWelfare);
             Assert.Equal("active", welfare.Status);
@@ -148,7 +151,8 @@ public sealed class LoopbackApiAccessTests
         request.Headers.Add("X-Resource-Manager-Token", fixture.Token);
         using var response = await fixture.Client.SendAsync(request,
             HttpCompletionOption.ResponseHeadersRead, deadline.Token);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.OK,
+            $"Subscription returned {response.StatusCode}: {fixture.LastRequestError}");
         Assert.Equal("application/x-ndjson", response.Content.Headers.ContentType?.MediaType);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(deadline.Token));
         using var first = JsonDocument.Parse((await stream.ReadLineAsync(deadline.Token))!);
@@ -373,6 +377,7 @@ public sealed class LoopbackApiAccessTests
         public EffectRecorder Effects { get; } = new();
         public Sampler Sampler { get; } = new();
         public int HttpRequests;
+        public Exception? LastRequestError;
         public string Token => App.Services.GetRequiredService<LoopbackApiAccessToken>().Token;
 
         public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null)
@@ -393,6 +398,17 @@ public sealed class LoopbackApiAccessTests
                 var pipeline = LoopbackApiPipelineConfigurator.Compile(processIsAdministrator: true);
                 pipeline.ConfigureServices(builder.Services);
                 builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Runtime);
+                builder.Services.AddSingleton(provider =>
+                {
+                    var retirements = new HostManagerAuthorityRetirementManager(
+                        GpuWindowLedgerTestData.NewRoot("api-retirement"),
+                        WindowsHostManagerAuthorityRetirementStorage.Instance);
+                    return new HostManagerNativeActionTransactionRuntime(
+                        provider.GetRequiredService<HostManagerTransactionJournalDeploymentRuntime>(),
+                        new HostManagerAppliedOwnershipRuntime(
+                            provider.GetRequiredService<HostManagerAppliedOwnershipDeploymentRuntime>(), retirements),
+                        retirements);
+                });
                 builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(fixture.Administrator);
                 builder.Services.AddSingleton<IHostManagerSmartCoordinator>(fixture.Effects);
                 builder.Services.AddSingleton<IHostManagerProcessEffectValidationScopeControl>(fixture.Effects);
@@ -406,7 +422,8 @@ public sealed class LoopbackApiAccessTests
                 fixture.App.Use(async (context, next) =>
                 {
                     Interlocked.Increment(ref fixture.HttpRequests);
-                    await next(context);
+                    try { await next(context); }
+                    catch (Exception error) { fixture.LastRequestError = error; throw; }
                 });
                 pipeline.ConfigureApplication(fixture.App);
                 fixture.App.MapResourceManagerEndpoints(pipeline.Mode, StartupCapabilitySet.Full);

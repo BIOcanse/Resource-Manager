@@ -7,10 +7,15 @@ namespace ResourceManager.App.Domain.Optimization;
 internal static class GpuSteelNomadDefaults
 {
     internal const string Source = "3dmark:steel-nomad-dx12:2026-09-13";
+    // First-hand standard (DX12) result, not a UL aggregate or a Light/Vulkan score.
+    // https://www.computerbase.de/forum/threads/steel-nomad-ergebnisse-auf-die-plaetze-fertig-community-benchmark.2196604/page-36 (#712)
+    internal static string GetSource(string normalizedName) => normalizedName == "AMD RADEON 610M"
+        ? "3dmark:steel-nomad-dx12:computerbase:andi_sco:2024-05-23" : Source;
     private static readonly Dictionary<string, (string Model, double Score)> Scores = new(StringComparer.Ordinal)
     {
         ["NVIDIA GTX 1050"] = ("NVIDIA GeForce GTX 1050", 113),
         ["AMD RADEON GRAPHICS RAPHAEL"] = ("AMD Radeon Graphics (Raphael)", 121),
+        ["AMD RADEON 610M"] = ("AMD Radeon 610M", 122),
         ["AMD RADEON GRAPHICS GRANITE RIDGE"] = ("AMD Radeon Graphics (Granite Ridge)", 126),
         ["INTEL IRIS XE GRAPHICS G7 96EU"] = ("Intel Iris Xe Graphics G7 96EU", 139),
         ["NVIDIA GTX 960"] = ("NVIDIA GeForce GTX 960", 155),

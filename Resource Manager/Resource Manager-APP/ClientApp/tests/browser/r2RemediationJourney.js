@@ -21,8 +21,12 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
   await setScenario({ capabilities: "ready", settings: "ready", resourceTableVariant: "many" });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 
+  const firstTrack = page.locator(".resource-bar-track").first();
+  await firstTrack.waitFor({ state: "visible", timeout: 7000 });
   const selectedSegment = page.locator(".resource-bar-track [role='option'][aria-selected='true']").first();
-  await selectedSegment.waitFor({ state: "visible", timeout: 7000 });
+  assert(await selectedSegment.count() === 0, "A resource segment was selected before user interaction.");
+  await firstTrack.click({ position: { x: 12, y: 12 } });
+  await selectedSegment.waitFor({ state: "visible", timeout: 3000 });
   const interactionBudget = await page.evaluate(() => ({
     tracks: document.querySelectorAll(".resource-bar-track, .resource-process-track:not(.empty)").length,
     layers: document.querySelectorAll(".resource-segment-interaction-layer").length,
@@ -108,7 +112,8 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
 
   assert(failures.length === 0, `R2 browser page errors: ${JSON.stringify(failures)}`);
   return {
-    initialResourceSelection: true,
+    initialResourceSelection: false,
+    clickResourceSelection: true,
     boundedResourceInteractionDom: interactionBudget,
     virtualRowFocus: focusedRowId,
     performanceDomSummary: true,

@@ -18,7 +18,7 @@ public sealed partial class SoftwareDataMigrationManager
         }
     }
 
-    private async Task AppendRecordsAsync(
+    internal async Task AppendRecordsAsync(
         IReadOnlyList<SoftwareDataMigrationRecord> newRecords,
         CancellationToken cancellationToken)
     {
@@ -37,18 +37,18 @@ public sealed partial class SoftwareDataMigrationManager
 
     private async Task<IReadOnlyList<SoftwareDataMigrationRecord>> LoadRecordsCoreAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(RecordPath))
+        try
+        {
+            await using var stream = new FileStream(RecordPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return await JsonSerializer.DeserializeAsync<List<SoftwareDataMigrationRecord>>(
+                stream, JsonOptions, cancellationToken)
+                ?? throw new InvalidDataException("The migration records file contains no records document.");
+        }
+        catch (FileNotFoundException)
         {
             return [];
         }
-
-        try
-        {
-            await using var stream = File.OpenRead(RecordPath);
-            return await JsonSerializer.DeserializeAsync<List<SoftwareDataMigrationRecord>>(stream, JsonOptions, cancellationToken)
-                ?? [];
-        }
-        catch
+        catch (DirectoryNotFoundException)
         {
             return [];
         }
@@ -64,8 +64,14 @@ public sealed partial class SoftwareDataMigrationManager
             Directory.CreateDirectory(directory);
         }
 
-        await using var stream = File.Create(RecordPath);
-        await JsonSerializer.SerializeAsync(stream, records, JsonOptions, cancellationToken);
-        await stream.FlushAsync(cancellationToken);
+        var temporaryPath = $"{RecordPath}.{Guid.NewGuid():N}.tmp";
+        await using (var stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await JsonSerializer.SerializeAsync(stream, records, JsonOptions, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+            stream.Flush(flushToDisk: true);
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, RecordPath);
     }
 }

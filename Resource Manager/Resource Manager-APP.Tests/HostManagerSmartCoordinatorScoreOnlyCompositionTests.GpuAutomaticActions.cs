@@ -4,8 +4,10 @@ using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
 
@@ -13,6 +15,188 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task ExternalAutomaticActionUsesResultLedgerWithoutPublishingShimPolicy()
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var process = AutomaticGpuProcess();
+        var policy = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));
+        actions.Prepare = request =>
+        {
+            var renderer = Assert.Single(request.Processes);
+            return new(new(request, [], new Dictionary<int, GpuGraphicsApi>
+            {
+                [renderer.ProcessId] = GpuGraphicsApi.D3D11
+            }) { External = new(renderer, renderer) }, "confirmed external renderer");
+        };
+        actions.Apply = plan =>
+        {
+            Assert.Empty(plan.PolicyValue);
+            Assert.Null(policy.ReadPolicy(process.TargetId));
+            return new([new("attempt", WindowsExternalGpuPlacementRuntime.ProviderId,
+                new Dictionary<string, string>
+                {
+                    ["controllerExited"] = bool.TrueString,
+                    ["cleanupPassed"] = bool.TrueString,
+                    ["controllerSucceeded"] = bool.TrueString,
+                    ["residentConfirmation"] = "partial"
+                })], "Confirmed partial transfer", RunningGpuPlacementActionStatuses.RecreateRequested);
+        };
+
+        var desired = (await CreateGpuDesired(fixture.Coordinator, process, null))!;
+        Assert.True(ExternalGpuRuntimePlacementRecord.IsRecord(desired.Record));
+        Assert.Null(policy.ReadPolicy(process.TargetId));
+        Assert.True(await ApplyGpuDesired(fixture, desired));
+
+        var stored = Assert.Single(Assert.Single(fixture.StateStore.Current.AppliedPlacements).Records);
+        Assert.True(ExternalGpuRuntimePlacementRecord.TryReadResult(stored, out var result));
+        Assert.True(ExternalGpuRuntimePlacementRecord.IsConfirmed(result!));
+        Assert.False(result!.Applied);
+        Assert.Null(policy.ReadPolicy(process.TargetId));
+        Assert.Equal(1, actions.ApplyCalls);
+    }
+
+    [Theory]
+    [InlineData(78_598_144d, 0d, 78_598_144d)]
+    [InlineData(10_772_480d, 20_316_160d, 31_088_640d)]
+    [InlineData(null, 20_316_160d, null)]
+    [InlineData(10_772_480d, null, null)]
+    public async Task PlacementUsesResidentBytesWithoutDedicatedCapacity(
+        double? privateBytes, double? sharedBytes, double? expectedBytes)
+    {
+        var facts = CreateCompleteProcessFacts(42412, 133900000000000001,
+            "software:gpu-app", baseScore: 35, cpuUsagePercent: 0, memoryUsagePercent: 0);
+        facts = facts with
+        {
+            RequestedMetricMask = facts.RequestedMetricMask | SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory,
+            CurrentMetricMask = facts.CurrentMetricMask | SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory,
+            Processes = [facts.Processes.Single() with
+            {
+                ValidMetricMask = facts.Processes.Single().ValidMetricMask | SchedulingProcessMetricMask.GpuUsage
+                    | SchedulingProcessMetricMask.GpuDedicatedMemory,
+                Gpus = [new SchedulingProcessGpuFact(0, 69842, SchedulingProcessMetricMask.GpuUsage,
+                    0, 0, 1, expectedBytes.HasValue ? 1UL : 0UL, 1, expectedBytes.HasValue ? 1UL : 0UL)
+                    { PrivateMemoryBytes = privateBytes, SharedMemoryBytes = sharedBytes }]
+            }]
+        };
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsSnapshot: facts);
+        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(gpuInventoryCurrent: true));
+        var capture = (Task)typeof(HostManagerSmartCoordinator)
+            .GetMethod("CaptureHostManagerSampleAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [fixture.RuntimePlan, CancellationToken.None])!;
+        await capture;
+        var captured = capture.GetType().GetProperty("Result")!.GetValue(capture)!;
+        var sample = captured.GetType().GetProperty("Sample")!.GetValue(captured);
+        Assert.NotNull(sample);
+        var processes = (IReadOnlyList<HostManagerAutomaticPlacementProcess>)typeof(HostManagerSmartCoordinator)
+            .GetMethod("CreateAutomaticPlacementProcesses", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [sample, null, Array.Empty<HostManagerAppliedPlacementReceipt>()])!;
+        var process = Assert.Single(processes);
+        Assert.Equal(expectedBytes.HasValue, process.ObservedDedicatedMemoryBytes.TryGetValue(69842, out var actual));
+        if (expectedBytes.HasValue) Assert.Equal(expectedBytes.Value, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SettledUnconfirmedOrSkippedRuntimeActionRestoresPolicyBeforeALaterOpportunity(bool unconfirmed)
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var runtime = new D3d11ProxyShimRuntime(new GpuPolicyEnvironment(fixture.Root));
+        var process = AutomaticGpuProcess();
+        actions.Apply = _ => unconfirmed
+            ? new([new("observation", "external", new Dictionary<string, string>
+            {
+                ["residentConfirmation"] = "unconfirmed", ["controllerSucceeded"] = "True",
+                ["controllerExited"] = "True", ["cleanupPassed"] = "True"
+            })], "Next resident sample did not confirm the completed action.", RunningGpuPlacementActionStatuses.NotApplied)
+            : new([], "Browser became foreground before execution.", RunningGpuPlacementActionStatuses.Skipped);
+        await ApplyGpuDesired(fixture, (await CreateGpuDesired(fixture.Coordinator, process, null))!);
+        Assert.Equal(1, actions.ApplyCalls);
+        Assert.Null(runtime.ReadPolicy(process.TargetId));
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+
+        actions.Apply = _ => new([], "Owned runtime action dispatched.", RunningGpuPlacementActionStatuses.RecreateRequested);
+        await ApplyGpuDesired(fixture, (await CreateGpuDesired(fixture.Coordinator, process, null))!);
+        Assert.Equal(2, actions.ApplyCalls);
+        Assert.NotNull(runtime.ReadPolicy(process.TargetId));
+        var record = Assert.Single(Assert.Single(fixture.StateStore.Current.AppliedPlacements).Records);
+        var result = JsonSerializer.Deserialize<RunningGpuPlacementActionResult>(record.Metadata!["runtimeActionResult"]);
+        Assert.Equal(RunningGpuPlacementActionStatuses.RecreateRequested, result!.Status);
+    }
+
+    [Theory]
+    [InlineData(true, false, true, 0)]
+    [InlineData(false, true, false, 1)]
+    [InlineData(false, false, false, 0)]
+    public async Task GpuCandidateAdmissionSeparatesReadyUnknownAndUnsupportedRoutes(
+        bool available, bool unknown, bool admitted, int observations)
+    {
+        var actions = new RecordingRunningGpuActions { Available = available, UnknownApi = unknown };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var process = AutomaticGpuProcess() with
+        {
+            CanApplyPhysicalPlacement = false,
+            ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 }
+        };
+        var pending = new List<HostManagerAutomaticGpuPlacement>();
+        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
+            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [new[] { process }, Array.Empty<HostManagerAppliedPlacementReceipt>(), pending, CancellationToken.None])!;
+        var result = await task;
+        Assert.Equal(admitted, Assert.Single(result).CanMigrateGpu);
+        Assert.Equal(observations, pending.Count);
+        Assert.All(pending, item => Assert.Equal(item.ObservedAdapterKey, item.TargetAdapterKey));
+        Assert.Equal(0, actions.ApplyCalls);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+    }
+
+    [Fact]
+    public async Task UnconfirmedObservationDeadlineDoesNotStopFollowingActions()
+    {
+        var actions = new RecordingRunningGpuActions { Available = true };
+        await using var fixture = await CreateGpuActionFixture(actions);
+        actions.ApplyWithWindows = async (_, _, token) =>
+        {
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            return new([new("observation", "external", new Dictionary<string, string>
+            {
+                ["residentConfirmation"] = "unconfirmed", ["controllerSucceeded"] = "True",
+                ["controllerExited"] = "True", ["cleanupPassed"] = "True"
+            })], "No next publication before the observation deadline.", RunningGpuPlacementActionStatuses.NotApplied);
+        };
+        var process = AutomaticGpuProcess();
+        Assert.True(await ApplyGpuDesired(fixture, (await CreateGpuDesired(fixture.Coordinator, process, null))!, 500));
+        Assert.Equal(1, actions.ApplyCalls);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+        actions.ApplyWithWindows = null;
+        actions.Apply = _ => new([], "Following unrelated action.", RunningGpuPlacementActionStatuses.RecreateRequested);
+        var other = process with { TargetId = "following-software", ProcessId = process.ProcessId + 1 };
+        Assert.True(await ApplyGpuDesired(fixture, (await CreateGpuDesired(fixture.Coordinator, other, null))!));
+        Assert.Equal(2, actions.ApplyCalls);
+    }
+
+    [Fact]
+    public async Task AutomaticPlacementWriterRejectsStartupPreferenceWithoutChangingUserValue()
+    {
+        var preferences = new GpuPreferenceValues();
+        await using var fixture = await CreateGpuActionFixture(new RecordingRunningGpuActions(), preferences: preferences);
+        var path = AutomaticGpuProcess().ExecutablePath!;
+        preferences.WriteValue(path, "GpuPreference=1;");
+        var record = new HostManagerAppliedRecord(HostManagerAppliedRecordKinds.GpuPreference, "obsolete-auto-write",
+            new Dictionary<string, string> { ["path"] = path, ["appliedValue"] = "GpuPreference=2;" });
+        var result = (int)typeof(HostManagerSmartCoordinator).GetMethod("WriteAutomaticPlacement", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [record])!;
+        Assert.NotEqual(0, result);
+        Assert.Equal("GpuPreference=1;", preferences.ReadValueForRecovery(path).Value);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -206,7 +390,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         HostManagerAutomaticPlacementProcess process, HostManagerAppliedPlacementReceipt? existing, ulong adapter = 123)
         => (Task<HostManagerPlacementDesired?>)typeof(HostManagerSmartCoordinator)
             .GetMethod("TryCreateGpuShimPlacementDesiredAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(coordinator, [new HostManagerAutomaticGpuPreferencePlacement(process, 30, true, adapter, "fixture"), existing, CancellationToken.None])!;
+            .Invoke(coordinator, [new HostManagerAutomaticGpuPlacement(process, 30, true, adapter, "fixture"), existing, CancellationToken.None])!;
 
     private static (IReadOnlyList<HostManagerPlacementDesired> Desired, IReadOnlyList<HostManagerAppliedPlacementReceipt> Applied)
         BuildGpuBudget(ScoreOnlyCoordinatorFixture fixture, IReadOnlyList<HostManagerPlacementDesired> desired, uint recovery, uint apply)
@@ -221,7 +405,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             (IReadOnlyList<HostManagerAppliedPlacementReceipt>)bounded.GetType().GetProperty("Applied")!.GetValue(bounded)!);
     }
 
-    private static async Task ApplyGpuDesired(ScoreOnlyCoordinatorFixture fixture, HostManagerPlacementDesired desired)
+    private static async Task<bool> ApplyGpuDesired(ScoreOnlyCoordinatorFixture fixture, HostManagerPlacementDesired desired,
+        uint? workBudgetMilliseconds = null)
     {
         var inputs = new NativePlacementDesiredInput[1];
         var projected = HostManagerPlacementCoordinatorProjection.ProjectDesired([desired], inputs).Records.Single();
@@ -232,12 +417,93 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         {
             TargetKey = projected.Identity.TargetKey, RecordKey = projected.Identity.RecordKey,
             DeadlineMilliseconds = checked((ulong)Environment.TickCount64
-                + (ulong)fixture.RuntimePlan.HostManager.HotPublish.PlacementCoordinator.ActionTimeoutMilliseconds)
+                + (workBudgetMilliseconds is { } budget
+                    ? budget + (ulong)fixture.RuntimePlan.HostManager.HotPublish.PlacementCoordinator.WindowExecution.CleanupReserveMilliseconds
+                    : (ulong)fixture.RuntimePlan.HostManager.HotPublish.PlacementCoordinator.ActionTimeoutMilliseconds))
         };
         var task = (Task)typeof(HostManagerSmartCoordinator)
             .GetMethod("ApplyAutomaticPlacementAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(fixture.Coordinator, [permit, fixture.StateStore.Current, action, projected, CancellationToken.None])!;
         await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        return (bool)result.GetType().GetProperty("CanContinue")!.GetValue(result)!;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GpuRouteInspectionVisitsEveryProcessAfterUnknownOrUnreadableProcess(bool unreadable)
+    {
+        var actions = new RecordingRunningGpuActions();
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var template = AutomaticGpuProcess() with
+        {
+            ObservedGpuUsagePercent = new Dictionary<ulong, double> { [123] = 1 }
+        };
+        var processes = Enumerable.Range(0, 3).Select(index => template with
+        {
+            ProcessId = template.ProcessId + index,
+            TargetId = template.TargetId + index
+        }).ToArray();
+        var visited = new List<int>();
+        actions.Prepare = request =>
+        {
+            var id = Assert.Single(request.Processes).ProcessId;
+            visited.Add(id);
+            if (id != processes[2].ProcessId)
+            {
+                if (unreadable) throw new UnauthorizedAccessException("fixture process cannot be read");
+                return new(null, "fixture unknown") { ApiObservationProcesses = request.Processes };
+            }
+            return new(new(request, D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey),
+                new Dictionary<int, GpuGraphicsApi> { [id] = GpuGraphicsApi.D3D11 }), "fixture confirmed");
+        };
+        var pending = new List<HostManagerAutomaticGpuPlacement>();
+        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
+            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [processes, Array.Empty<HostManagerAppliedPlacementReceipt>(), pending, CancellationToken.None])!;
+        var result = await task;
+        Assert.Equal(processes.Select(process => process.ProcessId), visited);
+        Assert.Equal(new[] { false, false, true }, result.Select(process => process.CanMigrateGpu));
+        Assert.Equal(unreadable ? 0 : 2, pending.Count);
+        Assert.Equal(0, actions.ApplyCalls);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+    }
+
+    [Fact]
+    public async Task GpuRecognitionUsesObservedProcessesAndKeepsSiblingRenderersIndependent()
+    {
+        var actions = new RecordingRunningGpuActions();
+        await using var fixture = await CreateGpuActionFixture(actions);
+        var template = AutomaticGpuProcess();
+        var processes = Enumerable.Range(0, 4).Select(index => template with
+        {
+            ProcessId = template.ProcessId + index,
+            TargetId = template.TargetId + index,
+            // A score alone is not evidence of a GPU process. Idle observed clients are.
+            ObservedGpuUsagePercent = index is 1 or 3
+                ? new Dictionary<ulong, double> { [456] = 0 } : new Dictionary<ulong, double>(),
+            ObservedDedicatedMemoryBytes = index == 2
+                ? new Dictionary<ulong, double> { [456] = 1024 } : new Dictionary<ulong, double>()
+        }).ToArray();
+        var visited = new List<int>();
+        actions.Prepare = request =>
+        {
+            var id = Assert.Single(request.Processes).ProcessId;
+            visited.Add(id);
+            Assert.Equal(456UL, request.TargetAdapterKey);
+            Assert.Equal(template.SoftwareId, request.SoftwareId);
+            if (id == processes[1].ProcessId) return new(null, "unconfirmed sibling");
+            return new(new(request, D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey),
+                new Dictionary<int, GpuGraphicsApi> { [id] = GpuGraphicsApi.D3D11 }), "confirmed sibling");
+        };
+        var task = (Task<IReadOnlyList<HostManagerAutomaticPlacementProcess>>)typeof(HostManagerSmartCoordinator)
+            .GetMethod("PrepareAutomaticGpuCandidatesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(fixture.Coordinator, [processes, Array.Empty<HostManagerAppliedPlacementReceipt>(), null, CancellationToken.None])!;
+        var result = await task;
+        Assert.Equal(processes.Skip(1).Select(process => process.ProcessId), visited);
+        Assert.Equal(new[] { false, false, true, true }, result.Select(process => process.CanMigrateGpu));
+        Assert.Equal(0, actions.ApplyCalls);
     }
 
     private sealed class RecordingRunningGpuActions : IRunningGpuPlacementActionService
@@ -254,6 +520,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal Func<RunningGpuPlacementActionRequest, RunningGpuApiObservationExecution, CancellationToken,
             Task<RunningGpuPlacementPreparation>>? FirstUse { get; set; }
         internal int PrepareCalls { get; private set; }
+        internal Func<RunningGpuPlacementActionRequest, RunningGpuPlacementPreparation>? Prepare { get; set; }
         internal int ApplyCalls { get; private set; }
         internal Func<RunningGpuPlacementActionPlan, RunningGpuPlacementActionResult>? Apply { get; set; }
         internal Func<RunningGpuPlacementActionPlan, RunningGpuPlacementExecution, CancellationToken,
@@ -261,6 +528,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         public Task<RunningGpuPlacementPreparation> PrepareAsync(RunningGpuPlacementActionRequest request, CancellationToken token)
         {
             PrepareCalls++;
+            if (Prepare is not null) return Task.FromResult(Prepare(request));
             if (UnknownApi) return Task.FromResult(new RunningGpuPlacementPreparation(null, "fixture unknown route")
                 { ApiObservationProcesses = request.Processes });
             return Task.FromResult(new RunningGpuPlacementPreparation(Available

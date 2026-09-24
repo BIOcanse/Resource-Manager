@@ -5,6 +5,21 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
 internal static class GpuActionFacts
 {
+    internal static IReadOnlyDictionary<(int ProcessId, ulong ProcessStartKey), ulong> CompletedAttemptTimes(
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> placements)
+    {
+        var times = new Dictionary<(int, ulong), ulong>();
+        foreach (var placement in placements)
+        foreach (var record in placement.Records)
+        {
+            if (!GpuRemoteCallRecord.TryRead(record, out var fact) || fact.BlocksProcess
+                || (fact.Settlement ?? fact.Result) is not { Completed: true, ThreadCreationFileTimeUtc: { } time }) continue;
+            var identity = (fact.Request.Process.ProcessId, fact.Request.Process.ProcessStartKey);
+            times[identity] = Math.Max(times.GetValueOrDefault(identity), time);
+        }
+        return times;
+    }
+
     internal static bool IsActionFact(HostManagerAppliedRecord record)
         => GpuWindowActionRecord.IsActionFact(record) || GpuRemoteCallRecord.IsActionFact(record);
 

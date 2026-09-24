@@ -13,7 +13,7 @@ public static class GpuGraphicsApiRoutes
     public static string? RuntimeProvider(GpuGraphicsApi? api) => api switch
     {
         GpuGraphicsApi.Vulkan => GpuPlacementProviderIds.VulkanExplicitLayer,
-        GpuGraphicsApi.D3D9 or GpuGraphicsApi.D3D11 or GpuGraphicsApi.D3D12 or (GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12)
+        GpuGraphicsApi.D3D11 or GpuGraphicsApi.D3D12 or (GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12)
             => GpuPlacementProviderIds.D3dDeviceCreateShim,
         _ => null
     };

@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <dxgi.h>
+#include <dxgi1_4.h>
 #include <d3d11.h>
 #include <initguid.h>
 #include <d3d12.h>
@@ -80,6 +81,14 @@ volatile LONG g_hooksEnabled = 0;
 volatile LONG g_detoursHeadersRestored = 0;
 ResourceManagerGpuObservation::Store g_deviceObservations;
 ResourceManagerGpuObservation::CallStore g_apiObservations;
+thread_local bool g_dxgiBootstrap = false;
+thread_local bool g_insideGraphicsRuntime = false;
+struct GraphicsRuntimeCall
+{
+    const bool previous = g_insideGraphicsRuntime;
+    GraphicsRuntimeCall() { g_insideGraphicsRuntime = true; }
+    ~GraphicsRuntimeCall() { g_insideGraphicsRuntime = previous; }
+};
 D3D11CreateDeviceFn g_realCreateDevice = nullptr;
 D3D11CreateDeviceAndSwapChainFn g_realCreateDeviceAndSwapChain = nullptr;
 D3D12CreateDeviceFn g_realD3D12CreateDevice = nullptr;
@@ -100,6 +109,7 @@ using namespace ResourceManagerGpuPolicy;
 
 bool ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi api)
 {
+    if (g_dxgiBootstrap || g_insideGraphicsRuntime) return true;
     const DWORD error = GetLastError();
     g_apiObservations.Record(api);
     AcquireSRWLockShared(&g_policyLock);
@@ -155,6 +165,20 @@ HRESULT SelectD3D11ReplacementAdapter(
 
     const GpuShimPolicy policy = ReadPolicyFile();
     replacement = SelectAdapter(policy);
+    if (adapter != nullptr && replacement != nullptr)
+    {
+        DXGI_ADAPTER_DESC original{};
+        DXGI_ADAPTER_DESC1 selected{};
+        if (SUCCEEDED(adapter->GetDesc(&original)) && SUCCEEDED(replacement->GetDesc1(&selected))
+            && SameLuid(original.AdapterLuid, selected.AdapterLuid))
+        {
+            // Preserve the caller's adapter/factory when it already selected the target,
+            // including nested device creation inside CreateDeviceAndSwapChain.
+            replacement->Release();
+            replacement = nullptr;
+            return S_OK;
+        }
+    }
     return replacement == nullptr && policy.mode == GpuShimPolicyMode::TargetLuid ? DXGI_ERROR_NOT_FOUND : S_OK;
 }
 
@@ -170,7 +194,9 @@ HRESULT WINAPI HookedD3D11CreateDevice(
     D3D_FEATURE_LEVEL* featureLevel,
     ID3D11DeviceContext** immediateContext)
 {
-    if (ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D11))
+    const bool passThrough = ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D11);
+    const GraphicsRuntimeCall runtimeCall;
+    if (passThrough)
         return g_realCreateDevice(adapter, driverType, software, flags, featureLevels,
             featureLevelCount, sdkVersion, device, featureLevel, immediateContext);
     IDXGIAdapter1* replacement = nullptr;
@@ -221,7 +247,9 @@ HRESULT WINAPI HookedD3D11CreateDeviceAndSwapChain(
     D3D_FEATURE_LEVEL* featureLevel,
     ID3D11DeviceContext** immediateContext)
 {
-    if (ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D11))
+    const bool passThrough = ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D11);
+    const GraphicsRuntimeCall runtimeCall;
+    if (passThrough)
         return g_realCreateDeviceAndSwapChain(adapter, driverType, software, flags, featureLevels,
             featureLevelCount, sdkVersion, swapChainDescription, swapChain, device, featureLevel, immediateContext);
     IDXGIAdapter1* replacement = nullptr;
@@ -264,6 +292,7 @@ HRESULT WINAPI HookedD3D11CreateDeviceAndSwapChain(
 template<typename Create>
 HRESULT WithD3D12Adapter(IUnknown* adapter, void** device, const Create& create)
 {
+    const GraphicsRuntimeCall runtimeCall;
     if (!IsHardwareAdapter(adapter))
     {
         return create(adapter);
@@ -291,7 +320,9 @@ HRESULT WithD3D12Adapter(IUnknown* adapter, void** device, const Create& create)
 HRESULT WINAPI HookedD3D12CreateDevice(
     IUnknown* adapter, D3D_FEATURE_LEVEL minimumFeatureLevel, REFIID iid, void** device)
 {
-    if (ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D12))
+    const bool passThrough = ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D12);
+    const GraphicsRuntimeCall runtimeCall;
+    if (passThrough)
         return g_realD3D12CreateDevice(adapter, minimumFeatureLevel, iid, device);
     return WithD3D12Adapter(adapter, device, [&](IUnknown* selected) {
         const HRESULT result = g_realD3D12CreateDevice(selected, minimumFeatureLevel, iid, device);
@@ -370,6 +401,7 @@ HRESULT STDMETHODCALLTYPE HookedFactoryCreateDevice(
         InterlockedExchange(&g_hooksEnabled, -1);
         return E_UNEXPECTED;
     }
+    if (g_insideGraphicsRuntime || g_dxgiBootstrap) return original(factory, adapter, minimumFeatureLevel, iid, device);
     return WithD3D12Adapter(adapter, device, [&](IUnknown* selected) {
         const HRESULT result = original(factory, selected, minimumFeatureLevel, iid, device);
         ResourceManagerGpuObservation::ObserveD3D12(g_deviceObservations, result, device);
@@ -416,7 +448,9 @@ HRESULT AttachFactoryInterface(HRESULT result, REFIID iid, void** output)
 
 HRESULT WINAPI HookedD3D12GetInterface(REFCLSID clsid, REFIID iid, void** output)
 {
-    if (ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D12))
+    const bool passThrough = ObserveWithoutSelection(ResourceManagerGpuObservation::CallApi::D3D12);
+    const GraphicsRuntimeCall runtimeCall;
+    if (passThrough)
         return g_realD3D12GetInterface(clsid, iid, output);
     const HRESULT result = g_realD3D12GetInterface(clsid, iid, output);
     if (FAILED(result) || output == nullptr || *output == nullptr || !IsEqualGUID(clsid, CLSID_D3D12SDKConfiguration))
@@ -447,7 +481,7 @@ bool CreateAndEnableHook(FARPROC target, LPVOID detour, LPVOID* original)
 DWORD ReadStatus();
 void SignalStartupReadyIfConfigured();
 
-#include "Direct3D9FactoryHooks.h"
+#include "DxgiRuntimeRecreation.h"
 #include "VulkanRuntimeHooks.h"
 
 void InitializePolicyPathFromEnvironment()
@@ -569,8 +603,6 @@ DWORD ReadStatus()
     {
         status |= StatusHooksEnabled;
     }
-    if (InterlockedCompareExchange(&D3D9Provider::ready, 0, 0) == 1)
-        status |= StatusD3D9HooksEnabled;
     if (InterlockedCompareExchange(&VulkanProvider::ready, 0, 0) == 1)
         status |= StatusVulkanHooksEnabled;
     if (InterlockedCompareExchange(&ResourceManagerOpenGl::Provider::ready, 0, 0) == 1)
@@ -615,6 +647,21 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementReadDev
     return g_deviceObservations.CopyTo(parameter);
 }
 
+extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementArmRecreation(LPVOID parameter)
+{
+    return EnsureProviderInitialized() ? DxgiRuntime::Arm(parameter) : 0;
+}
+
+extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementFinishRecreation(LPVOID parameter)
+{
+    return DxgiRuntime::Finish(parameter, false);
+}
+
+extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementCancelRecreation(LPVOID parameter)
+{
+    return DxgiRuntime::Finish(parameter, true);
+}
+
 extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementStartApiObservation(LPVOID parameter)
 {
     if (!parameter) { SetLastError(ERROR_INVALID_PARAMETER); return 0; }
@@ -625,7 +672,6 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementStartAp
     constexpr uint32_t supportedApis = static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::D3D11)
         | static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::D3D12)
         | static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::Vulkan)
-        | static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::D3D9)
         | static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::OpenGL);
     if (request.apis & ~supportedApis) { SetLastError(ERROR_NOT_SUPPORTED); return 0; }
     AcquireSRWLockShared(&g_policyLock);
@@ -637,6 +683,9 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementStartAp
     if (!EnsureProviderInitialized() || !(ReadStatus() & StatusHooksEnabled)) {
         SetLastError(ERROR_NOT_READY); return 0;
     }
+    if ((request.apis & 3u) && !DxgiRuntime::EnsureHooks()) {
+        SetLastError(ERROR_NOT_READY); return 0;
+    }
     if (request.apis & static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::Vulkan)) {
         if (!GetModuleHandleW(L"vulkan-1.dll")) { SetLastError(ERROR_MOD_NOT_FOUND); return 0; }
         if (!VulkanProvider::EnsureEntryHooks()) {
@@ -646,9 +695,6 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementStartAp
     if (openGlLock.owns_lock()) {
         ResourceManagerOpenGl::Runtime::apiObservations.store(&g_apiObservations);
         if (!ResourceManagerOpenGl::Runtime::InstallPublicCore(GetModuleHandleW(L"opengl32.dll"))) return 0;
-    }
-    if (request.apis & static_cast<uint32_t>(ResourceManagerGpuObservation::CallApi::D3D9)) {
-        if (!D3D9Provider::EnsureEntryHooks()) { SetLastError(ERROR_NOT_READY); return 0; }
     }
     // Configure publishes under this same lock and stops collection before selection.
     AcquireSRWLockShared(&g_policyLock);
@@ -682,13 +728,13 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementConfigu
         return ReadStatus();
     }
 
-    if (!EnsureProviderInitialized()) return 0;
-    const auto d3d9Preparation = D3D9Provider::PreparePlacement();
+    // Presentation may create internal bridge devices on hybrid systems. Install
+    // its runtime-call boundary before selection, even with a saved API identity.
+    if (!EnsureProviderInitialized() || !DxgiRuntime::EnsureHooks()) return 0;
     AcquireSRWLockExclusive(&g_policyLock);
     g_apiObservations.Stop();
     std::wcsncpy(g_policyPath, policyPath, PolicyPathCapacity - 1);
     g_policyPath[PolicyPathCapacity - 1] = L'\0';
-    D3D9Provider::PublishPlacement(d3d9Preparation);
     ReleaseSRWLockExclusive(&g_policyLock);
 
     SignalStartupReadyIfConfigured();

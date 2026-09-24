@@ -161,8 +161,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                 ? new ProcessInstanceKey(processId, stableStartKey)
                 : null;
             var cachedIdentity = TryGetCachedProcessIdentity(processInstanceKey);
-            var shouldReadPath = ShouldReadExecutablePath(detailLevel);
-            if (cachedIdentity is null && shouldReadPath && processInstanceKey is { } cacheKey)
+            // Scheduling needs the same executable identity without a prior UI capture.
+            if (cachedIdentity is null && processInstanceKey is { } cacheKey)
             {
                 cachedIdentity = processIdentityCache.GetOrAdd(
                     cacheKey,
@@ -176,7 +176,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 executablePath = cachedIdentity.ExecutablePath;
                 metadata = cachedIdentity.Metadata;
             }
-            else if (shouldReadPath && processInstanceKey is null)
+            else if (processInstanceKey is null)
             {
                 executablePath = TryReadExecutablePath(process);
                 metadata = ShouldReadFileMetadata(detailLevel)
@@ -356,11 +356,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             && current.WindowTitle == next.WindowTitle
             && current.UserName == next.UserName
             && current.Architecture == next.Architecture;
-    }
-
-    private static bool ShouldReadExecutablePath(ProcessSampleDetailLevel detailLevel)
-    {
-        return detailLevel >= ProcessSampleDetailLevel.ResourceTableBasic;
     }
 
     private static bool ShouldReadFileMetadata(ProcessSampleDetailLevel detailLevel)

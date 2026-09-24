@@ -9,6 +9,41 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class RunningGpuPlacementFirstUseTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InjectorRejectedInstanceCannotBecomeMovementOrObservationCandidate(bool knownApi)
+    {
+        var f = new Fixture();
+        if (knownApi)
+            await f.History.SaveFirstGraphicsApiAsync("software", "Software", f.Process, GpuGraphicsApi.D3D11, default);
+        var cacheField = typeof(WindowsGpuPlacementInjector).GetField("failuresByProcessId",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var cache = cacheField.GetValue(f.Injector)!;
+        var failureType = cache.GetType().GetGenericArguments()[1];
+        var failure = new RuntimeGpuProviderInjectionResult(42, false, false, "binary-signature-policy",
+            "fixture", null, null, 0, null);
+        var cached = Activator.CreateInstance(failureType, new object[] { 1UL, failure });
+        cache.GetType().GetProperty("Item")!.SetValue(cache, cached, [42]);
+
+        var blocked = await f.Actions.PrepareAsync(f.Request, default);
+        Assert.Null(blocked.Plan);
+        Assert.Empty(blocked.ApiObservationProcesses);
+        Assert.Equal(failure, f.Injector.GetKnownProcessFailure(f.Process));
+
+        var other = f.Process with { ProcessId = 43 };
+        var mixed = await f.Actions.PrepareAsync(f.Request with { Processes = [f.Process, other] }, default);
+        if (knownApi) Assert.Equal(other, Assert.Single(mixed.Plan!.Request.Processes));
+        else Assert.Equal(other, Assert.Single(mixed.ApiObservationProcesses));
+
+        var nextBirth = f.Process with { ProcessStartKey = 2 };
+        Assert.Null(f.Injector.GetKnownProcessFailure(nextBirth));
+        var available = await f.Actions.PrepareAsync(f.Request with { Processes = [nextBirth] }, default);
+        if (knownApi) Assert.NotNull(available.Plan);
+        else Assert.Equal(nextBirth, Assert.Single(available.ApiObservationProcesses));
+        Assert.Null(f.Runtime.ReadPolicy("target"));
+    }
+
     [Fact]
     public async Task PurePreparationReportsUnknownInstancesWithoutPublishingOrExposingAnObservationField()
     {
@@ -25,6 +60,7 @@ public sealed class RunningGpuPlacementFirstUseTests
     [Theory]
     [InlineData(GpuGraphicsApi.D3D11)]
     [InlineData(GpuGraphicsApi.OpenGL)]
+    [InlineData(GpuGraphicsApi.D3D9)]
     public async Task KnownApiIsNotReportedAsUnknownEvenWhenItsMovementPathIsUnavailable(GpuGraphicsApi api)
     {
         var f = new Fixture();
@@ -85,7 +121,6 @@ public sealed class RunningGpuPlacementFirstUseTests
     }
 
     [Theory]
-    [InlineData(GpuGraphicsApi.D3D9)]
     [InlineData(GpuGraphicsApi.D3D11)]
     [InlineData(GpuGraphicsApi.D3D12)]
     [InlineData(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12)]
@@ -392,6 +427,7 @@ public sealed class RunningGpuPlacementFirstUseTests
         internal readonly D3d11ProxyShimRuntime Runtime;
         internal readonly GpuGraphicsApiIdentificationTests.Plans Plans;
         internal readonly WindowsRunningGpuPlacementActionService Actions;
+        internal readonly WindowsGpuPlacementInjector Injector = new(NullLogger<WindowsGpuPlacementInjector>.Instance);
         internal GpuPlacementProcessInstance Process => new(42, 1, "target", Path.Combine(Environment.ContentRootPath, "target.exe"));
         internal RunningGpuPlacementActionRequest Request => new("target", "software", "Software", [Process], "background", 123,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover);
@@ -404,6 +440,6 @@ public sealed class RunningGpuPlacementFirstUseTests
         }
         internal WindowsRunningGpuPlacementActionService CreateActions(IGpuPlacementProcessHistoryStore history)
             => new(NullLogger<WindowsRunningGpuPlacementActionService>.Instance, Runtime,
-                new(NullLogger<WindowsGpuPlacementInjector>.Instance), history, Plans, new());
+                Injector, history, Plans, new());
     }
 }

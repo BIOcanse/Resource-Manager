@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
 using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Hosting.StartupCapabilities;
 
@@ -22,6 +23,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<WindowsGpuPlacementInjector>();
         services.AddSingleton<WindowsGpuWindowActionRuntime>();
         services.AddSingleton<WindowsGpuCallbackPreparationRuntime>();
+        services.AddSingleton<ExternalGpuResidentObservation>();
+        services.AddSingleton<WindowsExternalGpuPlacementRuntime>();
         services.AddSingleton<IGpuPlacementCapabilityReader, WindowsGpuPlacementCapabilityReader>();
         services.AddSingleton<IGpuLaunchInterceptionRegistry, WindowsIfeoGpuLaunchInterceptionRegistry>();
         services.AddSingleton<IGpuLaunchExecutionReportStore, JsonGpuLaunchExecutionReportStore>();
@@ -32,7 +35,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddHostedService<GpuLaunchInterceptionReconciler>();
         }
-        services.AddSingleton<IRunningGpuPlacementActionService, WindowsRunningGpuPlacementActionService>();
+        services.AddSingleton<IRunningGpuPlacementActionService, ExternalOnlyRunningGpuPlacementActionService>();
         services.AddSingleton<LegacyGpuPreferenceActionRestorer>();
         return services;
     }

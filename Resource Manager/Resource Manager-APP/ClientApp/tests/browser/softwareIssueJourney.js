@@ -106,7 +106,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
 
 async function openSoftwareInventory(page) {
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  const navigation = page.getByRole("navigation", { name: "组件与软件分类" });
+  const navigation = page.getByRole("navigation", { name: "组件和软件分类" });
   await navigation.waitFor({ state: "visible", timeout: 5000 });
   await navigation.getByRole("button", { name: /一般应用/ }).click();
   await page.getByText("示例软件", { exact: true }).first()

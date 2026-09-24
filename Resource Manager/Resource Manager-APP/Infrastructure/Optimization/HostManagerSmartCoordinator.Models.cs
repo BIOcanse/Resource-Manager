@@ -65,6 +65,7 @@ public sealed partial class HostManagerSmartCoordinator
         public bool CanApplyAutomaticPolicy { get; } = canApplyAutomaticPolicy;
         public bool CanApplyAdaptedPolicy { get; } = canApplyAdaptedPolicy;
         public bool CanApplyPhysicalCorePlacement { get; } = canApplyPhysicalCorePlacement;
+        public string SoftwareKind { get; } = softwareKind;
         public CompiledAdapterDispatchRoute AdapterDispatchRoute { get; } = adapterDispatchRoute;
         public IReadOnlyList<AdapterCpuSchedulingGrade> SupportedCpuGrades { get; } = supportedCpuGrades;
         public IReadOnlyList<AdapterGpuSchedulingGrade> SupportedGpuGrades { get; } = supportedGpuGrades;
@@ -109,7 +110,7 @@ public sealed partial class HostManagerSmartCoordinator
                             SchedulingProcessMetricMask.GpuUsage)
                         && (gpuFact.UsageSourceGeneration == 0
                             || gpuFact.UsageTopologyGeneration == 0)
-                    || gpuFact.ValidMetricMask.HasFlag(
+                    || gpuFact.HasMetric(
                             SchedulingProcessMetricMask.GpuDedicatedMemory)
                         && (gpuFact.DedicatedMemorySourceGeneration == 0
                             || gpuFact.DedicatedMemoryTopologyGeneration == 0))
@@ -128,6 +129,8 @@ public sealed partial class HostManagerSmartCoordinator
                     GpuIdentityConsistent = false;
                     continue;
                 }
+
+                gpu.ResidentMemoryBytes = gpuFact.ResidentMemoryBytes;
 
                 if (gpuFact.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.GpuUsage))
                 {
@@ -162,7 +165,7 @@ public sealed partial class HostManagerSmartCoordinator
                 targetId,
                 softwareId,
                 displayName,
-                softwareKind,
+                SoftwareKind,
                 displayKind,
                 baseScore,
                 GpuPlacementPolicy,
@@ -224,7 +227,7 @@ public sealed partial class HostManagerSmartCoordinator
                 ? fact.UsageSourceGeneration
                 : 0;
         public ulong DedicatedMemorySourceGeneration { get; private set; } =
-            fact.ValidMetricMask.HasFlag(
+            fact.HasMetric(
                 SchedulingProcessMetricMask.GpuDedicatedMemory)
                 ? fact.DedicatedMemorySourceGeneration
                 : 0;
@@ -233,7 +236,7 @@ public sealed partial class HostManagerSmartCoordinator
                 ? fact.UsageTopologyGeneration
                 : 0;
         public ulong DedicatedMemoryTopologyGeneration { get; private set; } =
-            fact.ValidMetricMask.HasFlag(
+            fact.HasMetric(
                 SchedulingProcessMetricMask.GpuDedicatedMemory)
                 ? fact.DedicatedMemoryTopologyGeneration
                 : 0;
@@ -241,6 +244,7 @@ public sealed partial class HostManagerSmartCoordinator
         public double VramUsedPercent { get; private set; }
         public bool HasUsageMetric { get; private set; }
         public bool HasVramMetric { get; private set; }
+        public double? ResidentMemoryBytes { get; set; }
 
         public bool Matches(SchedulingProcessGpuFact candidate)
             => candidate.GpuIndex == GpuIndex
@@ -251,7 +255,7 @@ public sealed partial class HostManagerSmartCoordinator
                     || candidate.UsageSourceGeneration == UsageSourceGeneration
                         && candidate.UsageTopologyGeneration ==
                             UsageTopologyGeneration)
-                && (!candidate.ValidMetricMask.HasFlag(
+                && (!candidate.HasMetric(
                         SchedulingProcessMetricMask.GpuDedicatedMemory)
                     || DedicatedMemorySourceGeneration == 0
                     || candidate.DedicatedMemorySourceGeneration ==
@@ -293,7 +297,8 @@ public sealed partial class HostManagerSmartCoordinator
                 GpuUsagePercent,
                 VramUsedPercent,
                 HasUsageMetric,
-                HasVramMetric);
+                HasVramMetric,
+                ResidentMemoryBytes);
         }
     }
 
@@ -339,7 +344,8 @@ public sealed partial class HostManagerSmartCoordinator
         double GpuUsagePercent,
         double VramUsedPercent,
         bool HasUsageMetric,
-        bool HasVramMetric);
+        bool HasVramMetric,
+        double? ResidentMemoryBytes);
 
     private sealed record HostManagerSample(
         HardwareMetricSnapshot Hardware,

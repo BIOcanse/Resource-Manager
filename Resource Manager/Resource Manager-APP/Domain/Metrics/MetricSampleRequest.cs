@@ -24,7 +24,7 @@ public sealed class MetricSampleRequest
 
     public bool IsCatalogProbe => isCatalogProbe;
 
-    public bool IsEmpty => metricIds is { Count: 0 };
+    public bool IsEmpty => metricIds is { Count: 0 } && !includesAllGpuCoreMetrics;
 
     public bool IncludesAllGpuCoreMetrics => IsAll || IsCatalogProbe || includesAllGpuCoreMetrics;
 

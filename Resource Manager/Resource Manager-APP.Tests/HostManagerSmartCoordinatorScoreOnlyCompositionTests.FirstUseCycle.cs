@@ -22,7 +22,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [InlineData("software-during-save")]
     [InlineData("process-during-save")]
     [InlineData("closing-during-save")]
-    public async Task FirstUsePublicCycleWaitsWithoutTheGateAndContinuesOnlyItsOriginalPlacement(string outcome)
+    public async Task FirstUsePublicCycleOnlyIdentifiesAndPlacementRequiresAFreshCycle(string outcome)
     {
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current, 1,
             DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 789,
@@ -108,7 +108,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             if (outcome is "software-during-save" or "process-during-save")
             {
                 var current = fixture.RuntimePlanProvider.Current;
-                var denied = process.Policy with { AllowedProviders = [] };
+                var denied = process.Policy with { RuntimeHotSwitchEnabled = false };
                 var plan = outcome == "software-during-save"
                     ? current.GpuPlacement with { SoftwarePoliciesBySoftwareId = new Dictionary<string, ResolvedGpuPlacementPolicy> { [process.SoftwareId] = denied } }
                     : current.GpuPlacement with { ProcessPoliciesBySoftwareAndProcessKey = new Dictionary<string, ResolvedGpuPlacementPolicy>
@@ -126,7 +126,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             if (outcome == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
             else await run.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(1, calls);
-            Assert.Equal(outcome == "complete" ? 1 : 0, actions.ApplyCalls);
+            Assert.Equal(0, actions.ApplyCalls);
             if (close is not null) await close.WaitAsync(TimeSpan.FromSeconds(10));
             else
             {
@@ -136,9 +136,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             if (outcome == "complete")
             {
-                Assert.Contains(fixture.StateStore.Current.AppliedPlacements.SelectMany(item => item.Records),
+                Assert.DoesNotContain(fixture.StateStore.Current.AppliedPlacements.SelectMany(item => item.Records),
                     item => item.Kind == HostManagerAppliedRecordKinds.GpuShimPolicy);
                 await fixture.Coordinator.RunOnceAsync(default);
+                Assert.Contains(fixture.StateStore.Current.AppliedPlacements.SelectMany(item => item.Records),
+                    item => item.Kind == HostManagerAppliedRecordKinds.GpuShimPolicy);
                 Assert.Equal(1, calls);
                 Assert.Equal(1, actions.ApplyCalls);
             }

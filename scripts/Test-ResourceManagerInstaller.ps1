@@ -56,8 +56,44 @@ try {
     $sentinel = $registry.OpenSubKey('Unrelated')
     Assert ($sentinel.GetValue('Keep') -ceq 'user data') 'Unrelated data changed.'
     $sentinel.Dispose()
+
+    $legacyRoot = 'C:\Fixture Legacy'
+    $legacyUi = Join-Path $legacyRoot 'Bin\ResourceManagerNativeUi\ResourceManager.NativeUi.exe'
+    $legacyOwner = $registry.CreateSubKey('Software\ResourceManager')
+    $legacyOwner.SetValue('InstallRoot', $legacyRoot)
+    $legacyOwner.SetValue('BackendPath', (Join-Path $legacyRoot 'Bin\ResourceManager\ResourceManager.exe'))
+    $legacyOwner.SetValue('NativeUiPath', $legacyUi)
+    $legacyOwner.SetValue('MainPath', $legacyUi)
+    $legacyOwner.SetValue('AppUserModelId', 'ResourceManager.Desktop')
+    $legacyOwner.SetValue('GreenInstall', 1, [Microsoft.Win32.RegistryValueKind]::DWord)
+    $legacyUninstall = $registry.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall\ResourceManager')
+    $legacyUninstall.SetValue('InstallLocation', $legacyRoot)
+    $legacyUninstall.SetValue('DisplayIcon', $legacyUi)
+    $legacyUninstall.Dispose()
+    $legacyAppPath = $registry.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\App Paths\ResourceManager.exe')
+    $legacyAppPath.SetValue('', $legacyUi)
+    $legacyAppPath.SetValue('Path', (Split-Path -Parent $legacyUi))
+    $legacyAppPath.Dispose()
+    Assert (@(Assert-ResourceManagerLegacyUserRegistration -RegistryRoot $registry).Count -eq 3) `
+        'Legacy registration preflight missed owned entries.'
+    $legacyOwner.SetValue('UnknownUserSetting', 'keep')
+    $rejected = $false
+    try { $null = Assert-ResourceManagerLegacyUserRegistration -RegistryRoot $registry } catch { $rejected = $true }
+    Assert $rejected 'Unexpected user data must block legacy cleanup.'
+    Assert ($null -ne $registry.OpenSubKey('Software\ResourceManager')) 'Rejected cleanup changed the owner key.'
+    $legacyOwner.DeleteValue('UnknownUserSetting')
+    $legacyOwner.Dispose()
+    Remove-ResourceManagerLegacyUserRegistration -RegistryRoot $registry
+    foreach ($path in @('Software\ResourceManager',
+            'Software\Microsoft\Windows\CurrentVersion\Uninstall\ResourceManager',
+            'Software\Microsoft\Windows\CurrentVersion\App Paths\ResourceManager.exe')) {
+        Assert ($null -eq $registry.OpenSubKey($path)) "Legacy product key remains: $path"
+    }
+    $sentinel = $registry.OpenSubKey('Unrelated')
+    Assert ($sentinel.GetValue('Keep') -ceq 'user data') 'Legacy cleanup changed unrelated user data.'
+    $sentinel.Dispose()
 } finally {
     $registry.Dispose()
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($testKey)
 }
-'Installer checks passed: legacy cleanup, unrelated task preservation, Installed Apps registration, no startup registration, scoped unregister.'
+'Installer checks passed: owned legacy user/task cleanup, unrelated data preservation, Installed Apps registration, no startup registration, scoped unregister.'

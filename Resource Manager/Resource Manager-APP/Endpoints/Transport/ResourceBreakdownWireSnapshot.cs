@@ -148,6 +148,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
             WriteNullableNumber(writer, "totalValue", bar.TotalValue);
             WriteNullableNumber(writer, "capacityValue", bar.CapacityValue);
             WriteNullableNumber(writer, "totalSystemPercent", bar.TotalSystemPercent);
+            WriteNullableNumber(writer, "sharedValue", bar.SharedValue);
             WriteSoftwareRows(writer, value, bar.Software);
             writer.WriteEndObject();
         }
@@ -173,6 +174,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
                 writer,
                 segment.Processes,
                 value.ProcessDetailSoftwareIds.Contains(segment.SoftwareId));
+            if (segment.SharedValue is { } shared) writer.WriteNumberValue(shared);
             writer.WriteEndArray();
         }
         writer.WriteEndArray();
@@ -208,6 +210,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
                 {
                     writer.WriteNullValue();
                 }
+                if (process.SharedValue is { } shared) writer.WriteNumberValue(shared);
                 writer.WriteEndArray();
             }
         }

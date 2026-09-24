@@ -5,6 +5,7 @@ using System.Text;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Application.GpuPlacement;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -410,8 +411,11 @@ internal static class HostManagerPlacementCoordinatorProjection
         else
         {
             var metadata = record.Metadata ?? new Dictionary<string, string>();
-            canonical.Append(metadata.Count.ToString(CultureInfo.InvariantCulture)).Append(';');
-            foreach (var pair in metadata.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
+            var digestMetadata = ExternalGpuRuntimePlacementRecord.IsRecord(record)
+                ? metadata.Where(static pair => !ExternalGpuRuntimePlacementRecord.IsMutableResultField(pair.Key)).ToArray()
+                : metadata.ToArray();
+            canonical.Append(digestMetadata.Length.ToString(CultureInfo.InvariantCulture)).Append(';');
+            foreach (var pair in digestMetadata.OrderBy(static pair => pair.Key, StringComparer.Ordinal))
             {
                 AppendField(canonical, pair.Key);
                 AppendField(canonical, pair.Value);

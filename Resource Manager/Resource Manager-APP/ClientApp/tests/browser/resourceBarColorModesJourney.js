@@ -91,7 +91,7 @@ async function readMemoryBar(page) {
       mode: document.body.dataset.barColor,
       colors,
       dividerCount: Array.from({ length: 7 }, (_, index) => {
-        const x = Math.round(width * 0.25 * (index + 1) / 8) - 1;
+        const x = Math.floor(width * 0.25 * (index + 1) / 8) - 1;
         const boundary = [...context.getImageData(x, y, 1, 1).data].join(",");
         const interior = [...context.getImageData(x - 2, y, 1, 1).data].join(",");
         return boundary !== interior;
@@ -114,7 +114,7 @@ async function checkUnchangedBoundaries(page) {
       await new Promise(requestAnimationFrame);
       const y = Math.floor(canvas.height / 4);
       for (let index = 0; index < 7; index += 1) {
-        const x = Math.round(canvas.width * (index + 1) / 32) - 1;
+        const x = Math.floor(canvas.width * (index + 1) / 32) - 1;
         const boundary = [...context.getImageData(x, y, 1, 1).data].join(",");
         const interior = [...context.getImageData(x - 2, y, 1, 1).data].join(",");
         if (boundary === interior) {

@@ -4,6 +4,7 @@ using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Infrastructure.Windows;
 using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
@@ -13,8 +14,11 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
     WindowsGpuPlacementInjector gpuPlacementInjector,
     IGpuPlacementProcessHistoryStore processHistoryStore,
     IRuntimePlanProvider runtimePlans,
-    WindowsGpuCallbackPreparationRuntime callbackPreparationRuntime) : IRunningGpuPlacementActionService
+    WindowsGpuCallbackPreparationRuntime callbackPreparationRuntime,
+    WindowsExternalGpuPlacementRuntime? externalRuntime = null) : IRunningGpuPlacementActionService
 {
+    public bool HasUnreleasedExternalControl => externalRuntime?.HasUnreleasedControl == true;
+
     public async Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken)
     {
@@ -26,9 +30,34 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
         if (distinctProcesses.Select(static process => process.ProcessId).Distinct().Count() != distinctProcesses.Length)
             return new(null, "同一 PID 对应冲突的进程身份，未执行动作。");
         request = request with { Processes = distinctProcesses };
+        if (externalRuntime is not null)
+        {
+            var policy = runtimePlans.Current.GpuPlacement;
+            if (!policy.GlobalPreciseProviderEnabled) return new(null, "GPU shim 已关闭。");
+            var allowed = distinctProcesses.Where(process => policy.Resolve(request.SoftwareId, request.DisplayName, null,
+                JsonGpuPlacementProcessHistoryStore.BuildProcessKey(process.ProcessName, process.ExecutablePath))
+                .AcceptsRuntimeGpuScheduling()).ToArray();
+            var external = externalRuntime.Prepare(allowed);
+            if (external is null) return new(null, "目标没有已验证的无注入运行期移动路径，或存在未释放的控制器。");
+            if (TryGetWindowProcessId(NativeMethods.GetForegroundWindow()) == external.Root.ProcessId)
+                return new(null, "目标浏览器当前处于前台，不进入运行期换卡候选。");
+            return new(new(request with { Processes = [external.GpuProcess] },
+                D3d11ProxyShimRuntime.CreateExactPolicyValue(request.TargetAdapterKey), new Dictionary<int, GpuGraphicsApi>
+                {
+                    [external.GpuProcess.ProcessId] = external.Renderer switch
+                    {
+                        ExternalGpuRenderer.ChromiumAngle => GpuGraphicsApi.D3D11,
+                        ExternalGpuRenderer.QtQuickD3D12 => GpuGraphicsApi.D3D12,
+                        ExternalGpuRenderer.QtQuickVulkan => GpuGraphicsApi.Vulkan,
+                        _ => throw new InvalidOperationException("Unknown confirmed renderer.")
+                    }
+                })
+                { External = external }, "已准备无注入 GPU 子进程重建动作，未操作进程。");
+        }
         var processes = distinctProcesses.ToDictionary(static process => process.ProcessId);
         var processIds = processes.Keys
             .Where(static processId => processId > 4)
+            .Where(processId => gpuPlacementInjector.GetKnownProcessFailure(processes[processId]) is null)
             .Distinct()
             .ToHashSet();
         if (processIds.Count == 0)
@@ -97,8 +126,15 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
 
         var foregroundBefore = NativeMethods.GetForegroundWindow();
         var foregroundProcessId = TryGetWindowProcessId(foregroundBefore);
-        if (foregroundProcessId is not null && request.Processes.Any(process => process.ProcessId == foregroundProcessId))
+        if (foregroundProcessId is not null && (request.Processes.Any(process => process.ProcessId == foregroundProcessId)
+            || plan.External?.Root.ProcessId == foregroundProcessId))
             return new([], "目标软件当前处于前台聚焦状态，GPU 运行时触发被禁止。", RunningGpuPlacementActionStatuses.Skipped);
+
+        if (externalRuntime is not null)
+        {
+            if (plan.External is null) return new([], "未提供无注入动作计划。", RunningGpuPlacementActionStatuses.Skipped);
+            return await externalRuntime.ExecuteAsync(plan, windows, cancellationToken).ConfigureAwait(false);
+        }
 
         var ownedProcesses = new List<WindowsGpuPlacementInjector.ProviderProcess>();
         var callsStopped = false;
@@ -140,35 +176,38 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
                 == GpuPlacementRuntimeSwitchMethods.WindowRerender ? GpuWindowActionMethod.Resize : GpuWindowActionMethod.Redraw;
             var available = configured.Where(pair => before.TryGetValue(pair.Key, out var read) && read.Success
                 && !pair.Value.CallsStopped).ToDictionary();
-            var batch = callsStopped ? new WindowBatchResult([], true, false)
-                : await ExecuteWindowRequestsAsync(
-                    EnumerateWindows(available, method, windows.MaximumWindowCount, cancellationToken), windows, cancellationToken);
+            var triggers = callsStopped ? new RecreationBatch(new([], true, false), [], [])
+                : await ExecuteRecreationRequestsAsync(plan, available, method, windows, cancellationToken);
+            var batch = triggers.Windows;
+            callsStopped |= available.Values.Any(static process => process.CallsStopped);
             if (batch.Stopped) logger.LogDebug("Stopped the current GPU window plan for {Target} without fallback.", request.TargetId);
             var after = new Dictionary<int, GpuDeviceObservationReadResult>();
-            if (!batch.Stopped)
+            if (!batch.Stopped && !callsStopped)
             {
                 foreach (var pair in available)
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
+                    if (callsStopped || cancellationToken.IsCancellationRequested) break;
                     after.Add(pair.Key, await pair.Value.ReadDeviceObservationsAsync(cancellationToken).ConfigureAwait(false));
                     if (pair.Value.CallsStopped) { callsStopped = true; break; }
                 }
             }
             var processResults = ownedProcesses.Select(process => new RunningGpuPlacementProcessResult(
                 process.Identity, process.Result.Success, process.Result.Status, process.Result.Win32Error,
-                before.GetValueOrDefault(process.Identity.ProcessId), after.GetValueOrDefault(process.Identity.ProcessId))).ToArray();
+                before.GetValueOrDefault(process.Identity.ProcessId), after.GetValueOrDefault(process.Identity.ProcessId))
+                { Recreation = triggers.Results.GetValueOrDefault(process.Identity.ProcessId) }).ToArray();
             if (preparationFailure is not null) processResults = [.. processResults, preparationFailure];
             var foregroundChanged = foregroundBefore != NativeMethods.GetForegroundWindow();
             var provider = CreateProviderMetadata(ownedProcesses.Select(static process => process.Result).ToArray());
-            var records = batch.Results.Where(static result => result.Record is not null)
-                .Select(result => result.Record! with { Metadata = MergeFinalMetadata(result.Record!.Metadata, provider, request, foregroundChanged) }).ToArray();
+            var records = batch.Results.Where(static result => result.Record is not null).Select(static result => result.Record!)
+                .Concat(triggers.Records)
+                .Select(record => record with { Metadata = MergeFinalMetadata(record.Metadata, provider, request, foregroundChanged) }).ToArray();
             var status = callsStopped
                 ? RunningGpuPlacementActionStatuses.Unresolved
                 : batch.Results.Any(static result => result.Outcome == GpuWindowActionOutcome.RestorationUnconfirmed)
                 ? RunningGpuPlacementActionStatuses.RestorationFailed
                 : batch.Results.Any(static result => result.Outcome == GpuWindowActionOutcome.Unresolved)
                     ? RunningGpuPlacementActionStatuses.Unresolved
-                    : batch.Results.Any(static result => result.Outcome is GpuWindowActionOutcome.WindowRestored or GpuWindowActionOutcome.RedrawRequested)
+                    : triggers.Results.Values.Any(static result => result.Signalled)
                         ? RunningGpuPlacementActionStatuses.RecreateRequested
                         : configured.Count != 0 ? RunningGpuPlacementActionStatuses.Prepared : RunningGpuPlacementActionStatuses.NotApplied;
             return new(records, callsStopped ? "远程调用未完成；保留原动作结果，不继续本次计划。"

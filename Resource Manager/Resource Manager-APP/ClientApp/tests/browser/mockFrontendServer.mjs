@@ -525,11 +525,11 @@ function fixtureHdmiPort() {
     manufacturer: "Frontend Harness",
     service: null,
     status: "OK",
-    confidence: "high",
-    source: "frontend-harness",
+    confidence: { domain: 5, code: 24, args: [] },
+    source: { domain: 5, code: 35, args: [] },
     upstreamDeviceId: null,
     upstreamDisplayName: null,
-    topologyPath: "root/fixture-hdmi-1",
+    topologyPath: { domain: 5, code: 64, args: ["root/fixture-hdmi-1"] },
     nativeParentDeviceId: null,
     nativeParentDisplayName: null,
     locationInfo: null,
@@ -1026,18 +1026,18 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
       {
         metricId: "memory.usage",
         label: "内存",
-        unit: "GB",
+        unit: scenario.resourceSharedMemory ? "B" : "GB",
         scaleMode: "capacity",
-        totalValue: 8,
-        capacityValue: 32,
+        totalValue: scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,
+        capacityValue: scenario.resourceSharedMemory ? 32 * 1024 ** 3 : 32,
         totalSystemPercent: 25,
         totalDisplay: "8.0 GB",
         software: createResourceSoftwareRows(
           segmentCount,
-          8,
+          scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,
           25,
           (value) => `${(value * 1024).toFixed(2)} MB`,
-          processDetailSoftwareIds)
+          processDetailSoftwareIds).map(row => scenario.resourceSharedMemory ? [...row, row[1] / 2] : row)
       }
     ]
   };
@@ -1080,7 +1080,7 @@ function resourceTable(processMode, capturedAt = now()) {
 
 function fixtureDeviceTopologyState(capturedAt = now()) {
   return {
-    schemaVersion: "3.0.0",
+    schemaVersion: "4.0.0",
     state: "ready",
     snapshot: {
       capturedAt,

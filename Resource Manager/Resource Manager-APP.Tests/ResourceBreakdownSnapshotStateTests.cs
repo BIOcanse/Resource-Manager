@@ -202,12 +202,28 @@ public sealed class ResourceBreakdownSnapshotStateTests
             Snapshot(Bar(
                 "disk.io",
                 0,
-                attributionStatus: SamplingObservationStatus.Unavailable)));
+                attributionStatus: SamplingObservationStatus.Unavailable) with
+                { ObservationStatus = SamplingObservationStatus.Unavailable }));
 
         var snapshot = state.ReadOrCreate(DateTimeOffset.UtcNow, request);
         Assert.Empty(snapshot.Bars);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Failed, snapshot.Sampling.Status);
         Assert.Null(snapshot.Sampling.LastSuccessAt);
+    }
+
+    [Fact]
+    public void MissingAttributionDoesNotEraseKnownDeviceTotalOrOtherAdapter()
+    {
+        var state = new ResourceBreakdownSnapshotState();
+        var request = Request("gpu.0.vram", "gpu.1.vram");
+        ApplyDirect(state, request, Snapshot(
+            Bar("gpu.0.vram", 0) with { ObservationStatus = SamplingObservationStatus.Unsupported,
+                TotalValue = null, CapacityValue = null, TotalSystemPercent = null },
+            Bar("gpu.1.vram", 89, SamplingObservationStatus.Unavailable)));
+        var snapshot = state.ReadOrCreate(DateTimeOffset.UtcNow, request);
+        Assert.Equal(ResourceBreakdownSamplingStatuses.Ready, snapshot.Sampling.Status);
+        Assert.Equal(89, snapshot.Bars.Single(b => b.MetricId == "gpu.1.vram").TotalValue);
+        Assert.Empty(snapshot.Bars.Single(b => b.MetricId == "gpu.1.vram").Software);
     }
 
     [Fact]

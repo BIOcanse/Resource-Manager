@@ -48,9 +48,10 @@ export default async function resourceTableContentStateJourney(
   if (heat.length !== 2 || heat.some((cell) => cell.width !== "100%")) {
     throw new Error(`Single-row numeric columns must each fill their column: ${JSON.stringify(heat)}`);
   }
-  const memory = heat.find(cell => cell.text === "512 MB");
-  if (memory?.privateWidth !== "75%" || !memory.background.includes("211, 171, 48") || !memory.title.includes("共享分摊 128.0 MB"))
-    throw new Error(`Shared bytes must be a yellow quarter with exact tooltip: ${JSON.stringify(memory)}`);
+  const memory = heat.find(cell => cell.title.includes("共享分摊"));
+  if (memory?.privateWidth !== "75%" || !memory.background.includes("211, 171, 48") ||
+      !/^512 (?:MB|MiB)$/.test(memory.text) || !/共享分摊 128(?:\.0)? (?:MB|MiB)/.test(memory.title))
+    throw new Error(`Shared bytes must be a yellow quarter with exact tooltip: ${JSON.stringify(heat)}`);
   await page.locator('.resource-table-panel').screenshot({ path: 'tests/browser/artifacts/resource-table-shared.png' });
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" })
     .fill("no-such-resource");

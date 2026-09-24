@@ -15,6 +15,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         CompiledBaseScorePlan baseScorePlan,
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
+        if (diskAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
+            return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
+                diskAttribution.ProviderState.ObservationStatus, diskAttribution.ProviderState.ObservationStatus);
         var valuesByProcess = CreateDiskProcessValues(metricId, diskAttribution);
         var total = valuesByProcess
             .Where(static item => item.Value > 0)
@@ -44,6 +47,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         CompiledBaseScorePlan baseScorePlan,
         IResourceResidualBreakdownProvider residualBreakdownProvider)
     {
+        if (networkAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
+            return CreateUnavailableBar(metricId, label, "B/s", ResourceBreakdownScaleModes.Active,
+                networkAttribution.ProviderState.ObservationStatus, networkAttribution.ProviderState.ObservationStatus);
         var valuesByProcess = CreateNetworkProcessValues(metricId, networkAttribution);
         var total = valuesByProcess
             .Where(static item => item.Value > 0)

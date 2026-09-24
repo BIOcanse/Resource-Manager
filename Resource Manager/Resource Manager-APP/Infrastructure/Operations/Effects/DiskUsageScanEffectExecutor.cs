@@ -75,7 +75,10 @@ internal sealed class DiskUsageScanEffectExecutor(
                 BytesDone: value.BytesSeen > 0 ? (ulong)value.BytesSeen : 0,
                 BytesTotal: null,
                 SpeedBytesPerSecond: null);
-            _ = sink.ReportAsync(ticket, update, cancellationToken).AsTask();
+            sink.ReportAsync(ticket, update, cancellationToken)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
         }
     }
 }

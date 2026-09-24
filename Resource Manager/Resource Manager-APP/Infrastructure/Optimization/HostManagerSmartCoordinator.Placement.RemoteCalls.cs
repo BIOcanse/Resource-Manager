@@ -39,6 +39,7 @@ public sealed partial class HostManagerSmartCoordinator
             var placement = state.AppliedPlacements.Single(item => HostManagerPlacementReceiptKey.Create(item) == key);
             var allowed = observationProcess is not null ||
                 (execution.Request.Kind is GpuRemoteCallKind.LoadProvider or GpuRemoteCallKind.ConfigureProvider or GpuRemoteCallKind.ReadDevices
+                    or GpuRemoteCallKind.ArmRecreation or GpuRemoteCallKind.FinishRecreation or GpuRemoteCallKind.CancelRecreation
                 && placement.Records.Any(record => GpuShimPolicyRecord.TryRead(record, out _)
                     && record.Metadata?.GetValueOrDefault("processId") == target.ProcessId.ToString(CultureInfo.InvariantCulture)
                     && record.Metadata?.GetValueOrDefault("processStartKey") == target.ProcessStartKey.ToString(CultureInfo.InvariantCulture)));

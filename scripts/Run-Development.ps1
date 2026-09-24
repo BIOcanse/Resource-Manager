@@ -4,6 +4,8 @@ param(
     [switch]$SkipBuild,
     [switch]$Elevate,
     [switch]$NoSelfElevate,
+    [ValidateSet("Debug", "Release")]
+    [string]$Configuration = "Debug",
     [ValidateSet("full", "normal-read-only")]
     [string]$StartupProfile = "full",
     [int]$WebViewDebugPort = 0
@@ -25,8 +27,8 @@ $GpuPlacementBootstrap = Join-Path $GpuPlacementShimRoot "bin\win-x64\ResourceMa
 $GpuLaunchBrokerRoot = Join-Path $AppRoot "Native\GpuLaunchBroker"
 $GpuLaunchBrokerBuild = Join-Path $GpuLaunchBrokerRoot "build.cmd"
 $GpuLaunchBroker = Join-Path $GpuLaunchBrokerRoot "bin\win-x64\ResourceManager.GpuLaunchBroker.exe"
-$BackendExe = Join-Path $AppRoot "bin\Debug\net10.0-windows\ResourceManager.exe"
-$NativeUiExe = Join-Path $AppRoot "NativeUi\bin\Debug\net10.0-windows\ResourceManager.NativeUi.exe"
+$BackendExe = Join-Path $AppRoot "bin\$Configuration\net10.0-windows\ResourceManager.exe"
+$NativeUiExe = Join-Path $AppRoot "NativeUi\bin\$Configuration\net10.0-windows\ResourceManager.NativeUi.exe"
 $KnownProcessNames = @("ResourceManager.NativeUi", "ResourceManager")
 $ApiHealthUrl = "http://127.0.0.1:9321/api/local-system/status"
 $ApiAccessTokenPath = Join-Path $Root "Resource Manager\Config\Runtime\loopback-api-token"
@@ -84,6 +86,8 @@ if (-not $NoSelfElevate -and -not (Test-IsElevated)) {
         "`"$scriptPath`"",
         "-Action",
         $Action,
+        "-Configuration",
+        $Configuration,
         "-StartupProfile",
         $StartupProfile,
         "-NoSelfElevate"
@@ -533,10 +537,10 @@ function Build-ResourceManager {
     Clear-GpuLaunchInterceptionsBeforeBrokerReplacement
 
     Write-Step "构建后端。"
-    Invoke-CheckedCommand "dotnet" @("build", $AppProject, "-c", "Debug", "--nologo", "--verbosity", "minimal") $Root
+    Invoke-CheckedCommand "dotnet" @("build", $AppProject, "-c", $Configuration, "--nologo", "--verbosity", "minimal") $Root
 
     Write-Step "构建 Web 壳。"
-    Invoke-CheckedCommand "dotnet" @("build", $NativeUiProject, "-c", "Debug", "--nologo", "--verbosity", "minimal") $Root
+    Invoke-CheckedCommand "dotnet" @("build", $NativeUiProject, "-c", $Configuration, "--nologo", "--verbosity", "minimal") $Root
 }
 
 function Start-ResourceManager {

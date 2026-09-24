@@ -41,6 +41,8 @@ public sealed record CompiledHostManagerPlacementCoordinatorHotPublishPlan(
     CompiledGpuWindowExecutionLimits WindowExecution,
     int ApiObservationWindowMilliseconds)
 {
+    public CompiledGpuOverflowPolicy? GpuOverflow { get; init; }
+
     public bool IsPublished => ConfigurationGeneration > 0
         && RetryDelayMilliseconds > 0
         && ActionTimeoutMilliseconds > 0
@@ -61,3 +63,11 @@ public sealed record CompiledHostManagerPlacementCoordinatorHotPublishPlan(
 public sealed record CompiledGpuWindowExecutionLimits(
     int MaximumWindowCount, int CleanupReserveMilliseconds, int MaximumFrameBytes, int PipeBufferBytes,
     int PreparationMaximumFrameBytes);
+
+public sealed record CompiledGpuOverflowPolicy(
+    [property: System.Text.Json.Serialization.JsonPropertyName("usage_percent")] double UsagePercent,
+    [property: System.Text.Json.Serialization.JsonPropertyName("dedicated_memory_percent")] double DedicatedMemoryPercent)
+{
+    public bool IsValid => double.IsFinite(UsagePercent) && UsagePercent is > 0 and <= 100
+        && double.IsFinite(DedicatedMemoryPercent) && DedicatedMemoryPercent is > 0 and <= 100;
+}

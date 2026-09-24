@@ -952,15 +952,10 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 hardwareSnapshot,
                 gpuAttribution,
                 diskAttribution,
-                networkAttribution);
+                networkAttribution,
+                allocationReading);
             if (bar is not null)
             {
-                if (TryParseGpuMetric(metricId, out var adapterIndex, out var kind) && kind == "vram")
-                {
-                    var adapter = adapters.FirstOrDefault(a => a.Index == adapterIndex);
-                    var amounts = adapter is null ? null : allocationReading?.Adapters.GetValueOrDefault(NativePdhAdapterIdentity.Pack(adapter.Luid));
-                    bar = CreateGpuAllocationBar(bar, amounts, processAttribution, baseScorePlan);
-                }
                 bars.Add(bar);
             }
         }

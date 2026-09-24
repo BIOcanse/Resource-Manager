@@ -60,6 +60,9 @@ public sealed partial class HostManagerPlanCompiler
         const string consumer = "HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish";
         var timeout = freedom.Consume<int>(BackendFreedomPointPaths.PlacementActionTimeout, consumer);
         var observationWindow = freedom.Consume<int>(BackendFreedomPointPaths.GpuApiObservationWindow, consumer);
+        var overflow = freedom.Consume<CompiledGpuOverflowPolicy>(
+            BackendFreedomPointPaths.GpuOverflowThresholds, consumer);
+        if (!overflow.IsValid) throw new InvalidDataException("GPU overflow thresholds must be in (0, 100].");
         ValidatePositive(observationWindow, BackendFreedomPointPaths.GpuApiObservationWindow);
         var window = freedom.Consume<GpuWindowExecutionLimitsDeclaration>(BackendFreedomPointPaths.GpuWindowExecutionLimits, consumer);
         ValidatePositive(source.RetryDelayMilliseconds, "hot_publish.placement_coordinator.retry_delay_ms");
@@ -77,7 +80,8 @@ public sealed partial class HostManagerPlanCompiler
             timeout,
             source.MaximumFutureSkewMilliseconds,
             new(window.MaximumWindowCount, window.CleanupReserveMilliseconds, window.MaximumFrameBytes,
-                window.PipeBufferBytes, window.PreparationMaximumFrameBytes), observationWindow);
+                window.PipeBufferBytes, window.PreparationMaximumFrameBytes), observationWindow)
+        { GpuOverflow = overflow };
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

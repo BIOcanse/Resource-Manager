@@ -168,6 +168,8 @@ $requiredPaths = @(
     'ResourceManager/wwwroot/index.html'
     'ResourceManager/GpuPlacementShim/ResourceManager.GpuWindowAction.exe'
     'ResourceManager/GpuPlacementShim/ResourceManager.GpuPlacementPreparation.exe'
+    'ResourceManager/GpuPlacementShim/ResourceManager.GpuPlacementExternal.exe'
+    'ResourceManager/GpuPlacementShim/ResourceManager.GpuRendererExternal.exe'
     'ResourceManagerNativeUi/ResourceManager.NativeUi.exe'
     'ResourceManagerNativeUi/InstallWebView2Runtime.ps1'
     'ResourceManagerLauncher/ResourceManager.Launcher.exe'

@@ -22,7 +22,7 @@ public sealed partial class HostManagerSmartCoordinator
         string trigger,
         HostManagerSmartCoordinatorCycleDiagnostics? cycleDiagnostics,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPreferencePlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
     {
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The native workspace is unavailable.");

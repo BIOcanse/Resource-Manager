@@ -43,9 +43,21 @@ public sealed class GpuPerformanceScorePresetResolverTests
         var lowEndDgpu = GpuPerformanceScorePresetResolver.Resolve("NVIDIA GeForce RTX 4050 Laptop GPU", 6UL << 30, 1900);
 
         Assert.True(integrated.IsIntegrated);
+        Assert.True(integrated.IsPresetMatch);
+        Assert.Equal(122, integrated.Score);
+        Assert.Equal("3dmark:steel-nomad-dx12:computerbase:andi_sco:2024-05-23", integrated.Source);
         Assert.False(lowEndDgpu.IsIntegrated);
         Assert.True(lowEndDgpu.Score > integrated.Score);
         Assert.True(GpuPerformanceScorePresetResolver.Resolve("AMD Radeon 780M (desktop)", 4UL << 30, 2000).IsIntegrated);
+    }
+
+    [Fact]
+    public void MissingMemoryMeasurementDoesNotMakeKnownDiscreteGpuIntegrated()
+    {
+        Assert.False(GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName("AMD Radeon Pro VII"));
+        Assert.False(GpuPerformanceScorePresetResolver.Resolve("AMD Radeon Pro VII", 0, 0).IsIntegrated);
+        Assert.True(GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName("AMD Radeon(TM) 610M"));
+        Assert.True(GpuPerformanceScorePresetResolver.Resolve("AMD Radeon(TM) 610M", 0, 0).IsIntegrated);
     }
 
     [Fact]

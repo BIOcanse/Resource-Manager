@@ -1,5 +1,6 @@
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using System.Text.Json;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
@@ -10,6 +11,22 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuStartupProviderPolicyTests
 {
+    [Fact]
+    public async Task CorruptExistingGpuPolicyCannotBeReplacedByAnEmptyDocument()
+    {
+        using var root = new OwnedRoot();
+        var policy = Software();
+        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        await store.SaveSoftwarePolicyAsync(policy, CancellationToken.None);
+        var path = System.IO.Path.Combine(root.Path, "UserData", "SoftwareProfiles", "gpu-placement-policies.local.json");
+        File.WriteAllText(path, "{invalid");
+        var reopened = new JsonGpuPlacementPolicyStore(root.Environment);
+
+        await Assert.ThrowsAsync<JsonException>(() => reopened.GetAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<JsonException>(() => reopened.SaveSoftwarePolicyAsync(policy, CancellationToken.None));
+        Assert.Equal("{invalid", File.ReadAllText(path));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

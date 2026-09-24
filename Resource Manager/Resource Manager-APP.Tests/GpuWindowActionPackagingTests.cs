@@ -24,7 +24,8 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
         var exec = Assert.Single(target.Elements("Exec"));
         Assert.Equal("$(GpuWindowActionRoot)", (string?)exec.Attribute("WorkingDirectory"));
         Assert.Equal("cmd.exe /d /c build.cmd", (string?)exec.Attribute("Command"));
-        Assert.Equal(new[] { "$(GpuWindowActionRoot)\\ResourceManagerGpuWindowAction.cpp", "$(GpuWindowActionRoot)\\WindowActionProtocol.h", "$(GpuWindowActionRoot)\\build.cmd" },
+        Assert.Equal(new[] { "$(GpuWindowActionRoot)\\ResourceManagerGpuWindowAction.cpp", "$(GpuWindowActionRoot)\\WindowActionProtocol.h",
+                "$(MSBuildProjectDirectory)\\Native\\GpuPlacementCommon\\WorkerPipeClient.h", "$(GpuWindowActionRoot)\\build.cmd" },
             project.Descendants("GpuWindowActionSource").Select(item => (string?)item.Attribute("Include")).ToArray());
         var file = Assert.Single(project.Descendants("None"), item => (string?)item.Attribute("TargetPath") == "GpuPlacementShim\\ResourceManager.GpuWindowAction.exe");
         Assert.Equal("$(GpuWindowActionRoot)\\bin\\win-x64\\ResourceManager.GpuWindowAction.exe", (string?)file.Attribute("Include"));

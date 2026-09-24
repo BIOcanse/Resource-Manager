@@ -95,7 +95,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(coordinator,
                 [admission, desiredRuntime, sample, compute, true, CancellationToken.None, null])!;
         Assert.Equal(!expireWindowWork, await running.WaitAsync(TimeSpan.FromSeconds(40)));
-        Assert.Equal(2, actions.PrepareCalls);
+        Assert.Equal(4, actions.PrepareCalls); // Route admission, then exact destination preparation.
         Assert.Equal(expireWindowWork ? 1 : 2, actions.ApplyCalls);
         var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(coordinator, "placementCoordinatorWorkspace")!;
         var session = ReadPrivateField<NativePlacementCoordinatorSession>(coordinator, "placementCoordinatorSession")!;
@@ -120,19 +120,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var action = planned[index];
             var applied = index < actions.ApplyCalls;
             var state = Assert.Single(states, row => row.TargetKey == action.TargetKey && row.RecordKey == action.RecordKey);
-            Assert.Equal(applied ? NativePlacementSlotState.Applied : NativePlacementSlotState.PendingApply,
+            Assert.Equal(applied ? NativePlacementSlotState.RetryWait : NativePlacementSlotState.PendingApply,
                 (NativePlacementSlotState)state.State);
             Assert.Equal(applied ? 0UL : action.ActionId, state.PendingActionId);
-            Assert.Equal(applied ? 0UL : action.DeadlineMilliseconds, state.RetryAtMilliseconds);
+            if (applied)
+                Assert.True(state.RetryAtMilliseconds > workspace.Feedback[index].CompletedAtMilliseconds);
+            else
+                Assert.Equal(action.DeadlineMilliseconds, state.RetryAtMilliseconds);
         }
         var receipts = fixture.StateStore.Current.AppliedPlacements;
-        Assert.Equal(actions.ApplyCalls, receipts.Count);
-        Assert.All(receipts, receipt => Assert.Equal(HostManagerAppliedRecordKinds.GpuShimPolicy, Assert.Single(receipt.Records).Kind));
-        var firstReceipt = Assert.Single(receipts, receipt => receipt.TargetId == targets[0]);
-        var firstIdentity = HostManagerPlacementCoordinatorProjection.CreateIdentity(firstReceipt, Assert.Single(firstReceipt.Records));
-        Assert.Equal(firstIdentity.TargetKey, planned[0].TargetKey);
-        Assert.Equal(firstIdentity.RecordKey, planned[0].RecordKey);
-        Assert.Equal((uint)NativePlacementFeedbackStatus.Applied, workspace.Feedback[0].Status);
+        Assert.Empty(receipts);
+        Assert.Equal((uint)NativePlacementFeedbackStatus.RetryableFailure, workspace.Feedback[0].Status);
         Assert.Equal(planned[0].ActionId, workspace.Feedback[0].ActionId);
         Assert.True(workspace.Feedback[0].CompletedAtMilliseconds < planned[0].DeadlineMilliseconds);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);

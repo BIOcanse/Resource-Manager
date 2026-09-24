@@ -6,6 +6,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDisposable
 {
+    private static readonly TimeSpan CatalogRetryInterval = TimeSpan.FromSeconds(5);
     private readonly SemaphoreSlim changedWake = new(0, 1);
     private readonly IMetricSampler sampler;
     private readonly DashboardMonitoringCatalogState catalogState;
@@ -14,6 +15,7 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
     private CancellationTokenSource? workerCancellation;
     private Task? worker;
     private bool started;
+    private volatile bool initialCatalogReconciled;
 
     public DashboardMonitoringPlanSynchronizer(
         IMetricSampler sampler,
@@ -38,13 +40,15 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
         catalogState.Changed += OnCatalogChanged;
         try
         {
-            _ = await sampler.GetSnapshotAsync(
+            var snapshot = await sampler.GetSnapshotAsync(
                 MetricSampleRequest.CatalogProbe,
                 cancellationToken);
+            catalogState.PublishCatalogProbe(snapshot);
             DrainWake();
             await runtimeSpecialization.RebuildAsync(
                 "monitoring-catalog-ready",
                 cancellationToken);
+            initialCatalogReconciled = true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -99,6 +103,32 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (!initialCatalogReconciled)
+            {
+                try
+                {
+                    if (catalogState.Current is null)
+                    {
+                        var snapshot = await sampler.GetSnapshotAsync(
+                            MetricSampleRequest.CatalogProbe, cancellationToken);
+                        catalogState.PublishCatalogProbe(snapshot);
+                    }
+                    DrainWake();
+                    await runtimeSpecialization.RebuildAsync(
+                        "monitoring-catalog-ready", cancellationToken);
+                    initialCatalogReconciled = true;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    logger.LogWarning(exception, "The initial dashboard monitoring catalog will be retried.");
+                    await Task.Delay(CatalogRetryInterval, cancellationToken);
+                    continue;
+                }
+            }
             await changedWake.WaitAsync(cancellationToken);
             DrainWake();
             try

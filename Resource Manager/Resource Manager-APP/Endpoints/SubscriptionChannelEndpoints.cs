@@ -94,7 +94,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         return app;
     }
 
-    private static async Task RunSubscriptionChannelWorkerAsync(
+    internal static async Task RunSubscriptionChannelWorkerAsync(
         CompiledFrontendSubscription subscription,
         FrontendSubscriptionChannelWriter writer,
         CancellationTokenSource channelCancellation,
@@ -125,10 +125,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             logger.LogWarning(
                 exception,
-                "Frontend logical callback ended for {SubscriptionId} ({Selector}) on {TraceIdentifier}; the item will remain silent.",
+                "Frontend logical callback ended for {SubscriptionId} ({Selector}) on {TraceIdentifier}; closing the stream for reconnection.",
                 subscription.Id,
                 subscription.Selector,
                 traceIdentifier);
+            await channelCancellation.CancelAsync();
+            return;
         }
 
         try
@@ -622,12 +624,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             => new(Id, Selector, runAsync);
     }
 
-    private sealed record CompiledFrontendSubscription(
+    internal sealed record CompiledFrontendSubscription(
         string Id,
         string Selector,
         Func<FrontendSubscriptionChannelWriter, CancellationToken, Task> RunAsync);
 
-    private sealed class FrontendSubscriptionChannelWriter(
+    internal sealed class FrontendSubscriptionChannelWriter(
         HttpResponse response,
         JsonSerializerOptions serializerOptions) : IDisposable
     {

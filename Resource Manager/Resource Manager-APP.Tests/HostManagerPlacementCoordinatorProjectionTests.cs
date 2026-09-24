@@ -1,5 +1,7 @@
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
 
@@ -30,6 +32,46 @@ public sealed class HostManagerPlacementCoordinatorProjectionTests
                 GpuShimPolicyRecord.Create("target", null, [2])),
             HostManagerPlacementCoordinatorProjection.CreatePayloadDigest("previous", placement,
                 GpuShimPolicyRecord.Create("target", [], [2])));
+    }
+
+    [Fact]
+    public void ExternalRuntimeActionProjectsRebuildWithoutDigestingItsLaterResult()
+    {
+        var birth = checked((ulong)DateTimeOffset.UtcNow.ToFileTime());
+        var pending = ExternalGpuRuntimePlacementRecord.Create(42, birth, new Dictionary<string, string>
+        {
+            ["owner"] = "host-manager-automatic-placement-v1",
+            ["processId"] = "42",
+            ["processStartKey"] = birth.ToString(),
+            ["assignedPositionId"] = "gpu-luid:0000000000010d92",
+            ["targetAdapterKey"] = "69010"
+        });
+        var result = new RunningGpuPlacementActionResult([new("attempt", WindowsExternalGpuPlacementRuntime.ProviderId,
+            new Dictionary<string, string>
+            {
+                ["controllerExited"] = bool.TrueString,
+                ["cleanupPassed"] = bool.TrueString,
+                ["controllerSucceeded"] = bool.TrueString,
+                ["residentConfirmation"] = "partial"
+            })], "Partial source release", RunningGpuPlacementActionStatuses.RecreateRequested);
+        var settled = pending with { Metadata = new Dictionary<string, string>(pending.Metadata!)
+        {
+            [ExternalGpuRuntimePlacementRecord.SettledKey] = "true",
+            [ExternalGpuRuntimePlacementRecord.ResultKey] = System.Text.Json.JsonSerializer.Serialize(result)
+        } };
+        var placement = new HostManagerAppliedPlacementReceipt("target", "Target", null, "gpu",
+            [pending], DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        var output = new NativePlacementAppliedInput[1];
+        HostManagerPlacementCoordinatorProjection.ProjectApplied([placement], output);
+
+        Assert.Equal((uint)NativePlacementKind.GpuRuntimeRebuild, output[0].PlacementKind);
+        Assert.Equal(output[0].ReceiptDigest,
+            HostManagerPlacementCoordinatorProjection.CreatePayloadDigest("applied", placement, settled));
+        Assert.Equal(output[0].PreviousDigest,
+            HostManagerPlacementCoordinatorProjection.CreatePayloadDigest("previous", placement, settled));
+        Assert.True(ExternalGpuRuntimePlacementRecord.TryReadResult(settled, out var saved));
+        Assert.True(ExternalGpuRuntimePlacementRecord.IsConfirmed(saved!));
+        Assert.False(saved!.Applied);
     }
 
     [Fact]

@@ -184,6 +184,17 @@
                     "update_class": "publish_plan",
                     "status": "pending",
                     "pending_reason": "Profile thresholds exist, but the inspected placement bridge submits an empty desired set and only restores. Those declarations are not proof of automatic candidate generation."
+                  },
+                  {
+                    "index": 1,
+                    "id": "gpu_overflow_thresholds",
+                    "description": "Performance-tier overflow when either measured GPU usage or dedicated memory usage reaches its threshold.",
+                    "value_type": "object",
+                    "update_class": "publish_plan",
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": { "usage_percent": 95, "dedicated_memory_percent": 80 },
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
                   }
                 ]
               }

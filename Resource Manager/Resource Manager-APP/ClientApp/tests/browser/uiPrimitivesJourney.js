@@ -96,7 +96,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
 
   await pageNavigation.getByRole("button", { name: "组件与软件", exact: true }).click();
   await assertRouteEntry(page, "组件与软件");
-  const managementNavigation = page.getByRole("navigation", { name: "组件与软件分类" });
+  const managementNavigation = page.getByRole("navigation", { name: "组件和软件分类" });
   await managementNavigation.waitFor({ state: "visible", timeout: 5000 });
   await managementNavigation.getByRole("button", { name: /一般应用/ }).click();
   const managementSearch = page.getByRole("searchbox", { name: /一般应用搜索/ });

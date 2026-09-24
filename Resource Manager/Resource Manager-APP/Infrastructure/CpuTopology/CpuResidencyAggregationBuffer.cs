@@ -317,13 +317,10 @@ internal sealed class CpuResidencyAggregationBuffer
             {
                 continuousSinceByLogicalProcessor[logicalProcessorId] = eventQpc;
             }
-            else if (!previous.IsIdle)
+            else if (!previous.IsIdle && previous.Process is not null && previous.Thread is not null)
             {
-                if (previous.Process is null || previous.Thread is null)
-                {
-                    continuousSinceByLogicalProcessor[logicalProcessorId] = eventQpc;
-                }
-                else if (!AppendClosedSliceCore(
+                // Unattributed execution is omitted; it is not a gap in context-switch continuity.
+                if (!AppendClosedSliceCore(
                     new ClosedSlice(
                         previous.StartQpc,
                         eventQpc,

@@ -19,7 +19,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         HardwareMetricSnapshot hardwareSnapshot,
         ProcessGpuBreakdownRead gpuAttribution,
         PhysicalDiskIoAttributionSnapshot diskAttribution,
-        NetworkAttributionSnapshot networkAttribution)
+        NetworkAttributionSnapshot networkAttribution,
+        ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationReading? residentReading)
     {
         if (metricId.Equals("cpu.usage", StringComparison.OrdinalIgnoreCase))
         {
@@ -92,22 +93,9 @@ public sealed partial class WindowsResourceBreakdownSampler
                     NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus));
             }
 
-            return CreateBar(
-                metricId,
-                metric.Label,
-                "B",
-                scaleMode,
-                hardwareSnapshot.VirtualMemory.TotalBytes,
-                hardwareSnapshot.VirtualMemory.UsedBytes,
-                processAttribution.Processes
-                    .Where(static process => process.HasPrivateMemoryBytes)
-                    .Select(static process =>
-                    KeyValuePair.Create(process.ProcessId, (double)Math.Max(0, process.PrivateMemoryBytes))),
-                processAttribution,
-                baseScorePlan,
-                residualBreakdownProvider,
-                isBytes: true,
-                scaleProcessValues: false);
+            // Private commit is not the process's actual page-file occupancy.
+            return CreateUnattributedMemoryUsageBar(metricId, metric.Label, scaleMode,
+                hardwareSnapshot.VirtualMemory.UsedBytes, hardwareSnapshot.VirtualMemory.TotalBytes);
         }
 
         if (metricId.Equals(ResourceBreakdownMetricIds.DiskIo, StringComparison.OrdinalIgnoreCase))
@@ -297,9 +285,14 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (gpuMetricName.Equals("vram", StringComparison.OrdinalIgnoreCase))
         {
             var gpu = hardwareSnapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex);
-            return new ResourceBreakdownBar(metricId, $"GPU{gpuIndex} 显存占用", "B", scaleMode,
-                null, gpu?.TotalMemoryBytes ?? 0, null, [], SamplingObservationStatus.Unavailable,
-                SamplingObservationStatus.Unavailable);
+            var used = TryGetCurrentHardwareMetric(hardwareSnapshot, metricId, out var reading)
+                ? reading.NumericValue : null;
+            var bar = CreateUnattributedMemoryUsageBar(metricId, $"GPU{gpuIndex} 显存占用", scaleMode,
+                used, gpu?.TotalMemoryBytes);
+            var adapter = hardwareSnapshot.GpuInventory.Adapters.FirstOrDefault(item => item.Index == gpuIndex);
+            return CreateGpuResidentPartition(bar,
+                adapter is null ? null : residentReading?.Adapters.GetValueOrDefault(adapter.AdapterKey),
+                processAttribution, baseScorePlan);
         }
 
         return null;

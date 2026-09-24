@@ -16,6 +16,16 @@ public sealed class BackendFrontendWireAcceptanceTests
         DateTimeOffset.Parse("2026-08-29T12:34:56.789Z");
 
     [Fact]
+    public void ResidentSharedBytesSurviveCompactSerialization()
+    {
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(CreateBreakdownWire(), WebJson));
+        var row = json.RootElement.GetProperty("bars")[0].GetProperty("software")[0];
+        Assert.Equal(4, row[6].GetDouble());
+        Assert.Equal(4, row[5][0][11].GetDouble());
+        Assert.Equal(12, row[1].GetDouble());
+    }
+
+    [Fact]
     public async Task ProductionSerializerFeedsProductionDecodersWithoutInternalSamplingMetadata()
     {
         var breakdown = CreateBreakdownWire();
@@ -138,7 +148,8 @@ public sealed class BackendFrontendWireAcceptanceTests
             12,
             100)
         {
-            ProcessStartKey = long.MaxValue
+            ProcessStartKey = long.MaxValue,
+            SharedValue = 4
         };
         var software = new ResourceSoftwareSegment(
             "software:test",
@@ -148,7 +159,7 @@ public sealed class BackendFrontendWireAcceptanceTests
             12,
             12,
             1,
-            [process]);
+            [process]) { SharedValue = 4 };
         var snapshot = new ResourceBreakdownSnapshot(
             CapturedAt,
             [

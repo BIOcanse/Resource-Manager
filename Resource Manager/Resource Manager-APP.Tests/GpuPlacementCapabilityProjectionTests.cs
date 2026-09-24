@@ -1,6 +1,7 @@
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -62,7 +63,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
 
         Assert.Equal(GpuPlacementCapabilityStates.Unknown, result.Startup.State);
         Assert.Equal(GpuPlacementCapabilityStates.Unknown, result.Runtime.State);
-        Assert.Equal("D3D9/D3D11/D3D12/Vulkan", result.Runtime.GraphicsApi);
+        Assert.Equal("D3D11/D3D12/Vulkan", result.Runtime.GraphicsApi);
     }
 
     [Theory]
@@ -86,22 +87,20 @@ public sealed class GpuPlacementCapabilityProjectionTests
         File.WriteAllBytes(files.Runtime, []);
         var runtimeOnly = reader.Evaluate("process", executablePath, "x64", api);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, runtimeOnly.Startup.State);
-        Assert.Equal(GpuPlacementCapabilityStates.Supported, runtimeOnly.Runtime.State);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, runtimeOnly.Runtime.State);
 
         files.CreateAll();
         var available = reader.Evaluate("process", executablePath, "x64", api);
         Assert.Equal(GpuPlacementCapabilityStates.Supported, available.Startup.State);
-        Assert.Equal(GpuPlacementCapabilityStates.Supported, available.Runtime.State);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Runtime.State);
         var vulkanStartup = modules.Contains("vulkan-1.dll", StringComparison.OrdinalIgnoreCase);
         Assert.Equal(vulkanStartup ? "Vulkan" : expectedApi, available.Startup.GraphicsApi);
         Assert.Equal(expectedApi, available.Runtime.GraphicsApi);
         Assert.Equal("x64", available.Runtime.Architecture);
-        Assert.Contains("不迁移既有设备", available.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Contains("无注入运行期换卡路径", available.Runtime.Reason, StringComparison.Ordinal);
         if (expectedApi.Contains("D3D12", StringComparison.Ordinal))
         {
-            var reasons = vulkanStartup
-                ? new[] { available.Runtime.Reason, runtimeOnly.Runtime.Reason }
-                : new[] { available.Startup.Reason, available.Runtime.Reason, runtimeOnly.Runtime.Reason };
+            var reasons = vulkanStartup ? Array.Empty<string>() : new[] { available.Startup.Reason };
             foreach (var reason in reasons)
             {
                 Assert.Contains("D3D12CreateDevice", reason, StringComparison.Ordinal);
@@ -132,12 +131,12 @@ public sealed class GpuPlacementCapabilityProjectionTests
             ? GpuPlacementCapabilityStates.Supported : GpuPlacementCapabilityStates.Unsupported, result.Startup.State);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Runtime.State);
         Assert.Equal(expectedApi, result.Runtime.GraphicsApi);
-        Assert.Contains("没有适用的精确路径", result.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Contains("无注入运行期换卡路径", result.Runtime.Reason, StringComparison.Ordinal);
         Assert.True(GpuGraphicsApiRoutes.IsIdentified(api));
     }
 
     [Fact]
-    public void D3D9HasAnExplicitRuntimeRouteButNoStartupInjection()
+    public void D3D9RemainsIdentifiableButHasNoEnabledPlacementRoute()
     {
         using var files = new ProviderFiles();
         var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
@@ -146,10 +145,10 @@ public sealed class GpuPlacementCapabilityProjectionTests
         files.CreateAll();
         var result = reader.Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.D3D9);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Startup.State);
-        Assert.Equal(GpuPlacementCapabilityStates.Supported, result.Runtime.State);
-        Assert.Equal("D3D9/9Ex", result.Runtime.GraphicsApi);
-        Assert.Contains("配置时实际校验", result.Runtime.Reason, StringComparison.Ordinal);
-        Assert.Contains("Reset 不换卡", result.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Runtime.State);
+        Assert.Equal("D3D9", result.Runtime.GraphicsApi);
+        Assert.True(GpuGraphicsApiRoutes.IsIdentified(GpuGraphicsApi.D3D9));
+        Assert.Null(GpuGraphicsApiRoutes.RuntimeProvider(GpuGraphicsApi.D3D9));
         Assert.Null(GpuGraphicsApiRoutes.StartupProvider(GpuGraphicsApi.D3D9));
     }
 
@@ -188,14 +187,14 @@ public sealed class GpuPlacementCapabilityProjectionTests
         var available = reader.Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.OpenGL);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Runtime.State);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported, available.Startup.State);
-        Assert.Equal(GpuPlacementProviderIds.D3dDeviceCreateShim, available.Runtime.ProviderId);
-        Assert.Contains("没有适用的精确路径", available.Runtime.Reason, StringComparison.Ordinal);
+        Assert.Equal(WindowsExternalGpuPlacementRuntime.ProviderId, available.Runtime.ProviderId);
+        Assert.Contains("无注入运行期换卡路径", available.Runtime.Reason, StringComparison.Ordinal);
         File.Delete(files.Runtime);
         Assert.Equal(GpuPlacementCapabilityStates.Unsupported,
             reader.Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.OpenGL).Runtime.State);
         File.WriteAllBytes(files.Runtime, []);
         File.Delete(files.Preparation);
-        Assert.Equal(GpuPlacementCapabilityStates.Supported,
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported,
             reader.Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.D3D11).Runtime.State);
     }
 
@@ -208,10 +207,9 @@ public sealed class GpuPlacementCapabilityProjectionTests
         files.CreateAll();
         var capability = new WindowsGpuPlacementCapabilityReader(files.Root)
             .Evaluate("process", Environment.ProcessPath, "x64", GpuGraphicsApi.Vulkan).Runtime;
-        Assert.Equal(GpuPlacementCapabilityStates.Supported, capability.State);
-        Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, capability.ProviderId);
-        Assert.Contains("重新枚举", capability.Reason, StringComparison.Ordinal);
-        Assert.Contains("不迁移既有设备", capability.Reason, StringComparison.Ordinal);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, capability.State);
+        Assert.Equal(WindowsExternalGpuPlacementRuntime.QtVulkanProviderId, capability.ProviderId);
+        Assert.Contains("无注入运行期换卡路径", capability.Reason, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -262,7 +260,7 @@ public sealed class GpuPlacementCapabilityProjectionTests
         var result = reader.Evaluate("process", Environment.ProcessPath, "x64", api);
 
         Assert.Equal(GpuPlacementCapabilityStates.Unknown, result.Startup.State);
-        Assert.Equal(GpuPlacementCapabilityStates.Unknown, result.Runtime.State);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Runtime.State);
     }
 
     [Fact]
@@ -274,13 +272,40 @@ public sealed class GpuPlacementCapabilityProjectionTests
 
         var result = reader.Evaluate("process", Environment.ProcessPath, "x64", null);
 
-        Assert.Equal(GpuPlacementCapabilityStates.Unknown, result.Runtime.State);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, result.Runtime.State);
+    }
+
+    [Fact]
+    public void RuntimeControllersRequireExactRendererConfirmationBeforeReportingSupport()
+    {
+        using var files = new ProviderFiles();
+        files.CreateAll();
+        File.WriteAllBytes(files.ChromiumController, []);
+        File.WriteAllBytes(files.RendererController, []);
+        var reader = new WindowsGpuPlacementCapabilityReader(files.Root);
+        var executable = Environment.ProcessPath!;
+
+        var d3d11 = reader.Evaluate("process", executable, "x64", GpuGraphicsApi.D3D11).Runtime;
+        var d3d12 = reader.Evaluate("process", executable, "x64", GpuGraphicsApi.D3D12).Runtime;
+        var vulkan = reader.Evaluate("process", executable, "x64", GpuGraphicsApi.Vulkan).Runtime;
+        var mixed = reader.Evaluate("process", executable, "x64",
+            GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12).Runtime;
+
+        Assert.Equal(GpuPlacementCapabilityStates.Unknown, d3d11.State);
+        Assert.Equal(WindowsExternalGpuPlacementRuntime.ProviderId, d3d11.ProviderId);
+        Assert.Equal(GpuPlacementCapabilityStates.Unknown, d3d12.State);
+        Assert.Equal(WindowsExternalGpuPlacementRuntime.QtProviderId, d3d12.ProviderId);
+        Assert.Equal(GpuPlacementCapabilityStates.Unknown, vulkan.State);
+        Assert.Equal(WindowsExternalGpuPlacementRuntime.QtVulkanProviderId, vulkan.ProviderId);
+        Assert.Equal(GpuPlacementCapabilityStates.Unsupported, mixed.State);
     }
 
     private sealed class ProviderFiles : IDisposable
     {
         public string Root { get; } = Path.Combine(Path.GetTempPath(), $"rm-gpu-capability-{Guid.NewGuid():N}");
         public string Runtime => Path.Combine(Root, "GpuPlacementShim", WindowsGpuPlacementInjector.RuntimeProviderFileName);
+        public string ChromiumController => Path.Combine(Root, "GpuPlacementShim", WindowsExternalGpuPlacementRuntime.FileName);
+        public string RendererController => Path.Combine(Root, "GpuPlacementShim", WindowsExternalGpuPlacementRuntime.RendererFileName);
         public string Preparation => Path.Combine(Root, "GpuPlacementShim", "ResourceManager.GpuPlacementPreparation.exe");
         private string Bootstrap => Path.Combine(Root, "GpuPlacementShim", WindowsGpuPlacementInjector.StartupBootstrapFileName);
         private string Broker => Path.Combine(Root, WindowsIfeoGpuLaunchInterceptionRegistry.BrokerFileName);
@@ -301,6 +326,8 @@ public sealed class GpuPlacementCapabilityProjectionTests
         public void Dispose()
         {
             File.Delete(Runtime);
+            File.Delete(ChromiumController);
+            File.Delete(RendererController);
             File.Delete(Preparation);
             File.Delete(Bootstrap);
             File.Delete(Broker);

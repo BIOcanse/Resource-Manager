@@ -1,11 +1,13 @@
 using System.Globalization;
 using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
@@ -22,7 +24,7 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerComputeScoringCycleResult? computeScoring,
         bool hardwareSchedulingEnabled,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPreferencePlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
     {
         if (effectAdmission.IsScoreOnly)
         {
@@ -47,14 +49,16 @@ public sealed partial class HostManagerSmartCoordinator
             var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology
                 ?? throw new InvalidDataException(
                     "Hardware placement is enabled without a compiled CPU topology.");
-            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring);
+            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements);
+            processes = await PrepareAutomaticGpuCandidatesAsync(processes, state.AppliedPlacements, firstUse, cancellationToken);
             var planned = HostManagerAutomaticPlacementPlanner.Plan(
                 topology,
                 sample.Hardware,
                 desiredRuntime.RuntimePlan.HardwareScores,
                 processes,
                 desiredRuntime.HostPlan.HostRecreate.PlacementCoordinator,
-                desiredRuntime.RuntimePlan.GpuPlacement.GlobalPreciseProviderEnabled);
+                desiredRuntime.RuntimePlan.GpuPlacement.GlobalPreciseProviderEnabled,
+                desiredRuntime.HostPlan.HotPublish.PlacementCoordinator.GpuOverflow);
             fullDesired = await CreateAutomaticPlacementDesiredAsync(
                 topology,
                 sample,
@@ -209,7 +213,8 @@ public sealed partial class HostManagerSmartCoordinator
     private static IReadOnlyList<HostManagerAutomaticPlacementProcess>
         CreateAutomaticPlacementProcesses(
         HostManagerSample sample,
-        HostManagerComputeScoringCycleResult? computeScoring)
+        HostManagerComputeScoringCycleResult? computeScoring,
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements)
     {
         var scoreProjection = CreateNativeComputeScoreProjection(computeScoring);
         var processes = new List<HostManagerAutomaticPlacementProcess>(sample.Targets.Count);
@@ -233,6 +238,7 @@ public sealed partial class HostManagerSmartCoordinator
                 out var cpuScore);
             var gpuScores = new Dictionary<ulong, double>();
             var observedGpuUsage = new Dictionary<ulong, double>();
+            var observedGpuMemory = new Dictionary<ulong, double>();
             foreach (var gpu in target.Gpus)
             {
                 if (scoreProjection.ProcessGpu.TryGetValue(
@@ -249,6 +255,9 @@ public sealed partial class HostManagerSmartCoordinator
                 {
                     observedGpuUsage.Add(gpu.AdapterKey, gpu.GpuUsagePercent);
                 }
+                // UMA residency is valid without a dedicated-capacity percentage.
+                if (gpu.ResidentMemoryBytes is double residentBytes && residentBytes >= 0 && double.IsFinite(residentBytes))
+                    observedGpuMemory.Add(gpu.AdapterKey, residentBytes);
             }
 
             processes.Add(new HostManagerAutomaticPlacementProcess(
@@ -263,7 +272,12 @@ public sealed partial class HostManagerSmartCoordinator
                 target.GpuPlacementPolicy,
                 cpuScore?.Score,
                 gpuScores,
-                observedGpuUsage));
+                observedGpuUsage)
+            {
+                SoftwareKind = target.SoftwareKind,
+                ObservedDedicatedMemoryBytes = observedGpuMemory,
+                CanMigrateGpu = !GpuActionFacts.BlocksProcess(existingPlacements, target.TargetId, processId, processStartKey)
+            });
         }
         return processes;
     }
@@ -275,14 +289,14 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerAutomaticPlacementPlan plan,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPreferencePlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
     {
         var recordedState = existingPlacements;
         existingPlacements = GpuActionFacts.PlacementEffects(existingPlacements);
         var existingByKey = existingPlacements.ToDictionary(
             HostManagerPlacementReceiptKey.Create);
         var desired = new List<HostManagerPlacementDesired>(
-            plan.Cpu.Count + plan.GpuPreferences.Count + existingPlacements.Count);
+            plan.Cpu.Count + plan.Gpu.Count + existingPlacements.Count);
         foreach (var cpu in plan.Cpu
             .OrderByDescending(static item => item.CanonicalProcessScore)
             .ThenBy(static item => item.Process.TargetId, StringComparer.OrdinalIgnoreCase))
@@ -299,37 +313,17 @@ public sealed partial class HostManagerSmartCoordinator
             }
         }
 
-        var existingGpuPaths = existingPlacements
-            .Where(static placement => placement.ResourceKind.Equals(
-                OptimizationResourceKinds.Gpu,
-                StringComparison.OrdinalIgnoreCase))
-            .SelectMany(static placement => placement.Records.Select(record => new
-            {
-                placement.TargetId,
-                Path = ReadMetadata(record, "path")
-            }))
-            .Where(static item => !string.IsNullOrWhiteSpace(item.Path))
-            .ToLookup(static item => item.Path!, StringComparer.OrdinalIgnoreCase);
-        var plannedPreferencePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var gpu in plan.GpuPreferences
+        foreach (var gpu in plan.Gpu
             .OrderByDescending(static item => item.CanonicalProcessScore)
             .ThenBy(static item => item.Process.TargetId, StringComparer.OrdinalIgnoreCase))
         {
             if (GpuActionFacts.RemoteCallBlocksProcess(recordedState, gpu.Process.TargetId,
                     gpu.Process.ProcessId, gpu.Process.ProcessStartKey)) continue;
-            var path = gpu.Process.ExecutablePath!;
             existingByKey.TryGetValue(
                 HostManagerPlacementReceiptKey.Create(
                     OptimizationResourceKinds.Gpu,
                     gpu.Process.TargetId),
                 out var existing);
-            if (gpu.Process.Policy.AllowsProvider(GpuPlacementProviderIds.WindowsGraphicsPreference)
-                && !existingGpuPaths[path].Any(item => !item.TargetId.Equals(gpu.Process.TargetId, StringComparison.OrdinalIgnoreCase))
-                && plannedPreferencePaths.Add(path))
-            {
-                var item = TryCreateGpuPlacementDesired(sample.Hardware.GpuInventory.TopologyFingerprint, gpu, existing);
-                if (item is not null) desired.Add(item);
-            }
             if (!GpuActionFacts.BlocksProcess(recordedState, gpu.Process.TargetId,
                 gpu.Process.ProcessId, gpu.Process.ProcessStartKey))
             {
@@ -366,10 +360,13 @@ public sealed partial class HostManagerSmartCoordinator
                     : existing.ResourceKind.Equals(
                             OptimizationResourceKinds.Gpu,
                             StringComparison.OrdinalIgnoreCase)
-                        && (record.Kind == HostManagerAppliedRecordKinds.GpuShimPolicy
-                            ? WantsGpuShim(process) : WantsGpuPreference(process))
+                        && (record.Kind is HostManagerAppliedRecordKinds.GpuShimPolicy
+                            or HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger)
+                        && WantsGpuShim(process)
                         && (process.CanonicalGpuScores.Count == 0
-                            || !sample.Hardware.GpuInventory.IsCurrentComplete());
+                            || !sample.Hardware.GpuInventory.IsCurrentComplete()
+                            || process.Policy.TargetGpu == GpuPlacementTargets.AutoIdleGpu
+                                && !plan.Gpu.Any(p => p.Process.ProcessId == process.ProcessId));
                 if (retainForMissingScore)
                 {
                     desired.Add(new HostManagerPlacementDesired(existing, record, 0));
@@ -528,89 +525,6 @@ public sealed partial class HostManagerSmartCoordinator
             ToPlacementPriority(planned.CanonicalProcessScore));
     }
 
-    private HostManagerPlacementDesired? TryCreateGpuPlacementDesired(
-        ulong topologyFingerprint,
-        HostManagerAutomaticGpuPreferencePlacement planned,
-        HostManagerAppliedPlacementReceipt? existing)
-    {
-        var existingRecord = TryGetAutomaticRecord(existing, HostManagerAppliedRecordKinds.GpuPreference);
-        if (existing is not null && existing.Records.Any(record => !IsAutomaticPlacementRecord(record)))
-        {
-            return null;
-        }
-        var path = planned.Process.ExecutablePath;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        bool hadValue;
-        string previousValue;
-        if (existingRecord is not null)
-        {
-            if (!string.Equals(ReadMetadata(existingRecord, "path"), path, StringComparison.OrdinalIgnoreCase)
-                || !bool.TryParse(ReadMetadata(existingRecord, "hadValue"), out hadValue))
-            {
-                return null;
-            }
-            previousValue = ReadMetadata(existingRecord, "previousValue") ?? string.Empty;
-        }
-        else
-        {
-            var baseline = graphicsPreferenceStore.ReadValueForRecovery(path);
-            if (baseline.Status == RecoveryReadStatus.Unavailable)
-            {
-                return null;
-            }
-            hadValue = baseline.Status == RecoveryReadStatus.Found;
-            previousValue = hadValue ? baseline.Value ?? string.Empty : string.Empty;
-        }
-
-        var appliedValue = planned.PreferIntegratedGpu
-            ? graphicsPreferenceStore.BuildPreferIntegratedGpuValue(previousValue)
-            : graphicsPreferenceStore.BuildPreferHighPerformanceGpuValue(previousValue);
-        if (string.IsNullOrWhiteSpace(appliedValue)
-            || (existing is null
-                && hadValue
-                && string.Equals(previousValue, appliedValue, StringComparison.Ordinal)))
-        {
-            return null;
-        }
-        var startedAt = DateTimeOffset.FromFileTime(checked((long)planned.Process.ProcessStartKey));
-        var metadata = CreateProcessPlacementMetadata(
-            planned.Process,
-            startedAt,
-            planned.Process.ProcessName,
-            path);
-        metadata["path"] = path;
-        metadata["hadValue"] = hadValue ? "true" : "false";
-        metadata["previousValue"] = previousValue;
-        metadata["appliedValue"] = appliedValue;
-        metadata["assignedPositionId"] = planned.PreferIntegratedGpu
-            ? GpuPlacementTargets.IntegratedGpu
-            : GpuPlacementTargets.HighPerformanceGpu;
-        metadata["source"] = planned.Source;
-        metadata["gpuTopologyFingerprint"] = topologyFingerprint.ToString(CultureInfo.InvariantCulture);
-        var record = new HostManagerAppliedRecord(
-            HostManagerAppliedRecordKinds.GpuPreference,
-            existingRecord?.RecordId
-                ?? CreateStableId($"automatic-placement|gpu-preference|{planned.Process.TargetId}"),
-            metadata);
-        var now = durableTimeSource.NextUtc();
-        var placement = new HostManagerAppliedPlacementReceipt(
-            planned.Process.TargetId,
-            planned.Process.DisplayName,
-            planned.Process.SoftwareId,
-            OptimizationResourceKinds.Gpu,
-            [record],
-            existing?.AppliedAt ?? now,
-            now);
-        return new HostManagerPlacementDesired(
-            placement,
-            record,
-            ToPlacementPriority(planned.CanonicalProcessScore));
-    }
-
     private static Dictionary<string, string> CreateProcessPlacementMetadata(
         HostManagerAutomaticPlacementProcess process,
         DateTimeOffset startedAt,
@@ -648,39 +562,16 @@ public sealed partial class HostManagerSmartCoordinator
         CpuTopologySnapshot topology,
         HostManagerAutomaticPlacementProcess process)
     {
-        if (!process.CanApplyPhysicalPlacement
-            || !AllowsAutomaticPlacementWrite(process.Policy.EnabledMode))
+        if (!process.CanApplyPhysicalPlacement)
         {
             return false;
         }
         return process.Policy.CpuManualLockedPositionIds.Count != 0
             || topology.Ccds.Count > 1
-                && process.Policy.EnabledMode.Equals(
-                    GpuPlacementPolicyModes.Auto,
-                    StringComparison.OrdinalIgnoreCase)
                 && process.Policy.CpuMaximumOccupancyMode.Equals(
                     CpuMaximumOccupancyModes.SingleCcd,
                     StringComparison.OrdinalIgnoreCase);
     }
-
-    private static bool WantsGpuPreference(HostManagerAutomaticPlacementProcess process)
-    {
-        if (!process.CanApplyPhysicalPlacement
-            || string.IsNullOrWhiteSpace(process.ExecutablePath)
-            || !AllowsAutomaticPlacementWrite(process.Policy.EnabledMode)
-            || !process.Policy.AllowsProvider(GpuPlacementProviderIds.WindowsGraphicsPreference))
-        {
-            return false;
-        }
-        var target = GpuPlacementTargets.Normalize(process.Policy.TargetGpu);
-        return target.Equals(GpuPlacementTargets.AutoIdleGpu, StringComparison.OrdinalIgnoreCase)
-            || target.Equals(GpuPlacementTargets.IntegratedGpu, StringComparison.OrdinalIgnoreCase)
-            || target.Equals(GpuPlacementTargets.HighPerformanceGpu, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool AllowsAutomaticPlacementWrite(string enabledMode)
-        => enabledMode.Equals(GpuPlacementPolicyModes.Auto, StringComparison.OrdinalIgnoreCase)
-            || enabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase);
 
     private static HostManagerBoundedPlacementCycle BuildBoundedPlacementCycle(
         IReadOnlyList<HostManagerAppliedPlacementReceipt> appliedPlacements,
@@ -793,6 +684,8 @@ public sealed partial class HostManagerSmartCoordinator
                         receiptDigest,
                         previousDigest),
                     HostManagerAppliedRecordKinds.GpuShimPolicy => ObserveGpuShimPolicy(placement, record, receiptDigest, previousDigest),
+                    HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger when ExternalGpuRuntimePlacementRecord.IsRecord(record)
+                        => ObserveExternalGpuRuntimePlacement(record, receiptDigest, previousDigest),
                     _ => HostManagerPlacementObservation.Unchecked
                 };
                 if (!observations.TryAdd(identity, observation))
@@ -972,7 +865,9 @@ public sealed partial class HostManagerSmartCoordinator
         try
         {
             permit.RequireSingleNewActionReservation(reservation!);
-            var gpu = desired.Record.Kind is HostManagerAppliedRecordKinds.GpuPreference or HostManagerAppliedRecordKinds.GpuShimPolicy;
+            var externalAction = ExternalGpuRuntimePlacementRecord.IsRecord(desired.Record);
+            var gpu = desired.Record.Kind is HostManagerAppliedRecordKinds.GpuPreference or HostManagerAppliedRecordKinds.GpuShimPolicy
+                || externalAction;
             if (gpu && (cancellationToken.IsCancellationRequested || RemainingGpuActionTime(action.DeadlineMilliseconds) <= TimeSpan.Zero))
                 return new(state, CreateAutomaticPlacementFeedback(action, NativePlacementFeedbackStatus.RetryableFailure, 1460, 0), false);
             state = AddAutomaticPlacementRecord(state, desired);
@@ -1030,6 +925,26 @@ public sealed partial class HostManagerSmartCoordinator
                         0));
             }
 
+            if (externalAction)
+            {
+                permit.EnterSingleNewAction(reservation!);
+                var (externalState, canContinue, releaseRecord, result) = await ExecuteGpuShimActionAsync(
+                    state, desired, action.DeadlineMilliseconds, cancellationToken);
+                state = externalState;
+                if (releaseRecord)
+                {
+                    state = RemovePlacementRecord(state, desired.Identity);
+                    await SavePlacementCheckpointAsync(state,
+                        "Host Manager settled an external GPU action without a confirmed transfer.", CancellationToken.None);
+                }
+                var confirmed = ExternalGpuRuntimePlacementRecord.IsConfirmed(result)
+                    && !runningGpuPlacementActions.HasUnreleasedExternalControl;
+                return new HostManagerAutomaticPlacementApplyResult(state,
+                    CreateAutomaticPlacementFeedback(action, confirmed
+                        ? NativePlacementFeedbackStatus.Applied : NativePlacementFeedbackStatus.RetryableFailure,
+                        confirmed ? 0 : 1460, confirmed ? desired.Input.DesiredDigest : 0), canContinue);
+            }
+
             permit.EnterSingleNewAction(reservation!);
             var writeError = WriteAutomaticPlacement(desired.Record);
             var after = ReadAutomaticPlacementValue(desired.Placement, desired.Record);
@@ -1039,7 +954,25 @@ public sealed partial class HostManagerSmartCoordinator
                     action, NativePlacementFeedbackStatus.Applied, writeError, desired.Input.DesiredDigest);
                 var canContinue = true;
                 if (desired.RuntimeGpuAction is not null)
-                    (state, canContinue) = await ExecuteGpuShimActionAsync(state, desired, action.DeadlineMilliseconds, cancellationToken);
+                {
+                    bool releasePolicy;
+                    (state, canContinue, releasePolicy, _) = await ExecuteGpuShimActionAsync(state, desired, action.DeadlineMilliseconds, cancellationToken);
+                    if (releasePolicy)
+                    {
+                        var restored = gpuShimRuntime.RestorePolicyRecord(desired.Record);
+                        if (restored.CanRemoveReceipt)
+                        {
+                            state = RemovePlacementRecord(state, desired.Identity);
+                            await SavePlacementCheckpointAsync(state,
+                                "Host Manager released a settled GPU action policy without confirmed placement.", CancellationToken.None);
+                        }
+                        feedback = CreateAutomaticPlacementFeedback(action,
+                            restored.Kind == HostManagerPlacementSettlementKind.OwnershipLost
+                                ? NativePlacementFeedbackStatus.OwnershipLost : NativePlacementFeedbackStatus.RetryableFailure,
+                            restored.NativeErrorCode, 0);
+                        canContinue &= restored.CanRemoveReceipt;
+                    }
+                }
                 return new HostManagerAutomaticPlacementApplyResult(
                     state,
                     feedback,
@@ -1140,28 +1073,6 @@ public sealed partial class HostManagerSmartCoordinator
             return field is { Succeeded: true } ? 0 : unchecked((int)(field?.ErrorCode ?? 0));
         }
 
-        if (record.Kind.Equals(HostManagerAppliedRecordKinds.GpuPreference, StringComparison.OrdinalIgnoreCase))
-        {
-            var path = ReadMetadata(record, "path");
-            var value = ReadMetadata(record, "appliedValue");
-            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(value))
-            {
-                return 87;
-            }
-            try
-            {
-                graphicsPreferenceStore.WriteValue(path, value);
-                return 0;
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
-            {
-                logger.LogDebug(
-                    exception,
-                    "Host Manager automatic GPU preference write reported failure for {ExecutablePath}.",
-                    path);
-                return exception.HResult;
-            }
-        }
         return 87;
     }
 
@@ -1190,6 +1101,8 @@ public sealed partial class HostManagerSmartCoordinator
                 receiptDigest,
                 previousDigest),
             HostManagerAppliedRecordKinds.GpuShimPolicy => ObserveGpuShimPolicy(placement, record, receiptDigest, previousDigest),
+            HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger when ExternalGpuRuntimePlacementRecord.IsRecord(record)
+                => ObserveExternalGpuRuntimePlacement(record, receiptDigest, previousDigest),
             _ => HostManagerPlacementObservation.Unchecked
         };
         var relation = observation.Status switch
@@ -1204,6 +1117,24 @@ public sealed partial class HostManagerSmartCoordinator
             _ => HostManagerPlacementValueRelation.Unavailable
         };
         return new HostManagerPlacementValueObservation(relation, observation.NativeErrorCode);
+    }
+
+    private HostManagerPlacementObservation ObserveExternalGpuRuntimePlacement(
+        HostManagerAppliedRecord record, ulong receiptDigest, ulong previousDigest)
+    {
+        var identity = ReadAutomaticPlacementProcessIdentity(record);
+        if (identity.Status == RecoveryReadStatus.Unavailable)
+            return HostManagerPlacementObservation.Unavailable(identity.NativeErrorCode);
+        if (!identity.Matches) return HostManagerPlacementObservation.NotFound(identity.NativeErrorCode);
+        if (record.Metadata?.GetValueOrDefault(ExternalGpuRuntimePlacementRecord.SettledKey) == "false")
+            return HostManagerPlacementObservation.FoundPrevious(previousDigest);
+        if (!ExternalGpuRuntimePlacementRecord.TryReadResult(record, out var result) || result is null)
+            return HostManagerPlacementObservation.Unavailable(87);
+        if (ExternalGpuRuntimePlacementRecord.IsConfirmed(result))
+            return HostManagerPlacementObservation.FoundReceipt(receiptDigest);
+        return result.Status is RunningGpuPlacementActionStatuses.Skipped or RunningGpuPlacementActionStatuses.NotApplied
+            ? HostManagerPlacementObservation.FoundPrevious(previousDigest)
+            : HostManagerPlacementObservation.Unavailable(1460);
     }
 
     private HostManagerPlacementProcessIdentityObservation ReadAutomaticPlacementProcessIdentity(

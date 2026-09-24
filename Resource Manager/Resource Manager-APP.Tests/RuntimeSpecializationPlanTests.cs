@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
@@ -14,6 +15,39 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class RuntimeSpecializationPlanTests
 {
+    [Fact]
+    public void CompiledGpuPolicyPreservesKindDefaultForPersistedNullWithoutOverridingExplicitValues()
+    {
+        var game = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("game", "Game", SoftwareKinds.Game) with
+        { RuntimeHotSwitchEnabled = null };
+        var highPerformance = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("work", "Work", SoftwareKinds.HighPerformance) with
+        { RuntimeHotSwitchEnabled = null };
+        var ordinary = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("ordinary", "Ordinary", SoftwareKinds.Other) with
+        { RuntimeHotSwitchEnabled = null };
+        var explicitOn = game with { SoftwareId = "explicit-on", RuntimeHotSwitchEnabled = true };
+        var explicitOff = ordinary with { SoftwareId = "explicit-off", RuntimeHotSwitchEnabled = false };
+        var process = new GpuPlacementProcessPolicy("game", "renderer", "renderer.exe", @"C:\Game\renderer.exe",
+            false, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low,
+            GpuPlacementProviderIds.Defaults, GpuPlacementTargets.AutoIdleGpu,
+            GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.UnixEpoch);
+        var document = new GpuPlacementPolicyDocument(GpuPlacementPolicyDocumentVersions.Current,
+            [game, highPerformance, ordinary, explicitOn, explicitOff], [process], DateTimeOffset.UnixEpoch);
+        var topology = new CpuTopologySnapshot(DateTimeOffset.UnixEpoch, "fixture",
+            new CpuSpecificationModel("fixture", "fixture", "fixture", 0, 0, null, null, null, null, "fixture"),
+            "fixture", "fixture", "fixture", "fixture", "fixture", 0, 0, 0, false, [], [], [], []);
+
+        var plan = RuntimePlanCompiler.CompileGpuPlacementPlan(true, document, topology);
+
+        Assert.False(plan.Resolve("game", "Game", SoftwareKinds.Game, null).RuntimeHotSwitchEnabled);
+        Assert.False(plan.Resolve("game", "Game", SoftwareKinds.Game, "renderer").RuntimeHotSwitchEnabled);
+        Assert.Equal(GpuPlacementPolicyModes.Auto,
+            plan.Resolve("game", "Game", SoftwareKinds.Game, "renderer").EnabledMode);
+        Assert.False(plan.Resolve("work", "Work", SoftwareKinds.HighPerformance, null).RuntimeHotSwitchEnabled);
+        Assert.True(plan.Resolve("ordinary", "Ordinary", SoftwareKinds.Other, null).RuntimeHotSwitchEnabled);
+        Assert.True(plan.Resolve("explicit-on", "Game", SoftwareKinds.Game, null).RuntimeHotSwitchEnabled);
+        Assert.False(plan.Resolve("explicit-off", "Ordinary", SoftwareKinds.Other, null).RuntimeHotSwitchEnabled);
+    }
+
     [Fact]
     public void OptimizationModePlan_CompilesDistinctExecutionCapabilities()
     {

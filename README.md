@@ -75,9 +75,9 @@ Three buttons switch between the automatic optimization modes: **Normal**, **Mem
 - **🧠 Memory only** — performs memory optimization and management only.
 - **⚡ Smart optimization** — manages CPU, GPU, memory and VRAM together.
 
-**VRAM and memory pressure.** When you launch a game or a professional application that eats GPU resources, have you ever run into VRAM or memory pressure? Smart scheduling detects that pressure and automatically moves unimportant, low-load applications from the discrete GPU to the integrated GPU so they stop occupying VRAM — Chrome, Edge, or the NVIDIA App, for instance (I have no idea why that one still holds VRAM while sitting in the tray 🤷).
+**VRAM and memory pressure.** Smart scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency.
 
-**Multiple GPUs.** If your computer has several GPUs, Resource Manager can lock an application to a specific GPU or balance load between them.
+**Multiple GPUs.** Per-application policies can select a launch GPU. Runtime moves are limited to renderer routes that pass their compatibility and cleanup checks; they are not general-purpose migration of every GPU-using application.
 
 **Memory.** Smart scheduling also keeps optimizing memory continuously.
 
@@ -85,7 +85,7 @@ Three buttons switch between the automatic optimization modes: **Normal**, **Mem
 
 > 💡 Worth noting: although Resource Manager uses highly optimized algorithms, scheduling still costs something. On CPUs with very weak multicore performance there may be no obvious CPU-side benefit — on a very early i3 or Ryzen 5, for example.
 
-> 🧪 GPU placement uses **GPU shim** technology, a fairly stable and broadly compatible virtualization-based GPU-switching method — but it is not guaranteed to work in every case:
+> 🧪 Runtime GPU switching currently uses an external controller without injecting a DLL into the target. A Chrome/ANGLE D3D11 route has been exercised with partial VRAM release; D3D12 and Vulkan have only been verified in a specific Qt fixture. This is not a claim of broad compatibility:
 > - It is not applied to games or professional applications by default.
 > - If another application has compatibility problems, turn scheduling off for that application.
 > - On a small number of motherboards and laptops, discrete-GPU-direct mode may disable the integrated GPU. Without another available GPU in that situation, GPU scheduling is unavailable.

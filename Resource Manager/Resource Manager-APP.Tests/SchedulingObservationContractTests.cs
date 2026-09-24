@@ -471,6 +471,26 @@ public sealed class SchedulingObservationContractTests
     }
 
     [Fact]
+    public void ProcessFacts_GpuAcceptsIndependentlyRefreshedUnchangedInventory()
+    {
+        var inventory = CreateGpuInventory();
+        var refreshed = inventory with
+        {
+            Generation = inventory.Generation + 1,
+            ObservedAtUtcTicks = inventory.ObservedAtUtcTicks + 1,
+            Adapters = inventory.Adapters.Select(adapter => adapter with
+            {
+                Generation = inventory.Generation + 1,
+                ObservedAtUtcTicks = inventory.ObservedAtUtcTicks + 1
+            }).ToArray()
+        };
+
+        Assert.True(refreshed.IsCurrentComplete());
+        Assert.True(CreateProcessFacts().IsGpuUsageCurrentComplete(refreshed));
+        Assert.True(CreateProcessFacts().IsGpuDedicatedMemoryCurrentComplete(refreshed));
+    }
+
+    [Fact]
     public void ProcessFacts_GpuCompletenessRejectsTopologyDrift()
     {
         var current = CreateProcessFacts();

@@ -1,9 +1,9 @@
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
-using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
@@ -18,18 +18,30 @@ public sealed partial class WindowsResourceBreakdownSampler
         => gpuAllocations?.ReadCurrent(samples.Where(static p => p.StartKey is > 0)
             .ToDictionary(static p => p.ProcessId, static p => p.StartKey!.Value));
 
-    private static ResourceBreakdownBar CreateGpuAllocationBar(
-        ResourceBreakdownBar bar,
-        IReadOnlyDictionary<int, GpuAllocationAmount>? amounts,
-        ProcessAttributionSnapshot attribution,
+    internal static ResourceBreakdownBar CreateUnattributedMemoryUsageBar(
+        string metricId, string label, string scaleMode, double? usedBytes, double? capacityBytes)
+    {
+        var percent = usedBytes.HasValue && capacityBytes is > 0 ? usedBytes / capacityBytes * 100 : null;
+        var unknown = RuntimeSoftwareAttribution.Unattributed;
+        // Device totals alone cannot establish per-process ownership.
+        ResourceSoftwareSegment[] segments = usedBytes is > 0
+            ? [new(unknown.Id, unknown.Name, unknown.Kind, unknown.DisplayKind,
+                usedBytes.Value, percent ?? 0, 0, [])]
+            : [];
+        return new(metricId, label, "B", scaleMode, usedBytes, capacityBytes, percent, segments,
+            usedBytes.HasValue ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable,
+            SamplingObservationStatus.Unavailable);
+    }
+
+    private static ResourceBreakdownBar CreateGpuResidentPartition(ResourceBreakdownBar bar,
+        IReadOnlyDictionary<int, GpuAllocationAmount>? amounts, ProcessAttributionSnapshot attribution,
         CompiledBaseScorePlan baseScore)
     {
-        if (amounts is null) return bar with { TotalValue = null, TotalSystemPercent = null, SharedValue = null,
-            Software = [], ObservationStatus = SamplingObservationStatus.Unavailable,
-            AttributionStatus = SamplingObservationStatus.Unavailable };
+        if (amounts is null) return bar;
         var groups = new Dictionary<string, SoftwareGroupAccumulator>(StringComparer.OrdinalIgnoreCase);
         foreach (var (pid, amount) in amounts)
         {
+            if (amount.TotalBytes <= 0) continue;
             var process = CreateAttributedProcess(pid, amount.TotalBytes, attribution.ProcessById,
                 attribution.AttributionByProcessId, baseScore, bar.CapacityValue ?? 0, true, false);
             if (process is not { } value) continue;
@@ -45,11 +57,16 @@ public sealed partial class WindowsResourceBreakdownSampler
                 SharedValue = amounts[process.ProcessId].SharedBytes
             }).ToArray();
             return segment with { Processes = processes, SharedValue = processes.Sum(p => p.SharedValue ?? 0) };
-        }).ToArray();
-        var total = software.Sum(s => s.Value);
-        return bar with { TotalValue = total, TotalSystemPercent = bar.CapacityValue is > 0 ? total / bar.CapacityValue * 100 : 0,
-            CapacityValue = bar.CapacityValue ?? 0,
-            Software = software, SharedValue = software.Sum(s => s.SharedValue ?? 0),
-            ObservationStatus = SamplingObservationStatus.Current, AttributionStatus = SamplingObservationStatus.Current };
+        }).ToList();
+        var remaining = bar.TotalValue - software.Sum(segment => segment.Value);
+        if (remaining is < 0) return bar;
+        if (remaining is > 0)
+        {
+            var unknown = RuntimeSoftwareAttribution.Unattributed;
+            software.Add(new(unknown.Id, unknown.Name, unknown.Kind, unknown.DisplayKind, remaining.Value,
+                bar.CapacityValue is > 0 ? remaining.Value / bar.CapacityValue.Value * 100 : 0, 0, []));
+        }
+        return bar with { Software = software, SharedValue = software.Sum(s => s.SharedValue ?? 0),
+            AttributionStatus = SamplingObservationStatus.Current };
     }
 }

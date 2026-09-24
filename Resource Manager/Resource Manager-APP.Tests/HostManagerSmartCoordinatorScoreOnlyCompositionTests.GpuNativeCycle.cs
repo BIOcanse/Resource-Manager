@@ -195,6 +195,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(child.HasProvider());
         await Cycle();
 
+        if (firstUse)
+        {
+            Assert.Equal(0, actions.ApplyCount);
+            await Cycle();
+        }
+
         Assert.Equal(1, actions.ApplyCount);
         if (firstUse)
         {
@@ -216,6 +222,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.False(fact.BlocksProcess);
             return fact;
         }).ToArray();
+        output.WriteLine("runtimeAction=" + record.Metadata!["runtimeActionResult"]);
+        output.WriteLine("remoteCalls=" + JsonSerializer.Serialize(remoteCalls));
         Assert.Equal(existingLayer
             ? new[] { GpuRemoteCallKind.ConfigureProvider, GpuRemoteCallKind.ReadDevices, GpuRemoteCallKind.ReadDevices }
             : firstUse ? new[] { GpuRemoteCallKind.ConfigureProvider, GpuRemoteCallKind.ReadDevices, GpuRemoteCallKind.ReadDevices }

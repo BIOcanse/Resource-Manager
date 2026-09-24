@@ -15,7 +15,7 @@ public sealed partial class HostManagerSmartCoordinator
         string trigger, bool realtimeCycle, HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
         CancellationToken cancellationToken)
     {
-        var firstUse = new List<HostManagerAutomaticGpuPreferencePlacement>();
+        var firstUse = new List<HostManagerAutomaticGpuPlacement>();
         var completed = await RunNativeCycleSegmentAsync(trigger, realtimeCycle, outerLoopContext, cancellationToken, firstUse);
         if (completed.CompletedAdmission is not { } admission) return completed.Delay;
 
@@ -34,12 +34,11 @@ public sealed partial class HostManagerSmartCoordinator
                     (long)limits.ApiObservationWindowMilliseconds + limits.ActionTimeoutMilliseconds)));
                 using var cleanup = new CancellationTokenSource();
                 var cleanupStarted = false;
-                RunningGpuPlacementPreparation preparation;
                 // The segment has disposed its publication/journal leases and completed its other effects.
                 gate.Release();
                 try
                 {
-                    preparation = await runningGpuPlacementActions.PrepareWithFirstApiObservationAsync(
+                    await runningGpuPlacementActions.PrepareWithFirstApiObservationAsync(
                         CreateAutomaticGpuActionRequest(current),
                         new RunningGpuApiObservationExecution(limits.ApiObservationWindowMilliseconds,
                             async (execution, token) =>
@@ -97,25 +96,8 @@ public sealed partial class HostManagerSmartCoordinator
                     await gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
                 }
 
-                using var publication = runtimePlanProvider.AcquirePublicationLease();
-                if (preparation.Plan is not { } action || !CanContinueFirstUsePlacement(planned, out current)) continue;
-                if (!await TrySettleGpuActionCheckpointAsync()) return completed.Delay;
-                var latest = await LoadRollbackStateAsync(cancellationToken);
-                var processNow = current.Process;
-                if (GpuActionFacts.BlocksProcess(latest.AppliedPlacements, processNow.TargetId,
-                        processNow.ProcessId, processNow.ProcessStartKey)) continue;
-                var effects = GpuActionFacts.AvailablePlacementEffects(latest.AppliedPlacements);
-                var keyNow = HostManagerPlacementReceiptKey.Create(OptimizationResourceKinds.Gpu, processNow.TargetId);
-                var existing = effects.SingleOrDefault(item => HostManagerPlacementReceiptKey.Create(item) == keyNow);
-                if (existing?.Records.Any(record => !IsAutomaticPlacementRecord(record)) == true) continue;
-                var desired = CreatePreparedGpuShimPlacementDesired(current, existing, action);
-                if (desired is null) continue;
-                desired = desired with { ActionReservation = reservation };
-                IReadOnlyList<HostManagerAppliedPlacementReceipt> selectedEffects = existing is null ? []
-                    : [existing with { Records = existing.Records.Where(record =>
-                        record.Kind == HostManagerAppliedRecordKinds.GpuShimPolicy).ToArray() }];
-                if (!await RunPreparedAutomaticPlacementCycleAsync(admission, latest, [desired], selectedEffects, cancellationToken))
-                    return completed.Delay;
+                // Identification is not a placement. A fresh scheduling cycle uses the saved
+                // route together with current pressure, policy and process observations.
             }
         }
         return completed.Delay;
@@ -124,12 +106,12 @@ public sealed partial class HostManagerSmartCoordinator
     private HostManagerAutomaticPlacementProcess RefreshFirstUseProcess(HostManagerAutomaticPlacementProcess process)
         => process with
         {
-            Policy = runtimePlanProvider.Current.GpuPlacement.Resolve(process.SoftwareId, process.DisplayName, null,
+            Policy = runtimePlanProvider.Current.GpuPlacement.Resolve(process.SoftwareId, process.DisplayName, process.SoftwareKind,
                 JsonGpuPlacementProcessHistoryStore.BuildProcessKey(process.ProcessName, process.ExecutablePath))
         };
 
-    private bool CanContinueFirstUsePlacement(HostManagerAutomaticGpuPreferencePlacement planned,
-        out HostManagerAutomaticGpuPreferencePlacement current)
+    private bool CanContinueFirstUsePlacement(HostManagerAutomaticGpuPlacement planned,
+        out HostManagerAutomaticGpuPlacement current)
     {
         var process = RefreshFirstUseProcess(planned.Process);
         current = planned with { Process = process };

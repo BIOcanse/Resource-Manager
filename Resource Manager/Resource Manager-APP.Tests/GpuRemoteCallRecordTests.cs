@@ -11,6 +11,29 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuRemoteCallRecordTests
 {
+    [Fact]
+    public void CompletedAttemptOrderingUsesExactBirthAndIgnoresOutstandingCalls()
+    {
+        var pending = Pending();
+        var completed = pending with { Result = pending.Result! with
+            { ExitCode = 0, ResourcesReleased = true, Status = "completed" } };
+        var later = completed with
+        {
+            Request = completed.Request with { CallId = Guid.NewGuid() },
+            Started = completed.Started! with { ThreadCreationFileTimeUtc = 134330000000000003 },
+            Result = completed.Result! with { ThreadCreationFileTimeUtc = 134330000000000003 }
+        };
+        var times = GpuActionFacts.CompletedAttemptTimes([Placement(completed.Encode()), Placement(later.Encode())]);
+        Assert.Equal(134330000000000003UL, times[(12345, 134330000000000001)]);
+        Assert.False(times.ContainsKey((12345, 134330000000000004)));
+        Assert.Empty(GpuActionFacts.CompletedAttemptTimes([Placement(pending.Encode())]));
+        Assert.True(GpuActionFacts.BlocksProcess([Placement(pending.Encode())], "fixture", 12345, 134330000000000001));
+        var settled = pending with { Settlement = pending.Result! with
+            { ExitCode = 1, ResourcesReleased = true, Status = "completed" } };
+        Assert.Single(GpuActionFacts.CompletedAttemptTimes([Placement(settled.Encode())]));
+        Assert.Empty(GpuActionFacts.PlacementEffects([Placement(completed.Encode())]));
+    }
+
     [Theory]
     [InlineData(GpuRemoteCallKind.LoadObservationProvider)]
     [InlineData(GpuRemoteCallKind.StartApiObservation)]
