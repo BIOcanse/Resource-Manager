@@ -38,7 +38,7 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'scripts') | Out-Null
 foreach ($name in @('Install.cmd', 'LICENSE', 'NOTICE', 'README.md', 'README.zh-CN.md', 'Restart.cmd', 'Start.cmd')) {
     Copy-Item -LiteralPath (Join-Path $repositoryRoot $name) -Destination (Join-Path $stage $name)
 }
-foreach ($name in @('Register-ResourceManager.ps1', 'ResourceManager.DirectoryRegistration.ps1',
+foreach ($name in @('Install-ResourceManagerPackage.ps1', 'Register-ResourceManager.ps1', 'ResourceManager.DirectoryRegistration.ps1',
         'ResourceManager.LegacyStartup.ps1', 'Start-ResourceManagerInstalled.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $stage "scripts\$name")
 }
