@@ -9,6 +9,7 @@ public sealed class BackendProcessOwnershipContractTests
         var backendSession = File.ReadAllText(Path.Combine(
             appRoot,
             "NativeUi",
+            "BackendConnection",
             "BackendServiceSession.cs"));
         var serviceOwner = File.ReadAllText(Path.Combine(
             appRoot,
