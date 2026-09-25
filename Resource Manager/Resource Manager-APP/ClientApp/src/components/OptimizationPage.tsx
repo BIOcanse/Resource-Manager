@@ -28,6 +28,11 @@ import {
 import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../text.ts";
 import { optimizationEvidenceValue } from "../presentation/optimizationPresentation";
+import {
+  optimizationModeHasDomain,
+  toggleOptimizationDomain,
+  type OptimizationDomain
+} from "../settings/optimizationMode.ts";
 
 type ReportFilter = "untrusted" | "all" | "trusted";
 
@@ -87,8 +92,14 @@ export function OptimizationPage(props: OptimizationPageProps) {
       return uiText.optimization.scheduleStateUnknown;
     }
 
+    const modeStatus = optimizationModeLabel(state.mode);
     return [
-      state.schedulerRunning ? uiText.optimization.smartSchedulerRunning : uiText.optimization.smartSchedulerStopped,
+      modeStatus,
+      state.mode !== "normal"
+        ? state.schedulerRunning
+          ? uiText.optimization.smartSchedulerRunning
+          : uiText.optimization.smartSchedulerStopped
+        : "",
       state.pendingChangeCount > 0 ? uiText.optimization.pendingChanges(state.pendingChangeCount) : "",
       state.appliedTargetCount > 0 ? uiText.optimization.appliedTargets(state.appliedTargetCount) : ""
     ].filter(Boolean).join(" · ");
@@ -107,19 +118,36 @@ export function OptimizationPage(props: OptimizationPageProps) {
         class="optimization-modebar"
         aria-label={uiText.optimization.modeBar}
       >
-        <SegmentedControl
-          value={selectedOptimizationMode()}
-          options={[
-            { id: "normal", label: uiText.optimization.modeNormal, classList: { pending: props.pendingOptimizationMode === "normal" } },
-            { id: "limited", label: uiText.optimization.modeLimited, classList: { pending: props.pendingOptimizationMode === "limited" } },
-            { id: "smart", label: uiText.optimization.modeSmart, classList: { pending: props.pendingOptimizationMode === "smart" } }
-          ] satisfies Array<{ id: AppOptimizationMode; label: string; classList: { pending: boolean } }>}
-          ariaLabel={uiText.optimization.modeBar}
-          class="optimization-mode-group"
-          itemClass="optimization-mode"
-          disabled={!hostManagerAvailable() || props.actionId === "smart-mode"}
-          onChange={props.onOptimizationModeChange}
-        />
+        <div class="optimization-mode-group" role="group" aria-label={uiText.optimization.modeBar}>
+          <button
+            type="button"
+            class="optimization-mode"
+            classList={{
+              active: selectedOptimizationMode() === "normal",
+              pending: props.pendingOptimizationMode === "normal"
+            }}
+            aria-pressed={selectedOptimizationMode() === "normal"}
+            disabled={!hostManagerAvailable() || props.actionId === "smart-mode"}
+            onClick={() => props.onOptimizationModeChange("normal")}
+          >{uiText.optimization.modeNormal}</button>
+          <For each={(["memory", "cpu", "gpu"] as const)}>
+            {(domain) => (
+              <button
+                type="button"
+                class="optimization-mode"
+                classList={{
+                  active: optimizationModeHasDomain(selectedOptimizationMode(), domain),
+                  pending: props.pendingOptimizationMode !== null
+                    && optimizationModeHasDomain(props.pendingOptimizationMode, domain)
+                }}
+                aria-pressed={optimizationModeHasDomain(selectedOptimizationMode(), domain)}
+                disabled={!hostManagerAvailable() || props.actionId === "smart-mode"}
+                onClick={() => props.onOptimizationModeChange(
+                  toggleOptimizationDomain(selectedOptimizationMode(), domain))}
+              >{optimizationDomainLabel(domain)}</button>
+            )}
+          </For>
+        </div>
         <div class="optimization-mode-actions">
           <label class="toolbar-search">
             <input
@@ -285,11 +313,19 @@ function advisoryTrustScope(reportType: string) {
 }
 
 function optimizationModeLabel(mode: AppOptimizationMode) {
-  if (mode === "limited") {
-    return uiText.optimization.modeLimited;
-  }
+  return mode === "normal"
+    ? uiText.optimization.modeNormal
+    : (["memory", "cpu", "gpu"] as const)
+      .filter((domain) => optimizationModeHasDomain(mode, domain))
+      .map(optimizationDomainLabel)
+      .join(" · ");
+}
 
-  return mode === "smart" ? uiText.optimization.modeSmart : uiText.optimization.modeNormal;
+function optimizationDomainLabel(domain: OptimizationDomain) {
+  if (domain === "memory") return uiText.optimization.modeLimited;
+  return domain === "cpu"
+    ? uiText.optimization.modeCpu
+    : uiText.optimization.modeGpu;
 }
 
 function filterOptimizationReports(

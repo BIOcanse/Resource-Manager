@@ -51,6 +51,7 @@ import type {
 } from "../types";
 import { postShellMessage } from "../utils.ts";
 import { normalizeEditableHotkeys } from "../settings/editableHotkeys.ts";
+import { normalizeOptimizationModeValue } from "../settings/optimizationMode.ts";
 import { applySettingsPatch, createSettingsPatch } from "../settings/settingsPatch.ts";
 import { uiText } from "../text.ts";
 
@@ -97,7 +98,6 @@ export interface SettingsStore {
   discardDraftChanges: () => void;
   resetDraftToDefaults: () => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
-  updateAutomaticSchedulingOptimizations: (enabled: boolean) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -392,10 +392,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       smartMonitoringMode: normalizeAdaptiveBooleanMode(mode),
       smartMonitoringEnabled: resolveAdaptiveBooleanMode(mode, true)
     })),
-    updateAutomaticSchedulingOptimizations: (enabled) => updatePerformance((performance) => ({
-      ...performance,
-      automaticSchedulingOptimizationsEnabled: enabled
-    })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
       preciseGpuPlacementEnabled: enabled
@@ -580,7 +576,6 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryOptimizationTargetUsagePercent: 70,
       gpuPerformanceUseCases: ["general"],
       smartMonitoringMode: "auto",
-      automaticSchedulingOptimizationsEnabled: true,
       frontendHiddenRefreshMode: "auto",
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -641,8 +636,6 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
       gpuPerformanceUseCases: normalizeGpuPerformanceUseCases(settings?.performance?.gpuPerformanceUseCases),
       smartMonitoringMode: normalizeAdaptiveBooleanMode(settings?.performance?.smartMonitoringMode),
-      automaticSchedulingOptimizationsEnabled:
-        settings?.performance?.automaticSchedulingOptimizationsEnabled !== false,
       frontendHiddenRefreshMode: normalizeFrontendHiddenRefreshMode(settings?.performance?.frontendHiddenRefreshMode),
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),
@@ -914,15 +907,7 @@ export function resolveEffectiveFontSmoothing(
 }
 
 export function normalizeOptimizationMode(mode?: string | null): AppOptimizationMode {
-  if (mode === "limited") {
-    return "limited";
-  }
-
-  if (mode === "smart") {
-    return "smart";
-  }
-
-  return "normal";
+  return normalizeOptimizationModeValue(mode);
 }
 
 export function normalizeGpuPerformanceUseCases(useCases?: readonly string[] | null): AppGpuPerformanceUseCase[] {

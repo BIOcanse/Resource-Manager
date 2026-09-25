@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -11,9 +12,11 @@ public sealed partial class HostManagerSmartCoordinator
         bool running,
         uint nativePendingCount)
     {
+        var normalizedMode = HostManagerOptimizationModes.Normalize(mode);
+        var schedulingEnabled = normalizedMode != AppOptimizationModes.Normal;
         return new HostManagerSmartCoordinatorStatus(
-            HostManagerOptimizationModes.Normalize(mode),
-            running,
+            normalizedMode,
+            running && schedulingEnabled,
             state.LastRunAt,
             state.LastRestoreAt,
             checked((int)nativePendingCount),

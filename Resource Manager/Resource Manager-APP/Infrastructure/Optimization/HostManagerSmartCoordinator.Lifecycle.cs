@@ -1,4 +1,7 @@
 using System.Runtime.ExceptionServices;
+using ResourceManager.App.Application.PublicResources;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
@@ -44,6 +47,8 @@ public sealed partial class HostManagerSmartCoordinator
     private IHostManagerSmartCoordinatorTransitionProbe? transitionProbe;
     private int lifecycleState;
     private int baseDisposeStarted;
+    private RuntimePlanProvider? runtimePlanNotifications;
+    private IHostPublicResourcePublicationNotifier? publicResourceNotifications;
 
     internal HostManagerSmartCoordinatorLifecycleState LifecycleState
         => (HostManagerSmartCoordinatorLifecycleState)Volatile.Read(ref lifecycleState);
@@ -74,10 +79,18 @@ public sealed partial class HostManagerSmartCoordinator
                 (int)HostManagerSmartCoordinatorLifecycleState.Running);
             try
             {
+                runtimePlanNotifications = runtimePlanProvider as RuntimePlanProvider;
+                publicResourceNotifications =
+                    hostPublicResourceSelfManagerOwner as IHostPublicResourcePublicationNotifier;
+                if (runtimePlanNotifications is not null)
+                    runtimePlanNotifications.Published += OnRuntimePlanPublished;
+                if (publicResourceNotifications is not null)
+                    publicResourceNotifications.HostResourcePublished += OnHostResourcePublished;
                 return base.StartAsync(cancellationToken);
             }
             catch
             {
+                UnsubscribeActivationSignals();
                 Volatile.Write(
                     ref lifecycleState,
                     (int)HostManagerSmartCoordinatorLifecycleState.Created);
@@ -131,9 +144,30 @@ public sealed partial class HostManagerSmartCoordinator
             Volatile.Write(
                 ref lifecycleState,
                 (int)HostManagerSmartCoordinatorLifecycleState.Closing);
+            UnsubscribeActivationSignals();
             ObserveShutdownPoint(HostManagerSmartCoordinatorShutdownPoint.AdmissionClosed);
             shutdownTask = ShutdownCoreAsync();
             return shutdownTask;
+        }
+    }
+
+    private void OnRuntimePlanPublished(CompiledRuntimePlan _)
+        => schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+
+    private void OnHostResourcePublished()
+        => schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+
+    private void UnsubscribeActivationSignals()
+    {
+        if (runtimePlanNotifications is not null)
+        {
+            runtimePlanNotifications.Published -= OnRuntimePlanPublished;
+            runtimePlanNotifications = null;
+        }
+        if (publicResourceNotifications is not null)
+        {
+            publicResourceNotifications.HostResourcePublished -= OnHostResourcePublished;
+            publicResourceNotifications = null;
         }
     }
 

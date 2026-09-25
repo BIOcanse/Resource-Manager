@@ -5,6 +5,36 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerVersionedWakeDeadlineTests
 {
     [Fact]
+    public async Task ClearedNormalDeadlineParksUntilForegroundPublication()
+    {
+        var time = new ManualTimeProvider();
+        var deadline = new HostManagerVersionedWakeDeadline(time);
+        var scheduled = deadline.PublishScheduled(TimeSpan.FromSeconds(5));
+
+        Assert.True(deadline.ClearScheduled(scheduled.Version));
+        Assert.False(deadline.Snapshot.HasDeadline);
+        using var cancellation = new CancellationTokenSource();
+        var wait = deadline.WaitAsync(cancellation.Token);
+        time.Advance(TimeSpan.FromSeconds(30));
+        Assert.False(wait.IsCompleted);
+
+        var activated = deadline.PublishForeground(TimeSpan.Zero);
+        Assert.Equal(activated, await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task PlanPublicationCannotBeClearedByOlderNormalCycle()
+    {
+        var time = new ManualTimeProvider();
+        var deadline = new HostManagerVersionedWakeDeadline(time);
+        var scheduled = deadline.PublishScheduled(TimeSpan.FromSeconds(5));
+        var activated = deadline.PublishForeground(TimeSpan.Zero);
+
+        Assert.False(deadline.ClearScheduled(scheduled.Version));
+        Assert.Equal(activated, await deadline.WaitAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public async Task EarlierForegroundDeadlineRebasesScheduledWait()
     {
         var time = new ManualTimeProvider();

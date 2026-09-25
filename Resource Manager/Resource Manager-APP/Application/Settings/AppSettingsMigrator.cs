@@ -71,7 +71,6 @@ public static class AppSettingsMigrator
                 ReadGpuPerformanceUseCases(root, defaults.Performance.GpuPerformanceUseCases),
                 ReadString(root, "performance", "smartMonitoringMode", defaults.Performance.SmartMonitoringMode),
                 ReadString(root, "performance", "frontendHiddenRefreshMode", defaults.Performance.FrontendHiddenRefreshMode),
-                ReadBoolean(root, "performance", "automaticSchedulingOptimizationsEnabled", defaults.Performance.AutomaticSchedulingOptimizationsEnabled),
                 ReadLogicRefreshInterval(
                     root,
                     "monitorRefreshIntervalMs",
@@ -178,7 +177,6 @@ public static class AppSettingsMigrator
             || !performance.TryGetProperty("gpuPerformanceUseCases", out var gpuPerformanceUseCases)
             || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
             || !performance.TryGetProperty("frontendHiddenRefreshMode", out var frontendHiddenRefreshMode)
-            || !performance.TryGetProperty("automaticSchedulingOptimizationsEnabled", out _)
             || !performance.TryGetProperty("monitorRefreshIntervalMs", out var monitorRefreshIntervalMs)
             || !performance.TryGetProperty("resourceTableRefreshIntervalMs", out var resourceTableRefreshIntervalMs)
             || !performance.TryGetProperty("managementRefreshIntervalMs", out var managementRefreshIntervalMs)
@@ -244,9 +242,7 @@ public static class AppSettingsMigrator
             return false;
         }
 
-        return value.GetString() is AppOptimizationModes.Normal
-            or AppOptimizationModes.MemoryOnly
-            or AppOptimizationModes.Smart;
+        return AppOptimizationModes.IsSupported(value.GetString());
     }
 
     private static bool IsSupportedAdaptiveBooleanMode(JsonElement value)

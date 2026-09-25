@@ -17,16 +17,21 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(runtimePlan);
+        var mode = runtimePlan.OptimizationMode;
         var hardware = metricSnapshotSource.ReadLatest(
-            CreateSmartSchedulingMetricRequest());
+            CreateSmartSchedulingMetricRequest(mode, HasAvailablePublicResourceLifecycle()));
         if (hardware is null)
         {
             return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
                 "hardware-snapshot-unavailable"));
         }
-        var requestedMetricMask = SchedulingProcessMetricMask.CpuUsage
-            | SchedulingProcessMetricMask.RuntimeState;
-        if (hardware.GpuInventory.Status == SamplingObservationStatus.Current)
+        var requestedMetricMask = SchedulingProcessMetricMask.RuntimeState;
+        if (mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled)
+        {
+            requestedMetricMask |= SchedulingProcessMetricMask.CpuUsage;
+        }
+        if (mode.GpuSchedulingEnabled
+            && hardware.GpuInventory.Status == SamplingObservationStatus.Current)
         {
             requestedMetricMask |= SchedulingProcessMetricMask.GpuUsage
                 | SchedulingProcessMetricMask.GpuDedicatedMemory;
@@ -55,7 +60,9 @@ public sealed partial class HostManagerSmartCoordinator
                 CreateIdleCapacity(hardware),
                 processFacts,
                 targetInfos,
-                cpuCoreResidencyReader.Read())));
+                mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled
+                    ? cpuCoreResidencyReader.Read()
+                    : null)));
     }
 
     private sealed record HostManagerSampleCaptureResult(
@@ -71,15 +78,32 @@ public sealed partial class HostManagerSmartCoordinator
             => new(null, reason);
     }
 
-    private static MetricSampleRequest CreateSmartSchedulingMetricRequest()
+    private static MetricSampleRequest CreateSmartSchedulingMetricRequest(
+        CompiledOptimizationModePlan mode,
+        bool publicResourcesAvailable)
     {
-        return MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(
-        [
-            SamplingDatasetIds.SystemCpuUsage,
-            SamplingDatasetIds.SystemMemoryUsage,
-            SamplingDatasetIds.SystemVirtualMemoryUsage
-        ]);
+        var ids = new List<string>();
+        if (mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled)
+        {
+            ids.Add(SamplingDatasetIds.SystemCpuUsage);
+        }
+        if (mode.MemorySchedulingEnabled || publicResourcesAvailable)
+        {
+            ids.Add(SamplingDatasetIds.SystemMemoryUsage);
+        }
+        if (mode.MemorySchedulingEnabled)
+        {
+            ids.Add(SamplingDatasetIds.SystemVirtualMemoryUsage);
+        }
+        return mode.GpuSchedulingEnabled || publicResourcesAvailable
+            ? MetricSampleRequest.ForIdsAndAllGpuCoreMetrics(ids)
+            : MetricSampleRequest.ForIds(ids);
     }
+
+    private static MetricSampleRequest CreatePublicResourceMetricRequest()
+        => CreateSmartSchedulingMetricRequest(
+            CompiledOptimizationModePlan.Default,
+            publicResourcesAvailable: true);
 
     private static IEnumerable<HostManagerTargetInfo> BuildTargetInfos(
         SchedulingProcessFactSnapshot snapshot,

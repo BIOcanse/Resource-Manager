@@ -49,7 +49,7 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyDictionary<string, int> protectionLevels,
         CompiledOptimizationModePlan modePlan,
         bool policyExecutionEnabled,
-        bool hardwareSchedulingEnabled,
+        bool cpuPlacementEnabled,
         HostManagerComputeScoringCycleResult? computeScoring)
     {
         var cursor = 0;
@@ -177,11 +177,13 @@ public sealed partial class HostManagerSmartCoordinator
                     policyExecutionEnabled
                         && scoreMembershipConsistent
                         && CanExecuteSoftwareLevelAdapterModesForMode(modePlan, target),
-                    hardwareSchedulingEnabled
+                    cpuPlacementEnabled
                         && scoreMembershipConsistent
                         && target.CanApplyPhysicalCorePlacement,
                     processCpuMetricsComplete && scoreMembershipConsistent,
-                    processGpuMetricsComplete && scoreMembershipConsistent);
+                    processGpuMetricsComplete && scoreMembershipConsistent,
+                    modePlan.CpuSchedulingEnabled,
+                    modePlan.GpuSchedulingEnabled);
                 Append(identity);
                 if (hasAdapterRecord)
                 {
@@ -393,7 +395,9 @@ public sealed partial class HostManagerSmartCoordinator
         bool canApplyAdapterPolicy,
         bool hardwareSchedulingEligible,
         bool processCpuMetricsComplete,
-        bool processGpuMetricsComplete)
+        bool processGpuMetricsComplete,
+        bool cpuSchedulingEnabled,
+        bool gpuSchedulingEnabled)
     {
         var flags = NativeSmartCoordinatorInputFlags.Running;
         if (target.ForegroundFocused)
@@ -470,8 +474,8 @@ public sealed partial class HostManagerSmartCoordinator
             BaseScore = target.BaseScore,
             SourceIndex = sourceIndex,
             ProcessId = checked((uint)processId),
-            CpuCapabilityMask = CreateCapabilityMask(target.SupportedCpuGrades),
-            GpuCapabilityMask = CreateCapabilityMask(target.SupportedGpuGrades),
+            CpuCapabilityMask = cpuSchedulingEnabled ? CreateCapabilityMask(target.SupportedCpuGrades) : (byte)0,
+            GpuCapabilityMask = gpuSchedulingEnabled ? CreateCapabilityMask(target.SupportedGpuGrades) : (byte)0,
             AppliedProcessGrade = processGrade,
             AppliedCpuGrade = cpuGrade,
             AppliedGpuGrade = gpuGrade,

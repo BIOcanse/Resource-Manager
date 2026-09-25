@@ -80,6 +80,37 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.True(smart.NonAdaptedMemoryPriorityEnabled);
     }
 
+    [Theory]
+    [InlineData(AppOptimizationModes.Normal, false, false, false)]
+    [InlineData(AppOptimizationModes.MemoryOnly, true, false, false)]
+    [InlineData(AppOptimizationModes.CpuOnly, false, true, false)]
+    [InlineData(AppOptimizationModes.GpuOnly, false, false, true)]
+    [InlineData(AppOptimizationModes.MemoryCpu, true, true, false)]
+    [InlineData(AppOptimizationModes.MemoryGpu, true, false, true)]
+    [InlineData(AppOptimizationModes.CpuGpu, false, true, true)]
+    [InlineData(AppOptimizationModes.Smart, true, true, true)]
+    public void OptimizationModePlan_OnlyEnablesSelectedSchedulingDomains(
+        string mode,
+        bool memory,
+        bool cpu,
+        bool gpu)
+    {
+        var plan = CompiledOptimizationModePlan.Compile(mode);
+
+        Assert.Equal(mode, plan.Mode);
+        Assert.Equal(memory || cpu || gpu, plan.SchedulingEnabled);
+        Assert.Equal(memory, plan.MemorySchedulingEnabled);
+        Assert.Equal(memory, plan.AutomaticMemoryCleanupEnabled);
+        Assert.Equal(memory, plan.NonAdaptedMemoryPriorityEnabled);
+        Assert.Equal(cpu, plan.CpuSchedulingEnabled);
+        Assert.Equal(cpu, plan.AutomaticProcessPoliciesEnabled);
+        Assert.Equal(cpu, plan.CpuPlacementEnabled);
+        Assert.Equal(gpu, plan.GpuSchedulingEnabled);
+        Assert.Equal(gpu, plan.VramResourceActionsEnabled);
+        Assert.Equal(gpu, plan.GpuPlacementEnabled);
+        Assert.Equal(cpu || gpu, plan.SoftwareSchedulingEnabled);
+    }
+
     [Fact]
     public void AdapterDispatchPlan_ResolvesPrecompiledRoutes()
     {

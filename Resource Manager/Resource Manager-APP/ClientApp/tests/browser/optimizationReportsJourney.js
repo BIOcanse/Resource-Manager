@@ -39,6 +39,26 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "性能优化", exact: true }).click();
   await page.getByRole("heading", { name: "优化报告", exact: true })
     .waitFor({ state: "visible", timeout: 5000 });
+  const modeGroup = page.locator(".optimization-mode-group");
+  assert(await modeGroup.getByRole("button").count() === 4,
+    "Scheduling mode does not expose Normal, Memory, CPU, and GPU choices");
+  assert(await modeGroup.getByRole("button", { name: "普通模式" }).getAttribute("aria-pressed") === "true",
+    "Normal mode is not the exclusive default");
+  const normalMode = modeGroup.getByRole("button", { name: "普通模式" });
+  const memoryMode = modeGroup.getByRole("button", { name: "内存调度" });
+  const cpuMode = modeGroup.getByRole("button", { name: "CPU 调度" });
+  await cpuMode.click();
+  assert(await cpuMode.getAttribute("aria-pressed") === "true",
+    "CPU scheduling did not become selected");
+  await memoryMode.click();
+  assert(await cpuMode.getAttribute("aria-pressed") === "true"
+    && await memoryMode.getAttribute("aria-pressed") === "true",
+    "Selecting Memory cleared the selected CPU domain");
+  await normalMode.click();
+  assert(await normalMode.getAttribute("aria-pressed") === "true"
+    && await cpuMode.getAttribute("aria-pressed") === "false"
+    && await memoryMode.getAttribute("aria-pressed") === "false",
+    "Normal mode did not clear the selected scheduling domains");
   const observationStatus = page.getByText(/持续观察 ·/);
   assert(await observationStatus.count() === 0,
     "Internal report-rule availability must not be displayed");

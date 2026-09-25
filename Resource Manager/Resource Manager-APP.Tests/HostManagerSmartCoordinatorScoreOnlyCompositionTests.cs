@@ -1924,6 +1924,317 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
+    public async Task NormalModeMaintainsPublicResourcesWithoutSchedulingSnapshots()
+    {
+        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: cpuReader);
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.PublicResourceManager.TickCalls == 0)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
+            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Empty(fixture.ProcessFacts.SubscriptionHistory);
+            Assert.Empty(cpuReader.Subscriptions);
+            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
+            var hardware = Assert.Single(fixture.MetricSampler.SubscriptionHistory);
+            Assert.True(hardware.Request.Includes("memory.usage"));
+            Assert.False(hardware.Request.Includes("cpu.usage"));
+            Assert.False(hardware.Request.Includes("virtualMemory.usage"));
+            Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
+                .SchedulerRunning);
+            var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(
+                CancellationToken.None);
+            Assert.False(diagnostics.SchedulerRunning);
+            Assert.Null(diagnostics.NativeCoordinator);
+            Assert.Null(diagnostics.SchedulingAuthority.Cpu);
+            Assert.Null(diagnostics.SchedulingAuthority.Gpu);
+            Assert.Empty(fixture.Workspace.CurrentSnapshotRows.ToArray());
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(0, fixture.MetricSampler.ActiveSubscriptionCount);
+        Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+        Assert.Equal(0, cpuReader.ReleasedSubscriptions);
+    }
+
+    [Fact]
+    public async Task NormalModeWithoutPublicResourcesHoldsNoSamplingSubscriptions()
+    {
+        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: cpuReader);
+        fixture.PublicResourceManager.Available = false;
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason
+                != "optimization-mode-normal")
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.Equal(0, fixture.MetricSampler.ActiveSubscriptionCount);
+            Assert.Equal(0, fixture.MetricSampler.ReadLatestCalls);
+            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
+            Assert.Empty(cpuReader.Subscriptions);
+            Assert.Equal(0, fixture.PublicResourceManager.TickCalls);
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NormalModeParksScheduledWakeAndResumesOnPlanOrPublicResourcePublication(
+        bool warm)
+    {
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: warm,
+            scoreOnlyEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false,
+            editFreedomPoints: root => FreedomPointTestFactory.Point(root,
+                ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
+                    .BackendFreedomPointPaths.SchedulerSamplingInterval)["value"] = 100);
+        fixture.PublicResourceManager.Available = false;
+        var deadline = Assert.IsType<HostManagerVersionedWakeDeadline>(
+            ReadPrivateField<HostManagerVersionedWakeDeadline>(
+                fixture.Coordinator, "schedulingWakeDeadline"));
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason
+                    != "optimization-mode-normal"
+                || deadline.Snapshot.HasDeadline)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
+                .SchedulerRunning);
+            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
+            {
+                Version = 2,
+                OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.CpuOnly)
+            });
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.True((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
+                .SchedulerRunning);
+
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3 });
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 0
+                || deadline.Snapshot.HasDeadline)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            fixture.PublicResourceManager.Available = true;
+            while (fixture.PublicResourceManager.TickCalls == 0)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None))
+                .SchedulerRunning);
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Theory]
+    [InlineData(AppOptimizationModes.MemoryOnly, true, false, true)]
+    [InlineData(AppOptimizationModes.CpuOnly, true, false, false)]
+    [InlineData(AppOptimizationModes.GpuOnly, false, true, false)]
+    [InlineData(AppOptimizationModes.MemoryCpu, true, false, true)]
+    [InlineData(AppOptimizationModes.MemoryGpu, true, true, true)]
+    [InlineData(AppOptimizationModes.CpuGpu, true, true, false)]
+    public async Task SelectedDomainsOwnOnlyTheirSamplingSubscriptions(
+        string mode,
+        bool cpu,
+        bool gpu,
+        bool memory)
+    {
+        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            optimizationMode: mode,
+            cpuCoreReader: cpuReader);
+        fixture.PublicResourceManager.Available = false;
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != (memory ? 2 : 1))
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+
+            Assert.Equal(cpu ? 1 : 0, cpuReader.Subscriptions.Count);
+            var hardware = Assert.Single(fixture.MetricSampler.SubscriptionHistory).Request;
+            Assert.Equal(cpu, hardware.Includes("cpu.usage"));
+            Assert.Equal(memory, hardware.Includes("memory.usage"));
+            Assert.Equal(memory, hardware.Includes("virtualMemory.usage"));
+            Assert.Equal(gpu, hardware.IncludesAllGpuCoreMetrics);
+            var process = Assert.Single(fixture.ProcessFacts.SubscriptionHistory,
+                static item => item.SubscriptionId == "host-manager-smart-coordinator:compute");
+            var expected = SchedulingProcessMetricMask.RuntimeState;
+            if (cpu) expected |= SchedulingProcessMetricMask.CpuUsage;
+            if (gpu) expected |= SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory;
+            Assert.Equal(expected, process.MetricMask);
+            Assert.Equal(memory, fixture.ProcessFacts.SubscriptionHistory.Any(
+                static item => item.SubscriptionId == "host-manager-smart-coordinator:memory-final-admission"));
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Theory]
+    [InlineData(AppOptimizationModes.MemoryOnly, false, false)]
+    [InlineData(AppOptimizationModes.CpuOnly, true, false)]
+    [InlineData(AppOptimizationModes.GpuOnly, false, true)]
+    [InlineData(AppOptimizationModes.CpuGpu, true, true)]
+    [InlineData(AppOptimizationModes.Smart, true, true)]
+    public async Task NativeFactsDisableUnselectedAdapterGrades(
+        string mode,
+        bool cpu,
+        bool gpu)
+    {
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            optimizationMode: mode,
+            processFactsSnapshot: CreateCompleteProcessFacts(
+                4_241,
+                132_537_599_900_000_000,
+                "software:domain-test",
+                60,
+                10,
+                20));
+        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
+        {
+            Version = 2,
+            AdapterDispatch = new CompiledAdapterDispatchPlan(
+                new Dictionary<string, CompiledAdapterDispatchRoute>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["software:domain-test"] = CompiledAdapterDispatchRoute.SoftwareLevelScheduler
+                },
+                new Dictionary<string, IReadOnlyList<AdapterCpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["software:domain-test"] = [AdapterCpuSchedulingGrade.Normal, AdapterCpuSchedulingGrade.Optimize]
+                },
+                new Dictionary<string, IReadOnlyList<AdapterGpuSchedulingGrade>>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["software:domain-test"] = [AdapterGpuSchedulingGrade.Normal, AdapterGpuSchedulingGrade.Optimize]
+                })
+        });
+
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+
+        var identities = fixture.Workspace.InputRows.ToArray()
+            .Where(static row => row.MetricKind == NativeSmartCoordinatorMetricKind.None
+                && row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessIdentity))
+            .ToArray();
+        Assert.NotEmpty(identities);
+        Assert.All(identities, row =>
+        {
+            Assert.Equal(cpu, row.CpuCapabilityMask != 0);
+            Assert.Equal(gpu, row.GpuCapabilityMask != 0);
+        });
+    }
+
+    [Fact]
+    public async Task BackgroundSchedulerReacquiresComputeSubscriptionsAfterNormalMode()
+    {
+        var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal,
+            automaticMemoryCleanupEnabled: false,
+            cpuCoreReader: cpuReader,
+            editFreedomPoints: root => FreedomPointTestFactory.Point(root,
+                ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
+                    .BackendFreedomPointPaths.SchedulerSamplingInterval)["value"] = 100);
+
+        await fixture.Coordinator.StartAsync(CancellationToken.None);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (fixture.PublicResourceManager.TickCalls == 0)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
+            {
+                Version = 2,
+                OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Smart)
+            });
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 2)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
+            Assert.Single(cpuReader.Subscriptions);
+            Assert.Equal(2, fixture.ProcessFacts.SubscriptionHistory.Count);
+            Assert.Equal(2, fixture.MetricSampler.SubscriptionHistory.Count);
+            Assert.True(fixture.MetricSampler.SubscriptionHistory[1].Request.Includes("cpu.usage"));
+
+            fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3 });
+            await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 0)
+            {
+                await Task.Delay(10, timeout.Token);
+            }
+            Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Equal(1, cpuReader.ReleasedSubscriptions);
+            Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
+            Assert.False(fixture.MetricSampler.SubscriptionHistory[^1].Request.Includes("cpu.usage"));
+            Assert.Null((await fixture.Coordinator.GetDecisionDiagnosticsAsync(
+                CancellationToken.None)).NativeCoordinator);
+        }
+        finally
+        {
+            await fixture.Coordinator.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(0, fixture.MetricSampler.ActiveSubscriptionCount);
+    }
+
+    [Fact]
     public async Task BackgroundSchedulerUsesTheCompiledFreedomPointForEverySubscription()
     {
         var cpuReader = new RecordingCpuCoreResidencyReader(() => null);
@@ -6443,8 +6754,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
     }
 
-    private sealed class RecordingPublicResourceManager : IHostPublicResourceSelfManager
+    private sealed class RecordingPublicResourceManager :
+        IHostPublicResourceSelfManager, IHostPublicResourceCapability,
+        IHostPublicResourcePublicationNotifier
     {
+        private bool available = true;
+        internal bool Available
+        {
+            get => available;
+            set
+            {
+                available = value;
+                if (value) HostResourcePublished?.Invoke();
+            }
+        }
+        public event Action? HostResourcePublished;
         internal int TickCalls { get; private set; }
         internal int TickAttemptCalls { get; private set; }
         internal int PendingNewEffectCandidates { get; set; }
@@ -6452,6 +6776,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal HostPublicResourceSelfManagerTickRequest? LastRequest { get; private set; }
         internal Action? TickHandler { get; set; }
         internal bool FailOnCall { get; init; }
+
+        public HostPublicResourceCapabilitySnapshot GetCapability()
+            => new(
+                Available
+                    ? HostPublicResourceCapabilityStates.Available
+                    : HostPublicResourceCapabilityStates.Unavailable,
+                Available,
+                Available ? "test-available" : "test-unavailable");
 
         public HostPublicResourceSelfManagerTickResult Tick(
             HostPublicResourceSelfManagerTickRequest request)

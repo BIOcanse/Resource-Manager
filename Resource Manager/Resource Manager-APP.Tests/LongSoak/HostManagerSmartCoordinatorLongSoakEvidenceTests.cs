@@ -1543,7 +1543,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     if (!ReadBool(guards, "sampling")
                         || ReadBool(guards, "scoring") != (shape.ProcessCount > 0)
                         || !ReadBool(guards, "policyExecution")
-                        || ReadBool(guards, "hardwarePlacement"))
+                        || !ReadBool(guards, "hardwarePlacement"))
                     {
                         throw new InvalidDataException(
                             "The long-soak production guards are not exact.");

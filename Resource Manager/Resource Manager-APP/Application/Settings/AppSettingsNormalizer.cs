@@ -39,8 +39,6 @@ public static class AppSettingsNormalizer
             NormalizeGpuPerformanceUseCases(performance?.GpuPerformanceUseCases),
             NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
             NormalizeFrontendHiddenRefreshMode(performance?.FrontendHiddenRefreshMode),
-            performance?.AutomaticSchedulingOptimizationsEnabled
-                ?? AppSettingsDefaults.Create().Performance.AutomaticSchedulingOptimizationsEnabled,
             NormalizeLogicRefreshInterval(
                 performance?.MonitorRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Responsive,
@@ -334,14 +332,7 @@ public static class AppSettingsNormalizer
     }
 
     private static string NormalizeOptimizationMode(string? mode)
-    {
-        return mode switch
-        {
-            AppOptimizationModes.MemoryOnly => AppOptimizationModes.MemoryOnly,
-            AppOptimizationModes.Smart => AppOptimizationModes.Smart,
-            _ => AppOptimizationModes.Normal
-        };
-    }
+        => AppOptimizationModes.Normalize(mode);
 
     public static IReadOnlyList<string> NormalizeGpuPerformanceUseCases(IEnumerable<string>? useCases)
     {

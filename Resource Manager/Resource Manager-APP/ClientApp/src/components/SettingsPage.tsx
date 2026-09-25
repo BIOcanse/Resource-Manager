@@ -7,10 +7,12 @@ import { SystemIntegrationSettingsSection } from "./settings/SystemIntegrationSe
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../text.ts";
 import type {
   AppAdaptiveBooleanMode,
+  AppAnimationMode,
   AppBarColorMode,
   ByteUnitMode,
   AppEditableHotkeySettings,
   AppFrontendHiddenRefreshMode,
+  AppFontSmoothing,
   AppGpuPerformanceUseCase,
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
@@ -38,7 +40,6 @@ interface SettingsPageProps {
   onSave: () => void;
   onRestoreDefaults: () => void;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
-  onAutomaticSchedulingOptimizationsChange: (enabled: boolean) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -46,8 +47,11 @@ interface SettingsPageProps {
   onFrontendHiddenRefreshModeChange: (mode: AppFrontendHiddenRefreshMode) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onThemeChange: (theme: AppThemeMode) => void;
+  onAnimationsChange: (animations: AppAnimationMode) => void;
+  onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
+  onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
   onLanguageChange: (language: AppLanguageMode) => void;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
@@ -233,7 +237,6 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
               onSmartMonitoringModeChange={props.onSmartMonitoringModeChange}
-              onAutomaticSchedulingOptimizationsChange={props.onAutomaticSchedulingOptimizationsChange}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
               onGpuPerformanceUseCasesChange={props.onGpuPerformanceUseCasesChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
@@ -247,8 +250,11 @@ export function SettingsPage(props: SettingsPageProps) {
               settings={props.settings.appearance}
               text={text()}
               onThemeChange={props.onThemeChange}
+              onAnimationsChange={props.onAnimationsChange}
+              onResourceBarHardwareAccelerationModeChange={props.onResourceBarHardwareAccelerationModeChange}
               onBarColorModeChange={props.onBarColorModeChange}
               onByteUnitModeChange={props.onByteUnitModeChange}
+              onFontSmoothingChange={props.onFontSmoothingChange}
               onLanguageChange={props.onLanguageChange}
             />
           </Show>

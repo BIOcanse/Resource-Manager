@@ -68,9 +68,6 @@ export interface SettingsCopy {
     adaptiveBooleanModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description?: string }>;
     gpuPerformanceUseCasesTitle: string;
     gpuPerformanceUseCasesDescription: string;
-    automaticSchedulingOptimizationsTitle: string;
-    automaticSchedulingOptimizationsDescription: string;
-    onOffOptions: Array<{ id: "on" | "off"; label: string; description: string }>;
     preciseGpuPlacementTitle: string;
     preciseGpuPlacementDescription: string;
     preciseGpuPlacementModeOptions: {

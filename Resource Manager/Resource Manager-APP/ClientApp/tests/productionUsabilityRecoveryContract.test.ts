@@ -81,12 +81,14 @@ assert.doesNotMatch(componentCard, /onContextMenu|MoreActionsButton|softwareCont
 // Draft settings belong to one settings-page visit and read-only credits own no edit toolbar.
 assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
 assert.match(settingsPage, /settingsReady\(\) && props\.activeSection !== "credits"/);
-for (const retiredControl of [
+for (const control of [
   "onAnimationsChange",
   "onResourceBarHardwareAccelerationModeChange",
   "onFontSmoothingChange"
 ]) {
-  assert.doesNotMatch(appearanceSettings, new RegExp(retiredControl));
+  assert.match(appearanceSettings, new RegExp(`onChange=\\{props\\.${control}\\}`));
+  assert.match(settingsPage, new RegExp(`${control}=\\{props\\.${control}\\}`));
+  assert.match(settingsWorkspace, new RegExp(`${control}=\\{settings\\.update`));
 }
 assert.match(settingsWorkspace, /onBarColorModeChange=\{settings\.updateBarColorMode\}/);
 assert.match(settingsPage, /onBarColorModeChange=\{props\.onBarColorModeChange\}/);

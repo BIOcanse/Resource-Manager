@@ -26,7 +26,7 @@ export const enRuntimeErrorsCopy: Pick<
     readGpuScoreOverridesFailed: "Reading the GPU score overrides failed",
     readGpuScoresFailed: "Reading the GPU performance scores failed",
     readOptimizationReportsFailed: "Reading the optimization reports failed",
-    switchSmartModeFailed: "Switching the smart optimization mode failed",
+    switchSmartModeFailed: "Changing the scheduling mode failed",
     dismissReportFailed: "Dismissing the report failed",
     removeTrustFailed: "Removing trust failed"
   },

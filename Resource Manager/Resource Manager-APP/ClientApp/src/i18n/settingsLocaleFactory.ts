@@ -42,14 +42,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     ],
     gpuPerformanceUseCasesTitle: "GPU 用途",
     gpuPerformanceUseCasesDescription: "选择主要用途，以更合适地比较不同显卡的能力。可多选。",
-    automaticSchedulingOptimizationsTitle: "自动调度性能优化",
-    automaticSchedulingOptimizationsDescription: "按本机情况省掉用不上的机制，例如只有一块显卡就不跑 GPU 调度。",
-    onOffOptions: [
-      { id: "on", label: "开启", description: "允许按本机实际情况做额外优化。" },
-      { id: "off", label: "关闭", description: "一律按设置照常运行。" }
-    ],
     preciseGpuPlacementTitle: "精确 GPU 选择",
-    preciseGpuPlacementDescription: "只对原生 x64 进程生效，作用于之后新建的 D3D11 设备。每个软件可单独设。",
+    preciseGpuPlacementDescription: "允许受支持的渲染进程精确选卡；运行时换卡仍取决于该进程的兼容能力。每个软件可单独设。",
     preciseGpuPlacementModeOptions: {
       basic: { label: "关闭", description: "仅使用 Windows 支持的显卡偏好。" },
       precise: { label: "开启", description: "允许为软件精确选择目标显卡。" }
@@ -344,14 +338,8 @@ const enSettingsCopy: SettingsCopy = {
     ],
     gpuPerformanceUseCasesTitle: "GPU use cases",
     gpuPerformanceUseCasesDescription: "Select the main workloads to compare GPU capabilities more appropriately. Multiple selections are allowed.",
-    automaticSchedulingOptimizationsTitle: "Automatic scheduling optimizations",
-    automaticSchedulingOptimizationsDescription: "When enabled, mechanisms running in automatic mode may take extra shortcuts based on what this machine actually has - for example, GPU scheduling stops on a machine with a single GPU. When disabled, everything runs as configured.",
-    onOffOptions: [
-      { id: "on", label: "On", description: "Allow extra optimizations based on this machine." },
-      { id: "off", label: "Off", description: "Run everything as configured." }
-    ],
     preciseGpuPlacementTitle: "Precise GPU selection",
-    preciseGpuPlacementDescription: "The current precise provider supports native x64 processes and only affects D3D11 devices created or rebuilt afterward. Each software item remains configurable.",
+    preciseGpuPlacementDescription: "Allow precise GPU selection for supported render processes. Runtime switching still depends on process compatibility, and each app remains configurable.",
     preciseGpuPlacementModeOptions: {
       basic: { label: "Off", description: "Use only GPU preferences supported by Windows." },
       precise: { label: "On", description: "Allow an exact target GPU to be selected for software." }

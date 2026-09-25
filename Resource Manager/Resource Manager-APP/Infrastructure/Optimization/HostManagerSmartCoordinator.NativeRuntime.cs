@@ -70,7 +70,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    private async Task RunScheduledNativeCycleAsync(
+    private async Task<HostManagerWakeDeadlineSnapshot> RunScheduledNativeCycleAsync(
         HostManagerSmartCoordinatorOuterLoopCycleContext? outerLoopContext,
         CancellationToken cancellationToken)
     {
@@ -92,6 +92,7 @@ public sealed partial class HostManagerSmartCoordinator
                 outerLoopContext,
                 HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
                 outcome: "completed");
+            return published;
         }
         catch (OperationCanceledException)
         {
@@ -219,6 +220,16 @@ public sealed partial class HostManagerSmartCoordinator
         }
         var runtimePlan = desired.RuntimePlan;
         var modePlan = runtimePlan.OptimizationMode;
+        if (!modePlan.SchedulingEnabled)
+        {
+            hostPublicResourceNormalReleaseEvidence.Stop();
+            ClearNonAdaptedMemoryModeProjection();
+            schedulingAuthorityOwner.PublishUnavailable(
+                NextComputeScoringGeneration(),
+                HostManagerSchedulingPlanBinding.Create(desired),
+                durableTimeSource.NextUtc(),
+                "optimization-mode-normal");
+        }
         var scoreOnlyEnabled = effectAdmission.IsScoreOnly;
         HostManagerTransactionJournalAdmission? executionAdmission = null;
         if (!scoreOnlyEnabled
@@ -248,6 +259,12 @@ public sealed partial class HostManagerSmartCoordinator
             return new(TimeSpan.FromMilliseconds(
                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
         }
+        if (!modePlan.SchedulingEnabled)
+        {
+            RunNormalModePublicResourceLifecycle(effectAdmission, desired);
+            cycleDiagnostics?.Complete();
+            return new(runtimePlan.HostManager.SchedulerSamplingInterval, effectAdmission);
+        }
         var schedulingPlanBinding = HostManagerSchedulingPlanBinding.Create(desired);
         var sampleCapture = await CaptureHostManagerSampleAsync(
             desired.RuntimePlan,
@@ -270,17 +287,22 @@ public sealed partial class HostManagerSmartCoordinator
         var computeScoring = RunSchedulingAuthority(
             desired.SmartCoordinator,
             desired.RuntimePlan.HostManager.CpuScoring!,
+            modePlan,
             schedulingPlanBinding,
             sample);
         cycleDiagnostics?.CaptureScoring(computeScoring);
         var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
             HostManagerSmartControlZoneIds.PolicyExecution);
-        var hardwareSchedulingEnabled = modePlan.HardwarePlacementEnabled
+        var hardwareExecutionAvailable = hostManagerSmartControlZones.CanRun(
+            HostManagerSmartControlZoneIds.HardwarePlacement);
+        var cpuPlacementEnabled = modePlan.CpuPlacementEnabled
             && desired.RuntimePlan.CpuPlacementTopology is not null
-            && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement);
+            && hardwareExecutionAvailable;
+        var gpuPlacementEnabled = modePlan.GpuPlacementEnabled
+            && hardwareExecutionAvailable;
         cycleDiagnostics?.CaptureGuards(
             policyExecutionEnabled,
-            hardwareSchedulingEnabled);
+            cpuPlacementEnabled || gpuPlacementEnabled);
         var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
         cycleDiagnostics?.Mark("scheduling-authority");
         var ownershipSnapshot = effectAdmission.TryAcquire(
@@ -366,7 +388,8 @@ public sealed partial class HostManagerSmartCoordinator
                                 CreateAppliedOwnershipFactIndex(ownershipSnapshot),
                                 protectionLevels,
                                 policyExecutionEnabled,
-                                hardwareSchedulingEnabled,
+                                cpuPlacementEnabled,
+                                gpuPlacementEnabled,
                                 executionAdmission,
                                 sequence,
                                 trigger,

@@ -28,7 +28,6 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onSave={() => void settings.saveDraft()}
         onRestoreDefaults={settings.resetDraftToDefaults}
         onSmartMonitoringModeChange={settings.updateSmartMonitoringMode}
-        onAutomaticSchedulingOptimizationsChange={settings.updateAutomaticSchedulingOptimizations}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
         onGpuPerformanceUseCasesChange={settings.updateGpuPerformanceUseCases}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}
@@ -36,8 +35,11 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onFrontendHiddenRefreshModeChange={settings.updateFrontendHiddenRefreshMode}
         onLogicRefreshIntervalChange={settings.updateLogicRefreshInterval}
         onThemeChange={settings.updateTheme}
+        onAnimationsChange={settings.updateAnimations}
+        onResourceBarHardwareAccelerationModeChange={settings.updateResourceBarHardwareAccelerationMode}
         onBarColorModeChange={settings.updateBarColorMode}
         onByteUnitModeChange={settings.updateByteUnitMode}
+        onFontSmoothingChange={settings.updateFontSmoothing}
         onLanguageChange={settings.updateLanguage}
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}
         onAutoStartChange={settings.updateAutoStart}

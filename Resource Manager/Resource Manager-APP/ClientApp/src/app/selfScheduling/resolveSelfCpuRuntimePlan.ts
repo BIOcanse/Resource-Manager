@@ -8,6 +8,7 @@ import type {
   AppPerformanceSettings,
   ResourceManagerSelfCpuGrade
 } from "../../types";
+import { optimizationModeHasDomain } from "../../settings/optimizationMode.ts";
 
 export interface ResourceManagerSelfCpuRuntimePlan {
   frontendRefreshPaused: boolean;
@@ -57,6 +58,6 @@ function resolveFrontendRefreshPaused(
     return true;
   }
 
-  return optimizationMode !== "smart"
+  return !optimizationModeHasDomain(optimizationMode, "cpu")
     || cpuGrade === "optimize";
 }

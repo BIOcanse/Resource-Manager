@@ -16,24 +16,41 @@ public enum OptimizationModeCapabilities : byte
     ResourceManagerSelfMemoryActions = 1 << 7
 }
 
+[Flags]
+public enum OptimizationDomains : byte
+{
+    None = 0,
+    Memory = 1 << 0,
+    Cpu = 1 << 1,
+    Gpu = 1 << 2
+}
+
 public sealed record CompiledOptimizationModePlan(
     string Mode,
-    OptimizationModeCapabilities Capabilities)
+    OptimizationModeCapabilities Capabilities,
+    OptimizationDomains Domains)
 {
     private const OptimizationModeCapabilities MemoryOnlyCapabilities =
         OptimizationModeCapabilities.ResourceManagerSelfMemoryActions
         | OptimizationModeCapabilities.AutomaticMemoryCleanup
         | OptimizationModeCapabilities.NonAdaptedMemoryPriority;
-    private const OptimizationModeCapabilities SmartCapabilities =
-        MemoryOnlyCapabilities
-        | OptimizationModeCapabilities.VramResourceActions
-        | OptimizationModeCapabilities.SoftwareScheduling
+    private const OptimizationModeCapabilities CpuCapabilities =
+        OptimizationModeCapabilities.SoftwareScheduling
         | OptimizationModeCapabilities.AutomaticProcessPolicies
+        | OptimizationModeCapabilities.HardwarePlacement;
+    private const OptimizationModeCapabilities GpuCapabilities =
+        OptimizationModeCapabilities.VramResourceActions
+        | OptimizationModeCapabilities.SoftwareScheduling
         | OptimizationModeCapabilities.HardwarePlacement;
 
     public static CompiledOptimizationModePlan Default { get; } = Compile(AppOptimizationModes.Normal);
 
-    public bool SchedulingEnabled => Capabilities != OptimizationModeCapabilities.None;
+    public bool SchedulingEnabled => Domains != OptimizationDomains.None;
+    public bool MemorySchedulingEnabled => HasDomain(OptimizationDomains.Memory);
+    public bool CpuSchedulingEnabled => HasDomain(OptimizationDomains.Cpu);
+    public bool GpuSchedulingEnabled => HasDomain(OptimizationDomains.Gpu);
+    public bool CpuPlacementEnabled => CpuSchedulingEnabled && HardwarePlacementEnabled;
+    public bool GpuPlacementEnabled => GpuSchedulingEnabled && HardwarePlacementEnabled;
     public bool ExternalAdaptedMemoryActionsEnabled =>
         Has(OptimizationModeCapabilities.ExternalAdaptedMemoryActions);
     public bool ResourceManagerSelfMemoryActionsEnabled =>
@@ -47,25 +64,39 @@ public sealed record CompiledOptimizationModePlan(
         Has(OptimizationModeCapabilities.NonAdaptedMemoryPriority);
     public static CompiledOptimizationModePlan Compile(string? mode)
     {
-        var normalized = mode switch
+        var normalized = AppOptimizationModes.Normalize(mode);
+        var domains = normalized switch
         {
-            AppOptimizationModes.MemoryOnly => AppOptimizationModes.MemoryOnly,
-            AppOptimizationModes.Smart => AppOptimizationModes.Smart,
-            _ => AppOptimizationModes.Normal
+            AppOptimizationModes.MemoryOnly => OptimizationDomains.Memory,
+            AppOptimizationModes.CpuOnly => OptimizationDomains.Cpu,
+            AppOptimizationModes.GpuOnly => OptimizationDomains.Gpu,
+            AppOptimizationModes.MemoryCpu => OptimizationDomains.Memory | OptimizationDomains.Cpu,
+            AppOptimizationModes.MemoryGpu => OptimizationDomains.Memory | OptimizationDomains.Gpu,
+            AppOptimizationModes.CpuGpu => OptimizationDomains.Cpu | OptimizationDomains.Gpu,
+            AppOptimizationModes.Smart => OptimizationDomains.Memory | OptimizationDomains.Cpu | OptimizationDomains.Gpu,
+            _ => OptimizationDomains.None
         };
-
-        var capabilities = normalized switch
+        var capabilities = OptimizationModeCapabilities.None;
+        if (domains.HasFlag(OptimizationDomains.Memory))
         {
-            AppOptimizationModes.MemoryOnly => MemoryOnlyCapabilities,
-            AppOptimizationModes.Smart => SmartCapabilities,
-            _ => OptimizationModeCapabilities.None
-        };
-
-        return new CompiledOptimizationModePlan(normalized, capabilities);
+            capabilities |= MemoryOnlyCapabilities;
+        }
+        if (domains.HasFlag(OptimizationDomains.Cpu))
+        {
+            capabilities |= CpuCapabilities;
+        }
+        if (domains.HasFlag(OptimizationDomains.Gpu))
+        {
+            capabilities |= GpuCapabilities;
+        }
+        return new CompiledOptimizationModePlan(normalized, capabilities, domains);
     }
 
     private bool Has(OptimizationModeCapabilities capability)
     {
         return (Capabilities & capability) != 0;
     }
+
+    private bool HasDomain(OptimizationDomains domain)
+        => (Domains & domain) != 0;
 }

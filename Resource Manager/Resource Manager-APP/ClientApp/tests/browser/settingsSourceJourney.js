@@ -165,6 +165,42 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     await autoStart.waitFor({ state: "visible" });
     assert(await autoStart.isChecked() === enabled, `Autostart ${enabled} did not survive reload`);
   }
+  await page.getByRole("button", { name: "外观", exact: true }).click();
+  for (const name of ["动画效果", "资源条硬件加速", "文字平滑"]) {
+    assert(await page.getByRole("radiogroup", { name }).isVisible(),
+      `${name} has a persisted setting but no usable control`);
+  }
+  await page.getByRole("radiogroup", { name: "动画效果" })
+    .getByRole("radio", { name: "无动画" }).click();
+  await page.getByRole("radiogroup", { name: "资源条硬件加速" })
+    .getByRole("radio", { name: "始终关闭" }).click();
+  await page.getByRole("radiogroup", { name: "文字平滑" })
+    .getByRole("radio", { name: "灰度平滑" }).click();
+  const appearanceSave = page.waitForResponse((response) => response.request().method() === "PATCH"
+    && new URL(response.url()).pathname === "/api/settings/app");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await appearanceSave;
+  const appearancePatch = settingsPatchBodies.at(-1)?.changes?.appearance;
+  assert(appearancePatch?.animations === "none"
+    && appearancePatch?.resourceBarHardwareAccelerationMode === "disabled"
+    && appearancePatch?.fontSmoothing === "grayscale",
+    `Restored appearance controls did not save their values: ${JSON.stringify(appearancePatch)}`);
+  await page.getByRole("button", { name: "性能", exact: true }).click();
+  assert(await page.getByText("自动调度性能优化", { exact: true }).count() === 0
+    && await page.getByText("单显卡启动拦截", { exact: true }).count() === 0,
+    "Retired scheduling optimization control is still visible");
+  const gpuUseCases = page.getByRole("group", { name: "GPU 用途" });
+  assert(await gpuUseCases.isVisible(), "GPU performance use cases have no usable control");
+  assert(await gpuUseCases.getByRole("checkbox", { name: "综合" }).isChecked(),
+    "The saved default GPU use case is not selected");
+  await gpuUseCases.getByRole("checkbox", { name: "AI" }).click();
+  const performanceSave = page.waitForResponse((response) => response.request().method() === "PATCH"
+    && new URL(response.url()).pathname === "/api/settings/app");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await performanceSave;
+  assert(JSON.stringify(settingsPatchBodies.at(-1)?.changes?.performance?.gpuPerformanceUseCases)
+    === JSON.stringify(["general", "ai"]),
+    "GPU performance use cases did not save both selected values");
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {

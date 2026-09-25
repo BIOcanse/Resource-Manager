@@ -51,15 +51,20 @@ internal sealed record HostManagerAutomaticPlacementPlan(
 internal static class HostManagerAutomaticPlacementPlanner
 {
     internal static HostManagerAutomaticPlacementPlan Plan(
-        CpuTopologySnapshot topology,
+        CpuTopologySnapshot? topology,
         HardwareMetricSnapshot hardware,
         CompiledHardwareScorePlan hardwareScores,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         CompiledHostManagerPlacementCoordinatorRecreatePlan capacity,
         bool runtimeGpuShimEnabled = false,
-        CompiledGpuOverflowPolicy? gpuOverflow = null)
+        CompiledGpuOverflowPolicy? gpuOverflow = null,
+        bool cpuPlacementEnabled = true,
+        bool gpuPlacementEnabled = true)
     {
-        ArgumentNullException.ThrowIfNull(topology);
+        if (cpuPlacementEnabled)
+        {
+            ArgumentNullException.ThrowIfNull(topology);
+        }
         ArgumentNullException.ThrowIfNull(hardware);
         ArgumentNullException.ThrowIfNull(hardwareScores);
         ArgumentNullException.ThrowIfNull(processes);
@@ -67,8 +72,8 @@ internal static class HostManagerAutomaticPlacementPlanner
         ValidateCapacity(topology, processes, capacity);
 
         return new HostManagerAutomaticPlacementPlan(
-            PlanCpu(topology, hardwareScores, processes),
-            PlanGpu(hardware, hardwareScores, processes, runtimeGpuShimEnabled, gpuOverflow));
+            cpuPlacementEnabled ? PlanCpu(topology!, hardwareScores, processes) : [],
+            gpuPlacementEnabled ? PlanGpu(hardware, hardwareScores, processes, runtimeGpuShimEnabled, gpuOverflow) : []);
     }
 
     private static IReadOnlyList<HostManagerAutomaticCpuPlacement> PlanCpu(
@@ -192,7 +197,7 @@ internal static class HostManagerAutomaticPlacementPlanner
             .Where(static state => state is not null)
             .Select(static state => state!)
             .ToArray();
-        if (adapters.Length == 0)
+        if (adapters.Length < 2)
         {
             return [];
         }
@@ -334,13 +339,13 @@ internal static class HostManagerAutomaticPlacementPlanner
             || enabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase);
 
     private static void ValidateCapacity(
-        CpuTopologySnapshot topology,
+        CpuTopologySnapshot? topology,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         CompiledHostManagerPlacementCoordinatorRecreatePlan capacity)
     {
         if (!capacity.IsPublished
-            || topology.PhysicalCores.Count > capacity.CoreCapacity
-            || topology.Ccds.Count > capacity.CcdCapacity
+            || (topology?.PhysicalCores.Count ?? 0) > capacity.CoreCapacity
+            || (topology?.Ccds.Count ?? 0) > capacity.CcdCapacity
             || processes.Count > capacity.TargetCapacity)
         {
             throw new InvalidDataException(

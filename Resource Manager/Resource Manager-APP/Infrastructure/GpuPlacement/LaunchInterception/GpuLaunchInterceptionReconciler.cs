@@ -12,12 +12,12 @@ public sealed class GpuLaunchInterceptionReconciler(
     {
         try
         {
-            // GPU 调度停用时（设置关掉，或自动模式下只有一个显卡）不写任何启动拦截规则。
+            // 单显卡没有可迁移目标，不写启动拦截规则。
             var availability = await schedulingAvailability.EvaluateAsync(stoppingToken);
             if (!availability.Enabled)
             {
                 logger.LogInformation(
-                    "GPU scheduling is off ({Domain}/{Code}); launch interception is not reconciled.",
+                    "GPU launch interception has no migration target ({Domain}/{Code}); rules are not reconciled.",
                     availability.Reason?.Domain,
                     availability.Reason?.Code);
                 return;

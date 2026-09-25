@@ -16,7 +16,8 @@ public sealed partial class HostManagerSmartCoordinator
         NativeAppliedOwnershipFactIndex ownership,
         IReadOnlyDictionary<string, int> protectionLevels,
         bool policyExecutionEnabled,
-        bool hardwareSchedulingEnabled,
+        bool cpuPlacementEnabled,
+        bool gpuPlacementEnabled,
         HostManagerTransactionJournalAdmission? executionAdmission,
         ulong sequence,
         string trigger,
@@ -36,7 +37,7 @@ public sealed partial class HostManagerSmartCoordinator
             protectionLevels,
             modePlan,
             policyExecutionEnabled,
-            hardwareSchedulingEnabled,
+            cpuPlacementEnabled,
             computeScoring);
         cycleDiagnostics?.CaptureProjection(projection.InputCount);
         cycleDiagnostics?.Mark("fact-projection");
@@ -235,7 +236,8 @@ public sealed partial class HostManagerSmartCoordinator
             desired,
             sample,
             computeScoring,
-            hardwareSchedulingEnabled,
+            cpuPlacementEnabled,
+            gpuPlacementEnabled,
             cancellationToken,
             firstUse);
     }

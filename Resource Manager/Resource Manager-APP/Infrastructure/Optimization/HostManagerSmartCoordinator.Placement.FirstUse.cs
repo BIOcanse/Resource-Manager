@@ -116,7 +116,7 @@ public sealed partial class HostManagerSmartCoordinator
         var process = RefreshFirstUseProcess(planned.Process);
         current = planned with { Process = process };
         return LifecycleState is not (HostManagerSmartCoordinatorLifecycleState.Closing or HostManagerSmartCoordinatorLifecycleState.Closed)
-            && runtimePlanProvider.Current.OptimizationMode.HardwarePlacementEnabled
+            && runtimePlanProvider.Current.OptimizationMode.GpuPlacementEnabled
             && !runtimePlanProvider.Current.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled
             && HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
                 processEffectValidationScopeAuthorityOwner.Capture(), HostManagerCycleEffectKind.NativeActionTransaction)

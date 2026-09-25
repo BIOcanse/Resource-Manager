@@ -69,6 +69,22 @@ internal sealed class HostManagerVersionedWakeDeadline
         }
     }
 
+    internal bool ClearScheduled(ulong expectedVersion)
+    {
+        lock (sync)
+        {
+            if (version != expectedVersion || !hasDeadline)
+            {
+                return false;
+            }
+
+            version = NextVersion(version);
+            hasDeadline = false;
+            deadlineTimestamp = 0;
+            return true;
+        }
+    }
+
     internal HostManagerWakeDeadlineSnapshot PublishForeground(TimeSpan delay)
     {
         var candidate = CreateDeadline(delay);
