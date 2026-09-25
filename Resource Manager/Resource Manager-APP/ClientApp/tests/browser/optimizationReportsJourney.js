@@ -1,6 +1,7 @@
 export default async function optimizationReportsJourney(page, baseUrl) {
   const failures = [];
   const reportRequests = [];
+  const gpuScoreRequests = [];
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
   page.on("console", (message) => {
     if (message.type() === "error") {
@@ -11,6 +12,9 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/api/optimization/reports")) {
       reportRequests.push({ path, method: request.method() });
+    }
+    if (path.startsWith("/api/gpu/performance-")) {
+      gpuScoreRequests.push(path);
     }
   });
 
@@ -33,12 +37,20 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     capabilities: "ready",
     settings: "ready",
     optimizationRuntime: true,
-    optimizationReports: "ready"
+    optimizationReports: "ready",
+    unknownGpuScore: true
   });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "性能优化", exact: true }).click();
   await page.getByRole("heading", { name: "优化报告", exact: true })
     .waitFor({ state: "visible", timeout: 5000 });
+  await page.getByText("显卡型号未匹配", { exact: true })
+    .waitFor({ state: "visible", timeout: 5000 });
+  assert(await page.getByText(/GPU0 Unlisted GPU 未匹配内置性能分/).isVisible(),
+    "Unknown GPU model must be identified on the report page");
+  assert(gpuScoreRequests.includes("/api/gpu/performance-scores")
+    && !gpuScoreRequests.includes("/api/gpu/performance-overrides"),
+  `Report warning must read scores independently of overrides: ${JSON.stringify(gpuScoreRequests)}`);
   const modeGroup = page.locator(".optimization-mode-group");
   assert(await modeGroup.getByRole("button").count() === 4,
     "Scheduling mode does not expose Normal, Memory, CPU, and GPU choices");
@@ -89,7 +101,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   assert(await page.getByText("暂时没有需要处理的报告。", { exact: true }).isVisible(),
     "A failed report refresh discarded the last-good overview");
 
-  await postScenario({ optimizationReports: "ready" });
+  await postScenario({ optimizationReports: "ready", unknownGpuScore: false });
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.waitForFunction(() => {
     const button = Array.from(document.querySelectorAll("button"))
@@ -98,6 +110,8 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   });
   assert(await observationStatus.count() === 0,
     "Report refresh must not restore internal rule-status copy");
+  await page.getByText("显卡型号未匹配", { exact: true })
+    .waitFor({ state: "detached", timeout: 5000 });
   const refreshPosts = reportRequests.filter((request) =>
     request.path === "/api/optimization/reports/refresh"
       && request.method === "POST").length;

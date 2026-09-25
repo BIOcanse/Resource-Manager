@@ -164,7 +164,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         hasOverride,
                         preset.IsIntegrated,
                         preset.Source,
-                        preset.MatchedPreset);
+                        preset.MatchedPreset,
+                        preset.IsPresetMatch);
                 })
                 .ToArray();
             return Results.Ok(new GpuPerformanceScoreSnapshot(

@@ -41,6 +41,7 @@ import type { ResourceMonitorSnapshot } from "../../types.ts";
 import type {
   DashboardSettingsResult,
   GpuSpecializedTelemetrySnapshot,
+  GpuPerformanceScoreSnapshot,
   MetricDefinition,
   MetricSnapshot
 } from "../../types.ts";
@@ -98,6 +99,7 @@ import type { OptimizationReportOverview } from "../../types.ts";
 import type { HostManagerRollbackStateDocument } from "../../types.ts";
 import {
   buildGpuSpecializedTelemetrySubscriptionUrl,
+  getGpuPerformanceScoreSource,
   getGpuSchedulingModelSource,
   gpuSpecializedTelemetryDecoder,
   normalizeGpuSpecializedTelemetryQuery,
@@ -127,6 +129,7 @@ export interface FrontendSources {
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
+  readonly gpuPerformanceScores: SourceHandle<GpuPerformanceScoreSnapshot>;
   readonly metricSnapshot: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
   readonly resourceMonitor: PushValueSourceFamily<
     ResourceMonitorQuery,
@@ -232,6 +235,12 @@ export function createFrontendSources(
       retainLastGood: true,
       selectCapturedAt: (value) =>
         value.status.lastEvaluationAt ?? value.capturedAt
+    }),
+    gpuPerformanceScores: sourceRegistry.define<GpuPerformanceScoreSnapshot>({
+      key: "gpu.performance-scores",
+      load: (signal) => getGpuPerformanceScoreSource(requestClient, signal),
+      retainLastGood: false,
+      selectCapturedAt: (value) => value.capturedAt
     }),
     metricSnapshot: new BackendPushValueSourceFamily<
       MetricSnapshotQuery,

@@ -666,6 +666,8 @@ const esEsAppCopy: AppCopy = {
     search: "Buscar",
     searchLabel: "Buscar en los informes de optimización",
     reportPanel: "Informes de optimización",
+    gpuScoreUnrecognizedTitle: "Modelo de GPU no reconocido",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} no coincide con ninguna puntuación de rendimiento integrada. Una puntuación manual positiva permite incluir estas GPU en la clasificación automática.`,
     filterLabel: "Filtro de informes",
     filterUntrusted: (count: string) => `No confiables ${count}`,
     filterAll: (count: string) => `Todos ${count}`,

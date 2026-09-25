@@ -34,6 +34,12 @@ export interface GpuSchedulingModelSnapshot {
   readonly capturedAt: string | null;
 }
 
+export function unrecognizedGpuNames(snapshot: GpuPerformanceScoreSnapshot): string[] {
+  return snapshot.gpus
+    .filter((gpu) => !gpu.isPresetMatch)
+    .map((gpu) => `GPU${gpu.index} ${gpu.name.trim()}`.trim());
+}
+
 export interface GpuSpecializedTelemetryQuery {
   readonly counterIds: readonly string[];
 }
@@ -101,25 +107,33 @@ export async function getGpuSchedulingModelSource(
       signal,
       request: { method: "GET" }
     }),
-    requestClient.execute({
-      key: "details.gpu.performance-scores",
-      url: "/api/gpu/performance-scores",
-      fallbackError: uiText.apiError.readGpuScoresFailed,
-      decoder: gpuPerformanceScoreSnapshotDecoder,
-      signal,
-      request: { method: "GET" }
-    })
+    getGpuPerformanceScoreSource(requestClient, signal)
   ] as const;
   const [scoreOverrides, scoreSnapshot] = await Promise.all(fixedRequests);
   const timestamps = [
     scoreOverrides.value.updatedAt,
-    scoreSnapshot.value.capturedAt
+    scoreSnapshot.capturedAt
   ];
   return Object.freeze({
     scoreOverrides: scoreOverrides.value,
-    scoreSnapshot: scoreSnapshot.value,
+    scoreSnapshot,
     capturedAt: latestTimestamp(timestamps)
   });
+}
+
+export async function getGpuPerformanceScoreSource(
+  requestClient: Pick<RequestClient, "execute">,
+  signal?: AbortSignal
+): Promise<GpuPerformanceScoreSnapshot> {
+  const response = await requestClient.execute({
+    key: "gpu.performance-scores",
+    url: "/api/gpu/performance-scores",
+    fallbackError: uiText.apiError.readGpuScoresFailed,
+    decoder: gpuPerformanceScoreSnapshotDecoder,
+    signal,
+    request: { method: "GET" }
+  });
+  return response.value;
 }
 
 export const gpuPerformanceScoreOverrideDecoder =
@@ -211,7 +225,8 @@ function decodeGpuPerformanceScoreItem(
       `${path}.hasPerformanceOverride`),
     isIntegrated: requireBoolean(item.isIntegrated, `${path}.isIntegrated`),
     source: requireString(item.source, `${path}.source`),
-    matchedPreset: optionalNullableString(item.matchedPreset, `${path}.matchedPreset`)
+    matchedPreset: optionalNullableString(item.matchedPreset, `${path}.matchedPreset`),
+    isPresetMatch: requireBoolean(item.isPresetMatch, `${path}.isPresetMatch`)
   });
 }
 

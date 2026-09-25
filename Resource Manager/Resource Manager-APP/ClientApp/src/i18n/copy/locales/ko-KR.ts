@@ -666,6 +666,8 @@ const koKrAppCopy: AppCopy = {
     search: "검색",
     searchLabel: "최적화 보고서 검색",
     reportPanel: "최적화 보고서",
+    gpuScoreUnrecognizedTitle: "GPU 모델을 인식하지 못했습니다",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names}에 일치하는 기본 성능 점수가 없습니다. 양수의 수동 점수를 설정하면 자동 GPU 순위에 포함됩니다.`,
     filterLabel: "보고서 필터",
     filterUntrusted: (count: string) => `신뢰하지 않음 ${count}`,
     filterAll: (count: string) => `전체 ${count}`,

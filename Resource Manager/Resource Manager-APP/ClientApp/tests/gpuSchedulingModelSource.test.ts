@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import {
   buildGpuSpecializedCounterIds,
   buildGpuSpecializedTelemetrySubscriptionUrl,
+  getGpuPerformanceScoreSource,
   getGpuSchedulingModelSource,
   gpuPerformanceScoreSnapshotDecoder,
   normalizeGpuSpecializedTelemetryQuery,
-  normalizeGpuSchedulingModelQuery
+  normalizeGpuSchedulingModelQuery,
+  unrecognizedGpuNames
 } from "../src/data/gpu/gpuSchedulingModelSource.ts";
 
 const capturedAt = "2026-08-29T12:00:00.000Z";
@@ -40,6 +42,15 @@ const current = await getGpuSchedulingModelSource(
 assert.equal(current.scoreSnapshot.gpus[0]?.gpuId, "gpu:0");
 assert.equal(current.capturedAt, capturedAt);
 assert.deepEqual(current.scoreOverrides.scoresByGpuId, { "gpu:0": 10 });
+assert.equal((await getGpuPerformanceScoreSource(fakeClient(() => "epoch"))).gpus[0]?.name, "Test GPU");
+assert.deepEqual(unrecognizedGpuNames(current.scoreSnapshot), []);
+assert.deepEqual(unrecognizedGpuNames({
+  ...current.scoreSnapshot,
+  gpus: [
+    current.scoreSnapshot.gpus[0]!,
+    { ...current.scoreSnapshot.gpus[0]!, index: 1, name: "New GPU", isPresetMatch: false }
+  ]
+}), ["GPU1 New GPU"]);
 
 assert.throws(
   () => gpuPerformanceScoreSnapshotDecoder.decode({
@@ -113,7 +124,8 @@ function scorePayload() {
       hasPerformanceOverride: false,
       isIntegrated: false,
       source: "test",
-      matchedPreset: null
+      matchedPreset: null,
+      isPresetMatch: true
     }]
   };
 }

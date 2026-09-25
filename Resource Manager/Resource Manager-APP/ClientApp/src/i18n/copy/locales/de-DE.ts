@@ -666,6 +666,8 @@ const deDeAppCopy: AppCopy = {
     search: "Suchen",
     searchLabel: "Optimierungsberichte durchsuchen",
     reportPanel: "Optimierungsberichte",
+    gpuScoreUnrecognizedTitle: "GPU-Modell nicht erkannt",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} hat keinen passenden integrierten Leistungswert. Mit einem positiven manuellen Wert können diese GPUs automatisch eingestuft werden.`,
     filterLabel: "Berichtsfilter",
     filterUntrusted: (count: string) => `Nicht vertrauenswürdig ${count}`,
     filterAll: (count: string) => `Alle ${count}`,

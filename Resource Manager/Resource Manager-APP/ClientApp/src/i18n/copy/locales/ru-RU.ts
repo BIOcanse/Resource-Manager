@@ -666,6 +666,8 @@ const ruRuAppCopy: AppCopy = {
     search: "Поиск",
     searchLabel: "Поиск в отчётах об оптимизации",
     reportPanel: "Отчёты об оптимизации",
+    gpuScoreUnrecognizedTitle: "Модель GPU не распознана",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names}: встроенная оценка производительности не найдена. Положительная оценка, заданная вручную, позволит включить эти GPU в автоматическое ранжирование.`,
     filterLabel: "Фильтр отчётов",
     filterUntrusted: (count: string) => `Недоверенные ${count}`,
     filterAll: (count: string) => `Все ${count}`,

@@ -16,6 +16,8 @@ export const zhOptimizationCopy = {
     search: "搜索",
     searchLabel: "性能优化搜索",
     reportPanel: "优化报告",
+    gpuScoreUnrecognizedTitle: "显卡型号未匹配",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} 未匹配内置性能分；手动设置正数性能分后可参与 GPU 自动排序。`,
     filterLabel: "报告筛选",
     filterUntrusted: (count: string) => `未信任 ${count}`,
     filterAll: (count: string) => `全部 ${count}`,

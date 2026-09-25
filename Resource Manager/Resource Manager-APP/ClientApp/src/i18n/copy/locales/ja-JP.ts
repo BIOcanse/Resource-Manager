@@ -666,6 +666,8 @@ const jaJpAppCopy: AppCopy = {
     search: "検索",
     searchLabel: "最適化レポートを検索",
     reportPanel: "最適化レポート",
+    gpuScoreUnrecognizedTitle: "GPU モデルが未登録です",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} は内蔵の性能スコアに一致しません。正の手動スコアを設定すると GPU の自動順位に含められます。`,
     filterLabel: "レポートのフィルター",
     filterUntrusted: (count: string) => `未信頼 ${count}`,
     filterAll: (count: string) => `すべて ${count}`,
