@@ -30,4 +30,5 @@ public sealed record GpuPerformanceScoreItem(
     bool HasPerformanceOverride,
     bool IsIntegrated,
     string Source,
-    string? MatchedPreset);
+    string? MatchedPreset,
+    bool IsPresetMatch);

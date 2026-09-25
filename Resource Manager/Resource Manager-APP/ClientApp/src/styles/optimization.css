@@ -102,6 +102,26 @@
   gap: 10px;
 }
 
+.optimization-gpu-score-notice {
+  display: grid;
+  gap: 3px;
+  margin: 12px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--warn);
+}
+
+.optimization-gpu-score-notice strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.optimization-gpu-score-notice span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .optimization-report,
 .optimization-trust-item {
   min-width: 0;

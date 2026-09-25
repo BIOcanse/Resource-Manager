@@ -666,6 +666,8 @@ const frFrAppCopy: AppCopy = {
     search: "Rechercher",
     searchLabel: "Rechercher dans les rapports d'optimisation",
     reportPanel: "Rapports d'optimisation",
+    gpuScoreUnrecognizedTitle: "Modèle de GPU non reconnu",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} ne correspond à aucun score de performance intégré. Un score manuel positif permet d'inclure ces GPU dans le classement automatique.`,
     filterLabel: "Filtre des rapports",
     filterUntrusted: (count: string) => `Non approuvés ${count}`,
     filterAll: (count: string) => `Tous ${count}`,
