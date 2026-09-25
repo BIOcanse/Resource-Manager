@@ -12,13 +12,14 @@ public sealed class NativeUiStartupTests
         var project = File.ReadAllText(Path.Combine(
             nativeUiRoot,
             "ResourceManager.NativeUi.csproj"));
-        var mainForm = File.ReadAllText(Path.Combine(nativeUiRoot, "MainForm.cs"));
+        var mainForm = File.ReadAllText(Path.Combine(nativeUiRoot, "Shell", "MainForm.cs"));
         var webViewHost = File.ReadAllText(Path.Combine(
             nativeUiRoot,
             "WebView",
             "WebView2FrontendHost.cs"));
         var webViewFlow = File.ReadAllText(Path.Combine(
             nativeUiRoot,
+            "Shell",
             "MainForm.WebView.cs"));
 
         Assert.Contains("Microsoft.Web.WebView2", project, StringComparison.Ordinal);
@@ -90,6 +91,7 @@ public sealed class NativeUiStartupTests
         var program = File.ReadAllText(Path.Combine(nativeUiRoot, "Program.cs"));
         var options = File.ReadAllText(Path.Combine(
             nativeUiRoot,
+            "Configuration",
             "NativeUiLaunchOptions.cs"));
 
         Assert.DoesNotContain("UserLogonStartupTaskRegistration", program, StringComparison.Ordinal);
