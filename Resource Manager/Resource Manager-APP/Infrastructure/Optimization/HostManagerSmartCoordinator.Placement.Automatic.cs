@@ -22,7 +22,8 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerSmartCoordinatorRuntimePlan desiredRuntime,
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
-        bool hardwareSchedulingEnabled,
+        bool cpuPlacementEnabled,
+        bool gpuPlacementEnabled,
         CancellationToken cancellationToken,
         List<HostManagerAutomaticGpuPlacement>? firstUse = null)
     {
@@ -32,7 +33,8 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var state = await LoadRollbackStateAsync(cancellationToken);
-        if (!hardwareSchedulingEnabled && !GpuActionFacts.HasPlacementEffects(state.AppliedPlacements))
+        if (!cpuPlacementEnabled && !gpuPlacementEnabled
+            && !GpuActionFacts.HasPlacementEffects(state.AppliedPlacements))
         {
             return true;
         }
@@ -44,13 +46,15 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         IReadOnlyList<HostManagerPlacementDesired> fullDesired = [];
-        if (hardwareSchedulingEnabled)
+        if (cpuPlacementEnabled || gpuPlacementEnabled)
         {
-            var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology
-                ?? throw new InvalidDataException(
-                    "Hardware placement is enabled without a compiled CPU topology.");
+            var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology;
             var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements);
-            processes = await PrepareAutomaticGpuCandidatesAsync(processes, state.AppliedPlacements, firstUse, cancellationToken);
+            if (gpuPlacementEnabled)
+            {
+                processes = await PrepareAutomaticGpuCandidatesAsync(
+                    processes, state.AppliedPlacements, firstUse, cancellationToken);
+            }
             var planned = HostManagerAutomaticPlacementPlanner.Plan(
                 topology,
                 sample.Hardware,
@@ -58,7 +62,9 @@ public sealed partial class HostManagerSmartCoordinator
                 processes,
                 desiredRuntime.HostPlan.HostRecreate.PlacementCoordinator,
                 desiredRuntime.RuntimePlan.GpuPlacement.GlobalPreciseProviderEnabled,
-                desiredRuntime.HostPlan.HotPublish.PlacementCoordinator.GpuOverflow);
+                desiredRuntime.HostPlan.HotPublish.PlacementCoordinator.GpuOverflow,
+                cpuPlacementEnabled,
+                gpuPlacementEnabled);
             fullDesired = await CreateAutomaticPlacementDesiredAsync(
                 topology,
                 sample,
@@ -66,6 +72,8 @@ public sealed partial class HostManagerSmartCoordinator
                 planned,
                 state.AppliedPlacements,
                 cancellationToken,
+                cpuPlacementEnabled,
+                gpuPlacementEnabled,
                 firstUse);
         }
 
@@ -283,12 +291,14 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private async Task<IReadOnlyList<HostManagerPlacementDesired>> CreateAutomaticPlacementDesiredAsync(
-        CpuTopologySnapshot topology,
+        CpuTopologySnapshot? topology,
         HostManagerSample sample,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         HostManagerAutomaticPlacementPlan plan,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
         CancellationToken cancellationToken,
+        bool cpuPlacementEnabled,
+        bool gpuPlacementEnabled,
         List<HostManagerAutomaticGpuPlacement>? firstUse = null)
     {
         var recordedState = existingPlacements;
@@ -306,7 +316,10 @@ public sealed partial class HostManagerSmartCoordinator
                     OptimizationResourceKinds.Cpu,
                     cpu.Process.TargetId),
                 out var existing);
-            var item = TryCreateCpuPlacementDesired(topology, cpu, existing);
+            var item = TryCreateCpuPlacementDesired(
+                topology ?? throw new InvalidDataException("CPU placement has no topology."),
+                cpu,
+                existing);
             if (item is not null)
             {
                 desired.Add(item);
@@ -356,10 +369,14 @@ public sealed partial class HostManagerSmartCoordinator
                 var retainForMissingScore = existing.ResourceKind.Equals(
                         OptimizationResourceKinds.Cpu,
                         StringComparison.OrdinalIgnoreCase)
-                    ? WantsCpuPlacement(topology, process) && !process.CanonicalCpuScore.HasValue
+                    ? cpuPlacementEnabled
+                        && topology is not null
+                        && WantsCpuPlacement(topology, process)
+                        && !process.CanonicalCpuScore.HasValue
                     : existing.ResourceKind.Equals(
                             OptimizationResourceKinds.Gpu,
                             StringComparison.OrdinalIgnoreCase)
+                        && gpuPlacementEnabled
                         && (record.Kind is HostManagerAppliedRecordKinds.GpuShimPolicy
                             or HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger)
                         && WantsGpuShim(process)

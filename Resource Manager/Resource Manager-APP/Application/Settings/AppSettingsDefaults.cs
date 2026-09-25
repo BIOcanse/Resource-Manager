@@ -5,7 +5,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.24";
+    public const string CurrentVersion = "1.0.25";
     public const int MonitoringIdleSeconds = 5;
     public const int MinLogicRefreshIntervalMs = 500;
     public const int MaxLogicRefreshIntervalMs = 300_000;
@@ -43,7 +43,6 @@ public static class AppSettingsDefaults
                 GpuPerformanceUseCases: [AppGpuPerformanceUseCases.General],
                 SmartMonitoringMode: AppAdaptiveBooleanModes.Auto,
                 FrontendHiddenRefreshMode: AppFrontendHiddenRefreshModes.Auto,
-                AutomaticSchedulingOptimizationsEnabled: true,
                 MonitorRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
                     AppLogicRefreshIntervalPresets.Responsive,
                     MonitorRefreshResponsiveIntervalMs),

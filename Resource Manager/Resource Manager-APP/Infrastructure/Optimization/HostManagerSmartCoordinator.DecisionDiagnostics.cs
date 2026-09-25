@@ -17,7 +17,8 @@ public sealed partial class HostManagerSmartCoordinator
             var authority = schedulingAuthorityOwner.Capture();
             var memoryProjection = NonAdaptedMemoryModeProjection;
             var workspace = nativeWorkspace;
-            var native = workspace is null
+            var schedulingEnabled = runtimePlan.OptimizationMode.SchedulingEnabled;
+            var native = !schedulingEnabled || workspace is null
                 ? null
                 : ProjectNativeDiagnostics(
                     workspace.Snapshot,
@@ -28,7 +29,7 @@ public sealed partial class HostManagerSmartCoordinator
                 DateTimeOffset.UtcNow,
                 runtimePlan.Version,
                 runtimePlan.OptimizationMode.Mode,
-                schedulerRunning,
+                schedulerRunning && schedulingEnabled,
                 ProjectSchedulingAuthorityDiagnostics(authority),
                 native,
                 ProjectNonAdaptedMemoryDiagnostics(memoryProjection));

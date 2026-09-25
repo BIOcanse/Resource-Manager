@@ -93,7 +93,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         var running = (Task<bool>)typeof(HostManagerSmartCoordinator).GetMethod("RunAutomaticPlacementCycleAsync",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(coordinator,
-                [admission, desiredRuntime, sample, compute, true, CancellationToken.None, null])!;
+                [admission, desiredRuntime, sample, compute, true, true, CancellationToken.None, null])!;
         Assert.Equal(!expireWindowWork, await running.WaitAsync(TimeSpan.FromSeconds(40)));
         Assert.Equal(4, actions.PrepareCalls); // Route admission, then exact destination preparation.
         Assert.Equal(expireWindowWork ? 1 : 2, actions.ApplyCalls);

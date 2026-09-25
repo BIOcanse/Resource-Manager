@@ -120,6 +120,11 @@ public interface IHostPublicResourceCapability
     HostPublicResourceCapabilitySnapshot GetCapability();
 }
 
+public interface IHostPublicResourcePublicationNotifier
+{
+    event Action? HostResourcePublished;
+}
+
 internal interface ISharedResourceSubscriptionMaintenance
 {
     int MaintenanceIntervalMilliseconds { get; }

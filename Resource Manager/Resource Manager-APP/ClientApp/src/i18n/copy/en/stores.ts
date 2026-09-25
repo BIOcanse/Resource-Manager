@@ -64,7 +64,7 @@ export const enStoresCopy: Pick<AppCopy, "stores" | "componentAcquisition"> = {
     resultIncomplete: "The operation did not complete.",
     optimizationReportDisabled: "This startup profile does not enable optimization reports.",
     optimizationSchedulingDisabled: "This startup profile does not enable optimization scheduling.",
-    smartModeSwitchFailed: "Switching the smart optimization mode failed",
+    smartModeSwitchFailed: "Changing the scheduling mode failed",
     optimizationReportRefreshFailed: "Refreshing performance optimization reports failed",
     optimizationScheduleRefreshFailed: "Refreshing optimization scheduling state failed",
     metricCatalogRefreshFailed: "Refreshing the metric catalog failed"

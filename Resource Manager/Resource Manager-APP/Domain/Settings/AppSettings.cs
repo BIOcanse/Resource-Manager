@@ -144,7 +144,19 @@ public static class AppOptimizationModes
 {
     public const string Normal = "normal";
     public const string MemoryOnly = "limited";
+    public const string CpuOnly = "cpu";
+    public const string GpuOnly = "gpu";
+    public const string MemoryCpu = "memory+cpu";
+    public const string MemoryGpu = "memory+gpu";
+    public const string CpuGpu = "cpu+gpu";
     public const string Smart = "smart";
+
+    public static bool IsSupported(string? mode)
+        => mode is Normal or MemoryOnly or CpuOnly or GpuOnly
+            or MemoryCpu or MemoryGpu or CpuGpu or Smart;
+
+    public static string Normalize(string? mode)
+        => IsSupported(mode) ? mode! : Normal;
 }
 
 public static class AppSystemIntegrationActionIds
@@ -195,9 +207,6 @@ public sealed record AppPerformanceSettings(
     IReadOnlyList<string> GpuPerformanceUseCases,
     string SmartMonitoringMode,
     string FrontendHiddenRefreshMode,
-    // 开启后，处于自动调度模式的机制可以按本机事实做额外优化
-    // （例如只有一个显卡时不再跑 GPU 调度）。关闭则一律按用户设置照常运行。
-    bool AutomaticSchedulingOptimizationsEnabled,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,
     AppPresetNumericSetting ManagementRefreshIntervalMs,

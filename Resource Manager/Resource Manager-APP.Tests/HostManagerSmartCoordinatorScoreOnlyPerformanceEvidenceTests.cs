@@ -434,7 +434,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(Assert.IsType<bool>(guards["sampling"]));
         Assert.True(Assert.IsType<bool>(guards["scoring"]));
         Assert.True(Assert.IsType<bool>(guards["policyExecution"]));
-        Assert.False(Assert.IsType<bool>(guards["hardwarePlacement"]));
+        Assert.True(Assert.IsType<bool>(guards["hardwarePlacement"]));
 
         var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
         Assert.Equal(

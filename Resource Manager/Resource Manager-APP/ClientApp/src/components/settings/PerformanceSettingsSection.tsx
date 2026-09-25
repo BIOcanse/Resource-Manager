@@ -18,7 +18,7 @@ import type {
   AppPresetNumericSettingMode
 } from "../../types";
 import { ControlAccessLevelSetting } from "./ControlAccessLevelSetting";
-import { NumberField, SegmentedControl } from "./SettingsControls";
+import { MultiSegmentedControl, NumberField, SegmentedControl } from "./SettingsControls";
 import { uiText } from "../../text.ts";
 
 type GpuSchedulingMode = "basic" | "precise";
@@ -28,7 +28,6 @@ interface PerformanceSettingsSectionProps {
   text: SettingsTextBundle;
   preciseGpuPlacementAvailable: boolean;
   onSmartMonitoringModeChange: (mode: AppAdaptiveBooleanMode) => void;
-  onAutomaticSchedulingOptimizationsChange: (enabled: boolean) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -52,7 +51,6 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     virtualMemoryOptimizationTargetUsagePercent: 70,
     gpuPerformanceUseCases: ["general"],
     smartMonitoringMode: "auto",
-    automaticSchedulingOptimizationsEnabled: true,
     frontendHiddenRefreshMode: "auto",
     monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
     resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
@@ -62,7 +60,7 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
   };
   const gpuSchedulingMode = (): GpuSchedulingMode => performance().preciseGpuPlacementEnabled ? "precise" : "basic";
-  // 设置页的两态开关一律「开启在前、关闭在后」，和按需监控、自动调度性能优化保持一致。
+  // 设置页的两态开关一律「开启在前、关闭在后」。
   const gpuSchedulingModeOptions = (): Array<{ id: GpuSchedulingMode; label: string; description: string }> => [
     { id: "precise", ...props.text.performance.preciseGpuPlacementModeOptions.precise },
     { id: "basic", ...props.text.performance.preciseGpuPlacementModeOptions.basic }
@@ -145,18 +143,6 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
       </div>
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.performance.automaticSchedulingOptimizationsTitle}</strong>
-          <span>{props.text.performance.automaticSchedulingOptimizationsDescription}</span>
-        </div>
-        <SegmentedControl
-          value={performance().automaticSchedulingOptimizationsEnabled === false ? "off" : "on"}
-          options={props.text.performance.onOffOptions}
-          ariaLabel={props.text.performance.automaticSchedulingOptimizationsTitle}
-          onChange={(value) => props.onAutomaticSchedulingOptimizationsChange(value === "on")}
-        />
-      </div>
-      <div class="settings-row">
-        <div class="settings-row-copy">
           <strong>{props.text.performance.preciseGpuPlacementTitle}</strong>
           <span>{props.text.performance.preciseGpuPlacementDescription}</span>
         </div>
@@ -167,6 +153,18 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           disabled={!props.preciseGpuPlacementAvailable}
           disabledTitle={uiText.misc.precisePlacementDisabled}
           onChange={(mode) => props.onPreciseGpuPlacementChange(mode === "precise")}
+        />
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.performance.gpuPerformanceUseCasesTitle}</strong>
+          <span>{props.text.performance.gpuPerformanceUseCasesDescription}</span>
+        </div>
+        <MultiSegmentedControl
+          values={performance().gpuPerformanceUseCases}
+          options={props.text.gpuPerformanceUseCaseOptions}
+          ariaLabel={props.text.performance.gpuPerformanceUseCasesTitle}
+          onChange={props.onGpuPerformanceUseCasesChange}
         />
       </div>
       <div class="settings-row">

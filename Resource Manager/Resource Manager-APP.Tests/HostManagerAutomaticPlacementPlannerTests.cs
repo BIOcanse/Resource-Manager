@@ -10,6 +10,49 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerAutomaticPlacementPlannerTests
 {
+    [Fact]
+    public void PlacementPlanningOnlyProducesSelectedHardwareDomain()
+    {
+        var process = CreateProcess("renderer", 10, 40, 40, AutoPolicy());
+        var cpuOnly = HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
+            [process], CreateCapacity(), runtimeGpuShimEnabled: true,
+            gpuOverflow: new(95, 80), cpuPlacementEnabled: true, gpuPlacementEnabled: false);
+        var gpuOnly = HostManagerAutomaticPlacementPlanner.Plan(
+            null, CreateHardware(), CreateHardwareScores(),
+            [process], CreateCapacity(), runtimeGpuShimEnabled: true,
+            gpuOverflow: new(95, 80), cpuPlacementEnabled: false, gpuPlacementEnabled: true);
+
+        Assert.Single(cpuOnly.Cpu);
+        Assert.Empty(cpuOnly.Gpu);
+        Assert.Empty(gpuOnly.Cpu);
+        Assert.Single(gpuOnly.Gpu);
+    }
+
+    [Fact]
+    public void SingleGpuHasNoRuntimeMigrationTarget()
+    {
+        var hardware = CreateHardware();
+        hardware = hardware with
+        {
+            Gpus = [hardware.Gpus[1]],
+            GpuInventory = hardware.GpuInventory with
+            {
+                ObservedCount = 1,
+                Adapters = [hardware.GpuInventory.Adapters[1]]
+            }
+        };
+        var process = CreateProcess("renderer", 10, null, 80, AutoPolicy());
+
+        var plan = HostManagerAutomaticPlacementPlanner.Plan(
+            null, hardware, CreateHardwareScores(), [process], CreateCapacity(),
+            runtimeGpuShimEnabled: true, gpuOverflow: new(95, 80),
+            cpuPlacementEnabled: false, gpuPlacementEnabled: true);
+
+        Assert.True(hardware.GpuInventory.IsCurrentComplete());
+        Assert.Empty(plan.Gpu);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

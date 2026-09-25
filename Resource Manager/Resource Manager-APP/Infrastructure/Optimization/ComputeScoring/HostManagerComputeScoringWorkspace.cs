@@ -65,7 +65,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         SchedulingGpuInventorySnapshot gpuInventory,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
         CpuCoreResidencySnapshot? cpuResidency,
-        HostManagerWelfareCapacityInput? welfareCapacity = null)
+        HostManagerWelfareCapacityInput? welfareCapacity = null,
+        bool scoreCpu = true,
+        bool scoreGpu = true)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(processFacts);
@@ -103,8 +105,8 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             softwareBaseScores = replacement;
         }
 
-        var cpuFacts = ProjectCpuDomain(processFacts, cpuResidency);
-        var gpuFacts = ProjectGpuDomain(processFacts, gpuInventory);
+        var cpuFacts = scoreCpu ? ProjectCpuDomain(processFacts, cpuResidency) : null;
+        var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
         if (cpuFacts is null && gpuFacts is null)
         {
             return null;

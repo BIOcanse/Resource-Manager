@@ -16,6 +16,7 @@ public sealed partial class HostManagerSmartCoordinator
     private HostManagerComputeScoringCycleResult? RunSchedulingAuthority(
         CompiledHostManagerSmartCoordinatorPlan plan,
         CompiledCpuScoringPlan cpuScoring,
+        CompiledOptimizationModePlan mode,
         HostManagerSchedulingPlanBinding planBinding,
         HostManagerSample sample)
     {
@@ -37,7 +38,9 @@ public sealed partial class HostManagerSmartCoordinator
                 sample.Hardware.GpuInventory,
                 runtimeFacts,
                 sample.CpuResidency,
-                welfareCapacity);
+                welfareCapacity,
+                scoreCpu: mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled,
+                scoreGpu: mode.GpuSchedulingEnabled);
         }
         catch (Exception exception)
         {
@@ -58,6 +61,18 @@ public sealed partial class HostManagerSmartCoordinator
                 sample.Hardware.CapturedAt,
                 "compute-sample-incomplete");
             return null;
+        }
+
+        if (!mode.MemorySchedulingEnabled)
+        {
+            ClearNonAdaptedMemoryModeProjection();
+            schedulingAuthorityOwner.PublishComputeOnly(
+                result,
+                planBinding,
+                sample.Hardware.CapturedAt,
+                "memory-domain-disabled");
+            RecoverSchedulingAuthorityLogging();
+            return result;
         }
 
         if (result.Cpu is null)
