@@ -21,7 +21,7 @@ export const zhRuntimeErrorsCopy = {
     readGpuScoreOverridesFailed: "读取 GPU 分数覆盖失败",
     readGpuScoresFailed: "读取 GPU 性能分失败",
     readOptimizationReportsFailed: "读取性能优化报告失败",
-    switchSmartModeFailed: "切换智能优化模式失败",
+    switchSmartModeFailed: "调度模式切换失败",
     dismissReportFailed: "忽略报告失败",
     removeTrustFailed: "取消信任失败"
   },

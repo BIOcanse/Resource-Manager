@@ -71,7 +71,8 @@ export type AppLanguageMode =
   | "id-ID"
   | "vi-VN"
   | "th-TH";
-export type AppOptimizationMode = "normal" | "limited" | "smart";
+export type AppOptimizationMode = "normal" | "limited" | "cpu" | "gpu"
+  | "memory+cpu" | "memory+gpu" | "cpu+gpu" | "smart";
 export type ResourceManagerSelfCpuGrade = "normal" | "optimize";
 export type ResourceManagerSelfGpuGrade = "normal" | "optimize";
 export type AppGpuPerformanceUseCase = "general" | "ai" | "gaming";
@@ -223,8 +224,6 @@ export interface AppPerformanceSettings {
   virtualMemoryOptimizationTargetUsagePercent: number;
   gpuPerformanceUseCases: AppGpuPerformanceUseCase[];
   smartMonitoringMode: AppAdaptiveBooleanMode;
-  /** 开启后，处于自动调度模式的机制可以按本机事实做额外优化。 */
-  automaticSchedulingOptimizationsEnabled: boolean;
   frontendHiddenRefreshMode: AppFrontendHiddenRefreshMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;

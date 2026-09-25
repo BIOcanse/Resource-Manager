@@ -182,6 +182,7 @@ public sealed partial class HostManagerSmartCoordinator(
             {
                 await RequireNoAppliedOwnershipAsync(cancellationToken);
             }
+            schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
             var state = ProjectNativeState(await LoadRollbackStateAsync(cancellationToken));
             return CreateStatus(
                 normalizedMode,
@@ -287,6 +288,7 @@ public sealed partial class HostManagerSmartCoordinator(
             }
             await RunForegroundNativeCycleAsync("restore-normal", cancellationToken);
             await RequireNoAppliedOwnershipAsync(cancellationToken);
+            schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
             var restored = await LoadRollbackStateAsync(cancellationToken);
 
             return CreateStatus(
@@ -304,26 +306,13 @@ public sealed partial class HostManagerSmartCoordinator(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var samplingInterval = runtimePlanProvider.Current.HostManager.RequirePublished().SchedulerSamplingInterval;
-        using var cpuCoreSubscription = cpuCoreResidencyReader.AcquireSubscription(
-            "host-manager-smart-coordinator:cpu-cores", samplingInterval);
-        using var hardwareSubscription = metricSnapshotSource.AcquireSubscription(
-            "host-manager-smart-coordinator",
-            CreateSmartSchedulingMetricRequest(),
-            samplingInterval);
-        using var processComputeSubscription = schedulingProcessFactSource.AcquireSubscription(
-            "host-manager-smart-coordinator:compute",
-            SchedulingProcessMetricMask.CpuUsage
-                | SchedulingProcessMetricMask.GpuUsage
-                | SchedulingProcessMetricMask.GpuDedicatedMemory
-                | SchedulingProcessMetricMask.RuntimeState,
-            samplingInterval);
-        using var processMemoryFinalAdmissionSubscription =
-            schedulingProcessFactSource.AcquireSubscription(
-                "host-manager-smart-coordinator:memory-final-admission",
-                SchedulingProcessMetricMask.MemoryUsage
-                    | SchedulingProcessMetricMask.RuntimeState,
-                samplingInterval);
-        schedulerRunning = true;
+        IDisposable? cpuCoreSubscription = null;
+        IDisposable? hardwareSubscription = null;
+        IDisposable? processComputeSubscription = null;
+        IDisposable? processMemoryFinalAdmissionSubscription = null;
+        string? subscribedHardwareRequestKey = null;
+        var subscribedProcessMetricMask = SchedulingProcessMetricMask.None;
+        schedulerRunning = runtimePlanProvider.Current.OptimizationMode.SchedulingEnabled;
         try
         {
             await Task.Yield();
@@ -341,12 +330,96 @@ public sealed partial class HostManagerSmartCoordinator(
                     HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired);
                 try
                 {
+                    var mode = runtimePlanProvider.Current.OptimizationMode;
+                    schedulerRunning = mode.SchedulingEnabled;
+                    var publicResourcesAvailable = HasAvailablePublicResourceLifecycle();
+                    var cpuRequired = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled;
+                    if (!cpuRequired)
+                    {
+                        cpuCoreSubscription?.Dispose();
+                        cpuCoreSubscription = null;
+                    }
+                    else
+                    {
+                        cpuCoreSubscription ??= cpuCoreResidencyReader.AcquireSubscription(
+                            "host-manager-smart-coordinator:cpu-cores", samplingInterval);
+                    }
+
+                    var processMask = SchedulingProcessMetricMask.RuntimeState;
+                    if (cpuRequired)
+                    {
+                        processMask |= SchedulingProcessMetricMask.CpuUsage;
+                    }
+                    if (mode.GpuSchedulingEnabled)
+                    {
+                        processMask |= SchedulingProcessMetricMask.GpuUsage
+                            | SchedulingProcessMetricMask.GpuDedicatedMemory;
+                    }
+                    if (processComputeSubscription is not null
+                        && (!mode.SchedulingEnabled || subscribedProcessMetricMask != processMask))
+                    {
+                        processComputeSubscription?.Dispose();
+                        processComputeSubscription = null;
+                    }
+                    if (mode.SchedulingEnabled && processComputeSubscription is null)
+                    {
+                        processComputeSubscription = schedulingProcessFactSource.AcquireSubscription(
+                            "host-manager-smart-coordinator:compute",
+                            processMask,
+                            samplingInterval);
+                        subscribedProcessMetricMask = processMask;
+                    }
+                    if (!mode.MemorySchedulingEnabled)
+                    {
+                        processMemoryFinalAdmissionSubscription?.Dispose();
+                        processMemoryFinalAdmissionSubscription = null;
+                    }
+                    else
+                    {
+                        processMemoryFinalAdmissionSubscription ??=
+                            schedulingProcessFactSource.AcquireSubscription(
+                                "host-manager-smart-coordinator:memory-final-admission",
+                                SchedulingProcessMetricMask.MemoryUsage
+                                    | SchedulingProcessMetricMask.RuntimeState,
+                                samplingInterval);
+                    }
+
+                    var hardwareRequired = mode.SchedulingEnabled || publicResourcesAvailable;
+                    var hardwareRequest = mode.SchedulingEnabled
+                        ? CreateSmartSchedulingMetricRequest(mode, publicResourcesAvailable)
+                        : CreatePublicResourceMetricRequest();
+                    if (hardwareSubscription is not null
+                        && (!hardwareRequired
+                            || subscribedHardwareRequestKey != hardwareRequest.CacheKey))
+                    {
+                        hardwareSubscription.Dispose();
+                        hardwareSubscription = null;
+                    }
+                    if (hardwareRequired && hardwareSubscription is null)
+                    {
+                        hardwareSubscription = metricSnapshotSource.AcquireSubscription(
+                            "host-manager-smart-coordinator",
+                            hardwareRequest,
+                            samplingInterval);
+                        subscribedHardwareRequestKey = hardwareRequest.CacheKey;
+                    }
                     ObserveOuterLoop(
                         outerLoopContext,
                         HostManagerSmartCoordinatorOuterLoopPhase.DispatchStarted);
-                    await RunScheduledNativeCycleAsync(
+                    var published = await RunScheduledNativeCycleAsync(
                         outerLoopContext,
                         stoppingToken);
+                    var currentMode = runtimePlanProvider.Current.OptimizationMode;
+                    schedulerRunning = currentMode.SchedulingEnabled;
+                    if (!currentMode.SchedulingEnabled
+                        && await CanParkNormalSchedulingAsync(stoppingToken))
+                    {
+                        schedulingWakeDeadline.ClearScheduled(published.Version);
+                    }
+                    else if (currentMode.SchedulingEnabled && !mode.SchedulingEnabled)
+                    {
+                        schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+                    }
                 }
                 finally
                 {
@@ -389,6 +462,10 @@ public sealed partial class HostManagerSmartCoordinator(
         finally
         {
             schedulerRunning = false;
+            processMemoryFinalAdmissionSubscription?.Dispose();
+            processComputeSubscription?.Dispose();
+            hardwareSubscription?.Dispose();
+            cpuCoreSubscription?.Dispose();
         }
     }
 

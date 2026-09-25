@@ -15,6 +15,7 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
     ISharedResourceBroker,
     IPublicResourceDirectoryQueries,
     IHostPublicResourceCapability,
+    IHostPublicResourcePublicationNotifier,
     IHostPublicResourceSelfManager,
     ISharedResourceSubscriptionMaintenance,
     IHostedService,
@@ -27,6 +28,8 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
     private readonly HostManagerRuntimeIdentity hostIdentity;
     private BrokerState? state;
     private int hostPublisherObserved;
+
+    public event Action? HostResourcePublished;
 
     public SharedMemoryPublicResourceBroker(
         IRuntimePlanProvider runtimePlanProvider,
@@ -163,17 +166,19 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
     {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(lifecycle);
+        SharedResourceId id;
         lock (lifecycleGate)
         {
             var current = RequireState();
-            var id = current.Session.Publish(ToPublication(current, definition));
+            id = current.Session.Publish(ToPublication(current, definition));
             current.Lifecycles.Add(id, lifecycle);
             current.Definitions.Add(
                 id,
                 definition with { PublicResourceId = id.PublicResourceId });
             Volatile.Write(ref hostPublisherObserved, 1);
-            return id;
         }
+        HostResourcePublished?.Invoke();
+        return id;
     }
 
     public bool TryUpdateHostResource(

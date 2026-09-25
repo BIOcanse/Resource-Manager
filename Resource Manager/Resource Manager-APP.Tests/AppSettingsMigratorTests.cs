@@ -13,8 +13,9 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.22", true)]
     [InlineData("1.0.23", true)]
     [InlineData("1.0.24", true)]
+    [InlineData("1.0.25", true)]
     [InlineData("1.0.16", false)]
-    [InlineData("1.0.25", false)]
+    [InlineData("1.0.26", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -268,7 +269,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -285,7 +286,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -305,7 +306,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.24\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -362,17 +363,40 @@ public sealed class AppSettingsMigratorTests
         Assert.Equal(AppOptimizationModes.Smart, HostManagerOptimizationModes.Normalize(AppOptimizationModes.Smart));
     }
 
-    [Fact]
-    public void MigrateForRead_PreservesMemoryOnlyMode()
+    [Theory]
+    [InlineData(AppOptimizationModes.MemoryOnly)]
+    [InlineData(AppOptimizationModes.CpuOnly)]
+    [InlineData(AppOptimizationModes.GpuOnly)]
+    [InlineData(AppOptimizationModes.MemoryCpu)]
+    [InlineData(AppOptimizationModes.MemoryGpu)]
+    [InlineData(AppOptimizationModes.CpuGpu)]
+    [InlineData(AppOptimizationModes.Smart)]
+    public void MigrateForRead_PreservesSupportedSchedulingCombination(string mode)
     {
         using var document = JsonDocument.Parse(CurrentShapeJson.Replace(
             "\"optimizationMode\": \"normal\"",
-            "\"optimizationMode\": \"limited\"",
+            $"\"optimizationMode\": \"{mode}\"",
             StringComparison.Ordinal));
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        Assert.Equal(AppOptimizationModes.MemoryOnly, settings.Performance.OptimizationMode);
+        Assert.Equal(mode, settings.Performance.OptimizationMode);
+        Assert.False(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+    }
+
+    [Fact]
+    public void MigrateForRead_DropsRetiredSchedulingOptimizationToggle()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["version"] = "1.0.24";
+        root["performance"]!["automaticSchedulingOptimizationsEnabled"] = false;
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
+        var serialized = JsonSerializer.Serialize(settings, JsonSerializerOptions.Web);
+
+        Assert.DoesNotContain("automaticSchedulingOptimizationsEnabled", serialized, StringComparison.Ordinal);
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
     }
 
     [Fact]
@@ -407,7 +431,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.24",
+          "version": "1.0.25",
           "performance": {
             "smartMonitoringEnabled": true,
             "monitoringIdleSeconds": 5,
@@ -419,7 +443,6 @@ public sealed class AppSettingsMigratorTests
             "gpuPerformanceUseCases": ["general"],
             "smartMonitoringMode": "auto",
             "frontendHiddenRefreshMode": "auto",
-            "automaticSchedulingOptimizationsEnabled": true,
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "managementRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 10000 },

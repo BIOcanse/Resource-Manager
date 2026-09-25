@@ -50,6 +50,8 @@ internal sealed class HostPublicResourceNormalReleaseEvidenceTracker
     private bool pressureEscalated;
     private bool acceptsCurrentRound;
 
+    internal void Stop() => Reset();
+
     internal HostPublicResourceCapacityObservation BeginCycle(
         HostPublicResourceNormalReleaseCycle cycle,
         HostPublicResourceCapacityObservation observation)

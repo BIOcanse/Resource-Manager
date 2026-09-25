@@ -68,20 +68,21 @@ Every application can carry its own scheduling policy: its base score, how far t
 
 ## ⚡ Performance Optimization
 
-Three buttons switch between the automatic optimization modes: **Normal**, **Memory only**, and **Smart optimization**.
+Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** independently. You can select any combination of the three; choosing Normal clears them all.
 
 ![Performance optimization](docs/screenshots/en/04-optimization.png)
 
-- **🧠 Memory only** — performs memory optimization and management only.
-- **⚡ Smart optimization** — manages CPU, GPU, memory and VRAM together.
+- **🧠 Memory scheduling** — manages RAM pressure without enabling CPU or GPU actions.
+- **⚙️ CPU scheduling** — adjusts CPU policy and core placement.
+- **⚡ GPU scheduling** — considers GPU load and VRAM pressure when placing supported renderers.
 
-**VRAM and memory pressure.** Smart scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency.
+**VRAM and memory pressure.** GPU scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency. On a single-GPU machine, rules without a migration target are skipped internally; there is no separate setting for that shortcut.
 
 **Multiple GPUs.** Per-application policies can select a launch GPU. Runtime moves are limited to renderer routes that pass their compatibility and cleanup checks; they are not general-purpose migration of every GPU-using application.
 
-**Memory.** Smart scheduling also keeps optimizing memory continuously.
+**Memory.** Selecting Memory scheduling enables ongoing RAM-pressure management. It can use CPU scores to order memory actions without enabling CPU actions.
 
-**CPU.** Cores are assigned intelligently: important applications get the less-contended or higher-performance cores first, and you can trigger **exclusive core allocation** and **core locking** to help hold a stable high frame rate.
+**CPU.** When CPU scheduling is selected, cores are assigned intelligently: important applications get the less-contended or higher-performance cores first. You can also configure **exclusive core allocation** and **core locking** to help hold a stable frame rate.
 
 > 💡 Worth noting: although Resource Manager uses highly optimized algorithms, scheduling still costs something. On CPUs with very weak multicore performance there may be no obvious CPU-side benefit — on a very early i3 or Ryzen 5, for example.
 

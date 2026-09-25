@@ -62,7 +62,7 @@ export const zhStoresCopy = {
     resultIncomplete: "操作未能完成。",
     optimizationReportDisabled: "当前启动配置未启用优化报告。",
     optimizationSchedulingDisabled: "当前启动配置未启用优化调度。",
-    smartModeSwitchFailed: "智能优化模式切换失败",
+    smartModeSwitchFailed: "调度模式切换失败",
     optimizationReportRefreshFailed: "性能优化报告刷新失败",
     optimizationScheduleRefreshFailed: "优化调度状态刷新失败",
     metricCatalogRefreshFailed: "指标目录刷新失败"
