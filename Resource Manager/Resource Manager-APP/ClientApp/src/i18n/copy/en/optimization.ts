@@ -18,6 +18,8 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
     search: "Search",
     searchLabel: "Search optimization reports",
     reportPanel: "Optimization reports",
+    gpuScoreUnrecognizedTitle: "GPU model not recognized",
+    gpuScoreUnrecognizedMessage: (names: string) => `${names} did not match a built-in performance score. Set a positive manual score to include these adapters in automatic GPU ranking.`,
     filterLabel: "Report filter",
     filterUntrusted: (count: string) => `Untrusted ${count}`,
     filterAll: (count: string) => `All ${count}`,

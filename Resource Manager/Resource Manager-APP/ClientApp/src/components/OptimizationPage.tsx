@@ -1,4 +1,7 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { unrecognizedGpuNames } from "../data/gpu/gpuSchedulingModelSource";
+import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+import { sourceCanRender, type SourceSnapshot } from "../frontendRuntime/source/SourceSnapshot";
 import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
@@ -12,6 +15,7 @@ import type {
   AppOptimizationMode,
   OptimizationReportItem,
   OptimizationReportOverview,
+  GpuPerformanceScoreSnapshot,
   HostManagerSmartCoordinatorStatus,
   TrustedOptimizationTarget
 } from "../types";
@@ -54,6 +58,16 @@ interface OptimizationPageProps {
 }
 
 export function OptimizationPage(props: OptimizationPageProps) {
+  const runtime = useFrontendRuntime();
+  const gpuScoresLease = runtime.sources.gpuPerformanceScores.acquire(
+    { active: true, refreshIntervalMs: null });
+  const [gpuScoresSource, setGpuScoresSource] =
+    createSignal<SourceSnapshot<GpuPerformanceScoreSnapshot>>(gpuScoresLease.snapshot);
+  const stopGpuScores = gpuScoresLease.subscribe(setGpuScoresSource);
+  onCleanup(() => {
+    stopGpuScores();
+    gpuScoresLease.release();
+  });
   const modeDemandId = "optimization.mode-status";
   const headerDemandId = "optimization.report-header";
   useFrontendVisibilityDemand(modeDemandId, [frontendWorkIds.optimizationSmartStatus]);
@@ -78,6 +92,12 @@ export function OptimizationPage(props: OptimizationPageProps) {
     return untrustedReports();
   };
   const visibleReports = createMemo(() => filterOptimizationReports(reports(), searchQuery()));
+  const unknownGpuNames = createMemo(() => {
+    const source = gpuScoresSource();
+    return sourceCanRender(source) && source.data
+      ? unrecognizedGpuNames(source.data)
+      : [];
+  });
   const selectedOptimizationMode = () => props.pendingOptimizationMode ?? props.optimizationMode;
   const reportsAvailable = () => observationCanRender(props.reportsObservation);
   const reportActionsAvailable = () => props.reportsObservation.status === "ready";
@@ -186,11 +206,21 @@ export function OptimizationPage(props: OptimizationPageProps) {
               class="optimization-report-filter"
               onChange={setReportFilter}
             />
-            <button class="secondary" type="button" disabled={props.loading} onClick={props.onRefresh}>
+            <button class="secondary" type="button" disabled={props.loading} onClick={() => {
+              props.onRefresh();
+              void gpuScoresLease.refresh();
+            }}>
               {props.loading ? uiText.optimization.refreshing : uiText.optimization.refresh}
             </button>
           </div>
         </div>
+
+        <Show when={unknownGpuNames().length > 0}>
+          <div class="optimization-gpu-score-notice" role="status">
+            <strong>{uiText.optimization.gpuScoreUnrecognizedTitle}</strong>
+            <span>{uiText.optimization.gpuScoreUnrecognizedMessage(unknownGpuNames().join(", "))}</span>
+          </div>
+        </Show>
 
         <ObservationStateBoundary
           state={props.reportsObservation}

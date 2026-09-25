@@ -1231,6 +1231,7 @@ export interface GpuPerformanceScoreItem {
   isIntegrated: boolean;
   source: string;
   matchedPreset?: string | null;
+  isPresetMatch: boolean;
 }
 
 export interface CpuSpecificationModel {

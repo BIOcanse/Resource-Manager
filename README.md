@@ -76,7 +76,7 @@ Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** indepe
 - **⚙️ CPU scheduling** — adjusts CPU policy and core placement.
 - **⚡ GPU scheduling** — considers GPU load and VRAM pressure when placing supported renderers.
 
-**VRAM and memory pressure.** GPU scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency. On a single-GPU machine, rules without a migration target are skipped internally; there is no separate setting for that shortcut.
+**VRAM and memory pressure.** GPU scheduling tracks GPU load and resident memory. When a lower-priority renderer has a verified runtime switching route, it can request a move to another GPU and check the next resident-memory sample. Unsupported renderers are not silently moved through a startup preference or an injected shim; even a supported move can leave some source-GPU residency.
 
 **Multiple GPUs.** Per-application policies can select a launch GPU. Runtime moves are limited to renderer routes that pass their compatibility and cleanup checks; they are not general-purpose migration of every GPU-using application.
 
@@ -86,10 +86,10 @@ Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** indepe
 
 > 💡 Worth noting: although Resource Manager uses highly optimized algorithms, scheduling still costs something. On CPUs with very weak multicore performance there may be no obvious CPU-side benefit — on a very early i3 or Ryzen 5, for example.
 
-> 🧪 Runtime GPU switching currently uses an external controller without injecting a DLL into the target. A Chrome/ANGLE D3D11 route has been exercised with partial VRAM release; D3D12 and Vulkan have only been verified in a specific Qt fixture. This is not a claim of broad compatibility:
+> 🧪 Runtime GPU switching currently uses an external controller without injecting a DLL into the target. A Chrome/ANGLE D3D11 route has been exercised with partial VRAM release; this does not verify native OpenGL switching. D3D12 and Vulkan have only been verified in a specific Qt fixture. This is not a claim of broad compatibility:
 > - It is not applied to games or professional applications by default.
 > - If another application has compatibility problems, turn scheduling off for that application.
-> - On a small number of motherboards and laptops, discrete-GPU-direct mode may disable the integrated GPU. Without another available GPU in that situation, GPU scheduling is unavailable.
+> - Some motherboards and laptops disable the integrated GPU in discrete-GPU-direct mode. With only one available GPU, there is no cross-GPU move target; you can still enable GPU scheduling yourself.
 
 ### 📑 Optimization reports
 

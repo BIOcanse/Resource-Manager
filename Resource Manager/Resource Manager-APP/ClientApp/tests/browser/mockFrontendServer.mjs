@@ -34,6 +34,7 @@ const defaultScenario = {
   operationCanceled: false,
   cpuTopologyEmpty: false,
   gpuPlacementEnabled: false,
+  unknownGpuScore: false,
   pausedSubscriptionPaths: []
 };
 const scenario = structuredClone(defaultScenario);
@@ -317,7 +318,18 @@ async function handleApi(request, response, url) {
   if (path === "/api/gpu/performance-scores") {
     return json(response, 200, {
       capturedAt: now(),
-      gpus: [],
+      gpus: scenario.unknownGpuScore ? [{
+        gpuId: "gpu:0",
+        index: 0,
+        name: "Unlisted GPU",
+        defaultPerformanceScore: 0,
+        performanceScore: 0,
+        hasPerformanceOverride: false,
+        isIntegrated: false,
+        source: "unavailable:steel-nomad-dx12",
+        matchedPreset: null,
+        isPresetMatch: false
+      }] : [],
       storagePath: "frontend-harness"
     });
   }
