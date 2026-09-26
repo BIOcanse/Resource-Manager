@@ -23,7 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Resource Manager-APP\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
-    <ProjectReference Include="..\Resource Manager-APP\Launcher\ResourceManager.Launcher.csproj" />
+    <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
     <ProjectReference Include="..\..\src\Shared\ResourceManager.Shared.csproj" />
   </ItemGroup>
 
