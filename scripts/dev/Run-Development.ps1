@@ -35,7 +35,7 @@ $ApiAccessTokenPath = Join-Path $SoftwareRoot 'Config\Runtime\loopback-api-token
 $ApiAccessTokenHeaderName = "X-Resource-Manager-Token"
 $ApiPort = 9321
 $StartupTimeout = [TimeSpan]::FromSeconds(20)
-$LogPath = Join-Path $Root "development.log"
+$LogPath = Join-Path $SoftwareRoot 'Logs\development.log'
 
 if (-not ("System.Net.Http.HttpClient" -as [type])) {
     Add-Type -AssemblyName System.Net.Http
@@ -678,6 +678,7 @@ $exitCode = 0
 $transcriptStarted = $false
 try {
     try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $LogPath) -Force | Out-Null
         Start-Transcript -LiteralPath $LogPath -Append | Out-Null
         $transcriptStarted = $true
         Write-Step "日志：$LogPath"
