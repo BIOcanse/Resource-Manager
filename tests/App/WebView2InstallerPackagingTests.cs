@@ -33,7 +33,7 @@ public sealed class WebView2InstallerPackagingTests
             var start = new ProcessStartInfo("powershell.exe")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                Path.Combine(RepositoryRoot(), "scripts", "New-ResourceManagerFinalImage.ps1"),
+                Path.Combine(RepositoryRoot(), "scripts", "release", "New-ResourceManagerFinalImage.ps1"),
                 "-BackendDirectory", Path.Combine(root, "backend"), "-NativeUiDirectory", Path.Combine(root, "native"),
                 "-LauncherDirectory", Path.Combine(root, "launcher"), "-OutputDirectory", Path.Combine(root, "image") })
                 start.ArgumentList.Add(argument);

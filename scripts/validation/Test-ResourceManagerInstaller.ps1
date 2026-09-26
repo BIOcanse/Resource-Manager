@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'ResourceManager.LegacyStartup.ps1')
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 $installCommand = Get-Content -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Install.cmd') -Raw
-$releaseBuilder = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'New-ResourceManagerReleasePackage.ps1') -Raw
+$releaseBuilder = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'release\New-ResourceManagerReleasePackage.ps1') -Raw
 Assert ($installCommand.Contains('Install-ResourceManagerPackage.ps1')) `
     'Install.cmd does not invoke the owned package upgrade.'
 Assert ($releaseBuilder.Contains("'Install-ResourceManagerPackage.ps1'")) `
