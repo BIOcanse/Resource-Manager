@@ -49,8 +49,8 @@ Assert-CopiedNotice (Join-Path $app 'Infrastructure\Resources\SoftwareMetadata\T
     (Join-Path $backend 'Infrastructure\Resources\SoftwareMetadata\THIRD_PARTY_NOTICES.md')
 
 $packages = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-foreach ($assetsPath in @('obj\project.assets.json', 'NativeUi\obj\project.assets.json')) {
-    $assets = Get-Content -LiteralPath (Join-Path $app $assetsPath) -Raw | ConvertFrom-Json
+foreach ($assetsPath in @((Join-Path $app 'obj\project.assets.json'), (Join-Path $repo 'src\UI\Core\obj\project.assets.json'))) {
+    $assets = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
     foreach ($library in $assets.libraries.PSObject.Properties) {
         if ($library.Value.type -ne 'package') { continue }
         $name, $version = $library.Name.Split('/')

@@ -8,7 +8,7 @@ public sealed class NativeUiStartupTests
     public void ProductionFrontendUsesOnlyTheStandardWebView2Host()
     {
         var appRoot = FindAppRoot();
-        var nativeUiRoot = Path.Combine(appRoot, "NativeUi");
+        var nativeUiRoot = FindNativeUiRoot(appRoot);
         var project = File.ReadAllText(Path.Combine(
             nativeUiRoot,
             "ResourceManager.NativeUi.csproj"));
@@ -87,7 +87,7 @@ public sealed class NativeUiStartupTests
     [Fact]
     public void NativeUiDoesNotOwnMachineOrLogonStartupRegistration()
     {
-        var nativeUiRoot = Path.Combine(FindAppRoot(), "NativeUi");
+        var nativeUiRoot = FindNativeUiRoot(FindAppRoot());
         var program = File.ReadAllText(Path.Combine(nativeUiRoot, "Program.cs"));
         var options = File.ReadAllText(Path.Combine(
             nativeUiRoot,
@@ -116,4 +116,7 @@ public sealed class NativeUiStartupTests
             : throw new DirectoryNotFoundException(
                 "Could not locate Resource Manager-APP from the test source path.");
     }
+
+    private static string FindNativeUiRoot(string appRoot) =>
+        Path.GetFullPath(Path.Combine(appRoot, "..", "..", "src", "UI", "Core"));
 }

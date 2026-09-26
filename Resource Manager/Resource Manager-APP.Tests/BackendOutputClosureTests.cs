@@ -14,8 +14,8 @@ public sealed class BackendOutputClosureTests
             "PublishProfiles",
             "win-x64-self-contained.pubxml"));
         var nativeUiProject = XDocument.Load(Path.Combine(
-            appRoot,
-            "NativeUi",
+            Path.GetFullPath(Path.Combine(appRoot, "..", "..")),
+            "src", "UI", "Core",
             "ResourceManager.NativeUi.csproj"));
 
         Assert.Equal(
