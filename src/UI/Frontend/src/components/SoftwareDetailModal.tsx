@@ -45,7 +45,7 @@ import {
   targetGpuOptionsForSoftwarePolicy,
   toOrdinarySystemGpuTarget,
   type GpuPolicySelectOption
-} from "../gpuPlacementTargetOptions";
+} from "./gpuPlacementTargetOptions";
 import type { UserDetailSection } from "../presentation/userDetails";
 import { isHttpUrl, pathLooksUsable, textOrEmpty, uniqueTextValues } from "../utils";
 import { UserDetailsDialog } from "./UserDetailsDialog";
