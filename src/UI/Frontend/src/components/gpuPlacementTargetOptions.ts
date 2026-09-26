@@ -1,5 +1,5 @@
-import type { GpuPlacementExactTargetOption } from "./types";
-import { uiText } from "./text.ts";
+import type { GpuPlacementExactTargetOption } from "../types";
+import { uiText } from "../text.ts";
 
 export type GpuPolicySelectOption = readonly [string, string, boolean?];
 
