@@ -1,16 +1,16 @@
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import { unrecognizedGpuNames } from "../data/gpu/gpuSchedulingModelSource";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
-import { sourceCanRender, type SourceSnapshot } from "../frontendRuntime/source/SourceSnapshot";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
+import { unrecognizedGpuNames } from "../../data/gpu/gpuSchedulingModelSource";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
   frontendVisibilitySurface
-} from "../frontendWork/frontendVisibilitySurface";
+} from "../../frontendWork/frontendVisibilitySurface";
 import {
   FrontendVisibilityDemandBinding,
   useFrontendVisibilityDemand
-} from "../frontendWork/useFrontendVisibilityDemand";
+} from "../../frontendWork/useFrontendVisibilityDemand";
 import type {
   AppOptimizationMode,
   OptimizationReportItem,
@@ -18,25 +18,25 @@ import type {
   GpuPerformanceScoreSnapshot,
   HostManagerSmartCoordinatorStatus,
   TrustedOptimizationTarget
-} from "../types";
-import { presentOptimizationReport } from "../presentation/optimizationPresentation";
-import { UserDetailsDialog } from "./UserDetailsDialog";
+} from "../../types";
+import { presentOptimizationReport } from "../../presentation/optimizationPresentation";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import {
   observationCanRender,
   type ObservationState
-} from "../observation/observationState";
+} from "../../observation/observationState";
 import {
   ObservationStateBoundary,
   ObservationStateNotice
-} from "./ObservationStateNotice";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
-import { uiText } from "../text.ts";
-import { optimizationEvidenceValue } from "../presentation/optimizationPresentation";
+} from "../../components/ObservationStateNotice";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import { uiText } from "../../text.ts";
+import { optimizationEvidenceValue } from "../../presentation/optimizationPresentation";
 import {
   optimizationModeHasDomain,
   toggleOptimizationDomain,
   type OptimizationDomain
-} from "../features/settings/optimizationMode.ts";
+} from "../settings/optimizationMode.ts";
 
 type ReportFilter = "untrusted" | "all" | "trusted";
 
