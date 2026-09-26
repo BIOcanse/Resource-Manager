@@ -5,7 +5,7 @@ import { ControlWorkspace } from "../features/control/ControlWorkspace";
 import { DiskUsageWorkspace } from "../features/diskUsage/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { ManagementWorkspace } from "../features/management/ManagementWorkspace";
-import { MonitorPage } from "../pages/MonitorPage";
+import { MonitorPage } from "../features/monitor/MonitorPage";
 import { OptimizationWorkspace } from "../pages/OptimizationWorkspace";
 import { SettingsWorkspace } from "../pages/SettingsWorkspace";
 import { PageBoundary } from "../ui/patterns/PageBoundary.tsx";

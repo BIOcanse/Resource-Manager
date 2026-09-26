@@ -7,7 +7,7 @@ import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRu
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./components/ManualSoftwareModal";
-import { MetricDependencyState, MetricModal } from "./components/MetricModal";
+import { MetricDependencyState, MetricModal } from "./features/monitor/MetricModal";
 import { SoftwareDetailModal } from "./components/SoftwareDetailModal";
 import { StandardContextMenu } from "./components/StandardContextMenu";
 import { FrontendWorkProvider } from "./frontendWork/FrontendWorkContext";
