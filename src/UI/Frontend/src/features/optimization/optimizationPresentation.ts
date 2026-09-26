@@ -1,9 +1,9 @@
-import type { OptimizationReportItem } from "../types";
-import { userFacingDateTime, userFacingOptionalValue } from "./userFacingText";
-import type { UserDetailSection } from "./userDetails";
-import { compactUserDetailSections, userDetailItem, userDetailSection } from "./userDetails";
-import { uiText } from "../text.ts";
-import { formatBytes } from "./byteUnits.ts";
+import type { OptimizationReportItem } from "../../types";
+import { userFacingDateTime, userFacingOptionalValue } from "../../presentation/userFacingText";
+import type { UserDetailSection } from "../../presentation/userDetails";
+import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
+import { uiText } from "../../text.ts";
+import { formatBytes } from "../../presentation/byteUnits.ts";
 
 export interface OptimizationReportPresentation {
   title: string;
