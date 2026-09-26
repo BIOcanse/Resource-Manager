@@ -63,9 +63,9 @@ const offenders = [
   "../src/utils.ts",
   "../src/features/deviceTopology/adapters/adapterEvidence.ts",
   "../src/data/operations/uint64Decimal.ts",
-  "../src/components/CpuTopologyDiagram.tsx",
+  "../src/features/details/CpuTopologyDiagram.tsx",
   "../src/components/SoftwareDetailModal.tsx",
-  "../src/components/HostManagerSmartCoordinatorDetailsReport.tsx"
+  "../src/features/details/HostManagerSmartCoordinatorDetailsReport.tsx"
 ];
 for (const relativePath of offenders) {
   const source = readFileSync(new URL(relativePath, import.meta.url), "utf8");
