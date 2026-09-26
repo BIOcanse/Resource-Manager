@@ -9,15 +9,15 @@ import {
 import {
   resetCpuCorePerformanceOverrides,
   saveCpuCorePerformanceOverrides
-} from "../api";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { useFrontendWork } from "../frontendWork/FrontendWorkContext";
-import { useFrontendVisibilityDemand } from "../frontendWork/useFrontendVisibilityDemand";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
-import { sourceCanRender, type SourceSnapshot } from "../frontendRuntime/source/SourceSnapshot";
-import { useSource } from "../frontendRuntime/source/useSource";
-import { userFacingErrorMessage } from "../presentation/userFacingText";
+} from "../../api";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
+import { useSource } from "../../frontendRuntime/source/useSource";
+import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import type { JSX } from "solid-js";
 import type {
   CpuCcdModel,
@@ -26,10 +26,10 @@ import type {
   CpuCoreResidencySnapshot,
   CpuPhysicalCoreModel,
   CpuTopologySnapshot
-} from "../types";
-import { UserDetailsDialog } from "./UserDetailsDialog";
-import { uiText } from "../text.ts";
-import { formatBytes } from "../presentation/byteUnits.ts";
+} from "../../types";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
+import { uiText } from "../../text.ts";
+import { formatBytes } from "../../presentation/byteUnits.ts";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 

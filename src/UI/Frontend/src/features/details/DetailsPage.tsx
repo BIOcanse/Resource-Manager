@@ -1,16 +1,16 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
-import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
+import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
 import { CpuTopologyDiagram } from "./CpuTopologyDiagram";
-import { DeviceTopologyView } from "../features/deviceTopology/DeviceTopologyView";
-import { GpuSchedulingModel } from "./GpuSchedulingModel";
+import { DeviceTopologyView } from "../deviceTopology/DeviceTopologyView";
+import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
 import {
   TabsList,
   TabsPanel,
   TabsRoot,
   TabsTrigger
-} from "../ui/primitives/Tabs.tsx";
-import { uiText } from "../text.ts";
+} from "../../ui/primitives/Tabs.tsx";
+import { uiText } from "../../text.ts";
 
 type DetailsTab = "device" | "gpu" | "cpu" | "report";
 

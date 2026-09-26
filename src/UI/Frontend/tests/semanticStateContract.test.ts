@@ -6,11 +6,11 @@ const readSource = (relativePath: string) =>
 
 const appShell = readSource("app/AppShell.tsx");
 const optimization = readSource("features/optimization/OptimizationPage.tsx");
-const details = readSource("components/DetailsPage.tsx");
+const details = readSource("features/details/DetailsPage.tsx");
 const settings = readSource("features/settings/SettingsPage.tsx");
 const topology = readSource("features/deviceTopology/DeviceTopologyView.tsx");
 const aiGateway = readSource("components/AiGatewayKeyManager.tsx");
-const cpuTopology = readSource("components/CpuTopologyDiagram.tsx");
+const cpuTopology = readSource("features/details/CpuTopologyDiagram.tsx");
 const softwareDetail = readSource("components/SoftwareDetailModal.tsx");
 const hotkeyEditor = readSource("features/settings/components/EditableHotkeyEditor.tsx");
 const segmentedControl = readSource("ui/primitives/SegmentedControl.tsx");

@@ -2,33 +2,33 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "so
 import {
   resetGpuPerformanceScoreOverrides,
   saveGpuPerformanceScoreOverrides
-} from "../api";
+} from "../../api";
 import {
   buildGpuSpecializedCounterIds,
   type GpuSchedulingModelSnapshot
-} from "../data/gpu/gpuSchedulingModelSource";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { useFrontendWork } from "../frontendWork/FrontendWorkContext";
-import { useFrontendVisibilityDemand } from "../frontendWork/useFrontendVisibilityDemand";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+} from "../../data/gpu/gpuSchedulingModelSource";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type { SourceLease } from
-  "../frontendRuntime/source/SourceDescriptor";
+  "../../frontendRuntime/source/SourceDescriptor";
 import { SourceLeaseBinding } from
-  "../frontendRuntime/source/SourceLeaseBinding";
+  "../../frontendRuntime/source/SourceLeaseBinding";
 import {
   sourceCanRender,
   type SourceSnapshot
-} from "../frontendRuntime/source/SourceSnapshot";
-import { resolveGpuDeviceName } from "../features/gpuScheduling/gpuDeviceName";
-import { metricDisplayValue } from "../presentation/metricLabels";
+} from "../../frontendRuntime/source/SourceSnapshot";
+import { resolveGpuDeviceName } from "./gpuDeviceName";
+import { metricDisplayValue } from "../../presentation/metricLabels";
 import {
   failedObservation,
   loadingObservation,
   observationCanRender,
   readyObservation,
   type ObservationState
-} from "../observation/observationState";
+} from "../../observation/observationState";
 import type {
   GpuPerformanceScoreItem,
   GpuSpecializedTelemetrySnapshot,
@@ -36,9 +36,9 @@ import type {
   MetricSnapshot,
   ResourceBreakdownSnapshot,
   ResourceSoftwareSegment
-} from "../types";
-import { ObservationStateBoundary } from "./ObservationStateNotice";
-import { uiText } from "../text.ts";
+} from "../../types";
+import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
+import { uiText } from "../../text.ts";
 
 interface GpuSchedulingPosition {
   id: string;

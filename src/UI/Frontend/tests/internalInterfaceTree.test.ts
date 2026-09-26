@@ -286,7 +286,7 @@ assert.match(diskSearch[0].title, /^PCIe 内部接口/);
 const controllerSearch = filterInternalInterfaceTree(tree.nodes, "Standard NVM Express Controller");
 assert.ok(controllerSearch.some((node) => node.title === "Internal NVMe"));
 
-const detailsPageSource = readFileSync(new URL("../src/components/DetailsPage.tsx", import.meta.url), "utf8");
+const detailsPageSource = readFileSync(new URL("../src/features/details/DetailsPage.tsx", import.meta.url), "utf8");
 assert.match(detailsPageSource, /\{ id: "device", label: uiText\.[\w.]+ \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
 assert.doesNotMatch(detailsPageSource, /\{ id: "external", label: uiText\.deviceTopology\.externalScope \}|\{ id: "internal", label: uiText\.deviceTopology\.internalScope \}/);
 const topologyViewSource = readFileSync(new URL("../src/features/deviceTopology/DeviceTopologyView.tsx", import.meta.url), "utf8");

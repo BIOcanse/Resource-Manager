@@ -1,15 +1,15 @@
-import { formatBytes } from "../presentation/byteUnits.ts";
+import { formatBytes } from "../../presentation/byteUnits.ts";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { useFrontendWork } from "../frontendWork/FrontendWorkContext";
-import { useFrontendVisibilityDemand } from "../frontendWork/useFrontendVisibilityDemand";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
-import { userFacingDateTime } from "../presentation/userFacingText";
-import { compactUserDetailSections, userDetailItem, userDetailSection } from "../presentation/userDetails";
-import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../types";
-import { UserDetailsDialog } from "./UserDetailsDialog";
-import { uiText } from "../text.ts";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { userFacingDateTime } from "../../presentation/userFacingText";
+import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
+import type { HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
+import { uiText } from "../../text.ts";
 
 const smartStateSubscriptionIntervalMilliseconds = 3_000;
 
