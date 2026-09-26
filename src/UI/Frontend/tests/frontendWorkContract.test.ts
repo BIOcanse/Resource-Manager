@@ -147,7 +147,7 @@ assert.match(
   /frontendVisibilitySurface\([\s\S]*management\.browser-runtime[\s\S]*FrontendVisibilityDemandBinding[\s\S]*managementBrowserRuntimes[\s\S]*ObservationStateBoundary[\s\S]*BrowserRuntimePage/,
   "browser runtime demand must exist before its observation content boundary");
 assert.doesNotMatch(
-  readSource("browserRuntimes/BrowserRuntimePage.tsx"),
+  readSource("features/browserRuntimes/BrowserRuntimePage.tsx"),
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
   "browser runtime content must not duplicate its workspace visibility owner");
 

@@ -1,6 +1,6 @@
 import { Show } from "solid-js";
-import { BrowserRuntimePage } from "../browserRuntimes/BrowserRuntimePage";
-import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
+import { BrowserRuntimePage } from "../features/browserRuntimes/BrowserRuntimePage";
+import { sharedBrowserRuntimeComponentId } from "../features/browserRuntimes/browserRuntimeTypes";
 import { ComponentAcquisitionDialog } from "../components/ComponentAcquisitionDialog";
 import { ManagementPage, managementActionKey } from "../components/ManagementPage";
 import { MigrationPanel } from "../components/MigrationPanel";

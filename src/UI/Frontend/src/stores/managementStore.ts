@@ -6,11 +6,11 @@ import {
   getSoftware,
   openPath,
 } from "../api";
-import { getBrowserRuntimeSnapshot } from "../browserRuntimes/browserRuntimeApi";
+import { getBrowserRuntimeSnapshot } from "../features/browserRuntimes/browserRuntimeApi";
 import {
   sharedBrowserRuntimeComponentId,
   type BrowserRuntimeSnapshot
-} from "../browserRuntimes/browserRuntimeTypes";
+} from "../features/browserRuntimes/browserRuntimeTypes";
 import type { ComponentAcquisitionRequest } from "../components/ComponentAcquisitionDialog";
 import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
 import { managementActionKey, managementActionKeyFromOperation } from "../components/ManagementPage";

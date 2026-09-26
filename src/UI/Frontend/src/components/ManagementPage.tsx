@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Info, MoreHorizontal, Settings } from "lucide-solid";
-import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
+import { sharedBrowserRuntimeComponentId } from "../features/browserRuntimes/browserRuntimeTypes";
 import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
