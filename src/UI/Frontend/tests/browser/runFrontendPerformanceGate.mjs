@@ -879,7 +879,7 @@ function collectStaticEnvironment() {
 }
 
 async function collectFrontendAssets() {
-  const root = resolve(projectRoot, "../wwwroot");
+  const root = resolve(repositoryRoot, "Resource Manager/Resource Manager-APP/wwwroot");
   const manifestPath = resolve(root, "frontend-build.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   const assetPaths = (await listFiles(resolve(root, "assets")))

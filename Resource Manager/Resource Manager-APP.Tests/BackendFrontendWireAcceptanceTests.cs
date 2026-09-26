@@ -251,9 +251,9 @@ public sealed class BackendFrontendWireAcceptanceTests
         var repositoryRoot = FindRepositoryRoot();
         var clientRoot = Path.Combine(
             repositoryRoot,
-            "Resource Manager",
-            "Resource Manager-APP",
-            "ClientApp");
+            "src",
+            "UI",
+            "Frontend");
         var decoderPath = Path.Combine(clientRoot, "tests", "backendWireAcceptanceDecoder.ts");
         var startInfo = new ProcessStartInfo
         {

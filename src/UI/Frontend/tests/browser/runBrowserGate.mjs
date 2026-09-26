@@ -154,7 +154,7 @@ async function loadPlaywright() {
   ].filter(Boolean);
   const modulePath = candidates.find((candidate) => existsSync(candidate));
   if (!modulePath) {
-    throw new Error("Playwright is unavailable. Set RM_PLAYWRIGHT_MODULE or install Playwright in ClientApp.");
+    throw new Error("Playwright is unavailable. Set RM_PLAYWRIGHT_MODULE or install Playwright in the frontend project.");
   }
   return import(pathToFileURL(modulePath).href);
 }

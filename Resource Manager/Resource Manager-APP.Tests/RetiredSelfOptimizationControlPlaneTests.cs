@@ -37,7 +37,7 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
         Assert.DoesNotContain("/api/adapters/resource-manager/visible-regions", backendSource, StringComparison.Ordinal);
         Assert.DoesNotContain("ResourceManagerSelfResourceMarker", backendSource, StringComparison.Ordinal);
 
-        var clientSourceRoot = Path.Combine(appRoot, "ClientApp", "src");
+        var clientSourceRoot = Path.GetFullPath(Path.Combine(appRoot, "..", "..", "src", "UI", "Frontend", "src"));
         var clientSource = string.Join(
             '\n',
             Directory.EnumerateFiles(clientSourceRoot, "*.*", SearchOption.AllDirectories)
