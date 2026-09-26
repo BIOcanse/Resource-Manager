@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { createCreditGroups } from "../src/i18n/settingsCredits.ts";
 import { createSettingsLocale } from "../src/i18n/settingsLocaleFactory.ts";
 
-const notices = new URL("../../ThirdPartyNotices/", import.meta.url);
+const appRoot = new URL("../../../../Resource Manager/Resource Manager-APP/", import.meta.url);
+const notices = new URL("ThirdPartyNotices/", appRoot);
 const inventory = readFileSync(new URL("README.md", notices), "utf8");
 const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
 const allFrontendNotices = readFileSync(new URL("FrontendDependencyAcknowledgements.md", notices), "utf8");
@@ -15,10 +16,10 @@ for (const [path, item] of Object.entries(lock.packages)) {
 }
 const managed = JSON.parse(readFileSync(new URL("../src/i18n/managedDependencyAcknowledgements.json", import.meta.url), "utf8")) as Array<{ name: string; version: string; authors: string; license: string; kind: string }>;
 const actualManaged = new Set<string>();
-for (const path of ["../../obj/project.assets.json", "../../../../src/UI/Core/obj/project.assets.json", "../../Shared/obj/project.assets.json", "../../Launcher/obj/project.assets.json", "../../../Resource Manager-APP.Tests/obj/project.assets.json",
-  "../../../Resource Manager-AdapterSdk/csharp/ResourceManager.Adapter.Abstractions/obj/project.assets.json",
-  "../../../Resource Manager-AdapterSdk/csharp/ResourceManager.Adapter.SharedMemory/obj/project.assets.json"]) {
-  const assets = JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
+for (const path of ["obj/project.assets.json", "../../src/UI/Core/obj/project.assets.json", "Shared/obj/project.assets.json", "Launcher/obj/project.assets.json", "../Resource Manager-APP.Tests/obj/project.assets.json",
+  "../Resource Manager-AdapterSdk/csharp/ResourceManager.Adapter.Abstractions/obj/project.assets.json",
+  "../Resource Manager-AdapterSdk/csharp/ResourceManager.Adapter.SharedMemory/obj/project.assets.json"]) {
+  const assets = JSON.parse(readFileSync(new URL(path, appRoot), "utf8"));
   for (const [key, library] of Object.entries(assets.libraries)) {
     if ((library as { type: string }).type === "package") actualManaged.add(key.toLowerCase());
   }

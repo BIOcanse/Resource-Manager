@@ -2,7 +2,7 @@
 
 Thank you to every author, contributor and maintainer in the resolved frontend dependency graph. This includes build tools, optional platform packages, type definitions and dependencies whose licenses do not require attribution. In particular, permissive and 0BSD terms are not a reason to omit thanks.
 
-Source: `ClientApp/package-lock.json`. This list records all 110 non-root package paths, including nested copies and optional packages. A listing does not imply that all code is in the shipped JavaScript. Required original license texts remain separate and unmodified.
+Source: `src/UI/Frontend/package-lock.json`. This list records all 110 non-root package paths, including nested copies and optional packages. A listing does not imply that all code is in the shipped JavaScript. Required original license texts remain separate and unmodified.
 
 | Package | Version | Declared license | Role |
 | --- | --- | --- | --- |
@@ -116,4 +116,3 @@ Source: `ClientApp/package-lock.json`. This list records all 110 non-root packag
 | vite-plugin-solid | 2.11.12 | MIT | Build dependency |
 | vitefu | 1.1.3 | MIT | Build dependency |
 | yallist | 3.1.1 | ISC | Build dependency |
-

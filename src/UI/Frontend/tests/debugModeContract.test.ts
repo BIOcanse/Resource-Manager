@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const clientRoot = fileURLToPath(new URL("../", import.meta.url));
-const appRoot = fileURLToPath(new URL("../../", import.meta.url));
-const uiCoreRoot = fileURLToPath(new URL("../../../../src/UI/Core/", import.meta.url));
+const appRoot = fileURLToPath(new URL("../../../../Resource Manager/Resource Manager-APP/", import.meta.url));
+const uiCoreRoot = fileURLToPath(new URL("../../Core/", import.meta.url));
 const readClientSource = (relativePath: string) =>
   readFileSync(`${clientRoot}${relativePath}`, "utf8");
 const readAppSource = (relativePath: string) =>

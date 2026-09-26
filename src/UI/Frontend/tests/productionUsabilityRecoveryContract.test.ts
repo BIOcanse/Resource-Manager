@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const readSource = (relativePath: string) =>
   readFileSync(new URL(`../src/${relativePath}`, import.meta.url), "utf8");
 const readAppSource = (relativePath: string) =>
-  readFileSync(new URL(`../../${relativePath}`, import.meta.url), "utf8");
+  readFileSync(new URL(`../../../../Resource Manager/Resource Manager-APP/${relativePath}`, import.meta.url), "utf8");
 
 const capabilities = readSource("stores/runtimeCapabilitiesStore.ts");
 const app = readSource("App.tsx");

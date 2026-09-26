@@ -773,7 +773,7 @@ public sealed class ResourceTableProjectorTests
             ]);
     }
     // 容量单元只带原始字节和单位；显示成 GiB 还是 GB 由前端按用户选择决定，
-    // 那条规则钉在 ClientApp 的 byteUnitsContract 里。
+    // 那条规则钉在 src/UI/Frontend 的 byteUnitsContract 里。
     private static void AssertBytes(ResourceTableValue value, double expectedBytes)
     {
         Assert.Equal("B", value.Unit);

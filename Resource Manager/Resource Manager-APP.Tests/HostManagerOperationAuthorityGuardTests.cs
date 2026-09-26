@@ -59,7 +59,7 @@ public sealed class HostManagerOperationAuthorityGuardTests
         Assert.DoesNotContain("install-task", endpoints, StringComparison.Ordinal);
         Assert.DoesNotContain("uninstall-task", endpoints, StringComparison.Ordinal);
 
-        var clientRoot = Path.Combine(appRoot, "ClientApp", "src");
+        var clientRoot = Path.GetFullPath(Path.Combine(appRoot, "..", "..", "src", "UI", "Frontend", "src"));
         var clientSource = string.Join(
             Environment.NewLine,
             Directory.EnumerateFiles(
