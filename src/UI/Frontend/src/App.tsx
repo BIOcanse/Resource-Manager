@@ -6,7 +6,7 @@ import { usePageRefreshScheduler } from "./app/usePageRefreshScheduler";
 import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
-import { ManualSoftwareModal } from "./components/ManualSoftwareModal";
+import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
 import { MetricDependencyState, MetricModal } from "./features/monitor/MetricModal";
 import { SoftwareDetailModal } from "./components/SoftwareDetailModal";
 import { StandardContextMenu } from "./components/StandardContextMenu";

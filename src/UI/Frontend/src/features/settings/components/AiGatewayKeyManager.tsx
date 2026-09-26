@@ -1,10 +1,10 @@
 import { Copy, KeyRound, Trash2 } from "lucide-solid";
 import { createResource, createSignal, For, Show } from "solid-js";
-import { createAiGatewayCredential, getAiGatewayCredentials, revokeAiGatewayCredential } from "../api";
-import { userFacingErrorMessage } from "../presentation/userFacingText";
-import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../types";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
-import { uiText } from "../text.ts";
+import { createAiGatewayCredential, getAiGatewayCredentials, revokeAiGatewayCredential } from "../../../api";
+import { userFacingErrorMessage } from "../../../presentation/userFacingText";
+import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../../../types";
+import { SegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
+import { uiText } from "../../../text.ts";
 
 interface AiGatewayKeyManagerLabels {
   aiGatewayTitle: string;
