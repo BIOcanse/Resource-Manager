@@ -33,8 +33,7 @@ internal static class NativeUiPaths
         while (current is not null)
         {
             if (Directory.Exists(Path.Combine(current.FullName, "Config"))
-                && (Directory.Exists(Path.Combine(current.FullName, "Resource Manager-APP"))
-                    || Directory.Exists(Path.Combine(current.FullName, "Bin"))
+                && (Directory.Exists(Path.Combine(current.FullName, "Bin"))
                     || Directory.Exists(Path.Combine(current.FullName, "Dependencies"))))
             {
                 return current.FullName;
