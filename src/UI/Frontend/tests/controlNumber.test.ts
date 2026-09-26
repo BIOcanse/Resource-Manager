@@ -7,7 +7,7 @@ import {
   sliderThumbValue,
   snapControlNumber,
   snapToStep
-} from "../src/control/controlNumber.ts";
+} from "../src/features/control/controlNumber.ts";
 
 // 步长缺失或不合法按 1 走，和原生 input 一致。
 assert.equal(effectiveStep(undefined), 1);

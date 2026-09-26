@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, onCleanup } from "solid-js";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 import { curveStops, percentAt } from "./fanCurve.ts";
 
 /**
