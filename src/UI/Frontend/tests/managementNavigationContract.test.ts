@@ -31,7 +31,7 @@ const managementPage = readSource("../src/components/ManagementPage.tsx");
 // 文案已经移到语言包里，中文基底是这项断言的来源。
 const managementCopy = readSource("../src/i18n/copy/zh/software.ts");
 const workspace = readSource("../src/pages/ManagementWorkspace.tsx");
-const browserRuntimePage = readSource("../src/browserRuntimes/BrowserRuntimePage.tsx");
+const browserRuntimePage = readSource("../src/features/browserRuntimes/BrowserRuntimePage.tsx");
 const migrationStore = readSource("../src/stores/migrationStore.ts");
 const softwareActions = readSource("../src/app/useSoftwareActions.ts");
 const refreshScheduler = readSource("../src/app/usePageRefreshScheduler.ts");

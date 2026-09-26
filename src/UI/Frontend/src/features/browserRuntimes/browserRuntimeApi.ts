@@ -1,4 +1,4 @@
-import { getJson } from "../api";
+import { getJson } from "../../api";
 import type { BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
 
 export function getBrowserRuntimeSnapshot(forceRefresh = false) {

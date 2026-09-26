@@ -1,9 +1,9 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { Download, ExternalLink, Info, RefreshCw } from "lucide-solid";
-import { UserDetailsDialog } from "../components/UserDetailsDialog";
-import type { ManagedComponent } from "../types";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
+import type { ManagedComponent } from "../../types";
 import type { BrowserRuntimeEntry, BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 interface BrowserRuntimePageProps {
   snapshot: BrowserRuntimeSnapshot | null;
