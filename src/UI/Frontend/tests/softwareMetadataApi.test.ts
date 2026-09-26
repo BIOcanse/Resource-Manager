@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   getSoftwareMetadata,
   normalizeSoftwareMetadataQuery
-} from "../src/softwareMetadata/softwareMetadataApi.ts";
+} from "../src/features/softwareMetadata/softwareMetadataApi.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";

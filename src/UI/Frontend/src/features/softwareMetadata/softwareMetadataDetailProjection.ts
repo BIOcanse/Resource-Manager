@@ -1,14 +1,14 @@
 import type { SourceSnapshot } from
-  "../frontendRuntime/source/SourceSnapshot.ts";
+  "../../frontendRuntime/source/SourceSnapshot.ts";
 import { sourceCanRender } from
-  "../frontendRuntime/source/SourceSnapshot.ts";
-import type { SoftwareDetailModel } from "../types.ts";
+  "../../frontendRuntime/source/SourceSnapshot.ts";
+import type { SoftwareDetailModel } from "../../types.ts";
 import type { SoftwareMetadataQuery } from "./softwareMetadataApi.ts";
 import type {
   SoftwareMetadataLookupResult,
   SoftwareMetadataView
 } from "./softwareMetadataDecoder.ts";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 export function projectSoftwareMetadataDetail(
   current: SoftwareDetailModel | null,

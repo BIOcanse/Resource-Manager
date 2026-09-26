@@ -1,4 +1,4 @@
-import type { AppOptimizationMode } from "../types.ts";
+import type { AppOptimizationMode } from "../../types.ts";
 
 export type OptimizationDomain = "memory" | "cpu" | "gpu";
 
