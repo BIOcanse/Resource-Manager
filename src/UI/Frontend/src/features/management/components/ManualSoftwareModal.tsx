@@ -1,14 +1,14 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
-import type { ManualSoftwareKind, ManualSoftwareRequest, SoftwareRecord } from "../types";
-import { softwareDisplayKindLabel, uiText } from "../text.ts";
+import type { ManualSoftwareKind, ManualSoftwareRequest, SoftwareRecord } from "../../../types";
+import { softwareDisplayKindLabel, uiText } from "../../../text.ts";
 import {
   DialogActions,
   DialogBody,
   DialogHeader,
   DialogRoot
-} from "../ui/primitives/Dialog.tsx";
-import { normalizeSoftwareKind, textOrEmpty } from "../utils";
-import { StandardSelect } from "./StandardSelect";
+} from "../../../ui/primitives/Dialog.tsx";
+import { normalizeSoftwareKind, textOrEmpty } from "../../../utils";
+import { StandardSelect } from "../../../components/StandardSelect";
 
 interface ManualSoftwareModalProps {
   open: boolean;
