@@ -3,7 +3,7 @@ import {
   isUnavailableStartupGpuTarget,
   startupTargetGpuOptionsForSoftwarePolicy,
   targetGpuOptionsForSoftwarePolicy
-} from "../src/gpuPlacementTargetOptions.ts";
+} from "../src/components/gpuPlacementTargetOptions.ts";
 
 const runtimeOptions = targetGpuOptionsForSoftwarePolicy(true, "Precise", "Precise", "SystemDefaultGpu");
 assert.equal(runtimeOptions.some(([value, , disabled]) => value === "AutoIdleGpu" && disabled !== true), true);
