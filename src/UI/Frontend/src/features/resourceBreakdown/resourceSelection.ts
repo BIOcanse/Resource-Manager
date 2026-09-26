@@ -1,8 +1,8 @@
-import type { ResourcePrecisionSelection } from "../components/ResourceBreakdown.tsx";
+import type { ResourcePrecisionSelection } from "./ResourceBreakdown.tsx";
 import type {
   ResourceBreakdownBar,
   ResourceSoftwareSegment
-} from "../types.ts";
+} from "../../types.ts";
 
 export function reconcileResourceSelection(
   bars: readonly ResourceBreakdownBar[],

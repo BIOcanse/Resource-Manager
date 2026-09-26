@@ -1,4 +1,4 @@
-import type { ResourceScaleMode } from "../types";
+import type { ResourceScaleMode } from "../../types";
 
 const capacityMetricIds = new Set([
   "cpu.usage",

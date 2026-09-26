@@ -1,4 +1,4 @@
-import type { ResourceTableRow } from "../types";
+import type { ResourceTableRow } from "../../types";
 
 /**
  * 右键某一行时把它钉在当前位置：新快照到来后这一行仍然停在原来的第几行，

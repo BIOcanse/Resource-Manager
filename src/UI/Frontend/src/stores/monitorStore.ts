@@ -3,8 +3,8 @@ import type { Accessor } from "solid-js";
 import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../components/Dashboard";
 import { defaultPerformanceMetricIds } from "../components/ResourcePerformancePanel";
-import type { ResourcePrecisionSelection } from "../components/ResourceBreakdown";
-import { reconcileResourceSelection } from "../resourceBreakdown/resourceSelection";
+import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
+import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import type {
   DashboardCardSettings,
   DashboardSettings,
@@ -19,7 +19,7 @@ import type {
   ResourceTableSnapshot,
   ResourceTableViewMode
 } from "../types";
-import { normalizeResourceBarScaleMode } from "../resourceBreakdown/resourceBarScaleCapabilities";
+import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
 import { textOrEmpty } from "../utils";
 import {
   failedObservation,

@@ -1,10 +1,10 @@
-import type { TaskRun, TaskScope } from "../frontendRuntime/task/TaskScope.ts";
-import { defineTaskKey } from "../frontendRuntime/task/TaskDescriptor.ts";
+import type { TaskRun, TaskScope } from "../../frontendRuntime/task/TaskScope.ts";
+import { defineTaskKey } from "../../frontendRuntime/task/TaskDescriptor.ts";
 import type { ResourceSegmentLayout } from "./resourceSegmentLayout.ts";
 import {
   waitForTaskDelay,
   type TaskDelay
-} from "../frontendRuntime/task/waitForTaskDelay.ts";
+} from "../../frontendRuntime/task/waitForTaskDelay.ts";
 
 export const resourceLayoutSettleDurationMs = 440;
 export const resourceLayoutSettleTaskKey = defineTaskKey<void>(

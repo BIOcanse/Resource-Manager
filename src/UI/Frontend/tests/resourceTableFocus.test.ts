@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   moveResourceTableFocus,
   reconcileResourceTableFocus
-} from "../src/resourceTable/resourceTableFocus.ts";
+} from "../src/features/resourceTable/resourceTableFocus.ts";
 
 const rows = [
   { id: "summary", kind: "summary" },

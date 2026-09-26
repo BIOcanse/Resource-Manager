@@ -8,8 +8,8 @@ const layout = readSource("styles/layout.css");
 const theme = readSource("styles/theme.css");
 const base = readSource("styles/base.css");
 const documentTheme = readSource("presentation/documentTheme.ts");
-const resourceTable = readSource("components/ResourceTable.tsx");
-const resourceBreakdown = readSource("components/ResourceBreakdown.tsx");
+const resourceTable = readSource("features/resourceTable/ResourceTable.tsx");
+const resourceBreakdown = readSource("features/resourceBreakdown/ResourceBreakdown.tsx");
 const dashboard = readSource("components/Dashboard.tsx");
 const resourcePerformancePanel = readSource("components/ResourcePerformancePanel.tsx");
 const monitorPage = readSource("pages/MonitorPage.tsx");
@@ -58,7 +58,7 @@ const dividerConsumerStyles = [
   readSource("styles/context-menu.css"),
   readSource("components/deviceTopology/specialized-device-details.css")
 ].join("\n");
-const resourceSegmentPaintPlane = readSource("resourceBreakdown/ResourceSegmentPaintPlane.tsx");
+const resourceSegmentPaintPlane = readSource("features/resourceBreakdown/ResourceSegmentPaintPlane.tsx");
 const themeConsumerStyles = [
   readSource("styles/settings.css"),
   readSource("styles/management.css"),
