@@ -61,7 +61,7 @@ assert.equal(formatBytes(gb, "storage"), "1.00 GB");
 // 换算只有一个所有者：别处不许再出现按 1024 手算的字节格式化。
 const offenders = [
   "../src/utils.ts",
-  "../src/deviceTopology/adapters/adapterEvidence.ts",
+  "../src/features/deviceTopology/adapters/adapterEvidence.ts",
   "../src/data/operations/uint64Decimal.ts",
   "../src/components/CpuTopologyDiagram.tsx",
   "../src/components/SoftwareDetailModal.tsx",

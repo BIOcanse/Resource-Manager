@@ -1,11 +1,11 @@
-import { formatBytes as formatBytesInUnits } from "../../presentation/byteUnits.ts";
-import type { DeviceTopologyPort } from "../../types";
+import { formatBytes as formatBytesInUnits } from "../../../presentation/byteUnits.ts";
+import type { DeviceTopologyPort } from "../../../types";
 import type {
   DeviceAdapterContext,
   SpecializedDeviceSummaryField,
   SpecializedInternalDeviceFacts
 } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export function firstText(...values: Array<string | null | undefined>) {
   return values.map((value) => value?.trim()).find(Boolean);

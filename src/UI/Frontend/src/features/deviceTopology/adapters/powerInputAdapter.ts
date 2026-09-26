@@ -6,8 +6,8 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, PowerInputDeviceModel } from "./types";
-import { renderBackendMessage } from "../../presentation/backendMessage.ts";
-import { uiText } from "../../text.ts";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
+import { uiText } from "../../../text.ts";
 
 export const powerInputAdapter: DeviceAdapter<PowerInputDeviceModel> = {
   id: "power-input",

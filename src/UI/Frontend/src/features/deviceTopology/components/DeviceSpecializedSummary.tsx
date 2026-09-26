@@ -1,6 +1,6 @@
 import { For } from "solid-js";
-import { uiText } from "../../text";
-import type { SpecializedDeviceModel } from "../../deviceTopology/adapters/adapterRegistry";
+import { uiText } from "../../../text";
+import type { SpecializedDeviceModel } from "../adapters/adapterRegistry";
 
 export function DeviceSpecializedSummary(props: { model: SpecializedDeviceModel }) {
   return (

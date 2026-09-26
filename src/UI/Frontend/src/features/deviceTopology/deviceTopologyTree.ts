@@ -1,5 +1,5 @@
 import type { SpecializedDeviceModel } from "./adapters/adapterRegistry.ts";
-import type { DeviceTopologyPort } from "../types";
+import type { DeviceTopologyPort } from "../../types";
 
 export type DeviceTopologyTreeConnectionState = "connected" | "disconnected" | "unknown";
 

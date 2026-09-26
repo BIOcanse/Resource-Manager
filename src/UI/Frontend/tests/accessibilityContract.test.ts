@@ -56,7 +56,7 @@ const dividerConsumerStyles = [
   readSource("styles/task-center.css"),
   readSource("styles/user-details.css"),
   readSource("styles/context-menu.css"),
-  readSource("components/deviceTopology/specialized-device-details.css")
+  readSource("features/deviceTopology/components/specialized-device-details.css")
 ].join("\n");
 const resourceSegmentPaintPlane = readSource("features/resourceBreakdown/ResourceSegmentPaintPlane.tsx");
 const themeConsumerStyles = [

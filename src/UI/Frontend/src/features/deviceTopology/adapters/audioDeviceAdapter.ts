@@ -11,7 +11,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { AudioDeviceModel, DeviceAdapter } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const audioDeviceAdapter: DeviceAdapter<AudioDeviceModel> = {
   id: "audio-device",

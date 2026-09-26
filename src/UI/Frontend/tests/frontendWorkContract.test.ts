@@ -85,7 +85,7 @@ for (const relativePath of [
   "components/MigrationPanel.tsx",
   "components/OptimizationPage.tsx",
   "components/CpuTopologyDiagram.tsx",
-  "components/DeviceTopologyView.tsx",
+  "features/deviceTopology/DeviceTopologyView.tsx",
   "components/HostManagerSmartCoordinatorDetailsReport.tsx"
 ]) {
   const source = readSource(relativePath);
@@ -133,7 +133,7 @@ assert.doesNotMatch(
   /useSource\(frontendRuntime\.sources\.(?:cpuTopology|cpuResidency)/);
 assert.match(cpuTopologySource, /frontendWork\.isNeeded\(frontendWorkIds\.detailsCpuModel\)/);
 
-const deviceTopologyStoreSource = readSource("deviceTopology/deviceTopologyStore.ts");
+const deviceTopologyStoreSource = readSource("features/deviceTopology/deviceTopologyStore.ts");
 assert.doesNotMatch(deviceTopologyStoreSource, /setInterval\s*\(|useFrontendWorkPoll/);
 assert.match(deviceTopologyStoreSource, /runtime\.sources\.deviceTopology\.subscribe/);
 assert.doesNotMatch(deviceTopologyStoreSource, /useSource\(|refreshIntervalMs/);

@@ -1,7 +1,7 @@
 import {
   edidDigitalInterfaceLabel,
   outputTechnologyLabel
-} from "../deviceTopology/deviceVocabulary.ts";
+} from "../features/deviceTopology/deviceVocabulary.ts";
 import { uiText } from "../text.ts";
 import type { BackendMessage } from "../types.ts";
 

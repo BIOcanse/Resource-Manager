@@ -10,9 +10,9 @@ import type { ControlActualState } from "../../control/controlTypes.ts";
 import { localSystemStatusDecoder } from
   "../../data/localSystem/localSystemStatusDecoder.ts";
 import { buildDeviceTopologyStateSubscriptionUrl } from
-  "../../deviceTopology/deviceTopologyApi.ts";
+  "../../features/deviceTopology/deviceTopologyApi.ts";
 import { deviceTopologyStateDecoder } from
-  "../../deviceTopology/deviceTopologyStateDecoder.ts";
+  "../../features/deviceTopology/deviceTopologyStateDecoder.ts";
 import type { DeviceTopologySnapshotState } from "../../types.ts";
 import type { BackendStartupCapabilities } from "../../types.ts";
 import { getRuntimeCapabilities } from "../../data/runtimeCapabilities/runtimeCapabilitiesApi.ts";

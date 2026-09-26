@@ -1,6 +1,6 @@
-import { renderBackendMessage } from "../presentation/backendMessage.ts";
-import { uiText } from "../text.ts";
-import type { DeviceTopologyDisplayConnection, DeviceTopologyPort } from "../types.ts";
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { uiText } from "../../text.ts";
+import type { DeviceTopologyDisplayConnection, DeviceTopologyPort } from "../../types.ts";
 
 /**
  * 端口的名字：设备自报的优先，没有就渲染我们自己生成的那条码。

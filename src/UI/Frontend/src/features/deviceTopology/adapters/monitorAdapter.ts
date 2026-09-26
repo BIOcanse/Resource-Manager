@@ -1,4 +1,4 @@
-import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -7,8 +7,8 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MonitorDeviceModel } from "./types";
-import type { DeviceTopologyDisplayConnection } from "../../types";
-import { uiText } from "../../text.ts";
+import type { DeviceTopologyDisplayConnection } from "../../../types";
+import { uiText } from "../../../text.ts";
 
 export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
   id: "monitor",

@@ -13,7 +13,7 @@ import type {
   InternalControllerDeviceModel,
   NetworkAdapterDeviceModel
 } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
   id: "graphics-adapter",
@@ -174,7 +174,7 @@ export const internalControllerAdapter: DeviceAdapter<InternalControllerDeviceMo
   }
 };
 
-function isController(port: import("../../types").DeviceTopologyPort) {
+function isController(port: import("../../../types").DeviceTopologyPort) {
   const service = port.service?.toLocaleLowerCase() ?? "";
   return port.advancedInterconnect != null
     || port.usb?.deviceIsHub === true
@@ -202,7 +202,7 @@ function resolveBluetoothTransport(service: string | null | undefined, transport
   return /BTHUSB/i.test(service ?? "") ? "USB / Bluetooth" : displayValue(transport, "Bluetooth");
 }
 
-function resolveControllerType(port: import("../../types").DeviceTopologyPort) {
+function resolveControllerType(port: import("../../../types").DeviceTopologyPort) {
   const service = port.service?.toLocaleLowerCase() ?? "";
   if (service === "stornvme") return uiText.deviceAdapters.nvmeController;
   if (service === "storahci") return uiText.deviceAdapters.sataAhciController;
@@ -214,7 +214,7 @@ function resolveControllerType(port: import("../../types").DeviceTopologyPort) {
   return displayValue(port.hardwareKind, port.pnpClass ?? uiText.deviceAdapters.internalController);
 }
 
-function resolveNetworkStandard(port: import("../../types").DeviceTopologyPort) {
+function resolveNetworkStandard(port: import("../../../types").DeviceTopologyPort) {
   const evidence = `${port.displayName} ${port.protocol} ${port.idResolution?.deviceName ?? ""}`;
   if (/Wi-?Fi\s*7|802\.11be/i.test(evidence)) return "Wi-Fi 7";
   if (/Wi-?Fi\s*6E/i.test(evidence)) return "Wi-Fi 6E";

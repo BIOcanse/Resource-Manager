@@ -11,8 +11,8 @@ const subscriptionChannel = readSource(
 const pushValueSources = readSource(
   "frontendRuntime/push/PushValueSourceFamily.ts");
 const scheduler = readSource("app/usePageRefreshScheduler.ts");
-const deviceStore = readSource("deviceTopology/deviceTopologyStore.ts");
-const deviceApi = readSource("deviceTopology/deviceTopologyApi.ts");
+const deviceStore = readSource("features/deviceTopology/deviceTopologyStore.ts");
+const deviceApi = readSource("features/deviceTopology/deviceTopologyApi.ts");
 const sourceRegistry = readSource("frontendRuntime/source/SourceRegistry.ts");
 const sourceDescriptor = readSource("frontendRuntime/source/SourceDescriptor.ts");
 const settingsStore = readSource("stores/settingsStore.ts");

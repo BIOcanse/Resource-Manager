@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { getDeviceTopologyState } from "../src/deviceTopology/deviceTopologyApi.ts";
+import { getDeviceTopologyState } from "../src/features/deviceTopology/deviceTopologyApi.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";

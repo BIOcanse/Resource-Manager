@@ -1,12 +1,12 @@
 import { displayConnectorTechnology } from "./deviceVocabulary.ts";
-import type { DeviceTopologyPort } from "../types";
+import type { DeviceTopologyPort } from "../../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
   filterDeviceTopologyTree,
   type DeviceTopologyTreeConnectionState,
   type DeviceTopologyTreeNode
 } from "./deviceTopologyTree.ts";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 export type ExternalInterfaceNodeRole =
   | "host-interface"

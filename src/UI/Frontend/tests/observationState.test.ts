@@ -9,7 +9,7 @@ import {
   readyObservation,
   refreshingObservation
 } from "../src/observation/observationState.ts";
-import { projectDeviceTopologyObservation } from "../src/deviceTopology/deviceTopologyObservation.ts";
+import { projectDeviceTopologyObservation } from "../src/features/deviceTopology/deviceTopologyObservation.ts";
 import type { DeviceTopologySnapshotState } from "../src/types.ts";
 
 const loading = loadingObservation();

@@ -13,7 +13,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, KeyboardDeviceModel, MouseDeviceModel } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
   id: "keyboard",
@@ -117,7 +117,7 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
   }
 };
 
-function hasInputTimingEvidence(port: import("../../types").DeviceTopologyPort) {
+function hasInputTimingEvidence(port: import("../../../types").DeviceTopologyPort) {
   return port.usb != null
     || port.hid?.inputPollingIntervalMicroseconds != null
     || port.hid?.theoreticalReportRateHz != null;

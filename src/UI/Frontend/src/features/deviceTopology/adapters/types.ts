@@ -3,7 +3,7 @@ import type {
   DeviceTopologyPort,
   DeviceTopologyStoragePartition,
   DeviceTopologySmartDeviceStorage
-} from "../../types";
+} from "../../../types";
 
 export type DeviceAdapterKind =
   | "monitor"
