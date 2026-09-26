@@ -115,6 +115,8 @@ public sealed class HostManagerManagedScoringSourceGuardTests
             var sourceCandidate = Path.GetFullPath(Path.Combine(
                 sourceDirectory,
                 "..",
+                "..",
+                "Resource Manager",
                 "Resource Manager-APP"));
             if (File.Exists(Path.Combine(sourceCandidate, "ResourceManager.App.csproj")))
             {
@@ -128,7 +130,7 @@ public sealed class HostManagerManagedScoringSourceGuardTests
             var remainingParents = 32;
             while (directory is not null && remainingParents-- > 0)
             {
-                var candidate = Path.Combine(directory.FullName, "Resource Manager-APP");
+                var candidate = Path.Combine(directory.FullName, "Resource Manager", "Resource Manager-APP");
                 if (File.Exists(Path.Combine(candidate, "ResourceManager.App.csproj")))
                 {
                     return candidate;

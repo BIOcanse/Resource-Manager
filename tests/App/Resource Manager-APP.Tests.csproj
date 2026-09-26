@@ -3,6 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>Resource_Manager_APP.Tests</RootNamespace>
+    <AssemblyName>Resource Manager-APP.Tests</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -21,14 +22,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Resource Manager-APP\ResourceManager.App.csproj" />
+    <ProjectReference Include="..\..\Resource Manager\Resource Manager-APP\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
     <ProjectReference Include="..\..\src\Shared\ResourceManager.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\Resource Manager-APP\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
+    <None Include="..\..\Resource Manager\Resource Manager-APP\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
           Link="GpuLaunchBrokerProbe\ResourceManager.GpuLaunchTargetProbe.exe"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -54,7 +54,7 @@ public sealed class HostManagerControlZoneNameGuardTests
         [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
     {
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)!;
-        var appRoot = Path.GetFullPath(Path.Combine(sourceDirectory, "..", "Resource Manager-APP"));
+        var appRoot = Path.GetFullPath(Path.Combine(sourceDirectory, "..", "..", "Resource Manager", "Resource Manager-APP"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
             : throw new DirectoryNotFoundException("Could not locate Resource Manager-APP from the test source path.");

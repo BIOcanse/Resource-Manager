@@ -94,6 +94,8 @@ public sealed class BackendOutputClosureTests
         var appRoot = Path.GetFullPath(Path.Combine(
             sourceDirectory,
             "..",
+            "..",
+            "Resource Manager",
             "Resource Manager-APP"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
