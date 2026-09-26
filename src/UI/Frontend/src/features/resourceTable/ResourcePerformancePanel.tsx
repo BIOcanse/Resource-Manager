@@ -1,13 +1,13 @@
 import { createEffect, createMemo, For, onCleanup, onMount, Show } from "solid-js";
-import type { MetricDefinition, MetricSnapshot } from "../types";
-import type { ObservationState } from "../observation/observationState";
+import type { MetricDefinition, MetricSnapshot } from "../../types";
+import type { ObservationState } from "../../observation/observationState";
 import {
   appendPerformancePoint,
   buildPerformanceRuns,
   type PerformancePoint,
   type PerformanceSeries
 } from "./resourcePerformanceHistory.ts";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 const palette = ["#0f8f7b", "#4f7fd8", "#d79429", "#8762c9", "#c64e64", "#5894a0", "#65922f", "#9a7130"];
 
