@@ -168,8 +168,8 @@ assert.doesNotMatch(
 assert.match(monitorRegionSource, /aria-label=\{props\.label\}/);
 for (const relativePath of [
   "components/Dashboard.tsx",
-  "components/ResourceBreakdown.tsx",
-  "components/ResourceTable.tsx"
+  "features/resourceBreakdown/ResourceBreakdown.tsx",
+  "features/resourceTable/ResourceTable.tsx"
 ]) {
   assert.doesNotMatch(
     readSource(relativePath),

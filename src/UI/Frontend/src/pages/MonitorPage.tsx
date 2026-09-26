@@ -1,8 +1,8 @@
 import { onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { Dashboard } from "../components/Dashboard";
-import { ResourceBreakdown } from "../components/ResourceBreakdown";
-import { ResourceTable } from "../components/ResourceTable";
+import { ResourceBreakdown } from "../features/resourceBreakdown/ResourceBreakdown";
+import { ResourceTable } from "../features/resourceTable/ResourceTable";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { MonitorWorkRegion } from "../monitor/MonitorWorkRegion";
 import type { MonitorStore } from "../stores/monitorStore";

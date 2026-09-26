@@ -7,7 +7,7 @@ import type {
   ResourceTableColumnSettings,
   ResourceTableViewMode
 } from "../types";
-import { normalizeResourceBarScaleMode } from "../resourceBreakdown/resourceBarScaleCapabilities";
+import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
 import { textOrEmpty } from "../utils";
 
 export const dashboardSettingsVersion = 15;

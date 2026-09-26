@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { reconcileResourceSelection } from "../src/resourceBreakdown/resourceSelection.ts";
+import { reconcileResourceSelection } from "../src/features/resourceBreakdown/resourceSelection.ts";
 import {
   resourceSegmentAtPercent,
   resourceTrackPercentAtClientX
-} from "../src/resourceBreakdown/resourceTrackInteraction.ts";
+} from "../src/features/resourceBreakdown/resourceTrackInteraction.ts";
 import type { ResourceBreakdownBar } from "../src/types.ts";
 
 const bars = [

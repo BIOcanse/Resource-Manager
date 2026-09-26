@@ -1,4 +1,4 @@
-import type { ResourceTableColumn } from "../types";
+import type { ResourceTableColumn } from "../../types";
 
 export function resourceTableColumnsEqual(
   left: readonly ResourceTableColumn[],

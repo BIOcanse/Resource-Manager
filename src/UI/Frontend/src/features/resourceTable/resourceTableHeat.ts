@@ -1,4 +1,4 @@
-import type { ResourceTableRow } from "../types.ts";
+import type { ResourceTableRow } from "../../types.ts";
 
 export function projectResourceTableHeat(rows: ResourceTableRow[]): ResourceTableRow[] {
   const maxima = new Map<string, number>();

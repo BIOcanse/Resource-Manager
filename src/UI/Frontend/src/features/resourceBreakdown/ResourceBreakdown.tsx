@@ -1,8 +1,8 @@
-import { localizedMetricLabel, softwareDisplayName } from "../presentation/metricLabels.ts";
+import { localizedMetricLabel, softwareDisplayName } from "../../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
-import { useTaskScope } from "../frontendRuntime/task/useTaskScope";
-import { pointerReorderProps } from "../interactions/pointerReorder";
+import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
+import { pointerReorderProps } from "../../interactions/pointerReorder";
 import type {
   AppAnimationMode,
   MetricDefinition,
@@ -10,41 +10,41 @@ import type {
   ResourceBreakdownBar,
   ResourceProcessSegment,
   ResourceSoftwareSegment
-} from "../types";
+} from "../../types";
 import {
   resourceSegmentLayerStyle,
   type ResourceSegmentLayout,
   resourceSegmentLayout,
   shouldAnimateResourceSegment
-} from "../resourceBreakdown/resourceSegmentLayout";
+} from "./resourceSegmentLayout";
 import {
   normalizeResourceBarScaleMode,
   resourceBarSupportsCapacity
-} from "../resourceBreakdown/resourceBarScaleCapabilities";
+} from "./resourceBarScaleCapabilities";
 import type {
   ResourceSegmentCssVars as CssVars
-} from "../resourceBreakdown/resourceSegmentLayout";
-import { ResourceSegmentPaintPlane, type ResourcePaintSegment } from "../resourceBreakdown/ResourceSegmentPaintPlane";
-import { createResourceTrackGeometry } from "../resourceBreakdown/useResourceTrackGeometry";
+} from "./resourceSegmentLayout";
+import { ResourceSegmentPaintPlane, type ResourcePaintSegment } from "./ResourceSegmentPaintPlane";
+import { createResourceTrackGeometry } from "./useResourceTrackGeometry";
 import {
   createResourceLayoutSettleController
-} from "../resourceBreakdown/resourceLayoutSettleTransition";
-import { uiText } from "../text.ts";
-import { formatPercent } from "../utils";
-import { formatBytes } from "../presentation/byteUnits.ts";
-import { byteQuantityKindForMetric } from "../presentation/metricLabels.ts";
-import { StandardSelect } from "./StandardSelect";
-import { ContentState } from "../ui/patterns/ContentState.tsx";
+} from "./resourceLayoutSettleTransition";
+import { uiText } from "../../text.ts";
+import { formatPercent } from "../../utils";
+import { formatBytes } from "../../presentation/byteUnits.ts";
+import { byteQuantityKindForMetric } from "../../presentation/metricLabels.ts";
+import { StandardSelect } from "../../components/StandardSelect";
+import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import {
   activeDescendantOptionId,
   resolveActiveDescendantTarget
-} from "../ui/primitives/activeDescendantListbox.ts";
-import { positionResourceTooltip } from "../resourceBreakdown/resourceTooltipPlacement.ts";
+} from "../../ui/primitives/activeDescendantListbox.ts";
+import { positionResourceTooltip } from "./resourceTooltipPlacement.ts";
 import {
   resourceSegmentAtPercent,
   resourceTrackPercentAtClientX
-} from "../resourceBreakdown/resourceTrackInteraction.ts";
-import { useInlineEditorFocus } from "../interactions/inlineEditorFocus";
+} from "./resourceTrackInteraction.ts";
+import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 
 export interface ResourcePrecisionSelection {
   metricId: string;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveResourceTooltipPlacement } from "../src/resourceBreakdown/resourceTooltipPlacement.ts";
+import { resolveResourceTooltipPlacement } from "../src/features/resourceBreakdown/resourceTooltipPlacement.ts";
 
 const boundary = { left: 16, right: 784, top: 120, bottom: 600 };
 const first = resolveResourceTooltipPlacement(

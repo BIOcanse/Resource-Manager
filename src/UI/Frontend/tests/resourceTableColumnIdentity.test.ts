@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { resourceTableColumnsEqual } from
-  "../src/resourceTable/resourceTableColumnIdentity.ts";
+  "../src/features/resourceTable/resourceTableColumnIdentity.ts";
 import type { ResourceTableColumn } from "../src/types.ts";
 
 const cpuColumn: ResourceTableColumn = {

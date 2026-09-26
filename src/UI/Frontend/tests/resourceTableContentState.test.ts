@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { classifyResourceTableContentState } from
-  "../src/resourceTable/resourceTableContentState.ts";
+  "../src/features/resourceTable/resourceTableContentState.ts";
 
 assert.equal(classifyResourceTableContentState({
   businessRowCount: 0,

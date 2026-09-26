@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { pinResourceTableRow } from "../src/resourceTable/resourceTableRowPin.ts";
+import { pinResourceTableRow } from "../src/features/resourceTable/resourceTableRowPin.ts";
 import type { ResourceTableRow } from "../src/types.ts";
 
 function row(id: string): ResourceTableRow {

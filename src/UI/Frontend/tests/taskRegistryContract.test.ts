@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const runtime = readSource("frontendRuntime/FrontendRuntime.ts");
 const registry = readSource("frontendRuntime/task/TaskRegistry.ts");
 const descriptor = readSource("frontendRuntime/task/TaskDescriptor.ts");
-const resourceBreakdown = readSource("components/ResourceBreakdown.tsx");
+const resourceBreakdown = readSource("features/resourceBreakdown/ResourceBreakdown.tsx");
 const app = readSource("App.tsx");
 const appShell = readSource("app/AppShell.tsx");
 const taskCenter = readSource("ui/task-center/TaskCenterDialog.tsx");
