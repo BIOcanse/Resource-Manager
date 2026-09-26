@@ -9,7 +9,7 @@ import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
 import { pointerReorderProps } from "../../interactions/pointerReorder";
 import { userFacingLabel } from "../../presentation/userFacingText";
-import { ResourcePerformancePanel } from "../../components/ResourcePerformancePanel";
+import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
 import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../../types";
 import { uiText } from "../../text.ts";
