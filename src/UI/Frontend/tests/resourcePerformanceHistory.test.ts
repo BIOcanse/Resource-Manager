@@ -3,7 +3,7 @@ import {
   appendPerformancePoint,
   buildPerformanceRuns,
   type PerformanceSeries
-} from "../src/components/resourcePerformanceHistory.ts";
+} from "../src/features/resourceTable/resourcePerformanceHistory.ts";
 
 const series: readonly PerformanceSeries[] = Object.freeze([{
   id: "cpu.usage",

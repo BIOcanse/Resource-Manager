@@ -1,7 +1,7 @@
-import { metricDisplayValue } from "../presentation/metricLabels.ts";
-import type { MetricSnapshot } from "../types.ts";
+import { metricDisplayValue } from "../../presentation/metricLabels.ts";
+import type { MetricSnapshot } from "../../types.ts";
 import { metricSnapshotObservedAt } from
-  "../data/monitor/metricSnapshotValue.ts";
+  "../../data/monitor/metricSnapshotValue.ts";
 
 export interface PerformancePoint {
   readonly capturedAt: string | null;
