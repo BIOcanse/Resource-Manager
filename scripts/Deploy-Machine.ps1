@@ -25,9 +25,8 @@ if (-not (Test-Path -LiteralPath $modulePath)) {
 }
 . $modulePath
 
-$repositorySoftwareRoot = Join-Path $scriptDirectory 'Resource Manager'
-$publishScript = Join-Path $repositorySoftwareRoot 'publish-all-win-x64.ps1'
-$defaultSourceImage = Join-Path $repositorySoftwareRoot 'Bin\ResourceManagerFinal'
+$publishScript = Join-Path $scriptDirectory 'scripts\release\Publish-ResourceManagerLocal.ps1'
+$defaultSourceImage = Join-Path $scriptDirectory 'artifacts\local-publish\ResourceManagerFinal'
 $finalImageValidator = Join-Path $scriptDirectory 'scripts\validation\Test-ResourceManagerFinalImage.ps1'
 $manifestValidator = Join-Path $scriptDirectory 'scripts\validation\Test-WindowsExecutableManifest.ps1'
 if (-not (Test-Path -LiteralPath $finalImageValidator)) {
