@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { SoftwareMetadataLeaseBinding } from
-  "../src/softwareMetadata/SoftwareMetadataLeaseBinding.ts";
+  "../src/features/softwareMetadata/SoftwareMetadataLeaseBinding.ts";
 import type { SoftwareMetadataQuery } from
-  "../src/softwareMetadata/softwareMetadataApi.ts";
+  "../src/features/softwareMetadata/softwareMetadataApi.ts";
 import type { SoftwareMetadataLookupResult } from
-  "../src/softwareMetadata/softwareMetadataDecoder.ts";
+  "../src/features/softwareMetadata/softwareMetadataDecoder.ts";
 import type {
   SourceDemand,
   SourceFamily,

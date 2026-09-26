@@ -67,14 +67,14 @@ import { pickShellFolder } from "../utils";
 import { requestDeviceTopologySelection } from "../deviceTopology/deviceTopologyStore";
 import {
   SoftwareMetadataLeaseBinding
-} from "../softwareMetadata/SoftwareMetadataLeaseBinding";
+} from "../features/softwareMetadata/SoftwareMetadataLeaseBinding";
 import type { SoftwareMetadataQuery } from
-  "../softwareMetadata/softwareMetadataApi";
+  "../features/softwareMetadata/softwareMetadataApi";
 import type {
   SoftwareMetadataLookupResult
-} from "../softwareMetadata/softwareMetadataDecoder";
+} from "../features/softwareMetadata/softwareMetadataDecoder";
 import { projectSoftwareMetadataDetail } from
-  "../softwareMetadata/softwareMetadataDetailProjection";
+  "../features/softwareMetadata/softwareMetadataDetailProjection";
 import {
   componentCategory,
   componentDisplayName,

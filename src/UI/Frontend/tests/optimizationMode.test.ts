@@ -3,7 +3,7 @@ import {
   normalizeOptimizationModeValue,
   optimizationModeHasDomain,
   toggleOptimizationDomain
-} from "../src/settings/optimizationMode.ts";
+} from "../src/features/settings/optimizationMode.ts";
 import type { AppOptimizationMode } from "../src/types.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";

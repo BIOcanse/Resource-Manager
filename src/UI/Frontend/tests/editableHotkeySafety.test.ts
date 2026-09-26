@@ -4,7 +4,7 @@ import {
   forceTerminateHotkeyActionId,
   isSafeDestructiveHotkeyEncoding,
   normalizeEditableHotkeys
-} from "../src/settings/editableHotkeys.ts";
+} from "../src/features/settings/editableHotkeys.ts";
 
 test("destructive hotkey safety requires an approved modifier and action key", () => {
   const cases: Array<[number[], boolean]> = [

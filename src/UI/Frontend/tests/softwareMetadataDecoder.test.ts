@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   softwareMetadataLookupDecoder
-} from "../src/softwareMetadata/softwareMetadataDecoder.ts";
+} from "../src/features/softwareMetadata/softwareMetadataDecoder.ts";
 import {
   ResponseDecodeError
 } from "../src/frontendRuntime/request/ResponseDecoder.ts";

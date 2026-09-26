@@ -86,9 +86,9 @@ import {
   getSoftwareMetadata,
   normalizeSoftwareMetadataQuery,
   type SoftwareMetadataQuery
-} from "../../softwareMetadata/softwareMetadataApi.ts";
+} from "../../features/softwareMetadata/softwareMetadataApi.ts";
 import type { SoftwareMetadataLookupResult } from
-  "../../softwareMetadata/softwareMetadataDecoder.ts";
+  "../../features/softwareMetadata/softwareMetadataDecoder.ts";
 import { getOptimizationReports } from
   "../../data/optimization/optimizationReportsApi.ts";
 import {

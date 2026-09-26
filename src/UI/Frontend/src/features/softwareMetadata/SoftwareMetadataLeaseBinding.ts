@@ -1,9 +1,9 @@
 import type {
   SourceFamily,
   SourceLease
-} from "../frontendRuntime/source/SourceDescriptor.ts";
+} from "../../frontendRuntime/source/SourceDescriptor.ts";
 import type { SourceSnapshot } from
-  "../frontendRuntime/source/SourceSnapshot.ts";
+  "../../frontendRuntime/source/SourceSnapshot.ts";
 import {
   normalizeSoftwareMetadataQuery,
   softwareMetadataQueryKey,

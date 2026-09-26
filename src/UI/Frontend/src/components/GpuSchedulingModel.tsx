@@ -20,7 +20,7 @@ import {
   sourceCanRender,
   type SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot";
-import { resolveGpuDeviceName } from "../gpuScheduling/gpuDeviceName";
+import { resolveGpuDeviceName } from "../features/gpuScheduling/gpuDeviceName";
 import { metricDisplayValue } from "../presentation/metricLabels";
 import {
   failedObservation,

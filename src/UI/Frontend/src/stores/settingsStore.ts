@@ -20,7 +20,7 @@ import type {
 import type {
   SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot.ts";
-import { classifySettingsApplicationOutcome } from "../settings/settingsApplicationDisposition.ts";
+import { classifySettingsApplicationOutcome } from "../features/settings/settingsApplicationDisposition.ts";
 import { normalizeByteUnitMode } from "../presentation/byteUnits.ts";
 import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
@@ -50,9 +50,9 @@ import type {
   SettingsSection
 } from "../types";
 import { postShellMessage } from "../utils.ts";
-import { normalizeEditableHotkeys } from "../settings/editableHotkeys.ts";
-import { normalizeOptimizationModeValue } from "../settings/optimizationMode.ts";
-import { applySettingsPatch, createSettingsPatch } from "../settings/settingsPatch.ts";
+import { normalizeEditableHotkeys } from "../features/settings/editableHotkeys.ts";
+import { normalizeOptimizationModeValue } from "../features/settings/optimizationMode.ts";
+import { applySettingsPatch, createSettingsPatch } from "../features/settings/settingsPatch.ts";
 import { uiText } from "../text.ts";
 
 const prebootAppearanceStorageKey = "resource-manager:appearance";

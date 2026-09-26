@@ -5,7 +5,7 @@ import {
   requireRecord,
   requireStringArray,
   ResponseDecodeError
-} from "../frontendRuntime/request/ResponseDecoder.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
 
 export interface SoftwareMetadataView {
   readonly softwareIdentityId: string;

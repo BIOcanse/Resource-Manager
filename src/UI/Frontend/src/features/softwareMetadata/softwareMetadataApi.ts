@@ -1,12 +1,12 @@
-import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
+import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import {
   ResponseDecodeError
-} from "../frontendRuntime/request/ResponseDecoder.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
 import {
   softwareMetadataLookupDecoder,
   type SoftwareMetadataLookupResult
 } from "./softwareMetadataDecoder.ts";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 type SoftwareMetadataRequestClient = Pick<RequestClient, "request">;
 

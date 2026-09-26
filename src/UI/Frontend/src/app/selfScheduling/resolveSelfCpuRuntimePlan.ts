@@ -8,7 +8,7 @@ import type {
   AppPerformanceSettings,
   ResourceManagerSelfCpuGrade
 } from "../../types";
-import { optimizationModeHasDomain } from "../../settings/optimizationMode.ts";
+import { optimizationModeHasDomain } from "../../features/settings/optimizationMode.ts";
 
 export interface ResourceManagerSelfCpuRuntimePlan {
   frontendRefreshPaused: boolean;

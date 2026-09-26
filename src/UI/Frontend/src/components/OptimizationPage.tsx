@@ -36,7 +36,7 @@ import {
   optimizationModeHasDomain,
   toggleOptimizationDomain,
   type OptimizationDomain
-} from "../settings/optimizationMode.ts";
+} from "../features/settings/optimizationMode.ts";
 
 type ReportFilter = "untrusted" | "all" | "trusted";
 

@@ -3,7 +3,7 @@ import { AiGatewayKeyManager } from "../AiGatewayKeyManager";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
-} from "../../settings/editableHotkeys";
+} from "../../features/settings/editableHotkeys";
 import type { SettingsTextBundle } from "../../text.ts";
 import type {
   AppAiModelServiceSettings,
