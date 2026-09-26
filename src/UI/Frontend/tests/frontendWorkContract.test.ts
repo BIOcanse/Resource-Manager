@@ -83,7 +83,7 @@ assert.match(registrationSource, /onCleanup/);
 for (const relativePath of [
   "features/management/components/ManagementPage.tsx",
   "features/management/components/MigrationPanel.tsx",
-  "components/OptimizationPage.tsx",
+  "features/optimization/OptimizationPage.tsx",
   "components/CpuTopologyDiagram.tsx",
   "features/deviceTopology/DeviceTopologyView.tsx",
   "components/HostManagerSmartCoordinatorDetailsReport.tsx"
@@ -104,7 +104,7 @@ assert.match(managementSource, /frontendVisibilityDemandId\(\s*"management\.comp
 assert.match(managementSource, /frontendVisibilityDemandId\("management\.software"/);
 assert.match(managementSource, /FrontendVisibilityDemandBinding[\s\S]*managementInventory/);
 
-const optimizationSource = readSource("components/OptimizationPage.tsx");
+const optimizationSource = readSource("features/optimization/OptimizationPage.tsx");
 assert.match(optimizationSource, /frontendVisibilityDemandId\("optimization\.report"/);
 assert.match(optimizationSource, /FrontendVisibilityDemandBinding[\s\S]*optimizationReports/);
 

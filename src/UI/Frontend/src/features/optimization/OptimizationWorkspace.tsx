@@ -1,6 +1,6 @@
-import { OptimizationPage } from "../components/OptimizationPage";
-import type { OptimizationStore } from "../stores/optimizationStore";
-import type { OptimizationReportItem } from "../types";
+import { OptimizationPage } from "./OptimizationPage";
+import type { OptimizationStore } from "../../stores/optimizationStore";
+import type { OptimizationReportItem } from "../../types";
 
 interface OptimizationWorkspaceProps {
   optimization: OptimizationStore;

@@ -1,7 +1,7 @@
 import { onCleanup } from "solid-js";
-import { SettingsPage } from "../features/settings/SettingsPage";
-import type { SettingsStore } from "../stores/settingsStore";
-import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
+import { SettingsPage } from "./SettingsPage";
+import type { SettingsStore } from "../../stores/settingsStore";
+import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;

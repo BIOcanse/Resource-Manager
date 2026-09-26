@@ -5,7 +5,7 @@ const readSource = (relativePath: string) =>
   readFileSync(new URL(`../src/${relativePath}`, import.meta.url), "utf8");
 
 const appShell = readSource("app/AppShell.tsx");
-const optimization = readSource("components/OptimizationPage.tsx");
+const optimization = readSource("features/optimization/OptimizationPage.tsx");
 const details = readSource("components/DetailsPage.tsx");
 const settings = readSource("features/settings/SettingsPage.tsx");
 const topology = readSource("features/deviceTopology/DeviceTopologyView.tsx");
