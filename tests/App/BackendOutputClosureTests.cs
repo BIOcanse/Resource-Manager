@@ -13,6 +13,11 @@ public sealed class BackendOutputClosureTests
             "Properties",
             "PublishProfiles",
             "win-x64-self-contained.pubxml"));
+        Assert.Equal(
+            @"$(MSBuildProjectDirectory)\..\..\artifacts\local-publish\ResourceManager\",
+            Assert.Single(
+                backendProfile.Descendants(),
+                element => element.Name.LocalName == "PublishDir").Value);
         var nativeUiProject = XDocument.Load(Path.Combine(
             Path.GetFullPath(Path.Combine(appRoot, "..", "..")),
             "src", "UI", "Core",

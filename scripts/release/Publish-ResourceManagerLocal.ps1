@@ -8,8 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$SoftwareRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepositoryRoot = Split-Path -Parent $SoftwareRoot
+$RepositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $AppRoot = Join-Path $RepositoryRoot "src\Core"
 $ClientRoot = Join-Path $RepositoryRoot "src\UI\Frontend"
 $BackendProject = Join-Path $AppRoot "ResourceManager.App.csproj"
@@ -23,11 +22,11 @@ $GpuPlacementBootstrap = Join-Path $GpuPlacementShimRoot "bin\win-x64\ResourceMa
 $GpuLaunchBrokerRoot = Join-Path $AppRoot "Native\GpuLaunchBroker"
 $GpuLaunchBrokerBuild = Join-Path $GpuLaunchBrokerRoot "build.cmd"
 $GpuLaunchBroker = Join-Path $GpuLaunchBrokerRoot "bin\win-x64\ResourceManager.GpuLaunchBroker.exe"
-$BinRoot = Join-Path $SoftwareRoot "Bin"
-$BackendOutput = Join-Path $BinRoot "ResourceManager"
-$NativeUiOutput = Join-Path $BinRoot "ResourceManagerNativeUi"
-$LauncherOutput = Join-Path $BinRoot "ResourceManagerLauncher"
-$FinalOutput = Join-Path $BinRoot "ResourceManagerFinal"
+$OutputRoot = Join-Path $RepositoryRoot "artifacts\local-publish"
+$BackendOutput = Join-Path $OutputRoot "ResourceManager"
+$NativeUiOutput = Join-Path $OutputRoot "ResourceManagerNativeUi"
+$LauncherOutput = Join-Path $OutputRoot "ResourceManagerLauncher"
+$FinalOutput = Join-Path $OutputRoot "ResourceManagerFinal"
 $BackendExe = Join-Path $BackendOutput "ResourceManager.exe"
 $NativeUiExe = Join-Path $NativeUiOutput "ResourceManager.NativeUi.exe"
 $DevelopmentRunner = Join-Path $RepositoryRoot "scripts\dev\Run-Development.ps1"
@@ -41,16 +40,24 @@ function Write-Step([string]$Message) {
     }
 }
 
-function Assert-PathUnderBin([string]$Path) {
+function Assert-PathUnderOutputRoot([string]$Path) {
     $resolved = [System.IO.Path]::GetFullPath($Path)
-    $binResolved = [System.IO.Path]::GetFullPath($BinRoot).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
-    if (-not $resolved.StartsWith($binResolved, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "拒绝清理 Bin 目录以外的发布路径：$resolved"
+    $rootResolved = [System.IO.Path]::GetFullPath($OutputRoot).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolved.StartsWith($rootResolved, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean a path outside the local publish root: $resolved"
+    }
+    foreach ($candidate in @($RepositoryRoot, (Join-Path $RepositoryRoot 'artifacts'), $OutputRoot, $resolved)) {
+        if (Test-Path -LiteralPath $candidate) {
+            $item = Get-Item -LiteralPath $candidate -Force
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing to clean through a reparse point: $candidate"
+            }
+        }
     }
 }
 
 function Clear-PublishDirectory([string]$Path) {
-    Assert-PathUnderBin $Path
+    Assert-PathUnderOutputRoot $Path
     if (Test-Path -LiteralPath $Path) {
         Write-Step "清理旧发布目录：$Path"
         Remove-Item -LiteralPath $Path -Recurse -Force
@@ -173,7 +180,7 @@ if ($publishBackend) {
     Invoke-CheckedCommand `
         "dotnet" `
         @("publish", $BackendProject, "/p:PublishProfile=win-x64-self-contained", "/p:SkipClientAppBuild=true", "--nologo", "--verbosity", "minimal") `
-        $SoftwareRoot
+        $RepositoryRoot
 }
 
 if ($publishNativeUi) {
@@ -192,7 +199,7 @@ if ($publishNativeUi) {
             "--nologo",
             "--verbosity", "minimal"
         ) `
-        $SoftwareRoot
+        $RepositoryRoot
 }
 
 if ($Target -eq 'All' -or $Target -eq 'Launcher') {
@@ -200,7 +207,7 @@ if ($Target -eq 'All' -or $Target -eq 'Launcher') {
     Invoke-CheckedCommand 'dotnet' @(
         'publish', $LauncherProject, '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'true', '-p:PublishSingleFile=true',
-        "-p:PublishDir=$LauncherOutput", '--nologo', '--verbosity', 'minimal') $SoftwareRoot
+        "-p:PublishDir=$LauncherOutput", '--nologo', '--verbosity', 'minimal') $RepositoryRoot
 }
 
 if ($publishBackend -and -not (Test-Path -LiteralPath $BackendExe)) {
