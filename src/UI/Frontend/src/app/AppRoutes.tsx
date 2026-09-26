@@ -4,7 +4,7 @@ import { DetailsPage } from "../components/DetailsPage";
 import { ControlWorkspace } from "../features/control/ControlWorkspace";
 import { DiskUsageWorkspace } from "../features/diskUsage/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
-import { ManagementWorkspace } from "../pages/ManagementWorkspace";
+import { ManagementWorkspace } from "../features/management/ManagementWorkspace";
 import { MonitorPage } from "../pages/MonitorPage";
 import { OptimizationWorkspace } from "../pages/OptimizationWorkspace";
 import { SettingsWorkspace } from "../pages/SettingsWorkspace";

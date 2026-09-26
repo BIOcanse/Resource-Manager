@@ -1,4 +1,4 @@
-import type { ManagedComponent, SoftwareRecord } from "../types";
+import type { ManagedComponent, SoftwareRecord } from "../../types";
 
 const storageKey = "resource-manager:management-snapshot:v3";
 const cacheVersion = 3;

@@ -1,26 +1,26 @@
 import { Show } from "solid-js";
-import { BrowserRuntimePage } from "../features/browserRuntimes/BrowserRuntimePage";
-import { sharedBrowserRuntimeComponentId } from "../features/browserRuntimes/browserRuntimeTypes";
-import { ComponentAcquisitionDialog } from "../components/ComponentAcquisitionDialog";
-import { ManagementPage, managementActionKey } from "../components/ManagementPage";
-import { MigrationPanel } from "../components/MigrationPanel";
-import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { FrontendVisibilityDemandBinding } from "../frontendWork/useFrontendVisibilityDemand";
+import { BrowserRuntimePage } from "../browserRuntimes/BrowserRuntimePage";
+import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
+import { ComponentAcquisitionDialog } from "./components/ComponentAcquisitionDialog";
+import { ManagementPage, managementActionKey } from "./components/ManagementPage";
+import { MigrationPanel } from "./components/MigrationPanel";
+import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { FrontendVisibilityDemandBinding } from "../../frontendWork/useFrontendVisibilityDemand";
 import {
   browserRuntimeManagementSubpageId,
   isManagementInventorySubpage
-} from "../management/managementNavigation";
-import type { ManagementStore } from "../stores/managementStore";
-import type { MigrationWorkbenchStore } from "../stores/migrationStore";
-import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
-import type { ManagedComponent, SoftwareRecord } from "../types";
+} from "./managementNavigation";
+import type { ManagementStore } from "../../stores/managementStore";
+import type { MigrationWorkbenchStore } from "../../stores/migrationStore";
+import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
+import type { ManagedComponent, SoftwareRecord } from "../../types";
 import {
   ObservationStateBoundary,
   ObservationStateNotice
-} from "../components/ObservationStateNotice";
-import { uiText } from "../text.ts";
+} from "../../components/ObservationStateNotice";
+import { uiText } from "../../text.ts";
 
 const browserRuntimeDemandId = "management.browser-runtime";
 
