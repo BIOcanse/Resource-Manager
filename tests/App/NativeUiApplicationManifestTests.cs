@@ -40,6 +40,7 @@ public sealed class NativeUiApplicationManifestTests
         var scriptPath = Path.Combine(
             Path.GetFullPath(Path.Combine(appRoot, "..", "..")),
             "scripts",
+            "validation",
             "Test-WindowsExecutableManifest.ps1");
         Assert.True(File.Exists(executablePath), $"Native UI apphost not found: {executablePath}");
         Assert.True(File.Exists(scriptPath), $"Manifest validator not found: {scriptPath}");

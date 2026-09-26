@@ -28,8 +28,8 @@ if (-not (Test-Path -LiteralPath $modulePath)) {
 $repositorySoftwareRoot = Join-Path $scriptDirectory 'Resource Manager'
 $publishScript = Join-Path $repositorySoftwareRoot 'publish-all-win-x64.ps1'
 $defaultSourceImage = Join-Path $repositorySoftwareRoot 'Bin\ResourceManagerFinal'
-$finalImageValidator = Join-Path $scriptDirectory 'scripts\Test-ResourceManagerFinalImage.ps1'
-$manifestValidator = Join-Path $scriptDirectory 'scripts\Test-WindowsExecutableManifest.ps1'
+$finalImageValidator = Join-Path $scriptDirectory 'scripts\validation\Test-ResourceManagerFinalImage.ps1'
+$manifestValidator = Join-Path $scriptDirectory 'scripts\validation\Test-WindowsExecutableManifest.ps1'
 if (-not (Test-Path -LiteralPath $finalImageValidator)) {
     $finalImageValidator = Join-Path $scriptDirectory 'Test-ResourceManagerFinalImage.ps1'
 }

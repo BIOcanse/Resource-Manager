@@ -7,7 +7,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+$repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $app = Join-Path $repo 'src\Core'
 $backend = [IO.Path]::GetFullPath($BackendPublishRoot)
 $ui = [IO.Path]::GetFullPath($NativeUiPublishRoot)

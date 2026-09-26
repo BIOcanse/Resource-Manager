@@ -11,7 +11,7 @@ public sealed class FinalImagePackagingContractTests
     {
         var repository = FindRepositoryRoot();
         var builder = Path.Combine(repository, "scripts", "New-ResourceManagerFinalImage.ps1");
-        var validator = Path.Combine(repository, "scripts", "Test-ResourceManagerFinalImage.ps1");
+        var validator = Path.Combine(repository, "scripts", "validation", "Test-ResourceManagerFinalImage.ps1");
         var root = Path.Combine(Path.GetTempPath(), $"ResourceManager.FinalImage.Contract.{Guid.NewGuid():N}");
         var backend = Path.Combine(root, "backend");
         var ui = Path.Combine(root, "ui");
