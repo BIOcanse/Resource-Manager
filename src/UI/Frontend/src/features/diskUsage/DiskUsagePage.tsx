@@ -1,9 +1,9 @@
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { formatBytes, formatBytePair } from "../presentation/byteUnits.ts";
-import { pickShellFolder } from "../utils.ts";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
-import { uiText } from "../text.ts";
+import { formatBytes, formatBytePair } from "../../presentation/byteUnits.ts";
+import { pickShellFolder } from "../../utils.ts";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import { uiText } from "../../text.ts";
 import type {
   DiskUsageScanMode,
   DiskUsageScanScope,

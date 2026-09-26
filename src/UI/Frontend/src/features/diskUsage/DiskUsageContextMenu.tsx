@@ -1,6 +1,6 @@
 import { onCleanup, onMount, Show } from "solid-js";
-import { formatBytes } from "../presentation/byteUnits.ts";
-import { uiText } from "../text.ts";
+import { formatBytes } from "../../presentation/byteUnits.ts";
+import { uiText } from "../../text.ts";
 import type { DiskUsageNode } from "./diskUsageLayoutTypes.ts";
 
 /**

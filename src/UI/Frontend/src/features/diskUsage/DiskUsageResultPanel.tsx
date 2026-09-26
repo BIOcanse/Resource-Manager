@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
-import { formatBytes } from "../presentation/byteUnits.ts";
-import { uiText } from "../text.ts";
+import { formatBytes } from "../../presentation/byteUnits.ts";
+import { uiText } from "../../text.ts";
 import { DiskUsageTreemapPlane } from "./DiskUsageTreemapPlane";
 import type { DiskUsageTileFacts } from "./diskUsageLayoutFacts.ts";
 import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
