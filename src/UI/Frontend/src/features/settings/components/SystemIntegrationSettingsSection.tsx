@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { AiGatewayKeyManager } from "../../../components/AiGatewayKeyManager";
+import { AiGatewayKeyManager } from "./AiGatewayKeyManager";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
