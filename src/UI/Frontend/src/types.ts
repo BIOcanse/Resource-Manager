@@ -1532,7 +1532,7 @@ export interface OptimizationReportEvidence {
   peakValue: number;
   currentValue: number;
   // 数值的单位标记："%" / "B"（原始字节）/ "°C" / "ms" / "count"。
-  // 后端只给事实，成句和换算由 presentation/optimizationPresentation.ts 负责。
+  // 后端只给事实，成句和换算由 features/optimization/optimizationPresentation.ts 负责。
   valueUnit: string;
   activeSampleCount: number;
   sampleCount: number;
