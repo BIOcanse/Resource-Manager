@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const dashboard = readSource("../src/components/Dashboard.tsx");
-const metricModal = readSource("../src/components/MetricModal.tsx");
+const dashboard = readSource("../src/features/monitor/Dashboard.tsx");
+const metricModal = readSource("../src/features/monitor/MetricModal.tsx");
 const resourceBreakdown = readSource("../src/features/resourceBreakdown/ResourceBreakdown.tsx");
 const presentation = readSource("../src/presentation/userFacingText.ts");
 const monitorCss = readSource("../src/styles/monitor.css");

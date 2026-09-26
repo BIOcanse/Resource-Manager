@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import { saveDashboardSettings } from "../api";
-import type { DashboardSlotRef } from "../components/Dashboard";
+import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../components/ResourcePerformancePanel";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";

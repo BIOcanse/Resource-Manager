@@ -151,7 +151,7 @@ assert.doesNotMatch(
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
   "browser runtime content must not duplicate its workspace visibility owner");
 
-const monitorPageSource = readSource("pages/MonitorPage.tsx");
+const monitorPageSource = readSource("features/monitor/MonitorPage.tsx");
 assert.equal(
   monitorPageSource.match(/<MonitorWorkRegion/g)?.length,
   3,
@@ -161,13 +161,13 @@ assert.equal(
   3,
   "continuous monitor values must remain renderable while their transport reconnects");
 assert.doesNotMatch(monitorPageSource, /demandId=|frontendWorkIds\./);
-const monitorRegionSource = readSource("monitor/MonitorWorkRegion.tsx");
+const monitorRegionSource = readSource("features/monitor/MonitorWorkRegion.tsx");
 assert.doesNotMatch(
   monitorRegionSource,
   /frontendVisibilitySurface|FrontendVisibilityDemandBinding|IntersectionObserver/);
 assert.match(monitorRegionSource, /aria-label=\{props\.label\}/);
 for (const relativePath of [
-  "components/Dashboard.tsx",
+  "features/monitor/Dashboard.tsx",
   "features/resourceBreakdown/ResourceBreakdown.tsx",
   "features/resourceTable/ResourceTable.tsx"
 ]) {

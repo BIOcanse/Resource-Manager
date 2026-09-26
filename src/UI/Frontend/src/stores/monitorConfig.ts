@@ -1,4 +1,4 @@
-import type { DashboardSlotRef } from "../components/Dashboard";
+import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import type {
   DashboardCardSettings,
   DashboardMetricBinding,

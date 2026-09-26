@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 
 const config = readSource("../src/stores/monitorConfig.ts");
 const store = readSource("../src/stores/monitorStore.ts");
-const page = readSource("../src/pages/MonitorPage.tsx");
-const dashboard = readSource("../src/components/Dashboard.tsx");
+const page = readSource("../src/features/monitor/MonitorPage.tsx");
+const dashboard = readSource("../src/features/monitor/Dashboard.tsx");
 const resourceBreakdown = readSource("../src/features/resourceBreakdown/ResourceBreakdown.tsx");
 const resourceTable = readSource("../src/features/resourceTable/ResourceTable.tsx");
 const pointerReorder = readSource("../src/interactions/pointerReorder.ts");

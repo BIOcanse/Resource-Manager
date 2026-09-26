@@ -1,4 +1,4 @@
-import { localizedMetricLabel } from "../presentation/metricLabels";
+import { localizedMetricLabel } from "../../presentation/metricLabels";
 import { Search, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
@@ -6,20 +6,20 @@ import {
   userFacingMetricGroup,
   userFacingMetricUnavailableReason,
   userFacingState
-} from "../presentation/userFacingText";
-import type { ManagedComponent, MetricDefinition } from "../types";
+} from "../../presentation/userFacingText";
+import type { ManagedComponent, MetricDefinition } from "../../types";
 import {
   DialogActions,
   DialogBody,
   DialogHeader,
   DialogRoot
-} from "../ui/primitives/Dialog.tsx";
+} from "../../ui/primitives/Dialog.tsx";
 import {
   activeDescendantOptionId,
   resolveActiveDescendantTarget
-} from "../ui/primitives/activeDescendantListbox.ts";
-import { isComponentInstalled, textOrEmpty } from "../utils";
-import { uiText } from "../text.ts";
+} from "../../ui/primitives/activeDescendantListbox.ts";
+import { isComponentInstalled, textOrEmpty } from "../../utils";
+import { uiText } from "../../text.ts";
 
 interface MetricModalProps {
   open: boolean;

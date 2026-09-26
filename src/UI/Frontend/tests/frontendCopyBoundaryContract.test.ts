@@ -26,7 +26,7 @@ const directCopySources = [
   "../src/features/browserRuntimes/BrowserRuntimePage.tsx",
   "../src/components/CpuTopologyDiagram.tsx",
   "../src/features/management/components/ManagementPage.tsx",
-  "../src/components/MetricModal.tsx",
+  "../src/features/monitor/MetricModal.tsx",
   "../src/features/management/components/MigrationPanel.tsx",
   "../src/components/SoftwareDetailModal.tsx",
   "../src/stores/managementStore.ts",

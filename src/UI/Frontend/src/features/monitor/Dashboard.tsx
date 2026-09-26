@@ -1,9 +1,9 @@
 import { localizedMetricLabel, metricDisplayValue
-} from "../presentation/metricLabels";
+} from "../../presentation/metricLabels";
 import { createSignal, For, Show } from "solid-js";
-import { pointerReorderProps } from "../interactions/pointerReorder";
-import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../types";
-import { uiText } from "../text.ts";
+import { pointerReorderProps } from "../../interactions/pointerReorder";
+import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../../types";
+import { uiText } from "../../text.ts";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
