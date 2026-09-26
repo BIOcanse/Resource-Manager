@@ -4,10 +4,13 @@ import { fileURLToPath } from "node:url";
 
 const clientRoot = fileURLToPath(new URL("../", import.meta.url));
 const appRoot = fileURLToPath(new URL("../../", import.meta.url));
+const uiCoreRoot = fileURLToPath(new URL("../../../../src/UI/Core/", import.meta.url));
 const readClientSource = (relativePath: string) =>
   readFileSync(`${clientRoot}${relativePath}`, "utf8");
 const readAppSource = (relativePath: string) =>
   readFileSync(`${appRoot}${relativePath}`, "utf8");
+const readUiCoreSource = (relativePath: string) =>
+  readFileSync(`${uiCoreRoot}${relativePath}`, "utf8");
 
 const settingsSources = [
   readClientSource("src/types.ts"),
@@ -49,10 +52,10 @@ for (const source of retiredSelfOptimizationSources) {
 }
 
 assert.doesNotMatch(readClientSource("src/stores/settingsStore.ts"), /debug:reload/);
-assert.doesNotMatch(readAppSource("NativeUi/MainForm.cs"), /NativeUiDebug/);
-assert.doesNotMatch(readAppSource("NativeUi/MainForm.WebMessages.cs"), /debug:reload/);
+assert.doesNotMatch(readUiCoreSource("Shell/MainForm.cs"), /NativeUiDebug/);
+assert.doesNotMatch(readUiCoreSource("Shell/MainForm.WebMessages.cs"), /debug:reload/);
 assert.equal(
-  existsSync(`${appRoot}NativeUi/Debug/NativeUiDebugServer.cs`),
+  existsSync(`${uiCoreRoot}Debug/NativeUiDebugServer.cs`),
   false,
   "the Native UI must not own a dedicated debug listener");
 assert.match(readAppSource("Endpoints/DebugEndpoints.cs"), /\/api\/debug\/logs/);

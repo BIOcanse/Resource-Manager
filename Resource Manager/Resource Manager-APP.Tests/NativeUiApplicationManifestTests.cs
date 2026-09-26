@@ -9,7 +9,7 @@ public sealed class NativeUiApplicationManifestTests
     [Fact]
     public void SourceManifestRunsAsInvokerWithoutUiAccessOrAutoElevation()
     {
-        var manifestPath = Path.Combine(FindAppRoot(), "NativeUi", "app.manifest");
+        var manifestPath = Path.Combine(FindNativeUiRoot(), "app.manifest");
         var document = XDocument.Load(manifestPath);
         var requestedLevel = Assert.Single(
             document.Descendants(),
@@ -32,8 +32,7 @@ public sealed class NativeUiApplicationManifestTests
         const string configuration = "Release";
 #endif
         var executablePath = Path.Combine(
-            appRoot,
-            "NativeUi",
+            FindNativeUiRoot(),
             "bin",
             configuration,
             "net10.0-windows",
@@ -112,4 +111,7 @@ public sealed class NativeUiApplicationManifestTests
             : throw new DirectoryNotFoundException(
                 "Could not locate Resource Manager-APP from the test source path.");
     }
+
+    private static string FindNativeUiRoot() =>
+        Path.GetFullPath(Path.Combine(FindAppRoot(), "..", "..", "src", "UI", "Core"));
 }

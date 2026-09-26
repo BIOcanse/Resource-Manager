@@ -865,7 +865,7 @@ async function captureRuntimeArtifactClosure() {
   const frontendRoot = resolve(applicationRoot, "wwwroot");
   const files = [
     resolve(applicationRoot, "bin/Debug/net10.0-windows/ResourceManager.exe"),
-    resolve(applicationRoot, "NativeUi/bin/Debug/net10.0-windows/ResourceManager.NativeUi.exe"),
+    resolve(applicationRoot, "../../src/UI/Core/bin/Debug/net10.0-windows/ResourceManager.NativeUi.exe"),
     ...await listFiles(frontendRoot)
   ];
   const entries = [];

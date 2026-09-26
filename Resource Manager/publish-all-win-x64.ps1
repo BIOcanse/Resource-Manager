@@ -9,10 +9,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $SoftwareRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RepositoryRoot = Split-Path -Parent $SoftwareRoot
 $AppRoot = Join-Path $SoftwareRoot "Resource Manager-APP"
 $ClientRoot = Join-Path $AppRoot "ClientApp"
 $BackendProject = Join-Path $AppRoot "ResourceManager.App.csproj"
-$NativeUiProject = Join-Path $AppRoot "NativeUi\ResourceManager.NativeUi.csproj"
+$NativeUiProject = Join-Path $RepositoryRoot "src\UI\Core\ResourceManager.NativeUi.csproj"
 $LauncherProject = Join-Path $AppRoot "Launcher\ResourceManager.Launcher.csproj"
 $FrontendManifestPath = Join-Path $AppRoot "wwwroot\frontend-build.json"
 $GpuPlacementShimRoot = Join-Path $AppRoot "Native\GpuPlacementShim"
@@ -29,7 +30,6 @@ $LauncherOutput = Join-Path $BinRoot "ResourceManagerLauncher"
 $FinalOutput = Join-Path $BinRoot "ResourceManagerFinal"
 $BackendExe = Join-Path $BackendOutput "ResourceManager.exe"
 $NativeUiExe = Join-Path $NativeUiOutput "ResourceManager.NativeUi.exe"
-$RepositoryRoot = Split-Path -Parent $SoftwareRoot
 $DevelopmentRunner = Join-Path $RepositoryRoot "scripts\Run-Development.ps1"
 $FinalImageBuilder = Join-Path $RepositoryRoot "scripts\New-ResourceManagerFinalImage.ps1"
 $FinalImageValidator = Join-Path $RepositoryRoot "scripts\Test-ResourceManagerFinalImage.ps1"
