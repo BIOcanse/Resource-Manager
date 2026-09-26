@@ -1,7 +1,7 @@
 import { createSignal, For, JSX, Show } from "solid-js";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { useFrontendVisibilityDemand } from "../frontendWork/useFrontendVisibilityDemand";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
 import type {
   DiscoverySession,
   MigrationCandidate,
@@ -10,9 +10,9 @@ import type {
   MigrationRoots,
   MigrationTargetCategory,
   SoftwareDataMigrationRecord
-} from "../types";
-import { StandardSelect } from "./StandardSelect";
-import { UserDetailsDialog } from "./UserDetailsDialog";
+} from "../../../types";
+import { StandardSelect } from "../../../components/StandardSelect";
+import { UserDetailsDialog } from "../../../components/UserDetailsDialog";
 import {
   migrationClassificationLabel,
   migrationKindLabel,
@@ -21,11 +21,11 @@ import {
   migrationTargetCategoryLabel,
   userFacingDateTime,
   userFacingRisk
-} from "../presentation/userFacingText";
-import type { UserDetailSection } from "../presentation/userDetails";
-import { compactUserDetailSections, userDetailItem, userDetailSection } from "../presentation/userDetails";
-import { formatBytes } from "../presentation/byteUnits.ts";
-import { uiText } from "../text.ts";
+} from "../../../presentation/userFacingText";
+import type { UserDetailSection } from "../../../presentation/userDetails";
+import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../../presentation/userDetails";
+import { formatBytes } from "../../../presentation/byteUnits.ts";
+import { uiText } from "../../../text.ts";
 
 interface MigrationPanelProps {
   status: string;
