@@ -1,29 +1,29 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
-import { openPath, openProperties } from "../api";
-import { diskUsageScanCommand } from "../data/operations/operationCommands.ts";
-import { DiskUsageContextMenu } from "../diskUsage/DiskUsageContextMenu";
-import { DiskUsagePage } from "../diskUsage/DiskUsagePage";
-import { DiskUsageResultPanel } from "../diskUsage/DiskUsageResultPanel";
-import { tileFactsOf } from "../diskUsage/diskUsageLayoutFacts.ts";
-import { needsMoreDetail } from "../diskUsage/diskUsageViewport.ts";
-import type { DiskUsageViewWindow } from "../diskUsage/diskUsageViewport.ts";
+import { openPath, openProperties } from "../../api";
+import { diskUsageScanCommand } from "../../data/operations/operationCommands.ts";
+import { DiskUsageContextMenu } from "./DiskUsageContextMenu";
+import { DiskUsagePage } from "./DiskUsagePage";
+import { DiskUsageResultPanel } from "./DiskUsageResultPanel";
+import { tileFactsOf } from "./diskUsageLayoutFacts.ts";
+import { needsMoreDetail } from "./diskUsageViewport.ts";
+import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import {
   getDiskUsageLayout,
   getDiskUsageNode,
   getDiskUsageSummary,
   getDiskUsageVolumes
-} from "../diskUsage/diskUsageApi.ts";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+} from "./diskUsageApi.ts";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type {
   DiskUsageLayout,
   DiskUsageNode,
   DiskUsageScanSummary
-} from "../diskUsage/diskUsageLayoutTypes.ts";
+} from "./diskUsageLayoutTypes.ts";
 import type {
   DiskUsageScanMode,
   DiskUsageScanScope,
   DiskUsageVolume
-} from "../diskUsage/diskUsageTypes.ts";
+} from "./diskUsageTypes.ts";
 
 /**
  * 磁盘占用页的外壳。

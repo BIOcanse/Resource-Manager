@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { DetailsPage } from "../components/DetailsPage";
 import { ControlWorkspace } from "../pages/ControlWorkspace";
-import { DiskUsageWorkspace } from "../pages/DiskUsageWorkspace";
+import { DiskUsageWorkspace } from "../features/diskUsage/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { ManagementWorkspace } from "../pages/ManagementWorkspace";
 import { MonitorPage } from "../pages/MonitorPage";

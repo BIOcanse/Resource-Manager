@@ -10,8 +10,8 @@ import {
   visibleUnitRect,
   zoomAt,
   type DiskUsageViewWindow
-} from "../src/diskUsage/diskUsageViewport.ts";
-import { LabelOccupancy } from "../src/diskUsage/diskUsageTreemapPaint.ts";
+} from "../src/features/diskUsage/diskUsageViewport.ts";
+import { LabelOccupancy } from "../src/features/diskUsage/diskUsageTreemapPaint.ts";
 
 const width = 1000;
 const height = 500;

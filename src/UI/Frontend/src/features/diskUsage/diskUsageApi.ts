@@ -11,9 +11,9 @@ import {
   requireString,
   requireStringArray,
   ResponseDecodeError
-} from "../frontendRuntime/request/ResponseDecoder.ts";
-import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
-import { uiText } from "../text.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
+import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
+import { uiText } from "../../text.ts";
 import type { DiskUsageVolume, DiskUsageVolumeKind } from "./diskUsageTypes.ts";
 import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import type {
