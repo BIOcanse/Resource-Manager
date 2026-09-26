@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createCreditGroups } from "../src/i18n/settingsCredits.ts";
 import { createSettingsLocale } from "../src/i18n/settingsLocaleFactory.ts";
 
-const appRoot = new URL("../../../../Resource Manager/Resource Manager-APP/", import.meta.url);
+const appRoot = new URL("../../../../src/Core/", import.meta.url);
 const notices = new URL("ThirdPartyNotices/", appRoot);
 const inventory = readFileSync(new URL("README.md", notices), "utf8");
 const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));

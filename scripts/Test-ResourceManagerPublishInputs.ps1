@@ -2,7 +2,7 @@
 param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$app = Join-Path (Split-Path -Parent $PSScriptRoot) 'Resource Manager\Resource Manager-APP'
+$app = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\Core'
 $raw = & dotnet msbuild (Join-Path $app 'ResourceManager.App.csproj') -nologo -getItem:Content,None,EmbeddedResource
 if ($LASTEXITCODE -ne 0) { throw 'Cannot evaluate publication inputs.' }
 $items = ($raw -join "`n" | ConvertFrom-Json).Items

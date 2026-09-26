@@ -482,7 +482,7 @@ public sealed class HostManagerAppliedOwnershipFactProjectionTests
         [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
     {
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)!;
-        var appRoot = Path.GetFullPath(Path.Combine(sourceDirectory, "..", "..", "Resource Manager", "Resource Manager-APP"));
+        var appRoot = Path.GetFullPath(Path.Combine(sourceDirectory, "..", "..", "src", "Core"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
             : throw new DirectoryNotFoundException(

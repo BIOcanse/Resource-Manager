@@ -6,7 +6,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$app = Join-Path $repo 'Resource Manager\Resource Manager-APP'
+$app = Join-Path $repo 'src\Core'
 $clientApp = Join-Path $repo 'src\UI\Frontend'
 if (-not ('ResourceManagerReleaseErrorMode' -as [type])) { Add-Type -TypeDefinition @'
 using System.Runtime.InteropServices;

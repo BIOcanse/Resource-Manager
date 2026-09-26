@@ -68,8 +68,8 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
                 sourceDirectory,
                 "..",
                 "..",
-                "Resource Manager",
-                "Resource Manager-APP"));
+                "src",
+                "Core"));
             if (File.Exists(Path.Combine(sourceCandidate, "ResourceManager.App.csproj")))
             {
                 return sourceCandidate;
@@ -82,7 +82,7 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
             var remainingParents = 32;
             while (current is not null && remainingParents-- > 0)
             {
-                var candidate = Path.Combine(current.FullName, "Resource Manager", "Resource Manager-APP");
+                var candidate = Path.Combine(current.FullName, "src", "Core");
                 if (File.Exists(Path.Combine(candidate, "ResourceManager.App.csproj")))
                 {
                     return candidate;

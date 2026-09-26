@@ -15,7 +15,7 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
     [Fact]
     public void ProductBuildAndPublishRequireTheWindowHelper()
     {
-        var project = XDocument.Load(Path.Combine(RepositoryRoot(), "Resource Manager", "Resource Manager-APP", "ResourceManager.App.csproj"));
+        var project = XDocument.Load(Path.Combine(RepositoryRoot(), "src", "Core", "ResourceManager.App.csproj"));
         var target = Assert.Single(project.Root!.Elements("Target"), item => (string?)item.Attribute("Name") == "BuildGpuWindowAction");
         Assert.Equal("PrepareForBuild", (string?)target.Attribute("BeforeTargets"));
         Assert.Equal("@(GpuWindowActionSource)", (string?)target.Attribute("Inputs"));

@@ -317,8 +317,8 @@ public sealed class WindowsGpuProviderIdentityResolverTests
                 sourceDirectory,
                 "..",
                 "..",
-                "Resource Manager",
-                "Resource Manager-APP"));
+                "src",
+                "Core"));
             if (File.Exists(Path.Combine(
                     candidate,
                     "ResourceManager.App.csproj")))
