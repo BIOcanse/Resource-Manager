@@ -24,7 +24,7 @@ $launcher = [System.IO.Path]::GetFullPath($LauncherDirectory)
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $outputParent = [System.IO.Path]::GetDirectoryName($output)
 $outputLeaf = [System.IO.Path]::GetFileName($output)
-$validator = Join-Path $PSScriptRoot 'Test-ResourceManagerFinalImage.ps1'
+$validator = Join-Path $PSScriptRoot 'validation\Test-ResourceManagerFinalImage.ps1'
 
 function Test-IsSameOrDescendant {
     param(

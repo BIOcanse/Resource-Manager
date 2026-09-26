@@ -3,7 +3,7 @@ param([Parameter(Mandatory = $true)][string]$RootDirectory)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($RootDirectory)
-$repository = Split-Path -Parent $PSScriptRoot
+$repository = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $jsonHashes = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $trackedJson = @(& git -C $repository ls-files -- '*.json')
 if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate universal source data.' }
