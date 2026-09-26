@@ -127,6 +127,8 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
             var candidate = Path.GetFullPath(Path.Combine(
                 sourceDirectory,
                 "..",
+                "..",
+                "Resource Manager",
                 "Resource Manager-APP"));
             if (File.Exists(Path.Combine(
                     candidate,

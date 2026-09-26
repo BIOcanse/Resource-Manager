@@ -16,7 +16,7 @@ for (const [path, item] of Object.entries(lock.packages)) {
 }
 const managed = JSON.parse(readFileSync(new URL("../src/i18n/managedDependencyAcknowledgements.json", import.meta.url), "utf8")) as Array<{ name: string; version: string; authors: string; license: string; kind: string }>;
 const actualManaged = new Set<string>();
-for (const path of ["obj/project.assets.json", "../../src/UI/Core/obj/project.assets.json", "../../src/Shared/obj/project.assets.json", "../../src/UI/Launcher/obj/project.assets.json", "../Resource Manager-APP.Tests/obj/project.assets.json",
+for (const path of ["obj/project.assets.json", "../../src/UI/Core/obj/project.assets.json", "../../src/Shared/obj/project.assets.json", "../../src/UI/Launcher/obj/project.assets.json", "../../tests/App/obj/project.assets.json",
   "../../sdk/csharp/ResourceManager.Adapter.Abstractions/obj/project.assets.json",
   "../../sdk/csharp/ResourceManager.Adapter.SharedMemory/obj/project.assets.json"]) {
   const assets = JSON.parse(readFileSync(new URL(path, appRoot), "utf8"));

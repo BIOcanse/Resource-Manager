@@ -262,6 +262,8 @@ public sealed class WindowsGpuIdentityBridgeTests
             var sourceCandidate = Path.GetFullPath(Path.Combine(
                 sourceDirectory,
                 "..",
+                "..",
+                "Resource Manager",
                 "Resource Manager-APP"));
             if (File.Exists(Path.Combine(
                     sourceCandidate,
