@@ -1,16 +1,16 @@
 import { For, Show } from "solid-js";
 import { Plus, Trash2 } from "lucide-solid";
-import { StandardSelect } from "../StandardSelect";
+import { StandardSelect } from "../../../components/StandardSelect";
 import {
   decodeEditableHotkey,
   encodeEditableHotkey,
   hotkeyKeyOptions,
   isSafeDestructiveHotkeyEncoding
-} from "../../features/settings/editableHotkeys";
-import type { SettingsTextBundle } from "../../text.ts";
-import type { AppEditableHotkeySettings } from "../../types";
-import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { uiText } from "../../text.ts";
+} from "../editableHotkeys";
+import type { SettingsTextBundle } from "../../../text.ts";
+import type { AppEditableHotkeySettings } from "../../../types";
+import { RadioGroupItem, RadioGroupRoot } from "../../../ui/primitives/RadioGroup.tsx";
+import { uiText } from "../../../text.ts";
 
 const addKeyDefaults = [17, 18, 46, 123];
 

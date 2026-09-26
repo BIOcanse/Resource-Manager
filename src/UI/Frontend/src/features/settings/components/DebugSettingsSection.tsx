@@ -1,7 +1,7 @@
 import { Show } from "solid-js";
-import type { SettingsTextBundle } from "../../text.ts";
-import type { AppSettings } from "../../types";
-import { uiText } from "../../text.ts";
+import type { SettingsTextBundle } from "../../../text.ts";
+import type { AppSettings } from "../../../types";
+import { uiText } from "../../../text.ts";
 
 interface DebugSettingsSectionProps {
   settings: AppSettings["debug"] | undefined;

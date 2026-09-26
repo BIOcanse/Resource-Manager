@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For } from "solid-js";
-import { SegmentedControl as PrimitiveSegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import { SegmentedControl as PrimitiveSegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
 import {
   formatNumberFieldValue,
   intersectNumberFieldRanges,

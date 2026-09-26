@@ -1,10 +1,10 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import { AppearanceSettingsSection } from "./settings/AppearanceSettingsSection";
-import { CreditsSettingsSection } from "./settings/CreditsSettingsSection";
-import { DebugSettingsSection } from "./settings/DebugSettingsSection";
-import { PerformanceSettingsSection } from "./settings/PerformanceSettingsSection";
-import { SystemIntegrationSettingsSection } from "./settings/SystemIntegrationSettingsSection";
-import { uiText, currentSettingsText, isRightToLeftLanguage } from "../text.ts";
+import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
+import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
+import { DebugSettingsSection } from "./components/DebugSettingsSection";
+import { PerformanceSettingsSection } from "./components/PerformanceSettingsSection";
+import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
+import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppAnimationMode,
@@ -20,9 +20,9 @@ import type {
   AppSettings,
   AppThemeMode,
   SettingsSection
-} from "../types";
+} from "../../types";
 
-export { MultiSegmentedControl, SegmentedControl } from "./settings/SettingsControls";
+export { MultiSegmentedControl, SegmentedControl } from "./components/SettingsControls";
 
 interface SettingsPageProps {
   settings: AppSettings;
