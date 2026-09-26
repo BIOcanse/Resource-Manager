@@ -182,8 +182,7 @@ std::wstring ResolvePackageRoot()
     for (int depth = 0; depth < 10 && !current.empty(); ++depth)
     {
         if (DirectoryExists(Combine(current, L"Config"))
-            && (DirectoryExists(Combine(current, L"Bin"))
-                || DirectoryExists(Combine(current, L"Resource Manager-APP"))))
+            && DirectoryExists(Combine(current, L"Bin")))
         {
             return current;
         }
