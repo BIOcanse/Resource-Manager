@@ -7,6 +7,21 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MachineDeploymentContractTests
 {
     [Fact]
+    public void LocalPublishAndDeploymentUseTheSameArtifactRoot()
+    {
+        var repository = FindRepositoryRoot();
+        var installer = File.ReadAllText(Path.Combine(repository, "scripts", "Deploy-Machine.ps1"));
+        var publisherPath = Path.Combine(repository, "scripts", "release", "Publish-ResourceManagerLocal.ps1");
+        Assert.True(File.Exists(publisherPath));
+        var publisher = File.ReadAllText(publisherPath);
+
+        Assert.Contains(@"scripts\release\Publish-ResourceManagerLocal.ps1", installer, StringComparison.Ordinal);
+        Assert.Contains(@"artifacts\local-publish\ResourceManagerFinal", installer, StringComparison.Ordinal);
+        Assert.Contains(@"artifacts\local-publish", publisher, StringComparison.Ordinal);
+        Assert.DoesNotContain(@"Resource Manager\Bin", installer, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task PlanOnlyFixtureUsesScmAndHasNoMachineSideEffects()
     {
         var repository = FindRepositoryRoot();
