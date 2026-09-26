@@ -31,7 +31,7 @@ finally { Pop-Location }
 $projects = @(
     @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend' },
     @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui' },
-    @{ Project = (Join-Path $app 'Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' }
+    @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' }
 )
 foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
