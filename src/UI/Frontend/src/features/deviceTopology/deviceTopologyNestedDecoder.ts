@@ -9,7 +9,7 @@ import {
   requireRecord,
   requireString,
   requireStringArray
-} from "../frontendRuntime/request/ResponseDecoder.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
   DeviceTopologyAdvancedInterconnect,
   DeviceTopologyCameraCapabilities,
@@ -28,7 +28,7 @@ import type {
   DeviceTopologyUsbCompanionPort,
   DeviceTopologyUsbConnection,
   DeviceTopologyUsbEndpoint
-} from "../types.ts";
+} from "../../types.ts";
 
 export function decodeSystemIdentity(
   value: unknown,

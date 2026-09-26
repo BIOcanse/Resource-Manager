@@ -1,4 +1,4 @@
-import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -10,7 +10,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { CameraDeviceModel, DeviceAdapter } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
   id: "camera",
@@ -74,7 +74,7 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
   }
 };
 
-function formatCameraMode(mode: import("../../types").DeviceTopologyCameraMode | null | undefined) {
+function formatCameraMode(mode: import("../../../types").DeviceTopologyCameraMode | null | undefined) {
   if (!mode) return "--";
   const frameRate = mode.maximumFrameRate.toLocaleString(undefined, { maximumFractionDigits: 2 });
   return `${mode.width} x ${mode.height} @ ${frameRate} fps · ${mode.pixelFormat}`;

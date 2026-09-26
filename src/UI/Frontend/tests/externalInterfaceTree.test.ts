@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import {
   buildExternalInterfaceTree,
   filterExternalInterfaceTree
-} from "../src/deviceTopology/externalInterfaceTree.ts";
-import { deviceTopologySummaryFields } from "../src/deviceTopology/deviceTopologyPresentation.ts";
-import { resolveSpecializedDevice } from "../src/deviceTopology/adapters/adapterRegistry.ts";
+} from "../src/features/deviceTopology/externalInterfaceTree.ts";
+import { deviceTopologySummaryFields } from "../src/features/deviceTopology/deviceTopologyPresentation.ts";
+import { resolveSpecializedDevice } from "../src/features/deviceTopology/adapters/adapterRegistry.ts";
 import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../src/types.ts";
 
 const rootHubPath = String.raw`\\?\usb#root_hub30#root`;

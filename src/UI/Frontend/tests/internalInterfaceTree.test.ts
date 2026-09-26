@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   buildInternalInterfaceTree,
   filterInternalInterfaceTree
-} from "../src/deviceTopology/internalInterfaceTree.ts";
+} from "../src/features/deviceTopology/internalInterfaceTree.ts";
 import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../src/types.ts";
 
 const externalDeviceId = String.raw`USB\VID_1111&PID_2222\EXTERNAL`;
@@ -289,7 +289,7 @@ assert.ok(controllerSearch.some((node) => node.title === "Internal NVMe"));
 const detailsPageSource = readFileSync(new URL("../src/components/DetailsPage.tsx", import.meta.url), "utf8");
 assert.match(detailsPageSource, /\{ id: "device", label: uiText\.[\w.]+ \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
 assert.doesNotMatch(detailsPageSource, /\{ id: "external", label: uiText\.deviceTopology\.externalScope \}|\{ id: "internal", label: uiText\.deviceTopology\.internalScope \}/);
-const topologyViewSource = readFileSync(new URL("../src/components/DeviceTopologyView.tsx", import.meta.url), "utf8");
+const topologyViewSource = readFileSync(new URL("../src/features/deviceTopology/DeviceTopologyView.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(topologyViewSource, /device-port-section-tabs/);
 assert.match(topologyViewSource, /device-scope-tabs[\s\S]*uiText\.deviceTopology\.externalScope[\s\S]*uiText\.deviceTopology\.internalScope/);
 

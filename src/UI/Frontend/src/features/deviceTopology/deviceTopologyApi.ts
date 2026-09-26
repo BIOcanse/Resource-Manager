@@ -1,7 +1,7 @@
-import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
-import type { DeviceTopologySnapshotState } from "../types";
+import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
+import type { DeviceTopologySnapshotState } from "../../types";
 import { deviceTopologyStateDecoder } from "./deviceTopologyStateDecoder.ts";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 
 type DeviceTopologyRequestClient = Pick<RequestClient, "request">;
 

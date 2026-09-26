@@ -4,10 +4,10 @@ import {
   loadingObservation,
   readyObservation,
   type ObservationState
-} from "../observation/observationState.ts";
-import type { DeviceTopologySnapshotState } from "../types";
-import { renderBackendMessage } from "../presentation/backendMessage.ts";
-import { uiText } from "../text.ts";
+} from "../../observation/observationState.ts";
+import type { DeviceTopologySnapshotState } from "../../types";
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { uiText } from "../../text.ts";
 
 export function projectDeviceTopologyObservation(
   previous: ObservationState,

@@ -5,14 +5,14 @@ import {
   onCleanup,
   type Accessor
 } from "solid-js";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { useFrontendWork } from "../frontendWork/FrontendWorkContext";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import {
   loadingObservation,
   type ObservationState
-} from "../observation/observationState";
-import type { DeviceTopologySnapshotState } from "../types";
+} from "../../observation/observationState";
+import type { DeviceTopologySnapshotState } from "../../types";
 import { projectDeviceTopologyObservation } from "./deviceTopologyObservation";
 import {
   clearRequestedDeviceTopologyPort,

@@ -64,7 +64,7 @@ import {
   uniqueTextValues
 } from "../utils";
 import { pickShellFolder } from "../utils";
-import { requestDeviceTopologySelection } from "../deviceTopology/deviceTopologyStore";
+import { requestDeviceTopologySelection } from "../features/deviceTopology/deviceTopologyStore";
 import {
   SoftwareMetadataLeaseBinding
 } from "../features/softwareMetadata/SoftwareMetadataLeaseBinding";
