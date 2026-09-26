@@ -1,7 +1,7 @@
 import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { DetailsPage } from "../components/DetailsPage";
-import { ControlWorkspace } from "../pages/ControlWorkspace";
+import { ControlWorkspace } from "../features/control/ControlWorkspace";
 import { DiskUsageWorkspace } from "../features/diskUsage/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { ManagementWorkspace } from "../pages/ManagementWorkspace";

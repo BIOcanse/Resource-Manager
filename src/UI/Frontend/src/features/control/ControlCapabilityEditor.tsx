@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
-import { uiText } from "../text.ts";
+import { uiText } from "../../text.ts";
 import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
 import {
   curveFromStops,
@@ -7,9 +7,9 @@ import {
   stopsFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
 import { getControlObjectCurve } from "./controlApi.ts";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type { ControlCapability, ControlSetting } from "./controlTypes.ts";
 /*
  * 数值换算搬到了 `controlNumber.ts`：那是纯计算，没有界面依赖，

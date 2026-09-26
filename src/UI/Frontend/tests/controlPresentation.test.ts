@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { controlCapabilityLabel, controlDisplayText } from "../src/control/controlPresentation.ts";
+import { controlCapabilityLabel, controlDisplayText } from "../src/features/control/controlPresentation.ts";
 import { applyLanguage, currentLanguage } from "../src/text.ts";
 
 const catalog = readFileSync(new URL("../../../../src/Core/Infrastructure/Control/WindowsControlObjectCatalog.cs", import.meta.url), "utf8");

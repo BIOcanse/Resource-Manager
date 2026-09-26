@@ -6,7 +6,7 @@ import {
   buildControlActualStateSubscriptionUrl,
   controlActualStateDecoder
 } from "../../data/control/controlActualApi.ts";
-import type { ControlActualState } from "../../control/controlTypes.ts";
+import type { ControlActualState } from "../../features/control/controlTypes.ts";
 import { localSystemStatusDecoder } from
   "../../data/localSystem/localSystemStatusDecoder.ts";
 import { buildDeviceTopologyStateSubscriptionUrl } from

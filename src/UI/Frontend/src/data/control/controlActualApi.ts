@@ -8,7 +8,7 @@ import {
 import type {
   ControlActualState,
   ControlActualValue
-} from "../../control/controlTypes.ts";
+} from "../../features/control/controlTypes.ts";
 
 function optionalNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;

@@ -6,7 +6,7 @@ import {
   isMonotonic,
   percentAt,
   stopsFromCurve
-} from "../src/control/fanCurve.ts";
+} from "../src/features/control/fanCurve.ts";
 
 // 调整点是固定的，每 5 度一个。
 assert.equal(curveStops.length, 10);

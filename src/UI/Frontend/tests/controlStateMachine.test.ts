@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import {
   controlItemStatusOf,
   hasPendingChanges
-} from "../src/control/controlStateMachine.ts";
-import type { ControlApplyOutcome, ControlSetting } from "../src/control/controlTypes.ts";
+} from "../src/features/control/controlStateMachine.ts";
+import type { ControlApplyOutcome, ControlSetting } from "../src/features/control/controlTypes.ts";
 
 const capability = "gpu.power-limit";
 const setting = (value: number): ControlSetting => ({ capabilityId: capability, number: value });

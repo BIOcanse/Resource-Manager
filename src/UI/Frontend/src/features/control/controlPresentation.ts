@@ -1,4 +1,4 @@
-import { currentLanguage } from "../text.ts";
+import { currentLanguage } from "../../text.ts";
 
 const englishLabels: Record<string, string> = {
   "gpu.core-clock-offset": "Core clock offset",

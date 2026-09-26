@@ -2,9 +2,9 @@ import { createSignal, For, onMount, Show } from "solid-js";
 import {
   getControlAccessLevel,
   setControlAccessLevel
-} from "../../../control/controlApi.ts";
-import { controlAccessLevels } from "../../../control/controlTypes.ts";
-import type { ControlAccessLevel } from "../../../control/controlTypes.ts";
+} from "../../control/controlApi.ts";
+import { controlAccessLevels } from "../../control/controlTypes.ts";
+import type { ControlAccessLevel } from "../../control/controlTypes.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { DialogRoot } from "../../../ui/primitives/Dialog";
 import { RadioGroupItem, RadioGroupRoot } from "../../../ui/primitives/RadioGroup.tsx";
