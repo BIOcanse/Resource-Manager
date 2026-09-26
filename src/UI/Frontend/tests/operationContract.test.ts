@@ -7,7 +7,7 @@ const sources = {
   management: readSource("../src/stores/managementStore.ts"),
   migration: readSource("../src/stores/migrationStore.ts"),
   softwareActions: readSource("../src/app/useSoftwareActions.ts"),
-  page: readSource("../src/components/ManagementPage.tsx"),
+  page: readSource("../src/features/management/components/ManagementPage.tsx"),
   app: readSource("../src/App.tsx"),
   scheduler: readSource("../src/app/usePageRefreshScheduler.ts"),
   decoder: readSource("../src/data/operations/operationsStateDecoder.ts"),

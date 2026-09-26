@@ -81,8 +81,8 @@ assert.match(registrationSource, /registerVisibilityDemand/);
 assert.match(registrationSource, /onCleanup/);
 
 for (const relativePath of [
-  "components/ManagementPage.tsx",
-  "components/MigrationPanel.tsx",
+  "features/management/components/ManagementPage.tsx",
+  "features/management/components/MigrationPanel.tsx",
   "components/OptimizationPage.tsx",
   "components/CpuTopologyDiagram.tsx",
   "features/deviceTopology/DeviceTopologyView.tsx",
@@ -99,7 +99,7 @@ for (const relativePath of [
     `${relativePath} must bind that surface to direct work demand`);
 }
 
-const managementSource = readSource("components/ManagementPage.tsx");
+const managementSource = readSource("features/management/components/ManagementPage.tsx");
 assert.match(managementSource, /frontendVisibilityDemandId\(\s*"management\.component"/);
 assert.match(managementSource, /frontendVisibilityDemandId\("management\.software"/);
 assert.match(managementSource, /FrontendVisibilityDemandBinding[\s\S]*managementInventory/);
@@ -141,7 +141,7 @@ assert.match(
   deviceTopologyStoreSource,
   /frontendWork\.isNeeded\(frontendWorkIds\.detailsDeviceTopology\)/);
 
-const managementWorkspaceSource = readSource("pages/ManagementWorkspace.tsx");
+const managementWorkspaceSource = readSource("features/management/ManagementWorkspace.tsx");
 assert.match(
   managementWorkspaceSource,
   /frontendVisibilitySurface\([\s\S]*management\.browser-runtime[\s\S]*FrontendVisibilityDemandBinding[\s\S]*managementBrowserRuntimes[\s\S]*ObservationStateBoundary[\s\S]*BrowserRuntimePage/,

@@ -4,9 +4,9 @@ import {
   DialogBody,
   DialogHeader,
   DialogRoot
-} from "../ui/primitives/Dialog";
-import { uiText } from "../text.ts";
-import type { ComponentVersionOption, ManagedComponent } from "../types";
+} from "../../../ui/primitives/Dialog";
+import { uiText } from "../../../text.ts";
+import type { ComponentVersionOption, ManagedComponent } from "../../../types";
 
 /**
  * 组件获取对话框：把外部厂商条款和版本选择摆在同一个地方，让用户能先读条款再决定。

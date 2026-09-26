@@ -1,4 +1,4 @@
-import type { ManagementKind } from "../types";
+import type { ManagementKind } from "../../types";
 
 export const managementInventoryKinds = [
   "Dependency",

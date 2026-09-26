@@ -1,37 +1,37 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Info, MoreHorizontal, Settings } from "lucide-solid";
-import { sharedBrowserRuntimeComponentId } from "../features/browserRuntimes/browserRuntimeTypes";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
+import { sharedBrowserRuntimeComponentId } from "../../browserRuntimes/browserRuntimeTypes";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
   frontendVisibilitySurface
-} from "../frontendWork/frontendVisibilitySurface";
+} from "../../../frontendWork/frontendVisibilitySurface";
 import {
   FrontendVisibilityDemandBinding,
   useFrontendVisibilityDemand
-} from "../frontendWork/useFrontendVisibilityDemand";
-import { componentDisplayName, componentPurpose, userFacingMessage } from "../presentation/userFacingText";
-import { isSettledDependencyMessage } from "../presentation/backendMessage";
-import type { SoftwareContextMenuTarget } from "./SoftwareContextMenu";
+} from "../../../frontendWork/useFrontendVisibilityDemand";
+import { componentDisplayName, componentPurpose, userFacingMessage } from "../../../presentation/userFacingText";
+import { isSettledDependencyMessage } from "../../../presentation/backendMessage";
+import type { SoftwareContextMenuTarget } from "../../../components/SoftwareContextMenu";
 import {
   browserRuntimeManagementSubpageId,
   managementInventoryKinds,
   migrationManagementSubpageId,
   type ManagementSubpageId
-} from "../management/managementNavigation";
-import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../types";
-import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../text.ts";
-import { isComponentInstalled, normalizeName, normalizeSoftwareKind } from "../utils";
+} from "../managementNavigation";
+import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../../../types";
+import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../../../text.ts";
+import { isComponentInstalled, normalizeName, normalizeSoftwareKind } from "../../../utils";
 import {
   observationCanRender,
   type ObservationState
-} from "../observation/observationState";
+} from "../../../observation/observationState";
 import {
   ObservationStateBoundary,
   ObservationStateNotice
-} from "./ObservationStateNotice";
-import { SoftwareIssueTagStrip } from "./SoftwareIssuePresentation";
-import { renderBackendMessage } from "../presentation/backendMessage.ts";
+} from "../../../components/ObservationStateNotice";
+import { SoftwareIssueTagStrip } from "../../../components/SoftwareIssuePresentation";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 
 // 分类名按当前语言求值，不能在模块顶层固化。
 export function managementKinds(): Array<{ id: ManagementKind; label: string }> {

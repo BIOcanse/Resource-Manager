@@ -33,7 +33,7 @@ import type { StandardContextMenuModel } from "../components/StandardContextMenu
 import {
   isManagementInventorySubpage,
   type ManagementSubpageId
-} from "../management/managementNavigation";
+} from "../features/management/managementNavigation";
 import type { ManagementStore } from "../stores/managementStore";
 import type { MigrationWorkbenchStore } from "../stores/migrationStore";
 import type { MonitorStore } from "../stores/monitorStore";

@@ -11,11 +11,11 @@ import {
   sharedBrowserRuntimeComponentId,
   type BrowserRuntimeSnapshot
 } from "../features/browserRuntimes/browserRuntimeTypes";
-import type { ComponentAcquisitionRequest } from "../components/ComponentAcquisitionDialog";
+import type { ComponentAcquisitionRequest } from "../features/management/components/ComponentAcquisitionDialog";
 import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
-import { managementActionKey, managementActionKeyFromOperation } from "../components/ManagementPage";
-import type { ManagementSubpageId } from "../management/managementNavigation";
-import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../management/managementSnapshotCache";
+import { managementActionKey, managementActionKeyFromOperation } from "../features/management/components/ManagementPage";
+import type { ManagementSubpageId } from "../features/management/managementNavigation";
+import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../features/management/managementSnapshotCache";
 import { uiText } from "../text.ts";
 import {
   cachedObservation,

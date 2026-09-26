@@ -9,7 +9,7 @@ import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStor
 import {
   browserRuntimeManagementSubpageId,
   type ManagementSubpageId
-} from "../management/managementNavigation";
+} from "../features/management/managementNavigation";
 import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan";
 import type { AppOptimizationMode, AppPerformanceSettings, PageId } from "../types";
 import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils";

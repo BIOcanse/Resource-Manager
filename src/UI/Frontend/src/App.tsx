@@ -14,7 +14,7 @@ import { FrontendWorkProvider } from "./frontendWork/FrontendWorkContext";
 import { useFrontendWorkController } from "./frontendWork/useFrontendWorkController";
 import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
 import { TaskCenterDialog } from "./ui/task-center/TaskCenterDialog";
-import type { ManagementSubpageId } from "./management/managementNavigation";
+import type { ManagementSubpageId } from "./features/management/managementNavigation";
 import { publishCommittedDocumentTheme } from "./presentation/documentTheme";
 import { createManagementStore } from "./stores/managementStore";
 import { createMigrationStore } from "./stores/migrationStore";

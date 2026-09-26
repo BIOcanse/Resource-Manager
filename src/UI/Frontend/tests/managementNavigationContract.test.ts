@@ -5,7 +5,7 @@ import {
   isManagementInventorySubpage,
   managementInventoryKinds,
   migrationManagementSubpageId
-} from "../src/management/managementNavigation.ts";
+} from "../src/features/management/managementNavigation.ts";
 
 assert.equal(migrationManagementSubpageId, "Migration");
 assert.equal(browserRuntimeManagementSubpageId, "BrowserRuntime");
@@ -27,15 +27,15 @@ for (const kind of managementInventoryKinds) {
 }
 
 const appShell = readSource("../src/app/AppShell.tsx");
-const managementPage = readSource("../src/components/ManagementPage.tsx");
+const managementPage = readSource("../src/features/management/components/ManagementPage.tsx");
 // 文案已经移到语言包里，中文基底是这项断言的来源。
 const managementCopy = readSource("../src/i18n/copy/zh/software.ts");
-const workspace = readSource("../src/pages/ManagementWorkspace.tsx");
+const workspace = readSource("../src/features/management/ManagementWorkspace.tsx");
 const browserRuntimePage = readSource("../src/features/browserRuntimes/BrowserRuntimePage.tsx");
 const migrationStore = readSource("../src/stores/migrationStore.ts");
 const softwareActions = readSource("../src/app/useSoftwareActions.ts");
 const refreshScheduler = readSource("../src/app/usePageRefreshScheduler.ts");
-const managementSnapshotCache = readSource("../src/management/managementSnapshotCache.ts");
+const managementSnapshotCache = readSource("../src/features/management/managementSnapshotCache.ts");
 const responsiveCss = readSource("../src/styles/responsive.css");
 
 assert.match(appShell, /ManagementSubpageBar/);

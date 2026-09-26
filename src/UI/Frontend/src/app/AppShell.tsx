@@ -1,9 +1,9 @@
 import { Show, createEffect, on } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
-import { ManagementSubpageBar } from "../components/ManagementPage";
+import { ManagementSubpageBar } from "../features/management/components/ManagementPage";
 import { ObservationStateNotice } from "../components/ObservationStateNotice";
-import type { ManagementSubpageId } from "../management/managementNavigation";
+import type { ManagementSubpageId } from "../features/management/managementNavigation";
 import type { ManagementStore } from "../stores/managementStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { PageId } from "../types";
