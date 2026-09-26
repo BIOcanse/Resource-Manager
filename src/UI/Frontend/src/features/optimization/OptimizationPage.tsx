@@ -19,7 +19,7 @@ import type {
   HostManagerSmartCoordinatorStatus,
   TrustedOptimizationTarget
 } from "../../types";
-import { presentOptimizationReport } from "../../presentation/optimizationPresentation";
+import { presentOptimizationReport } from "./optimizationPresentation";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import {
   observationCanRender,
@@ -31,7 +31,7 @@ import {
 } from "../../components/ObservationStateNotice";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../../text.ts";
-import { optimizationEvidenceValue } from "../../presentation/optimizationPresentation";
+import { optimizationEvidenceValue } from "./optimizationPresentation";
 import {
   optimizationModeHasDomain,
   toggleOptimizationDomain,
