@@ -178,7 +178,7 @@ for (const relativePath of [
 }
 
 assert.doesNotMatch(
-  readSource("components/SettingsPage.tsx"),
+  readSource("features/settings/SettingsPage.tsx"),
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
   "settings sections with no continuous work must not register empty visibility owners");
 
@@ -221,8 +221,8 @@ assert.doesNotMatch(
 for (const relativePath of [
   "types.ts",
   "stores/settingsStore.ts",
-  "components/SettingsPage.tsx",
-  "components/settings/AppearanceSettingsSection.tsx",
+  "features/settings/SettingsPage.tsx",
+  "features/settings/components/AppearanceSettingsSection.tsx",
   "i18n/settingsTypes.ts",
   "i18n/settingsLocaleFactory.ts"
 ]) {

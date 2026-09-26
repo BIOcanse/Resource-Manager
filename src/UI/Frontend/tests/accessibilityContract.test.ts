@@ -36,9 +36,9 @@ const managementPage = readSource("components/ManagementPage.tsx");
 const cpuTopology = readSource("components/CpuTopologyDiagram.tsx");
 const appRoutes = readSource("app/AppRoutes.tsx");
 const appShell = readSource("app/AppShell.tsx");
-const settingsControls = readSource("components/settings/SettingsControls.tsx");
+const settingsControls = readSource("features/settings/components/SettingsControls.tsx");
 const aiGatewayKeyManager = readSource("components/AiGatewayKeyManager.tsx");
-const settingsPage = readSource("components/SettingsPage.tsx");
+const settingsPage = readSource("features/settings/SettingsPage.tsx");
 const controls = readSource("styles/controls.css");
 const dividerConsumerStyles = [
   readSource("styles/browser-runtime.css"),
@@ -66,9 +66,9 @@ const themeConsumerStyles = [
   readSource("styles/software-detail-modal.css")
 ].join("\n");
 const settingsSources = [
-  readSource("components/settings/SystemIntegrationSettingsSection.tsx"),
-  readSource("components/settings/DebugSettingsSection.tsx"),
-  readSource("components/settings/EditableHotkeyEditor.tsx")
+  readSource("features/settings/components/SystemIntegrationSettingsSection.tsx"),
+  readSource("features/settings/components/DebugSettingsSection.tsx"),
+  readSource("features/settings/components/EditableHotkeyEditor.tsx")
 ];
 
 assert.doesNotMatch(theme, /--workspace-min-width/);

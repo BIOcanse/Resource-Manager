@@ -1,6 +1,6 @@
-import { StandardSelect } from "../StandardSelect";
-import { languageOptions, normalizeLanguageMode } from "../../text.ts";
-import type { SettingsTextBundle } from "../../text.ts";
+import { StandardSelect } from "../../../components/StandardSelect";
+import { languageOptions, normalizeLanguageMode } from "../../../text.ts";
+import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppAnimationMode,
@@ -10,7 +10,7 @@ import type {
   AppSettings,
   AppThemeMode,
   ByteUnitMode
-} from "../../types";
+} from "../../../types";
 import { SegmentedControl } from "./SettingsControls";
 
 interface AppearanceSettingsSectionProps {

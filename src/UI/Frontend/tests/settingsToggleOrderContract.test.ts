@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 // 设置页的两态/三态开关，一律「开启在前、关闭在后」。
 // 这个顺序由各设置项自己的选项数组决定，框架只按给定顺序渲染，
 // 所以写错一处就会出现两行开关左右相反 —— 这里把约定钉住。
-const section = read("../src/components/settings/PerformanceSettingsSection.tsx");
+const section = read("../src/features/settings/components/PerformanceSettingsSection.tsx");
 const locales = read("../src/i18n/settingsLocaleFactory.ts");
 
 assert.ok(

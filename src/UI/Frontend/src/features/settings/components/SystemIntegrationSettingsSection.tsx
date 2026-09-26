@@ -1,18 +1,18 @@
 import { Show } from "solid-js";
-import { AiGatewayKeyManager } from "../AiGatewayKeyManager";
+import { AiGatewayKeyManager } from "../../../components/AiGatewayKeyManager";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
-} from "../../features/settings/editableHotkeys";
-import type { SettingsTextBundle } from "../../text.ts";
+} from "../editableHotkeys";
+import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAiModelServiceSettings,
   AppEditableHotkeySettings,
   AppLocalPublicServiceSettings,
   AppSystemIntegrationSettings
-} from "../../types";
+} from "../../../types";
 import { EditableHotkeyEditor } from "./EditableHotkeyEditor";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 interface SystemIntegrationSettingsSectionProps {
   settings: AppSystemIntegrationSettings | undefined;

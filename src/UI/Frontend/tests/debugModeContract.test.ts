@@ -15,7 +15,7 @@ const readUiCoreSource = (relativePath: string) =>
 const settingsSources = [
   readClientSource("src/types.ts"),
   readClientSource("src/stores/settingsStore.ts"),
-  readClientSource("src/components/settings/DebugSettingsSection.tsx"),
+  readClientSource("src/features/settings/components/DebugSettingsSection.tsx"),
   readClientSource("src/i18n/settingsTypes.ts"),
   readClientSource("src/i18n/settingsLocaleFactory.ts")
 ];
@@ -41,8 +41,8 @@ assert.match(readClientSource("src/stores/settingsStore.ts"), /updateHostManager
 const retiredSelfOptimizationSources = [
   readClientSource("src/types.ts"),
   readClientSource("src/stores/settingsStore.ts"),
-  readClientSource("src/components/SettingsPage.tsx"),
-  readClientSource("src/components/settings/PerformanceSettingsSection.tsx"),
+  readClientSource("src/features/settings/SettingsPage.tsx"),
+  readClientSource("src/features/settings/components/PerformanceSettingsSection.tsx"),
   readClientSource("src/i18n/settingsTypes.ts"),
   readClientSource("src/i18n/settingsLoader.ts"),
   readClientSource("src/i18n/settingsLocaleFactory.ts")

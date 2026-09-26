@@ -1,5 +1,5 @@
 import { onCleanup } from "solid-js";
-import { SettingsPage } from "../components/SettingsPage";
+import { SettingsPage } from "../features/settings/SettingsPage";
 import type { SettingsStore } from "../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 
