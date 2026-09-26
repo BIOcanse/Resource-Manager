@@ -71,6 +71,9 @@ public sealed class BackendProcessOwnershipContractTests
         Assert.Contains("Wait-DevelopmentBackendReady", runner, StringComparison.Ordinal);
         Assert.Contains("Test-LoopbackPortInUse", runner, StringComparison.Ordinal);
         Assert.Contains("loopback-api-token", runner, StringComparison.Ordinal);
+        Assert.Contains("$SoftwareRoot = Join-Path $Root '.local\\development-runtime'", runner, StringComparison.Ordinal);
+        Assert.Contains("$ApiAccessTokenPath = Join-Path $SoftwareRoot 'Config\\Runtime\\loopback-api-token'", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("Resource Manager\\Config\\Runtime", runner, StringComparison.Ordinal);
         Assert.Contains("X-Resource-Manager-Token", runner, StringComparison.Ordinal);
         Assert.Contains("System.Net.Http.HttpClient", runner, StringComparison.Ordinal);
         Assert.Contains("System.Net.HttpStatusCode]::OK", runner, StringComparison.Ordinal);

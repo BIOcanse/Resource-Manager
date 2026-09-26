@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $AppRoot = Join-Path $Root "src\Core"
-$SoftwareRoot = Split-Path -Parent $AppRoot
+$SoftwareRoot = Join-Path $Root '.local\development-runtime'
 $ClientRoot = Join-Path $Root "src\UI\Frontend"
 $AppProject = Join-Path $AppRoot "ResourceManager.App.csproj"
 $NativeUiProject = Join-Path $Root "src\UI\Core\ResourceManager.NativeUi.csproj"
@@ -31,7 +31,7 @@ $BackendExe = Join-Path $AppRoot "bin\$Configuration\net10.0-windows\ResourceMan
 $NativeUiExe = Join-Path $Root "src\UI\Core\bin\$Configuration\net10.0-windows\ResourceManager.NativeUi.exe"
 $KnownProcessNames = @("ResourceManager.NativeUi", "ResourceManager")
 $ApiHealthUrl = "http://127.0.0.1:9321/api/local-system/status"
-$ApiAccessTokenPath = Join-Path $Root "Resource Manager\Config\Runtime\loopback-api-token"
+$ApiAccessTokenPath = Join-Path $SoftwareRoot 'Config\Runtime\loopback-api-token'
 $ApiAccessTokenHeaderName = "X-Resource-Manager-Token"
 $ApiPort = 9321
 $StartupTimeout = [TimeSpan]::FromSeconds(20)
