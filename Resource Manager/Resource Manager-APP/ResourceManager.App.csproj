@@ -18,6 +18,7 @@
     <NativeCoreOptimize Condition="'$(NativeCoreOptimize)' == ''">ReleaseFast</NativeCoreOptimize>
     <NativeCoreInstallRoot>$(NativeCoreRoot)\zig-out\msbuild\$(NativeCoreOptimize)</NativeCoreInstallRoot>
     <NativeCoreOutput>$(NativeCoreInstallRoot)\bin\ResourceManager.NativeCore.dll</NativeCoreOutput>
+    <ClientAppRoot>$(MSBuildProjectDirectory)\..\..\src\UI\Frontend</ClientAppRoot>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />
@@ -164,9 +165,9 @@
   </Target>
   <Target Name="BuildClientApp"
           BeforeTargets="ComputeFilesToPublish"
-          Condition="Exists('ClientApp\package.json') and '$(SkipClientAppBuild)' != 'true'">
-    <Exec WorkingDirectory="ClientApp" Command="npm install" Condition="!Exists('ClientApp\node_modules')" />
-    <Exec WorkingDirectory="ClientApp" Command="npm run build" />
+          Condition="Exists('$(ClientAppRoot)\package.json') and '$(SkipClientAppBuild)' != 'true'">
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm install" Condition="!Exists('$(ClientAppRoot)\node_modules')" />
+    <Exec WorkingDirectory="$(ClientAppRoot)" Command="npm run build" />
   </Target>
   <Target Name="RemoveReleasePortableDebugSymbolsFromPublish"
           AfterTargets="ComputeFilesToPublish"

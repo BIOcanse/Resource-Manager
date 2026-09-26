@@ -5,7 +5,7 @@ namespace ResourceManager.App.Domain.Units;
 ///
 /// 后端不做单位换算，也不拼单位字符串：容量一律以原始字节发出，
 /// 天生按位计的量（链路速率）以原始 bit 发出，字段名写明单位。
-/// 选进制、跳档和加标签都在前端，由 <c>ClientApp/src/presentation/byteUnits.ts</c> 统一负责。
+/// 选进制、跳档和加标签都在前端，由 <c>src/UI/Frontend/src/presentation/byteUnits.ts</c> 统一负责。
 ///
 /// 这里只保留模式本身 —— 它是持久化的用户设置，后端负责存和校验，不负责应用。
 /// </summary>
