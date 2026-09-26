@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 if "%~1"=="" goto :usage
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\New-ResourceManagerReleasePackage.ps1" -Version %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\release\New-ResourceManagerReleasePackage.ps1" -Version %*
 set "RM_EXIT=%ERRORLEVEL%"
 if not "%RM_EXIT%"=="0" pause
 exit /b %RM_EXIT%

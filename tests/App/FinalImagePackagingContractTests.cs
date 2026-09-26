@@ -10,7 +10,7 @@ public sealed class FinalImagePackagingContractTests
     public async Task FixtureBuildsHashClosedCombinedImageAndRejectsTampering()
     {
         var repository = FindRepositoryRoot();
-        var builder = Path.Combine(repository, "scripts", "New-ResourceManagerFinalImage.ps1");
+        var builder = Path.Combine(repository, "scripts", "release", "New-ResourceManagerFinalImage.ps1");
         var validator = Path.Combine(repository, "scripts", "validation", "Test-ResourceManagerFinalImage.ps1");
         var root = Path.Combine(Path.GetTempPath(), $"ResourceManager.FinalImage.Contract.{Guid.NewGuid():N}");
         var backend = Path.Combine(root, "backend");
@@ -126,7 +126,7 @@ public sealed class FinalImagePackagingContractTests
         [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
     {
         var repositoryRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
-        return File.Exists(Path.Combine(repositoryRoot, "scripts", "New-ResourceManagerFinalImage.ps1"))
+        return File.Exists(Path.Combine(repositoryRoot, "scripts", "release", "New-ResourceManagerFinalImage.ps1"))
             ? repositoryRoot
             : throw new DirectoryNotFoundException("Could not locate the image builder from the test source path.");
     }

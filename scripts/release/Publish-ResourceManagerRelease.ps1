@@ -5,7 +5,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path -Parent $PSScriptRoot
+$scriptsRoot = Split-Path -Parent $PSScriptRoot
+$repo = Split-Path -Parent $scriptsRoot
 $app = Join-Path $repo 'src\Core'
 $clientApp = Join-Path $repo 'src\UI\Frontend'
 if (-not ('ResourceManagerReleaseErrorMode' -as [type])) { Add-Type -TypeDefinition @'
@@ -44,10 +45,10 @@ foreach ($project in $projects) {
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
 }
-& (Join-Path $PSScriptRoot 'validation\Test-ResourceManagerThirdPartyNotices.ps1') `
+& (Join-Path $scriptsRoot 'validation\Test-ResourceManagerThirdPartyNotices.ps1') `
     -BackendPublishRoot (Join-Path $OutputRoot 'backend') -NativeUiPublishRoot (Join-Path $OutputRoot 'ui') `
     -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') | Out-Null
-& (Join-Path $PSScriptRoot 'validation\Test-WindowsExecutableManifest.ps1') `
+& (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $PSScriptRoot 'New-ResourceManagerFinalImage.ps1') `
     -BackendDirectory (Join-Path $OutputRoot 'backend') -NativeUiDirectory (Join-Path $OutputRoot 'ui') `

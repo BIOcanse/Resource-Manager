@@ -31,7 +31,7 @@ $FinalOutput = Join-Path $BinRoot "ResourceManagerFinal"
 $BackendExe = Join-Path $BackendOutput "ResourceManager.exe"
 $NativeUiExe = Join-Path $NativeUiOutput "ResourceManager.NativeUi.exe"
 $DevelopmentRunner = Join-Path $RepositoryRoot "scripts\Run-Development.ps1"
-$FinalImageBuilder = Join-Path $RepositoryRoot "scripts\New-ResourceManagerFinalImage.ps1"
+$FinalImageBuilder = Join-Path $RepositoryRoot "scripts\release\New-ResourceManagerFinalImage.ps1"
 $FinalImageValidator = Join-Path $RepositoryRoot "scripts\validation\Test-ResourceManagerFinalImage.ps1"
 $ExecutableManifestValidator = Join-Path $RepositoryRoot "scripts\validation\Test-WindowsExecutableManifest.ps1"
 

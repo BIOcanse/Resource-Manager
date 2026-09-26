@@ -6,7 +6,8 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$repositoryRoot = Split-Path -Parent $PSScriptRoot
+$scriptsRoot = Split-Path -Parent $PSScriptRoot
+$repositoryRoot = Split-Path -Parent $scriptsRoot
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $repositoryRoot 'artifacts\release' }
 $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
 $stage = Join-Path $OutputRoot "ResourceManager-$Version-win-x64"
@@ -30,7 +31,7 @@ New-Item -ItemType Directory -Path $buildRoot | Out-Null
 Write-Step 'Publishing into new directories without stopping or changing installed applications.'
 & (Join-Path $PSScriptRoot 'Publish-ResourceManagerRelease.ps1') -Version $Version -OutputRoot $buildRoot
 $imageRoot = Join-Path $buildRoot 'image'
-& (Join-Path $PSScriptRoot 'validation\Test-ResourceManagerFinalImage.ps1') -RootDirectory $imageRoot | Out-Null
+& (Join-Path $scriptsRoot 'validation\Test-ResourceManagerFinalImage.ps1') -RootDirectory $imageRoot | Out-Null
 if ((Get-CleanCommit) -cne $sourceCommit) { throw 'Source changed during publication.' }
 New-Item -ItemType Directory -Path $stage | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage 'Config') | Out-Null
@@ -40,7 +41,7 @@ foreach ($name in @('Install.cmd', 'LICENSE', 'NOTICE', 'README.md', 'README.zh-
 }
 foreach ($name in @('Install-ResourceManagerPackage.ps1', 'Register-ResourceManager.ps1', 'ResourceManager.DirectoryRegistration.ps1',
         'ResourceManager.LegacyStartup.ps1', 'Start-ResourceManagerInstalled.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $stage "scripts\$name")
+    Copy-Item -LiteralPath (Join-Path $scriptsRoot $name) -Destination (Join-Path $stage "scripts\$name")
 }
 # Only tracked README images accompany the documentation, never the research tree.
 $screenshots = @(& git -C $repositoryRoot ls-files -- docs/screenshots)
@@ -52,8 +53,8 @@ foreach ($relative in $screenshots) {
 }
 # The image validator rejects reparse points before copying.
 Copy-Item -LiteralPath $imageRoot -Destination (Join-Path $stage 'Bin') -Recurse
-& (Join-Path $PSScriptRoot 'validation\Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
-& (Join-Path $PSScriptRoot 'Register-ResourceManager.ps1') -PackageRoot $stage -PlanOnly | Out-Null
+& (Join-Path $scriptsRoot 'validation\Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
+& (Join-Path $scriptsRoot 'Register-ResourceManager.ps1') -PackageRoot $stage -PlanOnly | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Packaged installer preflight failed.' }
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
     [pscustomobject]@{
