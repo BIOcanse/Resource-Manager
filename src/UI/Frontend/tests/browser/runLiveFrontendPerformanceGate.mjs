@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const clientRoot = fileURLToPath(new URL("../..", import.meta.url));
 const repositoryRoot = resolve(clientRoot, "../../..");
-const applicationRoot = resolve(repositoryRoot, "Resource Manager/Resource Manager-APP");
+const applicationRoot = resolve(repositoryRoot, "src/Core");
 const endpoint = process.env.RM_NATIVE_UI_CDP_ENDPOINT?.trim() || "http://127.0.0.1:9333";
 const expectedFrontendUrl = process.env.RM_EXPECTED_FRONTEND_URL?.trim() || "http://127.0.0.1:9321/";
 const expectedCapacity = parseExpectedCapacity(

@@ -111,8 +111,8 @@ public sealed class NativeUiStartupTests
             sourceDirectory,
             "..",
             "..",
-            "Resource Manager",
-            "Resource Manager-APP"));
+            "src",
+            "Core"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
             : throw new DirectoryNotFoundException(

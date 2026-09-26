@@ -42,7 +42,7 @@ internal static class NativeUiPaths
 
             var developmentRoot = Path.Combine(current.FullName, "Resource Manager");
             if (Directory.Exists(Path.Combine(developmentRoot, "Config"))
-                && Directory.Exists(Path.Combine(developmentRoot, "Resource Manager-APP")))
+                && File.Exists(Path.Combine(current.FullName, "src", "Core", "ResourceManager.App.csproj")))
             {
                 return developmentRoot;
             }

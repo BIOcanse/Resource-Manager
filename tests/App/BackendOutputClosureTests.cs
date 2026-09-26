@@ -59,32 +59,19 @@ public sealed class BackendOutputClosureTests
     }
 
     [Theory]
-    [InlineData(@"NativeUi\**\*")]
-    [InlineData(@"Shared\**\*")]
-    public void BackendProjectExcludesSourceSubprojectTreeFromDefaultOutputItems(
-        string excludedTree)
+    [InlineData("NativeUi", "UI/Core/ResourceManager.NativeUi.csproj")]
+    [InlineData("Shared", "Shared/ResourceManager.Shared.csproj")]
+    public void BackendSourceSubprojectsAreOutsideCore(
+        string oldChildDirectory,
+        string projectPath)
     {
-        var projectPath = Path.Combine(FindAppRoot(), "ResourceManager.App.csproj");
-        var document = XDocument.Load(projectPath);
-        var removals = document
-            .Descendants()
-            .Where(element => element.Name.LocalName is "Content" or "None")
-            .Select(element => new
-            {
-                ItemType = element.Name.LocalName,
-                Remove = (string?)element.Attribute("Remove")
-            })
-            .Where(item => item.Remove is not null)
-            .ToArray();
-
-        Assert.Contains(
-            removals,
-            item => item.ItemType == "Content"
-                && item.Remove == excludedTree);
-        Assert.Contains(
-            removals,
-            item => item.ItemType == "None"
-                && item.Remove == excludedTree);
+        var appRoot = FindAppRoot();
+        var repositoryRoot = Path.GetFullPath(Path.Combine(appRoot, "..", ".."));
+        Assert.False(Directory.Exists(Path.Combine(appRoot, oldChildDirectory)));
+        Assert.True(File.Exists(Path.Combine(
+            repositoryRoot,
+            "src",
+            projectPath.Replace('/', Path.DirectorySeparatorChar))));
     }
 
     private static string FindAppRoot(
@@ -95,8 +82,8 @@ public sealed class BackendOutputClosureTests
             sourceDirectory,
             "..",
             "..",
-            "Resource Manager",
-            "Resource Manager-APP"));
+            "src",
+            "Core"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
             : throw new DirectoryNotFoundException(

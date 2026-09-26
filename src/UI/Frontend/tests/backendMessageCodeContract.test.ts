@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 // 消息码的唯一定义点在后端；这里保证前端的渲染表与它逐条对齐，
 // 少一条会显示兜底文案，多一条说明后端已经删掉了它。
-const backendCodes = readSource("../../../../Resource Manager/Resource Manager-APP/Domain/Messages/BackendMessageCodes.cs");
+const backendCodes = readSource("../../../../src/Core/Domain/Messages/BackendMessageCodes.cs");
 const frontendRenderer = readSource("../src/presentation/backendMessage.ts");
 const zhCopy = readSource("../src/i18n/copy/zh/backendMessages.ts");
 const enCopy = readSource("../src/i18n/copy/en/backendMessages.ts");
