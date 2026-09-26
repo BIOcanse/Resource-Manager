@@ -9,7 +9,7 @@ import {
   requireRecord,
   requireString,
   ResponseDecodeError
-} from "../frontendRuntime/request/ResponseDecoder.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
   DeviceTopologySnapshot,
   DeviceTopologySnapshotSource,
@@ -17,7 +17,7 @@ import type {
   DeviceTopologySnapshotStatus,
   DeviceTopologySourceDiagnostic,
   DeviceTopologySourceDiagnosticStatus
-} from "../types.ts";
+} from "../../types.ts";
 import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
 
 const currentSchemaVersion = "4.0.0";

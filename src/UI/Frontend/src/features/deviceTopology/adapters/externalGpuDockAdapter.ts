@@ -7,8 +7,8 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, ExternalGpuDockDeviceModel } from "./types";
-import { renderBackendMessage } from "../../presentation/backendMessage.ts";
-import { uiText } from "../../text.ts";
+import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
+import { uiText } from "../../../text.ts";
 
 export const externalGpuDockAdapter: DeviceAdapter<ExternalGpuDockDeviceModel> = {
   id: "external-gpu-dock",

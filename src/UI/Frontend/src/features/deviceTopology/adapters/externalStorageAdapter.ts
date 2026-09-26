@@ -13,7 +13,7 @@ import {
   usbSpecification
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, ExternalStorageDeviceModel } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> = {
   id: "external-storage",

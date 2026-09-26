@@ -1,6 +1,6 @@
 import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
-import type { DeviceTopologyPort } from "../types";
-import { uiText } from "../text.ts";
+import type { DeviceTopologyPort } from "../../types";
+import { uiText } from "../../text.ts";
 
 export type DeviceTopologyConnectionState = "connected" | "disconnected" | "unknown";
 

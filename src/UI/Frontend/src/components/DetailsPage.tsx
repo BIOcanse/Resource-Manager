@@ -1,7 +1,7 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import { CpuTopologyDiagram } from "./CpuTopologyDiagram";
-import { DeviceTopologyView } from "./DeviceTopologyView";
+import { DeviceTopologyView } from "../features/deviceTopology/DeviceTopologyView";
 import { GpuSchedulingModel } from "./GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
 import {

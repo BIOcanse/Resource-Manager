@@ -12,7 +12,7 @@ import type {
   DockDeviceModel,
   UsbHubDeviceModel
 } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const dockAdapter: DeviceAdapter<DockDeviceModel> = {
   id: "dock",

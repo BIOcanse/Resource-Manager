@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "../deviceTopology/deviceVocabulary.ts";
+import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   Bluetooth,
@@ -25,37 +25,37 @@ import {
 import {
   describeDeviceTopologyNode,
   deviceTopologySummaryFields
-} from "../deviceTopology/deviceTopologyPresentation";
+} from "./deviceTopologyPresentation";
 import {
   buildExternalInterfaceTree,
   externalInterfaceRoleLabel,
   filterExternalInterfaceTree,
   type ExternalInterfaceNodeRole
-} from "../deviceTopology/externalInterfaceTree";
+} from "./externalInterfaceTree";
 import {
   buildInternalInterfaceTree,
   filterInternalInterfaceTree,
   internalInterfaceRoleLabel,
   type InternalInterfaceNodeRole
-} from "../deviceTopology/internalInterfaceTree";
-import type { SpecializedDeviceModel } from "../deviceTopology/adapters/adapterRegistry";
-import { useDeviceTopologyState } from "../deviceTopology/deviceTopologyStore";
-import { frontendWorkIds } from "../frontendWork/frontendWorkIds";
-import { frontendVisibilitySurface } from "../frontendWork/frontendVisibilitySurface";
-import { useFrontendVisibilityDemand } from "../frontendWork/useFrontendVisibilityDemand";
-import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../types";
+} from "./internalInterfaceTree";
+import type { SpecializedDeviceModel } from "./adapters/adapterRegistry";
+import { useDeviceTopologyState } from "./deviceTopologyStore";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../../types";
 import {
   compactUserDetailSections,
   userDetailItem,
   userDetailSection
-} from "../presentation/userDetails";
-import { DeviceSpecializedDetails } from "./deviceTopology/DeviceSpecializedDetails";
-import { DeviceSpecializedSummary } from "./deviceTopology/DeviceSpecializedSummary";
-import { ObservationStateNotice } from "./ObservationStateNotice";
-import { UserDetailsDialog } from "./UserDetailsDialog";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl";
-import { renderBackendMessage } from "../presentation/backendMessage.ts";
-import { uiText } from "../text.ts";
+} from "../../presentation/userDetails";
+import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
+import { DeviceSpecializedSummary } from "./components/DeviceSpecializedSummary";
+import { ObservationStateNotice } from "../../components/ObservationStateNotice";
+import { UserDetailsDialog } from "../../components/UserDetailsDialog";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
+import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { uiText } from "../../text.ts";
 
 interface DeviceTopologyListNode {
   id: string;

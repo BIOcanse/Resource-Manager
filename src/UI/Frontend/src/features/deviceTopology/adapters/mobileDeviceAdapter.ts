@@ -11,7 +11,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MobileDeviceModel } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
   id: "mobile-device",

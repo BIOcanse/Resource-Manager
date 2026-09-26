@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { deviceTopologyStateDecoder } from "../src/deviceTopology/deviceTopologyStateDecoder.ts";
+import { deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 
 const port = {

@@ -1,4 +1,4 @@
-import { mountStateLabel } from "../../deviceTopology/deviceVocabulary.ts";
+import { mountStateLabel } from "../deviceVocabulary.ts";
 import { For, Match, Show, Switch } from "solid-js";
 import type {
   AudioDeviceModel,
@@ -18,10 +18,10 @@ import type {
   PowerInputDeviceModel,
   SpecializedDeviceModel,
   UsbHubDeviceModel
-} from "../../deviceTopology/adapters/types";
-import { formatBytes } from "../../deviceTopology/adapters/adapterEvidence";
+} from "../adapters/types";
+import { formatBytes } from "../adapters/adapterEvidence";
 import "./specialized-device-details.css";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel }) {
   return (

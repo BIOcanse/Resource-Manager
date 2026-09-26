@@ -12,7 +12,7 @@ import {
   usbSpecification
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, GenericDeviceModel } from "./types";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
   id: "generic-device",
@@ -61,7 +61,7 @@ export const genericDeviceAdapter: DeviceAdapter<GenericDeviceModel> = {
   }
 };
 
-function resolveGenericType(port: import("../../types").DeviceTopologyPort, internal: boolean) {
+function resolveGenericType(port: import("../../../types").DeviceTopologyPort, internal: boolean) {
   if (!internal) return uiText.deviceAdapters.externalDevice;
   if (/Composite/i.test(`${portDisplayName(port)} ${port.usb?.deviceClass ?? ""}`)) return uiText.deviceAdapters.usbCompositeDevice;
   if (port.pnpClass?.toLocaleLowerCase() === "ports") return uiText.deviceAdapters.internalCommunicationPort;
