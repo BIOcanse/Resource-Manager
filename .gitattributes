@@ -15,9 +15,5 @@
 
 /tools/catalog-validation/software-metadata/Inputs/*.json text eol=lf
 /tools/catalog-validation/software-metadata/Generated/*.json text eol=lf
-"/Resource Manager/Resource Manager-APP/Infrastructure/Resources/SoftwareMetadata/*.json" text eol=lf
-"/Resource Manager/Resource Manager-APP/ClientApp/index.html" text eol=lf
-"/Resource Manager/Resource Manager-APP/wwwroot/*.html" text eol=lf
-"/Resource Manager/Resource Manager-APP/wwwroot/*.json" text eol=lf
-"/Resource Manager/Resource Manager-APP/wwwroot/assets/*.js" text eol=lf
-"/Resource Manager/Resource Manager-APP/wwwroot/assets/*.css" text eol=lf
+/src/Core/Infrastructure/Resources/SoftwareMetadata/*.json text eol=lf
+/src/UI/Frontend/index.html text eol=lf
