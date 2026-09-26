@@ -16,22 +16,22 @@ import {
   setControlOverclockConsent,
   refreshControlInstances,
   saveControlPreset
-} from "../control/controlApi.ts";
+} from "./controlApi.ts";
 import {
   ControlCapabilityEditor,
   formatActualNumber,
   initialSettingFor
-} from "../control/ControlCapabilityEditor";
-import { ControlFirstRunNotice } from "../control/ControlFirstRunNotice";
-import { controlCapabilityLabel, controlDisplayText } from "../control/controlPresentation.ts";
+} from "./ControlCapabilityEditor";
+import { ControlFirstRunNotice } from "./ControlFirstRunNotice";
+import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
 import {
   controlItemStatusOf,
   hasPendingChanges
-} from "../control/controlStateMachine.ts";
-import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl";
-import { uiText } from "../text.ts";
-import { controlAccessLevelAllows } from "../control/controlTypes.ts";
+} from "./controlStateMachine.ts";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
+import { uiText } from "../../text.ts";
+import { controlAccessLevelAllows } from "./controlTypes.ts";
 import type {
   ControlAccessLevel,
   ControlActualState,
@@ -45,7 +45,7 @@ import type {
   ControlPresetCatalog,
   ControlSetting,
   ControlStateView
-} from "../control/controlTypes.ts";
+} from "./controlTypes.ts";
 
 /**
  * 实际状态订多勤。

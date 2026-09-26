@@ -8,9 +8,9 @@ import {
   requireRecord,
   requireString,
   ResponseDecodeError
-} from "../frontendRuntime/request/ResponseDecoder.ts";
-import type { RequestClient } from "../frontendRuntime/request/RequestClient.ts";
-import { uiText } from "../text.ts";
+} from "../../frontendRuntime/request/ResponseDecoder.ts";
+import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
+import { uiText } from "../../text.ts";
 import { controlAccessLevels, controlUnavailableKinds } from "./controlTypes.ts";
 import type {
   ControlAccessLevel,

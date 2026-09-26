@@ -1,6 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
-import { DialogRoot } from "../ui/primitives/Dialog";
-import { uiText } from "../text.ts";
+import { DialogRoot } from "../../ui/primitives/Dialog";
+import { uiText } from "../../text.ts";
 
 /**
  * 第一次进控制页说的两屏：先说保修，再说风险。
