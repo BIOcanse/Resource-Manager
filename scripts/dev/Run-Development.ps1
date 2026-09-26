@@ -13,7 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Root = Split-Path -Parent $PSScriptRoot
+$Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $AppRoot = Join-Path $Root "src\Core"
 $SoftwareRoot = Split-Path -Parent $AppRoot
 $ClientRoot = Join-Path $Root "src\UI\Frontend"
