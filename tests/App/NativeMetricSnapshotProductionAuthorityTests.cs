@@ -128,8 +128,8 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
                 sourceDirectory,
                 "..",
                 "..",
-                "Resource Manager",
-                "Resource Manager-APP"));
+                "src",
+                "Core"));
             if (File.Exists(Path.Combine(
                     candidate,
                     "ResourceManager.App.csproj")))

@@ -5,7 +5,7 @@ import { frontendBuildManifestPlugin } from "./build/frontendBuildManifest";
 export default defineConfig({
   plugins: [solid(), frontendBuildManifestPlugin()],
   build: {
-    outDir: "../../../Resource Manager/Resource Manager-APP/wwwroot",
+    outDir: "../../Core/wwwroot",
     emptyOutDir: true,
     sourcemap: false
   },

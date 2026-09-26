@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const port = Number(process.env.RM_FRONTEND_HARNESS_PORT || 4177);
 const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
   ? resolve(process.env.RM_FRONTEND_STATIC_ROOT)
-  : fileURLToPath(new URL("../../../../../Resource Manager/Resource Manager-APP/wwwroot/", import.meta.url));
+  : fileURLToPath(new URL("../../../../../src/Core/wwwroot/", import.meta.url));
 const now = () => new Date().toISOString();
 const defaultScenario = {
   capabilities: "ready",

@@ -12,7 +12,7 @@
     <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <None Include="..\..\..\Resource Manager\Resource Manager-APP\ThirdPartyNotices\**\*" Link="ThirdPartyNotices\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="..\..\Core\ThirdPartyNotices\**\*" Link="ThirdPartyNotices\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <Target Name="RemoveReleasePortableDebugSymbolsFromPublish"
           AfterTargets="ComputeFilesToPublish"

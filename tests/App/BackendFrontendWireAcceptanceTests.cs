@@ -292,7 +292,7 @@ public sealed class BackendFrontendWireAcceptanceTests
         var current = new DirectoryInfo(AppContext.BaseDirectory);
         while (current is not null)
         {
-            if (Directory.Exists(Path.Combine(current.FullName, "Resource Manager", "Resource Manager-APP")))
+            if (File.Exists(Path.Combine(current.FullName, "src", "Core", "ResourceManager.App.csproj")))
             {
                 return current.FullName;
             }

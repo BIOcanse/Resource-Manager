@@ -22,14 +22,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\Resource Manager\Resource Manager-APP\ResourceManager.App.csproj" />
+    <ProjectReference Include="..\..\src\Core\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
     <ProjectReference Include="..\..\src\Shared\ResourceManager.Shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\Resource Manager\Resource Manager-APP\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
+    <None Include="..\..\src\Core\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
           Link="GpuLaunchBrokerProbe\ResourceManager.GpuLaunchTargetProbe.exe"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

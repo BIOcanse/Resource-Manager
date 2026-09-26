@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
-$AppRoot = Join-Path $Root "Resource Manager\Resource Manager-APP"
+$AppRoot = Join-Path $Root "src\Core"
 $SoftwareRoot = Split-Path -Parent $AppRoot
 $ClientRoot = Join-Path $Root "src\UI\Frontend"
 $AppProject = Join-Path $AppRoot "ResourceManager.App.csproj"

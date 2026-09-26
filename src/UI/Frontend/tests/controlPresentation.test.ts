@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { controlCapabilityLabel, controlDisplayText } from "../src/control/controlPresentation.ts";
 import { applyLanguage, currentLanguage } from "../src/text.ts";
 
-const catalog = readFileSync(new URL("../../../../Resource Manager/Resource Manager-APP/Infrastructure/Control/WindowsControlObjectCatalog.cs", import.meta.url), "utf8");
+const catalog = readFileSync(new URL("../../../../src/Core/Infrastructure/Control/WindowsControlObjectCatalog.cs", import.meta.url), "utf8");
 const ids = new Set([...catalog.matchAll(/"((?:cpu|gpu|fan)\.[a-z-]+)"/g)].map(match => match[1]));
 ids.delete("cpu.fanRpm");
 for (const id of ids) {

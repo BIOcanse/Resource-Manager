@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $SoftwareRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepositoryRoot = Split-Path -Parent $SoftwareRoot
-$AppRoot = Join-Path $SoftwareRoot "Resource Manager-APP"
+$AppRoot = Join-Path $RepositoryRoot "src\Core"
 $ClientRoot = Join-Path $RepositoryRoot "src\UI\Frontend"
 $BackendProject = Join-Path $AppRoot "ResourceManager.App.csproj"
 $NativeUiProject = Join-Path $RepositoryRoot "src\UI\Core\ResourceManager.NativeUi.csproj"

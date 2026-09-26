@@ -1521,7 +1521,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     {
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)!;
         var appRoot = Path.GetFullPath(
-            Path.Combine(sourceDirectory, "..", "..", "Resource Manager", "Resource Manager-APP"));
+            Path.Combine(sourceDirectory, "..", "..", "src", "Core"));
         return File.Exists(Path.Combine(appRoot, "ResourceManager.App.csproj"))
             ? appRoot
             : throw new DirectoryNotFoundException(

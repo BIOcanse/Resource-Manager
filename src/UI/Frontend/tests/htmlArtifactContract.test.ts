@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceHtml = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const managedRoot = fileURLToPath(new URL("../../../../Resource Manager/Resource Manager-APP/wwwroot/", import.meta.url));
+const managedRoot = fileURLToPath(new URL("../../../../src/Core/wwwroot/", import.meta.url));
 const managedHtml = readFileSync(join(managedRoot, "index.html"), "utf8");
 
 assertHtmlShell(sourceHtml, "source");
