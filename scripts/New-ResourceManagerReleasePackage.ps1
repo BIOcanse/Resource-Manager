@@ -30,7 +30,7 @@ New-Item -ItemType Directory -Path $buildRoot | Out-Null
 Write-Step 'Publishing into new directories without stopping or changing installed applications.'
 & (Join-Path $PSScriptRoot 'Publish-ResourceManagerRelease.ps1') -Version $Version -OutputRoot $buildRoot
 $imageRoot = Join-Path $buildRoot 'image'
-& (Join-Path $PSScriptRoot 'Test-ResourceManagerFinalImage.ps1') -RootDirectory $imageRoot | Out-Null
+& (Join-Path $PSScriptRoot 'validation\Test-ResourceManagerFinalImage.ps1') -RootDirectory $imageRoot | Out-Null
 if ((Get-CleanCommit) -cne $sourceCommit) { throw 'Source changed during publication.' }
 New-Item -ItemType Directory -Path $stage | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage 'Config') | Out-Null
@@ -52,7 +52,7 @@ foreach ($relative in $screenshots) {
 }
 # The image validator rejects reparse points before copying.
 Copy-Item -LiteralPath $imageRoot -Destination (Join-Path $stage 'Bin') -Recurse
-& (Join-Path $PSScriptRoot 'Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
+& (Join-Path $PSScriptRoot 'validation\Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
 & (Join-Path $PSScriptRoot 'Register-ResourceManager.ps1') -PackageRoot $stage -PlanOnly | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Packaged installer preflight failed.' }
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
