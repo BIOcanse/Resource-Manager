@@ -1,18 +1,18 @@
 import { onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
-import { Dashboard } from "../components/Dashboard";
-import { ResourceBreakdown } from "../features/resourceBreakdown/ResourceBreakdown";
-import { ResourceTable } from "../features/resourceTable/ResourceTable";
-import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
-import { MonitorWorkRegion } from "../monitor/MonitorWorkRegion";
-import type { MonitorStore } from "../stores/monitorStore";
-import type { AppAnimationMode } from "../types";
-import { uiText } from "../text.ts";
+import { Dashboard } from "./Dashboard";
+import { ResourceBreakdown } from "../resourceBreakdown/ResourceBreakdown";
+import { ResourceTable } from "../resourceTable/ResourceTable";
+import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
+import { MonitorWorkRegion } from "./MonitorWorkRegion";
+import type { MonitorStore } from "../../stores/monitorStore";
+import type { AppAnimationMode } from "../../types";
+import { uiText } from "../../text.ts";
 import {
   ObservationStateBoundary,
   ObservationStateNotice
-} from "../components/ObservationStateNotice";
-import { useInlineEditorFocus } from "../interactions/inlineEditorFocus";
+} from "../../components/ObservationStateNotice";
+import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 
 interface MonitorPageProps {
   animationMode: Exclude<AppAnimationMode, "auto">;
