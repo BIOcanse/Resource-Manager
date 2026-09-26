@@ -9,7 +9,7 @@
     <CopyOutputSymbolsToPublishDirectory Condition="'$(Configuration)' == 'Release'">false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Shared\ResourceManager.Shared.csproj" />
+    <ProjectReference Include="..\..\..\src\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\ThirdPartyNotices\**\*" Link="ThirdPartyNotices\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

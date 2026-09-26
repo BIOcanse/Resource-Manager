@@ -16,7 +16,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Resource Manager\Resource Manager-APP\Shared\ResourceManager.Shared.csproj" />
+    <ProjectReference Include="..\..\Shared\ResourceManager.Shared.csproj" />
     <None Include="..\..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\..\Resource Manager\Resource Manager-APP\ThirdPartyNotices\WebView2.*.txt" Link="ThirdPartyNotices\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
