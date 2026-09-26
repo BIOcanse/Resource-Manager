@@ -1,12 +1,12 @@
 import { For } from "solid-js";
-import { StandardSelect } from "../StandardSelect";
+import { StandardSelect } from "../../../components/StandardSelect";
 import {
   defaultLogicRefreshIntervalSetting,
   formatLogicRefreshIntervalPresetMs,
   logicRefreshIntervalKeys,
   normalizeLogicRefreshIntervalSetting
-} from "../../stores/settingsStore";
-import type { SettingsTextBundle } from "../../text.ts";
+} from "../../../stores/settingsStore";
+import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
   AppFrontendHiddenRefreshMode,
@@ -16,10 +16,10 @@ import type {
   AppPerformanceSettings,
   AppPresetNumericSetting,
   AppPresetNumericSettingMode
-} from "../../types";
+} from "../../../types";
 import { ControlAccessLevelSetting } from "./ControlAccessLevelSetting";
 import { MultiSegmentedControl, NumberField, SegmentedControl } from "./SettingsControls";
-import { uiText } from "../../text.ts";
+import { uiText } from "../../../text.ts";
 
 type GpuSchedulingMode = "basic" | "precise";
 

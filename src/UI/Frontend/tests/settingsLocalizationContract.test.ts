@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const settingsPage = readSource("../src/components/SettingsPage.tsx");
+const settingsPage = readSource("../src/features/settings/SettingsPage.tsx");
 const settingsLoader = readSource("../src/i18n/settingsLoader.ts");
 const settingsLocaleFactory = readSource("../src/i18n/settingsLocaleFactory.ts");
-const appearanceSettings = readSource("../src/components/settings/AppearanceSettingsSection.tsx");
+const appearanceSettings = readSource("../src/features/settings/components/AppearanceSettingsSection.tsx");
 
 // 设置页不再自己持有一份文案：界面语言只有 appTextStore 一个所有者。
 assert.doesNotMatch(settingsPage, /createSignal<SettingsTextBundle>/);
