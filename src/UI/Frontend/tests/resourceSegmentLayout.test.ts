@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resourceSegmentLayout, resourceSegmentLayerStyle } from "../src/resourceBreakdown/resourceSegmentLayout.ts";
+import { resourceSegmentLayout, resourceSegmentLayerStyle } from "../src/features/resourceBreakdown/resourceSegmentLayout.ts";
 
 const widths = (values: number[], fill = false) => resourceSegmentLayout(values.map(value => ({ value })), 100, { fill }).map(x => x.width);
 assert.deepEqual(widths([99]), [99]);

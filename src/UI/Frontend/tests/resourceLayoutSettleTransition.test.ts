@@ -6,7 +6,7 @@ import {
   resourceLayoutSettleDurationMs,
   shouldRunResourceLayoutSettleTransition,
   startResourceLayoutSettleTransition
-} from "../src/resourceBreakdown/resourceLayoutSettleTransition.ts";
+} from "../src/features/resourceBreakdown/resourceLayoutSettleTransition.ts";
 
 assert.equal(
   shouldRunResourceLayoutSettleTransition(false, "normal", "none"),

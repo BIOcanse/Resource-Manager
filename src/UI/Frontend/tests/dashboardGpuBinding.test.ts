@@ -5,8 +5,8 @@ const config = readSource("../src/stores/monitorConfig.ts");
 const store = readSource("../src/stores/monitorStore.ts");
 const page = readSource("../src/pages/MonitorPage.tsx");
 const dashboard = readSource("../src/components/Dashboard.tsx");
-const resourceBreakdown = readSource("../src/components/ResourceBreakdown.tsx");
-const resourceTable = readSource("../src/components/ResourceTable.tsx");
+const resourceBreakdown = readSource("../src/features/resourceBreakdown/ResourceBreakdown.tsx");
+const resourceTable = readSource("../src/features/resourceTable/ResourceTable.tsx");
 const pointerReorder = readSource("../src/interactions/pointerReorder.ts");
 const types = readSource("../src/types.ts");
 

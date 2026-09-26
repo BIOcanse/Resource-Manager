@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { projectResourceTableHeat } from "../src/resourceTable/resourceTableHeat.ts";
+import { projectResourceTableHeat } from "../src/features/resourceTable/resourceTableHeat.ts";
 import type { ResourceTableRow } from "../src/types.ts";
 
 function row(id: string, memory: number | null, cpu: number): ResourceTableRow {

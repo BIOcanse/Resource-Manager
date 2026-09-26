@@ -3,34 +3,34 @@ import {
   resourceTableCellText,
   resourceTableColumnLabel,
   softwareDisplayName
-} from "../presentation/metricLabels";
+} from "../../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
-import { pointerReorderProps } from "../interactions/pointerReorder";
-import { userFacingLabel } from "../presentation/userFacingText";
-import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
-import type { SoftwareContextMenuTarget } from "./SoftwareContextMenu";
-import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../types";
-import { uiText } from "../text.ts";
-import { SegmentedControl } from "../ui/primitives/SegmentedControl.tsx";
-import type { ObservationState } from "../observation/observationState";
+import { pointerReorderProps } from "../../interactions/pointerReorder";
+import { userFacingLabel } from "../../presentation/userFacingText";
+import { ResourcePerformancePanel } from "../../components/ResourcePerformancePanel";
+import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
+import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../../types";
+import { uiText } from "../../text.ts";
+import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import type { ObservationState } from "../../observation/observationState";
 import {
   moveResourceTableFocus,
   reconcileResourceTableFocus,
   resourceTableFocusableRows,
   type ResourceRowFocusMove
-} from "../resourceTable/resourceTableFocus";
+} from "./resourceTableFocus";
 import {
   classifyResourceTableContentState,
   type ResourceTableContentState
-} from "../resourceTable/resourceTableContentState";
-import { pinResourceTableRow } from "../resourceTable/resourceTableRowPin";
-import { resourceTableColumnsEqual } from "../resourceTable/resourceTableColumnIdentity";
-import { projectResourceTableHeat } from "../resourceTable/resourceTableHeat";
-import { formatBytes } from "../presentation/byteUnits.ts";
-import { ContentState } from "../ui/patterns/ContentState.tsx";
-import { useInlineEditorFocus } from "../interactions/inlineEditorFocus";
+} from "./resourceTableContentState";
+import { pinResourceTableRow } from "./resourceTableRowPin";
+import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity";
+import { projectResourceTableHeat } from "./resourceTableHeat";
+import { formatBytes } from "../../presentation/byteUnits.ts";
+import { ContentState } from "../../ui/patterns/ContentState.tsx";
+import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 
 const rowHeight = 38;
 const overscan = 6;

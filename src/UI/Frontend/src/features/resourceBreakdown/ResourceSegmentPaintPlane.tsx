@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
-import { readDocumentTheme } from "../presentation/documentTheme";
+import { readDocumentTheme } from "../../presentation/documentTheme";
 import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
 
 export interface ResourcePaintSegment {
