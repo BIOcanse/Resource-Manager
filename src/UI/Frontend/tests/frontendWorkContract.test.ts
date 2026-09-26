@@ -84,9 +84,9 @@ for (const relativePath of [
   "features/management/components/ManagementPage.tsx",
   "features/management/components/MigrationPanel.tsx",
   "features/optimization/OptimizationPage.tsx",
-  "components/CpuTopologyDiagram.tsx",
+  "features/details/CpuTopologyDiagram.tsx",
   "features/deviceTopology/DeviceTopologyView.tsx",
-  "components/HostManagerSmartCoordinatorDetailsReport.tsx"
+  "features/details/HostManagerSmartCoordinatorDetailsReport.tsx"
 ]) {
   const source = readSource(relativePath);
   assert.match(
@@ -108,7 +108,7 @@ const optimizationSource = readSource("features/optimization/OptimizationPage.ts
 assert.match(optimizationSource, /frontendVisibilityDemandId\("optimization\.report"/);
 assert.match(optimizationSource, /FrontendVisibilityDemandBinding[\s\S]*optimizationReports/);
 
-const gpuSchedulingSource = readSource("components/GpuSchedulingModel.tsx");
+const gpuSchedulingSource = readSource("features/gpuScheduling/GpuSchedulingModel.tsx");
 assert.doesNotMatch(gpuSchedulingSource, /setInterval\s*\(|useFrontendWorkPoll/);
 assert.match(gpuSchedulingSource, /useFrontendVisibilityDemand/);
 assert.match(gpuSchedulingSource, /frontendVisibilitySurface/);
@@ -120,11 +120,11 @@ assert.match(gpuSchedulingSource, /metricSnapshot\.subscribe/);
 assert.match(gpuSchedulingSource, /resourceMonitor\.subscribe/);
 
 const smartReportSource = readSource(
-  "components/HostManagerSmartCoordinatorDetailsReport.tsx");
+  "features/details/HostManagerSmartCoordinatorDetailsReport.tsx");
 assert.doesNotMatch(smartReportSource, /setInterval\s*\(|useFrontendWorkPoll|getHostManagerRollbackState|\.refresh\s*\(/);
 assert.match(smartReportSource, /sources\.smartCoordinatorState\.subscribe/);
 
-const cpuTopologySource = readSource("components/CpuTopologyDiagram.tsx");
+const cpuTopologySource = readSource("features/details/CpuTopologyDiagram.tsx");
 assert.doesNotMatch(cpuTopologySource, /setInterval\s*\(|useFrontendWorkPoll|createResource\s*\(/);
 assert.match(cpuTopologySource, /frontendRuntime\.sources\.cpuTopology\.subscribe/);
 assert.match(cpuTopologySource, /frontendRuntime\.sources\.cpuResidency\.subscribe/);
