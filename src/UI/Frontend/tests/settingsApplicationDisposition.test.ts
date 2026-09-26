@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifySettingsApplicationOutcome } from "../src/settings/settingsApplicationDisposition.ts";
+import { classifySettingsApplicationOutcome } from "../src/features/settings/settingsApplicationDisposition.ts";
 
 test("only a fully delivered settings publication is applied", () => {
   assert.equal(classifySettingsApplicationOutcome("committedAndApplied"), "applied");

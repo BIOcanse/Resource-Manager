@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applySettingsPatch, createSettingsPatch } from "../src/settings/settingsPatch.ts";
+import { applySettingsPatch, createSettingsPatch } from "../src/features/settings/settingsPatch.ts";
 
 test("settings patch contains only changed leaves", () => {
   const baseline = {

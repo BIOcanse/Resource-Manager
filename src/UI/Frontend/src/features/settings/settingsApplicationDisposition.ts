@@ -1,4 +1,4 @@
-import type { AppSettingsResult } from "../types";
+import type { AppSettingsResult } from "../../types";
 
 export type SettingsApplicationOutcome =
   | "applied"

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveGpuDeviceName } from "../src/gpuScheduling/gpuDeviceName.ts";
+import { resolveGpuDeviceName } from "../src/features/gpuScheduling/gpuDeviceName.ts";
 
 assert.equal(
   resolveGpuDeviceName(0, " NVIDIA GeForce RTX 5090 ", "Microsoft Basic Render Driver"),

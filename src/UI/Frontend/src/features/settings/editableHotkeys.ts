@@ -1,5 +1,5 @@
-import { uiText } from "../text.ts";
-import type { AppEditableHotkeySettings } from "../types";
+import { uiText } from "../../text.ts";
+import type { AppEditableHotkeySettings } from "../../types";
 
 export const forceTerminateHotkeyActionId = "force-terminate-unresponsive-and-foreground";
 

@@ -6,7 +6,7 @@ import {
   encodeEditableHotkey,
   hotkeyKeyOptions,
   isSafeDestructiveHotkeyEncoding
-} from "../../settings/editableHotkeys";
+} from "../../features/settings/editableHotkeys";
 import type { SettingsTextBundle } from "../../text.ts";
 import type { AppEditableHotkeySettings } from "../../types";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";

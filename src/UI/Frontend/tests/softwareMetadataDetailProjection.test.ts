@@ -3,12 +3,12 @@ import test from "node:test";
 import type { SourceSnapshot } from
   "../src/frontendRuntime/source/SourceSnapshot.ts";
 import type { SoftwareMetadataQuery } from
-  "../src/softwareMetadata/softwareMetadataApi.ts";
+  "../src/features/softwareMetadata/softwareMetadataApi.ts";
 import {
   projectSoftwareMetadataDetail
-} from "../src/softwareMetadata/softwareMetadataDetailProjection.ts";
+} from "../src/features/softwareMetadata/softwareMetadataDetailProjection.ts";
 import type { SoftwareMetadataLookupResult } from
-  "../src/softwareMetadata/softwareMetadataDecoder.ts";
+  "../src/features/softwareMetadata/softwareMetadataDecoder.ts";
 import type { SoftwareDetailModel } from "../src/types.ts";
 
 test("loading and failed refreshes preserve the last renderable metadata", () => {
