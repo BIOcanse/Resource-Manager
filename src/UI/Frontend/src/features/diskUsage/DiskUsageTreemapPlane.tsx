@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { readDocumentTheme } from "../presentation/documentTheme";
+import { readDocumentTheme } from "../../presentation/documentTheme";
 import {
   hitTest,
   magnificationOf,
