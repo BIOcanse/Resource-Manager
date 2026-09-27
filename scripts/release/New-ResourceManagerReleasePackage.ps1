@@ -60,8 +60,12 @@ $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullNa
 })
 [pscustomobject]@{ sourceCommit = $sourceCommit; version = $Version; files = $files } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'release-manifest.json') -Encoding utf8
-& (Join-Path $stage 'Install.exe') --plan-only
-if ($LASTEXITCODE -ne 0) { throw 'Packaged EXE installer preflight failed.' }
+$preflight = Start-Process -FilePath (Join-Path $stage 'Install.exe') -ArgumentList '--plan-only' `
+    -WindowStyle Hidden -Wait -PassThru
+try {
+    if ($preflight.ExitCode -ne 0) { throw "Packaged EXE installer preflight failed: $($preflight.ExitCode)" }
+}
+finally { $preflight.Dispose() }
 Write-Step 'Creating the archive and checksum.'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)
