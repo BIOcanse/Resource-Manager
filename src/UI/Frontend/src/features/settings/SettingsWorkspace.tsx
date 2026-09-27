@@ -43,6 +43,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onLanguageChange={settings.updateLanguage}
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}
         onAutoStartChange={settings.updateAutoStart}
+        onAutoUpdateChange={settings.updateAutoUpdate}
         onEditableHotkeyChange={settings.updateEditableHotkey}
         onLocalPublicServiceChange={settings.updateLocalPublicService}
         onPublicFileIndexChange={settings.updatePublicFileIndex}

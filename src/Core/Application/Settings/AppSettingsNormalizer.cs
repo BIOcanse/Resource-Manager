@@ -19,7 +19,8 @@ public static class AppSettingsNormalizer
             NormalizeSystemIntegration(settings.SystemIntegration),
             NormalizeDebug(settings.Debug),
             NormalizePublicService(settings.PublicService),
-            NormalizeAiModelService(settings.AiModelService));
+            NormalizeAiModelService(settings.AiModelService),
+            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false));
     }
 
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)

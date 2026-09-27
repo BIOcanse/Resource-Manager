@@ -1,19 +1,19 @@
-import { For, Show, createSignal } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import {
   DialogActions,
   DialogBody,
   DialogHeader,
   DialogRoot
 } from "../../../ui/primitives/Dialog";
-import { uiText } from "../../../text.ts";
+import { currentSettingsText, uiText } from "../../../text.ts";
+import { VersionSelector } from "../../settings/components/VersionSelector";
 import type { ComponentVersionOption, ManagedComponent } from "../../../types";
 
 /**
  * 组件获取对话框：把外部厂商条款和版本选择摆在同一个地方，让用户能先读条款再决定。
  *
  * - 条款与来源页是可点开的链接，点开后对话框仍然在，回来才能同意。
- * - 版本是显式选择：已验证版本（我们固定并验证过的）或最新版本（上游当前发布）。
- * - 最新版本解析失败时该项保留并显示原因，不会悄悄消失，也不影响安装已验证版本。
+ * - 版本是显式选择；历史发布按系列折叠，无法可靠排序的版本不能选。
  */
 export interface ComponentAcquisitionRequest {
   component: ManagedComponent;
@@ -21,6 +21,8 @@ export interface ComponentAcquisitionRequest {
   versions: ComponentVersionOption[];
   /** 版本正在解析中。 */
   loading: boolean;
+  catalogStatus?: string;
+  complete?: boolean;
   /** 同意后要做的事是引导手动获取，而不是下载安装。 */
   manual: boolean;
 }
@@ -41,7 +43,9 @@ export function ComponentAcquisitionDialog(props: {
   }
 
   function selectableVersions(request: ComponentAcquisitionRequest) {
-    return request.versions.filter((option) => option.available);
+    return request.component.installed
+      ? []
+      : request.versions.filter((option) => option.available);
   }
 
   function effectiveChoice(request: ComponentAcquisitionRequest) {
@@ -56,12 +60,16 @@ export function ComponentAcquisitionDialog(props: {
       : selectable[0].choice;
   }
 
-  function versionLabel(option: ComponentVersionOption) {
-    const name = option.choice === "verified"
-      ? uiText.componentAcquisition.verifiedVersion
-      : uiText.componentAcquisition.latestVersion;
-    return option.version ? `${name} · ${option.version}` : name;
-  }
+  const catalogMessage = (status: string) => {
+    const chinese = currentSettingsText().language.startsWith("zh");
+    if (status === "unavailable") return chinese
+      ? "该来源不提供可枚举的版本历史。" : "This source does not expose a release history.";
+    if (status === "partial") return chinese
+      ? "版本历史尚未完整读取。" : "Release history is incomplete.";
+    return chinese
+      ? "版本历史暂不可用，已验证版本仍可使用。"
+      : "Release history is unavailable; the verified version remains available.";
+  };
 
   return (
     <Show keyed when={props.request}>
@@ -127,32 +135,15 @@ export function ComponentAcquisitionDialog(props: {
                   <Show when={request.versions.length > 0}>
                     <fieldset class="component-acquisition-versions">
                       <legend>{uiText.componentAcquisition.versionLegend}</legend>
-                      <For each={request.versions}>
-                        {(option) => (
-                          <label
-                            class="component-acquisition-version"
-                            aria-disabled={!option.available}
-                          >
-                            <input
-                              type="radio"
-                              name="componentAcquisitionVersion"
-                              value={option.choice}
-                              disabled={!option.available}
-                              checked={effectiveChoice(request) === option.choice}
-                              onChange={() => setChoice(option.choice)}
-                            />
-                            <span>{versionLabel(option)}</span>
-                            <Show when={option.choice === "verified"}>
-                              <small>{uiText.componentAcquisition.verifiedHint}</small>
-                            </Show>
-                            <Show when={!option.available && option.unavailableReason}>
-                              {(reason) => <small>{reason()}</small>}
-                            </Show>
-                          </label>
-                        )}
-                      </For>
+                      <VersionSelector options={request.versions}
+                        choice={effectiveChoice(request)} onSelect={setChoice}
+                        language={currentSettingsText().language}
+                        installedVersionUnknown={request.component.installed === true} />
                     </fieldset>
                   </Show>
+                </Show>
+                <Show when={request.catalogStatus === "error" || request.catalogStatus === "partial" || request.catalogStatus === "unavailable"}>
+                  <p role="status">{catalogMessage(request.catalogStatus!)}</p>
                 </Show>
               </Show>
 
@@ -172,7 +163,8 @@ export function ComponentAcquisitionDialog(props: {
             </button>
             <button
               type="button"
-              disabled={!request.manual && request.loading}
+              disabled={!request.manual && (request.loading ||
+                (request.versions.length > 0 && effectiveChoice(request) === null))}
               onClick={() => props.onConfirm(effectiveChoice(request))}
             >
               {requiresTerms(request)

@@ -5,6 +5,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.App.Infrastructure.Settings;
 using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.Updates;
 
 namespace ResourceManager.App.Hosting;
 
@@ -45,6 +46,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton(new RuntimePersistenceCapabilityPolicy(
             startupCapabilities.Allows(StartupCapability.MutablePersistence)));
         services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>();
+        services.AddHttpClient();
+        services.AddSingleton<ProductVersionCatalogService>();
+        services.AddSingleton<ProductUpdateCoordinator>();
 
         services
             .AddResourceManagerRuntimeSpecialization(startupCapabilities)

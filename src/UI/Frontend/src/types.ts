@@ -85,7 +85,7 @@ export type AppLogicRefreshIntervalKey =
   | "discovery"
   | "optimization"
   | "localSystem";
-export type SettingsSection = "performance" | "appearance" | "systemIntegration" | "debug" | "credits";
+export type SettingsSection = "performance" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
 
 export interface MetricDefinition {
   id: string;
@@ -208,6 +208,11 @@ export interface AppSettings {
   debug?: AppDebugSettings;
   publicService?: AppLocalPublicServiceSettings;
   aiModelService?: AppAiModelServiceSettings;
+  update?: AppUpdateSettings;
+}
+
+export interface AppUpdateSettings {
+  autoUpdateEnabled: boolean;
 }
 
 export interface AppPerformanceSettings {
@@ -547,17 +552,22 @@ export type ComponentInstallerSourceKind = "direct" | "githubRelease" | "manual"
 
 /** 版本对话框里的一个选项。不可用时仍然出现在列表里，并带上原因。 */
 export interface ComponentVersionOption {
-  choice: "verified" | "latest";
+  choice: string;
   available: boolean;
   version?: string | null;
   assetName?: string | null;
   unavailableReason?: string | null;
+  series?: string | null;
+  channel?: string | null;
+  publishedAt?: string | null;
 }
 
 export interface ComponentVersionOptions {
   id: string;
   sourceKind: ComponentInstallerSourceKind;
   options: ComponentVersionOption[];
+  catalogStatus?: string;
+  complete?: boolean;
 }
 
 export interface ManagedComponent {

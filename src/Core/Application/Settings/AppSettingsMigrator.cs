@@ -121,7 +121,9 @@ public static class AppSettingsMigrator
             new AppAiModelServiceSettings(
                 Provider: defaults.AiModelService.Provider,
                 Endpoint: ReadString(root, "aiModelService", "endpoint", defaults.AiModelService.Endpoint),
-                AutoStartEnabled: ReadBoolean(root, "aiModelService", "autoStartEnabled", defaults.AiModelService.AutoStartEnabled)));
+                AutoStartEnabled: ReadBoolean(root, "aiModelService", "autoStartEnabled", defaults.AiModelService.AutoStartEnabled)),
+            new AppUpdateSettings(
+                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled)));
 
         return AppSettingsNormalizer.Normalize(settings);
     }
@@ -155,6 +157,10 @@ public static class AppSettingsMigrator
             || !root.TryGetProperty("debug", out var debug)
             || debug.ValueKind != JsonValueKind.Object
             || root.TryGetProperty("selfOptimization", out _)
+            || !root.TryGetProperty("update", out var update)
+            || update.ValueKind != JsonValueKind.Object
+            || !update.TryGetProperty("autoUpdateEnabled", out var autoUpdateEnabled)
+            || !IsBoolean(autoUpdateEnabled)
             || !root.TryGetProperty("performance", out var performance)
             || performance.ValueKind != JsonValueKind.Object)
         {

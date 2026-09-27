@@ -113,6 +113,7 @@ export interface SettingsStore {
   updateLanguage: (language: AppLanguageMode) => void;
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
   updateAutoStart: (enabled: boolean) => void;
+  updateAutoUpdate: (enabled: boolean) => void;
   updateEditableHotkey: (hotkey: AppEditableHotkeySettings) => void;
   updateLocalPublicService: (enabled: boolean) => void;
   updatePublicFileIndex: (enabled: boolean) => void;
@@ -485,6 +486,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       ...systemIntegration,
       autoStartEnabled: enabled
     })),
+    updateAutoUpdate: (enabled) => updateDraft((currentSettings) => ({
+      ...currentSettings,
+      update: { autoUpdateEnabled: enabled }
+    })),
     updateTaskManagerShortcutReplacement: (enabled) => updateSystemIntegration((systemIntegration) => ({
       ...systemIntegration,
       taskManagerShortcutReplacementEnabled: enabled
@@ -561,7 +566,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.23",
+    version: "1.0.26",
     performance: {
       smartMonitoringEnabled: true,
       monitoringIdleSeconds: 5,
@@ -614,14 +619,15 @@ export function defaultAppSettings(): AppSettings {
       provider: "lm-studio",
       endpoint: "http://127.0.0.1:1234",
       autoStartEnabled: false
-    }
+    },
+    update: { autoUpdateEnabled: false }
   };
 }
 
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.23",
+    version: "1.0.26",
     performance: {
       smartMonitoringEnabled: settings?.performance?.smartMonitoringEnabled ?? defaults.performance!.smartMonitoringEnabled,
       monitoringIdleSeconds: 5,
@@ -661,7 +667,8 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       provider: "lm-studio",
       endpoint: normalizeLmStudioEndpoint(settings?.aiModelService?.endpoint),
       autoStartEnabled: settings?.aiModelService?.autoStartEnabled ?? defaults.aiModelService!.autoStartEnabled
-    }
+    },
+    update: { autoUpdateEnabled: settings?.update?.autoUpdateEnabled === true }
   };
 }
 

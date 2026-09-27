@@ -87,13 +87,13 @@ public sealed class DependencyInstallerSourceResolverTests
     public async Task LatestChoicePicksAssetByPatternOrderNotResponseOrder()
     {
         var resolver = CreateResolver(payload: """
-        {
-          "tag_name": "v9.9.9",
+        [{
+          "tag_name": "v9.9.9", "draft": false, "prerelease": false,
           "assets": [
             { "name": "Installer.NET.10.zip", "browser_download_url": "https://github.com/owner/repo/releases/download/v9.9.9/Installer.NET.10.zip" },
             { "name": "Installer.zip", "browser_download_url": "https://github.com/owner/repo/releases/download/v9.9.9/Installer.zip" }
           ]
-        }
+        }]
         """);
 
         var resolved = await resolver.ResolveAsync(
@@ -110,12 +110,12 @@ public sealed class DependencyInstallerSourceResolverTests
     public async Task AssetOutsideAllowedDownloadHostIsRejected()
     {
         var resolver = CreateResolver(payload: """
-        {
-          "tag_name": "v9.9.9",
+        [{
+          "tag_name": "v9.9.9", "draft": false, "prerelease": false,
           "assets": [
             { "name": "Installer.zip", "browser_download_url": "https://example.com/Installer.zip" }
           ]
-        }
+        }]
         """);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => resolver.ResolveAsync(
@@ -128,12 +128,12 @@ public sealed class DependencyInstallerSourceResolverTests
     public async Task UnmatchedAssetsAreRejected()
     {
         var resolver = CreateResolver(payload: """
-        {
-          "tag_name": "v9.9.9",
+        [{
+          "tag_name": "v9.9.9", "draft": false, "prerelease": false,
           "assets": [
             { "name": "Source code.zip", "browser_download_url": "https://github.com/owner/repo/releases/download/v9.9.9/Source%20code.zip" }
           ]
-        }
+        }]
         """);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => resolver.ResolveAsync(

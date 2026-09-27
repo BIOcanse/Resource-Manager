@@ -8,6 +8,18 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AppSettingsMigratorTests
 {
+    [Fact]
+    public void MigrateForRead_PreservesAutomaticUpdatePreference()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["update"]!["autoUpdateEnabled"] = true;
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
+
+        Assert.True(settings.Update!.AutoUpdateEnabled);
+    }
+
     [Theory]
     [InlineData("1.0.17", true)]
     [InlineData("1.0.22", true)]
@@ -15,7 +27,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.24", true)]
     [InlineData("1.0.25", true)]
     [InlineData("1.0.16", false)]
-    [InlineData("1.0.26", false)]
+    [InlineData("1.0.26", true)]
+    [InlineData("1.0.27", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -269,7 +282,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -286,7 +299,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -306,7 +319,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.25\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -431,7 +444,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.25",
+          "version": "1.0.26",
           "performance": {
             "smartMonitoringEnabled": true,
             "monitoringIdleSeconds": 5,
@@ -474,6 +487,7 @@ public sealed class AppSettingsMigratorTests
             "endpoint": "http://127.0.0.1:1234",
             "autoStartEnabled": true
           },
+          "update": { "autoUpdateEnabled": false },
           "debug": {
             "debugModeEnabled": false,
             "loopbackAuthenticationDisabled": false,
