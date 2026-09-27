@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using ResourceManager.Shared.Packages;
 using ResourceManager.Updater;
 
@@ -61,6 +63,14 @@ public sealed class PackageSwitchTransactionTests
             Directory.CreateDirectory(Path.Combine(installed, "Config"));
             Directory.CreateDirectory(Path.Combine(installed, "UserData", "Database"));
             File.WriteAllText(Path.Combine(installed, "Config", "app-settings.json"), "old-settings");
+            using var identity = WindowsIdentity.GetCurrent();
+            var user = identity.User ?? throw new InvalidOperationException("Test requires a Windows identity.");
+            var configDirectory = new DirectoryInfo(Path.Combine(installed, "Config"));
+            var configSecurity = configDirectory.GetAccessControl(AccessControlSections.Access);
+            configSecurity.AddAccessRule(new FileSystemAccessRule(user, FileSystemRights.Modify,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None, AccessControlType.Allow));
+            configDirectory.SetAccessControl(configSecurity);
             File.WriteAllText(Path.Combine(installed, "UserData", "Database", "resource-manager.db"), "old-database");
             File.WriteAllText(Path.Combine(installed, "release-manifest.json"), "old-manifest");
             var verified = ReleasePackageLayout.Verify(package);
@@ -81,6 +91,11 @@ public sealed class PackageSwitchTransactionTests
             {
                 using var document = JsonDocument.Parse(installedManifest);
                 Assert.Equal("0.3.0", document.RootElement.GetProperty("version").GetString());
+                var copied = new DirectoryInfo(Path.Combine(installed, "Config"))
+                    .GetAccessControl(AccessControlSections.Access);
+                Assert.Contains(copied.GetAccessRules(true, false, typeof(SecurityIdentifier))
+                    .Cast<FileSystemAccessRule>(), rule => rule.IdentityReference == user
+                    && (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify);
             }
             Assert.Equal(failHealth ? 2 : 1, runtime.StartCount);
             Assert.Equal(failHealth ? 2 : 1, runtime.StopCount);
