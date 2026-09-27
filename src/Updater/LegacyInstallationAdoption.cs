@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using Microsoft.Win32;
 using ResourceManager.Shared.Desktop;
@@ -136,17 +137,59 @@ internal static class LegacyInstallationAdoption
         CancellationToken cancellationToken)
     {
         Adopt(plan, executablePath);
-        using var process = Process.Start(new ProcessStartInfo(plan.ManagerExecutable)
+        await RunInstalledApplyAsync(plan.ManagerExecutable, plan.Package.Root,
+            plan.InstallRoot, cancellationToken);
+        return $"已从 {plan.PreviousVersion} 更新到 {plan.Package.Version}，旧安装根保留在更新事务备份中。";
+    }
+
+    public static async Task<string> ResumeAndApplyAsync(string packageRoot, string installRoot,
+        string executablePath, CancellationToken cancellationToken)
+    {
+        RequireAdministrator();
+        var package = ReleasePackageLayout.Verify(packageRoot);
+        if (!SamePath(executablePath, UpdateManagerPaths.PackagedExecutable(package.Root)))
+            throw new InvalidOperationException("旧版续接只能由已校验发行包内的更新管理器执行。");
+        var plan = UpdatePlan.Create(package.Root, installRoot);
+        using (var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64))
+        using (var product = machine.OpenSubKey(Product))
+            if (product?.GetValue(Pending) is not int value || value != 1)
+                throw new InvalidOperationException("没有待完成的旧版接入，不能使用续接入口。");
+        if (PackageSwitchTransaction.ListPending(plan.InstallRoot).Count != 0)
+            throw new InvalidOperationException("存在待恢复的更新事务，请先恢复。");
+        var installedManager = UpdateManagerPaths.InstalledExecutable(plan.InstallRoot);
+        ReleasePackageLayout.RejectReparse(installedManager);
+        var source = UpdateManagerPaths.PackagedExecutable(package.Root);
+        bool sameManager;
+        using (var sourceStream = File.OpenRead(source))
+        using (var targetStream = File.OpenRead(installedManager))
+            sameManager = sourceStream.Length == targetStream.Length
+                && SHA256.HashData(sourceStream).AsSpan().SequenceEqual(SHA256.HashData(targetStream));
+        if (!sameManager)
+        {
+            var directory = UpdateManagerPaths.InstalledDirectory(plan.InstallRoot);
+            var staged = Path.Combine(directory, "next-" + Guid.NewGuid().ToString("N") + ".exe");
+            var backup = Path.Combine(directory, "previous-" + Guid.NewGuid().ToString("N") + ".exe");
+            File.Copy(source, staged);
+            try { File.Replace(staged, installedManager, backup); }
+            finally { if (File.Exists(staged)) File.Delete(staged); }
+        }
+        await RunInstalledApplyAsync(installedManager, package.Root, plan.InstallRoot, cancellationToken);
+        return $"已从 {plan.PreviousVersion} 更新到 {package.Version}，旧安装根保留在更新事务备份中。";
+    }
+
+    private static async Task RunInstalledApplyAsync(string managerExecutable, string packageRoot,
+        string installRoot, CancellationToken cancellationToken)
+    {
+        using var process = Process.Start(new ProcessStartInfo(managerExecutable)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
-            ArgumentList = { "--apply", plan.Package.Root, plan.InstallRoot }
+            ArgumentList = { "--apply", packageRoot, installRoot }
         }) ?? throw new InvalidOperationException("已接入旧版，但无法启动外置更新管理器。");
         await process.WaitForExitAsync(cancellationToken);
         if (process.ExitCode != 0)
             throw new InvalidOperationException("旧版已接入外置管理器，但更新失败；旧安装及事务记录已保留，可从开始菜单重试或恢复。");
-        return $"已从 {plan.PreviousVersion} 更新到 {plan.Package.Version}，旧安装根保留在更新事务备份中。";
     }
 
     public static string FinishDesktopRegistration(string installRoot)
