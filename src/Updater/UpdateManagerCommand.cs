@@ -44,6 +44,15 @@ public static class UpdateManagerCommand
             var package = ReleasePackageLayout.Verify(args[1]);
             return $"发行包 {package.Version} 校验通过。";
         }
+        if (args.Length == 3 && args[0] is "--legacy-plan" or "--adopt-and-apply")
+        {
+            var adoption = LegacyInstallationAdoption.Plan(args[1], args[2], executablePath);
+            if (args[0] == "--legacy-plan")
+                return $"旧版 {adoption.PreviousVersion} 可接入外置管理器并更新至 {adoption.Package.Version}。";
+            return await LegacyInstallationAdoption.AdoptAndApplyAsync(adoption, executablePath, cancellationToken);
+        }
+        if (args.Length == 2 && args[0] == "--finish-legacy-registration")
+            return LegacyInstallationAdoption.FinishDesktopRegistration(args[1]);
         if (args.Length == 2 && args[0] == "--recover")
         {
             var target = UpdatePlan.RequireRegisteredTarget(args[1]);
@@ -54,7 +63,7 @@ public static class UpdateManagerCommand
             return recovered.Count == 0 ? "没有待恢复的更新事务。" : $"已恢复 {recovered.Count} 个中断事务。";
         }
         if (args.Length != 3 || args[0] is not ("--plan-only" or "--apply" or "--repair"))
-            throw new ArgumentException("更新管理器接受 --verify-package、--plan-only、--apply、--repair 或 --recover。");
+            throw new ArgumentException("更新管理器命令无效。");
         var operation = args[0] == "--repair" ? UpdateOperation.Repair : UpdateOperation.Update;
         var plan = UpdatePlan.Create(args[1], args[2], operation);
         if (args[0] == "--plan-only") return $"{plan.Package.Version} 更新预检通过。";
@@ -68,6 +77,15 @@ public static class UpdateManagerCommand
         var result = operation == UpdateOperation.Repair
             ? $"主程序已修复。旧文件保留在：{workspace}"
             : $"已更新到 {plan.Package.Version}。旧版备份保留在：{workspace}";
+        try
+        {
+            var desktopResult = LegacyInstallationAdoption.FinishDesktopRegistration(plan.InstallRoot);
+            if (desktopResult != "桌面登记无需旧版收尾。") result += " " + desktopResult;
+        }
+        catch (Exception exception)
+        {
+            result += $" 旧版桌面登记收尾未完成，可重试：{exception.Message}";
+        }
         try
         {
             if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, executablePath))

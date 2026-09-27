@@ -56,7 +56,7 @@ internal sealed record UpdatePlan(
         return target;
     }
 
-    private static string ReadInstalledVersion(string target, UpdateOperation operation)
+    internal static string ReadInstalledVersion(string target, UpdateOperation operation)
     {
         try { return ReadVersion(Path.Combine(target, "release-manifest.json")); }
         catch (Exception exception) when (operation == UpdateOperation.Repair &&
@@ -79,7 +79,7 @@ internal sealed record UpdatePlan(
             ?? throw new InvalidDataException("现有安装缺少发行版本。");
     }
 
-    private static void CheckCompatibility(string packageRoot, string target)
+    internal static void CheckCompatibility(string packageRoot, string target)
     {
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(packageRoot, "release-manifest.json")));
         if (!document.RootElement.TryGetProperty("updateCompatibility", out var compatibility))

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.Installer;
 using ResourceManager.Shared.ServiceHosting;
+using ResourceManager.Shared.Desktop;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -57,9 +58,11 @@ public sealed class InstallerEntryTests
             File.WriteAllText(target, "fixture");
             StartMenuShortcut.Create(target, shortcut);
             Assert.True(new FileInfo(shortcut).Length > 0);
+            Assert.Equal(target, StartMenuShortcut.ReadTarget(shortcut));
             var managerShortcut = Path.Combine(root, "Resource Manager 更新管理.lnk");
             StartMenuShortcut.CreateManager(target, managerShortcut);
             Assert.True(new FileInfo(managerShortcut).Length > 0);
+            Assert.Equal(target, StartMenuShortcut.ReadTarget(managerShortcut));
             Assert.Equal(Path.Combine(root, "ResourceManager.UpdateManager", "ResourceManager.UpdateManager.exe"),
                 ResourceManager.Shared.Packages.UpdateManagerPaths.InstalledExecutable(Path.Combine(root, "ResourceManager")));
         }

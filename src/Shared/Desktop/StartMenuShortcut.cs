@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ResourceManager.Installer;
+namespace ResourceManager.Shared.Desktop;
 
-internal static class StartMenuShortcut
+public static class StartMenuShortcut
 {
     public static string PathForAllUsers => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Resource Manager.lnk");
@@ -14,11 +14,24 @@ internal static class StartMenuShortcut
 
     public static void CreateManager(string target) => CreateManager(target, ManagerPathForAllUsers);
 
-    internal static void CreateManager(string target, string shortcutPath) => Create(target, shortcutPath,
+    public static void CreateManager(string target, string shortcutPath) => Create(target, shortcutPath,
         "更新、恢复或修复 Resource Manager", "ResourceManager.UpdateManager");
 
-    internal static void Create(string target, string shortcutPath)
+    public static void Create(string target, string shortcutPath)
         => Create(target, shortcutPath, "启动 Resource Manager", "ResourceManager.Desktop");
+
+    public static string ReadTarget(string shortcutPath)
+    {
+        var link = (IShellLinkW)(object)new ShellLinkCom();
+        try
+        {
+            ((IPersistFile)link).Load(shortcutPath, 0);
+            var target = new StringBuilder(32768);
+            link.GetPath(target, target.Capacity, IntPtr.Zero, 0);
+            return target.ToString();
+        }
+        finally { Marshal.FinalReleaseComObject(link); }
+    }
 
     private static void Create(string target, string shortcutPath, string description, string appUserModelId)
     {
