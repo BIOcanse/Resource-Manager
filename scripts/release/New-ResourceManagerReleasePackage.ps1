@@ -35,14 +35,11 @@ $imageRoot = Join-Path $buildRoot 'image'
 if ((Get-CleanCommit) -cne $sourceCommit) { throw 'Source changed during publication.' }
 New-Item -ItemType Directory -Path $stage | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stage 'Config') | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $stage 'scripts') | Out-Null
-foreach ($name in @('Install.cmd', 'LICENSE', 'NOTICE', 'README.md', 'README.zh-CN.md', 'Restart.cmd', 'Start.cmd')) {
+foreach ($name in @('LICENSE', 'NOTICE', 'README.md', 'README.zh-CN.md')) {
     Copy-Item -LiteralPath (Join-Path $repositoryRoot $name) -Destination (Join-Path $stage $name)
 }
-foreach ($name in @('Install-ResourceManagerPackage.ps1', 'Register-ResourceManager.ps1', 'ResourceManager.DirectoryRegistration.ps1',
-        'ResourceManager.LegacyStartup.ps1', 'Start-ResourceManagerInstalled.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $scriptsRoot $name) -Destination (Join-Path $stage "scripts\$name")
-}
+Copy-Item -LiteralPath (Join-Path $buildRoot 'installer\Install.exe') -Destination (Join-Path $stage 'Install.exe')
+Copy-Item -LiteralPath (Join-Path $buildRoot 'launcher\ResourceManager.Launcher.exe') -Destination (Join-Path $stage 'Start.exe')
 # Only tracked README images accompany the documentation, never the research tree.
 $screenshots = @(& git -C $repositoryRoot ls-files -- docs/screenshots)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate README images.' }
@@ -54,8 +51,6 @@ foreach ($relative in $screenshots) {
 # The image validator rejects reparse points before copying.
 Copy-Item -LiteralPath $imageRoot -Destination (Join-Path $stage 'Bin') -Recurse
 & (Join-Path $scriptsRoot 'validation\Test-ResourceManagerReleaseContents.ps1') -RootDirectory $stage
-& (Join-Path $scriptsRoot 'Register-ResourceManager.ps1') -PackageRoot $stage -PlanOnly | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Packaged installer preflight failed.' }
 $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
     [pscustomobject]@{
         path = $_.FullName.Substring($stage.Length + 1).Replace('\', '/')
@@ -65,6 +60,8 @@ $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullNa
 })
 [pscustomobject]@{ sourceCommit = $sourceCommit; version = $Version; files = $files } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'release-manifest.json') -Encoding utf8
+& (Join-Path $stage 'Install.exe') --plan-only
+if ($LASTEXITCODE -ne 0) { throw 'Packaged EXE installer preflight failed.' }
 Write-Step 'Creating the archive and checksum.'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)

@@ -185,21 +185,12 @@ The release package includes the required .NET runtime. It uses your system's We
 ## 📦 Installation
 
 1. Download the latest Windows x64 release archive.
-2. Extract the **complete folder** to a permanent location. For an update, extract it to a new folder outside the current installation.
-3. Run `Install.cmd`. On an update it verifies the existing installation, backs up and replaces its program files, and preserves its configuration and data.
-4. Run `Start.cmd` to start the service and the desktop interface.
-5. Run `Restart.cmd` to restart the service when needed.
-
+2. Extract the **complete folder** to a temporary location.
+3. Run `Install.exe`, review its list of installation actions, and approve. It installs to Program Files and registers the service and Start menu shortcut. Existing installations are left untouched; version upgrades are separate.
+4. Find **Resource Manager** in the Start menu or run the installed `Start.exe` to start the service and desktop interface. You can pin the Start menu entry to the taskbar.
 Service management requests administrator permission; the interface runs as a standard user.
 
-Close the desktop interface before an update. Do not extract an update over a running installation. The installer preserves these directories in the existing installation:
-
-```text
-Config/
-UserData/
-Dependencies/
-Misc/
-```
+`Install.exe` only performs a first installation. If Resource Manager is already installed, it stops without changing the existing files or settings. The upgrade path will be provided separately.
 
 ---
 

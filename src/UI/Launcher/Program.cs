@@ -26,7 +26,7 @@ internal static class Program
             if (serviceOnly)
             {
                 if (!admin) throw new UnauthorizedAccessException("Service registration requires administrator permission.");
-                WindowsServiceRegistration.EnsureRunning(WindowsServiceRegistration.ProductServiceName,
+                WindowsServiceRegistration.StartExisting(WindowsServiceRegistration.ProductServiceName,
                     installation.Backend, restart);
                 return 0;
             }

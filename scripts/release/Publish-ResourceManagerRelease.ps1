@@ -32,7 +32,8 @@ finally { Pop-Location }
 $projects = @(
     @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend' },
     @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui' },
-    @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' }
+    @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' },
+    @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer' }
 )
 foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
@@ -50,6 +51,8 @@ foreach ($project in $projects) {
     -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker | Out-Null
+& (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
+    -ExecutablePath (Join-Path $OutputRoot 'installer\Install.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $PSScriptRoot 'New-ResourceManagerFinalImage.ps1') `
     -BackendDirectory (Join-Path $OutputRoot 'backend') -NativeUiDirectory (Join-Path $OutputRoot 'ui') `
     -LauncherDirectory (Join-Path $OutputRoot 'launcher') -OutputDirectory (Join-Path $OutputRoot 'image')

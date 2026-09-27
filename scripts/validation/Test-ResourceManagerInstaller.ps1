@@ -5,12 +5,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'ResourceManager.DirectoryRegistration.ps1')
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'ResourceManager.LegacyStartup.ps1')
 function Assert([bool]$Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
-$installCommand = Get-Content -LiteralPath (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'Install.cmd') -Raw
 $releaseBuilder = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'release\New-ResourceManagerReleasePackage.ps1') -Raw
-Assert ($installCommand.Contains('Install-ResourceManagerPackage.ps1')) `
-    'Install.cmd does not invoke the owned package upgrade.'
-Assert ($releaseBuilder.Contains("'Install-ResourceManagerPackage.ps1'")) `
-    'The release package omits its installer.'
+Assert ($releaseBuilder.Contains("'installer\Install.exe'") -and $releaseBuilder.Contains("'Start.exe'")) `
+    'The release package omits an EXE installer or launcher.'
+Assert (-not $releaseBuilder.Contains("'Install-ResourceManagerPackage.ps1'")) `
+    'The release package still ships the script installer.'
 
 # Mock only Task Scheduler access. No real startup task is created or changed.
 $script:tasks = @()
