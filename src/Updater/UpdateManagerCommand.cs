@@ -51,6 +51,9 @@ public static class UpdateManagerCommand
                 return $"旧版 {adoption.PreviousVersion} 可接入外置管理器并更新至 {adoption.Package.Version}。";
             return await LegacyInstallationAdoption.AdoptAndApplyAsync(adoption, executablePath, cancellationToken);
         }
+        if (args.Length == 3 && args[0] == "--resume-legacy")
+            return await LegacyInstallationAdoption.ResumeAndApplyAsync(args[1], args[2],
+                executablePath, cancellationToken);
         if (args.Length == 2 && args[0] == "--finish-legacy-registration")
             return LegacyInstallationAdoption.FinishDesktopRegistration(args[1]);
         if (args.Length == 2 && args[0] == "--recover")
@@ -100,6 +103,26 @@ public static class UpdateManagerCommand
 
     public static void WriteResult(string[] args, bool success, string message)
     {
+        if (args.Length == 3 && args[0] is "--apply" or "--repair" or "--adopt-and-apply" or "--resume-legacy")
+        {
+            try
+            {
+                var target = UpdatePlan.RequireRegisteredTarget(args[2]);
+                var managerDirectory = UpdateManagerPaths.InstalledDirectory(target);
+                ReleasePackageLayout.RejectReparse(managerDirectory);
+                var resultName = args[0] is "--adopt-and-apply" or "--resume-legacy"
+                    ? "last-legacy-result.json" : "last-operation-result.json";
+                var resultPath = Path.Combine(managerDirectory, resultName);
+                if (File.Exists(resultPath)) ReleasePackageLayout.RejectReparse(resultPath);
+                var tempPath = resultPath + ".writing";
+                File.WriteAllText(tempPath,
+                    JsonSerializer.Serialize(new { success, message, finishedAt = DateTimeOffset.UtcNow }));
+                File.Move(tempPath, resultPath, overwrite: true);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (InvalidOperationException) { }
+        }
         if (args.Length != 3 || args[0] != "--apply") return;
         var directory = Path.GetDirectoryName(Path.GetFullPath(args[1]));
         if (directory is null || !Directory.Exists(directory)) return;
