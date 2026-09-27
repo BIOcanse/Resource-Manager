@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.Updater;
@@ -169,11 +171,11 @@ internal static class PackageSwitchTransaction
             var destination = Path.Combine(next, name);
             if (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any())
                 throw new InvalidDataException($"目标发行包含有不该携带的运行数据：{name}");
-            CopyTree(source, destination);
+            CopyTree(source, destination, preserveAccessRules: true);
         }
     }
 
-    private static void CopyTree(string source, string target)
+    private static void CopyTree(string source, string target, bool preserveAccessRules = false)
     {
         var pending = new Queue<(string Source, string Target)>();
         pending.Enqueue((source, target));
@@ -182,14 +184,46 @@ internal static class PackageSwitchTransaction
             var item = pending.Dequeue();
             ReleasePackageLayout.RejectReparse(item.Source);
             Directory.CreateDirectory(item.Target);
+            if (preserveAccessRules) CopyDirectoryAccessRules(item.Source, item.Target);
             foreach (var file in Directory.EnumerateFiles(item.Source))
             {
                 ReleasePackageLayout.RejectReparse(file);
-                File.Copy(file, Path.Combine(item.Target, Path.GetFileName(file)), overwrite: false);
+                var destination = Path.Combine(item.Target, Path.GetFileName(file));
+                File.Copy(file, destination, overwrite: false);
+                if (preserveAccessRules) CopyFileAccessRules(file, destination);
             }
             foreach (var child in Directory.EnumerateDirectories(item.Source))
                 pending.Enqueue((child, Path.Combine(item.Target, Path.GetFileName(child))));
         }
+    }
+
+    private static void CopyDirectoryAccessRules(string source, string destination)
+    {
+        var sourceDirectory = new DirectoryInfo(source);
+        var destinationDirectory = new DirectoryInfo(destination);
+        var sourceSecurity = sourceDirectory.GetAccessControl(AccessControlSections.Access);
+        var destinationSecurity = destinationDirectory.GetAccessControl(AccessControlSections.Access);
+        CopyExplicitAccessRules(sourceSecurity, destinationSecurity);
+        destinationDirectory.SetAccessControl(destinationSecurity);
+    }
+
+    private static void CopyFileAccessRules(string source, string destination)
+    {
+        var sourceFile = new FileInfo(source);
+        var destinationFile = new FileInfo(destination);
+        var sourceSecurity = sourceFile.GetAccessControl(AccessControlSections.Access);
+        var destinationSecurity = destinationFile.GetAccessControl(AccessControlSections.Access);
+        CopyExplicitAccessRules(sourceSecurity, destinationSecurity);
+        destinationFile.SetAccessControl(destinationSecurity);
+    }
+
+    private static void CopyExplicitAccessRules(FileSystemSecurity source, FileSystemSecurity destination)
+    {
+        if (source.AreAccessRulesProtected)
+            destination.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        foreach (FileSystemAccessRule rule in source.GetAccessRules(
+                     includeExplicit: true, includeInherited: false, targetType: typeof(SecurityIdentifier)))
+            destination.AddAccessRule(rule);
     }
 
     private static void WriteJournal(string workspace, UpdatePlan plan, string stage)
