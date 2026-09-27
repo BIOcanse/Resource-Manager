@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using ResourceManager.Shared.Packages;
 using ResourceManager.Updater;
 
@@ -7,6 +8,44 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class PackageSwitchTransactionTests
 {
+    [Fact]
+    public void CompatibilityPreflightReleasesDatabaseBeforeDirectorySwitch()
+    {
+        var sandbox = Path.Combine(Path.GetTempPath(), "rm-compat-test-" + Guid.NewGuid().ToString("N"));
+        var package = Path.Combine(sandbox, "package");
+        var installed = Path.Combine(sandbox, "installed");
+        var moved = Path.Combine(sandbox, "previous");
+        Directory.CreateDirectory(package);
+        Directory.CreateDirectory(Path.Combine(installed, "Config"));
+        var databaseDirectory = Path.Combine(installed, "UserData", "Database");
+        Directory.CreateDirectory(databaseDirectory);
+        try
+        {
+            File.WriteAllText(Path.Combine(package, "release-manifest.json"), JsonSerializer.Serialize(new
+            {
+                updateCompatibility = new
+                {
+                    minimumSettingsSchema = "1.0.17", maximumSettingsSchema = "1.0.26", maximumDatabaseSchema = 11
+                }
+            }));
+            File.WriteAllText(Path.Combine(installed, "Config", "app-settings.json"), "{\"version\":\"1.0.24\"}");
+            var database = Path.Combine(databaseDirectory, "resource-manager.db");
+            using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+                   { DataSource = database, Pooling = false }.ToString()))
+            {
+                connection.Open();
+                using var command = connection.CreateCommand();
+                command.CommandText = "PRAGMA user_version = 11;";
+                command.ExecuteNonQuery();
+            }
+
+            UpdatePlan.CheckCompatibility(package, installed);
+            Directory.Move(installed, moved);
+            Assert.True(File.Exists(Path.Combine(moved, "UserData", "Database", "resource-manager.db")));
+        }
+        finally { Directory.Delete(sandbox, recursive: true); }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

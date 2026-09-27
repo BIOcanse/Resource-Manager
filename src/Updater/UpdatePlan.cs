@@ -101,7 +101,8 @@ internal sealed record UpdatePlan(
             var connectionString = new SqliteConnectionStringBuilder
             {
                 DataSource = databasePath,
-                Mode = SqliteOpenMode.ReadOnly
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false
             }.ToString();
             using var connection = new SqliteConnection(connectionString);
             connection.Open();
