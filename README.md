@@ -178,7 +178,7 @@ Get the Windows x64 beta from GitHub Releases:
 - Windows 11 x64
 - Microsoft Edge WebView2 Runtime
 
-The release package includes the required .NET runtime. It uses your system's WebView2 runtime; if WebView2 is missing, the official Microsoft runtime is downloaded and installed automatically on first startup — an internet connection is only needed for that step.
+The release package includes the required .NET runtime. It uses your system's WebView2 runtime; if WebView2 is missing, the official Microsoft runtime is downloaded and installed on first startup. Checking for and downloading product updates also requires an internet connection; normal use does not.
 
 ---
 
@@ -186,11 +186,12 @@ The release package includes the required .NET runtime. It uses your system's We
 
 1. Download the latest Windows x64 release archive.
 2. Extract the **complete folder** to a temporary location.
-3. Run `Install.exe`, review its list of installation actions, and approve. It installs to Program Files and registers the service and Start menu shortcut. Existing installations are left untouched; version upgrades are separate.
+3. Run `Install.exe`, review its list of installation actions, and approve. It installs the main program and a separate update manager outside the main program directory, then registers the service, system paths, and Start menu shortcuts. Existing installations are left untouched.
 4. Find **Resource Manager** in the Start menu or run the installed `Start.exe` to start the service and desktop interface. You can pin the Start menu entry to the taskbar.
+5. For updates, interrupted update recovery, or main program repair, open **Resource Manager 更新管理** from the Start menu. Manual update and repair require a complete extracted release folder. The manager shows its actions before requesting administrator permission.
 Service management requests administrator permission; the interface runs as a standard user.
 
-`Install.exe` only performs a first installation. If Resource Manager is already installed, it stops without changing the existing files or settings. The upgrade path will be provided separately.
+`Install.exe` only performs a first installation, and `Start.exe` only starts the product. The separate update manager handles upgrades and same-version repair. The automatic update switch currently saves a preference; automatic installation awaits release signing and real-machine upgrade validation.
 
 ---
 
