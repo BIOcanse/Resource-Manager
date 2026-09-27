@@ -101,4 +101,4 @@ try {
     $registry.Dispose()
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($testKey)
 }
-'Installer checks passed: owned legacy user/task cleanup, unrelated data preservation, Installed Apps registration, no startup registration, scoped unregister.'
+'Legacy registration checks passed: owned user/task cleanup, unrelated data preservation, Installed Apps registration, no startup registration, scoped unregister.'
