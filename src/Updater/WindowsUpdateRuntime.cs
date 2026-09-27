@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Win32;
 using ResourceManager.Shared.ServiceHosting;
 
@@ -14,14 +15,42 @@ internal interface IUpdateRuntime
 
 internal sealed class WindowsUpdateRuntime : IUpdateRuntime
 {
-    public void StopService(string root) => WindowsServiceRegistration.StopExisting(
-        WindowsServiceRegistration.ProductServiceName, Backend(root));
+    public void StopService(string root)
+    {
+        var backend = Backend(root);
+        var processes = Process.GetProcessesByName("ResourceManager")
+            .Where(process => IsBackendProcess(process, backend)).ToArray();
+        try
+        {
+            WindowsServiceRegistration.StopExisting(WindowsServiceRegistration.ProductServiceName, backend);
+            foreach (var process in processes)
+                if (!process.WaitForExit(30_000))
+                    throw new TimeoutException($"服务已停止，但后端进程 {process.Id} 未退出；安装目录仍可能被占用。");
+        }
+        finally
+        {
+            foreach (var process in processes) process.Dispose();
+        }
+    }
 
     public void StartService(string root) => WindowsServiceRegistration.StartExisting(
         WindowsServiceRegistration.ProductServiceName, Backend(root), restart: false);
 
     private static string Backend(string root)
         => Path.Combine(root, "Bin", "ResourceManager", "ResourceManager.exe");
+
+    private static bool IsBackendProcess(Process process, string backend)
+    {
+        try
+        {
+            return string.Equals(process.MainModule?.FileName, backend, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException)
+        {
+            process.Dispose();
+            return false;
+        }
+    }
 
     public async Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken)
     {
