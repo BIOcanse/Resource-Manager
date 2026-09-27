@@ -4,6 +4,7 @@ import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
 import { DebugSettingsSection } from "./components/DebugSettingsSection";
 import { PerformanceSettingsSection } from "./components/PerformanceSettingsSection";
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
+import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
@@ -55,6 +56,7 @@ interface SettingsPageProps {
   onLanguageChange: (language: AppLanguageMode) => void;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
   onAutoStartChange: (enabled: boolean) => void;
+  onAutoUpdateChange: (enabled: boolean) => void;
   onEditableHotkeyChange: (hotkey: AppEditableHotkeySettings) => void;
   onLocalPublicServiceChange: (enabled: boolean) => void;
   onPublicFileIndexChange: (enabled: boolean) => void;
@@ -68,7 +70,7 @@ interface SettingsPageProps {
   onHostManagerSmartCoordinatorPerformanceLogChange: (enabled: boolean) => void;
 }
 
-const settingSections: SettingsSection[] = ["performance", "appearance", "systemIntegration", "debug", "credits"];
+const settingSections: SettingsSection[] = ["performance", "appearance", "systemIntegration", "updates", "debug", "credits"];
 
 export function SettingsPage(props: SettingsPageProps) {
   // 界面语言只有一个所有者（appTextStore）：设置页的文案跟着它走，
@@ -285,6 +287,13 @@ export function SettingsPage(props: SettingsPageProps) {
               onDebugLogChange={props.onDebugLogChange}
               onHostManagerSmartCoordinatorScoreOnlyChange={props.onHostManagerSmartCoordinatorScoreOnlyChange}
               onHostManagerSmartCoordinatorPerformanceLogChange={props.onHostManagerSmartCoordinatorPerformanceLogChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "updates"}>
+            <UpdatesSettingsSection
+              settings={props.settings.update}
+              language={text().language}
+              onAutoUpdateChange={props.onAutoUpdateChange}
             />
           </Show>
           <Show when={props.activeSection === "credits"}>

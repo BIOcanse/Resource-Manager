@@ -46,7 +46,7 @@ const localeCache = new Map<ConcreteAppLanguageMode, Promise<SettingsTextBundle>
 export const loadingSettingsText: SettingsTextBundle = {
   language: "zh-CN",
   navigationLabel: "",
-  sections: { performance: "", appearance: "", systemIntegration: "", debug: "", credits: "" },
+  sections: { performance: "", appearance: "", systemIntegration: "", updates: "", debug: "", credits: "" },
   saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "" },
   loadState: {
     loading: "",

@@ -22,6 +22,13 @@ public sealed partial class OptionalDependencyManager
 
         EnsureTerms(definition, acknowledgeExternalTerms);
 
+        if (definition.ReleaseSource is not null)
+        {
+            var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
+            if (BuildStatus(definition, installedSoftware).Installed)
+                throw new InvalidOperationException("无法可靠识别已安装组件版本；不能判断升级方向，已停止版本选择。");
+        }
+
         if (definition.InstallerSourceKind == DependencyInstallerSourceKinds.Manual)
         {
             throw new InvalidOperationException("这个依赖没有可自动获取的安装器来源，请从来源页下载后放入安装器缓存目录。");

@@ -1,21 +1,18 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.Shared.Packages;
+using ResourceManager.App.Infrastructure.Updates;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
 /// <summary>
-/// 安装器来源解析：直链照用；GitHub 来源提供「已验证版本」和「最新版本」两个选择。
+/// 安装器来源解析：直链照用；GitHub 来源提供已验证、最新、最新稳定及历史版本。
 /// 已验证版本的地址是确定性拼出来的，不调用 API，所以断网或被速率限制时仍可安装。
 /// </summary>
 public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSourceResolver
 {
-    private const string GitHubApiRoot = "https://api.github.com";
-    private static readonly TimeSpan ApiTimeout = TimeSpan.FromSeconds(15);
-
     // 解析出的资产地址只接受这两个前缀；GitHub 的资产下载会重定向到 objects.githubusercontent.com。
     private static readonly string[] AllowedAssetPrefixes =
     [
@@ -43,12 +40,12 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
         var kind = definition.InstallerSourceKind;
         if (kind == DependencyInstallerSourceKinds.Direct)
         {
-            return new DependencyVersionOptions(definition.Id, kind, []);
+            return new DependencyVersionOptions(definition.Id, kind, [], "unavailable", false);
         }
 
         if (kind == DependencyInstallerSourceKinds.Manual || definition.ReleaseSource is null)
         {
-            return new DependencyVersionOptions(definition.Id, kind, []);
+            return new DependencyVersionOptions(definition.Id, kind, [], "unavailable", false);
         }
 
         var source = definition.ReleaseSource;
@@ -59,16 +56,39 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
             AssetName: source.VerifiedAssetName,
             UnavailableReason: null);
 
-        DependencyVersionOption latest;
+        var options = new List<DependencyVersionOption> { verified };
         try
         {
-            var resolved = await ResolveLatestAsync(source, cancellationToken);
-            latest = new DependencyVersionOption(
-                DependencyVersionChoices.Latest,
-                Available: true,
-                resolved.Version,
-                resolved.AssetName,
-                UnavailableReason: null);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var listing = await GitHubReleaseReader.ReadAsync(
+                httpClient, source.Owner, source.Repository, timeout.Token);
+            var releases = listing.Releases
+                .Select(release => (Release: release, Parsed: ParseVersion(release.Tag), Asset: PickAsset(source, release.Assets)))
+                .Where(item => item.Asset is not null)
+                .OrderByDescending(item => item.Parsed, Comparer<ReleaseVersion?>.Create(
+                    (left, right) => left is null ? right is null ? 0 : -1 : left.CompareTo(right)))
+                .ThenByDescending(item => item.Release.PublishedAt)
+                .ToArray();
+            var latest = releases.FirstOrDefault();
+            var stable = releases.FirstOrDefault(item => !item.Release.Prerelease && item.Parsed?.Stable == true);
+            options.Add(ToPinned(DependencyVersionChoices.Latest, latest, "没有可用的发布版本。"));
+            options.Add(ToPinned(DependencyVersionChoices.LatestStable, stable, "没有可用的稳定版本。"));
+            foreach (var release in releases)
+            {
+                options.Add(new DependencyVersionOption(
+                    DependencyVersionChoices.TagPrefix + release.Release.Tag,
+                    Available: release.Parsed is not null,
+                    release.Release.Tag,
+                    release.Asset!.Name,
+                    release.Parsed is null ? "该上游版本号不能可靠排序，无法确认升级方向。" : null,
+                    release.Parsed?.Series,
+                    release.Release.Prerelease || release.Parsed?.Stable != true ? "preview" : "stable",
+                    release.Release.PublishedAt));
+            }
+            return new DependencyVersionOptions(
+                definition.Id, kind, options,
+                listing.Complete ? "loaded" : "partial", listing.Complete);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -77,15 +97,20 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
                 "无法解析 {Owner}/{Repository} 的最新发布，版本对话框只提供已验证版本。",
                 source.Owner,
                 source.Repository);
-            latest = new DependencyVersionOption(
+            options.Add(new DependencyVersionOption(
                 DependencyVersionChoices.Latest,
                 Available: false,
                 Version: null,
                 AssetName: null,
-                UnavailableReason: DescribeFailure(exception));
+                UnavailableReason: DescribeFailure(exception)));
+            options.Add(new DependencyVersionOption(
+                DependencyVersionChoices.LatestStable,
+                Available: false,
+                Version: null,
+                AssetName: null,
+                UnavailableReason: DescribeFailure(exception)));
+            return new DependencyVersionOptions(definition.Id, kind, options, "error", false);
         }
-
-        return new DependencyVersionOptions(definition.Id, kind, [verified, latest]);
     }
 
     public async Task<ResolvedInstallerSource> ResolveAsync(
@@ -109,7 +134,17 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
 
         if (string.Equals(choice, DependencyVersionChoices.Latest, StringComparison.OrdinalIgnoreCase))
         {
-            return await ResolveLatestAsync(source, cancellationToken);
+            return await ResolveCatalogChoiceAsync(source, stableOnly: false, cancellationToken);
+        }
+
+        if (string.Equals(choice, DependencyVersionChoices.LatestStable, StringComparison.OrdinalIgnoreCase))
+        {
+            return await ResolveCatalogChoiceAsync(source, stableOnly: true, cancellationToken);
+        }
+
+        if (choice.StartsWith(DependencyVersionChoices.TagPrefix, StringComparison.Ordinal))
+        {
+            return await ResolveTagAsync(source, choice[DependencyVersionChoices.TagPrefix.Length..], cancellationToken);
         }
 
         if (!string.Equals(choice, DependencyVersionChoices.Verified, StringComparison.OrdinalIgnoreCase))
@@ -120,6 +155,72 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
         return ResolveVerified(source);
     }
 
+    private static ReleaseVersion? ParseVersion(string tag)
+        => ReleaseVersion.TryParse(tag, out var parsed) ? parsed : null;
+
+    private static GitHubReleaseAsset? PickAsset(GitHubReleaseSource source, IReadOnlyList<GitHubReleaseAsset> assets)
+    {
+        foreach (var pattern in source.AssetPatterns.Where(static pattern => !string.IsNullOrWhiteSpace(pattern)))
+            foreach (var asset in assets)
+                if (MatchesPattern(asset.Name, pattern)) return asset;
+        return null;
+    }
+
+    private static DependencyVersionOption ToPinned(
+        string choice,
+        (GitHubPublishedRelease Release, ReleaseVersion? Parsed, GitHubReleaseAsset? Asset) item,
+        string unavailableReason)
+    {
+        if (item.Release is null || item.Asset is null)
+            return new DependencyVersionOption(choice, false, null, null, unavailableReason);
+        return new DependencyVersionOption(choice, item.Parsed is not null,
+            item.Release.Tag, item.Asset.Name,
+            item.Parsed is null ? "该上游版本号不能可靠排序。" : null,
+            item.Parsed?.Series,
+            item.Release.Prerelease || item.Parsed?.Stable != true ? "preview" : "stable",
+            item.Release.PublishedAt);
+    }
+
+    private async Task<ResolvedInstallerSource> ResolveCatalogChoiceAsync(
+        GitHubReleaseSource source, bool stableOnly, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var listing = await GitHubReleaseReader.ReadAsync(
+            httpClient, source.Owner, source.Repository, timeout.Token);
+        var selected = listing.Releases
+            .Select(release => (Release: release, Parsed: ParseVersion(release.Tag), Asset: PickAsset(source, release.Assets)))
+            .Where(item => item.Parsed is not null && item.Asset is not null
+                && (!stableOnly || (!item.Release.Prerelease && item.Parsed.Stable)))
+            .OrderByDescending(item => item.Parsed)
+            .FirstOrDefault();
+        if (selected.Release is null || selected.Asset is null)
+            throw new InvalidOperationException(stableOnly
+                ? "没有可用的稳定版本。" : "没有可用的发布版本。");
+        EnsureAllowedAssetUrl(selected.Asset.DownloadUrl);
+        return new ResolvedInstallerSource(
+            selected.Asset.DownloadUrl, selected.Release.Tag, selected.Asset.Name);
+    }
+
+    private async Task<ResolvedInstallerSource> ResolveTagAsync(
+        GitHubReleaseSource source, string tag, CancellationToken cancellationToken)
+    {
+        if (tag.Length is < 1 or > 160 || tag.Any(char.IsControl))
+            throw new InvalidOperationException("无效的发布标签。");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var listing = await GitHubReleaseReader.ReadAsync(
+            httpClient, source.Owner, source.Repository, timeout.Token);
+        var release = listing.Releases.FirstOrDefault(item => item.Tag == tag)
+            ?? throw new InvalidOperationException("所选版本不在已发布目录中。");
+        var asset = PickAsset(source, release.Assets)
+            ?? throw new InvalidOperationException("所选发布没有匹配的安装器资产。");
+        if (ParseVersion(release.Tag) is null)
+            throw new InvalidOperationException("所选发布版本无法可靠排序。");
+        EnsureAllowedAssetUrl(asset.DownloadUrl);
+        return new ResolvedInstallerSource(asset.DownloadUrl, release.Tag, asset.Name);
+    }
+
     /// <summary>已验证版本：地址由 owner/repo/tag/asset 确定性拼出，不联网。</summary>
     private static ResolvedInstallerSource ResolveVerified(GitHubReleaseSource source)
     {
@@ -127,85 +228,6 @@ public sealed class DependencyInstallerSourceResolver : IDependencyInstallerSour
             $"https://github.com/{Uri.EscapeDataString(source.Owner)}/{Uri.EscapeDataString(source.Repository)}" +
             $"/releases/download/{Uri.EscapeDataString(source.VerifiedTag)}/{Uri.EscapeDataString(source.VerifiedAssetName)}";
         return new ResolvedInstallerSource(url, source.VerifiedTag, source.VerifiedAssetName);
-    }
-
-    private async Task<ResolvedInstallerSource> ResolveLatestAsync(
-        GitHubReleaseSource source,
-        CancellationToken cancellationToken)
-    {
-        var requestUri =
-            $"{GitHubApiRoot}/repos/{Uri.EscapeDataString(source.Owner)}/{Uri.EscapeDataString(source.Repository)}/releases/latest";
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        request.Headers.UserAgent.ParseAdd("ResourceManager-DependencyResolver");
-
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(ApiTimeout);
-
-        using var response = await httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            timeout.Token);
-
-        if (response.StatusCode == HttpStatusCode.Forbidden || response.StatusCode == HttpStatusCode.TooManyRequests)
-        {
-            throw new InvalidOperationException("GitHub 接口暂时限制了请求频率，稍后再试或改用已验证版本。");
-        }
-
-        response.EnsureSuccessStatusCode();
-
-        await using var payload = await response.Content.ReadAsStreamAsync(timeout.Token);
-        using var document = await JsonDocument.ParseAsync(payload, cancellationToken: timeout.Token);
-        var root = document.RootElement;
-
-        var version = root.TryGetProperty("tag_name", out var tag) && tag.ValueKind == JsonValueKind.String
-            ? tag.GetString()
-            : null;
-
-        if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidOperationException("最新发布里没有可用的安装器资产。");
-        }
-
-        var candidates = new List<(string Name, string Url)>();
-        foreach (var asset in assets.EnumerateArray())
-        {
-            var name = asset.TryGetProperty("name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
-                ? nameElement.GetString()
-                : null;
-            var url = asset.TryGetProperty("browser_download_url", out var urlElement)
-                && urlElement.ValueKind == JsonValueKind.String
-                    ? urlElement.GetString()
-                    : null;
-
-            if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(url))
-            {
-                candidates.Add((name, url));
-            }
-        }
-
-        // 按目录里声明的模式顺序取，模式顺序就是偏好顺序；不依赖上游返回资产的排列。
-        foreach (var pattern in source.AssetPatterns)
-        {
-            if (string.IsNullOrWhiteSpace(pattern))
-            {
-                continue;
-            }
-
-            foreach (var candidate in candidates)
-            {
-                if (!MatchesPattern(candidate.Name, pattern))
-                {
-                    continue;
-                }
-
-                EnsureAllowedAssetUrl(candidate.Url);
-                return new ResolvedInstallerSource(candidate.Url, version, candidate.Name);
-            }
-        }
-
-        throw new InvalidOperationException("最新发布里没有与该依赖匹配的安装器资产。");
     }
 
     /// <summary>资产地址必须落在 GitHub 的发布下载域内，不跟随到白名单外的域。</summary>

@@ -185,7 +185,10 @@ public sealed record AppSettings(
     AppSystemIntegrationSettings SystemIntegration,
     AppDebugSettings Debug,
     AppLocalPublicServiceSettings PublicService,
-    AppAiModelServiceSettings AiModelService);
+    AppAiModelServiceSettings AiModelService,
+    AppUpdateSettings? Update = null);
+
+public sealed record AppUpdateSettings(bool AutoUpdateEnabled);
 
 public sealed record AppPresetNumericSetting(
     string Mode,

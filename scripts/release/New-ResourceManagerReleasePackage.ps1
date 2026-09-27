@@ -40,6 +40,9 @@ foreach ($name in @('LICENSE', 'NOTICE', 'README.md', 'README.zh-CN.md')) {
 }
 Copy-Item -LiteralPath (Join-Path $buildRoot 'installer\Install.exe') -Destination (Join-Path $stage 'Install.exe')
 Copy-Item -LiteralPath (Join-Path $buildRoot 'start-entry\Start.exe') -Destination (Join-Path $stage 'Start.exe')
+New-Item -ItemType Directory -Path (Join-Path $stage 'Internal\UpdateManager') | Out-Null
+Copy-Item -LiteralPath (Join-Path $buildRoot 'update-manager\ResourceManager.UpdateManager.exe') `
+    -Destination (Join-Path $stage 'Internal\UpdateManager\ResourceManager.UpdateManager.exe')
 # Only tracked README images accompany the documentation, never the research tree.
 $screenshots = @(& git -C $repositoryRoot ls-files -- docs/screenshots)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate README images.' }
@@ -58,7 +61,27 @@ $files = @(Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullNa
         length = $_.Length
     }
 })
-[pscustomobject]@{ sourceCommit = $sourceCommit; version = $Version; files = $files } |
+$settingsDefaults = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src\Core\Application\Settings\AppSettingsDefaults.cs') -Raw
+$settingsMigrator = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src\Core\Application\Settings\AppSettingsMigrator.cs') -Raw
+$databaseMigrator = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src\Core\Infrastructure\Persistence\Schema\SqliteSchemaMigrator.cs') -Raw
+$schemaMatch = [regex]::Match($settingsDefaults, 'CurrentVersion\s*=\s*"(\d+\.\d+\.\d+)"')
+$minimumMatch = [regex]::Match($settingsMigrator, 'MinimumSupportedSchemaPatch\s*=\s*(\d+)')
+$databaseMigrations = [regex]::Matches($databaseMigrator, 'new\s+\w+Migration\(\)')
+if (-not $schemaMatch.Success -or -not $minimumMatch.Success -or $databaseMigrations.Count -eq 0) {
+    throw 'Cannot derive update compatibility from source schema declarations.'
+}
+$schemaParts = $schemaMatch.Groups[1].Value.Split('.')
+$minimumSchema = "$($schemaParts[0]).$($schemaParts[1]).$($minimumMatch.Groups[1].Value)"
+[pscustomobject]@{
+    sourceCommit = $sourceCommit
+    version = $Version
+    updateCompatibility = [pscustomobject]@{
+        minimumSettingsSchema = $minimumSchema
+        maximumSettingsSchema = $schemaMatch.Groups[1].Value
+        maximumDatabaseSchema = $databaseMigrations.Count
+    }
+    files = $files
+} |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'release-manifest.json') -Encoding utf8
 $preflight = Start-Process -FilePath (Join-Path $stage 'Install.exe') -ArgumentList '--plan-only' `
     -WindowStyle Hidden -Wait -PassThru
@@ -66,6 +89,12 @@ try {
     if ($preflight.ExitCode -ne 0) { throw "Packaged EXE installer preflight failed: $($preflight.ExitCode)" }
 }
 finally { $preflight.Dispose() }
+$updatePreflight = Start-Process -FilePath (Join-Path $stage 'Internal\UpdateManager\ResourceManager.UpdateManager.exe') `
+    -ArgumentList @('--verify-package', $stage) -WindowStyle Hidden -Wait -PassThru
+try {
+    if ($updatePreflight.ExitCode -ne 0) { throw "Packaged updater preflight failed: $($updatePreflight.ExitCode)" }
+}
+finally { $updatePreflight.Dispose() }
 Write-Step 'Creating the archive and checksum.'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)

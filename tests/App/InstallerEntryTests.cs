@@ -20,7 +20,8 @@ public sealed class InstallerEntryTests
                 "Install.exe", "Start.exe", "Bin/ResourceManager/ResourceManager.exe",
                 "Bin/ResourceManager/wwwroot/index.html",
                 "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
-                "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe"
+                "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
+                "Internal/UpdateManager/ResourceManager.UpdateManager.exe"
             };
             var records = files.Select(relative =>
             {
@@ -56,6 +57,11 @@ public sealed class InstallerEntryTests
             File.WriteAllText(target, "fixture");
             StartMenuShortcut.Create(target, shortcut);
             Assert.True(new FileInfo(shortcut).Length > 0);
+            var managerShortcut = Path.Combine(root, "Resource Manager 更新管理.lnk");
+            StartMenuShortcut.CreateManager(target, managerShortcut);
+            Assert.True(new FileInfo(managerShortcut).Length > 0);
+            Assert.Equal(Path.Combine(root, "ResourceManager.UpdateManager", "ResourceManager.UpdateManager.exe"),
+                ResourceManager.Shared.Packages.UpdateManagerPaths.InstalledExecutable(Path.Combine(root, "ResourceManager")));
         }
         finally { Directory.Delete(root, true); }
     }

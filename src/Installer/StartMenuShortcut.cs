@@ -7,20 +7,30 @@ internal static class StartMenuShortcut
 {
     public static string PathForAllUsers => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Resource Manager.lnk");
+    public static string ManagerPathForAllUsers => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), "Resource Manager 更新管理.lnk");
 
     public static void Create(string target) => Create(target, PathForAllUsers);
 
+    public static void CreateManager(string target) => CreateManager(target, ManagerPathForAllUsers);
+
+    internal static void CreateManager(string target, string shortcutPath) => Create(target, shortcutPath,
+        "更新、恢复或修复 Resource Manager", "ResourceManager.UpdateManager");
+
     internal static void Create(string target, string shortcutPath)
+        => Create(target, shortcutPath, "启动 Resource Manager", "ResourceManager.Desktop");
+
+    private static void Create(string target, string shortcutPath, string description, string appUserModelId)
     {
         var link = (IShellLinkW)(object)new ShellLinkCom();
         try
         {
             link.SetPath(target);
             link.SetWorkingDirectory(Path.GetDirectoryName(target)!);
-            link.SetDescription("启动 Resource Manager");
+            link.SetDescription(description);
             link.SetIconLocation(target, 0);
             var key = new PropertyKey(new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), 5);
-            var variant = new PropVariant { Type = 31, Value = Marshal.StringToCoTaskMemUni("ResourceManager.Desktop") };
+            var variant = new PropVariant { Type = 31, Value = Marshal.StringToCoTaskMemUni(appUserModelId) };
             try
             {
                 var store = (IPropertyStore)link;

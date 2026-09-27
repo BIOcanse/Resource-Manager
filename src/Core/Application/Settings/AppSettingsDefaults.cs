@@ -5,7 +5,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.25";
+    public const string CurrentVersion = "1.0.26";
     public const int MonitoringIdleSeconds = 5;
     public const int MinLogicRefreshIntervalMs = 500;
     public const int MaxLogicRefreshIntervalMs = 300_000;
@@ -92,7 +92,8 @@ public static class AppSettingsDefaults
             new AppAiModelServiceSettings(
                 Provider: "lm-studio",
                 Endpoint: "http://127.0.0.1:1234",
-                AutoStartEnabled: false));
+                AutoStartEnabled: false),
+            new AppUpdateSettings(AutoUpdateEnabled: false));
     }
 
     public static AppPresetNumericSetting CreateLogicRefreshIntervalDefault(

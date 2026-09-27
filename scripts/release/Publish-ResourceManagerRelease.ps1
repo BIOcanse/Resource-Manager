@@ -34,6 +34,7 @@ $projects = @(
     @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui' },
     @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' },
     @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer' }
+    @{ Project = (Join-Path $repo 'src\Updater\WinUI\ResourceManager.UpdateManager.csproj'); Directory = 'update-manager' }
 )
 foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
@@ -59,6 +60,8 @@ if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEX
     -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'installer\Install.exe') -ExpectedExecutionLevel asInvoker | Out-Null
+& (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
+    -ExecutablePath (Join-Path $OutputRoot 'update-manager\ResourceManager.UpdateManager.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $PSScriptRoot 'New-ResourceManagerFinalImage.ps1') `
     -BackendDirectory (Join-Path $OutputRoot 'backend') -NativeUiDirectory (Join-Path $OutputRoot 'ui') `
     -LauncherDirectory (Join-Path $OutputRoot 'launcher') -OutputDirectory (Join-Path $OutputRoot 'image')

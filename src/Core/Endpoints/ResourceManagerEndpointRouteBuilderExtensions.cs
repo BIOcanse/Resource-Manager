@@ -26,6 +26,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapSystemEndpoints(startupCapabilities);
         app.MapDebugEndpoints();
         app.MapSettingsEndpoints();
+        app.MapUpdateEndpoints();
         app.MapResourceMonitorEndpoints();
         app.MapDiskUsageEndpoints(startupCapabilities);
         app.MapControlEndpoints();

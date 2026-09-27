@@ -1,4 +1,5 @@
 using ResourceManager.Shared.ServiceHosting;
+using ResourceManager.Shared.Packages;
 
 namespace ResourceManager.Installer;
 
@@ -16,10 +17,14 @@ internal static class InstallerWorkflow
         InstallationRegistry.RequireVacant(target);
         var parent = Path.GetDirectoryName(target.Root)!;
         var stage = Path.Combine(parent, "ResourceManager.installing-" + Guid.NewGuid().ToString("N"));
+        var managerRoot = UpdateManagerPaths.InstalledDirectory(target.Root);
+        var managerExecutable = UpdateManagerPaths.InstalledExecutable(target.Root);
         var promoted = false;
+        var managerCreated = false;
         var serviceAttempted = false;
         var registryStarted = false;
         var shortcutStarted = false;
+        var managerShortcutStarted = false;
         try
         {
             CopyTree(source.Root, stage);
@@ -27,21 +32,31 @@ internal static class InstallerWorkflow
             InstallationRegistry.RequireVacant(target);
             Directory.Move(stage, target.Root);
             promoted = true;
+            if (Directory.Exists(managerRoot))
+                throw new InvalidOperationException("更新管理器目录已被其他进程创建，拒绝覆盖。");
+            Directory.CreateDirectory(managerRoot);
+            managerCreated = true;
+            File.Copy(UpdateManagerPaths.PackagedExecutable(target.Root), managerExecutable, overwrite: false);
             serviceAttempted = true;
             WindowsServiceRegistration.RegisterOnly(WindowsServiceRegistration.ProductServiceName, target.Backend);
             registryStarted = true;
             InstallationRegistry.Write(target);
             shortcutStarted = true;
             StartMenuShortcut.Create(target.Start);
+            managerShortcutStarted = true;
+            StartMenuShortcut.CreateManager(managerExecutable);
         }
         catch (Exception failure)
         {
             try
             {
+                if (managerShortcutStarted && File.Exists(StartMenuShortcut.ManagerPathForAllUsers))
+                    File.Delete(StartMenuShortcut.ManagerPathForAllUsers);
                 if (shortcutStarted && File.Exists(StartMenuShortcut.PathForAllUsers))
                     File.Delete(StartMenuShortcut.PathForAllUsers);
                 if (registryStarted) InstallationRegistry.Undo(target);
                 if (serviceAttempted) WindowsServiceRegistration.DeleteOwned(WindowsServiceRegistration.ProductServiceName, target.Backend);
+                if (managerCreated) RemoveOwnTree(managerRoot, parent, "ResourceManager.UpdateManager");
                 if (promoted) RemoveOwnTree(target.Root, parent, "ResourceManager");
                 else RemoveOwnTree(stage, parent, "ResourceManager.installing-");
             }

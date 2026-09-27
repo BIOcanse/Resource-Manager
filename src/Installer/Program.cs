@@ -36,7 +36,8 @@ internal static class Program
                     "1. 复制并校验发行程序：提供后台服务和桌面界面。\n" +
                     "2. 注册 HKLM 产品路径及 App Paths：让启动入口定位程序，并支持系统查找。\n" +
                     "3. 向 Windows 服务管理器注册手动启动的 LocalSystem 服务：供后台监测使用；安装时不会启动。\n" +
-                    "4. 建立所有用户的开始菜单快捷方式：方便系统搜索和手动固定到任务栏。\n\n" +
+                    "4. 在主程序目录外安装独立更新管理器并登记 App Paths：供升级、中断恢复和主程序修复使用。\n" +
+                    "5. 建立主程序与更新管理器的所有用户开始菜单快捷方式：方便系统搜索和手动固定到任务栏。\n\n" +
                     "此入口不会启动产品，也不会升级已有版本。是否同意并继续？";
                 if (MessageBox.Show(actions, "安装 Resource Manager", MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)

@@ -305,7 +305,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     try {
       const versionOptions = await fetchComponentVersionOptions(id);
       setAcquisitionRequest((current) => current && current.component.definition?.id === id
-        ? { ...current, versions: versionOptions.options ?? [], loading: false }
+        ? { ...current, versions: versionOptions.options ?? [], loading: false,
+            catalogStatus: versionOptions.catalogStatus, complete: versionOptions.complete }
         : current);
     } catch (error) {
       // 版本列表拿不到时不把对话框关掉：用户仍然可以读条款并按已验证版本继续。
@@ -314,6 +315,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
         ? {
           ...current,
           loading: false,
+          catalogStatus: "error",
+          complete: false,
           versions: [
             { choice: "verified", available: true, version: null, assetName: null, unavailableReason: null },
             { choice: "latest", available: false, version: null, assetName: null, unavailableReason: reason }
