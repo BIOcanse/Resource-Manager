@@ -1,5 +1,6 @@
 using ResourceManager.Shared.ServiceHosting;
 using ResourceManager.Shared.Packages;
+using ResourceManager.Shared.Desktop;
 
 namespace ResourceManager.Installer;
 
