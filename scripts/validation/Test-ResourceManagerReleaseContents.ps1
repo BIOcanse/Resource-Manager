@@ -45,3 +45,13 @@ while ($queue.Count -gt 0) {
 }
 & (Join-Path $PSScriptRoot 'Test-ResourceManagerFinalImage.ps1') -RootDirectory (Join-Path $root 'Bin') | Out-Null
 if (-not (Test-Path -LiteralPath (Join-Path $root 'Config') -PathType Container)) { throw 'Missing empty Config directory.' }
+foreach ($name in @('Install.exe', 'Start.exe')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $root $name) -PathType Leaf)) {
+        throw "Missing EXE entry: $name"
+    }
+}
+foreach ($name in @('Install.cmd', 'Start.cmd', 'Restart.cmd', 'scripts')) {
+    if (Test-Path -LiteralPath (Join-Path $root $name)) {
+        throw "Release package still contains a script entry: $name"
+    }
+}

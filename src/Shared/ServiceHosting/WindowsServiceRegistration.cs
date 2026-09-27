@@ -63,6 +63,68 @@ public static class WindowsServiceRegistration
         }
     }
 
+    public static void RegisterOnly(string serviceName, string executablePath)
+    {
+        using var manager = OpenManager(1 | 2);
+        using var service = OpenOrCreate(manager, serviceName, executablePath);
+        RequireExpectedBinary(Read(service), executablePath);
+    }
+
+    public static void StartExisting(string serviceName, string executablePath, bool restart)
+    {
+        using var manager = OpenManager(1);
+        using var service = OpenServiceW(manager, serviceName, 1 | 2 | 4 | 16 | 32);
+        if (service.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        RequireExpectedBinary(Read(service), executablePath);
+        StartChecked(service, restart);
+    }
+
+    public static void StopExisting(string serviceName, string executablePath)
+    {
+        using var manager = OpenManager(1);
+        using var service = OpenServiceW(manager, serviceName, 1 | 2 | 4 | 16 | 32);
+        if (service.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        RequireExpectedBinary(Read(service), executablePath);
+        if (Read(service).Running)
+        {
+            Check(ControlService(service, 1, out _));
+            WaitForState(service, 1);
+        }
+    }
+
+    public static void DeleteOwned(string serviceName, string executablePath)
+    {
+        using var manager = OpenManager(1);
+        using var service = OpenServiceW(manager, serviceName, 1 | 4 | 0x10000);
+        if (service.IsInvalid)
+        {
+            var error = Marshal.GetLastWin32Error();
+            if (error == 1060) return;
+            throw new Win32Exception(error);
+        }
+        RequireExpectedBinary(Read(service), executablePath);
+        Check(DeleteService(service));
+    }
+
+    private static void StartChecked(ServiceHandle service, bool restart)
+    {
+        var state = Read(service);
+        if (state.State is 2 or 3) WaitForState(service, state.State == 2 ? 4u : 1u);
+        state = Read(service);
+        if (restart && state.Running)
+        {
+            Check(ControlService(service, 1, out _));
+            WaitForState(service, 1);
+        }
+        if (Read(service).State == 4) return;
+        if (!StartServiceW(service, 0, IntPtr.Zero))
+        {
+            var error = Marshal.GetLastWin32Error();
+            if (error != 1056) throw new Win32Exception(error);
+        }
+        WaitForState(service, 4);
+    }
+
     public static void SetAutoStart(string serviceName, string executablePath, bool enabled)
     {
         using var manager = OpenManager(1);
@@ -190,6 +252,8 @@ public static class WindowsServiceRegistration
     private static extern bool ControlService(ServiceHandle service, uint control, out ServiceStatus status);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool StartServiceW(ServiceHandle service, uint count, IntPtr arguments);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool DeleteService(ServiceHandle service);
     [DllImport("advapi32.dll")]
     private static extern bool CloseServiceHandle(IntPtr handle);
 }
