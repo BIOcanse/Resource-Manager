@@ -59,6 +59,8 @@ public static class DependencyVersionChoices
 
     /// <summary>上游当前的最新发布。</summary>
     public const string Latest = "latest";
+    public const string LatestStable = "latestStable";
+    public const string TagPrefix = "tag:";
 }
 
 public sealed record OptionalDependencyDefinition(
@@ -104,12 +106,17 @@ public sealed record DependencyVersionOption(
     bool Available,
     string? Version,
     string? AssetName,
-    string? UnavailableReason);
+    string? UnavailableReason,
+    string? Series = null,
+    string? Channel = null,
+    DateTimeOffset? PublishedAt = null);
 
 public sealed record DependencyVersionOptions(
     string Id,
     string SourceKind,
-    IReadOnlyList<DependencyVersionOption> Options);
+    IReadOnlyList<DependencyVersionOption> Options,
+    string CatalogStatus = "loaded",
+    bool Complete = true);
 
 public sealed record OptionalDependencyStatus(
     OptionalDependencyDefinition Definition,

@@ -6,6 +6,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     performance: "性能",
     appearance: "外观",
     systemIntegration: "系统集成",
+    updates: "更新与版本",
     debug: "调试",
     credits: "致谢"
   },
@@ -302,6 +303,7 @@ const enSettingsCopy: SettingsCopy = {
     performance: "Performance",
     appearance: "Appearance",
     systemIntegration: "System Integration",
+    updates: "Updates & Versions",
     debug: "Debug",
     credits: "Credits"
   },

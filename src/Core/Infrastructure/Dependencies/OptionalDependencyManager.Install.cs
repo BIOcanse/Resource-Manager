@@ -23,6 +23,8 @@ public sealed partial class OptionalDependencyManager
 
         var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
         var status = BuildStatus(definition, installedSoftware);
+        if (definition.ReleaseSource is not null && status.Installed && !string.IsNullOrWhiteSpace(versionChoice))
+            throw new InvalidOperationException("无法可靠识别已安装组件版本；不能判断升级方向，已停止版本选择。");
         if (string.IsNullOrWhiteSpace(status.InstallerPath) || !File.Exists(status.InstallerPath))
         {
             throw new FileNotFoundException("托管依赖目录中没有可用安装器。", status.InstallerPath);
