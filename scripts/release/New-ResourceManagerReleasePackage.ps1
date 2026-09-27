@@ -39,7 +39,7 @@ foreach ($name in @('LICENSE', 'NOTICE', 'README.md', 'README.zh-CN.md')) {
     Copy-Item -LiteralPath (Join-Path $repositoryRoot $name) -Destination (Join-Path $stage $name)
 }
 Copy-Item -LiteralPath (Join-Path $buildRoot 'installer\Install.exe') -Destination (Join-Path $stage 'Install.exe')
-Copy-Item -LiteralPath (Join-Path $buildRoot 'launcher\ResourceManager.Launcher.exe') -Destination (Join-Path $stage 'Start.exe')
+Copy-Item -LiteralPath (Join-Path $buildRoot 'start-entry\Start.exe') -Destination (Join-Path $stage 'Start.exe')
 # Only tracked README images accompany the documentation, never the research tree.
 $screenshots = @(& git -C $repositoryRoot ls-files -- docs/screenshots)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate README images.' }

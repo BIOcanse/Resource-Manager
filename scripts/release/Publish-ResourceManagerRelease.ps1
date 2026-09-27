@@ -46,6 +46,12 @@ foreach ($project in $projects) {
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
 }
+$startEntryOutput = Join-Path $OutputRoot 'start-entry'
+if (Test-Path -LiteralPath $startEntryOutput) { throw "Publish directory already exists: $startEntryOutput" }
+New-Item -ItemType Directory -Path $startEntryOutput | Out-Null
+& zig cc -target x86_64-windows-gnu -O2 -s -municode '-Wl,--subsystem,windows' `
+    (Join-Path $repo 'src\UI\Launcher\StartEntry.c') -o (Join-Path $startEntryOutput 'Start.exe')
+if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEXITCODE" }
 & (Join-Path $scriptsRoot 'validation\Test-ResourceManagerThirdPartyNotices.ps1') `
     -BackendPublishRoot (Join-Path $OutputRoot 'backend') -NativeUiPublishRoot (Join-Path $OutputRoot 'ui') `
     -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') | Out-Null
