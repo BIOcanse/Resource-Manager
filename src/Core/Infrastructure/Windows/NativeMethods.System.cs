@@ -12,6 +12,10 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
 
+    [LibraryImport("psapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetPerformanceInfo(out PerformanceInformation buffer, uint size);
+
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
@@ -114,6 +118,25 @@ internal struct FileTime
     {
         return ((ulong)HighDateTime << 32) | LowDateTime;
     }
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct PerformanceInformation
+{
+    public uint Size;
+    public nuint CommitTotal;
+    public nuint CommitLimit;
+    public nuint CommitPeak;
+    public nuint PhysicalTotal;
+    public nuint PhysicalAvailable;
+    public nuint SystemCache;
+    public nuint KernelTotal;
+    public nuint KernelPaged;
+    public nuint KernelNonpaged;
+    public nuint PageSize;
+    public uint HandleCount;
+    public uint ProcessCount;
+    public uint ThreadCount;
 }
 
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]

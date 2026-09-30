@@ -129,8 +129,8 @@
     <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持：设计排除 AMD 笔记本独显">❌</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
-    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持：设计排除 AMD 笔记本独显">❌</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
   </tbody>
 </table>
 
@@ -141,11 +141,11 @@ GPU 为独显，iGPU 为核显。
 
 **调节范围与接入进度：**
 
-当前仍未接入的写入器包括 **Intel CPU、桌面 AMD 独显和桌面风扇**。这些项目在设计中支持，不能据此认为当前发行版已经可调。
+**0.2.7 阶段发行版**已接通 **Intel CPU 和桌面 AMD 独显** 的控制页、组件安装、回读及恢复链路。桌面主板风扇使用 Fan Control Core 的 Super I/O 后端。新增链路已做接口测试，**尚未实机验证**。剩余设计缺口见下文。
 
 - **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限的映射或回读尚未确认，当前未开放。
-- **Intel CPU**：设计覆盖 PL1 / PL2 与时间窗、温度墙、电压偏移、Turbo 倍频和 HWP / EPP 等调节；Windows 路线为 PawnIO MSR / MMIO，当前写入器尚未接入。各项受处理器、固件锁定与平台条件限制。
-- **AMD 桌面独显**：设计覆盖核心 / 显存频率、电压、功耗与调校恢复；Windows 路线为 ADLX GPU Tuning，当前写入器尚未接入。**AMD 笔记本独显明确不支持**，不进入通用 GPU 兜底写入器。
+- **Intel CPU**：已实现 PL1 / PL2、各自时间窗及核心 / 缓存 / 核显 / 系统代理电压偏移，经官方签名 PawnIO IntelMSR 模块。组件需显式安装，固件锁定和 OC 邮箱拒绝会显示具体原因。**MMIO、TCC、Turbo 倍频 / 开关、HWP / EPP 和 CPU / 核显功率分配仍未完成**：当前签名模块不允许所需寄存器写入，安装现有组件也不能解锁这些项。
+- **AMD 桌面独显**：已实现 ADLX 功耗偏移（%）、核心最低频率、显存最高频率。核心最高频率和电压在 Navi4 之前使用绝对值，已识别的 Navi4 使用偏移量，遵循 ADLX 的代际定义；未知代际的 GFX 项等待识别后开放。范围和步长由驱动提供，写入后回读；撤销逐参数恢复接管前的原值，不重置整块显卡。**旧式 GFX / VRAM 状态表接口尚未实现**。**AMD 笔记本独显明确不支持**，不进入通用 GPU 兜底写入器。
 - **AMD 核显**：GPU Curve Optimizer，需要 Hardware Bridge 与相应 SMU 能力，独立于 CPU Curve Optimizer。
 - **Intel 核显**：核心频率偏移，需要 IGCL 驱动接口与硬件开放调节能力。
 - **NVIDIA 独显**：NVAPI 核心与显存频率偏移；NVML 功耗上限、核心与显存锁频、温度阈值。可调范围由驱动返回，部分笔记本驱动会拒绝 NVML 写入，能读取不代表能调整。
@@ -156,9 +156,9 @@ GPU 为独显，iGPU 为核显。
 | 设备类型 | 状态 | 范围 |
 | --- | --- | --- |
 | 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
-| 🖥️ 桌面主机 | 🟡 | 设计覆盖 Super I/O 主板风扇、USB / HID 散热设备与 GPU 原生风扇；对应写入器尚未接入 |
+| 🖥️ 桌面主机 | 🟡 | Super I/O 主板接头已由 Fan Control Core + LibreHardwareMonitor 接入；AMD ADLX 风扇控制器已接最低转速、目标 RPM 和 Zero RPM，逐能力探测。USB / HID、NVIDIA 原生风扇写入、AMD 固件风扇曲线仍未完成 |
 
-仅有自动 / 全速接口的机器不提供任意定速；GPU 风扇写入当前未接入，转速读数为监测值。
+仅有自动 / 全速接口的机器不提供任意定速；目标 RPM 与监测 RPM 分别显示。其他原设计缺口还包括 AMD CPU 电流 / 温度回读及命令校准、更多 SMU 调节项和 Linux 产品控制宿主；Fan Control Core 已有 Linux hwmon，不代表主产品已经支持 Linux。
 
 当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「✅ 已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
 

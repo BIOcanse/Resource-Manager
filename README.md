@@ -129,8 +129,8 @@ This matrix describes the hardware adjustment scope of the design. 🟡 means su
     <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 Laptop</th><td align="center" title="Supported">🟡</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="AMD laptop discrete GPUs are excluded">❌</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
-    <tr><th scope="row">🖥️ Desktop</th><td align="center" title="Supported">🟡</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
+    <tr><th scope="row">💻 Laptop</th><td align="center" title="Supported">🟡</td><td align="center" title="Implemented; hardware validation pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="AMD laptop discrete GPUs are excluded">❌</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
+    <tr><th scope="row">🖥️ Desktop</th><td align="center" title="Supported">🟡</td><td align="center" title="Implemented; hardware validation pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Implemented; hardware validation pending">🟡</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
   </tbody>
 </table>
 
@@ -141,11 +141,11 @@ GPU means discrete graphics; iGPU means integrated graphics.
 
 **Adjustment scope and implementation status:**
 
-Writers for **Intel CPUs, AMD desktop discrete GPUs and desktop fans** are not connected yet. These are supported by design; this does not mean they are adjustable in the current release.
+The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tuning** to the control page, dependency manager, readback and restore flow. Desktop motherboard fans use Fan Control Core's Super I/O backend. These changes have interface tests and are **not yet verified on physical hardware**. The remaining design gaps are listed below.
 
 - **AMD CPUs / APUs**: STAPM, slow and fast power limits, PBO Scalar and CPU Curve Optimizer. Hardware Bridge required; the processor, firmware and available driver determine each capability. Curve Optimizer requires readback. TDC / EDC current limits and temperature limit remain unavailable until mapping or readback is confirmed.
-- **Intel CPUs**: The design covers PL1 / PL2 and time windows, temperature targets, voltage offsets, Turbo ratios and HWP / EPP controls. The Windows route is PawnIO MSR / MMIO; the writer is not connected yet. Capabilities depend on the processor, firmware locks and platform.
-- **AMD desktop discrete GPUs**: The design covers core / memory clocks, voltage, power and restoring tuning defaults. The Windows route is ADLX GPU Tuning; the writer is not connected yet. **AMD laptop discrete GPUs are explicitly excluded** and must not enter a generic GPU fallback writer.
+- **Intel CPUs**: PL1 / PL2, independent time windows and core / cache / iGPU / system-agent voltage offsets are implemented through the signed PawnIO IntelMSR module. Installation is explicit; firmware locks and OC mailbox errors are reported. **MMIO, TCC, Turbo ratios / switch, HWP / EPP and CPU / iGPU power balance remain incomplete**: the current signed modules do not permit their required registers. Installing the current component does not unlock these items.
+- **AMD desktop discrete GPUs**: ADLX manual power offset (%), minimum core clock and maximum memory clock are implemented. Maximum core clock and core voltage use absolute values before Navi4, and offsets on identified Navi4 GPUs, as defined by ADLX. Unknown GPU generations cannot use these GFX controls until identified. Ranges and steps come from the driver; writes are read back, and removal restores the saved original parameter without resetting the whole GPU. **Legacy GFX / VRAM state-table tuning is not implemented**. **AMD laptop discrete GPUs are explicitly excluded** and must not enter a generic GPU fallback writer.
 - **AMD integrated GPUs**: GPU Curve Optimizer, requiring Hardware Bridge and compatible SMU capabilities; separate from CPU Curve Optimizer.
 - **Intel integrated GPUs**: Core frequency offset, requiring IGCL and hardware that exposes adjustment.
 - **NVIDIA discrete GPUs**: NVAPI core and memory frequency offsets; NVML power limit, locked core and memory clocks and temperature thresholds. Ranges come from the driver. Some laptop drivers reject NVML writes; readable values do not imply writable controls.
@@ -156,9 +156,9 @@ Writers for **Intel CPUs, AMD desktop discrete GPUs and desktop fans** are not c
 | Device type | Status | Scope |
 | --- | --- | --- |
 | 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
-| 🖥️ Desktop | 🟡 | The design covers Super I/O motherboard fans, USB / HID cooling devices and native GPU fans; the corresponding writers are not connected yet |
+| 🖥️ Desktop | 🟡 | Super I/O motherboard headers use Fan Control Core + LibreHardwareMonitor. AMD ADLX fan controllers expose minimum speed, target RPM and Zero RPM when supported. USB / HID controllers, NVIDIA native fan writing and AMD firmware fan curves remain incomplete |
 
-Automatic / maximum-only channels do not offer arbitrary fixed speed. GPU fan writes are not connected yet; RPM is a monitoring value.
+Automatic / maximum-only channels do not offer arbitrary fixed speed. Requested RPM and monitored RPM are separate values. Remaining design gaps also include AMD CPU current / temperature readback and command mapping, advanced SMU controls and the Linux product control host; existing Linux hwmon support in Fan Control Core does not establish full Linux product support.
 
 No complete physical validation record with model, driver, requested values and readback has been published yet, so none of these entries is labeled **✅ Verified support**. Please include those details and the result of restoring defaults when reporting hardware tests through Issues.
 

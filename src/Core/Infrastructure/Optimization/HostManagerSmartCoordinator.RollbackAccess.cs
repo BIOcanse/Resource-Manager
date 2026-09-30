@@ -4,6 +4,12 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private bool HasPendingGpuOwnerWork()
+        => runningGpuPlacementActions.HasUnreleasedExternalControl
+            || gpuActionCheckpoint is not null
+            || gpuCallbackPreparation is not null
+            || gpuWindowExecution is not null;
+
     private Task<HostManagerRollbackStateDocument> LoadRollbackStateAsync(CancellationToken cancellationToken)
     {
         RequireNoGpuWindowOwnerWork();

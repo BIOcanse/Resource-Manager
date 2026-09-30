@@ -471,7 +471,8 @@ public sealed partial class HostManagerSmartCoordinator(
 
     private async Task<bool> PrepareLegacyStateAsync(
         HostManagerCycleEffectAdmission effectAdmission,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool gpuControlAvailable = true)
     {
         if (legacyStatePrepared)
         {
@@ -479,7 +480,10 @@ public sealed partial class HostManagerSmartCoordinator(
         }
 
         var state = await LoadRollbackStateAsync(cancellationToken);
-        if (GpuActionFacts.AvailablePlacementEffects(state.AppliedPlacements).Count != 0)
+        bool HasAvailableLegacyEffects() => GpuActionFacts.AvailablePlacementEffects(state.AppliedPlacements)
+            .Any(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase));
+        if (HasAvailableLegacyEffects())
         {
             if (!effectAdmission.TryAcquire(
                     HostManagerCycleEffectKind.LegacyPlacementRestore,
@@ -489,14 +493,15 @@ public sealed partial class HostManagerSmartCoordinator(
             }
             permit.Require(HostManagerCycleEffectKind.LegacyPlacementRestore);
             EnsurePlacementCoordinatorWorkspace();
-            state = await RestorePlacementStateCoreAsync(permit, cancellationToken);
+            state = await RestorePlacementStateCoreAsync(permit, cancellationToken, gpuControlAvailable);
         }
 
-        if (GpuActionFacts.AvailablePlacementEffects(state.AppliedPlacements).Count != 0)
+        if (HasAvailableLegacyEffects())
         {
             return false;
         }
 
+        // Unavailable GPU effects remain owned and are reconciled by the automatic placement cycle.
         legacyStatePrepared = true;
         authoritativeAppliedFactsRequired = true;
         return true;

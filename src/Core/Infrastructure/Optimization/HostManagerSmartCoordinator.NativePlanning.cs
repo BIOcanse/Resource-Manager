@@ -23,7 +23,9 @@ public sealed partial class HostManagerSmartCoordinator
         string trigger,
         HostManagerSmartCoordinatorCycleDiagnostics? cycleDiagnostics,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null,
+        bool placementStateAvailable = true,
+        bool gpuControlAvailable = true)
     {
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The native workspace is unavailable.");
@@ -231,7 +233,12 @@ public sealed partial class HostManagerSmartCoordinator
             cycleDiagnostics?.Defer("native-transaction-recovery-required");
             return false;
         }
-        return await RunAutomaticPlacementCycleAsync(
+        if (!placementStateAvailable)
+        {
+            cycleDiagnostics?.Mark("placement-ledger-busy");
+            return true;
+        }
+        var placementCompleted = await RunAutomaticPlacementCycleAsync(
             effectAdmission,
             desired,
             sample,
@@ -239,6 +246,14 @@ public sealed partial class HostManagerSmartCoordinator
             cpuPlacementEnabled,
             gpuPlacementEnabled,
             cancellationToken,
-            firstUse);
+            firstUse,
+            gpuControlAvailable);
+        // GPU work owns its original completion. Independent memory/public-resource effects can continue.
+        if (!placementCompleted && HasPendingGpuOwnerWork())
+        {
+            cycleDiagnostics?.Mark("gpu-placement-pending");
+            return true;
+        }
+        return placementCompleted;
     }
 }

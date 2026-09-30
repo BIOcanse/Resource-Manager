@@ -60,6 +60,15 @@ public sealed class ProviderRuntimeProbe(
                 pawnIo.RuntimePath);
         }
 
+        if (componentId.Equals("intel-msr-pawnio-provider", StringComparison.OrdinalIgnoreCase))
+        {
+            var module = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "Dependencies", componentId, "IntelMSR.bin");
+            var runtime = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PawnIO", "PawnIOLib.dll");
+            var present = File.Exists(module) && File.Exists(runtime);
+            return new ComponentProviderRuntimeProbeResult(present, false, present ? "Installed" : "Missing",
+                present ? "运行库与模块已安装；逐项能力由 Intel CPU 控制探测确认。" : "需要显式安装 PawnIO 运行库和签名 IntelMSR 模块。", present ? runtime : null);
+        }
+
         if (componentId.Equals("nvidia-nvapi-provider", StringComparison.OrdinalIgnoreCase))
         {
             var nvapi = HardwareSensorDependencyRuntimeProbe.ProbeNvidiaNvapi();

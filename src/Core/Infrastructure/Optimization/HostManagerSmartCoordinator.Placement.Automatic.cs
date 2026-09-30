@@ -25,7 +25,8 @@ public sealed partial class HostManagerSmartCoordinator
         bool cpuPlacementEnabled,
         bool gpuPlacementEnabled,
         CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null,
+        bool gpuControlAvailable = true)
     {
         if (effectAdmission.IsScoreOnly)
         {
@@ -33,8 +34,12 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var state = await LoadRollbackStateAsync(cancellationToken);
+        var placementEffects = GpuActionFacts.AvailablePlacementEffects(state.AppliedPlacements)
+            .Where(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
         if (!cpuPlacementEnabled && !gpuPlacementEnabled
-            && !GpuActionFacts.HasPlacementEffects(state.AppliedPlacements))
+            && placementEffects.Length == 0)
         {
             return true;
         }
@@ -42,14 +47,18 @@ public sealed partial class HostManagerSmartCoordinator
                 HostManagerCycleEffectKind.NativeActionTransaction,
                 out var permit))
         {
-            return !GpuActionFacts.HasPlacementEffects(state.AppliedPlacements);
+            return placementEffects.Length == 0;
         }
 
         IReadOnlyList<HostManagerPlacementDesired> fullDesired = [];
+        var cpuReservationsAvailable = true;
         if (cpuPlacementEnabled || gpuPlacementEnabled)
         {
             var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology;
             var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements);
+            var cpuReservations = cpuPlacementEnabled && topology is not null
+                ? PlanCpuReservations(topology, sample, processes) : null;
+            cpuReservationsAvailable = !cpuPlacementEnabled || cpuReservations is not null;
             if (gpuPlacementEnabled)
             {
                 processes = await PrepareAutomaticGpuCandidatesAsync(
@@ -64,7 +73,8 @@ public sealed partial class HostManagerSmartCoordinator
                 desiredRuntime.RuntimePlan.GpuPlacement.GlobalPreciseProviderEnabled,
                 desiredRuntime.HostPlan.HotPublish.PlacementCoordinator.GpuOverflow,
                 cpuPlacementEnabled,
-                gpuPlacementEnabled);
+                gpuPlacementEnabled,
+                cpuReservations);
             fullDesired = await CreateAutomaticPlacementDesiredAsync(
                 topology,
                 sample,
@@ -74,11 +84,13 @@ public sealed partial class HostManagerSmartCoordinator
                 cancellationToken,
                 cpuPlacementEnabled,
                 gpuPlacementEnabled,
-                firstUse);
+                firstUse,
+                cpuReservationsAvailable,
+                cpuReservations);
         }
 
         return await RunPreparedAutomaticPlacementCycleAsync(effectAdmission, state, fullDesired,
-            GpuActionFacts.AvailablePlacementEffects(state.AppliedPlacements), cancellationToken);
+            placementEffects, cancellationToken);
     }
 
     private async Task<bool> RunPreparedAutomaticPlacementCycleAsync(
@@ -299,7 +311,9 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken,
         bool cpuPlacementEnabled,
         bool gpuPlacementEnabled,
-        List<HostManagerAutomaticGpuPlacement>? firstUse = null)
+        List<HostManagerAutomaticGpuPlacement>? firstUse = null,
+        bool cpuReservationsAvailable = true,
+        HostManagerCpuReservations? cpuReservations = null)
     {
         var recordedState = existingPlacements;
         existingPlacements = GpuActionFacts.PlacementEffects(existingPlacements);
@@ -307,7 +321,7 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerPlacementReceiptKey.Create);
         var desired = new List<HostManagerPlacementDesired>(
             plan.Cpu.Count + plan.Gpu.Count + existingPlacements.Count);
-        foreach (var cpu in plan.Cpu
+        foreach (var cpu in (cpuReservationsAvailable ? plan.Cpu : [])
             .OrderByDescending(static item => item.CanonicalProcessScore)
             .ThenBy(static item => item.Process.TargetId, StringComparer.OrdinalIgnoreCase))
         {
@@ -355,6 +369,16 @@ public sealed partial class HostManagerSmartCoordinator
             .ToHashSet();
         foreach (var existing in existingPlacements)
         {
+            if (!cpuReservationsAvailable && cpuPlacementEnabled
+                && existing.ResourceKind.Equals(OptimizationResourceKinds.Cpu, StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var record in existing.Records.Where(IsAutomaticPlacementRecord))
+                {
+                    var heldIdentity = HostManagerPlacementCoordinatorProjection.CreateIdentity(existing, record);
+                    if (desiredIdentities.Add(heldIdentity)) desired.Add(new(existing, record, 0));
+                }
+                continue;
+            }
             if (!processesByTarget.TryGetValue(existing.TargetId, out var process))
             {
                 continue;
@@ -372,6 +396,7 @@ public sealed partial class HostManagerSmartCoordinator
                     ? cpuPlacementEnabled
                         && topology is not null
                         && WantsCpuPlacement(topology, process)
+                        && (cpuReservations?.IsOwner(process.SoftwareId) != true || process.Policy.CpuManualLockedPositionIds.Count != 0)
                         && !process.CanonicalCpuScore.HasValue
                     : existing.ResourceKind.Equals(
                             OptimizationResourceKinds.Gpu,

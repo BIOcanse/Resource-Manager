@@ -118,6 +118,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 单独一个程序、单独一个许可证，主程序只跟它说话。
         services.AddSingleton<HardwareBridgeClient>();
         services.AddSingleton<IControlWriter, AmdCpuControlWriter>();
+        services.AddSingleton<IControlWriter, IntelCpuControlWriter>();
+        services.AddSingleton<IControlWriter, AmdDesktopGpuControlWriter>();
         // 核显和独显不是一条路（AMD 走 SMU、Intel 走显卡驱动的控制库），按接法分流。
         services.AddSingleton<IControlWriter, IntegratedGpuControlWriter>();
         // 风扇走独立的风扇控制核心：它按控制通道分类而不按品牌，

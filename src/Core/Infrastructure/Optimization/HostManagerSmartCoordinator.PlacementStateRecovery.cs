@@ -7,15 +7,24 @@ public sealed partial class HostManagerSmartCoordinator
 {
     private async Task<HostManagerRollbackStateDocument> RestorePlacementStateCoreAsync(
         HostManagerCycleEffectPermit permit,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool gpuControlAvailable = true)
     {
         permit.Require(HostManagerCycleEffectKind.LegacyPlacementRestore);
         var source = await LoadRollbackStateAsync(cancellationToken);
         if (!GpuActionFacts.HasPlacementEffects(source.AppliedPlacements)) return source;
+        var eligiblePlacements = source.AppliedPlacements
+            .Where(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (!GpuActionFacts.HasPlacementEffects(eligiblePlacements)) return source;
         var remainingPlacements = RestoreAppliedPlacementsThroughNative(
             permit,
-            source.AppliedPlacements,
+            eligiblePlacements,
             cancellationToken);
+        if (!gpuControlAvailable)
+            remainingPlacements = [.. remainingPlacements,
+                .. source.AppliedPlacements.Where(item => string.Equals(item.ResourceKind,
+                    OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))];
         var attemptedAt = DateTimeOffset.UtcNow;
         var remainingEffects = GpuActionFacts.PlacementEffects(remainingPlacements).Sum(static item => item.Records.Count);
         var restoredCount = GpuActionFacts.PlacementEffects(source.AppliedPlacements).Sum(static item => item.Records.Count) - remainingEffects;

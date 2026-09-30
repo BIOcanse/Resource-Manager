@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Management;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using Microsoft.Win32;
@@ -144,31 +143,45 @@ public sealed class WindowsVirtualMemoryMonitoringZone : MonitoringSourceZone
         }
 
         var settings = GetPagefileSettings();
-        var usage = ReadPagefileUsage();
-        if (usage.TotalBytes <= 0)
+        if (!NativeMethods.GetPerformanceInfo(
+                out var performance,
+                (uint)Marshal.SizeOf<PerformanceInformation>()))
         {
-            return new VirtualMemoryMetrics(
-                0,
-                0,
-                0,
-                $"{settings.Detail}；页面文件使用量不可用，虚拟内存监控不列入可选项。",
-                IsSelectable: false)
-            {
-                ObservationStatus = SamplingObservationStatus.Unavailable
-            };
+            return CreateUnavailableMetrics(settings.Detail);
         }
 
-        var percent = usage.TotalBytes > 0 ? usage.UsedBytes * 100d / usage.TotalBytes : 0;
+        return CreateCommitMetrics(performance, settings.Detail);
+    }
+
+    internal static VirtualMemoryMetrics CreateCommitMetrics(
+        PerformanceInformation performance,
+        string pagefileDetail)
+    {
+        if (performance.PageSize == 0 || performance.CommitLimit == 0
+            || performance.CommitTotal > performance.CommitLimit
+            || (ulong)performance.CommitLimit > ulong.MaxValue / (ulong)performance.PageSize)
+        {
+            return CreateUnavailableMetrics(pagefileDetail);
+        }
+
+        var usedBytes = (ulong)performance.CommitTotal * (ulong)performance.PageSize;
+        var limitBytes = (ulong)performance.CommitLimit * (ulong)performance.PageSize;
         return new VirtualMemoryMetrics(
-            usage.UsedBytes,
-            usage.TotalBytes,
-            MonitoringMetricSanitizer.ClampPercent(percent),
-            $"{settings.Detail}；页面文件实际使用量，不包含物理内存。",
+            usedBytes,
+            limitBytes,
+            usedBytes * 100d / limitBytes,
+            $"{pagefileDetail}；系统提交量 / 当前提交上限，包含物理内存与页面文件后备；不是页面文件实际占用。",
             IsSelectable: true)
         {
             ObservationStatus = SamplingObservationStatus.Current
         };
     }
+
+    private static VirtualMemoryMetrics CreateUnavailableMetrics(string detail)
+        => new(0, 0, 0, $"{detail}；系统提交量不可用。", IsSelectable: false)
+        {
+            ObservationStatus = SamplingObservationStatus.Unavailable
+        };
 
     public static VirtualMemoryMetrics CreateNotRequestedMetrics()
     {
@@ -243,53 +256,6 @@ public sealed class WindowsVirtualMemoryMonitoringZone : MonitoringSourceZone
         return new PagefileSettings($"固定页面文件 {totalMb:N0} MB（{paths}）");
     }
 
-    private static PagefileUsage ReadPagefileUsage()
-    {
-        try
-        {
-            using var searcher = new ManagementObjectSearcher(
-                "root\\CIMV2",
-                "SELECT AllocatedBaseSize, CurrentUsage FROM Win32_PageFileUsage");
-            var totalBytes = 0UL;
-            var usedBytes = 0UL;
-            foreach (ManagementBaseObject row in searcher.Get())
-            {
-                totalBytes += MebibytesToBytes(ReadUInt64(row["AllocatedBaseSize"]));
-                usedBytes += MebibytesToBytes(ReadUInt64(row["CurrentUsage"]));
-            }
-
-            return new PagefileUsage(usedBytes, totalBytes);
-        }
-        catch (ManagementException)
-        {
-            return default;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return default;
-        }
-    }
-
-    private static ulong ReadUInt64(object? value)
-    {
-        return value switch
-        {
-            null => 0,
-            ulong number => number,
-            uint number => number,
-            long number when number > 0 => (ulong)number,
-            int number when number > 0 => (ulong)number,
-            _ => ulong.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-                ? parsed
-                : 0
-        };
-    }
-
-    private static ulong MebibytesToBytes(ulong value)
-    {
-        return value * 1024UL * 1024UL;
-    }
-
     private static string[] ReadPagefileRegistryLines(RegistryKey? key)
     {
         var value = key?.GetValue("PagingFiles");
@@ -323,7 +289,6 @@ public sealed class WindowsVirtualMemoryMonitoringZone : MonitoringSourceZone
 
     private readonly record struct PagefileEntry(string Path, int InitialMb, int MaximumMb);
 
-    private readonly record struct PagefileUsage(ulong UsedBytes, ulong TotalBytes);
 }
 
 internal readonly record struct CpuFrequency(int CurrentMhz, int MaxMhz, double Percent, string Source);

@@ -1,4 +1,4 @@
-import { localizedMetricLabel, softwareDisplayName } from "../../presentation/metricLabels.ts";
+import { localizedMetricLabel, resourceMetricBasis, softwareDisplayName } from "../../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { useTaskScope } from "../../frontendRuntime/task/useTaskScope";
@@ -243,7 +243,7 @@ function ResourceBarEditor(props: {
                 checked={Boolean(bar())}
                 onChange={(event) => props.onToggleBar(metric.id, event.currentTarget.checked)}
               />
-              <span class="resource-bar-option-copy">
+              <span class="resource-bar-option-copy" title={resourceMetricBasis(metric.id)}>
                 <span>{localizedMetricLabel(metric.id, metric.label)}</span>
               </span>
               <StandardSelect<"capacity" | "active">
@@ -413,7 +413,7 @@ function ResourceBreakdownItem(props: {
       }))}
     >
       <div class="resource-breakdown-header">
-        <strong>{label()}</strong>
+        <strong title={resourceMetricBasis(props.bar.metricId)}>{label()}</strong>
         <span>
           {formatResourceBarValue(props.bar, props.bar.totalValue)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
@@ -842,12 +842,14 @@ function resourceSegmentTooltip(bar: ResourceBreakdownBar, segment: ResourceSele
 }
 
 function resourceMemoryDetail(bar: ResourceBreakdownBar, segment: { value: number; sharedValue?: number | null }) {
-  return bar.unit === "B" && segment.sharedValue != null
-    ? uiText.resourceTableView.memoryBreakdown(bar.label,
+  const value = bar.unit === "B" && segment.sharedValue != null
+    ? uiText.resourceTableView.memoryBreakdown(resourceBreakdownLabel(bar),
       formatResourceBarValue(bar, segment.value),
       formatResourceBarValue(bar, segment.value - segment.sharedValue),
       formatResourceBarValue(bar, segment.sharedValue))
-    : formatResourceBarValue(bar, segment.value);
+    : `${resourceBreakdownLabel(bar)}: ${formatResourceBarValue(bar, segment.value)}`;
+  const basis = resourceMetricBasis(bar.metricId);
+  return basis ? `${value}\n${basis}` : value;
 }
 
 function formatResourceBarValue(bar: ResourceBreakdownBar, value: number | null) {

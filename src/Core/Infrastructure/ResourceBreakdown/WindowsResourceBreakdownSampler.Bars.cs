@@ -57,7 +57,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "内存占用",
+                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "物理内存实际占用",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus));
@@ -87,15 +87,27 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 return CreateUnavailableBar(
                     metricId,
-                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "虚拟内存占用",
+                    hardwareSnapshot.Items.GetValueOrDefault(metricId)?.Label ?? "虚拟内存提交量",
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus));
             }
 
-            // Private commit is not the process's actual page-file occupancy.
-            return CreateUnattributedMemoryUsageBar(metricId, metric.Label, scaleMode,
-                hardwareSnapshot.VirtualMemory.UsedBytes, hardwareSnapshot.VirtualMemory.TotalBytes);
+            return CreateBar(
+                metricId,
+                metric.Label,
+                "B",
+                scaleMode,
+                hardwareSnapshot.VirtualMemory.TotalBytes,
+                hardwareSnapshot.VirtualMemory.UsedBytes,
+                processAttribution.Processes
+                    .Where(static process => process.HasPrivateMemoryBytes)
+                    .Select(static process => KeyValuePair.Create(
+                        process.ProcessId, (double)Math.Max(0, process.PrivateMemoryBytes))),
+                processAttribution,
+                baseScorePlan,
+                residualBreakdownProvider,
+                isBytes: true);
         }
 
         if (metricId.Equals(ResourceBreakdownMetricIds.DiskIo, StringComparison.OrdinalIgnoreCase))
@@ -287,7 +299,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var gpu = hardwareSnapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex);
             var used = TryGetCurrentHardwareMetric(hardwareSnapshot, metricId, out var reading)
                 ? reading.NumericValue : null;
-            var bar = CreateUnattributedMemoryUsageBar(metricId, $"GPU{gpuIndex} 显存占用", scaleMode,
+            var bar = CreateUnattributedMemoryUsageBar(metricId, $"GPU{gpuIndex} 显存实际驻留", scaleMode,
                 used, gpu?.TotalMemoryBytes);
             var adapter = hardwareSnapshot.GpuInventory.Adapters.FirstOrDefault(item => item.Index == gpuIndex);
             return CreateGpuResidentPartition(bar,

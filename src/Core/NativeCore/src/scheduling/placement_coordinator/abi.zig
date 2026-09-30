@@ -1,6 +1,9 @@
 const protocol = @import("protocol.zig");
 const session_module = @import("session.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
+comptime {
+    _ = @import("cpu_exclusivity_abi.zig");
+}
 
 pub export fn rm_placement_coordinator_abi_version() callconv(.c) u32 {
     return protocol.abi_version;

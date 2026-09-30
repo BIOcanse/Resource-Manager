@@ -59,7 +59,8 @@ internal static class HostManagerAutomaticPlacementPlanner
         bool runtimeGpuShimEnabled = false,
         CompiledGpuOverflowPolicy? gpuOverflow = null,
         bool cpuPlacementEnabled = true,
-        bool gpuPlacementEnabled = true)
+        bool gpuPlacementEnabled = true,
+        HostManagerCpuReservations? cpuReservations = null)
     {
         if (cpuPlacementEnabled)
         {
@@ -72,14 +73,15 @@ internal static class HostManagerAutomaticPlacementPlanner
         ValidateCapacity(topology, processes, capacity);
 
         return new HostManagerAutomaticPlacementPlan(
-            cpuPlacementEnabled ? PlanCpu(topology!, hardwareScores, processes) : [],
+            cpuPlacementEnabled ? PlanCpu(topology!, hardwareScores, processes, cpuReservations) : [],
             gpuPlacementEnabled ? PlanGpu(hardware, hardwareScores, processes, runtimeGpuShimEnabled, gpuOverflow) : []);
     }
 
     private static IReadOnlyList<HostManagerAutomaticCpuPlacement> PlanCpu(
         CpuTopologySnapshot topology,
         CompiledHardwareScorePlan hardwareScores,
-        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes)
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
+        HostManagerCpuReservations? reservations)
     {
         var result = new List<HostManagerAutomaticCpuPlacement>();
         var ccds = topology.Ccds
@@ -94,16 +96,18 @@ internal static class HostManagerAutomaticPlacementPlanner
 
         var candidates = processes
             .Where(static process => process.CanApplyPhysicalPlacement)
-            .Where(static process => process.CanonicalCpuScore is >= 0)
-            .OrderByDescending(static process => process.CanonicalCpuScore!.Value)
+            .Where(process => process.CanonicalCpuScore is >= 0 || reservations?.ExcludedFor(process.SoftwareId).Count > 0)
+            .OrderByDescending(static process => process.CanonicalCpuScore ?? 0)
             .ThenBy(static process => process.TargetId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static process => process.ProcessId)
             .ToArray();
 
         foreach (var process in candidates)
         {
-            var lockedCoreIds = process.Policy.CpuManualLockedPositionIds;
-            if (lockedCoreIds.Count == 0)
+            var excluded = reservations?.ExcludedFor(process.SoftwareId);
+            var lockedCoreIds = process.Policy.CpuManualLockedPositionIds
+                .Where(core => excluded?.Contains(core) != true).ToArray();
+            if (lockedCoreIds.Length == 0)
             {
                 continue;
             }
@@ -116,38 +120,31 @@ internal static class HostManagerAutomaticPlacementPlanner
 
             result.Add(new HostManagerAutomaticCpuPlacement(
                 process,
-                process.CanonicalCpuScore!.Value,
+                process.CanonicalCpuScore ?? 0,
                 lockedCoreIds,
                 selector,
                 "manual-physical-core-lock"));
-            AddManualLoad(topology, ccds, lockedCoreIds, process.CanonicalCpuScore.Value);
-        }
-
-        if (ccds.Length <= 1)
-        {
-            return result;
+            AddManualLoad(topology, ccds, lockedCoreIds, process.CanonicalCpuScore ?? 0);
         }
 
         foreach (var process in candidates)
         {
-            if (process.Policy.CpuManualLockedPositionIds.Count != 0
-                || !process.Policy.CpuMaximumOccupancyMode.Equals(
-                    CpuMaximumOccupancyModes.SingleCcd,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var selected = ccds
+            if (process.Policy.CpuManualLockedPositionIds.Count != 0) continue;
+            var excluded = reservations?.ExcludedFor(process.SoftwareId);
+            var availableCores = topology.PhysicalCores.Where(core => excluded?.Contains(core.Id) != true).ToArray();
+            var singleCcd = ccds.Length > 1 && reservations?.IsOwner(process.SoftwareId) != true
+                && process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase);
+            if (!singleCcd && excluded is not { Count: > 0 }) continue;
+            var selected = singleCcd ? ccds
+                .Where(state => availableCores.Any(core => core.CcdId.Equals(state.Ccd.Id, StringComparison.OrdinalIgnoreCase)))
                 .OrderBy(static state => state.AssignedScore / state.Capacity)
                 .ThenBy(static state => (double)state.AssignedCount / Math.Max(1, state.Ccd.PhysicalCoreIndexes.Count))
                 .ThenByDescending(static state => state.Capacity)
                 .ThenBy(static state => state.Ccd.Index)
-                .First();
-            var physicalCoreIds = selected.Ccd.PhysicalCoreIndexes
-                .Select(index => topology.PhysicalCores.FirstOrDefault(core => core.Index == index)?.Id)
-                .Where(static id => !string.IsNullOrWhiteSpace(id))
-                .Select(static id => id!)
+                .FirstOrDefault() : null;
+            var physicalCoreIds = availableCores
+                .Where(core => !singleCcd || core.CcdId.Equals(selected?.Ccd.Id, StringComparison.OrdinalIgnoreCase))
+                .Select(static core => core.Id)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -159,12 +156,15 @@ internal static class HostManagerAutomaticPlacementPlanner
 
             result.Add(new HostManagerAutomaticCpuPlacement(
                 process,
-                process.CanonicalCpuScore!.Value,
+                process.CanonicalCpuScore ?? 0,
                 physicalCoreIds,
                 selector,
-                "automatic-single-ccd"));
-            selected.AssignedScore += process.CanonicalCpuScore.Value;
-            selected.AssignedCount++;
+                excluded is { Count: > 0 } ? "cpu-exclusive-avoidance" : "automatic-single-ccd"));
+            if (selected is not null)
+            {
+                selected.AssignedScore += process.CanonicalCpuScore ?? 0;
+                selected.AssignedCount++;
+            }
         }
 
         return result;
@@ -263,21 +263,27 @@ internal static class HostManagerAutomaticPlacementPlanner
         // Shared usage is not releasable byte-for-byte. Drain a source, then let the
         // next actual observation establish whether another migration is needed.
         var destinations = new HashSet<ulong>();
+        var migratedProcesses = new HashSet<int>();
         foreach (var source in ordered.Where(a => a.IsOverflowing(overflow)))
         {
-            foreach (var item in automatic.Where(x => x.Current == source && x.Candidate.Process.CanMigrateGpu
+            foreach (var item in automatic.Where(x => !migratedProcesses.Contains(x.Candidate.Process.ProcessId)
+                    && x.Candidate.Process.CanMigrateGpu
                     && source.ContributesToOverflow(x.Candidate.Process, overflow))
                 .OrderBy(x => x.Candidate.CanonicalScore).ThenBy(x => x.Candidate.Process.ProcessId))
             {
                 var destination = ordered.FirstOrDefault(a => a.PerformanceCapacity < source.PerformanceCapacity
+                    && (source.AdapterKey == item.Current.AdapterKey || a.AdapterKey != item.Current.AdapterKey)
                     && !destinations.Contains(a.AdapterKey) && a.CanReceive(item.Candidate.Process, source, overflow));
                 if (destination is null) continue;
                 selectedByProcess[item.Candidate.Process.ProcessId] = destination;
+                observedByProcess[item.Candidate.Process.ProcessId] = source.AdapterKey;
+                migratedProcesses.Add(item.Candidate.Process.ProcessId);
                 destinations.Add(destination.AdapterKey);
                 break;
             }
         }
-        foreach (var item in automatic.Where(x => x.Candidate.Process.CanMigrateGpu && !x.Current.IsOverflowing(overflow)))
+        foreach (var item in automatic.Where(x => !migratedProcesses.Contains(x.Candidate.Process.ProcessId)
+                && x.Candidate.Process.CanMigrateGpu && !x.Current.IsOverflowing(overflow)))
         {
             var destination = ordered.FirstOrDefault(a => a.PerformanceCapacity > item.Current.PerformanceCapacity
                 && !destinations.Contains(a.AdapterKey) && a.CanReceive(item.Candidate.Process, item.Current, overflow));

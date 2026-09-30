@@ -30,11 +30,11 @@ export const zhMetricLabelsCopy = {
     "cpu.igpuFrequency": "核显频率",
     "cpu.igpuTemperature": "核显温度",
     "cpu.igpuVoltage": "核显电压",
-    "memory.usage": "内存占用",
-    "memory.percent": "内存占用率",
+    "memory.usage": "物理内存实际占用",
+    "memory.percent": "物理内存实际占用率",
     "memory.temperature": "内存温度",
-    "virtualMemory.usage": "虚拟内存占用",
-    "virtualMemory.percent": "虚拟内存占用率",
+    "virtualMemory.usage": "虚拟内存提交量",
+    "virtualMemory.percent": "虚拟内存提交率",
     "disk.total.activePercent": "磁盘活动时间",
     "disk.total.readBytesPerSec": "磁盘读取",
     "disk.total.writeBytesPerSec": "磁盘写入",
@@ -62,8 +62,8 @@ export const zhMetricLabelsCopy = {
     "gpu.{index}.fanPercent": (index: string) => `GPU${index} 风扇百分比`,
     "gpu.{index}.coreVoltage": (index: string) => `GPU${index} 电压`,
     "gpu.{index}.current": (index: string) => `GPU${index} 电流`,
-    "gpu.{index}.vram": (index: string) => `GPU${index} 显存占用`,
-    "gpu.{index}.vramPercent": (index: string) => `GPU${index} 显存占用率`,
+    "gpu.{index}.vram": (index: string) => `GPU${index} 显存（实际驻留）`,
+    "gpu.{index}.vramPercent": (index: string) => `GPU${index} 显存实际驻留率`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} 显存频率`
   }
 };

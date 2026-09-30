@@ -435,22 +435,26 @@ public sealed class WindowsControlObjectCatalog(
                 "笔记本上的 AMD 独显不在本软件的范围内。")];
         }
 
-        /*
-         * 台式 A 卡：只留两家语义一致的那几项，链路标 ADLX。
-         * 剩下的等 ADLX 真接进来再按那边的真实能力列 ——
-         * 给 A 卡列一排写着 NVML、NVAPI 的项，是拿别人家的链路冒充自己的。
-         */
-        return items.Where(item => item.Id is "gpu.core-clock-offset"
-                or "gpu.memory-clock-offset"
-                or "gpu.power-limit"
-                or "gpu.temperature-limit")
-            .Select(item => item with
-            {
-                Channel = string.Equals(vendor, ControlVendors.Amd, StringComparison.Ordinal)
-                    ? ControlChannels.Adlx
-                    : null
-            })
-            .ToArray();
+        // ADLX uses absolute max clock/voltage before Navi4 and offsets from Navi4.
+        // Probe enables only the generation's matching semantics; power remains %.
+        if (vendor == ControlVendors.Amd)
+        {
+            if (chassisKind != ControlChassisKinds.Fixed)
+                return [Excluded("gpu.power-limit-offset", "功耗上限偏移", "无法确认机箱形态，AMD 独显调节只用于台式机。")];
+            ControlCapability Adlx(string id, string label, string unit, string level = ControlAccessLevels.Normal)
+                => Unsupported(id, label, ControlValueKinds.Number, componentId, componentName,
+                    new ControlNumberRange(0, 0, 1, unit), level, ControlChannels.Adlx);
+            return [
+                Adlx("gpu.power-limit-offset", "功耗上限偏移", ControlUnits.Percent),
+                Adlx("gpu.core-clock-minimum", "核心最低频率", ControlUnits.Megahertz),
+                Adlx("gpu.core-clock-maximum", "核心最高频率", ControlUnits.Megahertz),
+                Adlx("gpu.memory-clock-maximum", "显存最高频率", ControlUnits.Megahertz),
+                Adlx("gpu.core-voltage", "核心电压", ControlUnits.Millivolt, ControlAccessLevels.Root),
+                Adlx("gpu.core-clock-offset", "核心频率偏移", ControlUnits.Megahertz),
+                Adlx("gpu.core-voltage-offset", "核心电压偏移", ControlUnits.Millivolt, ControlAccessLevels.Root)
+            ];
+        }
+        return [Excluded("gpu.power-limit", "功耗上限", "此厂商暂无硬件调节通道。")];
     }
 
     /// <summary>
@@ -516,7 +520,7 @@ public sealed class WindowsControlObjectCatalog(
         var (componentId, componentName) = vendor switch
         {
             ControlVendors.Amd => ("hardware-bridge", "硬件写入辅助进程"),
-            ControlVendors.Intel => ("intel-pcm-provider", "Intel PCM / MSR Provider"),
+            ControlVendors.Intel => ("intel-msr-pawnio-provider", "Intel CPU / PawnIO"),
             _ => ("librehardwaremonitor-provider", "LibreHardwareMonitor Provider")
         };
 
@@ -978,6 +982,22 @@ public sealed class WindowsControlObjectCatalog(
          */
         foreach (var gpu in snapshot.Gpus)
         {
+            // ADLX owns one fan controller per discrete GPU. It can expose target RPM,
+            // minimum speed and Zero RPM even when telemetry has no RPM reading.
+            if (chassis.Read() == ControlChassisKinds.Fixed && VendorOf(gpu.Name) == ControlVendors.Amd
+                && !GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(gpu.Name))
+            {
+                objects.Add(new ControlObject($"fan:gpu{gpu.Index}", ControlObjectKinds.Fan, $"显卡风扇控制器（GPU{gpu.Index}）",
+                    new(ControlOperatingSystems.Windows, ControlVendors.Amd),
+                    [
+                        Unsupported("fan.minimum-rpm", "最低转速", ControlValueKinds.Number, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
+                        Unsupported("fan.target-rpm", "目标转速", ControlValueKinds.Number, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
+                        Unsupported("fan.zero-rpm", "低负载停转", ControlValueKinds.Toggle, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
+                        Unsupported("fan.curve", "转速曲线", ControlValueKinds.Curve, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx)
+                    ], "同一显卡的风扇由驱动统一调节。", Terms: [ControlFanRoles.Gpu],
+                    GpuAttachment: ControlGpuAttachments.Discrete, AdapterIndex: gpu.Index));
+                continue;
+            }
             if (coreKnowsGpuFan
                 || gpu.Sensors.FanSpeedRpm is not { } gpuRpm
                 || !double.IsFinite(gpuRpm))

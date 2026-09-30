@@ -42,12 +42,14 @@ public sealed record CompiledHostManagerPlacementCoordinatorHotPublishPlan(
     int ApiObservationWindowMilliseconds)
 {
     public CompiledGpuOverflowPolicy? GpuOverflow { get; init; }
+    public CompiledCpuAutomaticExclusivityPolicy? CpuAutomaticExclusivity { get; init; }
 
     public bool IsPublished => ConfigurationGeneration > 0
         && RetryDelayMilliseconds > 0
         && ActionTimeoutMilliseconds > 0
         && MaximumFutureSkewMilliseconds >= 0
         && ApiObservationWindowMilliseconds > 0
+        && CpuAutomaticExclusivity is { IsValid: true }
         && WindowExecution is { MaximumWindowCount: > 0, CleanupReserveMilliseconds: > 0, MaximumFrameBytes: > 0, PipeBufferBytes: > 0, PreparationMaximumFrameBytes: > 0 }
         && ActionTimeoutMilliseconds > WindowExecution.CleanupReserveMilliseconds;
 
@@ -70,4 +72,19 @@ public sealed record CompiledGpuOverflowPolicy(
 {
     public bool IsValid => double.IsFinite(UsagePercent) && UsagePercent is > 0 and <= 100
         && double.IsFinite(DedicatedMemoryPercent) && DedicatedMemoryPercent is > 0 and <= 100;
+}
+
+public sealed record CompiledCpuAutomaticExclusivityPolicy(
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("enabled")] bool Enabled,
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("core_enter_percent")] double CoreEnterPercent,
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("core_exit_percent")] double CoreExitPercent,
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("ccd_enter_percent")] double CcdEnterPercent,
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("ccd_exit_percent")] double CcdExitPercent,
+    [property: System.Text.Json.Serialization.JsonRequired, System.Text.Json.Serialization.JsonPropertyName("qualification_completed_rounds")] int QualificationCompletedRounds)
+{
+    public bool IsValid => double.IsFinite(CoreEnterPercent) && CoreEnterPercent is > 0 and <= 100
+        && double.IsFinite(CoreExitPercent) && CoreExitPercent >= 0 && CoreExitPercent < CoreEnterPercent
+        && double.IsFinite(CcdEnterPercent) && CcdEnterPercent is > 0 and <= 100
+        && double.IsFinite(CcdExitPercent) && CcdExitPercent >= 0 && CcdExitPercent < CcdEnterPercent
+        && QualificationCompletedRounds is >= 0 and < int.MaxValue;
 }

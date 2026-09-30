@@ -179,11 +179,13 @@
                   {
                     "index": 0,
                     "id": "automatic_exclusivity",
-                    "description": "Automatic core/CCD exclusivity, including its entry/exit and move compensation policy.",
+                    "description": "Native placement-session game core/CCD occupancy hysteresis and software reservations. Other software avoids the reservation; the owner is not locked. CPU effects use the existing reversible placement transaction.",
                     "value_type": "object",
                     "update_class": "publish_plan",
-                    "status": "pending",
-                    "pending_reason": "Profile thresholds exist, but the inspected placement bridge submits an empty desired set and only restores. Those declarations are not proof of automatic candidate generation."
+                    "status": "active",
+                    "value_source": "registry",
+                    "value": { "enabled": true, "core_enter_percent": 75, "core_exit_percent": 20, "ccd_enter_percent": 60, "ccd_exit_percent": 30, "qualification_completed_rounds": 3 },
+                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
                   },
                   {
                     "index": 1,

@@ -368,8 +368,12 @@ const jaJpAppCopy: AppCopy = {
     providerNotSplit: "単一のプロセスに帰属できない、システム共有の使用量です。",
     etwSupplement: "プロセスは特定されましたが、まだ特定のソフトウェアに帰属していません。",
     softwareInnerPercent: "ソフトウェア内の割合",
+    memoryBasis: "システム：物理メモリ実使用量 / 物理容量。プロセス：共有ページを含む常駐ワーキングセット。合計すると共有ページを重複計上する場合があります。",
+    commitBasis: "システム：コミット量 / 現在のコミット上限。プロセス：プライベートコミット量。RAM とページファイルの裏付けを含み、ページファイルの実使用量ではありません。",
+    vramBasis: "デバイス：VRAM 実常駐量 / 物理容量。プロセス：実常駐量。共有分は参照するプロセス間で按分します。",
+    gpuUsageBasis: "デバイス：実測使用率。ソフトウェアとプロセス：GPU エンジンの活動比率に基づく按分値。",
     gpuUsageLabel: (index: string) => `GPU${index} 使用率`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM 使用量`
+    gpuVramLabel: (index: string) => `GPU${index} VRAM（実常駐量）`
   },
   resourceTable: {
     panel: "リソース一覧",
@@ -402,12 +406,12 @@ const jaJpAppCopy: AppCopy = {
       user: "ユーザー",
       architecture: "アーキテクチャ",
       cpu: "CPU",
-      memory: "メモリ",
+      memory: "メモリ（常駐）",
       disk: "ディスク",
       network: "ネットワーク"
     },
     gpuUsageLabel: (index: string) => `GPU${index} 使用率`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM 使用量`
+    gpuVramLabel: (index: string) => `GPU${index} VRAM（実常駐量）`
   },
   resourceBreakdownView: {
     itemCount: (count: number) => `${count} 件`,
@@ -428,7 +432,7 @@ const jaJpAppCopy: AppCopy = {
     unavailable: "取得できません",
     processUsage: (name: string) => `${name} のプロセス使用量`,
     metric: {
-      virtualMemoryUsage: "仮想メモリ使用量",
+      virtualMemoryUsage: "仮想メモリコミット量",
       diskIo: "ディスク I/O",
       diskRead: "ディスク読み取り",
       diskWrite: "ディスク書き込み",
@@ -1338,13 +1342,13 @@ const jaJpAppCopy: AppCopy = {
     generationBonus: (value: string) => `世代 ${value}`,
     useCaseBonus: (value: string) => `用途 ${value}`,
     softwareScoreTotal: (value: string) => `基礎スコア ${value}`,
-    vram: "VRAM",
+    vram: "VRAM（実常駐量）",
     shared: "共有",
     noData: "データなし",
     specializedStrip: "専用ユニットの使用量",
     specializedUsage: "専用ユニット使用率",
     vramNoData: "VRAM データなし",
-    sharedMemory: "共有メモリ",
+    sharedMemory: "共有メモリ（実常駐量）",
     clock: (value: string) => `クロック ${value}`,
     clockNoData: "クロック データなし",
     memoryClock: (value: string) => `VRAM クロック ${value}`,
@@ -2174,11 +2178,11 @@ const jaJpAppCopy: AppCopy = {
     "cpu.igpuFrequency": "iGPU クロック",
     "cpu.igpuTemperature": "iGPU 温度",
     "cpu.igpuVoltage": "iGPU 電圧",
-    "memory.usage": "メモリ使用量",
-    "memory.percent": "メモリ使用率",
+    "memory.usage": "物理メモリ実使用量",
+    "memory.percent": "物理メモリ実使用率",
     "memory.temperature": "メモリ温度",
-    "virtualMemory.usage": "仮想メモリ使用量",
-    "virtualMemory.percent": "仮想メモリの割合",
+    "virtualMemory.usage": "仮想メモリコミット量",
+    "virtualMemory.percent": "仮想メモリコミット率",
     "disk.total.activePercent": "ディスクのアクティブ時間",
     "disk.total.readBytesPerSec": "ディスク読み取り",
     "disk.total.writeBytesPerSec": "ディスク書き込み",
@@ -2206,8 +2210,8 @@ const jaJpAppCopy: AppCopy = {
     "gpu.{index}.fanPercent": (index: string) => `GPU${index} ファンの割合`,
     "gpu.{index}.coreVoltage": (index: string) => `GPU${index} 電圧`,
     "gpu.{index}.current": (index: string) => `GPU${index} 電流`,
-    "gpu.{index}.vram": (index: string) => `GPU${index} VRAM 使用量`,
-    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM の割合`,
+    "gpu.{index}.vram": (index: string) => `GPU${index} VRAM（実常駐量）`,
+    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM 実常駐率`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} VRAM クロック`
   },
   backendMessage: {

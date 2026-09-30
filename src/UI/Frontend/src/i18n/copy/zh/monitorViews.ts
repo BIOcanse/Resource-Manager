@@ -18,7 +18,7 @@ export const zhMonitorViewsCopy = {
     unavailable: "暂不可用",
     processUsage: (name: string) => `${name} 进程占用`,
     metric: {
-      virtualMemoryUsage: "虚拟内存占用",
+      virtualMemoryUsage: "虚拟内存提交量",
       diskIo: "磁盘 I/O",
       diskRead: "磁盘读取",
       diskWrite: "磁盘写入",

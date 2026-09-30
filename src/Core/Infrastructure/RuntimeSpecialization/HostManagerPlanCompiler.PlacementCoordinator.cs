@@ -62,6 +62,9 @@ public sealed partial class HostManagerPlanCompiler
         var observationWindow = freedom.Consume<int>(BackendFreedomPointPaths.GpuApiObservationWindow, consumer);
         var overflow = freedom.Consume<CompiledGpuOverflowPolicy>(
             BackendFreedomPointPaths.GpuOverflowThresholds, consumer);
+        var exclusivity = freedom.Consume<CompiledCpuAutomaticExclusivityPolicy>(
+            BackendFreedomPointPaths.CpuAutomaticExclusivity, consumer);
+        if (!exclusivity.IsValid) throw new InvalidDataException("CPU exclusivity requires 0 <= exit < enter <= 100 and nonnegative qualification rounds.");
         if (!overflow.IsValid) throw new InvalidDataException("GPU overflow thresholds must be in (0, 100].");
         ValidatePositive(observationWindow, BackendFreedomPointPaths.GpuApiObservationWindow);
         var window = freedom.Consume<GpuWindowExecutionLimitsDeclaration>(BackendFreedomPointPaths.GpuWindowExecutionLimits, consumer);
@@ -81,7 +84,7 @@ public sealed partial class HostManagerPlanCompiler
             source.MaximumFutureSkewMilliseconds,
             new(window.MaximumWindowCount, window.CleanupReserveMilliseconds, window.MaximumFrameBytes,
                 window.PipeBufferBytes, window.PreparationMaximumFrameBytes), observationWindow)
-        { GpuOverflow = overflow };
+        { GpuOverflow = overflow, CpuAutomaticExclusivity = exclusivity };
     }
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

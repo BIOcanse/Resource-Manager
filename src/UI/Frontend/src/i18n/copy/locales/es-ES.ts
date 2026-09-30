@@ -368,8 +368,12 @@ const esEsAppCopy: AppCopy = {
     providerNotSplit: "Uso compartido del sistema que no puede atribuirse a un único proceso.",
     etwSupplement: "Procesos identificados, pero aún no atribuidos a un software concreto.",
     softwareInnerPercent: "Proporción dentro del software",
+    memoryBasis: "Sistema: memoria física ocupada / capacidad. Procesos: conjuntos de trabajo residentes con páginas compartidas; sumarlos puede contar páginas compartidas varias veces.",
+    commitBasis: "Sistema: memoria comprometida / límite actual de compromiso. Procesos: compromiso privado. Incluye respaldo en RAM y archivo de paginación, no la ocupación real de dicho archivo.",
+    vramBasis: "Dispositivo: VRAM residente / capacidad física. Procesos: memoria residente; la parte compartida se reparte entre los procesos que la referencian.",
+    gpuUsageBasis: "Dispositivo: utilización medida. Software y procesos: utilización repartida según la actividad de los motores GPU.",
     gpuUsageLabel: (index: string) => `Uso de la GPU${index}`,
-    gpuVramLabel: (index: string) => `VRAM usada de la GPU${index}`
+    gpuVramLabel: (index: string) => `VRAM residente de GPU${index}`
   },
   resourceTable: {
     panel: "Lista de recursos",
@@ -402,12 +406,12 @@ const esEsAppCopy: AppCopy = {
       user: "Usuario",
       architecture: "Arquitectura",
       cpu: "CPU",
-      memory: "Memoria",
+      memory: "Memoria residente",
       disk: "Disco",
       network: "Red"
     },
     gpuUsageLabel: (index: string) => `Uso de la GPU${index}`,
-    gpuVramLabel: (index: string) => `VRAM usada de la GPU${index}`
+    gpuVramLabel: (index: string) => `VRAM residente de GPU${index}`
   },
   resourceBreakdownView: {
     itemCount: (count: number) => `${count} elementos`,
@@ -428,7 +432,7 @@ const esEsAppCopy: AppCopy = {
     unavailable: "No disponible",
     processUsage: (name: string) => `Uso de los procesos de ${name}`,
     metric: {
-      virtualMemoryUsage: "Memoria virtual usada",
+      virtualMemoryUsage: "Memoria virtual comprometida",
       diskIo: "E/S de disco",
       diskRead: "Lectura de disco",
       diskWrite: "Escritura en disco",
@@ -1338,13 +1342,13 @@ const esEsAppCopy: AppCopy = {
     generationBonus: (value: string) => `generación ${value}`,
     useCaseBonus: (value: string) => `uso ${value}`,
     softwareScoreTotal: (value: string) => `Puntuación base ${value}`,
-    vram: "VRAM",
+    vram: "VRAM residente",
     shared: "Compartida",
     noData: "Sin datos",
     specializedStrip: "Uso de unidades especializadas",
     specializedUsage: "Uso especializado",
     vramNoData: "Sin datos de VRAM",
-    sharedMemory: "Memoria compartida",
+    sharedMemory: "Memoria compartida residente",
     clock: (value: string) => `Frecuencia ${value}`,
     clockNoData: "Sin datos de frecuencia",
     memoryClock: (value: string) => `Frecuencia de VRAM ${value}`,
@@ -2174,11 +2178,11 @@ const esEsAppCopy: AppCopy = {
     "cpu.igpuFrequency": "Frecuencia de la iGPU",
     "cpu.igpuTemperature": "Temperatura de la iGPU",
     "cpu.igpuVoltage": "Voltaje de la iGPU",
-    "memory.usage": "Memoria usada",
-    "memory.percent": "Porcentaje de memoria usada",
+    "memory.usage": "Memoria física ocupada",
+    "memory.percent": "Porcentaje de memoria física ocupada",
     "memory.temperature": "Temperatura de la memoria",
-    "virtualMemory.usage": "Memoria virtual usada",
-    "virtualMemory.percent": "Porcentaje de memoria virtual",
+    "virtualMemory.usage": "Memoria virtual comprometida",
+    "virtualMemory.percent": "Porcentaje de memoria comprometida",
     "disk.total.activePercent": "Tiempo activo del disco",
     "disk.total.readBytesPerSec": "Lectura de disco",
     "disk.total.writeBytesPerSec": "Escritura en disco",
@@ -2206,8 +2210,8 @@ const esEsAppCopy: AppCopy = {
     "gpu.{index}.fanPercent": (index: string) => `Porcentaje del ventilador de la GPU${index}`,
     "gpu.{index}.coreVoltage": (index: string) => `Voltaje de la GPU${index}`,
     "gpu.{index}.current": (index: string) => `Corriente de la GPU${index}`,
-    "gpu.{index}.vram": (index: string) => `VRAM usada de la GPU${index}`,
-    "gpu.{index}.vramPercent": (index: string) => `Porcentaje de VRAM de la GPU${index}`,
+    "gpu.{index}.vram": (index: string) => `VRAM residente de GPU${index}`,
+    "gpu.{index}.vramPercent": (index: string) => `Porcentaje de VRAM residente de GPU${index}`,
     "gpu.{index}.memoryClock": (index: string) => `Frecuencia de VRAM de la GPU${index}`
   },
   backendMessage: {

@@ -17,8 +17,8 @@ public sealed class HostManagerFreedomPointPlanTests
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
         Assert.Equal(23, points.Length);
-        Assert.Equal(16, points.Count(point => point.Status == "active"));
-        Assert.Equal(7, points.Count(point => point.Status == "pending"));
+        Assert.Equal(17, points.Count(point => point.Status == "active"));
+        Assert.Equal(6, points.Count(point => point.Status == "pending"));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         var overflow = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.GpuOverflowThresholds);
         Assert.Equal("active", overflow.Status);
@@ -48,7 +48,7 @@ public sealed class HostManagerFreedomPointPlanTests
         }
 
         foreach (var id in new[] { "cpu_input_retained_rounds", "score_retained_rounds", "cpu_input_algorithm",
-                     "score_algorithm", "boost_entry_exit_policy", "automatic_exclusivity", "game_boost_notification" })
+                     "score_algorithm", "boost_entry_exit_policy", "game_boost_notification" })
         {
             var point = Assert.Single(points, point => point.Id == id);
             Assert.Equal("pending", point.Status);

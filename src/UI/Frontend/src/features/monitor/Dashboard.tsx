@@ -1,4 +1,4 @@
-import { localizedMetricLabel, metricDisplayValue
+import { localizedMetricLabel, metricDisplayValue, resourceMetricBasis
 } from "../../presentation/metricLabels";
 import { createSignal, For, Show } from "solid-js";
 import { pointerReorderProps } from "../../interactions/pointerReorder";
@@ -243,7 +243,7 @@ function MetricView(props: {
   const value = () => metricDisplayValue(metric(), definition() ? "N/A" : "--");
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
-      <div class="metric-label">{label()}</div>
+      <div class="metric-label" title={resourceMetricBasis(props.metricId)}>{label()}</div>
       <div class="metric-value">{value()}</div>
     </div>
   );

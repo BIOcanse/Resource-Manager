@@ -15,15 +15,15 @@ public static partial class MetricCatalog
             new("cpu.usage", "CPU 占用率", MetricGroups.Cpu, "%", "main", snapshot.Cpu.Name),
             new("cpu.frequency", "CPU 频率", MetricGroups.Cpu, "MHz", "small", cpuFrequencyDetail),
             new("cpu.frequencyPercent", "CPU 频率百分比", MetricGroups.Cpu, "%", "small", cpuFrequencyDetail),
-            new("memory.usage", "内存占用", MetricGroups.Memory, MetricUnits.Bytes, "main", snapshot.Memory.HardwareDescription),
-            new("memory.percent", "内存占用率", MetricGroups.Memory, "%", "small", snapshot.Memory.HardwareDescription)
+            new("memory.usage", "物理内存实际占用", MetricGroups.Memory, MetricUnits.Bytes, "main", snapshot.Memory.HardwareDescription),
+            new("memory.percent", "物理内存实际占用率", MetricGroups.Memory, "%", "small", snapshot.Memory.HardwareDescription)
         };
 
         AddSystemIoDefinitions(definitions, snapshot.Items);
         AddCpuSensorDefinitions(definitions, snapshot.Items, cpuSensorComponentId, cpuSensorComponentName);
         AddMemoryAndSystemSensorDefinitions(definitions, snapshot.Items);
-        AddMetric(definitions, snapshot.Items, "virtualMemory.usage", "虚拟内存占用", MetricGroups.VirtualMemory, MetricUnits.Bytes, "main", snapshot.VirtualMemory.Detail);
-        AddMetric(definitions, snapshot.Items, "virtualMemory.percent", "虚拟内存占用率", MetricGroups.VirtualMemory, "%", "small", snapshot.VirtualMemory.Detail);
+        AddMetric(definitions, snapshot.Items, "virtualMemory.usage", "虚拟内存提交量", MetricGroups.VirtualMemory, MetricUnits.Bytes, "main", snapshot.VirtualMemory.Detail);
+        AddMetric(definitions, snapshot.Items, "virtualMemory.percent", "虚拟内存提交率", MetricGroups.VirtualMemory, "%", "small", snapshot.VirtualMemory.Detail);
 
         var gpuIndexes = snapshot.Gpus
             .Select(static gpu => gpu.Index)

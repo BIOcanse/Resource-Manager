@@ -56,6 +56,23 @@ export function resourceTableColumnLabel(id: string | null | undefined): string 
   return localizedMetricLabel(normalized);
 }
 
+/** 内存值的量纲，以及设备总量与软件/进程分项的含义。 */
+export function resourceMetricBasis(id: string | null | undefined): string | undefined {
+  if (id === "memory" || id === "memory.usage" || id === "memory.percent") {
+    return uiText.resourceBreakdown.memoryBasis;
+  }
+  if (id === "virtualMemory.usage" || id === "virtualMemory.percent") {
+    return uiText.resourceBreakdown.commitBasis;
+  }
+  if (/^gpu\.\d+\.vram(?:Percent)?$/i.test(id ?? "")) {
+    return uiText.resourceBreakdown.vramBasis;
+  }
+  if (/^gpu\.\d+\.usage$/i.test(id ?? "")) {
+    return uiText.resourceBreakdown.gpuUsageBasis;
+  }
+  return undefined;
+}
+
 /**
  * 一条软件记录该叫什么。后端只在有「软件自己的名字」时才发名字：
  * 只代表一个分组的行（Windows 系统、Windows 服务、未归属进程…）名字是空的，

@@ -48,8 +48,12 @@ export const zhMonitorCopy = {
     providerNotSplit: "系统共享占用，无法归到单个进程。",
     etwSupplement: "已识别到进程，但尚未归到具体软件。",
     softwareInnerPercent: "软件内占比",
+    memoryBasis: "整机：物理内存实际用量 / 物理容量。进程：驻留工作集，含共享页；跨进程求和可能重复计算共享页。",
+    commitBasis: "整机：提交量 / 当前提交上限。进程：私有提交量。提交量包含物理内存与页面文件后备，不是页面文件实际占用。",
+    vramBasis: "设备：显存实际驻留量 / 物理容量。进程：实际驻留量；共享部分按引用进程分摊。",
+    gpuUsageBasis: "设备：实测占用率。软件和进程：按 GPU 引擎活动占比分摊的占用率。",
     gpuUsageLabel: (index: string) => `GPU${index} 占用率`,
-    gpuVramLabel: (index: string) => `GPU${index} 显存占用`
+    gpuVramLabel: (index: string) => `GPU${index} 显存（实际驻留）`
   },
   resourceTable: {
     panel: "资源列表",
@@ -82,11 +86,11 @@ export const zhMonitorCopy = {
       user: "用户",
       architecture: "架构",
       cpu: "CPU",
-      memory: "内存",
+      memory: "内存（驻留）",
       disk: "磁盘",
       network: "网络"
     },
     gpuUsageLabel: (index: string) => `GPU${index} 占用率`,
-    gpuVramLabel: (index: string) => `GPU${index} 显存占用`
+    gpuVramLabel: (index: string) => `GPU${index} 显存（实际驻留）`
   }
 };

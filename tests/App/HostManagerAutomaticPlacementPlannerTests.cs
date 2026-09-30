@@ -8,7 +8,7 @@ using ResourceManager.App.Infrastructure.Optimization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerAutomaticPlacementPlannerTests
+public sealed partial class HostManagerAutomaticPlacementPlannerTests
 {
     [Fact]
     public void PlacementPlanningOnlyProducesSelectedHardwareDomain()
@@ -110,6 +110,58 @@ public sealed class HostManagerAutomaticPlacementPlannerTests
         var placement = Assert.Single(plan.Gpu);
         Assert.Equal(11UL, placement.TargetAdapterKey);
         Assert.Equal(placement.TargetAdapterKey, placement.ObservedAdapterKey);
+    }
+
+    [Theory]
+    [InlineData(0, 5, 22UL, 11UL)]
+    [InlineData(1, 5, 22UL, 11UL)]
+    [InlineData(0, 0, 33UL, 33UL)]
+    public void OverflowIncludesContributionsOutsideTheHighestUsageGpu(
+        double sourceUsage, double sourceMemory, ulong observed, ulong destination)
+    {
+        var hardware = CreateHardware();
+        hardware = hardware with
+        {
+            Gpus = [.. hardware.Gpus, hardware.Gpus[1] with { Index = 2 }],
+            GpuInventory = hardware.GpuInventory with
+            {
+                ObservedCount = 3,
+                Adapters = [hardware.GpuInventory.Adapters[0], hardware.GpuInventory.Adapters[1] with
+                {
+                    CapacityStatus = SamplingObservationStatus.Current,
+                    CapabilityMask = SchedulingGpuCapabilityMask.Usage | SchedulingGpuCapabilityMask.DedicatedMemory,
+                    ValidMetricMask = SchedulingGpuMetricMask.Usage | SchedulingGpuMetricMask.UsedDedicatedMemory | SchedulingGpuMetricMask.TotalDedicatedMemory,
+                    UsedDedicatedMemoryBytes = 85, TotalDedicatedMemoryBytes = 100
+                }, CreateAdapter(2, 33, hardware.GpuInventory.ObservedAtUtcTicks)]
+            }
+        };
+        var scores = CreateHardwareScores() with
+        {
+            GpuPerformanceScoresByGpuId = new Dictionary<string, double>
+            { ["gpu:0"] = 50, ["gpu:1"] = 100, ["gpu:2"] = 75 }
+        };
+        var process = CreateProcess("multi-gpu", 10, null, 20, AutoPolicy()) with
+        {
+            ObservedGpuUsagePercent = new Dictionary<ulong, double> { [22] = sourceUsage, [33] = 20 },
+            ObservedDedicatedMemoryBytes = new Dictionary<ulong, double> { [22] = sourceMemory, [33] = 1 }
+        };
+
+        var plan = HostManagerAutomaticPlacementPlanner.Plan(null, hardware, scores,
+            [process], CreateCapacity(), true, new(95, 80), false, true);
+
+        var placement = Assert.Single(plan.Gpu);
+        Assert.Equal(observed, placement.ObservedAdapterKey);
+        Assert.Equal(destination, placement.TargetAdapterKey);
+    }
+
+    [Fact]
+    public void CpuPlacementDoesNotDependOnGlobalGpuPermission()
+    {
+        var plan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), CreateHardware(),
+            CreateHardwareScores(), [CreateProcess("cpu", 10, 40, 40, AutoPolicy())],
+            CreateCapacity(), false, new(95, 80), true, true);
+        Assert.Single(plan.Cpu);
+        Assert.Empty(plan.Gpu);
     }
 
     [Theory]
