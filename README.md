@@ -125,16 +125,16 @@ Support is per adjustment and applies to compatible hardware exposing the requir
 
 <table>
   <thead>
-    <tr><th rowspan="2" scope="col">Device type</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th></tr>
-    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
+    <tr><th rowspan="2" scope="col">Device type</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th><th colspan="3" scope="colgroup">iGPU</th></tr>
+    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 Laptop</th><td align="center">🟡 Supported</td><td align="center">❌ Unsupported</td><td align="center">❌ Unsupported</td><td align="center">iGPU 🟡<br>dGPU ❌</td><td align="center">iGPU 🟡<br>dGPU ❌</td><td align="center">🟡 Supported</td></tr>
-    <tr><th scope="row">🖥️ Desktop</th><td align="center">🟡 Supported</td><td align="center">❌ Unsupported</td><td align="center">❌ Unsupported</td><td align="center">iGPU 🟡<br>dGPU ❌</td><td align="center">iGPU 🟡<br>dGPU ❌</td><td align="center">🟡 Supported</td></tr>
+    <tr><th scope="row">💻 Laptop</th><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
+    <tr><th scope="row">🖥️ Desktop</th><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
   </tbody>
 </table>
 
-GPU columns distinguish integrated graphics (iGPU) from discrete graphics (dGPU); the NVIDIA column covers discrete GPUs.
+GPU means discrete graphics; iGPU means integrated graphics.
 
 <details>
 <summary><strong>View adjustments, dependencies and hardware limitations</strong></summary>
@@ -151,8 +151,8 @@ GPU columns distinguish integrated graphics (iGPU) from discrete graphics (dGPU)
 
 | Device type | Status | Scope |
 | --- | --- | --- |
-| 💻 Laptop | 🟡 Supported | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
-| 🖥️ Desktop | ❌ Unsupported | Generic motherboard fan writes are not connected |
+| 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
+| 🖥️ Desktop | ❌ | Generic motherboard fan writes are not connected |
 
 Automatic / maximum-only channels do not offer arbitrary fixed speed. GPU fan writes are currently unsupported; RPM is a monitoring value.
 
