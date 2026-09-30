@@ -88,6 +88,7 @@ public sealed partial class ComponentManager
         return componentId.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("amd-adlx-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("amd-smu-pawnio-provider", StringComparison.OrdinalIgnoreCase)
+            || componentId.Equals("intel-msr-pawnio-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("amd-ryzen-master-monitoring-sdk", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("nvidia-nvapi-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("librehardwaremonitor-provider", StringComparison.OrdinalIgnoreCase)

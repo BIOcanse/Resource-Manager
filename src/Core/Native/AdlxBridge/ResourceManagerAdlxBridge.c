@@ -556,3 +556,5 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
     ReleaseSRWLockExclusive(&gLock);
     return written;
 }
+
+#include "ResourceManagerAdlxTuning.inc"

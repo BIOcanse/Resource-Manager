@@ -368,8 +368,12 @@ const deDeAppCopy: AppCopy = {
     providerNotSplit: "Gemeinsam genutzte Systemauslastung, die keinem einzelnen Prozess zugeordnet werden kann.",
     etwSupplement: "Prozesse erkannt, aber noch keiner bestimmten Software zugeordnet.",
     softwareInnerPercent: "Anteil innerhalb der Software",
+    memoryBasis: "System: physisch belegter Speicher / Kapazität. Prozesse: residente Working Sets mit gemeinsam genutzten Seiten; deren Summe kann gemeinsame Seiten mehrfach zählen.",
+    commitBasis: "System: zugesicherter Speicher / aktuelle Zusicherungsgrenze. Prozesse: private Zusicherung. Diese umfasst RAM und Auslagerungsdatei-Backing, nicht die tatsächliche Belegung der Auslagerungsdatei.",
+    vramBasis: "Gerät: residentes VRAM / physische Kapazität. Prozesse: residente Belegung; gemeinsam genutzter Speicher wird auf die referenzierenden Prozesse verteilt.",
+    gpuUsageBasis: "Gerät: gemessene Auslastung. Software und Prozesse: nach GPU-Engine-Aktivität anteilig zugeordnete Auslastung.",
     gpuUsageLabel: (index: string) => `GPU${index}-Auslastung`,
-    gpuVramLabel: (index: string) => `GPU${index}-VRAM-Nutzung`
+    gpuVramLabel: (index: string) => `GPU${index}-VRAM (resident)`
   },
   resourceTable: {
     panel: "Ressourcenliste",
@@ -402,12 +406,12 @@ const deDeAppCopy: AppCopy = {
       user: "Benutzer",
       architecture: "Architektur",
       cpu: "CPU",
-      memory: "Arbeitsspeicher",
+      memory: "Residenter Speicher",
       disk: "Datenträger",
       network: "Netzwerk"
     },
     gpuUsageLabel: (index: string) => `GPU${index}-Auslastung`,
-    gpuVramLabel: (index: string) => `GPU${index}-VRAM-Nutzung`
+    gpuVramLabel: (index: string) => `GPU${index}-VRAM (resident)`
   },
   resourceBreakdownView: {
     itemCount: (count: number) => `${count} Einträge`,
@@ -428,7 +432,7 @@ const deDeAppCopy: AppCopy = {
     unavailable: "Nicht verfügbar",
     processUsage: (name: string) => `Prozessnutzung von ${name}`,
     metric: {
-      virtualMemoryUsage: "Nutzung des virtuellen Speichers",
+      virtualMemoryUsage: "Zugesicherter virtueller Speicher",
       diskIo: "Datenträger-E/A",
       diskRead: "Datenträger lesen",
       diskWrite: "Datenträger schreiben",
@@ -1338,13 +1342,13 @@ const deDeAppCopy: AppCopy = {
     generationBonus: (value: string) => `Generation ${value}`,
     useCaseBonus: (value: string) => `Einsatzzweck ${value}`,
     softwareScoreTotal: (value: string) => `Grundbewertung ${value}`,
-    vram: "VRAM",
+    vram: "Residenter VRAM",
     shared: "Gemeinsam",
     noData: "Keine Daten",
     specializedStrip: "Auslastung der spezialisierten Einheiten",
     specializedUsage: "Auslastung spezialisierter Einheiten",
     vramNoData: "Keine VRAM-Daten",
-    sharedMemory: "Gemeinsamer Speicher",
+    sharedMemory: "Residenter gemeinsamer Speicher",
     clock: (value: string) => `Takt ${value}`,
     clockNoData: "Keine Taktdaten",
     memoryClock: (value: string) => `VRAM-Takt ${value}`,
@@ -2174,11 +2178,11 @@ const deDeAppCopy: AppCopy = {
     "cpu.igpuFrequency": "iGPU-Takt",
     "cpu.igpuTemperature": "iGPU-Temperatur",
     "cpu.igpuVoltage": "iGPU-Spannung",
-    "memory.usage": "Belegter Arbeitsspeicher",
-    "memory.percent": "Anteil des belegten Arbeitsspeichers",
+    "memory.usage": "Physisch belegter Arbeitsspeicher",
+    "memory.percent": "Physische Speicherauslastung",
     "memory.temperature": "Temperatur des Arbeitsspeichers",
-    "virtualMemory.usage": "Belegter virtueller Speicher",
-    "virtualMemory.percent": "Anteil des virtuellen Speichers",
+    "virtualMemory.usage": "Zugesicherter virtueller Speicher",
+    "virtualMemory.percent": "Anteil des zugesicherten Speichers",
     "disk.total.activePercent": "Aktive Zeit des Datenträgers",
     "disk.total.readBytesPerSec": "Datenträger lesen",
     "disk.total.writeBytesPerSec": "Datenträger schreiben",
@@ -2206,8 +2210,8 @@ const deDeAppCopy: AppCopy = {
     "gpu.{index}.fanPercent": (index: string) => `Anteil des GPU${index}-Lüfters`,
     "gpu.{index}.coreVoltage": (index: string) => `GPU${index}-Spannung`,
     "gpu.{index}.current": (index: string) => `GPU${index}-Strom`,
-    "gpu.{index}.vram": (index: string) => `GPU${index}-VRAM-Nutzung`,
-    "gpu.{index}.vramPercent": (index: string) => `GPU${index}-VRAM-Anteil`,
+    "gpu.{index}.vram": (index: string) => `GPU${index}-VRAM (resident)`,
+    "gpu.{index}.vramPercent": (index: string) => `GPU${index}-VRAM-Residenzanteil`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index}-VRAM-Takt`
   },
   backendMessage: {

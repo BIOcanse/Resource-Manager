@@ -16,6 +16,62 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class WindowsResourceBreakdownSamplerLifecycleTests
 {
+    [Theory]
+    [InlineData(ResourceBreakdownScaleModes.Capacity)]
+    [InlineData(ResourceBreakdownScaleModes.Active)]
+    public async Task VirtualCommitIncludesRawProcessValuesAndSeparateSystemResidual(string scaleMode)
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
+        var hardware = CreateMemorySnapshot();
+        var now = hardware.CapturedAt;
+        const ulong totalCommit = 16UL << 30;
+        const ulong commitLimit = 32UL << 30;
+        hardware = hardware with
+        {
+            VirtualMemory = new VirtualMemoryMetrics(totalCommit, commitLimit, 50, "system commit", true),
+            Items = new Dictionary<string, MetricValue>(hardware.Items)
+            {
+                [ResourceBreakdownMetricIds.VirtualMemoryUsage] = new(
+                    ResourceBreakdownMetricIds.VirtualMemoryUsage, "虚拟内存提交量", "VirtualMemory",
+                    string.Empty, totalCommit, "B", 50, "system commit", commitLimit)
+            },
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(hardware.Datasets)
+            {
+                [SamplingDatasetIds.SystemVirtualMemoryUsage] = new(
+                    SamplingDatasetIds.SystemVirtualMemoryUsage, SamplingObservationStatus.Current,
+                    1, now.UtcTicks, 1, 1, 1, 1)
+            }
+        };
+        using var sampler = new WindowsResourceBreakdownSampler(
+            new StaticMetricSampler(hardware), catalogProvider,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var privateBefore = Process.GetCurrentProcess().PrivateMemorySize64;
+
+        var snapshot = await sampler.CaptureSnapshotAsync(
+            ResourceBreakdownSampleRequest.ForResourceTable([ResourceBreakdownMetricIds.VirtualMemoryUsage],
+                new Dictionary<string, string> { [ResourceBreakdownMetricIds.VirtualMemoryUsage] = scaleMode }),
+            CancellationToken.None);
+
+        var privateAfter = Process.GetCurrentProcess().PrivateMemorySize64;
+        var bar = Assert.Single(snapshot.Bars);
+        var process = Assert.Single(bar.Software.SelectMany(segment => segment.Processes),
+            process => process.ProcessId == Environment.ProcessId);
+        // Capture allocates metadata; allow bounded allocation drift, never a scaled share of the 16 GiB total.
+        Assert.InRange(process.Value, Math.Max(1, Math.Min(privateBefore, privateAfter) - (64L << 20)),
+            Math.Max(privateBefore, privateAfter) + (64L << 20));
+        Assert.Equal(totalCommit, bar.TotalValue);
+        Assert.Equal(commitLimit, bar.CapacityValue);
+        Assert.Equal(50d, bar.TotalSystemPercent);
+        Assert.Equal(SamplingObservationStatus.Current, bar.AttributionStatus);
+        var residual = Assert.Single(bar.Software,
+            segment => segment.SoftwareId == "resource-residual:virtualMemory.usage");
+        Assert.Equal(totalCommit - process.Value, residual.Value);
+        Assert.Contains("系统提交", Assert.Single(residual.Processes).Name);
+    }
+
     [Fact]
     public async Task ColdSchedulingCaptureIncludesExecutableIdentityWithoutResourceTable()
     {

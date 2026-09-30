@@ -368,8 +368,12 @@ const ruRuAppCopy: AppCopy = {
     providerNotSplit: "Общесистемное использование, которое нельзя отнести к одному процессу.",
     etwSupplement: "Процессы определены, но пока не отнесены к конкретной программе.",
     softwareInnerPercent: "Доля внутри программы",
+    memoryBasis: "Система: занятая физическая память / ёмкость. Процессы: резидентные рабочие наборы с общими страницами; их сумма может учитывать общие страницы несколько раз.",
+    commitBasis: "Система: зафиксированная память / текущий предел. Процессы: частная зафиксированная память. Включает обеспечение в RAM и файле подкачки, а не фактическую занятость файла подкачки.",
+    vramBasis: "Устройство: резидентная видеопамять / физическая ёмкость. Процессы: резидентная память; общая часть распределяется между ссылающимися процессами.",
+    gpuUsageBasis: "Устройство: измеренная загрузка. ПО и процессы: загрузка, распределённая по доле активности движков GPU.",
     gpuUsageLabel: (index: string) => `Загрузка GPU${index}`,
-    gpuVramLabel: (index: string) => `Использование видеопамяти GPU${index}`
+    gpuVramLabel: (index: string) => `Резидентная видеопамять GPU${index}`
   },
   resourceTable: {
     panel: "Список ресурсов",
@@ -402,12 +406,12 @@ const ruRuAppCopy: AppCopy = {
       user: "Пользователь",
       architecture: "Архитектура",
       cpu: "ЦП",
-      memory: "Память",
+      memory: "Резидентная память",
       disk: "Диск",
       network: "Сеть"
     },
     gpuUsageLabel: (index: string) => `Загрузка GPU${index}`,
-    gpuVramLabel: (index: string) => `Использование видеопамяти GPU${index}`
+    gpuVramLabel: (index: string) => `Резидентная видеопамять GPU${index}`
   },
   resourceBreakdownView: {
     itemCount: (count: number) => `${count} элементов`,
@@ -428,7 +432,7 @@ const ruRuAppCopy: AppCopy = {
     unavailable: "Недоступно",
     processUsage: (name: string) => `Использование процессами ${name}`,
     metric: {
-      virtualMemoryUsage: "Использование виртуальной памяти",
+      virtualMemoryUsage: "Зафиксированная виртуальная память",
       diskIo: "Дисковый ввод-вывод",
       diskRead: "Чтение с диска",
       diskWrite: "Запись на диск",
@@ -1338,13 +1342,13 @@ const ruRuAppCopy: AppCopy = {
     generationBonus: (value: string) => `поколение ${value}`,
     useCaseBonus: (value: string) => `сценарий ${value}`,
     softwareScoreTotal: (value: string) => `Базовая оценка ${value}`,
-    vram: "Видеопамять",
+    vram: "Резидентная видеопамять",
     shared: "Общая",
     noData: "Нет данных",
     specializedStrip: "Загрузка специализированных блоков",
     specializedUsage: "Загрузка специализированных блоков",
     vramNoData: "Нет данных о видеопамяти",
-    sharedMemory: "Общая память",
+    sharedMemory: "Резидентная общая память",
     clock: (value: string) => `Частота ${value}`,
     clockNoData: "Нет данных о частоте",
     memoryClock: (value: string) => `Частота видеопамяти ${value}`,
@@ -2174,11 +2178,11 @@ const ruRuAppCopy: AppCopy = {
     "cpu.igpuFrequency": "Частота iGPU",
     "cpu.igpuTemperature": "Температура iGPU",
     "cpu.igpuVoltage": "Напряжение iGPU",
-    "memory.usage": "Использование памяти",
-    "memory.percent": "Доля использования памяти",
+    "memory.usage": "Фактическое использование физической памяти",
+    "memory.percent": "Доля занятой физической памяти",
     "memory.temperature": "Температура памяти",
-    "virtualMemory.usage": "Использование виртуальной памяти",
-    "virtualMemory.percent": "Доля виртуальной памяти",
+    "virtualMemory.usage": "Зафиксированная виртуальная память",
+    "virtualMemory.percent": "Доля зафиксированной памяти",
     "disk.total.activePercent": "Время активности диска",
     "disk.total.readBytesPerSec": "Чтение с диска",
     "disk.total.writeBytesPerSec": "Запись на диск",
@@ -2206,8 +2210,8 @@ const ruRuAppCopy: AppCopy = {
     "gpu.{index}.fanPercent": (index: string) => `Доля вентилятора GPU${index}`,
     "gpu.{index}.coreVoltage": (index: string) => `Напряжение GPU${index}`,
     "gpu.{index}.current": (index: string) => `Ток GPU${index}`,
-    "gpu.{index}.vram": (index: string) => `Использование видеопамяти GPU${index}`,
-    "gpu.{index}.vramPercent": (index: string) => `Доля видеопамяти GPU${index}`,
+    "gpu.{index}.vram": (index: string) => `Резидентная видеопамять GPU${index}`,
+    "gpu.{index}.vramPercent": (index: string) => `Доля резидентной видеопамяти GPU${index}`,
     "gpu.{index}.memoryClock": (index: string) => `Частота видеопамяти GPU${index}`
   },
   backendMessage: {

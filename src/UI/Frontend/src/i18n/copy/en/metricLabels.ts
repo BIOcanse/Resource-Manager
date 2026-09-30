@@ -31,11 +31,11 @@ export const enMetricLabelsCopy: Pick<AppCopy, "metricLabel"> = {
     "cpu.igpuFrequency": "iGPU clock",
     "cpu.igpuTemperature": "iGPU temperature",
     "cpu.igpuVoltage": "iGPU voltage",
-    "memory.usage": "Memory usage",
-    "memory.percent": "Memory usage percent",
+    "memory.usage": "Physical memory used (resident)",
+    "memory.percent": "Physical memory usage (resident)",
     "memory.temperature": "Memory temperature",
-    "virtualMemory.usage": "Virtual memory usage",
-    "virtualMemory.percent": "Virtual memory percent",
+    "virtualMemory.usage": "Virtual memory committed",
+    "virtualMemory.percent": "Virtual memory commit ratio",
     "disk.total.activePercent": "Disk active time",
     "disk.total.readBytesPerSec": "Disk read",
     "disk.total.writeBytesPerSec": "Disk write",
@@ -63,8 +63,8 @@ export const enMetricLabelsCopy: Pick<AppCopy, "metricLabel"> = {
     "gpu.{index}.fanPercent": (index: string) => `GPU${index} fan percent`,
     "gpu.{index}.coreVoltage": (index: string) => `GPU${index} voltage`,
     "gpu.{index}.current": (index: string) => `GPU${index} current`,
-    "gpu.{index}.vram": (index: string) => `GPU${index} VRAM usage`,
-    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM percent`,
+    "gpu.{index}.vram": (index: string) => `GPU${index} resident VRAM`,
+    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM residency ratio`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} VRAM clock`
   }
 };

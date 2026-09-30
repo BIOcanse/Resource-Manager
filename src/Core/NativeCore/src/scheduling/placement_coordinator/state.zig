@@ -1,6 +1,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
+const cpu = @import("cpu_exclusivity.zig");
 
 pub const no_index: u32 = std.math.maxInt(u32);
 
@@ -35,6 +36,7 @@ pub const Session = struct {
     allocator: std.mem.Allocator,
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
+    cpu_exclusivity: ?*cpu.State = null,
     slots: []Slot,
     state_index: []u32,
     scratch_targets: []u64,
@@ -91,6 +93,7 @@ pub const Session = struct {
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
+        if (self.cpu_exclusivity) |state| state.destroy();
         allocator.free(self.scratch_index);
         allocator.free(self.scratch_records);
         allocator.free(self.scratch_targets);
@@ -120,6 +123,7 @@ pub const Session = struct {
     pub fn reset(self: *Session) ResultCode {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
+        if (self.cpu_exclusivity) |state| state.reset();
         @memset(self.slots, .{});
         @memset(self.state_index, no_index);
         self.next_action_id = 1;

@@ -55,7 +55,7 @@
     <None Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Include="..\..\NOTICE" Link="NOTICE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="ThirdPartyNotices\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <None Include="Native\AdlxBridge\bin\win-x64\ResourceManager.AdlxBridge.dll" Condition="Exists('Native\AdlxBridge\bin\win-x64\ResourceManager.AdlxBridge.dll')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.AdlxBridge.dll" ExcludeFromSingleFile="true" />
+    <None Include="Native\AdlxBridge\bin\win-x64\ResourceManager.AdlxBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.AdlxBridge.dll" ExcludeFromSingleFile="true" />
     <None Include="Native\GpuMigrationProbe\bin\win-x64\ResourceManager.GpuMigrationProbe.exe" Condition="Exists('Native\GpuMigrationProbe\bin\win-x64\ResourceManager.GpuMigrationProbe.exe')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.GpuMigrationProbe.exe" ExcludeFromSingleFile="true" />
     <None Include="Native\GpuMigrationProbe\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe" Condition="Exists('Native\GpuMigrationProbe\bin\win-x64\ResourceManager.D3D11WindowReselectProbe.exe')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.D3D11WindowReselectProbe.exe" ExcludeFromSingleFile="true" />
     <None Include="Native\GpuMigrationProbe\bin\win-x64\shim\d3d11.dll" Condition="Exists('Native\GpuMigrationProbe\bin\win-x64\shim\d3d11.dll')" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\d3d11.dll" ExcludeFromSingleFile="true" />
@@ -128,6 +128,12 @@
           Outputs="$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchBroker.exe;$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuLaunchBrokerNativeBuild)' != 'true'">
     <Exec WorkingDirectory="$(GpuLaunchBrokerRoot)" Command="cmd.exe /d /c build.cmd" />
+  </Target>
+  <Target Name="BuildAdlxBridge" BeforeTargets="PrepareForBuild"
+          Inputs="Native\AdlxBridge\ResourceManagerAdlxBridge.c;Native\AdlxBridge\ResourceManagerAdlxTuning.inc;Native\AdlxBridge\build.cmd"
+          Outputs="Native\AdlxBridge\bin\win-x64\ResourceManager.AdlxBridge.dll"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdlxBridgeBuild)' != 'true'">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\Native\AdlxBridge" Command="cmd.exe /d /c build.cmd" />
   </Target>
   <Target Name="BuildNativeCore"
           BeforeTargets="PrepareForBuild"

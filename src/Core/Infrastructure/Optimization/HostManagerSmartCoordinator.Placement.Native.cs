@@ -21,6 +21,7 @@ public sealed partial class HostManagerSmartCoordinator
             try
             {
                 createdSession = new NativePlacementCoordinatorSession(in configuration);
+                ConfigureCpuExclusivity(createdSession, desired);
                 var createdWorkspace = new NativePlacementCoordinatorWorkspace(
                     in configuration,
                     createdSession.Capacity);
@@ -78,6 +79,7 @@ public sealed partial class HostManagerSmartCoordinator
                     placementCoordinatorSession.Reconfigure(in configuration),
                     NativePlacementCoordinatorStatus.Ok,
                     "reconfigure");
+                ConfigureCpuExclusivity(placementCoordinatorSession, desired);
                 RequirePlacementSettlement(
                     placementCoordinatorRuntime.CompleteSucceeded(attempt),
                     HostManagerDeploymentAttemptSettlement.Applied,
@@ -107,6 +109,7 @@ public sealed partial class HostManagerSmartCoordinator
         try
         {
             replacementSession = new NativePlacementCoordinatorSession(in configuration);
+            ConfigureCpuExclusivity(replacementSession, desired);
             var replacementWorkspace = new NativePlacementCoordinatorWorkspace(
                 in configuration,
                 replacementSession.Capacity);

@@ -128,6 +128,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Coordinator.GetStatusAsync(CancellationToken.None));
             await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeWindowCheckpoint(fixture.Coordinator, state));
             _ = await fixture.RunRealtimeCycleAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
+            Assert.NotEqual("not-attempted", fixture.Coordinator.SchedulingAuthority.UnavailableReason);
             Assert.Equal(calls, (counts.Loads, counts.Saves, counts.Reservations));
             Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
             committer.Release();

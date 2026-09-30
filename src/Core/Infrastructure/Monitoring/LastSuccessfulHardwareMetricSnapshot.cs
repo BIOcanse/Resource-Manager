@@ -605,7 +605,7 @@ internal sealed partial class LastSuccessfulHardwareMetricSnapshot
             {
                 ObservationStatus = virtualPublication.Observation.Status
             }
-            : new VirtualMemoryMetrics(0, 0, 0, "Windows page file", false)
+            : new VirtualMemoryMetrics(0, 0, 0, "Windows commit", false)
             {
                 ObservationStatus = virtualPublication is null
                     ? SamplingObservationStatus.NotRequested

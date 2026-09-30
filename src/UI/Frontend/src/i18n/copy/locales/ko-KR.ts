@@ -368,8 +368,12 @@ const koKrAppCopy: AppCopy = {
     providerNotSplit: "단일 프로세스에 귀속할 수 없는 시스템 공유 사용량입니다.",
     etwSupplement: "프로세스는 확인했지만 아직 특정 소프트웨어에 귀속되지 않았습니다.",
     softwareInnerPercent: "소프트웨어 내 비율",
+    memoryBasis: "시스템: 물리 메모리 실제 사용량 / 물리 용량. 프로세스: 공유 페이지를 포함한 상주 작업 집합. 합산하면 공유 페이지가 중복 집계될 수 있습니다.",
+    commitBasis: "시스템: 커밋량 / 현재 커밋 한도. 프로세스: 프라이빗 커밋량. RAM과 페이지 파일의 지원을 포함하며 페이지 파일의 실제 사용량은 아닙니다.",
+    vramBasis: "장치: VRAM 실제 상주량 / 물리 용량. 프로세스: 실제 상주량. 공유 부분은 참조하는 프로세스에 나누어 배분합니다.",
+    gpuUsageBasis: "장치: 실측 사용률. 소프트웨어와 프로세스: GPU 엔진 활동 비율에 따른 배분값.",
     gpuUsageLabel: (index: string) => `GPU${index} 사용률`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM 사용량`
+    gpuVramLabel: (index: string) => `GPU${index} VRAM 실제 상주량`
   },
   resourceTable: {
     panel: "리소스 목록",
@@ -402,12 +406,12 @@ const koKrAppCopy: AppCopy = {
       user: "사용자",
       architecture: "아키텍처",
       cpu: "CPU",
-      memory: "메모리",
+      memory: "메모리 (상주)",
       disk: "디스크",
       network: "네트워크"
     },
     gpuUsageLabel: (index: string) => `GPU${index} 사용률`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM 사용량`
+    gpuVramLabel: (index: string) => `GPU${index} VRAM 실제 상주량`
   },
   resourceBreakdownView: {
     itemCount: (count: number) => `${count}개 항목`,
@@ -428,7 +432,7 @@ const koKrAppCopy: AppCopy = {
     unavailable: "사용할 수 없음",
     processUsage: (name: string) => `${name} 프로세스 사용량`,
     metric: {
-      virtualMemoryUsage: "가상 메모리 사용량",
+      virtualMemoryUsage: "가상 메모리 커밋량",
       diskIo: "디스크 I/O",
       diskRead: "디스크 읽기",
       diskWrite: "디스크 쓰기",
@@ -1338,13 +1342,13 @@ const koKrAppCopy: AppCopy = {
     generationBonus: (value: string) => `세대 ${value}`,
     useCaseBonus: (value: string) => `용도 ${value}`,
     softwareScoreTotal: (value: string) => `기본 점수 ${value}`,
-    vram: "VRAM",
+    vram: "VRAM 실제 상주량",
     shared: "공유",
     noData: "데이터 없음",
     specializedStrip: "전용 유닛 사용량",
     specializedUsage: "전용 유닛 사용률",
     vramNoData: "VRAM 데이터 없음",
-    sharedMemory: "공유 메모리",
+    sharedMemory: "공유 메모리 실제 상주량",
     clock: (value: string) => `클록 ${value}`,
     clockNoData: "클록 데이터 없음",
     memoryClock: (value: string) => `VRAM 클록 ${value}`,
@@ -2174,11 +2178,11 @@ const koKrAppCopy: AppCopy = {
     "cpu.igpuFrequency": "iGPU 클록",
     "cpu.igpuTemperature": "iGPU 온도",
     "cpu.igpuVoltage": "iGPU 전압",
-    "memory.usage": "메모리 사용량",
-    "memory.percent": "메모리 사용률",
+    "memory.usage": "물리 메모리 실제 사용량",
+    "memory.percent": "물리 메모리 실제 사용률",
     "memory.temperature": "메모리 온도",
-    "virtualMemory.usage": "가상 메모리 사용량",
-    "virtualMemory.percent": "가상 메모리 비율",
+    "virtualMemory.usage": "가상 메모리 커밋량",
+    "virtualMemory.percent": "가상 메모리 커밋률",
     "disk.total.activePercent": "디스크 활성 시간",
     "disk.total.readBytesPerSec": "디스크 읽기",
     "disk.total.writeBytesPerSec": "디스크 쓰기",
@@ -2206,8 +2210,8 @@ const koKrAppCopy: AppCopy = {
     "gpu.{index}.fanPercent": (index: string) => `GPU${index} 팬 비율`,
     "gpu.{index}.coreVoltage": (index: string) => `GPU${index} 전압`,
     "gpu.{index}.current": (index: string) => `GPU${index} 전류`,
-    "gpu.{index}.vram": (index: string) => `GPU${index} VRAM 사용량`,
-    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM 비율`,
+    "gpu.{index}.vram": (index: string) => `GPU${index} VRAM 실제 상주량`,
+    "gpu.{index}.vramPercent": (index: string) => `GPU${index} VRAM 실제 상주율`,
     "gpu.{index}.memoryClock": (index: string) => `GPU${index} VRAM 클록`
   },
   backendMessage: {

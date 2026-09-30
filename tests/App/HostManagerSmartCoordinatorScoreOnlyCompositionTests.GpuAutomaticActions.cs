@@ -508,6 +508,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class RecordingRunningGpuActions : IRunningGpuPlacementActionService
     {
+        public bool HasUnreleasedExternalControl { get; set; }
         public Task<RunningGpuPlacementPreparation> PrepareWithFirstApiObservationAsync(RunningGpuPlacementActionRequest request,
             RunningGpuApiObservationExecution execution, CancellationToken token)
             => FirstUse is { } firstUse ? firstUse(request, execution, token)

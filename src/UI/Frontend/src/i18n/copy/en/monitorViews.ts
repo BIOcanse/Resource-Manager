@@ -23,7 +23,7 @@ export const enMonitorViewsCopy: Pick<
     unavailable: "Unavailable",
     processUsage: (name: string) => `${name} process usage`,
     metric: {
-      virtualMemoryUsage: "Virtual memory usage",
+      virtualMemoryUsage: "Virtual memory committed",
       diskIo: "Disk I/O",
       diskRead: "Disk read",
       diskWrite: "Disk write",

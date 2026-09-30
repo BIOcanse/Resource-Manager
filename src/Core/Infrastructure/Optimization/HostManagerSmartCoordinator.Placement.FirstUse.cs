@@ -22,6 +22,7 @@ public sealed partial class HostManagerSmartCoordinator
         foreach (var planned in firstUse)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (HasPendingGpuOwnerWork()) break;
             if (!CanContinueFirstUsePlacement(planned, out var current)) continue;
             if (!admission.TryAcquire(HostManagerCycleEffectKind.NativeActionTransaction, out var permit)
                 || !permit.TryReserveExactNewPointOfNoReturn(1, out var reservation)

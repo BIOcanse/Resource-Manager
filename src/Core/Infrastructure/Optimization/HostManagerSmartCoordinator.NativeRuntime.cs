@@ -143,12 +143,13 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerSmartCoordinatorOuterLoopPhase.ProfilerCreated,
             diagnosticCycleSequence: cycleDiagnostics?.CycleSequence,
             producerInstanceId: cycleDiagnostics?.ProducerInstanceId);
-        if (runningGpuPlacementActions.HasUnreleasedExternalControl || !TrySettleGpuCallbackPreparation() || !TrySettleGpuWindowExecution() || !await TrySettleGpuActionCheckpointAsync())
-        {
-            cycleDiagnostics?.Defer("window-checkpoint-not-settled");
-            return new(TimeSpan.FromMilliseconds(
-                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
-        }
+        // Observe every original owner, even when another GPU operation is still pending.
+        var callbackSettled = TrySettleGpuCallbackPreparation();
+        var windowSettled = TrySettleGpuWindowExecution();
+        var checkpointSettled = await TrySettleGpuActionCheckpointAsync();
+        var placementStateAvailable = callbackSettled && windowSettled && checkpointSettled;
+        var gpuControlAvailable = placementStateAvailable
+            && !runningGpuPlacementActions.HasUnreleasedExternalControl;
         if (effectAdmission.TryAcquire(
                 HostManagerCycleEffectKind.SelfLedgerMaintenance,
                 out var selfLedgerPermit))
@@ -159,20 +160,58 @@ public sealed partial class HostManagerSmartCoordinator
                 cancellationToken);
         }
         cycleDiagnostics?.Mark("self-ledger");
-        var state = await LoadRollbackStateAsync(cancellationToken);
-        if (effectAdmission.TryAcquire(
-                HostManagerCycleEffectKind.NativeWorkspaceLifecycle,
-                out var workspacePermit))
+        if (placementStateAvailable)
         {
-            state = await EnsureNativeWorkspaceAsync(
-                workspacePermit,
-                desired,
-                state,
-                cancellationToken);
+            var state = await LoadRollbackStateAsync(cancellationToken);
+            if (effectAdmission.TryAcquire(
+                    HostManagerCycleEffectKind.NativeWorkspaceLifecycle,
+                    out var workspacePermit))
+            {
+                state = await EnsureNativeWorkspaceAsync(
+                    workspacePermit,
+                    desired,
+                    state,
+                    cancellationToken);
+            }
+            else if (!CanReuseNativeWorkspace(desired, state.NativeHostSessionIncarnation))
+            {
+                cycleDiagnostics?.Defer("native-workspace-unavailable-for-score-only");
+                return new(TimeSpan.FromMilliseconds(
+                    desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            }
         }
-        else if (!CanReuseNativeWorkspaceForScoreOnly(desired, state))
+        else if (!CanReuseNativeWorkspace(desired, nativeHostSessionIncarnation))
         {
-            cycleDiagnostics?.Defer("native-workspace-unavailable-for-score-only");
+            // A new workspace requires the shared placement ledger. Sampling and scoring do not.
+            if (desired.RuntimePlan.OptimizationMode.SchedulingEnabled)
+            {
+                var capture = await CaptureHostManagerSampleAsync(desired.RuntimePlan, cancellationToken);
+                var binding = HostManagerSchedulingPlanBinding.Create(desired);
+                if (capture.Sample is { } capturedSample)
+                {
+                    cycleDiagnostics?.CaptureSample(capturedSample);
+                    var scoring = RunSchedulingAuthority(
+                        desired.SmartCoordinator,
+                        desired.RuntimePlan.HostManager.CpuScoring!,
+                        desired.RuntimePlan.OptimizationMode,
+                        binding,
+                        capturedSample);
+                    cycleDiagnostics?.CaptureScoring(scoring);
+                }
+                else
+                {
+                    PublishSchedulingAuthorityUnavailable(NextComputeScoringGeneration(), binding,
+                        durableTimeSource.NextUtc(), capture.UnavailableReason ?? "sampling-snapshot-unavailable");
+                }
+            }
+            else
+            {
+                hostPublicResourceNormalReleaseEvidence.Stop();
+                ClearNonAdaptedMemoryModeProjection();
+                schedulingAuthorityOwner.PublishUnavailable(NextComputeScoringGeneration(),
+                    HostManagerSchedulingPlanBinding.Create(desired), durableTimeSource.NextUtc(), "optimization-mode-normal");
+            }
+            cycleDiagnostics?.Defer("placement-ledger-busy-for-workspace");
             return new(TimeSpan.FromMilliseconds(
                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
         }
@@ -200,23 +239,22 @@ public sealed partial class HostManagerSmartCoordinator
         {
             authoritativeAppliedFactsRequired = true;
         }
-        if (!await ReconcileGpuRemoteCallsAsync(effectAdmission, cancellationToken))
+        if (placementStateAvailable && !await ReconcileGpuRemoteCallsAsync(effectAdmission, cancellationToken))
         {
-            cycleDiagnostics?.Defer("gpu-call-settlement-not-saved");
-            return new(TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            placementStateAvailable = gpuControlAvailable = false;
+            cycleDiagnostics?.Mark("gpu-call-settlement-not-saved");
         }
-        if (!await PrepareLegacyStateAsync(effectAdmission, cancellationToken))
+        if (placementStateAvailable && !await PrepareLegacyStateAsync(effectAdmission, cancellationToken, gpuControlAvailable))
         {
             cycleDiagnostics?.Defer("legacy-state-preparation-blocked");
             return new(TimeSpan.FromMilliseconds(
                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
         }
         cycleDiagnostics?.Mark("legacy-state");
-        if (!await ReconcileExitedGpuWindowActionsAsync(effectAdmission, cancellationToken))
+        if (placementStateAvailable && !await ReconcileExitedGpuWindowActionsAsync(effectAdmission, cancellationToken))
         {
-            cycleDiagnostics?.Defer("window-exit-settlement-not-saved");
-            return new(TimeSpan.FromMilliseconds(
-                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+            placementStateAvailable = gpuControlAvailable = false;
+            cycleDiagnostics?.Mark("window-exit-settlement-not-saved");
         }
         var runtimePlan = desired.RuntimePlan;
         var modePlan = runtimePlan.OptimizationMode;
@@ -253,7 +291,9 @@ public sealed partial class HostManagerSmartCoordinator
                     ?? throw new InvalidOperationException(
                         "Normal-mode ownership restoration has no journal admission."),
                 maximumActionsThisCycle,
-                cancellationToken))
+                cancellationToken,
+                placementStateAvailable,
+                gpuControlAvailable))
         {
             cycleDiagnostics?.Defer("normal-mode-ownership-restoration-incomplete");
             return new(TimeSpan.FromMilliseconds(
@@ -298,8 +338,10 @@ public sealed partial class HostManagerSmartCoordinator
         var cpuPlacementEnabled = modePlan.CpuPlacementEnabled
             && desired.RuntimePlan.CpuPlacementTopology is not null
             && hardwareExecutionAvailable;
+        if (!cpuPlacementEnabled) ResetCpuExclusivityState();
         var gpuPlacementEnabled = modePlan.GpuPlacementEnabled
-            && hardwareExecutionAvailable;
+            && hardwareExecutionAvailable
+            && gpuControlAvailable;
         cycleDiagnostics?.CaptureGuards(
             policyExecutionEnabled,
             cpuPlacementEnabled || gpuPlacementEnabled);
@@ -395,7 +437,9 @@ public sealed partial class HostManagerSmartCoordinator
                                 trigger,
                                 cycleDiagnostics,
                                 cancellationToken,
-                                firstUse))
+                                firstUse,
+                                placementStateAvailable,
+                                gpuControlAvailable))
                         {
                             return new(TimeSpan.FromMilliseconds(
                                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
@@ -441,7 +485,11 @@ public sealed partial class HostManagerSmartCoordinator
         }
         cycleDiagnostics?.Complete();
 
-        return new(TimeSpan.FromMilliseconds(workspace.Snapshot.WakeAfterMilliseconds), effectAdmission);
+        var placementDeferred = !placementStateAvailable || !gpuControlAvailable
+            || HasPendingGpuOwnerWork();
+        return new(TimeSpan.FromMilliseconds(placementDeferred
+            ? desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds
+            : workspace.Snapshot.WakeAfterMilliseconds), effectAdmission);
     }
 
     private async Task RunSelfLocalResourceManagerTickAsync(
@@ -559,9 +607,9 @@ public sealed partial class HostManagerSmartCoordinator
         return state;
     }
 
-    private bool CanReuseNativeWorkspaceForScoreOnly(
+    private bool CanReuseNativeWorkspace(
         HostManagerSmartCoordinatorRuntimePlan desired,
-        HostManagerRollbackStateDocument state)
+        ulong durableIncarnation)
     {
         if (nativeWorkspace is null || appliedNativeRuntimePlan is null)
         {
@@ -569,7 +617,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         if (nativeHostSessionIncarnation == 0
-            || state.NativeHostSessionIncarnation != nativeHostSessionIncarnation)
+            || durableIncarnation != nativeHostSessionIncarnation)
         {
             throw new InvalidDataException(
                 "The Host Manager native workspace lost its durable host session incarnation.");
