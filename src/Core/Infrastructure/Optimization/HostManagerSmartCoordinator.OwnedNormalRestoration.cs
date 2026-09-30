@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
@@ -15,7 +16,9 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerProcessEffectValidationCycleSnapshot processEffectValidationScope,
         HostManagerTransactionJournalAdmission admission,
         uint maximumActions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool placementStateAvailable = true,
+        bool gpuControlAvailable = true)
     {
         if (!string.Equals(
                 runtimePlanProvider.Current.OptimizationMode.Mode,
@@ -26,22 +29,26 @@ public sealed partial class HostManagerSmartCoordinator
                 "Owner-only restoration is restricted to Normal optimization mode.");
         }
 
-        var placementState = await LoadRollbackStateAsync(cancellationToken);
-        if (GpuActionFacts.AvailablePlacementEffects(placementState.AppliedPlacements).Count != 0)
+        ResetCpuExclusivityState();
+        var placementsRestored = false;
+        if (placementStateAvailable)
         {
-            if (!effectAdmission.TryAcquire(
+            var placementState = await LoadRollbackStateAsync(cancellationToken);
+            if (GpuActionFacts.AvailablePlacementEffects(placementState.AppliedPlacements)
+                .Any(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                    OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))
+                && effectAdmission.TryAcquire(
                     HostManagerCycleEffectKind.LegacyPlacementRestore,
                     out var placementPermit))
             {
-                return false;
+                placementState = await RestorePlacementStateCoreAsync(
+                    placementPermit,
+                    cancellationToken,
+                    gpuControlAvailable);
             }
-            placementState = await RestorePlacementStateCoreAsync(
-                placementPermit,
-                cancellationToken);
-            if (GpuActionFacts.AvailablePlacementEffects(placementState.AppliedPlacements).Count != 0)
-            {
-                return false;
-            }
+            placementsRestored = gpuControlAvailable
+                && !GpuActionFacts.HasPlacementEffects(placementState.AppliedPlacements)
+                && !GpuActionFacts.HasUnsettledActions(placementState.AppliedPlacements);
         }
 
         var snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
@@ -49,7 +56,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (snapshot.Records.Count == 0)
         {
             return (await admission.ReadSnapshotAsync(cancellationToken)).Records.Count == 0
-                && !GpuActionFacts.HasUnsettledActions(placementState.AppliedPlacements);
+                && placementsRestored;
         }
 
         authoritativeAppliedFactsRequired = true;
@@ -123,7 +130,7 @@ public sealed partial class HostManagerSmartCoordinator
             cancellationToken);
         var finalJournal = await admission.ReadSnapshotAsync(cancellationToken);
         return finalOwnership.Records.Count == 0 && finalJournal.Records.Count == 0
-            && !GpuActionFacts.HasUnsettledActions(placementState.AppliedPlacements);
+            && placementsRestored;
     }
 
     private async Task<bool> RestoreAllOwnedProcessMemoryAsync(
@@ -345,7 +352,8 @@ public sealed partial class HostManagerSmartCoordinator
 
     private async Task<bool> CanParkNormalSchedulingAsync(CancellationToken cancellationToken)
     {
-        if (publicResourceNotifications is null
+        if (HasPendingGpuOwnerWork()
+            || publicResourceNotifications is null
             || HasAvailablePublicResourceLifecycle()
             || !legacyStatePrepared
             || nativeWorkspace?.Snapshot.PendingCount > 0)

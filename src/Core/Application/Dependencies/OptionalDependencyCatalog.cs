@@ -58,6 +58,27 @@ public static class OptionalDependencyCatalog
                 VerifiedAssetName: "release_0_2_11.zip",
                 FileNames: ["RyzenSMU.bin"])),
         new OptionalDependencyDefinition(
+            Id: "intel-msr-pawnio-provider",
+            Name: "Intel CPU / PawnIO",
+            Vendor: "namazso / Intel",
+            Category: "控制写入",
+            SourcePageUrl: "https://pawnio.eu/",
+            DownloadUrl: null,
+            ExternalTermsUrl: "https://pawnio.eu/",
+            InstallerFileName: "PawnIO_setup.exe",
+            InstallerFilePatterns: ["PawnIO_setup*.exe"],
+            InstallDirectoryName: "PawnIO",
+            RequiresExternalTermsAcknowledgement: true,
+            RequiresElevation: true,
+            InstalledProbeRelativePaths: [],
+            InstallNote: "显式安装官方签名 PawnIO 驱动后，点击验证获取 IntelMSR 模块；用于 Intel PL1/PL2、时间窗和 OC 邮箱电压偏移。固件锁定和签名模块未开放的寄存器不会被绕过。与 AMD 通道共享系统驱动，模块按组件独立管理。",
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "namazso", Repository: "PawnIO.Setup", VerifiedTag: "2.2.0",
+                VerifiedAssetName: "PawnIO_setup.exe", AssetPatterns: ["PawnIO_setup*.exe"]),
+            PayloadSource: new DependencyPayloadSource(
+                Owner: "namazso", Repository: "PawnIO.Modules", VerifiedTag: "0.2.11",
+                VerifiedAssetName: "release_0_2_11.zip", FileNames: ["IntelMSR.bin"])),
+        new OptionalDependencyDefinition(
             Id: "fan-control-core",
             Name: "风扇控制核心",
             Vendor: "Resource Manager",

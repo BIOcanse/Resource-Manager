@@ -2,6 +2,7 @@ import {
   localizedMetricLabel,
   resourceTableCellText,
   resourceTableColumnLabel,
+  resourceMetricBasis,
   softwareDisplayName
 } from "../../presentation/metricLabels";
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
@@ -673,6 +674,7 @@ function VirtualResourceTable(props: {
                 <button
                   class="resource-table-sort-button"
                   type="button"
+                  title={resourceMetricBasis(column().id)}
                   disabled={!column().sortable}
                   onClick={() => updateSort(column())}
                 >
@@ -1118,7 +1120,7 @@ function ResourceTableCell(props: {
       aria-colindex={props.columnIndex + 1}
       classList={{ unavailable: value()?.availability === "Unavailable" }}
       style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
-      title={value()?.sharedValue != null
+      title={(value()?.sharedValue != null
         ? uiText.resourceTableView.memoryBreakdown(
           resourceTableColumnLabel(props.column.id),
           resourceTableCellText(value(), props.column.id),
@@ -1126,7 +1128,8 @@ function ResourceTableCell(props: {
           formatBytes(value()?.sharedValue, "memory"))
         : value()
           ? `${resourceTableColumnLabel(props.column.id)}: ${resourceTableCellText(value(), props.column.id)}`
-          : resourceTableColumnLabel(props.column.id)}
+          : resourceTableColumnLabel(props.column.id))
+        + (resourceMetricBasis(props.column.id) ? `\n${resourceMetricBasis(props.column.id)}` : "")}
     >
       {resourceTableCellText(value(), props.column.id)}
     </div>

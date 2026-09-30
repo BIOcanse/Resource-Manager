@@ -81,8 +81,8 @@ public static partial class MetricCatalog
         AddGpuMetric(definitions, items, $"{prefix}.fanPercent", $"{displayName} 风扇百分比", MetricGroups.Fan, "%", "small", detail, gpuFanPercentComponentId, ComponentName(gpuFanPercentComponentId), identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.coreVoltage", $"{displayName} 电压", group, "V", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.current", $"{displayName} 电流", group, "A", "small", detail, gpuElectricalComponentId, ComponentName(gpuElectricalComponentId), identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{displayName} 显存占用", group, MetricUnits.Bytes, "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
-        AddGpuMetric(definitions, items, $"{prefix}.vramPercent", $"{displayName} 显存占用率", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.vram", $"{displayName} 显存实际驻留", group, MetricUnits.Bytes, "main", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
+        AddGpuMetric(definitions, items, $"{prefix}.vramPercent", $"{displayName} 显存实际驻留率", group, "%", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         AddGpuMetric(definitions, items, $"{prefix}.memoryClock", $"{displayName} 显存频率", group, "MHz", "small", detail, gpuProviderComponentId, gpuProviderComponentName, identityKey);
         return definitions;
     }

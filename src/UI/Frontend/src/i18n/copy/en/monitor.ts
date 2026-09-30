@@ -52,8 +52,12 @@ export const enMonitorCopy: Pick<
     providerNotSplit: "Shared system usage that cannot be attributed to a single process.",
     etwSupplement: "Processes identified, but not yet attributed to specific software.",
     softwareInnerPercent: "Share within software",
+    memoryBasis: "System: physical memory used / physical capacity. Processes: resident working sets, including shared pages; summing processes can count shared pages more than once.",
+    commitBasis: "System: committed memory / current commit limit. Processes: private commit. Commit includes RAM and page-file backing, not actual page-file occupancy.",
+    vramBasis: "Device: resident VRAM / physical capacity. Processes: resident memory; shared memory is divided among referencing processes.",
+    gpuUsageBasis: "Device: measured utilization. Software and processes: utilization apportioned by GPU engine activity.",
     gpuUsageLabel: (index: string) => `GPU${index} utilization`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM usage`
+    gpuVramLabel: (index: string) => `GPU${index} resident VRAM`
   },
   resourceTable: {
     panel: "Resource list",
@@ -86,11 +90,11 @@ export const enMonitorCopy: Pick<
       user: "User",
       architecture: "Architecture",
       cpu: "CPU",
-      memory: "Memory",
+      memory: "Resident memory",
       disk: "Disk",
       network: "Network"
     },
     gpuUsageLabel: (index: string) => `GPU${index} utilization`,
-    gpuVramLabel: (index: string) => `GPU${index} VRAM usage`
+    gpuVramLabel: (index: string) => `GPU${index} resident VRAM`
   }
 };

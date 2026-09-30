@@ -60,7 +60,7 @@ internal static class NativeMetricSnapshotCommittedProjection
             ToUInt64(virtualUsed.Value),
             ToUInt64(virtualTotal.Value),
             RatioPercent(virtualUsed, virtualTotal),
-            "Windows page file",
+            "系统提交量 / 当前提交上限；进程分项为私有提交量，包含物理内存与页面文件后备。",
             virtualUsed.IsAvailable && virtualTotal.IsAvailable)
         {
             ObservationStatus = ProjectCompositeObservationStatus(
@@ -842,10 +842,10 @@ internal static class NativeMetricSnapshotCommittedProjection
             "cpu.usage" => "CPU 占用率",
             "cpu.frequency" => "CPU 频率",
             "cpu.frequencyPercent" => "CPU 频率百分比",
-            "memory.usage" => "内存占用",
-            "memory.percent" => "内存占用率",
-            "virtualMemory.usage" => "虚拟内存占用",
-            "virtualMemory.percent" => "虚拟内存占用率",
+            "memory.usage" => "物理内存实际占用",
+            "memory.percent" => "物理内存实际占用率",
+            "virtualMemory.usage" => "虚拟内存提交量",
+            "virtualMemory.percent" => "虚拟内存提交率",
             _ => id
         };
 

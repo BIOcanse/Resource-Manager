@@ -10,8 +10,10 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
-    [Fact]
-    public async Task AutomaticCpuPlacementUsesCanonicalScoreAppliesOnceAndRestoresInNormalMode()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AutomaticCpuPlacementUsesCanonicalScoreAppliesOnceAndRestoresInNormalMode(bool externalGpuControlPending)
     {
         const int processId = 42_410;
         const ulong processStartKey = 133_900_000_000_000_001;
@@ -32,9 +34,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 processId,
                 processStartKey,
                 ("core:0", 50)));
+        var gpuActions = new RecordingRunningGpuActions { HasUnreleasedExternalControl = externalGpuControlPending };
 
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
+            runningGpuActions: gpuActions,
             scoreOnlyEnabled: false,
             processFactsSnapshot: processFacts,
             policyExecutionEnabled: false,
@@ -127,6 +131,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(savesAfterApply, fixture.StateStore.SaveCalls);
         Assert.Equal([1U, 2U], currentCpuSetIds);
 
+        Assert.Equal(0, gpuActions.PrepareCalls);
+        Assert.Equal(0, gpuActions.ApplyCalls);
+        gpuActions.HasUnreleasedExternalControl = false;
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = checked(fixture.RuntimePlan.Version + 1),

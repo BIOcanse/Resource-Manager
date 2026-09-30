@@ -27,6 +27,14 @@ public static class ComponentCatalog
             "CPU",
             ["smu-pm-table", "stapm", "power", "voltage", "current", "temperature", "per-core"]),
         CreateOptionalDependencyDefinition(
+            "intel-msr-pawnio-provider",
+            "Intel CPU / PawnIO",
+            "namazso / Intel",
+            "控制写入",
+            "通过官方签名 IntelMSR 模块调节 PL1/PL2、时间窗和各电压域；每项写入回读验证，撤销恢复原值。",
+            "Intel CPU control", "CPU",
+            ["pl1", "pl2", "time-window", "voltage-offset"]),
+        CreateOptionalDependencyDefinition(
             "amd-ryzen-master-monitoring-sdk",
             "AMD Ryzen Master Monitoring SDK",
             "AMD",
