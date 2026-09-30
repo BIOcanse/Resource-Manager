@@ -125,16 +125,16 @@
 
 <table>
   <thead>
-    <tr><th rowspan="2" scope="col">设备类型</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th></tr>
-    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
+    <tr><th rowspan="2" scope="col">设备类型</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th><th colspan="3" scope="colgroup">iGPU</th></tr>
+    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 笔记本</th><td align="center">🟡 已支持</td><td align="center">❌ 未支持</td><td align="center">❌ 未支持</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">🟡 已支持</td></tr>
-    <tr><th scope="row">🖥️ 桌面主机</th><td align="center">🟡 已支持</td><td align="center">❌ 未支持</td><td align="center">❌ 未支持</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">🟡 已支持</td></tr>
+    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
   </tbody>
 </table>
 
-GPU 列区分核显与独显，NVIDIA 列指独显。
+GPU 为独显，iGPU 为核显。
 
 <details>
 <summary><strong>查看调节项、依赖与硬件限制</strong></summary>
@@ -151,8 +151,8 @@ GPU 列区分核显与独显，NVIDIA 列指独显。
 
 | 设备类型 | 状态 | 范围 |
 | --- | --- | --- |
-| 💻 笔记本 | 🟡 已支持 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
-| 🖥️ 桌面主机 | ❌ 未支持 | 通用主板风扇写入尚未接入 |
+| 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
+| 🖥️ 桌面主机 | ❌ | 通用主板风扇写入尚未接入 |
 
 仅有自动 / 全速接口的机器不提供任意定速；GPU 风扇写入当前未支持，转速读数为监测值。
 
