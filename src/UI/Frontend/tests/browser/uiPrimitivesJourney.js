@@ -139,6 +139,31 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
     .getAttribute("aria-current") === "page",
   "Settings navigation did not expose the current section.");
 
+  // Exercise the saved setting, including a held press: zero transition time
+  // alone must not leave an instantaneous scale transform in motion-free modes.
+  const pressTarget = pageNavigation.getByRole("button", { name: "设置", exact: true });
+  for (const [label, mode] of [["无动画", "none"], ["超高性能", "ultra"], ["正常动画", "normal"]]) {
+    await page.getByRole("radio", { name: label, exact: true }).click();
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await page.waitForFunction(value => document.body.dataset.animations === value, mode);
+    const box = await pressTarget.boundingBox();
+    assert(box !== null, "Motion probe button is unavailable.");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    try {
+      await page.waitForFunction(({ mode }) => {
+        const target = document.querySelector('.shell-page.active');
+        if (!target) return false;
+        const style = getComputedStyle(target);
+        return mode === "normal"
+          ? style.transform !== "none"
+          : style.transform === "none" && style.transitionDuration.split(",").every(value => parseFloat(value) === 0);
+      }, { mode }, { timeout: 3000 });
+    } finally {
+      await page.mouse.up();
+    }
+  }
+
   assert(pageErrors.length === 0 && consoleErrors.length === 0,
     `UI primitive browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
   return {
@@ -148,6 +173,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
     cpuTopology: { selection: true, focus: coreFocus },
     managementSearch: true,
     settingsNavigation: true,
+    animationModes: ["none", "ultra", "normal"],
     manualDialog: { backdropPreserved: true, escapeDismissed: true, focusRestored: true },
     pageErrors,
     consoleErrors

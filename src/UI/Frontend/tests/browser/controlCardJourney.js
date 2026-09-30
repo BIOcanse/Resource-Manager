@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 export default async function controlCardJourney(page, baseUrl) {
+  const screenshotDirectory = process.env.RM_BROWSER_ARTIFACT_DIR
+    ?? fileURLToPath(new URL("../../../../../.local/browser-gate/control-card/", import.meta.url));
   let objects = [];
   const writes = [];
   let holdWrite;
@@ -83,8 +87,8 @@ export default async function controlCardJourney(page, baseUrl) {
     assert.ok(box.width > 100 && box.width <= width);
     const overflow = await chart.evaluate(el => el.getBoundingClientRect().right > document.documentElement.clientWidth);
     assert.equal(overflow, false);
-    await mkdir("../../../.codex/local-runs/control-card-curve-20260919/screenshots", { recursive: true });
-    await a.screenshot({ path: `../../../.codex/local-runs/control-card-curve-20260919/screenshots/card-${width}.png` });
+    await mkdir(screenshotDirectory, { recursive: true });
+    await a.screenshot({ path: join(screenshotDirectory, `card-${width}.png`) });
   }
   return { cardScopedWrites: writes.length, retainedConcurrentEdit: true, gridLines: 22, viewports: [1440, 390] };
 }

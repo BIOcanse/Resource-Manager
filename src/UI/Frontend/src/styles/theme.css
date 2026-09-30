@@ -40,6 +40,10 @@
   --managementbar-height: 44px;
   --workspace-max-width: 1800px;
   --app-shell-x-padding: 16px;
+  --control-height: 36px;
+  --control-height-compact: 30px;
+  --control-padding-x: 12px;
+  --focus-ring: 2px solid var(--accent);
 
   /* Refinement layer: radius / layered elevation / edge highlight / hairline.
      elev-* reference --shadow-color so light-family themes only re-point that. */

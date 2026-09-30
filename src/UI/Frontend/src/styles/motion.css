@@ -47,7 +47,7 @@ button {
     transform var(--motion-fast) var(--ease-standard);
 }
 
-button:not(:disabled):active {
+:where(body[data-animations="normal"]) button:not(:disabled):active {
   transform: scale(0.98);
 }
 
@@ -109,6 +109,10 @@ textarea {
 
 .toast {
   animation: motion-toast-in var(--motion-page) var(--ease-decel);
+}
+
+.standard-select-popover {
+  animation: motion-rise-in var(--motion-fast) var(--ease-decel);
 }
 
 /* --- 资源条形图：设置项控制硬件合成路径 --- */
@@ -337,7 +341,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 
