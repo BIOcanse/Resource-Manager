@@ -32,14 +32,14 @@
 }
 
 .ui-tabs-trigger {
-  min-height: 30px;
+  min-height: var(--control-height-compact);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   flex: 0 0 auto;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   padding: 0 11px;
@@ -53,9 +53,9 @@
 }
 
 .ui-tabs-trigger.active {
-  background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--elev-1), var(--edge-highlight);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: var(--elev-1), inset 0 -2px 0 var(--accent);
 }
 
 .ui-tabs-panel {

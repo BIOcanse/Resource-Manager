@@ -32,7 +32,15 @@ for (const source of settingsSources) {
 
 assert.match(readClientSource("src/types.ts"), /hostManagerSmartCoordinatorScoreOnlyEnabled/);
 assert.match(readClientSource("src/types.ts"), /hostManagerSmartCoordinatorPerformanceLogEnabled/);
-assert.match(readClientSource("src/stores/settingsStore.ts"), /version: "1\.0\.23"/);
+const currentSettingsVersion = readAppSource("Application/Settings/AppSettingsDefaults.cs")
+  .match(/CurrentVersion = "([^"]+)"/)?.[1];
+assert.ok(currentSettingsVersion, "The backend must declare its current settings version.");
+const frontendSettingsVersions = [...readClientSource("src/stores/settingsStore.ts")
+  .matchAll(/\bversion: "([^"]+)"/g)].map(match => match[1]);
+assert.ok(frontendSettingsVersions.length > 0, "Frontend settings defaults must declare their version.");
+for (const version of frontendSettingsVersions) {
+  assert.equal(version, currentSettingsVersion, "Frontend defaults must match the backend settings version.");
+}
 assert.doesNotMatch(readClientSource("src/types.ts"), /samplingDispatchMode/);
 assert.doesNotMatch(readClientSource("src/stores/settingsStore.ts"), /samplingDispatchMode/);
 assert.match(readClientSource("src/stores/settingsStore.ts"), /updateHostManagerSmartCoordinatorScoreOnly/);
