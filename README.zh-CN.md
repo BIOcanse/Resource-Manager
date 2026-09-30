@@ -121,7 +121,7 @@
 
 ✅ **已验证支持** · 🟡 **已支持** · ❌ **未支持**
 
-支持按具体调节项区分，适用于开放相应接口的兼容硬件，最终可用范围以控制页的检测结果为准。🟡 项目已接入写入流程，欢迎实机测试；✅ 项目需要具体机型的调节与回读记录。
+矩阵按硬件调整的设计覆盖范围标注。🟡 表示设计支持，仍需完成接入或实机验证；✅ 表示已有具体机型的调节与回读验证；❌ 表示设计不支持。当前发行版实际可用的调节项以控制页检测结果为准。
 
 <table>
   <thead>
@@ -129,8 +129,8 @@
     <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
-    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="未支持">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持：设计排除 AMD 笔记本独显">❌</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="已支持：设计覆盖，写入器待接入">🟡</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
   </tbody>
 </table>
 
@@ -139,9 +139,13 @@ GPU 为独显，iGPU 为核显。
 <details>
 <summary><strong>查看调节项、依赖与硬件限制</strong></summary>
 
-**已支持的调节项与条件：**
+**调节范围与接入进度：**
 
-- **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限当前未支持。
+当前仍未接入的写入器包括 **Intel CPU、桌面 AMD 独显和桌面风扇**。这些项目在设计中支持，不能据此认为当前发行版已经可调。
+
+- **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限的映射或回读尚未确认，当前未开放。
+- **Intel CPU**：设计覆盖 PL1 / PL2 与时间窗、温度墙、电压偏移、Turbo 倍频和 HWP / EPP 等调节；Windows 路线为 PawnIO MSR / MMIO，当前写入器尚未接入。各项受处理器、固件锁定与平台条件限制。
+- **AMD 桌面独显**：设计覆盖核心 / 显存频率、电压、功耗与调校恢复；Windows 路线为 ADLX GPU Tuning，当前写入器尚未接入。**AMD 笔记本独显明确不支持**，不进入通用 GPU 兜底写入器。
 - **AMD 核显**：GPU Curve Optimizer，需要 Hardware Bridge 与相应 SMU 能力，独立于 CPU Curve Optimizer。
 - **Intel 核显**：核心频率偏移，需要 IGCL 驱动接口与硬件开放调节能力。
 - **NVIDIA 独显**：NVAPI 核心与显存频率偏移；NVML 功耗上限、核心与显存锁频、温度阈值。可调范围由驱动返回，部分笔记本驱动会拒绝 NVML 写入，能读取不代表能调整。
@@ -152,9 +156,9 @@ GPU 为独显，iGPU 为核显。
 | 设备类型 | 状态 | 范围 |
 | --- | --- | --- |
 | 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
-| 🖥️ 桌面主机 | ❌ | 通用主板风扇写入尚未接入 |
+| 🖥️ 桌面主机 | 🟡 | 设计覆盖 Super I/O 主板风扇、USB / HID 散热设备与 GPU 原生风扇；对应写入器尚未接入 |
 
-仅有自动 / 全速接口的机器不提供任意定速；GPU 风扇写入当前未支持，转速读数为监测值。
+仅有自动 / 全速接口的机器不提供任意定速；GPU 风扇写入当前未接入，转速读数为监测值。
 
 当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「✅ 已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
 
