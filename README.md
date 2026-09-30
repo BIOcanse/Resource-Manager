@@ -117,6 +117,26 @@ Balance performance, power and noise from one place. The control page brings tog
 
 Each device has its own **Apply** and **Discard changes** buttons. Prepare several changes, apply just that device, or discard its draft without losing work on another card. Save settings as a profile to reuse them later. Controls that cannot be changed explain why when you hover over their icon; **Normal** and **Root** access levels distinguish ordinary adjustments from advanced controls.
 
+### Hardware Adjustment Support
+
+**Verified support** requires recorded hardware writes and readback on a specific model. **Supported** means the write path is implemented and compatibility testing is welcome. **Unsupported** means adjustment is not currently available. Support is per adjustment; the control page detects the actual capabilities of your hardware.
+
+| Hardware | Adjustment | Status | Requirements and scope |
+| --- | --- | --- | --- |
+| Compatible AMD CPUs / APUs | STAPM, slow and fast power limits, PBO Scalar, CPU Curve Optimizer | Supported | Hardware Bridge required; capabilities depend on the processor, firmware and available driver. Curve Optimizer requires readback |
+| AMD integrated GPUs | GPU Curve Optimizer | Supported | Hardware Bridge and compatible SMU capabilities required; separate from CPU Curve Optimizer |
+| Compatible Intel integrated GPUs | Core frequency offset | Supported | Requires IGCL and hardware that exposes adjustment |
+| NVIDIA discrete GPUs | Core and memory frequency offsets | Supported | Uses NVAPI; ranges come from the driver |
+| NVIDIA discrete GPUs | Power limit, locked core and memory clocks, temperature thresholds | Supported | Uses NVML; some laptop drivers reject writes. Readable values do not imply writable controls |
+| Compatible Uniwill / Tongfang OEM laptops | cTGP offset, Dynamic Boost toggle and offset | Supported | Requires the matching EC interface; register readback does not measure actual power changes |
+| Compatible OEM laptop fans | Automatic / maximum speed, firmware curves, software curves and duty control | Supported | Fan Control Core required; each capability is detected separately. Automatic / maximum-only channels do not offer arbitrary fixed speed |
+| Intel CPUs | Voltage offsets, ratios and other CPU adjustments | Unsupported | No write provider connected |
+| AMD discrete GPUs | Power, clock and voltage adjustments | Unsupported | No write provider connected |
+| AMD CPUs | TDC / EDC current limits and temperature limit | Unsupported | Mapping or readback is not yet confirmed; controls remain unavailable |
+| Generic motherboard fans and GPU fans | Fan control | Unsupported | The current fan writer only handles compatible OEM channels; RPM is a monitoring value |
+
+No complete physical validation record with model, driver, requested values and readback has been published yet, so none of these entries is labeled **Verified support**. Please include those details and the result of restoring defaults when reporting hardware tests through Issues.
+
 ### 🌡️ Fan curves
 
 Choose the cooling response you want at each temperature. Drag a point or adjust it with the keyboard; neighboring points use **straight-line interpolation**, with a temperature and percentage grid for precise adjustments.

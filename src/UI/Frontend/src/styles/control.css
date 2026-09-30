@@ -26,7 +26,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--elev-1);
+  box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
 /*
@@ -34,9 +34,13 @@
   而压暗恰恰让那个"为什么"最难读。卡里每一行自己会说明状态。
 */
 
+.control-object:focus-within {
+  border-color: var(--accent);
+}
+
 .control-object header {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   margin-bottom: 12px;
 }
 
@@ -147,8 +151,13 @@
 */
 .control-editor-off input[type="range"],
 .control-editor-off button {
-  filter: grayscale(1);
-  opacity: 0.55;
+  opacity: 1;
+  filter: none;
+  cursor: default;
+}
+
+.control-editor-off input[type="range"] {
+  accent-color: var(--control-disabled-text);
 }
 
 .control-editor-off .fan-curve-chart-off {
@@ -541,6 +550,22 @@
 
 .control-preset-name {
   width: 140px;
+  max-width: 100%;
+  min-height: var(--control-height);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--text);
+  font: inherit;
+}
+
+.control-preset-name::placeholder {
+  color: var(--muted);
+}
+
+.control-preset-name:not(:disabled):hover {
+  border-color: var(--accent);
 }
 
 /*

@@ -1,6 +1,6 @@
 /* Shared Controls */
 button {
-  min-height: 36px;
+  min-height: var(--control-height);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background-color: var(--accent);
@@ -9,7 +9,7 @@ button {
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  padding: 0 14px;
+  padding: 0 var(--control-padding-x);
 }
 
 button:not(:disabled):hover {
@@ -64,7 +64,7 @@ button:disabled:disabled {
 
 .standard-select-trigger {
   width: 100%;
-  min-height: 34px;
+  min-height: var(--control-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -84,13 +84,14 @@ button:disabled:disabled {
   white-space: nowrap;
 }
 
+.standard-select-trigger:not(:disabled):hover {
+  background: var(--surface-soft);
+  border-color: var(--accent);
+}
+
 .standard-select-trigger[aria-expanded="true"] {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
-}
-
-.standard-select-trigger:disabled {
-  opacity: 0.48;
 }
 
 .standard-select-popover {
@@ -129,6 +130,12 @@ button:disabled:disabled {
   padding: 0;
 }
 
+.standard-select-search:focus-within {
+  border-color: var(--accent);
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .standard-select-options {
   min-height: 0;
   overflow: auto;
@@ -137,7 +144,7 @@ button:disabled:disabled {
 
 .standard-select-options > button {
   width: 100%;
-  min-height: 34px;
+  min-height: var(--control-height);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -168,7 +175,8 @@ button:disabled:disabled {
 }
 
 .standard-select-options > button:disabled {
-  opacity: 0.38;
+  opacity: 1;
+  color: var(--control-disabled-text);
 }
 
 .standard-select-group {
