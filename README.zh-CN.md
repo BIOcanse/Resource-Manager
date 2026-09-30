@@ -119,23 +119,46 @@
 
 ### 硬件调整支持
 
-**已验证支持**表示有具体机型的实机调节与回读记录；**已支持**表示已接入写入流程，欢迎测试兼容性；**未支持**表示尚未开放调整。支持按调节项区分，最终可用范围以控制页的硬件检测结果为准。
+✅ **已验证支持** · 🟡 **已支持** · ❌ **未支持**
 
-| 硬件范围 | 调节项 | 状态 | 条件与范围 |
-| --- | --- | --- | --- |
-| 兼容的 AMD CPU / APU | STAPM、慢速与快速功耗上限，PBO Scalar，CPU Curve Optimizer | 已支持 | 需要 Hardware Bridge；具体项目由处理器、固件与可用驱动决定，Curve Optimizer 需要可回读 |
-| AMD 核显 | GPU Curve Optimizer | 已支持 | 需要 Hardware Bridge 与相应 SMU 能力；独立于 CPU Curve Optimizer |
-| 兼容的 Intel 核显 | 核心频率偏移 | 已支持 | 需要 IGCL 驱动接口与硬件开放调节能力 |
-| NVIDIA 独显 | 核心与显存频率偏移 | 已支持 | 使用 NVAPI；可调范围由驱动返回 |
-| NVIDIA 独显 | 功耗上限、核心与显存锁频、温度阈值 | 已支持 | 使用 NVML；部分笔记本驱动会拒绝写入，能读取不代表能调整 |
-| 兼容的 Uniwill / 同方 OEM 笔记本 | cTGP 偏移、Dynamic Boost 开关与偏移 | 已支持 | 需要对应 EC 接口；寄存器回读不等于实际功耗变化 |
-| 兼容的 OEM 笔记本风扇 | 自动 / 全速、固件曲线、软件曲线与占空比 | 已支持 | 需要 Fan Control Core；各项分别检测，只有自动 / 全速接口的机器不提供任意定速 |
-| Intel CPU | 电压偏移、倍频及其他 CPU 调节 | 未支持 | 尚未接入写入器 |
-| AMD 独显 | 功耗、频率与电压调整 | 未支持 | 尚未接入写入器 |
-| AMD CPU | TDC / EDC 电流上限、温度上限 | 未支持 | 映射或回读尚未确认，当前不开放 |
-| 通用主板风扇、GPU 风扇 | 风扇控制 | 未支持 | 当前风扇写入器仅接入兼容的 OEM 通道；转速读数为监测值 |
+支持按具体调节项区分，适用于开放相应接口的兼容硬件，最终可用范围以控制页的检测结果为准。🟡 项目已接入写入流程，欢迎实机测试；✅ 项目需要具体机型的调节与回读记录。
 
-当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
+<table>
+  <thead>
+    <tr><th rowspan="2" scope="col">设备类型</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th></tr>
+    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
+  </thead>
+  <tbody>
+    <tr><th scope="row">💻 笔记本</th><td align="center">🟡 已支持</td><td align="center">❌ 未支持</td><td align="center">❌ 未支持</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">🟡 已支持</td></tr>
+    <tr><th scope="row">🖥️ 桌面主机</th><td align="center">🟡 已支持</td><td align="center">❌ 未支持</td><td align="center">❌ 未支持</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">核显 🟡<br>独显 ❌</td><td align="center">🟡 已支持</td></tr>
+  </tbody>
+</table>
+
+GPU 列区分核显与独显，NVIDIA 列指独显。
+
+<details>
+<summary><strong>查看调节项、依赖与硬件限制</strong></summary>
+
+**已支持的调节项与条件：**
+
+- **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限当前未支持。
+- **AMD 核显**：GPU Curve Optimizer，需要 Hardware Bridge 与相应 SMU 能力，独立于 CPU Curve Optimizer。
+- **Intel 核显**：核心频率偏移，需要 IGCL 驱动接口与硬件开放调节能力。
+- **NVIDIA 独显**：NVAPI 核心与显存频率偏移；NVML 功耗上限、核心与显存锁频、温度阈值。可调范围由驱动返回，部分笔记本驱动会拒绝 NVML 写入，能读取不代表能调整。
+- **兼容的 Uniwill / 同方 OEM 笔记本**：另支持 cTGP 偏移、Dynamic Boost 开关与偏移，需要对应 EC 接口；寄存器回读不等于实际功耗变化。
+
+**风扇调整：**
+
+| 设备类型 | 状态 | 范围 |
+| --- | --- | --- |
+| 💻 笔记本 | 🟡 已支持 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
+| 🖥️ 桌面主机 | ❌ 未支持 | 通用主板风扇写入尚未接入 |
+
+仅有自动 / 全速接口的机器不提供任意定速；GPU 风扇写入当前未支持，转速读数为监测值。
+
+当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「✅ 已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
+
+</details>
 
 ### 🌡️ 风扇曲线
 
