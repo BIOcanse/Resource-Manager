@@ -121,7 +121,7 @@ Each device has its own **Apply** and **Discard changes** buttons. Prepare sever
 
 ✅ **Verified support** · 🟡 **Supported** · ❌ **Unsupported**
 
-Support is per adjustment and applies to compatible hardware exposing the required interfaces. The control page detects actual capabilities. 🟡 entries have an implemented write path and welcome physical testing; ✅ entries require recorded hardware writes and readback on a specific model.
+This matrix describes the hardware adjustment scope of the design. 🟡 means supported by design, with integration or physical testing still required; ✅ means hardware writes and readback have been verified on a specific model; ❌ means excluded from the design. Available adjustments in the current release depend on the control page's capability detection.
 
 <table>
   <thead>
@@ -129,8 +129,8 @@ Support is per adjustment and applies to compatible hardware exposing the requir
     <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
   </thead>
   <tbody>
-    <tr><th scope="row">💻 Laptop</th><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
-    <tr><th scope="row">🖥️ Desktop</th><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
+    <tr><th scope="row">💻 Laptop</th><td align="center" title="Supported">🟡</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="AMD laptop discrete GPUs are excluded">❌</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
+    <tr><th scope="row">🖥️ Desktop</th><td align="center" title="Supported">🟡</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Unsupported">❌</td><td align="center" title="Supported by design; writer integration pending">🟡</td><td align="center" title="Intel discrete GPUs are excluded">❌</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Supported">🟡</td><td align="center" title="Unsupported">❌</td></tr>
   </tbody>
 </table>
 
@@ -139,9 +139,13 @@ GPU means discrete graphics; iGPU means integrated graphics.
 <details>
 <summary><strong>View adjustments, dependencies and hardware limitations</strong></summary>
 
-**Supported adjustments and requirements:**
+**Adjustment scope and implementation status:**
 
-- **AMD CPUs / APUs**: STAPM, slow and fast power limits, PBO Scalar and CPU Curve Optimizer. Hardware Bridge required; the processor, firmware and available driver determine each capability. Curve Optimizer requires readback. TDC / EDC current limits and temperature limit are currently unsupported.
+Writers for **Intel CPUs, AMD desktop discrete GPUs and desktop fans** are not connected yet. These are supported by design; this does not mean they are adjustable in the current release.
+
+- **AMD CPUs / APUs**: STAPM, slow and fast power limits, PBO Scalar and CPU Curve Optimizer. Hardware Bridge required; the processor, firmware and available driver determine each capability. Curve Optimizer requires readback. TDC / EDC current limits and temperature limit remain unavailable until mapping or readback is confirmed.
+- **Intel CPUs**: The design covers PL1 / PL2 and time windows, temperature targets, voltage offsets, Turbo ratios and HWP / EPP controls. The Windows route is PawnIO MSR / MMIO; the writer is not connected yet. Capabilities depend on the processor, firmware locks and platform.
+- **AMD desktop discrete GPUs**: The design covers core / memory clocks, voltage, power and restoring tuning defaults. The Windows route is ADLX GPU Tuning; the writer is not connected yet. **AMD laptop discrete GPUs are explicitly excluded** and must not enter a generic GPU fallback writer.
 - **AMD integrated GPUs**: GPU Curve Optimizer, requiring Hardware Bridge and compatible SMU capabilities; separate from CPU Curve Optimizer.
 - **Intel integrated GPUs**: Core frequency offset, requiring IGCL and hardware that exposes adjustment.
 - **NVIDIA discrete GPUs**: NVAPI core and memory frequency offsets; NVML power limit, locked core and memory clocks and temperature thresholds. Ranges come from the driver. Some laptop drivers reject NVML writes; readable values do not imply writable controls.
@@ -152,9 +156,9 @@ GPU means discrete graphics; iGPU means integrated graphics.
 | Device type | Status | Scope |
 | --- | --- | --- |
 | 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
-| 🖥️ Desktop | ❌ | Generic motherboard fan writes are not connected |
+| 🖥️ Desktop | 🟡 | The design covers Super I/O motherboard fans, USB / HID cooling devices and native GPU fans; the corresponding writers are not connected yet |
 
-Automatic / maximum-only channels do not offer arbitrary fixed speed. GPU fan writes are currently unsupported; RPM is a monitoring value.
+Automatic / maximum-only channels do not offer arbitrary fixed speed. GPU fan writes are not connected yet; RPM is a monitoring value.
 
 No complete physical validation record with model, driver, requested values and readback has been published yet, so none of these entries is labeled **✅ Verified support**. Please include those details and the result of restoring defaults when reporting hardware tests through Issues.
 
