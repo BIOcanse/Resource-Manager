@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.DiskUsage;
+using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
@@ -183,6 +184,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>());
         services.AddHostedServiceAlias<DxgkrnlVidMmEtwTelemetryZone>();
+        services.AddSingleton<PresentFrameEtwSource>();
+        services.AddSingleton<IFrameTimingObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
+        services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         services.AddSingleton<DxgkrnlVidMmEtwResidualBreakdownProvider>();
         services.AddSingleton<IResourceResidualBreakdownProvider>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwResidualBreakdownProvider>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwResidualBreakdownProvider>());

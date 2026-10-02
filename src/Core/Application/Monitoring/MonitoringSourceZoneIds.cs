@@ -22,4 +22,5 @@ public static class MonitoringSourceZoneIds
     public const string EtwFileIoDisk = "collector.etw.fileio-disk";
     public const string EtwSystemInterrupts = "collector.etw.system-interrupts";
     public const string EtwDxgkrnlVidMm = "collector.etw.dxgkrnl-vidmm";
+    public const string EtwPresentFrames = "collector.etw.present-frames";
 }
