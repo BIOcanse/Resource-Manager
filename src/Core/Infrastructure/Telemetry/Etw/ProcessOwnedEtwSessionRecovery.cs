@@ -13,6 +13,7 @@ internal static class ResourceManagerEtwSessionNames
 {
     public const string KernelPrefix = "ResourceManagerKernelTelemetry";
     public const string DxgkrnlVidMmPrefix = "ResourceManagerDxgKrnlVidMm";
+    public const string PresentFramesPrefix = "ResourceManagerPresentFrames";
 
     public static ProcessOwnedEtwSessionOwner CurrentOwner { get; } = ReadCurrentOwner();
 
