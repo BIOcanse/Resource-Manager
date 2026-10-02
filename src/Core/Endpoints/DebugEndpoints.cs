@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.Diagnostics;
+using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;
@@ -33,6 +34,23 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     process.ProcessName, process.ExecutablePath ?? string.Empty), keys)
             }).ToArray();
             return Results.Ok(new { source = "graphics-kernel-client", processes = rows });
+        });
+
+        // 订阅 N 秒（默认 5，允许 1–30）后返回各进程的帧统计，用来在真实程序上核对帧率。
+        app.MapGet("/api/debug/frame-timing", async (HttpResponse response, IFrameTimingObservationSource frames,
+            int? seconds, CancellationToken cancellation) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            if (seconds is < 1 or > 30)
+            {
+                return Results.BadRequest(new { error = "seconds must be between 1 and 30." });
+            }
+
+            var window = TimeSpan.FromSeconds(seconds ?? 5);
+            using var lease = frames.AcquireSubscription();
+            await Task.Delay(window, cancellation);
+            var snapshot = frames.Read(window);
+            return snapshot is null ? Results.Ok(new { running = false }) : Results.Ok(new { running = true, snapshot });
         });
 
         app.MapGet("/api/debug/cpu-residency", (HttpResponse response, EtwCpuCoreResidencyReader reader) =>
