@@ -22,221 +22,282 @@ const koKrAppCopy: AppCopy = {
     details: "자세한 정보",
     settings: "설정",
     diskUsage: "디스크 사용량",
-    control: "Control"
+    control: "제어"
   },
   control: {
-    title: "Control",
-    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
-    loadFailed: "Could not read the controllable devices.",
-    empty: "Nothing tunable has been identified on this machine yet.",
-    ready: "Adjustable",
-    needsComponent: (name: string) => `Needs ${name}`,
-    forgetFailed: "Delete not allowed",
+    title: "제어",
+    intro: "팬, 그래픽과 프로세서 조정을 한곳에 모았습니다. 조정할 수 없는 항목도 이유와 함께 표시합니다.",
+    loadFailed: "제어 가능한 장치를 읽지 못했습니다.",
+    empty: "이 컴퓨터에서 조정 가능한 장치를 아직 찾지 못했습니다.",
+    ready: "조정 가능",
+    needsComponent: (name        ) => `${name} 필요`,
+    forgetFailed: "삭제할 수 없음",
     instances: {
-      title: "Devices seen before",
-      present: "Present",
-      absent: "Not present",
-      refresh: "Detect again",
-      forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`,
-      open: "Manage devices"
+      title: "이전에 감지한 장치",
+      present: "연결됨",
+      absent: "연결되지 않음",
+      refresh: "다시 감지",
+      forget: "기록 삭제",
+      firstSeen: (at        ) => `최초 감지 ${at}`,
+      open: "장치 관리"
     },
-    actual: "Now ",
+    actual: "현재 ",
     presets: {
-      save: "Save preset",
-      namePlaceholder: "Preset name",
-      remove: "Delete preset"
+      save: "프리셋 저장",
+      namePlaceholder: "프리셋 이름",
+      remove: "프리셋 삭제"
     },
     overclock: {
-      title: "Intel integrated graphics authorization",
-      body: "Intel's integrated-graphics control library requires your consent before it "
-        + "allows any clock change, negative offsets included. That is its own requirement "
-        + "and has nothing to do with other graphics cards.",
-      accept: "Accept",
-      revoke: "Withdraw consent",
-      accepted: "Accepted"
+      title: "Intel 내장 그래픽 사용 동의",
+      body: "Intel 내장 그래픽 제어 라이브러리는 음수 오프셋을 포함한 모든 클럭 변경 전에 동의를 요구합니다. 이는 해당 라이브러리의 요건이며 다른 그래픽 카드와는 무관합니다.",
+      accept: "동의",
+      revoke: "동의 철회",
+      accepted: "동의함"
     },
     ownership: {
-      label: "Control owner",
-      firmware: "Firmware-managed",
-      app: "App-managed",
-      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+      label: "제어 주체",
+      firmware: "펌웨어에서 관리",
+      app: "앱에서 관리",
+      firmwareNote: "현재 펌웨어에서 관리하므로 아래 설정은 적용되지 않습니다."
     },
     notice: {
-      warrantyTitle: "About your warranty",
+      warrantyTitle: "보증 안내",
       warrantyBody: [
-        "Vendor terms usually count any out-of-spec operation as a modification, in either "
-          + "direction — taken literally, that includes undervolting.",
-        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
-          + "walls stops at power-off and records nothing in the processor; raising clocks or "
-          + "voltage sets a flag in the processor that service can read.",
-        "On laptops many of these limits come from the system vendor's BIOS rather than the "
-          + "chip vendor's defaults, so how far this page can go is their decision too."
+        "제조사 약관은 일반적으로 증가와 감소를 모두 포함한 사양 밖의 동작을 개조로 간주합니다. 문구 그대로 해석하면 저전압 설정도 포함됩니다.",
+        "실제 차이는 남는 기록입니다. 전압, 클럭 또는 전력 제한을 낮춘 설정은 전원을 끄면 종료되고 프로세서에 기록을 남기지 않습니다. 반면 클럭이나 전압을 높이면 서비스 센터에서 읽을 수 있는 플래그가 프로세서에 설정됩니다.",
+        "노트북에서는 이러한 제한의 상당수가 칩 제조사의 기본값이 아닌 시스템 제조사의 BIOS에서 정해집니다. 따라서 이 페이지에서 조정할 수 있는 범위도 해당 제조사에 달려 있습니다."
       ],
-      riskTitle: "Before you start",
-      next: "Next",
-      accept: "Understood"
+      riskTitle: "시작하기 전에",
+      next: "다음",
+      accept: "이해했습니다"
     },
     accessLevel: {
-      title: "Adjustment access",
-      intro: "Decides which items the Control page lets you change. Moving up a level "
-        + "changes none of your existing settings; it only unlocks more items.",
-      name: { normal: "Normal", root: "root" },
+      title: "조정 권한",
+      intro: "제어 페이지에서 변경 가능한 항목을 결정합니다. 수준을 올려도 기존 설정은 바뀌지 않으며 더 많은 항목만 잠금 해제됩니다.",
+      name: { normal: "일반", root: "root" },
       summary: {
-        normal: "Power, current, fan and standard clock adjustments. "
-          + "Incorrect settings can cause instability.",
-        root: "Items nothing catches: writing voltage directly, changing the base clock. "
-          + "Rarely needed."
+        normal: "전력, 전류, 팬 및 일반 클럭 조정입니다. 잘못된 설정은 불안정을 유발할 수 있습니다.",
+        root: "보호 장치가 없는 항목입니다. 전압 직접 기록과 기본 클럭 변경이 포함되며 거의 필요하지 않습니다."
       },
       hint: {
-        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
-        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+        normal: "잘못된 값은 시스템을 불안정하게 만들지만 재부팅하면 복구됩니다. 먼저 설정에서 일반 모드로 전환하세요.",
+        root: "여기서는 잘못된 값을 막는 보호 장치가 없습니다. 먼저 설정에서 root 모드로 전환하세요."
       },
       consequences: {
         normal: [
-          "Too little voltage shuts the machine off; too much clock offset corrupts or "
-            + "blanks the screen. Both clear on reboot and harm nothing.",
-          "Raising the thermal limit moves the overheat protection outward; running that "
-            + "way for long ages the silicon faster."
+          "전압이 너무 낮으면 시스템이 꺼지고 클럭 오프셋이 너무 높으면 화면이 깨지거나 표시되지 않습니다. 두 현상 모두 재부팅하면 사라지며 손상을 남기지 않습니다.",
+          "온도 제한을 높이면 과열 보호가 작동하는 온도도 높아집니다. 이 상태로 오래 사용하면 칩의 노화가 빨라집니다."
         ],
         root: [
-          "Writing voltage and base clock directly has no software guard at all; one wrong "
-            + "number can leave the machine unable to boot.",
-          "Nothing here is needed day to day. Only change a value you already understand."
+          "전압과 기본 클럭을 직접 기록할 때는 소프트웨어 보호가 없습니다. 숫자 하나를 잘못 입력해도 부팅이 불가능해질 수 있습니다.",
+          "일상적인 사용에 필요한 항목은 없습니다. 의미를 이미 이해하는 값만 변경하세요."
         ]
       },
       disclaimer: {
-        normal: "Some settings can make the computer unstable, and on a machine with an "
-          + "existing design fault they carry some risk of damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration.",
-        root: "In root mode some adjustments are extremely dangerous and are very likely "
-          + "to cause system instability or permanent hardware damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration."
+        normal: "일부 설정은 컴퓨터를 불안정하게 만들 수 있으며 기존 설계 결함이 있는 기기에서는 손상 위험도 있습니다. 이 소프트웨어는 하드웨어 구성 변경으로 발생하는 결과에 책임을 지지 않습니다.",
+        root: "root 모드의 일부 조정은 매우 위험하며 시스템 불안정이나 영구적인 하드웨어 손상을 일으킬 가능성이 높습니다. 이 소프트웨어는 하드웨어 구성 변경으로 발생하는 결과에 책임을 지지 않습니다."
       },
-      confirmTitle: (name: string) => `Switch to ${name}?`,
-      confirmAction: "Switch",
-      cancel: "Cancel",
-      saveFailed: "Could not switch; still on the previous level."
+      confirmTitle: (name        ) => `${name}(으)로 전환할까요?`,
+      confirmAction: "전환",
+      cancel: "취소",
+      saveFailed: "전환하지 못했습니다. 이전 권한 수준을 유지합니다."
     },
     channel: {
       nvapi: "NVAPI",
-      "nvapi-drs": "Driver profile",
+      "nvapi-drs": "드라이버 프로필",
       nvml: "NVML",
-      "oem-ec": "System firmware",
+      "oem-ec": "시스템 펌웨어",
       "amd-smu": "AMD SMU",
-      "fan-core": "Fan core",
-      igcl: "Intel graphics",
+      "fan-core": "팬 제어 코어",
+      igcl: "Intel 그래픽",
       adlx: "AMD ADLX"
     } as Record<string, string>,
-    channelHint: "Which channel this setting is actually written through.",
-    detect: "Re-detect hardware",
-    detecting: "Detecting",
-    readings: "Read-only readings",
-    curveExecutionLabel: "Who runs the curve",
-    takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
-    curveExecutionFirmware: "Write to firmware",
-    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
-    curveExecutionSoftware: "Software takeover",
-    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
-    createCurve: "New curve",
-    readingFirmwareCurve: "Reading the firmware curve…",
-    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
-    curvePreview: "Curve preview",
-    saveFailed: "Save failed",
-    apply: "Apply",
-    discard: "Discard",
+    channelHint: "이 설정을 실제로 기록하는 제어 경로입니다.",
+    detect: "하드웨어 다시 감지",
+    detecting: "감지 중",
+    readings: "읽기 전용 측정값",
+    curveExecutionLabel: "곡선 실행 주체",
+    takeoverCoversOthers: (others        ) => `이 컴퓨터에서 소프트웨어 팬 제어는 전체에 적용되는 전환입니다. 전환하면 ${others}도 펌웨어 제어에서 벗어나며, 별도로 곡선을 지정하지 않으면 현재 속도를 유지합니다.`,
+    curveExecutionFirmware: "펌웨어에 기록",
+    curveExecutionFirmwareHint: "펌웨어가 직접 표를 따릅니다. 앱 종료 및 재부팅 후에도 유지됩니다.",
+    curveExecutionSoftware: "소프트웨어 제어",
+    curveExecutionSoftwareHint: "앱이 0.1초마다 다시 계산합니다. 앱 종료 후 팬은 펌웨어 제어로 돌아갑니다.",
+    createCurve: "새 곡선",
+    readingFirmwareCurve: "펌웨어 곡선 읽는 중…",
+    fixedStepsCurveNote: "이 펌웨어 표에서는 단계별 속도만 변경할 수 있습니다. 온도 분기점은 펌웨어에서 고정됩니다.",
+    curvePreview: "곡선 미리 보기",
+    saveFailed: "저장 실패",
+    apply: "적용",
+    discard: "버리기",
     term: {
-      portable: "Laptop",
-      fixed: "Desktop",
-      cpu: "CPU fan",
-      "curve-firmware": "Firmware curve",
-      "curve-software": "Software curve",
-      "curve-fixed-steps": "Fixed-step firmware table",
-      gpu: "GPU fan",
-      intake: "Intake fan",
-      case: "Case fan"
+      portable: "노트북",
+      fixed: "데스크톱",
+      cpu: "CPU 팬",
+      "curve-firmware": "펌웨어 곡선",
+      "curve-software": "소프트웨어 곡선",
+      "curve-fixed-steps": "고정 단계 펌웨어 표",
+      gpu: "GPU 팬",
+      intake: "흡기 팬",
+      case: "케이스 팬"
     } as Record<string, string>,
     attachment: {
-      integrated: "Integrated",
-      discrete: "Discrete",
-      unknown: "Attachment unknown"
+      integrated: "내장",
+      discrete: "외장",
+      unknown: "연결 유형 알 수 없음"
     },
     status: {
-      unset: "Not set",
-      edited: "Changed, not applied",
-      applying: "Applying",
-      applied: "Applied",
-      unsupported: "Not tunable on this machine",
-      failed: "Did not apply"
+      unset: "설정되지 않음",
+      edited: "변경됨, 적용 안 됨",
+      applying: "적용 중",
+      applied: "적용됨",
+      unsupported: "이 컴퓨터에서는 조정할 수 없음",
+      failed: "적용 실패"
     },
     kind: {
-      gpu: "Graphics",
-      cpu: "Processor",
-      fan: "Fans"
+      gpu: "그래픽",
+      cpu: "프로세서",
+      fan: "팬"
+    }
+  ,
+    presentation: {
+      "labels": {
+        "gpu.core-clock-offset": "코어 클럭 오프셋",
+        "gpu.memory-clock-offset": "메모리 클럭 오프셋",
+        "gpu.core-clock-minimum": "최소 코어 클럭",
+        "gpu.core-clock-maximum": "최대 코어 클럭",
+        "gpu.memory-clock-minimum": "최소 메모리 클럭",
+        "gpu.memory-clock-maximum": "최대 메모리 클럭",
+        "gpu.core-voltage-offset": "코어 전압 오프셋",
+        "gpu.core-voltage": "코어 전압",
+        "gpu.power-limit-offset": "전력 제한 오프셋",
+        "gpu.power-limit": "전력 제한",
+        "gpu.temperature-limit": "온도 제한",
+        "gpu.slowdown-temperature": "열로 인한 속도 저하 임계값",
+        "gpu.shutdown-temperature": "열 보호 종료 임계값",
+        "gpu.power-management-mode": "전원 관리 모드",
+        "gpu.frame-rate-limit": "프레임 속도 제한",
+        "gpu.ctgp-offset": "cTGP 오프셋",
+        "gpu.dynamic-boost-enabled": "Dynamic Boost",
+        "gpu.dynamic-boost-offset": "Dynamic Boost 허용량",
+        "gpu.curve-optimizer": "Curve Optimizer 오프셋",
+        "cpu.power-limit": "지속 전력 제한",
+        "cpu.slow-power-limit": "단기 전력 제한",
+        "cpu.fast-power-limit": "순간 전력 제한",
+        "cpu.tdc-limit": "지속 전류 제한 (TDC)",
+        "cpu.edc-limit": "최대 전류 제한 (EDC)",
+        "cpu.temperature-limit": "온도 제한",
+        "cpu.pbo-scalar": "PBO 배율",
+        "cpu.curve-optimizer": "Curve Optimizer 오프셋",
+        "cpu.short-power-limit": "단기 전력 제한 (PL2)",
+        "cpu.power-limit-window": "지속 전력 시간 구간",
+        "cpu.short-power-limit-window": "단기 전력 시간 구간",
+        "cpu.power-limit-mmio": "전력 제한 (MMIO 미러)",
+        "cpu.temperature-offset": "온도 제한 감소",
+        "cpu.core-voltage-offset": "코어 전압 오프셋",
+        "cpu.cache-voltage-offset": "캐시 전압 오프셋",
+        "cpu.igpu-voltage-offset": "내장 GPU 전압 오프셋",
+        "cpu.system-agent-voltage-offset": "시스템 에이전트 전압 오프셋",
+        "cpu.turbo-ratio-limit": "터보 배수 제한",
+        "cpu.turbo-enabled": "Turbo Boost",
+        "cpu.energy-performance-preference": "에너지와 성능 우선순위",
+        "cpu.igpu-power-balance": "CPU 및 내장 GPU 전력 배분",
+        "fan.rpm": "팬 속도",
+        "fan.curve": "팬 속도 곡선",
+        "fan.duty": "고정 팬 속도",
+        "fan.lock-maximum": "최대 냉각",
+        "fan.minimum-rpm": "최소 팬 속도",
+        "fan.target-rpm": "목표 팬 속도",
+        "fan.zero-rpm": "낮은 부하에서 정지"
+      },
+      "text": {
+        "档": "단계",
+        "硬件写入辅助进程": "하드웨어 제어 도우미",
+        "风扇控制核心": "팬 제어 코어",
+        "整机固件接口": "시스템 펌웨어 인터페이스",
+        "只读，写入未接入。": "읽기 전용입니다. 쓰기는 아직 지원하지 않습니다.",
+        "驱动未提供这一温度阈值的可写范围。": "드라이버가 이 온도 임계값의 쓰기 가능한 범위를 제공하지 않습니다.",
+        "转速为监测值。": "팬 속도는 모니터링 측정값입니다.",
+        "命令和电流墙的对应关系还没对准，写错会把处理器掐住，先不开放。": "전류 제한 명령이 검증되지 않았습니다. 잘못된 명령을 기록하면 프로세서가 멈출 수 있으므로 조정할 수 없습니다.",
+        "还认不出这颗处理器温度墙的当前值，没有回读就不写。": "이 프로세서의 현재 온도 제한을 읽을 수 없습니다. 값을 다시 읽지 못하면 조정할 수 없습니다.",
+        "这几项是笔记本整机固件的功率预算，台式机上没有。": "이 전력 예산은 노트북 시스템 펌웨어용이며 데스크톱에서는 사용할 수 없습니다.",
+        "Intel 独显的调节不在本软件的范围内。": "Intel 외장 GPU 조정은 이 앱의 지원 범위 밖입니다.",
+        "笔记本上的 AMD 独显不在本软件的范围内。": "노트북의 AMD 외장 GPU 조정은 이 앱의 지원 범위 밖입니다.",
+        "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。": "서명된 IntelMCHBAR 모듈은 읽기만 제공합니다. MMIO 쓰기를 위해 배포 가능한 서명 모듈이 추가로 필요합니다.",
+        "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。": "서명된 IntelMSR 모듈은 이 레지스터를 허용하지 않습니다. 쓰기 지원은 아직 완성되지 않았습니다.",
+        "同一显卡的风扇由驱动统一调节。": "드라이버가 이 GPU의 팬을 하나의 그룹으로 제어합니다.",
+        "无法确认机箱形态，AMD 独显调节只用于台式机。": "케이스 유형을 알 수 없습니다. AMD 외장 GPU 조정은 데스크톱에서만 사용할 수 있습니다.",
+        "此显卡的核心频率/电压采用另一种语义，请选择对应的绝对值或偏移量参数。": "이 GPU는 다른 클럭 및 전압 표현 방식을 사용합니다. 대응하는 절대값 또는 오프셋 항목을 선택하세요.",
+        "尚未识别此显卡代际，无法确认核心频率/电压的绝对值或偏移量语义。": "GPU 세대를 식별하지 못해 클럭 및 전압의 절대값과 오프셋을 구분할 수 없습니다.",
+        "此显卡/驱动不提供 ADLX 的这一调节接口（旧式状态表接口尚待接入）。": "이 GPU 또는 드라이버는 해당 ADLX 조정 인터페이스를 제공하지 않습니다. 기존 상태 테이블 지원은 아직 완성되지 않았습니다.",
+        "此厂商暂无硬件调节通道。": "이 제조사의 하드웨어 조정 경로는 제공되지 않습니다."
+      },
+      "powerLimitPl1": "지속 전력 제한 (PL1)",
+      "fanName": (index        ) => `팬 ${index}`,
+      "gpuFanControllerName": (index        ) => `그래픽 팬 컨트롤러(GPU${index})`,
+      "toggleOn": "켜짐",
+      "toggleOff": "꺼짐"
     }
   },
   diskUsage: {
     title: "디스크 사용량",
-    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
-    scopeLabel: "Scan scope",
-    scopeAllVolumes: "All drives",
-    scopeVolume: "One drive",
-    scopeFolder: "One folder",
-    modeLabel: "Scan method",
-    modeFast: "Fast scan",
-    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
-    modeFull: "Full scan",
-    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
-    chooseFolder: "Choose folder",
-    folderNotChosen: "No folder chosen yet",
-    scan: "Start scan",
-    rescan: "Scan again",
-    cancel: "Cancel scan",
-    scanning: "Scanning",
-    volumeColumnLabel: "Drive",
-    noVolumes: "No scannable drive was found.",
-    notReady: "Not ready",
-    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    intro: "스캔 후 파일의 실제 사용 크기에 비례하는 타일로 표시합니다.",
+    scopeLabel: "스캔 범위",
+    scopeAllVolumes: "모든 드라이브",
+    scopeVolume: "드라이브 하나",
+    scopeFolder: "폴더 하나",
+    modeLabel: "스캔 방식",
+    modeFast: "빠른 스캔",
+    modeFastHint: "파일 시스템 색인을 읽어 전체 드라이브를 몇 초 안에 처리합니다. NTFS만 지원하며 관리자 권한이 필요합니다.",
+    modeFull: "전체 스캔",
+    modeFullHint: "디렉터리를 한 단계씩 탐색합니다. 느리지만 모든 드라이브에서 작동합니다.",
+    chooseFolder: "폴더 선택",
+    folderNotChosen: "아직 선택한 폴더가 없음",
+    scan: "스캔 시작",
+    rescan: "다시 스캔",
+    cancel: "스캔 취소",
+    scanning: "스캔 중",
+    volumeColumnLabel: "드라이브",
+    noVolumes: "스캔 가능한 드라이브를 찾지 못했습니다.",
+    notReady: "준비되지 않음",
+    freeOfTotal: (free        , total        ) => `${total} 중 ${free} 여유`,
     volumeKind: {
-      physical: "Physical drive",
-      virtual: "Virtual drive",
-      removable: "Removable",
-      network: "Network location",
-      optical: "Optical drive",
-      unknown: "Unknown source"
+      physical: "물리 드라이브",
+      virtual: "가상 드라이브",
+      removable: "이동식",
+      network: "네트워크 위치",
+      optical: "광학 드라이브",
+      unknown: "유형 알 수 없음"
     },
-    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
-    skipped: "Not covered by this scan",
+    fastUnsupported: "이 드라이브에는 읽을 수 있는 파일 시스템 색인이 없어 빠른 스캔을 사용할 수 없습니다. 전체 스캔을 사용하세요.",
+    skipped: "이 스캔의 대상이 아님",
     skipReason: {
-      noFileSystemIndex: "The filesystem has no readable index",
-      needsElevation: "Reading the index needs administrator rights",
-      volumeNotReady: "The drive is not ready",
-      targetUnavailable: "The path does not exist or cannot be opened"
+      noFileSystemIndex: "파일 시스템에 읽을 수 있는 색인이 없음",
+      needsElevation: "색인을 읽으려면 관리자 권한이 필요함",
+      volumeNotReady: "드라이브가 준비되지 않음",
+      targetUnavailable: "경로가 없거나 열 수 없음"
     },
     scanKind: {
-      masterFileTable: "Read the filesystem index",
-      directoryWalk: "Walked the directories"
+      masterFileTable: "파일 시스템 색인 읽기",
+      directoryWalk: "디렉터리 탐색"
     },
-    navigateUp: "Up one level",
-    resetView: "Reset view",
-    collapseSetup: "Hide options",
-    expandSetup: "Scan options",
-    scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
-    fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
-    copied: "Copied",
-    menuOpenLocation: "Open file location",
-    menuProperties: "Properties",
-    menuCopyPath: "Copy full path",
-    menuDrillDown: "Zoom into this",
-    menuSize: "Size",
-    menuPath: "Path",
-    menuKindFile: "File",
-    menuKindDirectory: "Folder",
-    emptyTitle: "Nothing scanned yet",
-    emptyDetail: "Pick a scope and a method, then start the scan."
+    navigateUp: "상위로 이동",
+    resetView: "보기 초기화",
+    collapseSetup: "옵션 숨기기",
+    expandSetup: "스캔 옵션",
+    scanTotals: (size        , files        , folders        ) => `${size} · 파일 ${files}개 · 폴더 ${folders}개`,
+    fileCount: (count        ) => `파일 ${count}개`,
+    omitted: (count        ) => `너무 작거나 화면 밖에 있는 항목이 ${count}개 더 있습니다. 확대하면 볼 수 있습니다.`,
+    copied: "복사됨",
+    menuOpenLocation: "파일 위치 열기",
+    menuProperties: "속성",
+    menuCopyPath: "전체 경로 복사",
+    menuDrillDown: "이 항목 확대",
+    menuSize: "크기",
+    menuPath: "경로",
+    menuKindFile: "파일",
+    menuKindDirectory: "폴더",
+    emptyTitle: "아직 스캔하지 않음",
+    emptyDetail: "범위와 방식을 선택한 후 스캔을 시작하세요."
   },
   shell: {
     productName: "리소스 관리자",
@@ -245,7 +306,7 @@ const koKrAppCopy: AppCopy = {
     currentPage: "현재 페이지",
     runtimeCapability: "런타임 기능",
     taskCenter: "작업 센터",
-    taskCenterActive: (count: number) => `작업 센터, 진행 중 ${count}개`,
+    taskCenterActive: (count        ) => `작업 센터, ${count}개 진행 중`,
     taskCenterSyncing: "작업 센터 · 백엔드 작업을 동기화하는 중",
     taskCenterDisconnected: "작업 센터 · 로컬 서비스가 다시 동기화하는 중",
     taskCenterUnavailable: "작업 센터 · 백엔드 작업 상태를 사용할 수 없음",

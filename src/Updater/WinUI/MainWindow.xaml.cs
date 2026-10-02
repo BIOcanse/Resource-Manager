@@ -3,18 +3,22 @@ using System.Security.Principal;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using ResourceManager.Updater;
+using ResourceManager.Shared.Localization;
 using Windows.Storage.Pickers;
 
 namespace ResourceManager.UpdateManager;
 
 public sealed partial class MainWindow : Window
 {
+    private ToolText text = ToolText.For(AppLanguage.System);
     private string? installRoot;
     private bool busy;
 
     public MainWindow()
     {
         InitializeComponent();
+        ApplyCopy();
+        InstallStatus.Text = text.ReadingInstallation;
         AppWindow.Resize(new Windows.Graphics.SizeInt32(780, 590));
         var executableDirectory = Path.GetDirectoryName(Environment.ProcessPath);
         if (executableDirectory is not null
@@ -28,18 +32,34 @@ public sealed partial class MainWindow : Window
         RefreshInstallation();
     }
 
+    private void ApplyCopy()
+    {
+        Title = text.ManagerTitle;
+        HeadingText.Text = text.Heading;
+        IntroText.Text = text.Intro;
+        RecoverButton.Content = text.Recover;
+        PackageHeadingText.Text = text.PackageHeading;
+        PackagePath.PlaceholderText = text.PackagePlaceholder;
+        BrowseButton.Content = text.Browse;
+        VersionRulesText.Text = text.VersionRules;
+        UpdateButton.Content = text.Update;
+        RepairButton.Content = text.Repair;
+    }
+
     private void RefreshInstallation()
     {
         try
         {
-            installRoot = UpdateManagerCommand.GetInstalledRoot();
-            InstallStatus.Text = $"主程序位置：{installRoot}";
+            installRoot = UpdateManagerCommand.GetInstalledRoot(text);
+            text = ToolText.FromInstallRoot(installRoot);
+            ApplyCopy();
+            InstallStatus.Text = text.Format(text.InstallStatusFormat, installRoot);
             var managerFailure = UpdateManagerCommand.GetManagerUpdateFailure(installRoot);
-            ManagerStatus.Text = managerFailure is null ? "" : "上次更新管理器自身更新失败：" + managerFailure;
+            ManagerStatus.Text = managerFailure is null ? "" : text.Format(text.ManagerFailureFormat, managerFailure);
             var pending = UpdateManagerCommand.GetPendingRecoveryDescriptions(installRoot);
             RecoveryStatus.Text = pending.Count == 0
-                ? "没有待恢复的中断事务。"
-                : "发现中断事务：" + string.Join("；", pending);
+                ? text.NoRecovery
+                : text.Format(text.RecoveryFoundFormat, string.Join("; ", pending));
             RecoverButton.IsEnabled = !busy && pending.Count > 0;
         }
         catch (Exception exception)
@@ -87,11 +107,9 @@ public sealed partial class MainWindow : Window
         {
             var packageRoot = Path.GetFullPath(PackagePath.Text.Trim());
             var target = installRoot;
-            var summary = await Task.Run(() => UpdateManagerCommand.DescribePackageAction(packageRoot, target, repair));
-            var actions = summary + "\n\n管理器将等待桌面界面退出，停止产品服务，校验并保留旧目录，" +
-                "切换程序文件，启动服务并检查运行状态。失败时尝试恢复旧程序和数据。" +
-                "需要管理员权限；请先从托盘退出 Resource Manager。";
-            if (!await ConfirmAsync(repair ? "修复主程序" : "更新主程序", actions)) return;
+            var summary = await Task.Run(() => UpdateManagerCommand.DescribePackageAction(packageRoot, target, repair, text));
+            var actions = summary + "\n\n" + text.PackageActions;
+            if (!await ConfirmAsync(repair ? text.Repair : text.Update, actions)) return;
             var command = repair ? "--repair" : "--apply";
             var message = await RunCommandAsync([command, packageRoot, target]);
             await ShowCompletionAsync(message);
@@ -113,12 +131,11 @@ public sealed partial class MainWindow : Window
     {
         if (installRoot is null || busy) return;
         var target = installRoot;
-        var actions = "管理器将按中断事务记录停止产品服务，把未完成的新版目录保留为失败副本，" +
-            "恢复旧程序和原数据，并尝试重新启动原服务。需要管理员权限；请先从托盘退出 Resource Manager。";
+        var actions = text.RecoveryActions;
         SetBusy(true);
         try
         {
-            if (!await ConfirmAsync("恢复中断更新", actions)) return;
+            if (!await ConfirmAsync(text.Recover, actions)) return;
             var message = await RunCommandAsync(["--recover", target]);
             ShowResult(message, InfoBarSeverity.Success);
         }
@@ -140,8 +157,8 @@ public sealed partial class MainWindow : Window
             XamlRoot = Content.XamlRoot,
             Title = title,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-            PrimaryButtonText = "继续",
-            CloseButtonText = "取消",
+            PrimaryButtonText = text.Continue,
+            CloseButtonText = text.Cancel,
             DefaultButton = ContentDialogButton.Close
         };
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
@@ -152,24 +169,24 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
-            Title = "操作完成",
+            Title = text.Completed,
             Content = new TextBlock
             {
-                Text = message + "\n\n如果发行包带有新版更新管理器，关闭此窗口后会完成自身替换。",
+                Text = message + "\n\n" + text.SelfReplaceNotice,
                 TextWrapping = TextWrapping.Wrap
             },
-            CloseButtonText = "关闭管理器"
+            CloseButtonText = text.CloseManager
         };
         await dialog.ShowAsync();
     }
 
-    private static async Task<string> RunCommandAsync(string[] args)
+    private async Task<string> RunCommandAsync(string[] args)
     {
         var executable = Environment.ProcessPath
-            ?? throw new InvalidOperationException("无法确定更新管理器路径。");
+            ?? throw new InvalidOperationException(text.ManagerPathUnknown);
         using var identity = WindowsIdentity.GetCurrent();
         if (new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
-            return await Task.Run(() => UpdateManagerCommand.ExecuteAsync(args, executable));
+            return await Task.Run(() => UpdateManagerCommand.ExecuteAsync(args, executable, text: text));
         var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = true,
@@ -179,11 +196,11 @@ public sealed partial class MainWindow : Window
         };
         foreach (var argument in args) start.ArgumentList.Add(argument);
         using var child = Process.Start(start)
-            ?? throw new InvalidOperationException("管理员更新进程未能启动。");
+            ?? throw new InvalidOperationException(text.ManagerChildFailed);
         await child.WaitForExitAsync();
         if (child.ExitCode != 0)
-            throw new InvalidOperationException("操作未完成。请检查更新目录中的事务记录，或重新打开管理器使用恢复功能。");
-        return "操作完成。更新管理器已保留原目录备份。";
+            throw new InvalidOperationException(text.OperationFailed);
+        return text.OperationSucceeded;
     }
 
     private void SetBusy(bool value)

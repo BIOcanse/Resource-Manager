@@ -1,3 +1,4 @@
+import { enControlPresentationCopy } from "./controlPresentation.ts";
 import type { AppCopy } from "../zh/index.ts";
 
 export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
@@ -24,6 +25,7 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     control: "Control"
   },
   control: {
+    presentation: enControlPresentationCopy,
     title: "Control",
     intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
     loadFailed: "Could not read the controllable devices.",

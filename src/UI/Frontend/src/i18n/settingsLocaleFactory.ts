@@ -1,6 +1,8 @@
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsCopyPatch, SettingsCopyPatchObject } from "./settingsTypes.ts";
+import { enUpdatesCopy, zhCnUpdatesCopy } from "./settingsUpdateCopy.ts";
 
 const zhCnSettingsCopy: SettingsCopy = {
+  updates: zhCnUpdatesCopy,
   navigationLabel: "设置分区",
   sections: {
     performance: "性能",
@@ -298,6 +300,7 @@ const zhCnSettingsCopy: SettingsCopy = {
 };
 
 const enSettingsCopy: SettingsCopy = {
+  updates: enUpdatesCopy,
   navigationLabel: "Settings sections",
   sections: {
     performance: "Performance",

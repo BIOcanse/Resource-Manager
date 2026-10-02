@@ -26,217 +26,278 @@ const esEsAppCopy: AppCopy = {
   },
   control: {
     title: "Control",
-    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
-    loadFailed: "Could not read the controllable devices.",
-    empty: "Nothing tunable has been identified on this machine yet.",
-    ready: "Adjustable",
-    needsComponent: (name: string) => `Needs ${name}`,
-    forgetFailed: "Delete not allowed",
+    intro: "Aquí se ajustan los ventiladores, los gráficos y el procesador. También se muestran los elementos que no se pueden ajustar y el motivo.",
+    loadFailed: "No se pudieron leer los dispositivos ajustables.",
+    empty: "Todavía no se han identificado dispositivos ajustables en este equipo.",
+    ready: "Ajustable",
+    needsComponent: (name        ) => `Requiere ${name}`,
+    forgetFailed: "No se permite eliminar",
     instances: {
-      title: "Devices seen before",
-      present: "Present",
-      absent: "Not present",
-      refresh: "Detect again",
-      forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`,
-      open: "Manage devices"
+      title: "Dispositivos detectados anteriormente",
+      present: "Presente",
+      absent: "Ausente",
+      refresh: "Detectar de nuevo",
+      forget: "Eliminar registro",
+      firstSeen: (at        ) => `Primera detección: ${at}`,
+      open: "Administrar dispositivos"
     },
-    actual: "Now ",
+    actual: "Actual ",
     presets: {
-      save: "Save preset",
-      namePlaceholder: "Preset name",
-      remove: "Delete preset"
+      save: "Guardar preajuste",
+      namePlaceholder: "Nombre del preajuste",
+      remove: "Eliminar preajuste"
     },
     overclock: {
-      title: "Intel integrated graphics authorization",
-      body: "Intel's integrated-graphics control library requires your consent before it "
-        + "allows any clock change, negative offsets included. That is its own requirement "
-        + "and has nothing to do with other graphics cards.",
-      accept: "Accept",
-      revoke: "Withdraw consent",
-      accepted: "Accepted"
+      title: "Autorización de los gráficos integrados Intel",
+      body: "La biblioteca de control de los gráficos integrados Intel exige tu consentimiento antes de cambiar cualquier frecuencia, incluidos los desplazamientos negativos. Es un requisito de Intel que no afecta a otras tarjetas gráficas.",
+      accept: "Aceptar",
+      revoke: "Retirar consentimiento",
+      accepted: "Aceptado"
     },
     ownership: {
-      label: "Control owner",
-      firmware: "Firmware-managed",
-      app: "App-managed",
-      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+      label: "Responsable del control",
+      firmware: "Gestionado por el firmware",
+      app: "Gestionado por la aplicación",
+      firmwareNote: "El firmware lo gestiona actualmente; los ajustes siguientes no tienen efecto."
     },
     notice: {
-      warrantyTitle: "About your warranty",
+      warrantyTitle: "Acerca de la garantía",
       warrantyBody: [
-        "Vendor terms usually count any out-of-spec operation as a modification, in either "
-          + "direction — taken literally, that includes undervolting.",
-        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
-          + "walls stops at power-off and records nothing in the processor; raising clocks or "
-          + "voltage sets a flag in the processor that service can read.",
-        "On laptops many of these limits come from the system vendor's BIOS rather than the "
-          + "chip vendor's defaults, so how far this page can go is their decision too."
+        "Las condiciones del fabricante suelen considerar modificación cualquier funcionamiento fuera de especificaciones, tanto al subir como al bajar valores; interpretadas literalmente, incluyen la reducción de voltaje.",
+        "La diferencia práctica está en el registro que queda: reducir voltaje, frecuencia o límites de potencia termina al apagar y no deja registro en el procesador; aumentarlos establece una marca que el servicio técnico puede leer.",
+        "En portátiles, muchos límites los fija el BIOS del fabricante del equipo, no los valores predeterminados del fabricante del chip. El alcance de esta página también depende de él."
       ],
-      riskTitle: "Before you start",
-      next: "Next",
-      accept: "Understood"
+      riskTitle: "Antes de empezar",
+      next: "Siguiente",
+      accept: "Entendido"
     },
     accessLevel: {
-      title: "Adjustment access",
-      intro: "Decides which items the Control page lets you change. Moving up a level "
-        + "changes none of your existing settings; it only unlocks more items.",
+      title: "Acceso a los ajustes",
+      intro: "Determina qué elementos se pueden cambiar en la página de control. Subir de nivel no cambia los ajustes actuales, solo desbloquea más elementos.",
       name: { normal: "Normal", root: "root" },
       summary: {
-        normal: "Power, current, fan and standard clock adjustments. "
-          + "Incorrect settings can cause instability.",
-        root: "Items nothing catches: writing voltage directly, changing the base clock. "
-          + "Rarely needed."
+        normal: "Ajustes de potencia, corriente, ventiladores y frecuencias habituales. Los valores incorrectos pueden causar inestabilidad.",
+        root: "Elementos sin protección: escritura directa de voltaje y cambio del reloj base. Rara vez necesarios."
       },
       hint: {
-        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
-        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+        normal: "Un valor incorrecto causa inestabilidad; reiniciar permite recuperarlo. Cambia primero al modo Normal en los ajustes.",
+        root: "Aquí no hay protección contra valores incorrectos. Cambia primero al modo root en los ajustes."
       },
       consequences: {
         normal: [
-          "Too little voltage shuts the machine off; too much clock offset corrupts or "
-            + "blanks the screen. Both clear on reboot and harm nothing.",
-          "Raising the thermal limit moves the overheat protection outward; running that "
-            + "way for long ages the silicon faster."
+          "Un voltaje demasiado bajo apaga el equipo; un desplazamiento de frecuencia excesivo corrompe o deja en negro la pantalla. Ambos efectos desaparecen al reiniciar sin daños.",
+          "Elevar el límite térmico retrasa la protección contra el sobrecalentamiento; usarlo así durante mucho tiempo acelera el desgaste del chip."
         ],
         root: [
-          "Writing voltage and base clock directly has no software guard at all; one wrong "
-            + "number can leave the machine unable to boot.",
-          "Nothing here is needed day to day. Only change a value you already understand."
+          "La escritura directa de voltaje y reloj base no tiene protección por software; un solo valor incorrecto puede impedir que el equipo arranque.",
+          "Nada de esto es necesario para el uso diario. Cambia solo valores cuyo significado entiendas."
         ]
       },
       disclaimer: {
-        normal: "Some settings can make the computer unstable, and on a machine with an "
-          + "existing design fault they carry some risk of damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration.",
-        root: "In root mode some adjustments are extremely dangerous and are very likely "
-          + "to cause system instability or permanent hardware damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration."
+        normal: "Algunos ajustes pueden causar inestabilidad y riesgo de daños en equipos con defectos de diseño. Este software no asume responsabilidad por las consecuencias de cambiar la configuración del hardware.",
+        root: "En modo root, algunos ajustes son extremadamente peligrosos y tienen una alta probabilidad de causar inestabilidad o daños permanentes. Este software no asume responsabilidad por las consecuencias de cambiar la configuración del hardware."
       },
-      confirmTitle: (name: string) => `Switch to ${name}?`,
-      confirmAction: "Switch",
-      cancel: "Cancel",
-      saveFailed: "Could not switch; still on the previous level."
+      confirmTitle: (name        ) => `¿Cambiar a ${name}?`,
+      confirmAction: "Cambiar",
+      cancel: "Cancelar",
+      saveFailed: "No se pudo cambiar; se mantiene el nivel anterior."
     },
     channel: {
       nvapi: "NVAPI",
-      "nvapi-drs": "Driver profile",
+      "nvapi-drs": "Perfil del controlador",
       nvml: "NVML",
-      "oem-ec": "System firmware",
+      "oem-ec": "Firmware del sistema",
       "amd-smu": "AMD SMU",
-      "fan-core": "Fan core",
-      igcl: "Intel graphics",
+      "fan-core": "Núcleo de control de ventiladores",
+      igcl: "Gráficos Intel",
       adlx: "AMD ADLX"
     } as Record<string, string>,
-    channelHint: "Which channel this setting is actually written through.",
-    detect: "Re-detect hardware",
-    detecting: "Detecting",
-    readings: "Read-only readings",
-    curveExecutionLabel: "Who runs the curve",
-    takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
-    curveExecutionFirmware: "Write to firmware",
-    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
-    curveExecutionSoftware: "Software takeover",
-    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
-    createCurve: "New curve",
-    readingFirmwareCurve: "Reading the firmware curve…",
-    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
-    curvePreview: "Curve preview",
-    saveFailed: "Save failed",
-    apply: "Apply",
-    discard: "Discard",
+    channelHint: "Canal que se utiliza para aplicar este ajuste.",
+    detect: "Detectar hardware de nuevo",
+    detecting: "Detectando",
+    readings: "Lecturas de solo lectura",
+    curveExecutionLabel: "Quién ejecuta la curva",
+    takeoverCoversOthers: (others        ) => `En este equipo, el control por software de los ventiladores se activa para todo el sistema: también retira ${others} del control del firmware. Mantienen su velocidad actual si no se les asigna una curva.`,
+    curveExecutionFirmware: "Escribir en el firmware",
+    curveExecutionFirmwareHint: "El firmware sigue la tabla por sí mismo. Se mantiene al cerrar la aplicación y reiniciar.",
+    curveExecutionSoftware: "Control por software",
+    curveExecutionSoftwareHint: "La aplicación recalcula cada 0,1 s. Al cerrarla, el ventilador vuelve al control del firmware.",
+    createCurve: "Nueva curva",
+    readingFirmwareCurve: "Leyendo la curva del firmware…",
+    fixedStepsCurveNote: "Esta tabla solo permite cambiar la velocidad de cada tramo; los puntos de temperatura los fija el firmware.",
+    curvePreview: "Vista previa de la curva",
+    saveFailed: "Error al guardar",
+    apply: "Aplicar",
+    discard: "Descartar",
     term: {
-      portable: "Laptop",
-      fixed: "Desktop",
-      cpu: "CPU fan",
-      "curve-firmware": "Firmware curve",
-      "curve-software": "Software curve",
-      "curve-fixed-steps": "Fixed-step firmware table",
-      gpu: "GPU fan",
-      intake: "Intake fan",
-      case: "Case fan"
+      portable: "Portátil",
+      fixed: "Sobremesa",
+      cpu: "Ventilador de CPU",
+      "curve-firmware": "Curva del firmware",
+      "curve-software": "Curva por software",
+      "curve-fixed-steps": "Tabla del firmware con tramos fijos",
+      gpu: "Ventilador de GPU",
+      intake: "Ventilador de entrada",
+      case: "Ventilador de caja"
     } as Record<string, string>,
     attachment: {
-      integrated: "Integrated",
-      discrete: "Discrete",
-      unknown: "Attachment unknown"
+      integrated: "Integrada",
+      discrete: "Dedicada",
+      unknown: "Tipo de conexión desconocido"
     },
     status: {
-      unset: "Not set",
-      edited: "Changed, not applied",
-      applying: "Applying",
-      applied: "Applied",
-      unsupported: "Not tunable on this machine",
-      failed: "Did not apply"
+      unset: "Sin definir",
+      edited: "Modificado, sin aplicar",
+      applying: "Aplicando",
+      applied: "Aplicado",
+      unsupported: "No se puede ajustar en este equipo",
+      failed: "No se aplicó"
     },
     kind: {
-      gpu: "Graphics",
-      cpu: "Processor",
-      fan: "Fans"
+      gpu: "Gráficos",
+      cpu: "Procesador",
+      fan: "Ventiladores"
+    }
+  ,
+    presentation: {
+      "labels": {
+        "gpu.core-clock-offset": "Desplazamiento de frecuencia del núcleo",
+        "gpu.memory-clock-offset": "Desplazamiento de frecuencia de memoria",
+        "gpu.core-clock-minimum": "Frecuencia mínima del núcleo",
+        "gpu.core-clock-maximum": "Frecuencia máxima del núcleo",
+        "gpu.memory-clock-minimum": "Frecuencia mínima de memoria",
+        "gpu.memory-clock-maximum": "Frecuencia máxima de memoria",
+        "gpu.core-voltage-offset": "Desplazamiento de voltaje del núcleo",
+        "gpu.core-voltage": "Voltaje del núcleo",
+        "gpu.power-limit-offset": "Desplazamiento del límite de potencia",
+        "gpu.power-limit": "Límite de potencia",
+        "gpu.temperature-limit": "Límite de temperatura",
+        "gpu.slowdown-temperature": "Umbral de reducción por temperatura",
+        "gpu.shutdown-temperature": "Umbral de apagado térmico",
+        "gpu.power-management-mode": "Modo de administración de energía",
+        "gpu.frame-rate-limit": "Límite de fotogramas",
+        "gpu.ctgp-offset": "Desplazamiento cTGP",
+        "gpu.dynamic-boost-enabled": "Dynamic Boost",
+        "gpu.dynamic-boost-offset": "Margen de Dynamic Boost",
+        "gpu.curve-optimizer": "Desplazamiento de Curve Optimizer",
+        "cpu.power-limit": "Límite de potencia sostenida",
+        "cpu.slow-power-limit": "Límite de potencia a corto plazo",
+        "cpu.fast-power-limit": "Límite de potencia instantánea",
+        "cpu.tdc-limit": "Límite de corriente sostenida (TDC)",
+        "cpu.edc-limit": "Límite de corriente pico (EDC)",
+        "cpu.temperature-limit": "Límite de temperatura",
+        "cpu.pbo-scalar": "Factor PBO",
+        "cpu.curve-optimizer": "Desplazamiento de Curve Optimizer",
+        "cpu.short-power-limit": "Límite de potencia a corto plazo (PL2)",
+        "cpu.power-limit-window": "Ventana de potencia sostenida",
+        "cpu.short-power-limit-window": "Ventana de potencia a corto plazo",
+        "cpu.power-limit-mmio": "Límite de potencia (réplica MMIO)",
+        "cpu.temperature-offset": "Reducción del límite térmico",
+        "cpu.core-voltage-offset": "Desplazamiento de voltaje del núcleo",
+        "cpu.cache-voltage-offset": "Desplazamiento de voltaje de caché",
+        "cpu.igpu-voltage-offset": "Desplazamiento de voltaje de GPU integrada",
+        "cpu.system-agent-voltage-offset": "Desplazamiento de voltaje del agente del sistema",
+        "cpu.turbo-ratio-limit": "Límite del multiplicador turbo",
+        "cpu.turbo-enabled": "Turbo Boost",
+        "cpu.energy-performance-preference": "Preferencia de energía y rendimiento",
+        "cpu.igpu-power-balance": "Reparto de potencia CPU / GPU integrada",
+        "fan.rpm": "Velocidad del ventilador",
+        "fan.curve": "Curva de velocidad del ventilador",
+        "fan.duty": "Velocidad fija del ventilador",
+        "fan.lock-maximum": "Refrigeración máxima",
+        "fan.minimum-rpm": "Velocidad mínima del ventilador",
+        "fan.target-rpm": "Velocidad objetivo del ventilador",
+        "fan.zero-rpm": "Parada con poca carga"
+      },
+      "text": {
+        "档": "pasos",
+        "硬件写入辅助进程": "Asistente de control de hardware",
+        "风扇控制核心": "Núcleo de control de ventiladores",
+        "整机固件接口": "Interfaz de firmware del sistema",
+        "只读，写入未接入。": "Solo lectura; escritura no implementada.",
+        "驱动未提供这一温度阈值的可写范围。": "El controlador no proporciona un rango modificable para este umbral de temperatura.",
+        "转速为监测值。": "La velocidad del ventilador es una lectura de supervisión.",
+        "命令和电流墙的对应关系还没对准，写错会把处理器掐住，先不开放。": "No se han verificado los comandos de límite de corriente. Un comando incorrecto podría bloquear el procesador, por lo que el ajuste no está disponible.",
+        "还认不出这颗处理器温度墙的当前值，没有回读就不写。": "No se puede leer el límite térmico actual de este procesador. No se permite ajustarlo sin lectura de comprobación.",
+        "这几项是笔记本整机固件的功率预算，台式机上没有。": "Estos presupuestos de potencia corresponden al firmware de portátiles y no están disponibles en equipos de sobremesa.",
+        "Intel 独显的调节不在本软件的范围内。": "El ajuste de GPU Intel dedicadas está fuera del alcance de esta aplicación.",
+        "笔记本上的 AMD 独显不在本软件的范围内。": "El ajuste de GPU AMD dedicadas en portátiles está fuera del alcance de esta aplicación.",
+        "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。": "El módulo firmado IntelMCHBAR solo permite lectura. Aún se necesita un módulo firmado distribuible para escribir MMIO.",
+        "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。": "El módulo firmado IntelMSR no permite este registro. El soporte de escritura sigue incompleto.",
+        "同一显卡的风扇由驱动统一调节。": "El controlador gestiona los ventiladores de esta GPU como un único grupo.",
+        "无法确认机箱形态，AMD 独显调节只用于台式机。": "El tipo de chasis es desconocido. El ajuste de GPU AMD dedicadas solo está disponible en sobremesas.",
+        "此显卡的核心频率/电压采用另一种语义，请选择对应的绝对值或偏移量参数。": "Esta GPU utiliza la otra representación de frecuencia y voltaje. Elige el control de valor absoluto o desplazamiento correspondiente.",
+        "尚未识别此显卡代际，无法确认核心频率/电压的绝对值或偏移量语义。": "No se ha identificado la generación de esta GPU. No se pueden distinguir valores absolutos de frecuencia y voltaje de sus desplazamientos.",
+        "此显卡/驱动不提供 ADLX 的这一调节接口（旧式状态表接口尚待接入）。": "Esta GPU o controlador no ofrece esta interfaz de ajuste ADLX. El soporte de tablas de estados antiguas sigue incompleto.",
+        "此厂商暂无硬件调节通道。": "No hay un canal de ajuste de hardware para este fabricante."
+      },
+      "powerLimitPl1": "Límite de potencia sostenida (PL1)",
+      "fanName": (index        ) => `Ventilador ${index}`,
+      "gpuFanControllerName": (index        ) => `Controlador del ventilador gráfico (GPU${index})`,
+      "toggleOn": "Activado",
+      "toggleOff": "Desactivado"
     }
   },
   diskUsage: {
     title: "Uso del disco",
-    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
-    scopeLabel: "Scan scope",
-    scopeAllVolumes: "All drives",
-    scopeVolume: "One drive",
-    scopeFolder: "One folder",
-    modeLabel: "Scan method",
-    modeFast: "Fast scan",
-    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
-    modeFull: "Full scan",
-    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
-    chooseFolder: "Choose folder",
-    folderNotChosen: "No folder chosen yet",
-    scan: "Start scan",
-    rescan: "Scan again",
-    cancel: "Cancel scan",
-    scanning: "Scanning",
-    volumeColumnLabel: "Drive",
-    noVolumes: "No scannable drive was found.",
-    notReady: "Not ready",
-    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    intro: "Tras el análisis, los archivos se muestran como bloques proporcionales al espacio que realmente ocupan.",
+    scopeLabel: "Ámbito del análisis",
+    scopeAllVolumes: "Todas las unidades",
+    scopeVolume: "Una unidad",
+    scopeFolder: "Una carpeta",
+    modeLabel: "Método de análisis",
+    modeFast: "Análisis rápido",
+    modeFastHint: "Lee el índice del sistema de archivos para analizar una unidad en segundos. Solo admite NTFS y requiere permisos de administrador.",
+    modeFull: "Análisis completo",
+    modeFullHint: "Recorre los directorios nivel por nivel. Es más lento, pero funciona en cualquier unidad.",
+    chooseFolder: "Elegir carpeta",
+    folderNotChosen: "Todavía no se ha elegido una carpeta",
+    scan: "Iniciar análisis",
+    rescan: "Analizar de nuevo",
+    cancel: "Cancelar análisis",
+    scanning: "Analizando",
+    volumeColumnLabel: "Unidad",
+    noVolumes: "No se encontró ninguna unidad que se pueda analizar.",
+    notReady: "No preparada",
+    freeOfTotal: (free        , total        ) => `${free} libres de ${total}`,
     volumeKind: {
-      physical: "Physical drive",
-      virtual: "Virtual drive",
-      removable: "Removable",
-      network: "Network location",
-      optical: "Optical drive",
-      unknown: "Unknown source"
+      physical: "Unidad física",
+      virtual: "Unidad virtual",
+      removable: "Extraíble",
+      network: "Ubicación de red",
+      optical: "Unidad óptica",
+      unknown: "Origen desconocido"
     },
-    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
-    skipped: "Not covered by this scan",
+    fastUnsupported: "Esta unidad no tiene un índice legible, por lo que no admite un análisis rápido. Usa el análisis completo.",
+    skipped: "No incluido en este análisis",
     skipReason: {
-      noFileSystemIndex: "The filesystem has no readable index",
-      needsElevation: "Reading the index needs administrator rights",
-      volumeNotReady: "The drive is not ready",
-      targetUnavailable: "The path does not exist or cannot be opened"
+      noFileSystemIndex: "El sistema de archivos no tiene un índice legible",
+      needsElevation: "Leer el índice requiere permisos de administrador",
+      volumeNotReady: "La unidad no está preparada",
+      targetUnavailable: "La ruta no existe o no se puede abrir"
     },
     scanKind: {
-      masterFileTable: "Read the filesystem index",
-      directoryWalk: "Walked the directories"
+      masterFileTable: "Lectura del índice del sistema de archivos",
+      directoryWalk: "Recorrido de directorios"
     },
-    navigateUp: "Up one level",
-    resetView: "Reset view",
-    collapseSetup: "Hide options",
-    expandSetup: "Scan options",
-    scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
-    fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
-    copied: "Copied",
-    menuOpenLocation: "Open file location",
-    menuProperties: "Properties",
-    menuCopyPath: "Copy full path",
-    menuDrillDown: "Zoom into this",
-    menuSize: "Size",
-    menuPath: "Path",
-    menuKindFile: "File",
-    menuKindDirectory: "Folder",
-    emptyTitle: "Nothing scanned yet",
-    emptyDetail: "Pick a scope and a method, then start the scan."
+    navigateUp: "Subir un nivel",
+    resetView: "Restablecer vista",
+    collapseSetup: "Ocultar opciones",
+    expandSetup: "Opciones del análisis",
+    scanTotals: (size        , files        , folders        ) => `${size} · Archivos: ${files} · Carpetas: ${folders}`,
+    fileCount: (count        ) => `Archivos: ${count}`,
+    omitted: (count        ) => `Hay ${count} elementos demasiado pequeños o fuera de la vista. Amplía para verlos.`,
+    copied: "Copiado",
+    menuOpenLocation: "Abrir ubicación del archivo",
+    menuProperties: "Propiedades",
+    menuCopyPath: "Copiar ruta completa",
+    menuDrillDown: "Ampliar este elemento",
+    menuSize: "Tamaño",
+    menuPath: "Ruta",
+    menuKindFile: "Archivo",
+    menuKindDirectory: "Carpeta",
+    emptyTitle: "Todavía no se ha analizado nada",
+    emptyDetail: "Elige el ámbito y el método y, después, inicia el análisis."
   },
   shell: {
     productName: "Administrador de recursos",
@@ -245,7 +306,7 @@ const esEsAppCopy: AppCopy = {
     currentPage: "Página actual",
     runtimeCapability: "Capacidades de ejecución",
     taskCenter: "Centro de tareas",
-    taskCenterActive: (count: number) => `Centro de tareas, ${count} en curso`,
+    taskCenterActive: (count        ) => `Centro de tareas, ${count} en curso`,
     taskCenterSyncing: "Centro de tareas · sincronizando las tareas del servicio",
     taskCenterDisconnected: "Centro de tareas · el servicio local se está resincronizando",
     taskCenterUnavailable: "Centro de tareas · estado de las tareas del servicio no disponible",
