@@ -1,0 +1,70 @@
+export const zhSoftwareCopy = {
+  softwareKind: {
+    Adapted: "適配軟體",
+    Controlled: "受控軟體",
+    Unconfirmed: "未確認",
+    Managed: "已管理",
+    Game: "遊戲",
+    HighPerformance: "高效能軟體",
+    Other: "一般應用",
+    WindowsSystem: "Windows 系統",
+    WindowsComponent: "Windows 應用/元件",
+    WindowsService: "Windows 服務",
+    RuntimePackage: "Windows 應用",
+    RuntimeProduct: "一般應用",
+    RuntimeRoot: "一般應用",
+    Unattributed: "未歸屬程序",
+    SystemResidual: "系統/驅動保留",
+    Empty: "空餘"
+  },
+  managementRole: {
+    Dependency: "依賴",
+    Support: "支援"
+  },
+  management: {
+    categoryNav: "元件和軟體分類",
+    add: "新增",
+    refresh: "重新整理",
+    refreshing: "重新整理中",
+    emptyCategory: "當前分類沒有記錄。",
+    noSearchResults: (query: string) => `沒有與“${query}”匹配的記錄。`,
+    clearSearch: "清除搜尋",
+    install: "安裝",
+    uninstall: "一鍵解除安裝",
+    downloadAndInstall: "下載並安裝",
+    obtainInstaller: "獲取安裝器",
+    installed: "已安裝",
+    settingsAndMigration: "設定和遷移",
+    issueStrip: "軟體問題",
+    issueHeading: "問題提示",
+    issueCurrentReport: "當前報告",
+    issueKnownCatalog: "已知問題目錄",
+    issueReferences: (label: string) => `${label}參考資料`
+  },
+  managementPage: {
+    browserRuntimeTab: "執行時管理",
+    migrationTab: "遷移工作臺",
+    pageLabel: (kind: string) => `${kind}管理`,
+    searchLabel: (kind: string) => `${kind}搜尋`,
+    search: "搜尋",
+    itemCount: (count: number) => `${count} 項`,
+    softwareRegistrySupplement: "軟體登記補充項",
+    softwareRegistrySupplementDisabled: "當前啟動配置僅顯示元件目錄，不載入軟體登記補充項。",
+    operationState: "操作狀態",
+    componentCatalog: "元件目錄",
+    softwareRegistry: "軟體登記",
+    viewOnly: "當前啟動配置只提供檢視。",
+    detailsOf: (name: string) => `詳細資訊：${name}`,
+    moreActionsOf: (name: string) => `更多操作：${name}`,
+    currentSoftware: "當前軟體",
+    rootNeedsCheck: "根目錄需要檢查",
+    details: "詳細資訊",
+    moreActions: "更多操作"
+  },
+  manualSoftware: {
+    addAdapted: "新增適配軟體",
+    addGame: "新增遊戲",
+    addHighPerformance: "新增高效能軟體",
+    addGeneral: "新增一般應用"
+  }
+};

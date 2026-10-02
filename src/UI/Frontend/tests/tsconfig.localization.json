@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client"]
+  },
+  "include": [
+    "./languageSwitching.test.ts",
+    "./localizationCoverage.ts",
+    "./localizationCoverageValidator.test.ts",
+    "./localizationCoverage.test.ts"
+  ]
+}

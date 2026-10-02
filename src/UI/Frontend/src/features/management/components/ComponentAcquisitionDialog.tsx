@@ -137,7 +137,7 @@ export function ComponentAcquisitionDialog(props: {
                       <legend>{uiText.componentAcquisition.versionLegend}</legend>
                       <VersionSelector options={request.versions}
                         choice={effectiveChoice(request)} onSelect={setChoice}
-                        language={currentSettingsText().language}
+                        text={currentSettingsText().updates}
                         installedVersionUnknown={request.component.installed === true} />
                     </fieldset>
                   </Show>

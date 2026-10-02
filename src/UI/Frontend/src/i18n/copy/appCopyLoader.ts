@@ -2,12 +2,13 @@ import type { ConcreteAppLanguageMode } from "../settingsTypes.ts";
 import { createAppCopy } from "./index.ts";
 import type { AppCopy } from "./index.ts";
 
-// 中文与英文是随主包一起发出的基底，其余已交付的语言各自一份完整文案包，按需动态载入并缓存。
+// 中文与英文随主包发出，其余已开放语言的独立文案包按需动态载入并缓存。
 // 这里登记的语言必须与 settingsLanguages.ts 的 languageOptions 一致：可选即可载入。
 type AppCopyModule = { default: AppCopy };
 type AppCopyLoader = () => Promise<AppCopyModule>;
 
 const localeLoaders = {
+  "zh-TW": () => import("./locales/zh-TW.ts"),
   "ja-JP": () => import("./locales/ja-JP.ts"),
   "ko-KR": () => import("./locales/ko-KR.ts"),
   "fr-FR": () => import("./locales/fr-FR.ts"),
@@ -25,7 +26,7 @@ export function appCopyReady(language: ConcreteAppLanguageMode) {
   return !isLazyLanguage(language) || cache.has(language);
 }
 
-/** 取某个语言的完整文案包；载入失败时使用英文基底，并把失败写进日志。 */
+/** 取某个语言的文案包；载入失败时使用英文基底，并把失败写进日志。 */
 export function loadAppCopy(language: ConcreteAppLanguageMode): Promise<AppCopy> {
   if (!isLazyLanguage(language)) {
     return Promise.resolve(createAppCopy(language));

@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
+import type { UpdatesCopy } from "../../../i18n/settingsTypes.ts";
 
 export interface VersionChoice {
   choice: string;
@@ -15,11 +16,11 @@ export function VersionSelector(props: {
   options: readonly VersionChoice[];
   choice: string | null;
   onSelect: (choice: string) => void;
-  language: string;
+  text: UpdatesCopy;
   installedVersionUnknown?: boolean;
 }) {
   const [expanded, setExpanded] = createSignal<ReadonlySet<string>>(new Set());
-  const chinese = () => props.language.startsWith("zh");
+  const text = () => props.text;
   const history = createMemo(() => props.options.filter((option) =>
     option.choice.startsWith("version:") || option.choice.startsWith("tag:")));
   const latest = createMemo(() => props.options.find((option) => option.choice === "latest") ?? history()[0]);
@@ -29,7 +30,7 @@ export function VersionSelector(props: {
   const groups = createMemo(() => {
     const result = new Map<string, VersionChoice[]>();
     for (const option of history()) {
-      const series = option.series || (chinese() ? "其他版本" : "Other versions");
+      const series = option.series || (text().otherVersions);
       result.set(series, [...(result.get(series) ?? []), option]);
     }
     return [...result.entries()];
@@ -37,8 +38,8 @@ export function VersionSelector(props: {
   const enabled = (option: VersionChoice) =>
     option.available !== false && option.selectable !== false && !props.installedVersionUnknown;
   const reason = (option: VersionChoice) => props.installedVersionUnknown
-    ? chinese() ? "无法确认已安装版本，不能判断升级方向。" : "Installed version is unknown; upgrade order cannot be checked."
-    : option.unavailableReason;
+    ? text().installedUnknown
+    : option.unavailableReason ? text().unavailableReasons[option.unavailableReason] ?? option.unavailableReason : null;
 
   function toggle(series: string) {
     const next = new Set(expanded());
@@ -56,8 +57,8 @@ export function VersionSelector(props: {
         <strong>{label ?? option.version ?? option.choice}</strong>
         <Show when={label && option.version}><small>{option.version}</small></Show>
         <Show when={option.channel}><small>{option.channel === "stable"
-          ? chinese() ? "稳定版" : "Stable"
-          : chinese() ? "预览版" : "Preview"}</small></Show>
+          ? text().stable
+          : text().preview}</small></Show>
         <Show when={!enabled(option) && reason(option)}><small>{reason(option)}</small></Show>
       </span>
     </label>;
@@ -65,13 +66,13 @@ export function VersionSelector(props: {
 
   return <div class="version-selector">
     <div class="version-selector-pinned">
-      <Show when={latest()} fallback={<p>{chinese() ? "暂无最新版本。" : "No latest release is available."}</p>}>
-        {(option) => row(option(), chinese() ? "最新版本" : "Latest release")}
+      <Show when={latest()} fallback={<p>{text().noLatest}</p>}>
+        {(option) => row(option(), text().latest)}
       </Show>
-      <Show when={stable()} fallback={<p>{chinese() ? "暂无稳定版本。" : "No stable release is available."}</p>}>
-        {(option) => row(option(), chinese() ? "最新稳定版本" : "Latest stable release")}
+      <Show when={stable()} fallback={<p>{text().noStable}</p>}>
+        {(option) => row(option(), text().latestStable)}
       </Show>
-      <Show when={verified()}>{(option) => row(option(), chinese() ? "已验证版本" : "Verified release")}</Show>
+      <Show when={verified()}>{(option) => row(option(), text().verified)}</Show>
     </div>
     <Show when={groups().length > 0}>
       <div class="version-selector-groups">

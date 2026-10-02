@@ -482,7 +482,7 @@ function ControlObjectCard(props: {
   };
 
   const actualText = (value: ControlActualValue) => typeof value.toggle === "boolean"
-    ? (value.toggle ? "ON" : "OFF")
+    ? (value.toggle ? uiText.control.presentation.toggleOn : uiText.control.presentation.toggleOff)
     : `${formatActualNumber(value.number!)}${value.unit ? ` ${controlDisplayText(value.unit)}` : ""}`;
 
   /**

@@ -22,221 +22,282 @@ const ruRuAppCopy: AppCopy = {
     details: "Подробные сведения",
     settings: "Параметры",
     diskUsage: "Использование диска",
-    control: "Control"
+    control: "Управление"
   },
   control: {
-    title: "Control",
-    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
-    loadFailed: "Could not read the controllable devices.",
-    empty: "Nothing tunable has been identified on this machine yet.",
-    ready: "Adjustable",
-    needsComponent: (name: string) => `Needs ${name}`,
-    forgetFailed: "Delete not allowed",
+    title: "Управление",
+    intro: "Здесь настраиваются вентиляторы, видеокарта и процессор. Недоступные настройки также показаны с объяснением причины.",
+    loadFailed: "Не удалось прочитать список управляемых устройств.",
+    empty: "На этом компьютере пока не обнаружено устройств с доступными настройками.",
+    ready: "Можно настроить",
+    needsComponent: (name        ) => `Требуется ${name}`,
+    forgetFailed: "Удаление запрещено",
     instances: {
-      title: "Devices seen before",
-      present: "Present",
-      absent: "Not present",
-      refresh: "Detect again",
-      forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`,
-      open: "Manage devices"
+      title: "Ранее обнаруженные устройства",
+      present: "Подключено",
+      absent: "Не подключено",
+      refresh: "Обнаружить снова",
+      forget: "Удалить запись",
+      firstSeen: (at        ) => `Впервые обнаружено: ${at}`,
+      open: "Управление устройствами"
     },
-    actual: "Now ",
+    actual: "Сейчас ",
     presets: {
-      save: "Save preset",
-      namePlaceholder: "Preset name",
-      remove: "Delete preset"
+      save: "Сохранить профиль",
+      namePlaceholder: "Название профиля",
+      remove: "Удалить профиль"
     },
     overclock: {
-      title: "Intel integrated graphics authorization",
-      body: "Intel's integrated-graphics control library requires your consent before it "
-        + "allows any clock change, negative offsets included. That is its own requirement "
-        + "and has nothing to do with other graphics cards.",
-      accept: "Accept",
-      revoke: "Withdraw consent",
-      accepted: "Accepted"
+      title: "Разрешение для встроенной графики Intel",
+      body: "Библиотека управления встроенной графикой Intel требует согласия перед любым изменением частоты, включая отрицательное смещение. Это требование Intel не относится к другим видеокартам.",
+      accept: "Принять",
+      revoke: "Отозвать согласие",
+      accepted: "Согласие получено"
     },
     ownership: {
-      label: "Control owner",
-      firmware: "Firmware-managed",
-      app: "App-managed",
-      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+      label: "Источник управления",
+      firmware: "Управляется прошивкой",
+      app: "Управляется приложением",
+      firmwareNote: "Сейчас этим управляет прошивка; приведённые ниже настройки не действуют."
     },
     notice: {
-      warrantyTitle: "About your warranty",
+      warrantyTitle: "О гарантии",
       warrantyBody: [
-        "Vendor terms usually count any out-of-spec operation as a modification, in either "
-          + "direction — taken literally, that includes undervolting.",
-        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
-          + "walls stops at power-off and records nothing in the processor; raising clocks or "
-          + "voltage sets a flag in the processor that service can read.",
-        "On laptops many of these limits come from the system vendor's BIOS rather than the "
-          + "chip vendor's defaults, so how far this page can go is their decision too."
+        "Условия производителей обычно считают изменением любую работу вне спецификаций, как с повышенными, так и с пониженными значениями. Буквально это относится и к снижению напряжения.",
+        "Практическое отличие — оставляемые следы: пониженные напряжение, частоты или лимиты мощности перестают действовать после выключения и не оставляют записи в процессоре; повышение частоты или напряжения устанавливает флаг, который может прочитать сервис.",
+        "На ноутбуках многие ограничения задаёт BIOS производителя компьютера, а не стандартные параметры изготовителя чипа. Поэтому доступный здесь диапазон зависит и от производителя компьютера."
       ],
-      riskTitle: "Before you start",
-      next: "Next",
-      accept: "Understood"
+      riskTitle: "Перед началом",
+      next: "Далее",
+      accept: "Понятно"
     },
     accessLevel: {
-      title: "Adjustment access",
-      intro: "Decides which items the Control page lets you change. Moving up a level "
-        + "changes none of your existing settings; it only unlocks more items.",
-      name: { normal: "Normal", root: "root" },
+      title: "Доступ к настройкам",
+      intro: "Определяет, какие параметры можно менять на странице управления. Повышение уровня не изменяет текущие настройки, а лишь открывает дополнительные параметры.",
+      name: { normal: "Обычный", root: "root" },
       summary: {
-        normal: "Power, current, fan and standard clock adjustments. "
-          + "Incorrect settings can cause instability.",
-        root: "Items nothing catches: writing voltage directly, changing the base clock. "
-          + "Rarely needed."
+        normal: "Настройка мощности, тока, вентиляторов и обычных частот. Неверные значения могут вызвать нестабильность.",
+        root: "Параметры без программной защиты: прямая запись напряжения и изменение базовой частоты. Обычно не требуются."
       },
       hint: {
-        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
-        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+        normal: "Неверное значение вызывает нестабильность; перезагрузка восстанавливает работу. Сначала включите обычный режим в настройках.",
+        root: "Здесь нет защиты от неверных значений. Сначала включите режим root в настройках."
       },
       consequences: {
         normal: [
-          "Too little voltage shuts the machine off; too much clock offset corrupts or "
-            + "blanks the screen. Both clear on reboot and harm nothing.",
-          "Raising the thermal limit moves the overheat protection outward; running that "
-            + "way for long ages the silicon faster."
+          "Слишком низкое напряжение выключает компьютер; чрезмерное смещение частоты искажает изображение или гасит экран. Оба эффекта исчезают после перезагрузки без повреждений.",
+          "Повышение температурного предела сдвигает порог защиты от перегрева; длительная работа в таком режиме ускоряет старение чипа."
         ],
         root: [
-          "Writing voltage and base clock directly has no software guard at all; one wrong "
-            + "number can leave the machine unable to boot.",
-          "Nothing here is needed day to day. Only change a value you already understand."
+          "Прямая запись напряжения и базовой частоты не защищена программно; одно неверное значение может сделать загрузку невозможной.",
+          "Для повседневного использования эти параметры не нужны. Меняйте только значения, смысл которых вам понятен."
         ]
       },
       disclaimer: {
-        normal: "Some settings can make the computer unstable, and on a machine with an "
-          + "existing design fault they carry some risk of damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration.",
-        root: "In root mode some adjustments are extremely dangerous and are very likely "
-          + "to cause system instability or permanent hardware damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration."
+        normal: "Некоторые настройки могут вызвать нестабильность, а при конструктивных дефектах — повреждения. Это ПО не несёт ответственности за последствия изменения конфигурации оборудования.",
+        root: "В режиме root некоторые настройки крайне опасны и с высокой вероятностью вызывают нестабильность или необратимые повреждения. Это ПО не несёт ответственности за последствия изменения конфигурации оборудования."
       },
-      confirmTitle: (name: string) => `Switch to ${name}?`,
-      confirmAction: "Switch",
-      cancel: "Cancel",
-      saveFailed: "Could not switch; still on the previous level."
+      confirmTitle: (name        ) => `Переключиться на ${name}?`,
+      confirmAction: "Переключить",
+      cancel: "Отмена",
+      saveFailed: "Не удалось переключить уровень; сохранён предыдущий."
     },
     channel: {
       nvapi: "NVAPI",
-      "nvapi-drs": "Driver profile",
+      "nvapi-drs": "Профиль драйвера",
       nvml: "NVML",
-      "oem-ec": "System firmware",
+      "oem-ec": "Системная прошивка",
       "amd-smu": "AMD SMU",
-      "fan-core": "Fan core",
-      igcl: "Intel graphics",
+      "fan-core": "Ядро управления вентиляторами",
+      igcl: "Графика Intel",
       adlx: "AMD ADLX"
     } as Record<string, string>,
-    channelHint: "Which channel this setting is actually written through.",
-    detect: "Re-detect hardware",
-    detecting: "Detecting",
-    readings: "Read-only readings",
-    curveExecutionLabel: "Who runs the curve",
-    takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
-    curveExecutionFirmware: "Write to firmware",
-    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
-    curveExecutionSoftware: "Software takeover",
-    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
-    createCurve: "New curve",
-    readingFirmwareCurve: "Reading the firmware curve…",
-    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
-    curvePreview: "Curve preview",
-    saveFailed: "Save failed",
-    apply: "Apply",
-    discard: "Discard",
+    channelHint: "Канал, через который фактически записывается эта настройка.",
+    detect: "Обнаружить оборудование заново",
+    detecting: "Обнаружение",
+    readings: "Показания только для чтения",
+    curveExecutionLabel: "Кто исполняет кривую",
+    takeoverCoversOthers: (others        ) => `На этом компьютере программное управление вентиляторами включается для всей системы: ${others} также выходят из-под управления прошивки и сохраняют текущую скорость, если им не задана кривая.`,
+    curveExecutionFirmware: "Записать в прошивку",
+    curveExecutionFirmwareHint: "Прошивка сама следует таблице. Настройка сохраняется после закрытия приложения и перезагрузки.",
+    curveExecutionSoftware: "Программное управление",
+    curveExecutionSoftwareHint: "Приложение пересчитывает скорость каждые 0,1 с. После его закрытия управление возвращается прошивке.",
+    createCurve: "Новая кривая",
+    readingFirmwareCurve: "Чтение кривой прошивки…",
+    fixedStepsCurveNote: "В этой таблице можно менять только скорость каждой ступени; температурные пороги задаются прошивкой.",
+    curvePreview: "Предпросмотр кривой",
+    saveFailed: "Не удалось сохранить",
+    apply: "Применить",
+    discard: "Отменить изменения",
     term: {
-      portable: "Laptop",
-      fixed: "Desktop",
-      cpu: "CPU fan",
-      "curve-firmware": "Firmware curve",
-      "curve-software": "Software curve",
-      "curve-fixed-steps": "Fixed-step firmware table",
-      gpu: "GPU fan",
-      intake: "Intake fan",
-      case: "Case fan"
+      portable: "Ноутбук",
+      fixed: "Настольный ПК",
+      cpu: "Вентилятор процессора",
+      "curve-firmware": "Кривая прошивки",
+      "curve-software": "Программная кривая",
+      "curve-fixed-steps": "Таблица прошивки с фиксированными ступенями",
+      gpu: "Вентилятор видеокарты",
+      intake: "Приточный вентилятор",
+      case: "Корпусной вентилятор"
     } as Record<string, string>,
     attachment: {
-      integrated: "Integrated",
-      discrete: "Discrete",
-      unknown: "Attachment unknown"
+      integrated: "Встроенная",
+      discrete: "Дискретная",
+      unknown: "Тип подключения неизвестен"
     },
     status: {
-      unset: "Not set",
-      edited: "Changed, not applied",
-      applying: "Applying",
-      applied: "Applied",
-      unsupported: "Not tunable on this machine",
-      failed: "Did not apply"
+      unset: "Не задано",
+      edited: "Изменено, не применено",
+      applying: "Применение",
+      applied: "Применено",
+      unsupported: "На этом компьютере настройка недоступна",
+      failed: "Не удалось применить"
     },
     kind: {
-      gpu: "Graphics",
-      cpu: "Processor",
-      fan: "Fans"
+      gpu: "Видеокарта",
+      cpu: "Процессор",
+      fan: "Вентиляторы"
+    }
+  ,
+    presentation: {
+      "labels": {
+        "gpu.core-clock-offset": "Смещение частоты ядра",
+        "gpu.memory-clock-offset": "Смещение частоты памяти",
+        "gpu.core-clock-minimum": "Минимальная частота ядра",
+        "gpu.core-clock-maximum": "Максимальная частота ядра",
+        "gpu.memory-clock-minimum": "Минимальная частота памяти",
+        "gpu.memory-clock-maximum": "Максимальная частота памяти",
+        "gpu.core-voltage-offset": "Смещение напряжения ядра",
+        "gpu.core-voltage": "Напряжение ядра",
+        "gpu.power-limit-offset": "Смещение лимита мощности",
+        "gpu.power-limit": "Лимит мощности",
+        "gpu.temperature-limit": "Температурный предел",
+        "gpu.slowdown-temperature": "Порог снижения частоты по температуре",
+        "gpu.shutdown-temperature": "Порог защитного отключения",
+        "gpu.power-management-mode": "Режим управления питанием",
+        "gpu.frame-rate-limit": "Ограничение частоты кадров",
+        "gpu.ctgp-offset": "Смещение cTGP",
+        "gpu.dynamic-boost-enabled": "Dynamic Boost",
+        "gpu.dynamic-boost-offset": "Допуск Dynamic Boost",
+        "gpu.curve-optimizer": "Смещение Curve Optimizer",
+        "cpu.power-limit": "Лимит длительной мощности",
+        "cpu.slow-power-limit": "Лимит кратковременной мощности",
+        "cpu.fast-power-limit": "Лимит мгновенной мощности",
+        "cpu.tdc-limit": "Лимит длительного тока (TDC)",
+        "cpu.edc-limit": "Лимит пикового тока (EDC)",
+        "cpu.temperature-limit": "Температурный предел",
+        "cpu.pbo-scalar": "Коэффициент PBO",
+        "cpu.curve-optimizer": "Смещение Curve Optimizer",
+        "cpu.short-power-limit": "Лимит кратковременной мощности (PL2)",
+        "cpu.power-limit-window": "Временное окно длительной мощности",
+        "cpu.short-power-limit-window": "Временное окно кратковременной мощности",
+        "cpu.power-limit-mmio": "Лимит мощности (зеркало MMIO)",
+        "cpu.temperature-offset": "Снижение температурного предела",
+        "cpu.core-voltage-offset": "Смещение напряжения ядра",
+        "cpu.cache-voltage-offset": "Смещение напряжения кэша",
+        "cpu.igpu-voltage-offset": "Смещение напряжения встроенной графики",
+        "cpu.system-agent-voltage-offset": "Смещение напряжения системного агента",
+        "cpu.turbo-ratio-limit": "Ограничение множителя Turbo",
+        "cpu.turbo-enabled": "Turbo Boost",
+        "cpu.energy-performance-preference": "Приоритет энергопотребления и производительности",
+        "cpu.igpu-power-balance": "Распределение мощности CPU / встроенная графика",
+        "fan.rpm": "Скорость вентилятора",
+        "fan.curve": "Кривая скорости вентилятора",
+        "fan.duty": "Фиксированная скорость вентилятора",
+        "fan.lock-maximum": "Максимальное охлаждение",
+        "fan.minimum-rpm": "Минимальная скорость вентилятора",
+        "fan.target-rpm": "Целевая скорость вентилятора",
+        "fan.zero-rpm": "Остановка при низкой нагрузке"
+      },
+      "text": {
+        "档": "ступени",
+        "硬件写入辅助进程": "Помощник управления оборудованием",
+        "风扇控制核心": "Ядро управления вентиляторами",
+        "整机固件接口": "Интерфейс системной прошивки",
+        "只读，写入未接入。": "Только чтение; запись не реализована.",
+        "驱动未提供这一温度阈值的可写范围。": "Драйвер не предоставляет изменяемый диапазон этого температурного порога.",
+        "转速为监测值。": "Скорость вентилятора — показание мониторинга.",
+        "命令和电流墙的对应关系还没对准，写错会把处理器掐住，先不开放。": "Команды ограничения тока не проверены. Неверная запись может остановить процессор, поэтому настройка недоступна.",
+        "还认不出这颗处理器温度墙的当前值，没有回读就不写。": "Не удаётся прочитать текущий температурный предел этого процессора. Без обратного чтения настройка недоступна.",
+        "这几项是笔记本整机固件的功率预算，台式机上没有。": "Эти бюджеты мощности задаются прошивкой ноутбука и недоступны на настольных ПК.",
+        "Intel 独显的调节不在本软件的范围内。": "Настройка дискретных GPU Intel не входит в возможности этого приложения.",
+        "笔记本上的 AMD 独显不在本软件的范围内。": "Настройка дискретных GPU AMD в ноутбуках не входит в возможности этого приложения.",
+        "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。": "Подписанный модуль IntelMCHBAR допускает только чтение. Для записи MMIO ещё нужен пригодный к распространению подписанный модуль.",
+        "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。": "Подписанный модуль IntelMSR не разрешает этот регистр. Поддержка записи ещё не завершена.",
+        "同一显卡的风扇由驱动统一调节。": "Драйвер управляет вентиляторами этого GPU как одной группой.",
+        "无法确认机箱形态，AMD 独显调节只用于台式机。": "Тип корпуса неизвестен. Настройка дискретных GPU AMD доступна только на настольных ПК.",
+        "此显卡的核心频率/电压采用另一种语义，请选择对应的绝对值或偏移量参数。": "Этот GPU использует другой способ задания частоты и напряжения. Выберите соответствующий абсолютный параметр или смещение.",
+        "尚未识别此显卡代际，无法确认核心频率/电压的绝对值或偏移量语义。": "Поколение GPU не определено. Нельзя отличить абсолютные частоты и напряжения от смещений.",
+        "此显卡/驱动不提供 ADLX 的这一调节接口（旧式状态表接口尚待接入）。": "Этот GPU или драйвер не предоставляет данный интерфейс настройки ADLX. Поддержка старых таблиц состояний ещё не завершена.",
+        "此厂商暂无硬件调节通道。": "Для этого производителя недоступен канал настройки оборудования."
+      },
+      "powerLimitPl1": "Лимит длительной мощности (PL1)",
+      "fanName": (index        ) => `Вентилятор ${index}`,
+      "gpuFanControllerName": (index        ) => `Контроллер вентилятора видеокарты (GPU${index})`,
+      "toggleOn": "Вкл.",
+      "toggleOff": "Выкл."
     }
   },
   diskUsage: {
     title: "Использование диска",
-    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
-    scopeLabel: "Scan scope",
-    scopeAllVolumes: "All drives",
-    scopeVolume: "One drive",
-    scopeFolder: "One folder",
-    modeLabel: "Scan method",
-    modeFast: "Fast scan",
-    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
-    modeFull: "Full scan",
-    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
-    chooseFolder: "Choose folder",
-    folderNotChosen: "No folder chosen yet",
-    scan: "Start scan",
-    rescan: "Scan again",
-    cancel: "Cancel scan",
-    scanning: "Scanning",
-    volumeColumnLabel: "Drive",
-    noVolumes: "No scannable drive was found.",
-    notReady: "Not ready",
-    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    intro: "После сканирования файлы отображаются плитками, размер которых соответствует фактически занятому месту.",
+    scopeLabel: "Область сканирования",
+    scopeAllVolumes: "Все диски",
+    scopeVolume: "Один диск",
+    scopeFolder: "Одна папка",
+    modeLabel: "Способ сканирования",
+    modeFast: "Быстрое сканирование",
+    modeFastHint: "Читает индекс файловой системы, поэтому весь диск обрабатывается за секунды. Только для NTFS; нужны права администратора.",
+    modeFull: "Полное сканирование",
+    modeFullHint: "Обходит каталоги по уровням. Медленнее, но работает на любом диске.",
+    chooseFolder: "Выбрать папку",
+    folderNotChosen: "Папка ещё не выбрана",
+    scan: "Начать сканирование",
+    rescan: "Сканировать снова",
+    cancel: "Отменить сканирование",
+    scanning: "Сканирование",
+    volumeColumnLabel: "Диск",
+    noVolumes: "Не найдено дисков, доступных для сканирования.",
+    notReady: "Не готово",
+    freeOfTotal: (free        , total        ) => `Свободно ${free} из ${total}`,
     volumeKind: {
-      physical: "Physical drive",
-      virtual: "Virtual drive",
-      removable: "Removable",
-      network: "Network location",
-      optical: "Optical drive",
-      unknown: "Unknown source"
+      physical: "Физический диск",
+      virtual: "Виртуальный диск",
+      removable: "Съёмный",
+      network: "Сетевое расположение",
+      optical: "Оптический привод",
+      unknown: "Неизвестный источник"
     },
-    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
-    skipped: "Not covered by this scan",
+    fastUnsupported: "У этого диска нет читаемого индекса файловой системы. Вместо быстрого используйте полное сканирование.",
+    skipped: "Не включено в это сканирование",
     skipReason: {
-      noFileSystemIndex: "The filesystem has no readable index",
-      needsElevation: "Reading the index needs administrator rights",
-      volumeNotReady: "The drive is not ready",
-      targetUnavailable: "The path does not exist or cannot be opened"
+      noFileSystemIndex: "У файловой системы нет читаемого индекса",
+      needsElevation: "Для чтения индекса нужны права администратора",
+      volumeNotReady: "Диск не готов",
+      targetUnavailable: "Путь не существует или не может быть открыт"
     },
     scanKind: {
-      masterFileTable: "Read the filesystem index",
-      directoryWalk: "Walked the directories"
+      masterFileTable: "Чтение индекса файловой системы",
+      directoryWalk: "Обход каталогов"
     },
-    navigateUp: "Up one level",
-    resetView: "Reset view",
-    collapseSetup: "Hide options",
-    expandSetup: "Scan options",
-    scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
-    fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
-    copied: "Copied",
-    menuOpenLocation: "Open file location",
-    menuProperties: "Properties",
-    menuCopyPath: "Copy full path",
-    menuDrillDown: "Zoom into this",
-    menuSize: "Size",
-    menuPath: "Path",
-    menuKindFile: "File",
-    menuKindDirectory: "Folder",
-    emptyTitle: "Nothing scanned yet",
-    emptyDetail: "Pick a scope and a method, then start the scan."
+    navigateUp: "На уровень выше",
+    resetView: "Сбросить вид",
+    collapseSetup: "Скрыть параметры",
+    expandSetup: "Параметры сканирования",
+    scanTotals: (size        , files        , folders        ) => `${size} · Файлов: ${files} · Папок: ${folders}`,
+    fileCount: (count        ) => `Файлов: ${count}`,
+    omitted: (count        ) => `Ещё ${count} элементов слишком малы или находятся за пределами экрана. Увеличьте масштаб, чтобы увидеть их.`,
+    copied: "Скопировано",
+    menuOpenLocation: "Открыть расположение файла",
+    menuProperties: "Свойства",
+    menuCopyPath: "Копировать полный путь",
+    menuDrillDown: "Приблизить этот элемент",
+    menuSize: "Размер",
+    menuPath: "Путь",
+    menuKindFile: "Файл",
+    menuKindDirectory: "Папка",
+    emptyTitle: "Сканирование ещё не выполнено",
+    emptyDetail: "Выберите область и способ, затем начните сканирование."
   },
   shell: {
     productName: "Диспетчер ресурсов",
@@ -245,7 +306,7 @@ const ruRuAppCopy: AppCopy = {
     currentPage: "Текущая страница",
     runtimeCapability: "Возможности среды выполнения",
     taskCenter: "Центр задач",
-    taskCenterActive: (count: number) => `Центр задач, выполняется: ${count}`,
+    taskCenterActive: (count        ) => `Центр задач, выполняется: ${count}`,
     taskCenterSyncing: "Центр задач · синхронизация задач службы",
     taskCenterDisconnected: "Центр задач · локальная служба повторно синхронизируется",
     taskCenterUnavailable: "Центр задач · состояние задач службы недоступно",

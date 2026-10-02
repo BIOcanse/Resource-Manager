@@ -1,17 +1,18 @@
 using System.Text.Json;
 using Microsoft.Win32;
 using ResourceManager.Shared.Packages;
+using ResourceManager.Shared.Localization;
 
 namespace ResourceManager.Updater;
 
 public static class UpdateManagerCommand
 {
-    public static string GetInstalledRoot()
+    public static string GetInstalledRoot(ToolText? text = null)
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
         using var key = machine.OpenSubKey(@"Software\ResourceManager");
         var root = key?.GetValue("InstallRoot") as string
-            ?? throw new InvalidOperationException("未找到已安装的 Resource Manager。请先使用 Install.exe 首次安装。");
+            ?? throw new InvalidOperationException((text ?? ToolText.For(AppLanguage.System)).NotInstalled);
         return UpdatePlan.RequireRegisteredTarget(root);
     }
 
@@ -23,18 +24,20 @@ public static class UpdateManagerCommand
     public static string? GetManagerUpdateFailure(string installRoot)
         => ManagerSelfUpdate.ReadLastFailure(UpdatePlan.RequireRegisteredTarget(installRoot));
 
-    public static string DescribePackageAction(string packageRoot, string installRoot, bool repair)
+    public static string DescribePackageAction(string packageRoot, string installRoot, bool repair, ToolText? text = null)
     {
         var plan = UpdatePlan.Create(packageRoot, installRoot,
             repair ? UpdateOperation.Repair : UpdateOperation.Update);
+        var copy = text ?? ToolText.FromInstallRoot(installRoot);
         return repair
-            ? $"将使用 {plan.Package.Version} 的完整发行包修复主程序，保留现有设置和用户数据。"
-            : $"将 Resource Manager 从 {plan.PreviousVersion} 更新到 {plan.Package.Version}，保留现有设置和用户数据。";
+            ? copy.Format(copy.RepairSummaryFormat, plan.Package.Version)
+            : copy.Format(copy.UpdateSummaryFormat, plan.PreviousVersion, plan.Package.Version);
     }
 
     public static async Task<string> ExecuteAsync(string[] args, string executablePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, ToolText? text = null)
     {
+        text ??= ToolText.For(AppLanguage.System);
         if (args.Length == 3 && args[0] == "--replace-manager"
             && int.TryParse(args[2], out var oldProcessId))
             return await ManagerSelfUpdate.ReplaceAsync(executablePath, args[1],
@@ -42,13 +45,13 @@ public static class UpdateManagerCommand
         if (args.Length == 2 && args[0] == "--verify-package")
         {
             var package = ReleasePackageLayout.Verify(args[1]);
-            return $"发行包 {package.Version} 校验通过。";
+            return text.Format(text.VerifiedPackageFormat, package.Version);
         }
         if (args.Length == 3 && args[0] is "--legacy-plan" or "--adopt-and-apply")
         {
             var adoption = LegacyInstallationAdoption.Plan(args[1], args[2], executablePath);
             if (args[0] == "--legacy-plan")
-                return $"旧版 {adoption.PreviousVersion} 可接入外置管理器并更新至 {adoption.Package.Version}。";
+                return text.Format(text.LegacyPlanFormat, adoption.PreviousVersion, adoption.Package.Version);
             return await LegacyInstallationAdoption.AdoptAndApplyAsync(adoption, executablePath, cancellationToken);
         }
         if (args.Length == 3 && args[0] == "--resume-legacy")
@@ -59,27 +62,27 @@ public static class UpdateManagerCommand
         if (args.Length == 2 && args[0] == "--recover")
         {
             var target = UpdatePlan.RequireRegisteredTarget(args[1]);
-            RequireExternalManager(executablePath, target);
-            using var operationLock = AcquireOperationLock(target);
+            RequireExternalManager(executablePath, target, text);
+            using var operationLock = AcquireOperationLock(target, text);
             var recovered = await PackageSwitchTransaction.RecoverPendingAsync(target,
                 new WindowsUpdateRuntime(), cancellationToken);
-            return recovered.Count == 0 ? "没有待恢复的更新事务。" : $"已恢复 {recovered.Count} 个中断事务。";
+            return recovered.Count == 0 ? text.NoRecovery : text.Format(text.RecoveredCountFormat, recovered.Count);
         }
         if (args.Length != 3 || args[0] is not ("--plan-only" or "--apply" or "--repair"))
-            throw new ArgumentException("更新管理器命令无效。");
+            throw new ArgumentException(text.InvalidCommand);
         var operation = args[0] == "--repair" ? UpdateOperation.Repair : UpdateOperation.Update;
         var plan = UpdatePlan.Create(args[1], args[2], operation);
-        if (args[0] == "--plan-only") return $"{plan.Package.Version} 更新预检通过。";
-        RequireExternalManager(executablePath, plan.InstallRoot);
-        using var updateLock = AcquireOperationLock(plan.InstallRoot);
+        if (args[0] == "--plan-only") return text.Format(text.PreflightFormat, plan.Package.Version);
+        RequireExternalManager(executablePath, plan.InstallRoot, text);
+        using var updateLock = AcquireOperationLock(plan.InstallRoot, text);
         var pending = PackageSwitchTransaction.ListPending(plan.InstallRoot);
         if (pending.Count > 0)
-            throw new InvalidOperationException("存在中断的更新事务，请先使用恢复功能。");
+            throw new InvalidOperationException(text.PendingTransaction);
         var workspace = await PackageSwitchTransaction.ApplyAsync(plan,
             new WindowsUpdateRuntime(), cancellationToken);
         var result = operation == UpdateOperation.Repair
-            ? $"主程序已修复。旧文件保留在：{workspace}"
-            : $"已更新到 {plan.Package.Version}。旧版备份保留在：{workspace}";
+            ? text.Format(text.RepairedFormat, workspace)
+            : text.Format(text.UpdatedFormat, plan.Package.Version, workspace);
         try
         {
             var desktopResult = LegacyInstallationAdoption.FinishDesktopRegistration(plan.InstallRoot);
@@ -87,16 +90,16 @@ public static class UpdateManagerCommand
         }
         catch (Exception exception)
         {
-            result += $" 旧版桌面登记收尾未完成，可重试：{exception.Message}";
+            result += " " + text.Format(text.RegistrationFailedFormat, exception.Message);
         }
         try
         {
             if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, executablePath))
-                result += " 更新管理器将在旧进程退出后完成自身替换。";
+                result += " " + text.SelfReplaceNotice;
         }
         catch (Exception exception)
         {
-            result += $" 管理器自身更新未启动：{exception.Message}";
+            result += " " + text.Format(text.SelfUpdateFailedFormat, exception.Message);
         }
         return result;
     }
@@ -143,24 +146,24 @@ public static class UpdateManagerCommand
         catch (InvalidOperationException) { }
     }
 
-    private static void RequireExternalManager(string executablePath, string installRoot)
+    private static void RequireExternalManager(string executablePath, string installRoot, ToolText text)
     {
         var expected = UpdateManagerPaths.InstalledExecutable(installRoot);
         if (!Path.GetFullPath(executablePath).Equals(expected, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("更新、恢复和修复必须由已安装的外置更新管理器执行。");
-        if (!File.Exists(expected)) throw new FileNotFoundException("外置更新管理器不存在。", expected);
+            throw new InvalidOperationException(text.ExternalManagerRequired);
+        if (!File.Exists(expected)) throw new FileNotFoundException(text.MissingManager, expected);
         ReleasePackageLayout.RejectReparse(expected);
         ReleasePackageLayout.RejectReparse(UpdateManagerPaths.InstalledDirectory(installRoot));
     }
 
-    internal static FileStream AcquireOperationLock(string installRoot)
+    internal static FileStream AcquireOperationLock(string installRoot, ToolText? text = null)
     {
         var path = Path.Combine(UpdateManagerPaths.InstalledDirectory(installRoot), "operation.lock");
         if (File.Exists(path)) ReleasePackageLayout.RejectReparse(path);
         try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException exception)
         {
-            throw new InvalidOperationException("另一个更新、恢复或修复操作正在进行。", exception);
+            throw new InvalidOperationException((text ?? ToolText.FromInstallRoot(installRoot)).BusyOperation, exception);
         }
     }
 }

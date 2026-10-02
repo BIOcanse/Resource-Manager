@@ -93,6 +93,8 @@ public sealed class NativeUiLocalizationContractTests
     [Theory]
     [InlineData("en-US", "en-US")]
     [InlineData("EN-us", "en-US")]
+    [InlineData(" en_US ", "en-US")]
+    [InlineData("ZH_tw", "zh-TW")]
     [InlineData("zh-TW", "zh-TW")]
     public void ConcreteSelectionResolvesToItself(string selection, string expected) =>
         Assert.Equal(expected, NativeLanguage.Resolve(selection));

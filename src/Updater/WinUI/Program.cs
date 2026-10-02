@@ -1,4 +1,5 @@
 using ResourceManager.Updater;
+using ResourceManager.Shared.Localization;
 
 namespace ResourceManager.UpdateManager;
 
@@ -12,10 +13,13 @@ internal static class Program
             XamlGeneratedProgram.XamlGeneratedMain();
             return 0;
         }
+        var text = ToolText.For(AppLanguage.System);
         try
         {
+            try { text = ToolText.FromInstallRoot(UpdateManagerCommand.GetInstalledRoot(text)); }
+            catch (InvalidOperationException) { }
             var message = UpdateManagerCommand.ExecuteAsync(args,
-                Environment.ProcessPath ?? throw new InvalidOperationException("无法确定更新管理器路径。"))
+                Environment.ProcessPath ?? throw new InvalidOperationException(text.ManagerPathUnknown), text: text)
                 .GetAwaiter().GetResult();
             UpdateManagerCommand.WriteResult(args, true, message);
             return 0;

@@ -26,9 +26,11 @@ import taskCenterJourney from "./taskCenterJourney.js";
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
 import usabilityProbe from "./usabilityProbe.js";
+import localizationJourney from "./localizationJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
+  ["localization", localizationJourney],
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],
   ["ui-primitives", uiPrimitivesJourney],

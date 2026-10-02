@@ -37,7 +37,7 @@ export default async function controlCardJourney(page, baseUrl) {
   const b = page.locator(".control-object").filter({ hasText: "Fan B" });
   for (const card of [a, b]) {
     await card.getByRole("radio", { name: "软件管理", exact: true }).click();
-    await card.getByRole("checkbox", { name: "Curve", exact: true }).check();
+    await card.getByRole("checkbox", { name: "转速曲线", exact: true }).check();
     await card.locator(".fan-curve-chart").waitFor();
   }
   assert.equal(await a.locator(".fan-curve-grid").count(), 22);
@@ -50,7 +50,7 @@ export default async function controlCardJourney(page, baseUrl) {
   assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), true);
   await b.getByRole("button", { name: "撤销改动", exact: true }).click();
   assert.equal(await b.getByRole("radio", { name: "固件自动管理", exact: true }).getAttribute("aria-checked"), "true");
-  assert.equal(await a.getByRole("checkbox", { name: "Curve", exact: true }).isChecked(), true);
+  assert.equal(await a.getByRole("checkbox", { name: "转速曲线", exact: true }).isChecked(), true);
   const slider = a.getByRole("slider", { name: "60 °C", exact: true });
   await slider.press("ArrowUp");
   holdWrite = new Promise(resolve => { releaseWrite = resolve; });

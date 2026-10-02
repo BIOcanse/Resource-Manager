@@ -30,11 +30,12 @@ export function currentSettingsText() {
 
 export function applyLanguage(language?: string | null) {
   const resolved = resolveLanguageMode(language);
+  // 切回已生效的语言也要取消其他语言的待完成载入。
+  pendingLanguage = resolved;
   if (resolved === appliedLanguage) {
     return;
   }
 
-  pendingLanguage = resolved;
   // 语言包未到齐之前保留当前文案，避免先闪一遍基底语言再跳到目标语言。
   void loadAppCopy(resolved).then((nextCopy) => {
     if (pendingLanguage === resolved) {

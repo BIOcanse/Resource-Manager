@@ -1,9 +1,9 @@
 import type { AppLanguageMode } from "../types.ts";
 import type { ConcreteAppLanguageMode, LanguageOption } from "./settingsTypes.ts";
 
-// 可选界面语言 = 已经有完整文案包的语言。`AppLanguageMode` 仍保留全部 31 个 id
-// （它是与后端一致的持久化取值域），这里只列出当前交付的语言；其余语言的文案包
-// 完成后，把对应行加回来并在 copy/appCopyLoader.ts 注册即可，不需要改其他地方。
+// 当前开放的界面语言。包的字段齐全不代表所有文案已经翻译；覆盖进度见多语言审查文档。
+// `AppLanguageMode` 保留与后端一致的全部 31 个持久化 id；这里仅列出已开放语言。
+// 其余语言完成后，在这里添加选项并在 copy/appCopyLoader.ts 注册。
 export const languageOptions: LanguageOption[] = [
   { id: "system", label: "System language", nativeLabel: "跟随系统 / System" },
   { id: "zh-CN", label: "Simplified Chinese", nativeLabel: "简体中文" },
@@ -18,10 +18,11 @@ export const languageOptions: LanguageOption[] = [
 ];
 
 export const supportedLanguageIds = new Set<AppLanguageMode>(languageOptions.map((option) => option.id));
+const canonicalLanguageIds = new Map(languageOptions.map((option) => [option.id.toLowerCase(), option.id]));
 
 export function normalizeLanguageMode(language?: string | null): AppLanguageMode {
-  const value = (language ?? "").trim() as AppLanguageMode;
-  return supportedLanguageIds.has(value) ? value : "system";
+  const value = (language ?? "").trim().replaceAll("_", "-").toLowerCase();
+  return canonicalLanguageIds.get(value) ?? "system";
 }
 
 export function resolveLanguageMode(language?: string | null, candidates: readonly string[] = getBrowserLanguages()): ConcreteAppLanguageMode {
@@ -45,16 +46,16 @@ export function isRightToLeftLanguage(language: ConcreteAppLanguageMode) {
 }
 
 function matchLanguage(language: string): ConcreteAppLanguageMode | null {
-  const normalized = language.replace("_", "-");
-  const exact = normalized as AppLanguageMode;
-  if (exact !== "system" && supportedLanguageIds.has(exact)) {
+  const normalized = language.trim().replaceAll("_", "-");
+  const exact = canonicalLanguageIds.get(normalized.toLowerCase());
+  if (exact && exact !== "system") {
     return exact as ConcreteAppLanguageMode;
   }
 
   const prefix = normalized.split("-")[0]?.toLowerCase();
   switch (prefix) {
     case "zh":
-      return normalized.toLowerCase().includes("tw") || normalized.toLowerCase().includes("hk")
+      return /(?:^|-)(?:tw|hk|hant)(?:-|$)/i.test(normalized)
         ? "zh-TW"
         : "zh-CN";
     case "en":
@@ -84,14 +85,17 @@ function matchLanguage(language: string): ConcreteAppLanguageMode | null {
     case "da":
     case "nb":
     case "no":
+    case "nn":
     case "cs":
     case "hu":
     case "ro":
     case "el":
     case "he":
+    case "iw":
     case "ar":
     case "hi":
     case "id":
+    case "in":
     case "vi":
     case "th":
       return "en-US";

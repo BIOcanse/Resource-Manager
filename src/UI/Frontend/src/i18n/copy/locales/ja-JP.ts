@@ -22,221 +22,282 @@ const jaJpAppCopy: AppCopy = {
     details: "詳細情報",
     settings: "設定",
     diskUsage: "ディスク使用状況",
-    control: "Control"
+    control: "制御"
   },
   control: {
-    title: "Control",
-    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
-    loadFailed: "Could not read the controllable devices.",
-    empty: "Nothing tunable has been identified on this machine yet.",
-    ready: "Adjustable",
-    needsComponent: (name: string) => `Needs ${name}`,
-    forgetFailed: "Delete not allowed",
+    title: "制御",
+    intro: "ファン、グラフィックス、プロセッサーの調整をまとめています。調整できない項目も理由とともに表示します。",
+    loadFailed: "制御可能なデバイスを読み取れませんでした。",
+    empty: "このコンピューターでは調整可能なデバイスがまだ見つかっていません。",
+    ready: "調整可能",
+    needsComponent: (name        ) => `${name} が必要です`,
+    forgetFailed: "削除できません",
     instances: {
-      title: "Devices seen before",
-      present: "Present",
-      absent: "Not present",
-      refresh: "Detect again",
-      forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`,
-      open: "Manage devices"
+      title: "検出済みのデバイス",
+      present: "接続中",
+      absent: "未接続",
+      refresh: "再検出",
+      forget: "記録を削除",
+      firstSeen: (at        ) => `初回検出 ${at}`,
+      open: "デバイスを管理"
     },
-    actual: "Now ",
+    actual: "現在 ",
     presets: {
-      save: "Save preset",
-      namePlaceholder: "Preset name",
-      remove: "Delete preset"
+      save: "プリセットを保存",
+      namePlaceholder: "プリセット名",
+      remove: "プリセットを削除"
     },
     overclock: {
-      title: "Intel integrated graphics authorization",
-      body: "Intel's integrated-graphics control library requires your consent before it "
-        + "allows any clock change, negative offsets included. That is its own requirement "
-        + "and has nothing to do with other graphics cards.",
-      accept: "Accept",
-      revoke: "Withdraw consent",
-      accepted: "Accepted"
+      title: "Intel 内蔵グラフィックスの許可",
+      body: "Intel の内蔵グラフィックス制御ライブラリは、マイナスのオフセットを含む周波数変更の前に同意を求めます。これは Intel 独自の要件で、ほかのグラフィックスカードには関係ありません。",
+      accept: "同意する",
+      revoke: "同意を取り消す",
+      accepted: "同意済み"
     },
     ownership: {
-      label: "Control owner",
-      firmware: "Firmware-managed",
-      app: "App-managed",
-      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+      label: "制御主体",
+      firmware: "ファームウェアが管理",
+      app: "アプリが管理",
+      firmwareNote: "現在はファームウェアが管理しているため、以下の設定は適用されません。"
     },
     notice: {
-      warrantyTitle: "About your warranty",
+      warrantyTitle: "保証について",
       warrantyBody: [
-        "Vendor terms usually count any out-of-spec operation as a modification, in either "
-          + "direction — taken literally, that includes undervolting.",
-        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
-          + "walls stops at power-off and records nothing in the processor; raising clocks or "
-          + "voltage sets a flag in the processor that service can read.",
-        "On laptops many of these limits come from the system vendor's BIOS rather than the "
-          + "chip vendor's defaults, so how far this page can go is their decision too."
+        "メーカーの規約では、上げ下げを問わず仕様外の動作は通常、改変とみなされます。文言どおりに解釈すれば、低電圧化も含まれます。",
+        "実際の違いは残る記録です。電圧、周波数、電力上限を下げる設定は電源を切ると終了し、プロセッサーに記録を残しません。一方、周波数や電圧を上げると、修理時に読み取れるフラグがプロセッサーに設定されます。",
+        "ノートパソコンでは、多くの上限がチップメーカーの初期値ではなく、本体メーカーの BIOS に由来します。そのため、このページで調整できる範囲も本体メーカーに左右されます。"
       ],
-      riskTitle: "Before you start",
-      next: "Next",
-      accept: "Understood"
+      riskTitle: "開始する前に",
+      next: "次へ",
+      accept: "確認しました"
     },
     accessLevel: {
-      title: "Adjustment access",
-      intro: "Decides which items the Control page lets you change. Moving up a level "
-        + "changes none of your existing settings; it only unlocks more items.",
-      name: { normal: "Normal", root: "root" },
+      title: "調整の権限",
+      intro: "制御ページで変更できる項目を決めます。権限を上げても既存の設定は変わらず、変更できる項目だけが増えます。",
+      name: { normal: "通常", root: "root" },
       summary: {
-        normal: "Power, current, fan and standard clock adjustments. "
-          + "Incorrect settings can cause instability.",
-        root: "Items nothing catches: writing voltage directly, changing the base clock. "
-          + "Rarely needed."
+        normal: "電力、電流、ファン、および通常の周波数調整。誤った設定は不安定な動作の原因になります。",
+        root: "保護が働かない項目：電圧の直接書き込み、ベースクロックの変更。通常は必要ありません。"
       },
       hint: {
-        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
-        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+        normal: "誤った値は動作を不安定にしますが、再起動で元に戻ります。先に設定で通常モードへ切り替えてください。",
+        root: "ここでは誤った値を防ぐ保護がありません。先に設定で root モードへ切り替えてください。"
       },
       consequences: {
         normal: [
-          "Too little voltage shuts the machine off; too much clock offset corrupts or "
-            + "blanks the screen. Both clear on reboot and harm nothing.",
-          "Raising the thermal limit moves the overheat protection outward; running that "
-            + "way for long ages the silicon faster."
+          "電圧が低すぎると電源が落ち、周波数オフセットが高すぎると画面が乱れたり表示されなくなったりします。いずれも再起動で解消し、損傷は残りません。",
+          "温度上限を上げると過熱保護が働く温度も上がります。その状態で長時間動かすとチップの劣化が早まります。"
         ],
         root: [
-          "Writing voltage and base clock directly has no software guard at all; one wrong "
-            + "number can leave the machine unable to boot.",
-          "Nothing here is needed day to day. Only change a value you already understand."
+          "電圧やベースクロックの直接書き込みにはソフトウェアの保護がありません。1 つの誤った値で起動できなくなる可能性があります。",
+          "日常使用で必要な項目はありません。意味を理解している値だけを変更してください。"
         ]
       },
       disclaimer: {
-        normal: "Some settings can make the computer unstable, and on a machine with an "
-          + "existing design fault they carry some risk of damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration.",
-        root: "In root mode some adjustments are extremely dangerous and are very likely "
-          + "to cause system instability or permanent hardware damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration."
+        normal: "設定によっては動作が不安定になり、設計上の欠陥がある機器では損傷につながる可能性もあります。本ソフトウェアは、ハードウェア設定の変更による結果について責任を負いません。",
+        root: "root モードの一部の調整は非常に危険で、システムの不安定化や恒久的なハードウェア損傷を招く可能性が高くなります。本ソフトウェアは、ハードウェア設定の変更による結果について責任を負いません。"
       },
-      confirmTitle: (name: string) => `Switch to ${name}?`,
-      confirmAction: "Switch",
-      cancel: "Cancel",
-      saveFailed: "Could not switch; still on the previous level."
+      confirmTitle: (name        ) => `${name} に切り替えますか？`,
+      confirmAction: "切り替える",
+      cancel: "キャンセル",
+      saveFailed: "切り替えに失敗しました。以前の権限レベルのままです。"
     },
     channel: {
       nvapi: "NVAPI",
-      "nvapi-drs": "Driver profile",
+      "nvapi-drs": "ドライバープロファイル",
       nvml: "NVML",
-      "oem-ec": "System firmware",
+      "oem-ec": "システムファームウェア",
       "amd-smu": "AMD SMU",
-      "fan-core": "Fan core",
-      igcl: "Intel graphics",
+      "fan-core": "ファン制御コア",
+      igcl: "Intel グラフィックス",
       adlx: "AMD ADLX"
     } as Record<string, string>,
-    channelHint: "Which channel this setting is actually written through.",
-    detect: "Re-detect hardware",
-    detecting: "Detecting",
-    readings: "Read-only readings",
-    curveExecutionLabel: "Who runs the curve",
-    takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
-    curveExecutionFirmware: "Write to firmware",
-    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
-    curveExecutionSoftware: "Software takeover",
-    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
-    createCurve: "New curve",
-    readingFirmwareCurve: "Reading the firmware curve…",
-    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
-    curvePreview: "Curve preview",
-    saveFailed: "Save failed",
-    apply: "Apply",
-    discard: "Discard",
+    channelHint: "この設定を書き込む実際の制御経路です。",
+    detect: "ハードウェアを再検出",
+    detecting: "検出中",
+    readings: "読み取り専用の測定値",
+    curveExecutionLabel: "曲線の実行主体",
+    takeoverCoversOthers: (others        ) => `このコンピューターではソフトウェアによるファン制御への切り替えが全体に適用されます。切り替えると ${others} もファームウェア制御から外れ、カーブを設定しない限り現在の回転数を維持します。`,
+    curveExecutionFirmware: "ファームウェアに書き込む",
+    curveExecutionFirmwareHint: "ファームウェア自身がこの表に従います。アプリ終了後や再起動後も有効です。",
+    curveExecutionSoftware: "ソフトウェアによる制御",
+    curveExecutionSoftwareHint: "このアプリが 0.1 秒ごとに再計算します。アプリ終了後はファームウェアの制御に戻ります。",
+    createCurve: "新しい曲線",
+    readingFirmwareCurve: "ファームウェアの曲線を読み取り中…",
+    fixedStepsCurveNote: "このファームウェア表では各段階の回転速度のみ変更できます。温度の境界値はファームウェアで固定されています。",
+    curvePreview: "曲線のプレビュー",
+    saveFailed: "保存に失敗しました",
+    apply: "適用",
+    discard: "破棄",
     term: {
-      portable: "Laptop",
-      fixed: "Desktop",
-      cpu: "CPU fan",
-      "curve-firmware": "Firmware curve",
-      "curve-software": "Software curve",
-      "curve-fixed-steps": "Fixed-step firmware table",
-      gpu: "GPU fan",
-      intake: "Intake fan",
-      case: "Case fan"
+      portable: "ノートパソコン",
+      fixed: "デスクトップ",
+      cpu: "CPU ファン",
+      "curve-firmware": "ファームウェアの曲線",
+      "curve-software": "ソフトウェアの曲線",
+      "curve-fixed-steps": "固定段階のファームウェア表",
+      gpu: "GPU ファン",
+      intake: "吸気ファン",
+      case: "ケースファン"
     } as Record<string, string>,
     attachment: {
-      integrated: "Integrated",
-      discrete: "Discrete",
-      unknown: "Attachment unknown"
+      integrated: "内蔵",
+      discrete: "単体",
+      unknown: "接続種別不明"
     },
     status: {
-      unset: "Not set",
-      edited: "Changed, not applied",
-      applying: "Applying",
-      applied: "Applied",
-      unsupported: "Not tunable on this machine",
-      failed: "Did not apply"
+      unset: "未設定",
+      edited: "変更済み・未適用",
+      applying: "適用中",
+      applied: "適用済み",
+      unsupported: "このコンピューターでは調整できません",
+      failed: "適用できませんでした"
     },
     kind: {
-      gpu: "Graphics",
-      cpu: "Processor",
-      fan: "Fans"
+      gpu: "グラフィックス",
+      cpu: "プロセッサー",
+      fan: "ファン"
+    }
+  ,
+    presentation: {
+      "labels": {
+        "gpu.core-clock-offset": "コア周波数オフセット",
+        "gpu.memory-clock-offset": "メモリ周波数オフセット",
+        "gpu.core-clock-minimum": "コア周波数の下限",
+        "gpu.core-clock-maximum": "コア周波数の上限",
+        "gpu.memory-clock-minimum": "メモリ周波数の下限",
+        "gpu.memory-clock-maximum": "メモリ周波数の上限",
+        "gpu.core-voltage-offset": "コア電圧オフセット",
+        "gpu.core-voltage": "コア電圧",
+        "gpu.power-limit-offset": "電力上限オフセット",
+        "gpu.power-limit": "電力上限",
+        "gpu.temperature-limit": "温度上限",
+        "gpu.slowdown-temperature": "温度による速度低下の閾値",
+        "gpu.shutdown-temperature": "過熱による停止の閾値",
+        "gpu.power-management-mode": "電源管理モード",
+        "gpu.frame-rate-limit": "フレームレート上限",
+        "gpu.ctgp-offset": "cTGP オフセット",
+        "gpu.dynamic-boost-enabled": "Dynamic Boost",
+        "gpu.dynamic-boost-offset": "Dynamic Boost の許容量",
+        "gpu.curve-optimizer": "Curve Optimizer オフセット",
+        "cpu.power-limit": "持続電力の上限",
+        "cpu.slow-power-limit": "短時間電力の上限",
+        "cpu.fast-power-limit": "瞬間電力の上限",
+        "cpu.tdc-limit": "持続電流の上限（TDC）",
+        "cpu.edc-limit": "ピーク電流の上限（EDC）",
+        "cpu.temperature-limit": "温度上限",
+        "cpu.pbo-scalar": "PBO スカラー",
+        "cpu.curve-optimizer": "Curve Optimizer オフセット",
+        "cpu.short-power-limit": "短時間電力の上限（PL2）",
+        "cpu.power-limit-window": "持続電力の時間窓",
+        "cpu.short-power-limit-window": "短時間電力の時間窓",
+        "cpu.power-limit-mmio": "電力上限（MMIO ミラー）",
+        "cpu.temperature-offset": "温度上限の引き下げ",
+        "cpu.core-voltage-offset": "コア電圧オフセット",
+        "cpu.cache-voltage-offset": "キャッシュ電圧オフセット",
+        "cpu.igpu-voltage-offset": "内蔵 GPU の電圧オフセット",
+        "cpu.system-agent-voltage-offset": "システムエージェント電圧オフセット",
+        "cpu.turbo-ratio-limit": "ターボ倍率の上限",
+        "cpu.turbo-enabled": "Turbo Boost",
+        "cpu.energy-performance-preference": "省電力と性能の優先度",
+        "cpu.igpu-power-balance": "CPU と内蔵 GPU の電力配分",
+        "fan.rpm": "ファン回転速度",
+        "fan.curve": "ファン回転速度の曲線",
+        "fan.duty": "固定ファン回転速度",
+        "fan.lock-maximum": "最大冷却",
+        "fan.minimum-rpm": "最低ファン回転速度",
+        "fan.target-rpm": "目標ファン回転速度",
+        "fan.zero-rpm": "低負荷時に停止"
+      },
+      "text": {
+        "档": "段階",
+        "硬件写入辅助进程": "ハードウェア制御の補助プロセス",
+        "风扇控制核心": "ファン制御コア",
+        "整机固件接口": "システムファームウェアのインターフェイス",
+        "只读，写入未接入。": "読み取り専用です。書き込みは未対応です。",
+        "驱动未提供这一温度阈值的可写范围。": "この温度閾値の書き込み可能範囲をドライバーが公開していません。",
+        "转速为监测值。": "ファン回転速度は監視用の測定値です。",
+        "命令和电流墙的对应关系还没对准，写错会把处理器掐住，先不开放。": "電流上限のコマンドは未検証です。誤った書き込みはプロセッサーの動作を止める可能性があるため、調整は利用できません。",
+        "还认不出这颗处理器温度墙的当前值，没有回读就不写。": "このプロセッサーの現在の温度上限を読み取れません。読み戻しができないため調整は利用できません。",
+        "这几项是笔记本整机固件的功率预算，台式机上没有。": "これらの電力配分はノートパソコンのシステムファームウェア用で、デスクトップでは利用できません。",
+        "Intel 独显的调节不在本软件的范围内。": "Intel の単体 GPU の調整は本アプリの対象外です。",
+        "笔记本上的 AMD 独显不在本软件的范围内。": "ノートパソコンの AMD 単体 GPU の調整は本アプリの対象外です。",
+        "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。": "署名済み IntelMCHBAR モジュールは読み取り専用です。MMIO 書き込みには、配布可能な署名済みモジュールがまだ必要です。",
+        "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。": "署名済み IntelMSR モジュールはこのレジスターを許可していません。書き込み対応は未完了です。",
+        "同一显卡的风扇由驱动统一调节。": "この GPU のファンはドライバーがまとめて制御します。",
+        "无法确认机箱形态，AMD 独显调节只用于台式机。": "筐体の種類を確認できません。AMD 単体 GPU の調整はデスクトップのみ対応です。",
+        "此显卡的核心频率/电压采用另一种语义，请选择对应的绝对值或偏移量参数。": "この GPU は別の周波数・電圧表現を使用します。対応する絶対値またはオフセットの項目を選んでください。",
+        "尚未识别此显卡代际，无法确认核心频率/电压的绝对值或偏移量语义。": "GPU の世代を識別できないため、周波数・電圧の絶対値とオフセットを区別できません。",
+        "此显卡/驱动不提供 ADLX 的这一调节接口（旧式状态表接口尚待接入）。": "この GPU またはドライバーは、この ADLX 調整インターフェイスを提供しません。旧式の状態表への対応は未完了です。",
+        "此厂商暂无硬件调节通道。": "このメーカーにはハードウェア調整の経路がありません。"
+      },
+      "powerLimitPl1": "持続電力の上限（PL1）",
+      "fanName": (index        ) => `ファン ${index}`,
+      "gpuFanControllerName": (index        ) => `グラフィックスファンコントローラー（GPU${index}）`,
+      "toggleOn": "オン",
+      "toggleOff": "オフ"
     }
   },
   diskUsage: {
     title: "ディスク使用状況",
-    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
-    scopeLabel: "Scan scope",
-    scopeAllVolumes: "All drives",
-    scopeVolume: "One drive",
-    scopeFolder: "One folder",
-    modeLabel: "Scan method",
-    modeFast: "Fast scan",
-    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
-    modeFull: "Full scan",
-    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
-    chooseFolder: "Choose folder",
-    folderNotChosen: "No folder chosen yet",
-    scan: "Start scan",
-    rescan: "Scan again",
-    cancel: "Cancel scan",
-    scanning: "Scanning",
-    volumeColumnLabel: "Drive",
-    noVolumes: "No scannable drive was found.",
-    notReady: "Not ready",
-    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    intro: "スキャンすると、実際の使用サイズに比例したタイルでファイルを表示します。",
+    scopeLabel: "スキャン範囲",
+    scopeAllVolumes: "すべてのドライブ",
+    scopeVolume: "1 つのドライブ",
+    scopeFolder: "1 つのフォルダー",
+    modeLabel: "スキャン方法",
+    modeFast: "高速スキャン",
+    modeFastHint: "ファイルシステムの索引を読むため、ドライブ全体を数秒で処理します。NTFS のみ対応し、管理者権限が必要です。",
+    modeFull: "完全スキャン",
+    modeFullHint: "ディレクトリを階層ごとに調べます。時間はかかりますが、どのドライブでも利用できます。",
+    chooseFolder: "フォルダーを選択",
+    folderNotChosen: "フォルダーが未選択です",
+    scan: "スキャン開始",
+    rescan: "再スキャン",
+    cancel: "スキャンを中止",
+    scanning: "スキャン中",
+    volumeColumnLabel: "ドライブ",
+    noVolumes: "スキャン可能なドライブが見つかりません。",
+    notReady: "準備未完了",
+    freeOfTotal: (free        , total        ) => `${total} 中 ${free} 空き`,
     volumeKind: {
-      physical: "Physical drive",
-      virtual: "Virtual drive",
-      removable: "Removable",
-      network: "Network location",
-      optical: "Optical drive",
-      unknown: "Unknown source"
+      physical: "物理ドライブ",
+      virtual: "仮想ドライブ",
+      removable: "リムーバブル",
+      network: "ネットワークの場所",
+      optical: "光学ドライブ",
+      unknown: "不明な種類"
     },
-    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
-    skipped: "Not covered by this scan",
+    fastUnsupported: "このドライブには読み取り可能なファイルシステム索引がないため、高速スキャンはできません。完全スキャンを使用してください。",
+    skipped: "このスキャンの対象外",
     skipReason: {
-      noFileSystemIndex: "The filesystem has no readable index",
-      needsElevation: "Reading the index needs administrator rights",
-      volumeNotReady: "The drive is not ready",
-      targetUnavailable: "The path does not exist or cannot be opened"
+      noFileSystemIndex: "ファイルシステムに読み取り可能な索引がありません",
+      needsElevation: "索引の読み取りには管理者権限が必要です",
+      volumeNotReady: "ドライブの準備ができていません",
+      targetUnavailable: "パスが存在しないか、開くことができません"
     },
     scanKind: {
-      masterFileTable: "Read the filesystem index",
-      directoryWalk: "Walked the directories"
+      masterFileTable: "ファイルシステム索引を読み取り",
+      directoryWalk: "ディレクトリを走査"
     },
-    navigateUp: "Up one level",
-    resetView: "Reset view",
-    collapseSetup: "Hide options",
-    expandSetup: "Scan options",
-    scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
-    fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
-    copied: "Copied",
-    menuOpenLocation: "Open file location",
-    menuProperties: "Properties",
-    menuCopyPath: "Copy full path",
-    menuDrillDown: "Zoom into this",
-    menuSize: "Size",
-    menuPath: "Path",
-    menuKindFile: "File",
-    menuKindDirectory: "Folder",
-    emptyTitle: "Nothing scanned yet",
-    emptyDetail: "Pick a scope and a method, then start the scan."
+    navigateUp: "1 つ上へ",
+    resetView: "表示をリセット",
+    collapseSetup: "オプションを隠す",
+    expandSetup: "スキャンオプション",
+    scanTotals: (size        , files        , folders        ) => `${size} · ファイル ${files} 件 · フォルダー ${folders} 件`,
+    fileCount: (count        ) => `ファイル ${count} 件`,
+    omitted: (count        ) => `表示が小さすぎるか画面外にある項目があと ${count} 件あります。拡大すると確認できます。`,
+    copied: "コピーしました",
+    menuOpenLocation: "ファイルの場所を開く",
+    menuProperties: "プロパティ",
+    menuCopyPath: "フルパスをコピー",
+    menuDrillDown: "この項目を拡大",
+    menuSize: "サイズ",
+    menuPath: "パス",
+    menuKindFile: "ファイル",
+    menuKindDirectory: "フォルダー",
+    emptyTitle: "まだスキャンしていません",
+    emptyDetail: "範囲と方法を選択して、スキャンを開始してください。"
   },
   shell: {
     productName: "リソース マネージャー",
@@ -245,7 +306,7 @@ const jaJpAppCopy: AppCopy = {
     currentPage: "現在のページ",
     runtimeCapability: "ランタイム機能",
     taskCenter: "タスク センター",
-    taskCenterActive: (count: number) => `タスク センター、進行中 ${count} 件`,
+    taskCenterActive: (count        ) => `タスクセンター、${count} 件実行中`,
     taskCenterSyncing: "タスク センター · バックエンド タスクを同期中",
     taskCenterDisconnected: "タスク センター · ローカル サービスが再同期中",
     taskCenterUnavailable: "タスク センター · バックエンド タスクの状態を取得できません",
