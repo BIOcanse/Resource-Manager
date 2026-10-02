@@ -34,6 +34,7 @@ export interface CreditCatalogItem {
 }
 
 export interface SettingsCopy {
+  updates: UpdatesCopy;
   navigationLabel: string;
   sections: Record<SettingsSection, string>;
   saveState: {
@@ -267,6 +268,39 @@ export interface SettingsCopy {
       solidPlugin: string;
     };
   };
+}
+
+export interface UpdatesCopy {
+  autoUpdateTitle: string;
+  autoUpdateDescription: string;
+  installedVersionTitle: string;
+  unknownVersion: string;
+  checking: string;
+  checkForUpdates: string;
+  catalogFailed: string;
+  historyIncomplete: string;
+  historyStale: string;
+  versionsTitle: string;
+  versionsDescription: string;
+  lastChecked: string;
+  selectedTarget: string;
+  prepare: string;
+  confirmPrepare: (version: string) => string;
+  prepareFailed: string;
+  waitingForExit: string;
+  stageLabel: string;
+  unknownStage: string;
+  stages: Record<string, string>;
+  otherVersions: string;
+  installedUnknown: string;
+  stable: string;
+  preview: string;
+  noLatest: string;
+  noStable: string;
+  latest: string;
+  latestStable: string;
+  verified: string;
+  unavailableReasons: Record<string, string>;
 }
 
 export type SettingsCopyPatch = {

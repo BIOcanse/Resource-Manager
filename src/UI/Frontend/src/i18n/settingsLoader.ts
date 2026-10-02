@@ -2,6 +2,7 @@ import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerform
 import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
+import { loadingUpdatesCopy } from "./settingsUpdateCopy.ts";
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsTextBundle } from "./settingsTypes.ts";
 
 type SettingsLocaleModule = { default: SettingsCopy };
@@ -44,6 +45,7 @@ const localeLoaders = {
 const localeCache = new Map<ConcreteAppLanguageMode, Promise<SettingsTextBundle>>();
 
 export const loadingSettingsText: SettingsTextBundle = {
+  updates: loadingUpdatesCopy,
   language: "zh-CN",
   navigationLabel: "",
   sections: { performance: "", appearance: "", systemIntegration: "", updates: "", debug: "", credits: "" },

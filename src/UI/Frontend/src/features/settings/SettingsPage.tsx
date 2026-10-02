@@ -292,7 +292,7 @@ export function SettingsPage(props: SettingsPageProps) {
           <Show when={props.activeSection === "updates"}>
             <UpdatesSettingsSection
               settings={props.settings.update}
-              language={text().language}
+              text={text()}
               onAutoUpdateChange={props.onAutoUpdateChange}
             />
           </Show>

@@ -1,3 +1,4 @@
+import { zhControlPresentationCopy } from "./controlPresentation.ts";
 export const zhShellCopy = {
   common: {
     saving: "保存中",
@@ -22,6 +23,7 @@ export const zhShellCopy = {
     control: "控制面"
   },
   control: {
+    presentation: zhControlPresentationCopy,
     title: "控制面",
     intro: "风扇、显卡、处理器的调节都在这一页。控不了的也列出来，并说明差什么。",
     loadFailed: "读不到可控对象。",

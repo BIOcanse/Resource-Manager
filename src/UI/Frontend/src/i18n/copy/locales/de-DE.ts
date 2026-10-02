@@ -22,221 +22,282 @@ const deDeAppCopy: AppCopy = {
     details: "Detaillierte Informationen",
     settings: "Einstellungen",
     diskUsage: "Speicherbelegung",
-    control: "Control"
+    control: "Steuerung"
   },
   control: {
-    title: "Control",
-    intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",
-    loadFailed: "Could not read the controllable devices.",
-    empty: "Nothing tunable has been identified on this machine yet.",
-    ready: "Adjustable",
-    needsComponent: (name: string) => `Needs ${name}`,
-    forgetFailed: "Delete not allowed",
+    title: "Steuerung",
+    intro: "Hier lassen sich Lüfter, Grafik und Prozessor einstellen. Auch nicht einstellbare Elemente werden mit dem jeweiligen Grund aufgeführt.",
+    loadFailed: "Steuerbare Geräte konnten nicht gelesen werden.",
+    empty: "Auf diesem Computer wurden noch keine einstellbaren Geräte erkannt.",
+    ready: "Einstellbar",
+    needsComponent: (name        ) => `${name} erforderlich`,
+    forgetFailed: "Löschen nicht erlaubt",
     instances: {
-      title: "Devices seen before",
-      present: "Present",
-      absent: "Not present",
-      refresh: "Detect again",
-      forget: "Remove record",
-      firstSeen: (at: string) => `First seen ${at}`,
-      open: "Manage devices"
+      title: "Bereits erkannte Geräte",
+      present: "Vorhanden",
+      absent: "Nicht vorhanden",
+      refresh: "Erneut erkennen",
+      forget: "Eintrag entfernen",
+      firstSeen: (at        ) => `Erstmals erkannt: ${at}`,
+      open: "Geräte verwalten"
     },
-    actual: "Now ",
+    actual: "Aktuell ",
     presets: {
-      save: "Save preset",
-      namePlaceholder: "Preset name",
-      remove: "Delete preset"
+      save: "Vorgabe speichern",
+      namePlaceholder: "Name der Vorgabe",
+      remove: "Vorgabe löschen"
     },
     overclock: {
-      title: "Intel integrated graphics authorization",
-      body: "Intel's integrated-graphics control library requires your consent before it "
-        + "allows any clock change, negative offsets included. That is its own requirement "
-        + "and has nothing to do with other graphics cards.",
-      accept: "Accept",
-      revoke: "Withdraw consent",
-      accepted: "Accepted"
+      title: "Zustimmung für integrierte Intel-Grafik",
+      body: "Die Steuerbibliothek für integrierte Intel-Grafik verlangt vor jeder Taktänderung Ihre Zustimmung, auch bei negativen Offsets. Diese Vorgabe betrifft nur Intel und keine anderen Grafikkarten.",
+      accept: "Zustimmen",
+      revoke: "Zustimmung widerrufen",
+      accepted: "Zugestimmt"
     },
     ownership: {
-      label: "Control owner",
-      firmware: "Firmware-managed",
-      app: "App-managed",
-      firmwareNote: "The firmware is managing this right now; the settings below have no effect."
+      label: "Steuerungsverantwortung",
+      firmware: "Durch Firmware gesteuert",
+      app: "Durch App gesteuert",
+      firmwareNote: "Dieses Element wird derzeit von der Firmware gesteuert; die folgenden Einstellungen wirken nicht."
     },
     notice: {
-      warrantyTitle: "About your warranty",
+      warrantyTitle: "Hinweise zur Garantie",
       warrantyBody: [
-        "Vendor terms usually count any out-of-spec operation as a modification, in either "
-          + "direction — taken literally, that includes undervolting.",
-        "The practical difference is what it leaves behind: lowering voltage, clocks or power "
-          + "walls stops at power-off and records nothing in the processor; raising clocks or "
-          + "voltage sets a flag in the processor that service can read.",
-        "On laptops many of these limits come from the system vendor's BIOS rather than the "
-          + "chip vendor's defaults, so how far this page can go is their decision too."
+        "Herstellerbedingungen werten meist jede Abweichung von den Spezifikationen als Änderung, unabhängig von der Richtung; wörtlich gilt das auch für Undervolting.",
+        "Der praktische Unterschied liegt in den Spuren: Senken von Spannung, Takt oder Leistungsgrenzen endet beim Ausschalten und hinterlässt keinen Prozessoreintrag; höhere Takte oder Spannungen setzen ein vom Kundendienst lesbares Flag.",
+        "Bei Laptops stammen viele Grenzen aus dem BIOS des Geräteherstellers statt aus Chip-Standardwerten. Daher bestimmt auch der Gerätehersteller den Einstellbereich dieser Seite."
       ],
-      riskTitle: "Before you start",
-      next: "Next",
-      accept: "Understood"
+      riskTitle: "Vor dem Start",
+      next: "Weiter",
+      accept: "Verstanden"
     },
     accessLevel: {
-      title: "Adjustment access",
-      intro: "Decides which items the Control page lets you change. Moving up a level "
-        + "changes none of your existing settings; it only unlocks more items.",
+      title: "Zugriff auf Einstellungen",
+      intro: "Legt fest, welche Elemente auf der Steuerungsseite geändert werden dürfen. Eine höhere Stufe verändert keine bestehenden Einstellungen, sondern schaltet nur weitere Elemente frei.",
       name: { normal: "Normal", root: "root" },
       summary: {
-        normal: "Power, current, fan and standard clock adjustments. "
-          + "Incorrect settings can cause instability.",
-        root: "Items nothing catches: writing voltage directly, changing the base clock. "
-          + "Rarely needed."
+        normal: "Leistung, Strom, Lüfter und übliche Takteinstellungen. Falsche Werte können Instabilität verursachen.",
+        root: "Einstellungen ohne Absicherung: direkte Spannungswerte und Basistakt. Selten erforderlich."
       },
       hint: {
-        normal: "A wrong value makes the machine unstable; a reboot recovers it. Switch to Normal in Settings first.",
-        root: "Nothing catches a wrong value here. Switch to root in Settings first."
+        normal: "Ein falscher Wert macht den Computer instabil; ein Neustart stellt ihn wieder her. Wechseln Sie zuerst in den Einstellungen zu Normal.",
+        root: "Hier fängt keine Absicherung falsche Werte ab. Wechseln Sie zuerst in den Einstellungen zu root."
       },
       consequences: {
         normal: [
-          "Too little voltage shuts the machine off; too much clock offset corrupts or "
-            + "blanks the screen. Both clear on reboot and harm nothing.",
-          "Raising the thermal limit moves the overheat protection outward; running that "
-            + "way for long ages the silicon faster."
+          "Zu geringe Spannung schaltet den Computer ab; ein zu hoher Taktoffset verursacht Bildfehler oder einen schwarzen Bildschirm. Beides verschwindet nach einem Neustart ohne Schäden.",
+          "Eine höhere Temperaturgrenze verschiebt den Überhitzungsschutz. Längerer Betrieb unter diesen Bedingungen beschleunigt die Alterung des Chips."
         ],
         root: [
-          "Writing voltage and base clock directly has no software guard at all; one wrong "
-            + "number can leave the machine unable to boot.",
-          "Nothing here is needed day to day. Only change a value you already understand."
+          "Direkte Spannungs- und Basistaktwerte sind nicht durch Software abgesichert. Ein falscher Wert kann den Computer am Starten hindern.",
+          "Diese Einstellungen sind im Alltag nicht nötig. Ändern Sie nur Werte, deren Bedeutung Sie verstehen."
         ]
       },
       disclaimer: {
-        normal: "Some settings can make the computer unstable, and on a machine with an "
-          + "existing design fault they carry some risk of damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration.",
-        root: "In root mode some adjustments are extremely dangerous and are very likely "
-          + "to cause system instability or permanent hardware damage. This software accepts "
-          + "no responsibility for any consequence of changing hardware configuration."
+        normal: "Manche Einstellungen können den Computer instabil machen und bei vorhandenen Konstruktionsfehlern Schäden verursachen. Diese Software übernimmt keine Verantwortung für Folgen geänderter Hardwareeinstellungen.",
+        root: "Im root-Modus sind manche Einstellungen äußerst gefährlich und können mit hoher Wahrscheinlichkeit Instabilität oder dauerhafte Hardwareschäden verursachen. Diese Software übernimmt keine Verantwortung für Folgen geänderter Hardwareeinstellungen."
       },
-      confirmTitle: (name: string) => `Switch to ${name}?`,
-      confirmAction: "Switch",
-      cancel: "Cancel",
-      saveFailed: "Could not switch; still on the previous level."
+      confirmTitle: (name        ) => `Zu ${name} wechseln?`,
+      confirmAction: "Wechseln",
+      cancel: "Abbrechen",
+      saveFailed: "Wechsel fehlgeschlagen; die vorherige Stufe bleibt aktiv."
     },
     channel: {
       nvapi: "NVAPI",
-      "nvapi-drs": "Driver profile",
+      "nvapi-drs": "Treiberprofil",
       nvml: "NVML",
-      "oem-ec": "System firmware",
+      "oem-ec": "System-Firmware",
       "amd-smu": "AMD SMU",
-      "fan-core": "Fan core",
-      igcl: "Intel graphics",
+      "fan-core": "Lüftersteuerungskern",
+      igcl: "Intel-Grafik",
       adlx: "AMD ADLX"
     } as Record<string, string>,
-    channelHint: "Which channel this setting is actually written through.",
-    detect: "Re-detect hardware",
-    detecting: "Detecting",
-    readings: "Read-only readings",
-    curveExecutionLabel: "Who runs the curve",
-    takeoverCoversOthers: (others: string) =>
-      `On this machine, handing fans to software is a single machine-wide switch: choosing software takeover also pulls ${others} away from firmware control, leaving them at their current speed unless you give them a curve too.`,
-    curveExecutionFirmware: "Write to firmware",
-    curveExecutionFirmwareHint: "The firmware follows the table itself. Survives closing this app and rebooting.",
-    curveExecutionSoftware: "Software takeover",
-    curveExecutionSoftwareHint: "This app recalculates every 0.1 s. The fan returns to firmware when the app is gone.",
-    createCurve: "New curve",
-    readingFirmwareCurve: "Reading the firmware curve…",
-    fixedStepsCurveNote: "This firmware table only lets you change the speed of each step; the temperature breakpoints are fixed by the firmware.",
-    curvePreview: "Curve preview",
-    saveFailed: "Save failed",
-    apply: "Apply",
-    discard: "Discard",
+    channelHint: "Kanal, über den diese Einstellung tatsächlich geschrieben wird.",
+    detect: "Hardware erneut erkennen",
+    detecting: "Erkennung läuft",
+    readings: "Nur lesbare Messwerte",
+    curveExecutionLabel: "Ausführung der Kurve",
+    takeoverCoversOthers: (others        ) => `Auf diesem Computer gilt die Softwaresteuerung für alle Lüfter: Auch ${others} werden von der Firmwaresteuerung getrennt und behalten ohne eigene Kurve ihre aktuelle Drehzahl.`,
+    curveExecutionFirmware: "In Firmware schreiben",
+    curveExecutionFirmwareHint: "Die Firmware folgt der Tabelle selbst. Die Einstellung bleibt nach dem Schließen der App und einem Neustart erhalten.",
+    curveExecutionSoftware: "Software-Steuerung",
+    curveExecutionSoftwareHint: "Die App berechnet alle 0,1 s neu. Nach dem Beenden übernimmt wieder die Firmware.",
+    createCurve: "Neue Kurve",
+    readingFirmwareCurve: "Firmware-Kurve wird gelesen…",
+    fixedStepsCurveNote: "In dieser Firmware-Tabelle kann nur die Geschwindigkeit pro Stufe geändert werden; die Temperaturschwellen sind durch die Firmware festgelegt.",
+    curvePreview: "Kurvenvorschau",
+    saveFailed: "Speichern fehlgeschlagen",
+    apply: "Anwenden",
+    discard: "Verwerfen",
     term: {
       portable: "Laptop",
-      fixed: "Desktop",
-      cpu: "CPU fan",
-      "curve-firmware": "Firmware curve",
-      "curve-software": "Software curve",
-      "curve-fixed-steps": "Fixed-step firmware table",
-      gpu: "GPU fan",
-      intake: "Intake fan",
-      case: "Case fan"
+      fixed: "Desktop-PC",
+      cpu: "CPU-Lüfter",
+      "curve-firmware": "Firmware-Kurve",
+      "curve-software": "Software-Kurve",
+      "curve-fixed-steps": "Firmware-Tabelle mit festen Stufen",
+      gpu: "GPU-Lüfter",
+      intake: "Ansauglüfter",
+      case: "Gehäuselüfter"
     } as Record<string, string>,
     attachment: {
-      integrated: "Integrated",
-      discrete: "Discrete",
-      unknown: "Attachment unknown"
+      integrated: "Integriert",
+      discrete: "Dediziert",
+      unknown: "Anbindungsart unbekannt"
     },
     status: {
-      unset: "Not set",
-      edited: "Changed, not applied",
-      applying: "Applying",
-      applied: "Applied",
-      unsupported: "Not tunable on this machine",
-      failed: "Did not apply"
+      unset: "Nicht festgelegt",
+      edited: "Geändert, nicht angewendet",
+      applying: "Wird angewendet",
+      applied: "Angewendet",
+      unsupported: "Auf diesem Computer nicht einstellbar",
+      failed: "Nicht angewendet"
     },
     kind: {
-      gpu: "Graphics",
-      cpu: "Processor",
-      fan: "Fans"
+      gpu: "Grafik",
+      cpu: "Prozessor",
+      fan: "Lüfter"
+    }
+  ,
+    presentation: {
+      "labels": {
+        "gpu.core-clock-offset": "Kerntaktoffset",
+        "gpu.memory-clock-offset": "Speichertaktoffset",
+        "gpu.core-clock-minimum": "Minimaler Kerntakt",
+        "gpu.core-clock-maximum": "Maximaler Kerntakt",
+        "gpu.memory-clock-minimum": "Minimaler Speichertakt",
+        "gpu.memory-clock-maximum": "Maximaler Speichertakt",
+        "gpu.core-voltage-offset": "Kernspannungsoffset",
+        "gpu.core-voltage": "Kernspannung",
+        "gpu.power-limit-offset": "Offset der Leistungsgrenze",
+        "gpu.power-limit": "Leistungsgrenze",
+        "gpu.temperature-limit": "Temperaturgrenze",
+        "gpu.slowdown-temperature": "Schwelle für thermische Drosselung",
+        "gpu.shutdown-temperature": "Temperatur für Schutzabschaltung",
+        "gpu.power-management-mode": "Energieverwaltungsmodus",
+        "gpu.frame-rate-limit": "Bildratenbegrenzung",
+        "gpu.ctgp-offset": "cTGP-Offset",
+        "gpu.dynamic-boost-enabled": "Dynamic Boost",
+        "gpu.dynamic-boost-offset": "Dynamic-Boost-Spielraum",
+        "gpu.curve-optimizer": "Curve-Optimizer-Offset",
+        "cpu.power-limit": "Dauerleistungsgrenze",
+        "cpu.slow-power-limit": "Kurzzeitleistungsgrenze",
+        "cpu.fast-power-limit": "Momentanleistungsgrenze",
+        "cpu.tdc-limit": "Dauerstromgrenze (TDC)",
+        "cpu.edc-limit": "Spitzenstromgrenze (EDC)",
+        "cpu.temperature-limit": "Temperaturgrenze",
+        "cpu.pbo-scalar": "PBO-Skalar",
+        "cpu.curve-optimizer": "Curve-Optimizer-Offset",
+        "cpu.short-power-limit": "Kurzzeitleistungsgrenze (PL2)",
+        "cpu.power-limit-window": "Zeitfenster der Dauerleistung",
+        "cpu.short-power-limit-window": "Zeitfenster der Kurzzeitleistung",
+        "cpu.power-limit-mmio": "Leistungsgrenze (MMIO-Spiegel)",
+        "cpu.temperature-offset": "Absenkung der Temperaturgrenze",
+        "cpu.core-voltage-offset": "Kernspannungsoffset",
+        "cpu.cache-voltage-offset": "Cache-Spannungsoffset",
+        "cpu.igpu-voltage-offset": "Spannungsoffset der integrierten GPU",
+        "cpu.system-agent-voltage-offset": "System-Agent-Spannungsoffset",
+        "cpu.turbo-ratio-limit": "Turbo-Multiplikatorgrenze",
+        "cpu.turbo-enabled": "Turbo Boost",
+        "cpu.energy-performance-preference": "Energie-/Leistungspräferenz",
+        "cpu.igpu-power-balance": "Leistungsverteilung CPU / integrierte GPU",
+        "fan.rpm": "Lüfterdrehzahl",
+        "fan.curve": "Lüfterkurve",
+        "fan.duty": "Feste Lüfterdrehzahl",
+        "fan.lock-maximum": "Maximale Kühlung",
+        "fan.minimum-rpm": "Minimale Lüfterdrehzahl",
+        "fan.target-rpm": "Ziel-Lüfterdrehzahl",
+        "fan.zero-rpm": "Stillstand bei geringer Last"
+      },
+      "text": {
+        "档": "Stufen",
+        "硬件写入辅助进程": "Hardware-Steuerungshelfer",
+        "风扇控制核心": "Lüftersteuerungskern",
+        "整机固件接口": "System-Firmware-Schnittstelle",
+        "只读，写入未接入。": "Nur lesbar; Schreibunterstützung nicht implementiert.",
+        "驱动未提供这一温度阈值的可写范围。": "Der Treiber stellt für diese Temperaturschwelle keinen beschreibbaren Bereich bereit.",
+        "转速为监测值。": "Die Lüfterdrehzahl ist ein überwachter Messwert.",
+        "命令和电流墙的对应关系还没对准，写错会把处理器掐住，先不开放。": "Die Stromgrenzenbefehle wurden nicht geprüft. Ein falscher Schreibbefehl könnte den Prozessor blockieren; die Einstellung ist deshalb nicht verfügbar.",
+        "还认不出这颗处理器温度墙的当前值，没有回读就不写。": "Die aktuelle Temperaturgrenze dieses Prozessors kann nicht gelesen werden. Ohne Rücklesen ist keine Einstellung möglich.",
+        "这几项是笔记本整机固件的功率预算，台式机上没有。": "Diese Leistungsbudgets gehören zur Laptop-Firmware und sind auf Desktop-PCs nicht verfügbar.",
+        "Intel 独显的调节不在本软件的范围内。": "Die Einstellung dedizierter Intel-GPUs liegt außerhalb des Umfangs dieser App.",
+        "笔记本上的 AMD 独显不在本软件的范围内。": "Die Einstellung dedizierter AMD-GPUs in Laptops liegt außerhalb des Umfangs dieser App.",
+        "IntelMCHBAR 官方签名模块只开放读取；MMIO 写入尚未具备可部署的签名模块。": "Das signierte IntelMCHBAR-Modul erlaubt nur Lesen. Für MMIO-Schreibzugriffe fehlt noch ein verteilbares signiertes Modul.",
+        "IntelMSR 官方签名模块未开放这一寄存器；该项写入尚未落实。": "Das signierte IntelMSR-Modul erlaubt dieses Register nicht. Schreibunterstützung bleibt unvollständig.",
+        "同一显卡的风扇由驱动统一调节。": "Der Treiber steuert die Lüfter dieser GPU als eine Gruppe.",
+        "无法确认机箱形态，AMD 独显调节只用于台式机。": "Gehäusetyp unbekannt. Dedizierte AMD-GPUs können nur auf Desktop-PCs eingestellt werden.",
+        "此显卡的核心频率/电压采用另一种语义，请选择对应的绝对值或偏移量参数。": "Diese GPU nutzt die andere Takt-/Spannungsdarstellung. Wählen Sie den passenden Absolutwert oder Offset.",
+        "尚未识别此显卡代际，无法确认核心频率/电压的绝对值或偏移量语义。": "Die GPU-Generation wurde nicht erkannt. Absolute Takt-/Spannungswerte können nicht von Offsets unterschieden werden.",
+        "此显卡/驱动不提供 ADLX 的这一调节接口（旧式状态表接口尚待接入）。": "Diese GPU bzw. dieser Treiber stellt die ADLX-Einstellungsschnittstelle nicht bereit. Unterstützung alter Zustandstabellen bleibt unvollständig.",
+        "此厂商暂无硬件调节通道。": "Für diesen Hersteller ist kein Hardware-Einstellkanal verfügbar."
+      },
+      "powerLimitPl1": "Dauerleistungsgrenze (PL1)",
+      "fanName": (index        ) => `Lüfter ${index}`,
+      "gpuFanControllerName": (index        ) => `Grafiklüftersteuerung (GPU${index})`,
+      "toggleOn": "Ein",
+      "toggleOff": "Aus"
     }
   },
   diskUsage: {
     title: "Speicherbelegung",
-    intro: "Scan, then see files laid out as tiles sized by what they actually take up.",
-    scopeLabel: "Scan scope",
-    scopeAllVolumes: "All drives",
-    scopeVolume: "One drive",
-    scopeFolder: "One folder",
-    modeLabel: "Scan method",
-    modeFast: "Fast scan",
-    modeFastHint: "Reads the filesystem index, so a whole drive takes seconds. NTFS only, and needs administrator rights.",
-    modeFull: "Full scan",
-    modeFullHint: "Walks the directories one level at a time. Slow, but works on any drive.",
-    chooseFolder: "Choose folder",
-    folderNotChosen: "No folder chosen yet",
-    scan: "Start scan",
-    rescan: "Scan again",
-    cancel: "Cancel scan",
-    scanning: "Scanning",
-    volumeColumnLabel: "Drive",
-    noVolumes: "No scannable drive was found.",
-    notReady: "Not ready",
-    freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
+    intro: "Nach dem Scan werden Dateien als Kacheln entsprechend ihrem tatsächlichen Platzbedarf angezeigt.",
+    scopeLabel: "Scan-Bereich",
+    scopeAllVolumes: "Alle Laufwerke",
+    scopeVolume: "Ein Laufwerk",
+    scopeFolder: "Ein Ordner",
+    modeLabel: "Scan-Methode",
+    modeFast: "Schneller Scan",
+    modeFastHint: "Liest den Dateisystemindex und erfasst ein ganzes Laufwerk in Sekunden. Nur für NTFS und mit Administratorrechten.",
+    modeFull: "Vollständiger Scan",
+    modeFullHint: "Durchsucht Verzeichnisse Ebene für Ebene. Langsam, funktioniert aber auf jedem Laufwerk.",
+    chooseFolder: "Ordner auswählen",
+    folderNotChosen: "Noch kein Ordner ausgewählt",
+    scan: "Scan starten",
+    rescan: "Erneut scannen",
+    cancel: "Scan abbrechen",
+    scanning: "Scan läuft",
+    volumeColumnLabel: "Laufwerk",
+    noVolumes: "Kein scanbares Laufwerk gefunden.",
+    notReady: "Nicht bereit",
+    freeOfTotal: (free        , total        ) => `${free} frei von ${total}`,
     volumeKind: {
-      physical: "Physical drive",
-      virtual: "Virtual drive",
-      removable: "Removable",
-      network: "Network location",
-      optical: "Optical drive",
-      unknown: "Unknown source"
+      physical: "Physisches Laufwerk",
+      virtual: "Virtuelles Laufwerk",
+      removable: "Wechselmedium",
+      network: "Netzwerkpfad",
+      optical: "Optisches Laufwerk",
+      unknown: "Unbekannte Quelle"
     },
-    fastUnsupported: "This drive has no readable filesystem index, so a fast scan cannot reach it. Use a full scan.",
-    skipped: "Not covered by this scan",
+    fastUnsupported: "Dieses Laufwerk hat keinen lesbaren Dateisystemindex. Verwenden Sie einen vollständigen Scan statt des schnellen Scans.",
+    skipped: "Nicht in diesem Scan enthalten",
     skipReason: {
-      noFileSystemIndex: "The filesystem has no readable index",
-      needsElevation: "Reading the index needs administrator rights",
-      volumeNotReady: "The drive is not ready",
-      targetUnavailable: "The path does not exist or cannot be opened"
+      noFileSystemIndex: "Das Dateisystem hat keinen lesbaren Index",
+      needsElevation: "Zum Lesen des Index sind Administratorrechte nötig",
+      volumeNotReady: "Das Laufwerk ist nicht bereit",
+      targetUnavailable: "Der Pfad existiert nicht oder kann nicht geöffnet werden"
     },
     scanKind: {
-      masterFileTable: "Read the filesystem index",
-      directoryWalk: "Walked the directories"
+      masterFileTable: "Dateisystemindex gelesen",
+      directoryWalk: "Verzeichnisse durchsucht"
     },
-    navigateUp: "Up one level",
-    resetView: "Reset view",
-    collapseSetup: "Hide options",
-    expandSetup: "Scan options",
-    scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
-    fileCount: (count: number) => `${count} files`,
-    omitted: (count: number) => `${count} more tiles were too small to draw on their own.`,
-    copied: "Copied",
-    menuOpenLocation: "Open file location",
-    menuProperties: "Properties",
-    menuCopyPath: "Copy full path",
-    menuDrillDown: "Zoom into this",
-    menuSize: "Size",
-    menuPath: "Path",
-    menuKindFile: "File",
-    menuKindDirectory: "Folder",
-    emptyTitle: "Nothing scanned yet",
-    emptyDetail: "Pick a scope and a method, then start the scan."
+    navigateUp: "Eine Ebene höher",
+    resetView: "Ansicht zurücksetzen",
+    collapseSetup: "Optionen ausblenden",
+    expandSetup: "Scan-Optionen",
+    scanTotals: (size        , files        , folders        ) => `${size} · Dateien: ${files} · Ordner: ${folders}`,
+    fileCount: (count        ) => `Dateien: ${count}`,
+    omitted: (count        ) => `${count} weitere Elemente sind zu klein oder außerhalb der Ansicht. Zum Anzeigen vergrößern.`,
+    copied: "Kopiert",
+    menuOpenLocation: "Dateispeicherort öffnen",
+    menuProperties: "Eigenschaften",
+    menuCopyPath: "Vollständigen Pfad kopieren",
+    menuDrillDown: "Dieses Element vergrößern",
+    menuSize: "Größe",
+    menuPath: "Pfad",
+    menuKindFile: "Datei",
+    menuKindDirectory: "Ordner",
+    emptyTitle: "Noch kein Scan durchgeführt",
+    emptyDetail: "Wählen Sie einen Bereich und eine Methode und starten Sie den Scan."
   },
   shell: {
     productName: "Ressourcen-Manager",
@@ -245,7 +306,7 @@ const deDeAppCopy: AppCopy = {
     currentPage: "Aktuelle Seite",
     runtimeCapability: "Laufzeitfunktionen",
     taskCenter: "Aufgabencenter",
-    taskCenterActive: (count: number) => `Aufgabencenter, ${count} laufend`,
+    taskCenterActive: (count        ) => `Aufgabencenter, ${count} aktiv`,
     taskCenterSyncing: "Aufgabencenter · Dienstaufgaben werden synchronisiert",
     taskCenterDisconnected: "Aufgabencenter · der lokale Dienst synchronisiert erneut",
     taskCenterUnavailable: "Aufgabencenter · Status der Dienstaufgaben nicht verfügbar",
@@ -1864,7 +1925,7 @@ const deDeAppCopy: AppCopy = {
     itemCount: (count: number) => `${count} Einträge`,
     noBrowsers: "Kein wiederverwendbarer Browser gefunden.",
     currentFallback: "Aktuelle Ausweichlösung",
-    fallbackRuntimeName: "Runtime",
+    fallbackRuntimeName: "Laufzeitumgebung",
     detailTitle: (name: string) => `Details zu ${name}`,
     version: (value: string) => `Version ${value}`,
     unknown: "Unbekannt",
