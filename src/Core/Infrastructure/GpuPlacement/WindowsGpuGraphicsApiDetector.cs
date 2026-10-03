@@ -22,7 +22,9 @@ public sealed class WindowsGpuGraphicsApiDetector : IGpuGraphicsApiDetector
         var names = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
         // Our shim imports both D3D runtimes; those imports are not application detection.
         if (names.Contains(WindowsGpuPlacementInjector.RuntimeProviderFileName)
-            || names.Contains(GpuStartupProviderArtifacts.VulkanLayerFileName)) return null;
+            || names.Contains(GpuStartupProviderArtifacts.VulkanLayerFileName)
+            || names.Contains("ResourceManager.PerformanceOverlay.dll")
+            || names.Contains("ResourceManager.VulkanPerformanceOverlayLayer.dll")) return null;
 
         var detected = CollectCandidates(names);
         return GpuGraphicsApiRoutes.IsIdentified(detected) ? detected : null;

@@ -30,10 +30,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuLaunchExecutionReportStore, JsonGpuLaunchExecutionReportStore>();
         services.AddSingleton<IGpuStartupPlacementResolver, GpuStartupPlacementResolver>();
         services.AddSingleton<IGpuSchedulingAvailability, GpuSchedulingAvailabilityReader>();
+        services.AddSingleton<GpuLaunchInterceptionReconciler>();
         if (startupCapabilities.Allows(
                 StartupCapability.GpuLaunchInterceptionReconciliation))
         {
-            services.AddHostedService<GpuLaunchInterceptionReconciler>();
+            services.AddHostedService(static provider =>
+                provider.GetRequiredService<GpuLaunchInterceptionReconciler>());
         }
         services.AddSingleton<IRunningGpuPlacementActionService, ExternalOnlyRunningGpuPlacementActionService>();
         services.AddSingleton<LegacyGpuPreferenceActionRestorer>();
