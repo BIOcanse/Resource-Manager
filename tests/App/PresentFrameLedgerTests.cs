@@ -139,4 +139,24 @@ public sealed class PresentFrameLedgerTests
 
         Assert.Equal(PresentFrameLedger.MaximumStreams, ledger.StreamCount);
     }
+
+    [Fact]
+    public void CursorReadsEveryIntervalOnceAndKeepsStoppedProcessTail()
+    {
+        var ledger = new PresentFrameLedger(_ => 1234);
+        ledger.Present(90, FramePresentSource.Dxgi, 1, Start);
+        ledger.Present(90, FramePresentSource.Dxgi, 1, Start + TenMs);
+        ledger.Present(90, FramePresentSource.Dxgi, 1, Start + 2 * TenMs);
+
+        var first = ledger.ReadIntervals(Start, Start + TenMs);
+        Assert.Single(first);
+        Assert.Equal(10, first[0].DurationMs);
+        Assert.Single(ledger.ReadIntervals(Start + TenMs, Start + 2 * TenMs));
+
+        ledger.ProcessStopped(90);
+        Assert.Empty(ledger.Read(Start + 3 * TenMs, TimeSpan.FromSeconds(1)));
+        var tail = ledger.ReadIntervals(Start + TenMs, Start + 3 * TenMs);
+        Assert.Single(tail);
+        Assert.Equal(1234, tail[0].ProcessStartKey);
+    }
 }

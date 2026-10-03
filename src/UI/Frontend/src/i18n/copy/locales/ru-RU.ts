@@ -1,7 +1,9 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
+import { targetedReport } from "./ru-RU-targetedReport.ts";
 
 const ruRuAppCopy: AppCopy = {
+  targetedReport,
   common: {
     saving: "Сохранение",
     saveFailed: "Не удалось сохранить"

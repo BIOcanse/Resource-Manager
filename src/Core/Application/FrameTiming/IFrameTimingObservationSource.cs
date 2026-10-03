@@ -11,4 +11,7 @@ public interface IFrameTimingObservationSource
 
     /// <summary>采集没有运行（无订阅、功能区冻结或会话失败）时返回 null。</summary>
     FrameTimingSnapshot? Read(TimeSpan window);
+
+    /// <summary>Read intervals ending after the cursor and at or before through. Null means capture is unavailable.</summary>
+    FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through);
 }

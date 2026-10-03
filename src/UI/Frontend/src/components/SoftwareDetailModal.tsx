@@ -50,6 +50,7 @@ import type { UserDetailSection } from "../presentation/userDetails";
 import { isHttpUrl, pathLooksUsable, textOrEmpty, uniqueTextValues } from "../utils";
 import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SoftwareIssueDetailSection } from "./SoftwareIssuePresentation";
+import { TargetedRecordingControl } from "../features/targetedReport/TargetedRecordingControl.tsx";
 import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
@@ -383,6 +384,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                     </section>
                   </Show>
                   <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
+                  <Show when={props.mutablePersistenceEnabled && model().type === "software"}>
+                    <TargetedRecordingControl softwareId={model().id} />
+                  </Show>
                   <Show when={props.gpuPlacementEnabled && model().type === "software" && !props.preciseGpuPlacementEnabled}>
                     <section class="software-detail-section">
                       <h3>{uiText.softwareDetail.section.gpuScheduling}</h3>

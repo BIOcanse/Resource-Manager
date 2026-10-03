@@ -4,6 +4,7 @@ import { CpuTopologyDiagram } from "./CpuTopologyDiagram";
 import { DeviceTopologyView } from "../deviceTopology/DeviceTopologyView";
 import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
+import { TargetedReportsPage } from "../targetedReport/TargetedReportsPage.tsx";
 import {
   TabsList,
   TabsPanel,
@@ -12,7 +13,7 @@ import {
 } from "../../ui/primitives/Tabs.tsx";
 import { uiText } from "../../text.ts";
 
-type DetailsTab = "device" | "gpu" | "cpu" | "report";
+type DetailsTab = "device" | "gpu" | "cpu" | "report" | "targeted";
 
 // 文案按当前语言求值，不能在模块顶层固化。
 function detailsTabs(): Array<{ id: DetailsTab; label: string }> {
@@ -20,7 +21,8 @@ function detailsTabs(): Array<{ id: DetailsTab; label: string }> {
     { id: "device", label: uiText.misc.detailsTab.device },
     { id: "gpu", label: uiText.misc.detailsTab.gpu },
     { id: "cpu", label: uiText.misc.detailsTab.cpu },
-    { id: "report", label: uiText.misc.detailsTab.report }
+    { id: "report", label: uiText.misc.detailsTab.report },
+    { id: "targeted", label: uiText.targetedReport.tab }
   ];
 }
 
@@ -33,10 +35,14 @@ export function DetailsPage(props: DetailsPageProps) {
   const [activeTab, setActiveTab] = createSignal<DetailsTab>("device");
   const [deviceScope, setDeviceScope] = createSignal<"external" | "internal">("external");
   const visibleTabs = createMemo(() => detailsTabs().filter((tab) =>
-    tab.id !== "report" || props.runtimeCapabilities.optimizationEnabled()));
+    (tab.id !== "report" || props.runtimeCapabilities.optimizationEnabled()) &&
+    (tab.id !== "targeted" || props.runtimeCapabilities.mutablePersistenceEnabled())));
 
   createEffect(() => {
     if (activeTab() === "report" && !props.runtimeCapabilities.optimizationEnabled()) {
+      setActiveTab("device");
+    }
+    if (activeTab() === "targeted" && !props.runtimeCapabilities.mutablePersistenceEnabled()) {
       setActiveTab("device");
     }
   });
@@ -79,6 +85,9 @@ export function DetailsPage(props: DetailsPageProps) {
           <div class="details-resource-region">
             <HostManagerSmartCoordinatorDetailsReport />
           </div>
+          </TabsPanel>
+          <TabsPanel value="targeted">
+            <div class="details-resource-region"><TargetedReportsPage /></div>
           </TabsPanel>
         </div>
       </TabsRoot>
