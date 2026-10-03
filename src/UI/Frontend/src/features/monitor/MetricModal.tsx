@@ -26,6 +26,8 @@ interface MetricModalProps {
   catalog: MetricDefinition[];
   components: ManagedComponent[];
   selectedMetricId: string | null;
+  selectedMetricIds?: readonly string[];
+  multiSelect?: boolean;
   onSelect: (metricId: string) => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -47,6 +49,9 @@ export function MetricModal(props: MetricModalProps) {
   const [query, setQuery] = createSignal("");
   const [activeMetricId, setActiveMetricId] = createSignal<string | null>(null);
   const selectedMetric = () => props.catalog.find((metric) => metric.id === props.selectedMetricId) ?? null;
+  const isSelected = (id: string) => props.multiSelect
+    ? props.selectedMetricIds?.includes(id) ?? false
+    : props.selectedMetricId === id;
   const metricUnavailable = (metric: MetricDefinition) =>
     metric.selectable === false && !(dependencyFor(metric)?.missing ?? false);
   const selectedMetricUnavailable = () => {
@@ -224,6 +229,7 @@ export function MetricModal(props: MetricModalProps) {
           id={listboxId}
           class="metric-options"
           role="listbox"
+          aria-multiselectable={props.multiSelect || undefined}
           aria-label={uiText.metricPicker.listLabel}
         >
           <For each={groupedMetrics()} fallback={<div class="metric-picker-empty">{uiText.metricPicker.empty}</div>}>
@@ -246,12 +252,12 @@ export function MetricModal(props: MetricModalProps) {
                             class="metric-option"
                             classList={{
                               active: activeMetricId() === metric.id,
-                              selected: props.selectedMetricId === metric.id,
+                              selected: isSelected(metric.id),
                               "requires-dependency": (dependency()?.missing ?? false) && !unavailable(),
                               unavailable: unavailable()
                             }}
                             data-metric-id={metric.id}
-                            aria-selected={props.selectedMetricId === metric.id}
+                            aria-selected={isSelected(metric.id)}
                             disabled={unavailable()}
                             onPointerMove={() => {
                               if (!unavailable()) {
@@ -290,7 +296,7 @@ export function MetricModal(props: MetricModalProps) {
       </DialogBody>
       <DialogActions>
         <button class="secondary" type="button" onClick={props.onClose}>{uiText.metricPicker.cancel}</button>
-        <button type="button" disabled={!props.selectedMetricId || selectedMetricUnavailable()} onClick={props.onConfirm}>{uiText.metricPicker.confirm}</button>
+        <button type="button" disabled={!props.multiSelect && (!props.selectedMetricId || selectedMetricUnavailable())} onClick={props.onConfirm}>{uiText.metricPicker.confirm}</button>
       </DialogActions>
     </DialogRoot>
   );

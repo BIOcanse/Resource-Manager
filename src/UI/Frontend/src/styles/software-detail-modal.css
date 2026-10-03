@@ -58,6 +58,51 @@
   line-height: 1.25;
 }
 
+.overlay-settings-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.overlay-settings-fields > label:not(.overlay-settings-check) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.overlay-settings-fields input[type="number"] {
+  width: 7rem;
+}
+
+.overlay-settings-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.overlay-settings-metrics {
+  margin: 0;
+  padding-left: 1.5rem;
+}
+
+.overlay-settings-metrics li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.25rem 0;
+}
+
+.overlay-settings-metrics li span {
+  flex: 1;
+}
+
+.overlay-settings [role="note"] {
+  border-left: 3px solid var(--warn);
+  padding: 0.5rem 0.75rem;
+  color: var(--warn);
+}
+
 .software-issue-section h3 {
   display: flex;
   align-items: center;

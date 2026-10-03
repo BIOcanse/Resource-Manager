@@ -52,9 +52,10 @@ import { UserDetailsDialog } from "./UserDetailsDialog";
 import { SoftwareIssueDetailSection } from "./SoftwareIssuePresentation";
 import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
+import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
-type DetailTabId = "overview" | "policy" | "processes" | "migration";
+type DetailTabId = "overview" | "policy" | "processes" | "overlay" | "migration";
 
 interface SoftwareDetailModalProps {
   detail: SoftwareDetailModel | null;
@@ -84,6 +85,7 @@ function detailTabLabels(): Record<DetailTabId, string> {
     overview: uiText.softwareDetail.tab.overview,
     policy: uiText.softwareDetail.tab.policy,
     processes: uiText.softwareDetail.tab.processes,
+    overlay: uiText.performanceOverlay.tab,
     migration: uiText.softwareDetail.tab.migration
   };
 }
@@ -243,6 +245,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
     const visibleTabs: DetailTabId[] = ["overview"];
     if (model?.type === "software" && props.gpuPlacementEnabled) {
       visibleTabs.push("policy", "processes");
+    }
+    if (model?.type === "software" && props.mutablePersistenceEnabled) {
+      visibleTabs.push("overlay");
     }
     if (props.runtimeEffectsEnabled) {
       visibleTabs.push("migration");
@@ -423,6 +428,11 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                       <h3>{uiText.softwareDetail.section.migrationAndRestore}</h3>
                       <p class="software-detail-empty">{uiText.softwareDetail.noMigrationRecord}</p>
                     </section>
+                  </Show>
+                </TabsPanel>
+                <TabsPanel value="overlay" class="software-detail-tab-panel">
+                  <Show when={model().type === "software"}>
+                    <SoftwareOverlaySettings softwareId={model().id} active={activeTab() === "overlay"} />
                   </Show>
                 </TabsPanel>
               </>

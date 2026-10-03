@@ -1,4 +1,6 @@
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Overlay;
+using ResourceManager.App.Domain.Messages;
 
 namespace ResourceManager.App.Application.Metrics;
 
@@ -55,4 +57,29 @@ public static partial class MetricCatalog
 
         return definitions;
     }
+
+    public static IReadOnlyList<MetricDefinition> ForPerformanceOverlay(HardwareMetricSnapshot? snapshot)
+        => snapshot is null
+            ? TargetSoftwareDefinitions(null)
+            : FromSnapshot(snapshot).Concat(TargetSoftwareDefinitions(snapshot)).ToArray();
+
+    public static IReadOnlyList<MetricDefinition> TargetSoftwareDefinitions(HardwareMetricSnapshot? snapshot) =>
+    [
+        new(PerformanceOverlayMetricIds.Fps, "目标帧率", "target-software", "FPS", "main"),
+        new(PerformanceOverlayMetricIds.FrameTime, "目标帧时间", "target-software", "ms", "small"),
+        new(PerformanceOverlayMetricIds.OnePercentLow, "目标 1% Low", "target-software", "FPS", "small"),
+        new(PerformanceOverlayMetricIds.PointOnePercentLow, "目标 0.1% Low", "target-software", "FPS", "small"),
+        new(PerformanceOverlayMetricIds.Cpu, "目标进程 CPU", "target-software", "%", "small"),
+        new(PerformanceOverlayMetricIds.Gpu, "目标进程 GPU", "target-software", "%", "small",
+            Selectable: snapshot is null || snapshot.Gpus.Count > 0,
+            DisabledReason: snapshot is not null && snapshot.Gpus.Count == 0
+                ? BackendMessage.Create(BackendMessageDomains.Metric, BackendMessageCodes.Metric.NotExposed)
+                : null),
+        new(PerformanceOverlayMetricIds.Memory, "目标进程内存", "target-software", MetricUnits.Bytes, "small"),
+        new(PerformanceOverlayMetricIds.Vram, "目标进程显存", "target-software", MetricUnits.Bytes, "small",
+            Selectable: snapshot is null || snapshot.Gpus.Count > 0,
+            DisabledReason: snapshot is not null && snapshot.Gpus.Count == 0
+                ? BackendMessage.Create(BackendMessageDomains.Metric, BackendMessageCodes.Metric.NotExposed)
+                : null)
+    ];
 }

@@ -1,6 +1,14 @@
 // 指标名称按后端稳定 id 映射；{index} 代表 GPU / 磁盘 / 风扇序号。
 export const zhMetricLabelsCopy = {
   metricLabel: {
+    "target.fps": "目标帧率",
+    "target.frameTime": "目标帧时间",
+    "target.onePercentLow": "目标 1% Low",
+    "target.pointOnePercentLow": "目标 0.1% Low",
+    "target.cpu": "目标进程 CPU",
+    "target.gpu": "目标进程 GPU",
+    "target.memory": "目标进程内存",
+    "target.vram": "目标进程显存",
     "cpu.usage": "CPU 占用率",
     "disk.io": "磁盘 I/O",
     "disk.read": "磁盘读取",

@@ -1424,6 +1424,32 @@ const deDeAppCopy: AppCopy = {
     vramFull: "VRAM ausgelastet",
     noProcessAttribution: "Keine Prozesszuordnung"
   },
+  performanceOverlay: {
+    tab: "Overlay und Überwachung",
+    enabled: "Overlay aktivieren",
+    mode: "Anzeigemodus",
+    external: "Externes Overlay",
+    injected: "Injiziertes Overlay",
+    injectionWarning: "Die Injektion kann von Anti-Cheat-Systemen erkannt werden und zur Sperrung des Kontos führen. Die Änderung gilt ab dem nächsten Start dieser Software.",
+    metrics: "Angezeigte Messwerte",
+    chooseMetrics: "Messwerte auswählen",
+    sizeMode: "Größenmodus",
+    absolutePixels: "Absolute Pixel",
+    windowRatio: "Relativ zum Fenster",
+    fontSizePx: "Schriftgröße (Pixel)",
+    regionWidthRatio: "Breitenverhältnis des Bereichs",
+    regionHeightRatio: "Höhenverhältnis des Bereichs",
+    anchor: "Position",
+    topLeft: "Oben links",
+    topRight: "Oben rechts",
+    bottomLeft: "Unten links",
+    bottomRight: "Unten rechts",
+    marginPx: "Rand (Pixel)",
+    moveUp: "Nach oben",
+    moveDown: "Nach unten",
+    removeMetric: "Messwert entfernen",
+    group: "Zielsoftware"
+  },
   softwareDetail: {
     tab: {
       overview: "Überblick",
@@ -2210,6 +2236,14 @@ const deDeAppCopy: AppCopy = {
     manualNextStep: "Die Quellseite und der Installationsprogramm-Cacheordner sind geöffnet. Legen Sie das heruntergeladene Installationsprogramm dort ab und wählen Sie dann hier „Installieren“."
   },
   metricLabel: {
+    "target.fps": "FPS der Zielsoftware",
+    "target.frameTime": "Framezeit der Zielsoftware",
+    "target.onePercentLow": "1 % Low der Zielsoftware",
+    "target.pointOnePercentLow": "0,1 % Low der Zielsoftware",
+    "target.cpu": "CPU des Zielprozesses",
+    "target.gpu": "GPU des Zielprozesses",
+    "target.memory": "Arbeitsspeicher des Zielprozesses",
+    "target.vram": "VRAM des Zielprozesses",
     "cpu.usage": "CPU-Auslastung",
     "disk.io": "Datenträger-E/A",
     "disk.read": "Datenträger lesen",

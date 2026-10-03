@@ -259,7 +259,8 @@ assert.match(dashboard, /aria-label=\{uiText\.dashboard\.removeMetric\(slotLabel
 assert.match(metricModal, /role="combobox"/);
 assert.match(metricModal, /role="listbox"/);
 assert.match(metricModal, /role="option"/);
-assert.match(metricModal, /aria-selected=\{props\.selectedMetricId === metric\.id\}/);
+assert.match(metricModal, /aria-selected=\{isSelected\(metric\.id\)\}/);
+assert.match(metricModal, /aria-multiselectable=\{props\.multiSelect \|\| undefined\}/);
 assert.match(metricModal, /userFacingMetricGroup\(metric\.group\)/);
 assert.match(metricModal, /resolveActiveDescendantTarget/);
 assert.match(controls, /button:not\(:disabled\):hover/);

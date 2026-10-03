@@ -14,6 +14,7 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/metrics/subscribe")]
     [InlineData("/api/metrics/gpu-specialized/subscribe")]
     [InlineData("/api/resource-monitor/subscribe")]
+    [InlineData("/api/performance-overlay/subscribe")]
     [InlineData("/api/adapters/resource-manager/scheduling/subscribe")]
     [InlineData("/api/local-system/status/subscribe")]
     [InlineData("/api/device-topology/state/subscribe")]

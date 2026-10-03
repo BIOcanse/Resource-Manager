@@ -1424,6 +1424,32 @@ const jaJpAppCopy: AppCopy = {
     vramFull: "VRAM 飽和",
     noProcessAttribution: "プロセス帰属情報なし"
   },
+  performanceOverlay: {
+    tab: "オーバーレイと監視",
+    enabled: "オーバーレイを有効にする",
+    mode: "表示方式",
+    external: "外部オーバーレイ",
+    injected: "注入型オーバーレイ",
+    injectionWarning: "注入はアンチチートに検知され、アカウントが停止される可能性があります。変更はこのソフトウェアの次回起動時に適用されます。",
+    metrics: "表示する指標",
+    chooseMetrics: "指標を選択",
+    sizeMode: "サイズ方式",
+    absolutePixels: "絶対ピクセル",
+    windowRatio: "ウィンドウに対する比率",
+    fontSizePx: "フォントサイズ（ピクセル）",
+    regionWidthRatio: "領域の幅の比率",
+    regionHeightRatio: "領域の高さの比率",
+    anchor: "配置",
+    topLeft: "左上",
+    topRight: "右上",
+    bottomLeft: "左下",
+    bottomRight: "右下",
+    marginPx: "余白（ピクセル）",
+    moveUp: "上に移動",
+    moveDown: "下に移動",
+    removeMetric: "指標を削除",
+    group: "対象ソフトウェア"
+  },
   softwareDetail: {
     tab: {
       overview: "概要",
@@ -2210,6 +2236,14 @@ const jaJpAppCopy: AppCopy = {
     manualNextStep: "入手元ページとインストーラー キャッシュ フォルダーを開きました。ダウンロードしたインストーラーをそのフォルダーに入れてから、戻って「インストール」を選んでください。"
   },
   metricLabel: {
+    "target.fps": "対象の FPS",
+    "target.frameTime": "対象のフレーム時間",
+    "target.onePercentLow": "対象の 1% Low",
+    "target.pointOnePercentLow": "対象の 0.1% Low",
+    "target.cpu": "対象プロセスの CPU",
+    "target.gpu": "対象プロセスの GPU",
+    "target.memory": "対象プロセスのメモリ",
+    "target.vram": "対象プロセスの VRAM",
     "cpu.usage": "CPU 使用率",
     "disk.io": "ディスク I/O",
     "disk.read": "ディスク読み取り",

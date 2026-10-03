@@ -239,6 +239,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CompileGpuSubscription(subscription, services, interval)),
             ["/api/resource-monitor/subscribe"] = new((subscription, services, interval) =>
                 CompileResourceSubscription(subscription, services, interval)),
+            ["/api/performance-overlay/subscribe"] = new((subscription, services, interval) =>
+                CompilePerformanceOverlaySubscription(subscription, services, interval)),
             ["/api/adapters/resource-manager/scheduling/subscribe"] =
                 new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
                     subscription,

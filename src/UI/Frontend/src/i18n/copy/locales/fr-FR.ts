@@ -1424,6 +1424,32 @@ const frFrAppCopy: AppCopy = {
     vramFull: "VRAM saturée",
     noProcessAttribution: "Aucune attribution de processus"
   },
+  performanceOverlay: {
+    tab: "Superposition et surveillance",
+    enabled: "Activer la superposition",
+    mode: "Mode d’affichage",
+    external: "Superposition externe",
+    injected: "Superposition injectée",
+    injectionWarning: "L’injection peut être détectée par un système anti-triche et entraîner le bannissement du compte. Le changement prendra effet au prochain démarrage de ce logiciel.",
+    metrics: "Mesures affichées",
+    chooseMetrics: "Choisir les mesures",
+    sizeMode: "Mode de taille",
+    absolutePixels: "Pixels absolus",
+    windowRatio: "Proportion de la fenêtre",
+    fontSizePx: "Taille de police (pixels)",
+    regionWidthRatio: "Proportion de largeur",
+    regionHeightRatio: "Proportion de hauteur",
+    anchor: "Position",
+    topLeft: "En haut à gauche",
+    topRight: "En haut à droite",
+    bottomLeft: "En bas à gauche",
+    bottomRight: "En bas à droite",
+    marginPx: "Marge (pixels)",
+    moveUp: "Monter",
+    moveDown: "Descendre",
+    removeMetric: "Retirer la mesure",
+    group: "Logiciel cible"
+  },
   softwareDetail: {
     tab: {
       overview: "Vue d'ensemble",
@@ -2210,6 +2236,14 @@ const frFrAppCopy: AppCopy = {
     manualNextStep: "La page source et le dossier de cache des installateurs sont ouverts. Placez-y l'installateur téléchargé, puis revenez choisir « Installer »."
   },
   metricLabel: {
+    "target.fps": "FPS du logiciel cible",
+    "target.frameTime": "Temps de trame cible",
+    "target.onePercentLow": "1 % low cible",
+    "target.pointOnePercentLow": "0,1 % low cible",
+    "target.cpu": "CPU du processus cible",
+    "target.gpu": "GPU du processus cible",
+    "target.memory": "Mémoire du processus cible",
+    "target.vram": "VRAM du processus cible",
     "cpu.usage": "Utilisation du processeur",
     "disk.io": "E/S disque",
     "disk.read": "Lecture disque",

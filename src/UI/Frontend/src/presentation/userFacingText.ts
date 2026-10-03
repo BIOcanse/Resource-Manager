@@ -176,6 +176,7 @@ export function userFacingMetricGroup(value: unknown) {
   }
 
   switch (key) {
+    case "target-software": return uiText.performanceOverlay.group;
     case "cpu": return group.cpu;
     case "gpu": return group.gpu;
     case "memory": return group.memory;

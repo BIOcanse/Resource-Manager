@@ -798,6 +798,19 @@ export interface GpuPlacementSoftwareSettingsSnapshot {
   processCapabilities?: GpuPlacementProcessCapabilities[] | null;
 }
 
+export interface PerformanceOverlaySettings {
+  softwareId: string;
+  enabled: boolean;
+  mode: "external" | "injected";
+  metrics: string[];
+  sizeMode: "absolutePixels" | "windowRatio";
+  fontSizePx: number;
+  regionWidthRatio: number;
+  regionHeightRatio: number;
+  anchor: "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
+  marginPx: number;
+}
+
 export interface GpuPlacementObservedProcessInput {
   processName: string;
   executablePath?: string | null;

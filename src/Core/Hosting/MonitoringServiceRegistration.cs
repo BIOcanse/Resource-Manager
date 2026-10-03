@@ -4,6 +4,8 @@ using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.Overlay;
+using ResourceManager.App.Infrastructure.Overlay;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.NetworkTelemetry;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -36,6 +38,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         this IServiceCollection services,
         StartupCapabilitySet startupCapabilities)
     {
+        services.AddSingleton<IPerformanceOverlaySettingsStore, JsonPerformanceOverlaySettingsStore>();
         services.AddSingleton<NativePdhCollector>(static provider =>
             new NativePdhCollector(provider.GetRequiredService<HostManagerPdhCollectorRuntime>()));
         services.AddMonitoringSourceZone<WindowsCpuMonitoringZone>();
