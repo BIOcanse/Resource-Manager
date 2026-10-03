@@ -125,7 +125,7 @@
           Inputs="@(GpuPlacementShimSource)"
           Outputs="$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementShim.dll;$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.GpuPlacementBootstrap.dll;$(GpuPlacementShimRoot)\bin\win-x64\ResourceManager.VulkanPlacementLayer.dll"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(GpuPlacementShimRoot)" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(GpuPlacementShimRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <ItemGroup>
     <GpuPlacementPreparationSource Include="$(GpuPlacementPreparationRoot)\*.cpp;$(GpuPlacementPreparationRoot)\*.h;$(GpuPlacementPreparationRoot)\build.cmd" />
@@ -138,20 +138,20 @@
           Inputs="@(GpuPlacementPreparationSource)"
           Outputs="$(GpuPlacementPreparationRoot)\bin\win-x64\ResourceManager.GpuPlacementPreparation.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementPreparationNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(GpuPlacementPreparationRoot)" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(GpuPlacementPreparationRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <Target Name="BuildGpuLaunchBroker"
           BeforeTargets="PrepareForBuild"
           Inputs="@(GpuLaunchBrokerSource)"
           Outputs="$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchBroker.exe;$(GpuLaunchBrokerRoot)\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuLaunchBrokerNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(GpuLaunchBrokerRoot)" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(GpuLaunchBrokerRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <Target Name="BuildAdlxBridge" BeforeTargets="PrepareForBuild"
           Inputs="Native\AdlxBridge\ResourceManagerAdlxBridge.c;Native\AdlxBridge\ResourceManagerAdlxTuning.inc;Native\AdlxBridge\build.cmd"
           Outputs="Native\AdlxBridge\bin\win-x64\ResourceManager.AdlxBridge.dll"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdlxBridgeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\Native\AdlxBridge" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)\Native\AdlxBridge" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <Target Name="BuildNativeCore"
           BeforeTargets="PrepareForBuild"
@@ -165,7 +165,7 @@
           Inputs="@(GpuWindowActionSource)"
           Outputs="$(GpuWindowActionRoot)\bin\win-x64\ResourceManager.GpuWindowAction.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuWindowActionNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(GpuWindowActionRoot)" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(GpuWindowActionRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <ItemGroup>
     <GpuPlacementExternalSource Include="$(GpuPlacementExternalRoot)\*.cpp;$(GpuPlacementExternalRoot)\*.h;$(GpuPlacementExternalRoot)\build.cmd" />
@@ -174,7 +174,7 @@
           Inputs="@(GpuPlacementExternalSource)"
           Outputs="$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuPlacementExternal.exe;$(GpuPlacementExternalRoot)\bin\win-x64\ResourceManager.GpuRendererExternal.exe"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipGpuPlacementExternalNativeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(GpuPlacementExternalRoot)" Command="cmd.exe /d /c build.cmd" />
+    <Exec WorkingDirectory="$(GpuPlacementExternalRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <Target Name="BuildClientApp"
           BeforeTargets="ComputeFilesToPublish"
