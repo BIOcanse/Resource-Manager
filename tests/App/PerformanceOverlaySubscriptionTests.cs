@@ -134,6 +134,7 @@ public sealed class PerformanceOverlaySubscriptionTests
             return new Lease(() => Interlocked.Decrement(ref activeCount));
         }
         public FrameTimingSnapshot? Read(TimeSpan window) => null;
+        public FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through) => null;
     }
 
     private sealed class ResourceSource : IResourceBreakdownObservationSource
