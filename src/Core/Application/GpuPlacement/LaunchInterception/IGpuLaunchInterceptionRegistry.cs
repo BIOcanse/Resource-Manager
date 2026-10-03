@@ -8,7 +8,9 @@ public interface IGpuLaunchInterceptionRegistry
 
     GpuLaunchInterceptionStatus GetStatus(GpuPlacementProcessPolicy policy);
 
-    IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(GpuPlacementPolicyDocument document);
+    IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(
+        GpuPlacementPolicyDocument document,
+        IReadOnlyCollection<string> overlayExecutablePaths);
 
     GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules();
 }

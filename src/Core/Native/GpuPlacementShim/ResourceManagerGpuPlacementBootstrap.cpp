@@ -130,6 +130,7 @@ extern "C" BOOL WINAPI DetourVirtualProtectSameExecuteEx(
 extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementBootstrapUpdate(
     HANDLE process,
     const wchar_t* providerPath,
+    const wchar_t* overlayPath,
     DWORD* win32Error)
 {
     if (win32Error != nullptr)
@@ -146,8 +147,17 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementBootstr
         return 0;
     }
 
+    if (providerPath == nullptr && overlayPath == nullptr)
+    {
+        if (win32Error != nullptr) *win32Error = ERROR_INVALID_PARAMETER;
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+
     std::string providerLoaderPath;
-    if (!TryConvertLoaderPath(providerPath, providerLoaderPath))
+    std::string overlayLoaderPath;
+    if ((providerPath != nullptr && !TryConvertLoaderPath(providerPath, providerLoaderPath))
+        || (overlayPath != nullptr && !TryConvertLoaderPath(overlayPath, overlayLoaderPath)))
     {
         const DWORD error = GetLastError();
         if (win32Error != nullptr)
@@ -157,11 +167,14 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementBootstr
         return 0;
     }
 
-    const LPCSTR injectedDlls[] = { providerLoaderPath.c_str() };
+    const LPCSTR injectedDlls[] = {
+        providerPath != nullptr ? providerLoaderPath.c_str() : overlayLoaderPath.c_str(),
+        providerPath != nullptr && overlayPath != nullptr ? overlayLoaderPath.c_str() : nullptr
+    };
     if (!DetourUpdateProcessWithDll(
             process,
             injectedDlls,
-            1))
+            providerPath != nullptr && overlayPath != nullptr ? 2 : 1))
     {
         const DWORD error = GetLastError();
         if (win32Error != nullptr)

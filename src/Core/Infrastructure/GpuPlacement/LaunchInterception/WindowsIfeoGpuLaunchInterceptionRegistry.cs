@@ -196,25 +196,64 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
             registeredViews);
     }
 
-    public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(GpuPlacementPolicyDocument document)
+    public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(
+        GpuPlacementPolicyDocument document,
+        IReadOnlyCollection<string> overlayExecutablePaths)
     {
         lock (RegistryOperationGate)
         {
             ArgumentNullException.ThrowIfNull(document);
+            ArgumentNullException.ThrowIfNull(overlayExecutablePaths);
 
-            var desiredPaths = document.ProcessPolicies
-                .Where(static policy => policy.StartupInterceptionEnabled)
+            var desiredPolicies = SelectDesiredPolicies(document, overlayExecutablePaths);
+            var desiredPaths = desiredPolicies
                 .Select(static policy => NormalizePath(policy.ExecutablePath))
                 .Where(static path => !string.IsNullOrWhiteSpace(path))
                 .Select(static path => path!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             RemoveStaleOwnedRules(desiredPaths);
-            return document.ProcessPolicies
-                .Where(static policy => policy.StartupInterceptionEnabled)
+            return desiredPolicies
                 .Select(ApplyUnderGate)
                 .ToArray();
         }
+    }
+
+    internal static IReadOnlyList<GpuPlacementProcessPolicy> SelectDesiredPolicies(
+        GpuPlacementPolicyDocument document,
+        IReadOnlyCollection<string> overlayExecutablePaths)
+    {
+        var policies = document.ProcessPolicies
+            .Where(static policy => policy.StartupInterceptionEnabled)
+            .ToList();
+        var desiredPaths = policies
+            .Select(static policy => NormalizePath(policy.ExecutablePath))
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in overlayExecutablePaths)
+        {
+            var normalized = NormalizePath(path);
+            if (normalized is null || !desiredPaths.Add(normalized))
+            {
+                continue;
+            }
+
+            var existing = document.ProcessPolicies
+                .Where(policy => string.Equals(NormalizePath(policy.ExecutablePath), normalized,
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(static policy => policy.UpdatedAt)
+                .FirstOrDefault();
+            policies.Add(existing is null
+                ? new GpuPlacementProcessPolicy(
+                    "overlay", normalized, Path.GetFileName(normalized), normalized,
+                    true, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, [],
+                    GpuPlacementTargets.SystemDefaultGpu, GpuPlacementExplicitSelectionModes.DefaultSkip,
+                    null, DateTimeOffset.MinValue, true)
+                : existing with { StartupInterceptionEnabled = true });
+        }
+
+        return policies;
     }
 
     public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules()
