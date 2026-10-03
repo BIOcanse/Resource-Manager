@@ -116,9 +116,11 @@ int main(int argc, char** argv)
 
     OverlayTestProducer producer;
     HMODULE overlay = nullptr;
+    const bool externalProducer = argc >= 6 && std::strcmp(argv[5], "external-producer") == 0;
     if (argc >= 5)
     {
-        if (!producer.Start(window)) { std::fprintf(stderr, "overlay producer failed: %lu\n", GetLastError()); return 4; }
+        if (!externalProducer && !producer.Start(window))
+        { std::fprintf(stderr, "overlay producer failed: %lu\n", GetLastError()); return 4; }
         overlay = LoadLibraryA(argv[4]);
         if (!overlay) { std::fprintf(stderr, "overlay LoadLibrary failed: %lu\n", GetLastError()); return 4; }
         using InitializeFn = BOOL(WINAPI*)();
@@ -128,7 +130,7 @@ int main(int argc, char** argv)
 
     if (d3d12)
     {
-        const int result = RunD3D12(window, fps, seconds, overlay ? &producer : nullptr);
+        const int result = RunD3D12(window, fps, seconds, overlay && !externalProducer ? &producer : nullptr);
         DestroyWindow(window);
         return result;
     }
@@ -206,12 +208,12 @@ int main(int argc, char** argv)
             elapsed = Seconds(start, frequency);
         }
         const float shade = float(frame % 120) / 120.0f;
-        if (overlay && !bitmapChanged && elapsed >= seconds / 2)
+        if (overlay && !externalProducer && !bitmapChanged && elapsed >= seconds / 2)
         {
             producer.ChangeBitmap();
             bitmapChanged = true;
         }
-        if (overlay && !overlayDisabled && elapsed >= seconds * 0.75)
+        if (overlay && !externalProducer && !overlayDisabled && elapsed >= seconds * 0.75)
         {
             producer.Disable();
             overlayDisabled = true;
@@ -248,7 +250,7 @@ int main(int argc, char** argv)
     timeEndPeriod(1);
     std::printf("%lld\n", frame);
     const bool ratePassed = std::fabs(double(frame) - fps * seconds) <= 2.0;
-    const bool overlayPassed = !overlay || producer.Check(frame);
+    const bool overlayPassed = !overlay || externalProducer || producer.Check(frame);
     if (gl) { wglMakeCurrent(nullptr, nullptr); wglDeleteContext(glContext); ReleaseDC(window, dc); }
     else { target->Release(); if (swapChain1) swapChain1->Release(); swapChain->Release(); context->Release(); device->Release(); }
     DestroyWindow(window);
