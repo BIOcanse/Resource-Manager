@@ -120,7 +120,10 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         var statistics = FrameIntervalStatistics.Compute(intervals.AsSpan(0, count));
         return statistics is null
             ? null
-            : new FrameTimingStream(key.Source, key.SwapChain, new DateTimeOffset(inWindow[^1], TimeSpan.Zero), statistics);
+            : new FrameTimingStream(key.Source, key.SwapChain, new DateTimeOffset(inWindow[^1], TimeSpan.Zero), statistics)
+            {
+                PresentCount = inWindow.Length
+            };
     }
 
     private void Prune(long oldestKeptTicks)

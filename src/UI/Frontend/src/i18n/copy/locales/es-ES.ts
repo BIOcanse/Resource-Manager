@@ -1424,6 +1424,32 @@ const esEsAppCopy: AppCopy = {
     vramFull: "VRAM saturada",
     noProcessAttribution: "Sin atribución de procesos"
   },
+  performanceOverlay: {
+    tab: "Superposición y supervisión",
+    enabled: "Activar superposición",
+    mode: "Modo de visualización",
+    external: "Superposición externa",
+    injected: "Superposición inyectada",
+    injectionWarning: "La inyección puede ser detectada por sistemas antitrampas y provocar el bloqueo de la cuenta. El cambio se aplicará la próxima vez que se inicie este software.",
+    metrics: "Métricas mostradas",
+    chooseMetrics: "Elegir métricas",
+    sizeMode: "Modo de tamaño",
+    absolutePixels: "Píxeles absolutos",
+    windowRatio: "Relativo a la ventana",
+    fontSizePx: "Tamaño de fuente (píxeles)",
+    regionWidthRatio: "Proporción del ancho",
+    regionHeightRatio: "Proporción de la altura",
+    anchor: "Posición",
+    topLeft: "Arriba a la izquierda",
+    topRight: "Arriba a la derecha",
+    bottomLeft: "Abajo a la izquierda",
+    bottomRight: "Abajo a la derecha",
+    marginPx: "Margen (píxeles)",
+    moveUp: "Subir",
+    moveDown: "Bajar",
+    removeMetric: "Quitar métrica",
+    group: "Software de destino"
+  },
   softwareDetail: {
     tab: {
       overview: "Resumen",
@@ -2210,6 +2236,14 @@ const esEsAppCopy: AppCopy = {
     manualNextStep: "Se han abierto la página de origen y la carpeta de caché de instaladores. Pon ahí el instalador descargado y vuelve para elegir «Instalar»."
   },
   metricLabel: {
+    "target.fps": "FPS del software de destino",
+    "target.frameTime": "Tiempo de fotograma de destino",
+    "target.onePercentLow": "1 % bajo de destino",
+    "target.pointOnePercentLow": "0,1 % bajo de destino",
+    "target.cpu": "CPU del proceso de destino",
+    "target.gpu": "GPU del proceso de destino",
+    "target.memory": "Memoria del proceso de destino",
+    "target.vram": "VRAM del proceso de destino",
     "cpu.usage": "Uso de la CPU",
     "disk.io": "E/S de disco",
     "disk.read": "Lectura de disco",
