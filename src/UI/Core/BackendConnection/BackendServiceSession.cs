@@ -22,6 +22,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
 
     private readonly HttpClient probeClient;
     private readonly HttpClient actionClient;
+    private readonly HttpClient streamClient;
     private BackendRequestAuthorization? requestAuthorization;
     private BackendServiceAvailabilityMonitor? availabilityMonitor;
     private bool disposed;
@@ -39,6 +40,11 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             BaseAddress = endpoint,
             Timeout = TimeSpan.FromSeconds(30)
         };
+        streamClient = new HttpClient(CreateLoopbackHandler(), disposeHandler: true)
+        {
+            BaseAddress = endpoint,
+            Timeout = Timeout.InfiniteTimeSpan
+        };
         BackendPath = ResolveBackendPath();
     }
 
@@ -51,6 +57,30 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     public static BackendServiceSession CreateDefault(string baseAddress)
     {
         return new BackendServiceSession(baseAddress);
+    }
+
+    internal async Task<HttpResponseMessage> OpenPerformanceOverlayStreamAsync(
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        {
+            Content = JsonContent.Create(new
+            {
+                version = 1,
+                subscriptions = new[]
+                {
+                    new { id = "performance-overlay", path = "/api/performance-overlay/subscribe?intervalMs=500" }
+                }
+            })
+        };
+        GetRequestAuthorization().Apply(request);
+        var response = await streamClient.SendAsync(request,
+            HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (response.IsSuccessStatusCode) return response;
+        var statusCode = response.StatusCode;
+        response.Dispose();
+        throw new HttpRequestException($"Overlay stream returned {(int)statusCode}.");
     }
 
     public async Task<string> TerminateProcessesAsync(
@@ -115,6 +145,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
 
         probeClient.Dispose();
         actionClient.Dispose();
+        streamClient.Dispose();
         requestAuthorization = null;
     }
 
