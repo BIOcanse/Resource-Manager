@@ -16,6 +16,7 @@ import type {
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareProcessHistory,
   GpuPlacementSoftwareSettingsSnapshot,
+  PerformanceOverlaySettings,
   GpuPerformanceScoreOverrideRequest,
   GpuPerformanceScoreOverrideResult,
   GpuPerformanceScoreSnapshot,
@@ -77,6 +78,22 @@ export async function postJson<T>(
 
 export async function getMetricCatalog() {
   return getJson<MetricDefinition[]>("/api/metrics/catalog");
+}
+
+export async function getPerformanceOverlaySettings(softwareId: string) {
+  return getJson<PerformanceOverlaySettings>(
+    `/api/performance-overlay/software/${encodeURIComponent(softwareId)}`);
+}
+
+export async function getPerformanceOverlayMetricCatalog() {
+  return getJson<MetricDefinition[]>("/api/performance-overlay/metrics/catalog");
+}
+
+export async function savePerformanceOverlaySettings(settings: PerformanceOverlaySettings) {
+  return putJson<PerformanceOverlaySettings>(
+    `/api/performance-overlay/software/${encodeURIComponent(settings.softwareId)}`,
+    settings,
+    uiText.apiError.saveGpuSoftwarePolicyFailed);
 }
 
 export async function getDashboardSettings() {

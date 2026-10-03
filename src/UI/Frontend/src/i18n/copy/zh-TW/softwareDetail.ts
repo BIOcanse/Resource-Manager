@@ -1,4 +1,30 @@
 export const zhSoftwareDetailCopy = {
+  performanceOverlay: {
+    tab: "疊加層與監控",
+    enabled: "啟用疊加層",
+    mode: "顯示方式",
+    external: "外置疊加層",
+    injected: "注入式疊加層",
+    injectionWarning: "注入可能被反作弊系統標記，並可能導致帳號封禁；變更將於此軟體下次啟動時生效。",
+    metrics: "顯示指標",
+    chooseMetrics: "選擇指標",
+    sizeMode: "尺寸方式",
+    absolutePixels: "絕對像素",
+    windowRatio: "相對視窗比例",
+    fontSizePx: "字體大小（像素）",
+    regionWidthRatio: "區域寬度比例",
+    regionHeightRatio: "區域高度比例",
+    anchor: "位置",
+    topLeft: "左上",
+    topRight: "右上",
+    bottomLeft: "左下",
+    bottomRight: "右下",
+    marginPx: "邊距（像素）",
+    moveUp: "上移",
+    moveDown: "下移",
+    removeMetric: "移除指標",
+    group: "目標軟體"
+  },
   softwareDetail: {
     tab: {
       overview: "概覽",

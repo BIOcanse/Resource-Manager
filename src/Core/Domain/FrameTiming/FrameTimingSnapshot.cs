@@ -13,7 +13,10 @@ public sealed record FrameTimingStream(
     FramePresentSource Source,
     ulong SwapChain,
     DateTimeOffset LastPresentAt,
-    FrameIntervalStatistics Statistics);
+    FrameIntervalStatistics Statistics)
+{
+    public int PresentCount { get; init; }
+}
 
 /// <summary>一个进程实例（PID 加启动时间）的帧流。</summary>
 public sealed record FrameTimingProcess(

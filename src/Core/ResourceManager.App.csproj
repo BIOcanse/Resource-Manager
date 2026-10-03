@@ -43,6 +43,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration\HostManager\default.json"
                       LogicalName="ResourceManager.Configuration.HostManager.default.json" />
+    <EmbeddedResource Include="Resources\performance-overlay-metric-labels.json"
+                      LogicalName="ResourceManager.Resources.performance-overlay-metric-labels.json" />
     <EmbeddedResource Include="Configuration\FreedomPoints\backend.json"
                       LogicalName="ResourceManager.Configuration.FreedomPoints.backend.json" />
     <EmbeddedResource Include="Configuration\Cpu\baseline-defaults.json"

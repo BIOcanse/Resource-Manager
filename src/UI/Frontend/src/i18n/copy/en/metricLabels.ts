@@ -2,6 +2,14 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enMetricLabelsCopy: Pick<AppCopy, "metricLabel"> = {
   metricLabel: {
+    "target.fps": "Target FPS",
+    "target.frameTime": "Target frame time",
+    "target.onePercentLow": "Target 1% low",
+    "target.pointOnePercentLow": "Target 0.1% low",
+    "target.cpu": "Target process CPU",
+    "target.gpu": "Target process GPU",
+    "target.memory": "Target process memory",
+    "target.vram": "Target process VRAM",
     "cpu.usage": "CPU utilization",
     "disk.io": "Disk I/O",
     "disk.read": "Disk read",

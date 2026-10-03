@@ -1,6 +1,32 @@
 import type { AppCopy } from "../zh/index.ts";
 
-export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail"> = {
+export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performanceOverlay"> = {
+  performanceOverlay: {
+    tab: "Overlay and monitoring",
+    enabled: "Enable overlay",
+    mode: "Display mode",
+    external: "External overlay",
+    injected: "Injected overlay",
+    injectionWarning: "Injection may be flagged by anti-cheat and can result in an account ban. This change takes effect the next time this software starts.",
+    metrics: "Displayed metrics",
+    chooseMetrics: "Choose metrics",
+    sizeMode: "Size mode",
+    absolutePixels: "Absolute pixels",
+    windowRatio: "Relative to window",
+    fontSizePx: "Font size (pixels)",
+    regionWidthRatio: "Region width ratio",
+    regionHeightRatio: "Region height ratio",
+    anchor: "Anchor",
+    topLeft: "Top left",
+    topRight: "Top right",
+    bottomLeft: "Bottom left",
+    bottomRight: "Bottom right",
+    marginPx: "Margin (pixels)",
+    moveUp: "Move up",
+    moveDown: "Move down",
+    removeMetric: "Remove metric",
+    group: "Target software",
+  },
   softwareDetail: {
     tab: {
       overview: "Overview",

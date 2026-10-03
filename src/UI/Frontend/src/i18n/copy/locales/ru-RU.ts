@@ -1424,6 +1424,32 @@ const ruRuAppCopy: AppCopy = {
     vramFull: "Видеопамять заполнена",
     noProcessAttribution: "Отнесение процессов отсутствует"
   },
+  performanceOverlay: {
+    tab: "Наложение и мониторинг",
+    enabled: "Включить наложение",
+    mode: "Режим отображения",
+    external: "Внешнее наложение",
+    injected: "Внедрённое наложение",
+    injectionWarning: "Внедрение может быть обнаружено античитом и привести к блокировке учётной записи. Изменение вступит в силу при следующем запуске этой программы.",
+    metrics: "Отображаемые показатели",
+    chooseMetrics: "Выбрать показатели",
+    sizeMode: "Режим размера",
+    absolutePixels: "Абсолютные пиксели",
+    windowRatio: "Относительно окна",
+    fontSizePx: "Размер шрифта (пиксели)",
+    regionWidthRatio: "Доля ширины области",
+    regionHeightRatio: "Доля высоты области",
+    anchor: "Положение",
+    topLeft: "Сверху слева",
+    topRight: "Сверху справа",
+    bottomLeft: "Снизу слева",
+    bottomRight: "Снизу справа",
+    marginPx: "Отступ (пиксели)",
+    moveUp: "Выше",
+    moveDown: "Ниже",
+    removeMetric: "Удалить показатель",
+    group: "Целевая программа"
+  },
   softwareDetail: {
     tab: {
       overview: "Обзор",
@@ -2210,6 +2236,14 @@ const ruRuAppCopy: AppCopy = {
     manualNextStep: "Страница источника и папка кэша установщиков открыты. Положите скачанный установщик в эту папку и вернитесь, чтобы выбрать «Установить»."
   },
   metricLabel: {
+    "target.fps": "FPS целевой программы",
+    "target.frameTime": "Время кадра целевой программы",
+    "target.onePercentLow": "Минимум 1 % целевой программы",
+    "target.pointOnePercentLow": "Минимум 0,1 % целевой программы",
+    "target.cpu": "ЦП целевого процесса",
+    "target.gpu": "ГП целевого процесса",
+    "target.memory": "Память целевого процесса",
+    "target.vram": "Видеопамять целевого процесса",
     "cpu.usage": "Загрузка ЦП",
     "disk.io": "Ввод-вывод диска",
     "disk.read": "Чтение с диска",

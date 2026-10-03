@@ -1424,6 +1424,32 @@ const koKrAppCopy: AppCopy = {
     vramFull: "VRAM 포화",
     noProcessAttribution: "프로세스 귀속 정보 없음"
   },
+  performanceOverlay: {
+    tab: "오버레이 및 모니터링",
+    enabled: "오버레이 사용",
+    mode: "표시 방식",
+    external: "외부 오버레이",
+    injected: "주입형 오버레이",
+    injectionWarning: "주입 방식은 안티치트에 감지되어 계정이 정지될 수 있습니다. 변경 사항은 이 소프트웨어를 다음에 시작할 때 적용됩니다.",
+    metrics: "표시할 지표",
+    chooseMetrics: "지표 선택",
+    sizeMode: "크기 방식",
+    absolutePixels: "절대 픽셀",
+    windowRatio: "창 크기에 대한 비율",
+    fontSizePx: "글꼴 크기(픽셀)",
+    regionWidthRatio: "영역 너비 비율",
+    regionHeightRatio: "영역 높이 비율",
+    anchor: "위치",
+    topLeft: "왼쪽 위",
+    topRight: "오른쪽 위",
+    bottomLeft: "왼쪽 아래",
+    bottomRight: "오른쪽 아래",
+    marginPx: "여백(픽셀)",
+    moveUp: "위로 이동",
+    moveDown: "아래로 이동",
+    removeMetric: "지표 제거",
+    group: "대상 소프트웨어"
+  },
   softwareDetail: {
     tab: {
       overview: "개요",
@@ -2210,6 +2236,14 @@ const koKrAppCopy: AppCopy = {
     manualNextStep: "출처 페이지와 설치 관리자 캐시 폴더를 열었습니다. 내려받은 설치 관리자를 그 폴더에 넣은 뒤 돌아와 «설치»를 선택하세요."
   },
   metricLabel: {
+    "target.fps": "대상 FPS",
+    "target.frameTime": "대상 프레임 시간",
+    "target.onePercentLow": "대상 1% Low",
+    "target.pointOnePercentLow": "대상 0.1% Low",
+    "target.cpu": "대상 프로세스 CPU",
+    "target.gpu": "대상 프로세스 GPU",
+    "target.memory": "대상 프로세스 메모리",
+    "target.vram": "대상 프로세스 VRAM",
     "cpu.usage": "CPU 사용률",
     "disk.io": "디스크 I/O",
     "disk.read": "디스크 읽기",
