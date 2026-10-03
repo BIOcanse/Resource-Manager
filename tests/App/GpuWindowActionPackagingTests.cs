@@ -23,7 +23,7 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
         Assert.Equal("'$(DesignTimeBuild)' != 'true' and '$(SkipGpuWindowActionNativeBuild)' != 'true'", (string?)target.Attribute("Condition"));
         var exec = Assert.Single(target.Elements("Exec"));
         Assert.Equal("$(GpuWindowActionRoot)", (string?)exec.Attribute("WorkingDirectory"));
-        Assert.Equal("cmd.exe /d /c build.cmd", (string?)exec.Attribute("Command"));
+        Assert.Equal(@"cmd.exe /d /c .\build.cmd", (string?)exec.Attribute("Command"));
         Assert.Equal(new[] { "$(GpuWindowActionRoot)\\ResourceManagerGpuWindowAction.cpp", "$(GpuWindowActionRoot)\\WindowActionProtocol.h",
                 "$(MSBuildProjectDirectory)\\Native\\GpuPlacementCommon\\WorkerPipeClient.h", "$(GpuWindowActionRoot)\\build.cmd" },
             project.Descendants("GpuWindowActionSource").Select(item => (string?)item.Attribute("Include")).ToArray());
