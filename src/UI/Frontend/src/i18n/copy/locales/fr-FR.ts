@@ -1,7 +1,9 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
+import { targetedReport } from "./fr-FR-targetedReport.ts";
 
 const frFrAppCopy: AppCopy = {
+  targetedReport,
   common: {
     saving: "Enregistrement",
     saveFailed: "Échec de l'enregistrement"

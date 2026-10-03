@@ -23,7 +23,7 @@ assert.equal(optimization.match(/<SegmentedControl/g)?.length, 1);
 assert.match(optimization, /aria-pressed=\{selectedOptimizationMode\(\) === "normal"\}/);
 assert.match(optimization, /aria-pressed=\{optimizationModeHasDomain\(selectedOptimizationMode\(\), domain\)\}/);
 assert.match(details, /<TabsRoot/);
-assert.equal(details.match(/<TabsPanel/g)?.length, 4);
+assert.equal(details.match(/<TabsPanel/g)?.length, 5);
 assert.match(settings, /aria-current=\{props\.activeSection === section/);
 assert.match(topology, /<SegmentedControl/);
 assert.equal(topology.match(/aria-pressed=/g)?.length, 1);

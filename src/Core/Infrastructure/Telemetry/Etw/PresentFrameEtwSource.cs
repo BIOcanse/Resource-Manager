@@ -97,6 +97,41 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
         }
     }
 
+    public FrameIntervalBatch? ReadIntervals(DateTimeOffset after, DateTimeOffset through)
+    {
+        if (through <= after || through - after > PresentFrameLedger.Retention)
+        {
+            throw new ArgumentOutOfRangeException(nameof(through));
+        }
+
+        lock (lifecycle)
+        {
+            if (session is not { } current)
+            {
+                return null;
+            }
+
+            lock (gate)
+            {
+                if (failed)
+                {
+                    return null;
+                }
+
+                var lost = current.EventsLost;
+                if (lost != observedEventsLost)
+                {
+                    observedEventsLost = lost;
+                    lastLossUtcTicks = DateTime.UtcNow.Ticks;
+                }
+
+                return new FrameIntervalBatch(through,
+                    lastLossUtcTicks == 0 || lastLossUtcTicks < after.UtcTicks,
+                    ledger.ReadIntervals(after.UtcTicks, through.UtcTicks));
+            }
+        }
+    }
+
     public void ApplyMode(ResourceManagerComputeZoneMode next)
     {
         lock (lifecycle)

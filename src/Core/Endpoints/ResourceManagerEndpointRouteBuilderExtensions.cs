@@ -51,6 +51,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             app.MapSoftwareEndpoints();
             app.MapFileIndexEndpoints();
+            app.MapTargetedRecordingEndpoints();
         }
         if (startupCapabilities.Allows(
                 StartupCapability.GpuLaunchInterceptionReconciliation))
