@@ -61,16 +61,24 @@ public sealed class PerformanceOverlaySubscriptionTests
         Assert.Equal(0, frameSource.ActiveCount);
 
         processSource.Current = Snapshot(Process(10, 100));
-        Assert.Single(await ReadTargetsAsync(reader, timeout.Token));
+        await ReadUntilTargetCountAsync(reader, 1, timeout.Token);
         Assert.Equal(1, frameSource.ActiveCount);
 
         processSource.Current = Snapshot();
-        Assert.Empty(await ReadTargetsAsync(reader, timeout.Token));
+        await ReadUntilTargetCountAsync(reader, 0, timeout.Token);
         Assert.Equal(0, frameSource.ActiveCount);
 
         await timeout.CancelAsync();
         response.Dispose();
         await app.StopAsync();
+    }
+
+    // 推送间隔只有 100 ms，改动数据之前可能已经排好下一行；读到目标数符合为止（受测试超时限制）。
+    private static async Task ReadUntilTargetCountAsync(StreamReader reader, int expected, CancellationToken cancellationToken)
+    {
+        while ((await ReadTargetsAsync(reader, cancellationToken)).Count() != expected)
+        {
+        }
     }
 
     private static async Task<JsonElement.ArrayEnumerator> ReadTargetsAsync(
