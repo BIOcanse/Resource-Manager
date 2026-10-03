@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.Overlay;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -37,6 +39,8 @@ public sealed class GpuGraphicsApiIdentificationTests
     [InlineData("vulkan-1.dll,opengl32.dll")]
     [InlineData("ResourceManager.GpuPlacementShim.dll,d3d11.dll,d3d12.dll")]
     [InlineData("ResourceManager.VulkanPlacementLayer.dll,vulkan-1.dll")]
+    [InlineData("ResourceManager.PerformanceOverlay.dll,d3d11.dll")]
+    [InlineData("ResourceManager.VulkanPerformanceOverlayLayer.dll,vulkan-1.dll")]
     public void MissingAmbiguousAndShimOwnedImportsAreNotSuccessfulDetection(string? modules)
         => Assert.Null(new WindowsGpuGraphicsApiDetector((_, _) => modules?.Split(',')).Detect(42, "target.exe"));
 
@@ -224,7 +228,9 @@ public sealed class GpuGraphicsApiIdentificationTests
             { StartupInterceptionEnabled = true }, default);
         var plan = new Plans(software);
         var resolver = new GpuStartupPlacementResolver(policies, plan, new D3d11ProxyShimRuntime(files),
-            new JsonGpuPlacementProcessHistoryStore(files));
+            new JsonGpuPlacementProcessHistoryStore(files),
+            new JsonPerformanceOverlaySettingsStore(files), new EmptySoftwareRegistryView(),
+            NullLogger<GpuStartupPlacementResolver>.Instance);
         var result = await resolver.ResolveAsync(new(files.Target), default);
         if (expectedProvider is null)
         {
@@ -241,7 +247,9 @@ public sealed class GpuGraphicsApiIdentificationTests
         try
         {
             var withoutHistory = new GpuStartupPlacementResolver(policies, plan, new D3d11ProxyShimRuntime(files),
-                new JsonGpuPlacementProcessHistoryStore(noRecord));
+                new JsonGpuPlacementProcessHistoryStore(noRecord),
+                new JsonPerformanceOverlaySettingsStore(files), new EmptySoftwareRegistryView(),
+                NullLogger<GpuStartupPlacementResolver>.Instance);
             var unknown = await withoutHistory.ResolveAsync(new(files.Target), default);
             Assert.Equal("graphics-api-unidentified", unknown.Status);
             Assert.Empty(unknown.StartupProviders);

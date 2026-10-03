@@ -63,6 +63,7 @@ struct StartupDecision
 {
     bool injectDirect3D = false;
     bool enableVulkan = false;
+    bool injectOverlay = false;
     std::wstring status = L"backend-unavailable";
     std::wstring message;
     std::wstring policyPath;
@@ -389,10 +390,12 @@ void ParseStartupDecision(
 
     const auto version = fields.find(L"version");
     const auto providers = fields.find(L"startupProviders");
+    const auto overlayField = fields.find(L"overlayEnabled");
+    const bool overlay = overlayField != fields.end() && overlayField->second == L"true";
     bool direct3D = false;
     bool vulkan = false;
-    bool validProviders = providers != fields.end() && !providers->second.empty();
-    if (validProviders)
+    bool validProviders = providers == fields.end() || !providers->second.empty();
+    if (validProviders && providers != fields.end())
     {
         size_t offset = 0;
         do
@@ -406,7 +409,9 @@ void ParseStartupDecision(
             offset = end + 1;
         } while (offset <= providers->second.size());
     }
-    if (version == fields.end() || version->second != L"1" || !validProviders)
+    if (version == fields.end() || version->second != L"1" || !validProviders
+        || (overlayField != fields.end() && !overlay)
+        || (!direct3D && !vulkan && !overlay))
     {
         decision.status = L"untrusted-response";
         decision.message = L"startup resolver returned unsupported providers or protocol";
@@ -418,9 +423,9 @@ void ParseStartupDecision(
     const std::wstring policyRoot = Combine(packageRoot, L"UserData\\GpuPlacement");
     if (responsePath == fields.end()
         || ToLower(FullPath(responsePath->second)) != ToLower(FullPath(targetPath))
-        || policyPath == fields.end()
-        || !FileExists(policyPath->second)
-        || !IsPathUnder(policyPath->second, policyRoot))
+        || ((direct3D || vulkan) && (policyPath == fields.end()
+            || !FileExists(policyPath->second)
+            || !IsPathUnder(policyPath->second, policyRoot))))
     {
         decision.status = L"untrusted-response";
         decision.message = L"startup resolver returned an untrusted path";
@@ -429,7 +434,8 @@ void ParseStartupDecision(
 
     decision.injectDirect3D = direct3D;
     decision.enableVulkan = vulkan;
-    decision.policyPath = FullPath(policyPath->second);
+    decision.injectOverlay = overlay;
+    if (direct3D || vulkan) decision.policyPath = FullPath(policyPath->second);
 }
 
 StartupDecision ResolveStartupDecision(const std::wstring& targetPath, const std::wstring& packageRoot)
@@ -510,11 +516,12 @@ bool DetachDebugger(DWORD processId)
     return false;
 }
 
-bool ApplyBootstrap(HANDLE process, const std::wstring& bootstrapPath, const std::wstring& providerPath)
+bool ApplyBootstrap(HANDLE process, const std::wstring& bootstrapPath,
+    const std::wstring& providerPath, const std::wstring& overlayPath)
 {
     ScopedModule module{LoadLibraryW(bootstrapPath.c_str())};
     if (module.value == nullptr) return false;
-    using UpdateFunction = DWORD (WINAPI*)(HANDLE, const wchar_t*, DWORD*);
+    using UpdateFunction = DWORD (WINAPI*)(HANDLE, const wchar_t*, const wchar_t*, DWORD*);
     union
     {
         FARPROC raw;
@@ -524,7 +531,8 @@ bool ApplyBootstrap(HANDLE process, const std::wstring& bootstrapPath, const std
     const auto update = updateAddress.typed;
     if (update == nullptr) return false;
     DWORD error = ERROR_SUCCESS;
-    return update(process, providerPath.c_str(), &error) != 0;
+    return update(process, providerPath.empty() ? nullptr : providerPath.c_str(),
+        overlayPath.empty() ? nullptr : overlayPath.c_str(), &error) != 0;
 }
 
 int MirrorTargetExit(HANDLE process)
@@ -555,10 +563,13 @@ int LaunchTarget(
     const std::wstring providerPath = Combine(brokerDirectory, L"GpuPlacementShim\\ResourceManager.GpuPlacementShim.dll");
     const std::wstring bootstrapPath = Combine(brokerDirectory, L"GpuPlacementShim\\ResourceManager.GpuPlacementBootstrap.dll");
     const std::wstring vulkanDirectory = Combine(brokerDirectory, L"GpuPlacementShim");
+    const std::wstring overlayDirectory = Combine(brokerDirectory, L"PerformanceOverlay");
+    const std::wstring overlayPath = Combine(overlayDirectory, L"ResourceManager.PerformanceOverlay.dll");
     ResourceManagerGpuLaunch::Environment inherited;
     if (!ResourceManagerGpuLaunch::ReadEnvironmentBlock(inherited)) return static_cast<int>(GetLastError());
 
-    bool applyProviders = decision.injectDirect3D || decision.enableVulkan;
+    bool applyGpu = decision.injectDirect3D || decision.enableVulkan;
+    bool applyOverlay = decision.injectOverlay;
     std::wstring fallbackOutcome;
     std::wstring fallbackMessage;
     if ((decision.injectDirect3D && (!FileExists(providerPath) || !FileExists(bootstrapPath)))
@@ -567,29 +578,53 @@ int LaunchTarget(
             || vulkanDirectory.find(L';') != std::wstring::npos
             || !CanUseVulkanEnvironment())))
     {
-        applyProviders = false;
+        applyGpu = false;
         fallbackOutcome = L"provider-unavailable-fallback";
         fallbackMessage = L"requested startup artifacts or non-elevated Vulkan environment unavailable; starting without providers";
     }
 
-    for (int attempt = 0; attempt < 2; ++attempt)
+    if (applyOverlay && (!FileExists(overlayPath) || !FileExists(bootstrapPath)))
     {
-        bool inject = applyProviders && decision.injectDirect3D;
-        bool vulkan = applyProviders && decision.enableVulkan;
+        applyOverlay = false;
+        fallbackOutcome = L"provider-unavailable-fallback";
+        if (!fallbackMessage.empty()) fallbackMessage += L"; ";
+        fallbackMessage += L"performance overlay DLL or bootstrap unavailable; starting without overlay";
+    }
+    const bool overlayVulkanAvailable = FileExists(Combine(overlayDirectory, L"ResourceManager.VulkanPerformanceOverlayLayer.dll"))
+        && FileExists(Combine(overlayDirectory, L"ResourceManager.VulkanPerformanceOverlayLayer.json"))
+        && overlayDirectory.find(L';') == std::wstring::npos
+        && CanUseVulkanEnvironment();
+    if (applyOverlay && !overlayVulkanAvailable)
+    {
+        fallbackOutcome = L"provider-unavailable-fallback";
+        if (!fallbackMessage.empty()) fallbackMessage += L"; ";
+        fallbackMessage += L"performance overlay Vulkan layer unavailable; DLL preload remains enabled";
+    }
+
+    for (int attempt = 0; attempt < 3; ++attempt)
+    {
+        bool inject = applyGpu && decision.injectDirect3D;
+        bool vulkan = applyGpu && decision.enableVulkan;
+        bool overlay = applyOverlay;
+        bool overlayVulkan = overlay && overlayVulkanAvailable;
         const std::wstring readyEventName = L"Local\\ResourceManager.GpuPlacement.Broker."
             + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetTickCount64());
         ScopedHandle readyEvent(inject ? CreateEventW(nullptr, TRUE, FALSE, readyEventName.c_str()) : nullptr);
         if (inject && readyEvent.value == nullptr)
         {
-            applyProviders = inject = vulkan = false;
+            applyGpu = inject = vulkan = false;
             fallbackOutcome = L"provider-unavailable-fallback";
-            fallbackMessage = L"provider ready event creation failed; starting without providers";
+            if (!fallbackMessage.empty()) fallbackMessage += L"; ";
+            fallbackMessage += overlay
+                ? L"provider ready event creation failed; starting without GPU providers"
+                : L"provider ready event creation failed; starting without providers";
         }
         auto environment = ResourceManagerGpuLaunch::BuildEnvironmentBlock(
             ResourceManagerGpuLaunch::ConfigureChildEnvironment(inherited,
-                applyProviders ? decision.policyPath : std::wstring(),
+                applyGpu ? decision.policyPath : std::wstring(),
                 inject ? readyEventName : std::wstring(),
-                vulkan ? vulkanDirectory : std::wstring()));
+                vulkan ? vulkanDirectory : std::wstring(),
+                overlayVulkan ? overlayDirectory : std::wstring()));
 
         STARTUPINFOW startup{};
         GetStartupInfoW(&startup);
@@ -619,17 +654,23 @@ int LaunchTarget(
             return ERROR_CIRCULAR_DEPENDENCY;
         }
 
-        if (inject && !ApplyBootstrap(process.hProcess, bootstrapPath, providerPath))
+        if ((inject || overlay) && !ApplyBootstrap(process.hProcess, bootstrapPath,
+                inject ? providerPath : std::wstring(), overlay ? overlayPath : std::wstring()))
         {
             PostStartupReport(decision, targetPath, process.dwProcessId, L"bootstrap-failed-fallback",
-                L"startup bootstrap failed before target resume");
+                overlay ? L"startup bootstrap with performance overlay failed before target resume"
+                        : L"startup bootstrap failed before target resume");
             const bool terminated = TerminateProcess(process.hProcess, ERROR_DLL_INIT_FAILED) != FALSE;
             const bool detached = DetachDebugger(process.dwProcessId);
             const bool exited = WaitForSingleObject(process.hProcess, 2000) == WAIT_OBJECT_0;
             if (!terminated || !detached || !exited || !allowInjectionFallback) return ERROR_DLL_INIT_FAILED;
-            applyProviders = false;
+            if (overlay) applyOverlay = false;
+            else applyGpu = false;
             fallbackOutcome = L"bootstrap-failed-fallback";
-            fallbackMessage = L"bootstrap failed before resume; target restarted once without providers";
+            if (!fallbackMessage.empty()) fallbackMessage += L"; ";
+            fallbackMessage += overlay
+                ? L"overlay bootstrap failed before resume; target restarted without overlay"
+                : L"bootstrap failed before resume; target restarted once without providers";
             continue;
         }
 
@@ -658,8 +699,10 @@ int LaunchTarget(
             if (wait != WAIT_OBJECT_0)
             {
                 PostStartupReport(decision, targetPath, process.dwProcessId, L"provider-timeout",
-                    L"Direct3D startup provider did not report ready");
+                    overlay ? L"Direct3D startup provider did not report ready; overlay launch remains running"
+                            : L"Direct3D startup provider did not report ready");
                 if (wait == WAIT_OBJECT_0 + 1) return MirrorTargetExit(process.hProcess);
+                if (overlay) return MirrorTargetExit(process.hProcess);
                 TerminateProcess(process.hProcess, ERROR_TIMEOUT);
                 WaitForSingleObject(process.hProcess, 2000);
                 return ERROR_TIMEOUT;
@@ -668,6 +711,11 @@ int LaunchTarget(
 
         if (!fallbackOutcome.empty())
             PostStartupReport(decision, targetPath, process.dwProcessId, fallbackOutcome, fallbackMessage);
+        else if (overlay)
+            PostStartupReport(decision, targetPath, process.dwProcessId,
+                inject ? L"provider-ready" : L"startup-configured",
+                inject ? L"Direct3D preload ready; performance overlay preload and Vulkan child environment configured"
+                       : L"performance overlay preload and Vulkan child environment configured");
         else if (vulkan)
             PostStartupReport(decision, targetPath, process.dwProcessId, L"startup-configured",
                 inject ? L"Direct3D preload ready; Vulkan child environment configured, device selection not yet observed"

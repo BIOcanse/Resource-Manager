@@ -1,16 +1,68 @@
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Overlay;
+using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.Overlay;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuStartupProviderPolicyTests
 {
+    [Fact]
+    public async Task GpuAndOverlayProvidersAreSelectedTogether()
+    {
+        using var root = new OwnedRoot();
+        var policyStore = new JsonGpuPlacementPolicyStore(root.Environment);
+        var software = Software();
+        await policyStore.SaveSoftwarePolicyAsync(software, CancellationToken.None);
+        await policyStore.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
+        var overlays = new JsonPerformanceOverlaySettingsStore(root.Environment);
+        await overlays.SaveSoftwareAsync(new PerformanceOverlaySettings
+        {
+            SoftwareId = software.SoftwareId,
+            Enabled = true,
+            Mode = "injected"
+        }, CancellationToken.None);
+
+        var decision = await Resolver(policyStore, await policyStore.GetAsync(CancellationToken.None),
+            root.Environment, overlaySettingsStore: overlays,
+            softwareRegistry: new SingleSoftwareView(software.SoftwareId, root.Target))
+            .ResolveAsync(new(root.Target), CancellationToken.None);
+
+        Assert.Equal(GpuStartupPlacementDecisionKinds.Inject, decision.Decision);
+        Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, Assert.Single(decision.StartupProviders));
+        Assert.True(decision.OverlayEnabled);
+        Assert.Contains("overlayEnabled=true\n", GpuLaunchBrokerProtocol.Serialize(decision), StringComparison.Ordinal);
+        Assert.NotNull(decision.PolicyPath);
+    }
+
+    [Fact]
+    public async Task UnavailableOverlaySettingsPreserveGpuStartupProvider()
+    {
+        using var root = new OwnedRoot();
+        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var software = Software();
+        await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
+        await store.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
+
+        var decision = await Resolver(store, await store.GetAsync(CancellationToken.None),
+            root.Environment, overlaySettingsStore: new FailingOverlaySettingsStore())
+            .ResolveAsync(new(root.Target), CancellationToken.None);
+
+        Assert.Equal(GpuStartupPlacementDecisionKinds.Inject, decision.Decision);
+        Assert.Equal(GpuPlacementProviderIds.VulkanExplicitLayer, Assert.Single(decision.StartupProviders));
+        Assert.False(decision.OverlayEnabled);
+    }
+
     [Fact]
     public async Task CorruptExistingGpuPolicyCannotBeReplacedByAnEmptyDocument()
     {
@@ -239,7 +291,10 @@ public sealed class GpuStartupProviderPolicyTests
         software.AllowedProviders, GpuPlacementTargets.SystemDefaultGpu, GpuPlacementExplicitSelectionModes.DefaultSkip,
         null, DateTimeOffset.UnixEpoch, true);
 
-    private static GpuStartupPlacementResolver Resolver(JsonGpuPlacementPolicyStore store, GpuPlacementPolicyDocument document, IHostEnvironment environment, bool globalEnabled = true)
+    private static GpuStartupPlacementResolver Resolver(JsonGpuPlacementPolicyStore store, GpuPlacementPolicyDocument document,
+        IHostEnvironment environment, bool globalEnabled = true,
+        IPerformanceOverlaySettingsStore? overlaySettingsStore = null,
+        ISoftwareRegistryView? softwareRegistry = null)
     {
         var software = Assert.Single(document.SoftwarePolicies);
         var process = Assert.Single(document.ProcessPolicies);
@@ -250,7 +305,22 @@ public sealed class GpuStartupProviderPolicyTests
             [software.SoftwareId] = ResolvedGpuPlacementPolicy.FromSoftware(software)
         }, processes);
         return new(store, new PlanProvider(CompiledRuntimePlan.Default with { GpuPlacement = plan }),
-            new D3d11ProxyShimRuntime(environment), new KnownHistory(process));
+            new D3d11ProxyShimRuntime(environment), new KnownHistory(process),
+            overlaySettingsStore ?? new JsonPerformanceOverlaySettingsStore(environment),
+            softwareRegistry ?? new EmptySoftwareRegistryView(),
+            NullLogger<GpuStartupPlacementResolver>.Instance);
+    }
+
+    private sealed class SingleSoftwareView(string softwareId, string executablePath) : ISoftwareRegistryView
+    {
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SoftwareRecord>>([new SoftwareRecord(
+                softwareId, "Software", SoftwareKinds.Game, "Game", "registered", [], [], string.Empty,
+                new SoftwareOperationCapabilities(false, "", "", ""), null,
+                ExecutablePaths: [executablePath])]);
+
+        public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) =>
+            GetSoftwareAsync(cancellationToken);
     }
 
     private sealed class KnownHistory(GpuPlacementProcessPolicy process) : IGpuPlacementProcessHistoryStore

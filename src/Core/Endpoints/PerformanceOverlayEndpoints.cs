@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Domain.Overlay;
+using ResourceManager.App.Infrastructure.GpuPlacement;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -34,12 +35,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             string softwareId,
             PerformanceOverlaySettings settings,
             IPerformanceOverlaySettingsStore store,
+            GpuLaunchInterceptionReconciler launchInterceptionReconciler,
             CancellationToken cancellationToken) =>
         {
             try
             {
-                return Results.Ok(await store.SaveSoftwareAsync(
-                    settings with { SoftwareId = softwareId }, cancellationToken));
+                var saved = await store.SaveSoftwareAsync(
+                    settings with { SoftwareId = softwareId }, cancellationToken);
+                await launchInterceptionReconciler.ReconcileAsync(CancellationToken.None);
+                return Results.Ok(saved);
             }
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         });

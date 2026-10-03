@@ -16,6 +16,7 @@ public static class GpuLaunchBrokerProtocol
             ["version"] = "1",
             ["decision"] = decision.Decision,
             ["startupProviders"] = string.Join(',', decision.StartupProviders),
+            ["overlayEnabled"] = decision.OverlayEnabled ? "true" : null,
             ["status"] = decision.Status,
             ["message"] = decision.Message,
             ["executablePath"] = decision.ExecutablePath,

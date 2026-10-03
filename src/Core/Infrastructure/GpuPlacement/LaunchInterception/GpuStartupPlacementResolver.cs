@@ -1,5 +1,7 @@
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Overlay;
 using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
@@ -8,9 +10,59 @@ public sealed class GpuStartupPlacementResolver(
     IGpuPlacementPolicyStore policyStore,
     IRuntimePlanProvider runtimePlanProvider,
     D3d11ProxyShimRuntime shimRuntime,
-    IGpuPlacementProcessHistoryStore processHistoryStore) : IGpuStartupPlacementResolver
+    IGpuPlacementProcessHistoryStore processHistoryStore,
+    IPerformanceOverlaySettingsStore overlaySettingsStore,
+    ISoftwareRegistryView softwareRegistry,
+    ILogger<GpuStartupPlacementResolver> logger) : IGpuStartupPlacementResolver
 {
     public async Task<GpuStartupPlacementDecision> ResolveAsync(
+        GpuStartupPlacementRequest request,
+        CancellationToken cancellationToken)
+    {
+        var gpuDecision = await ResolveGpuAsync(request, cancellationToken);
+        if (!File.Exists(gpuDecision.ExecutablePath))
+        {
+            return gpuDecision;
+        }
+
+        try
+        {
+            var settings = await overlaySettingsStore.GetAsync(cancellationToken);
+            var enabledIds = settings.Software
+                .Where(static item => item.Enabled && item.Mode.Equals("injected", StringComparison.OrdinalIgnoreCase))
+                .Select(static item => item.SoftwareId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (enabledIds.Count == 0)
+            {
+                return gpuDecision;
+            }
+
+            var software = await softwareRegistry.GetSoftwareAsync(cancellationToken);
+            var overlaySoftwareId = software
+                .Where(item => enabledIds.Contains(item.Id)
+                    && (item.ExecutablePaths ?? []).Any(path => string.Equals(
+                        NormalizePath(path), gpuDecision.ExecutablePath, StringComparison.OrdinalIgnoreCase)))
+                .Select(static item => item.Id)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            return overlaySoftwareId is null
+                ? gpuDecision
+                : gpuDecision with
+                {
+                    Decision = GpuStartupPlacementDecisionKinds.Inject,
+                    SoftwareId = gpuDecision.SoftwareId ?? overlaySoftwareId,
+                    OverlayEnabled = true
+                };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Overlay startup selection failed for {ExecutablePath}; keeping GPU decision.",
+                gpuDecision.ExecutablePath);
+            return gpuDecision;
+        }
+    }
+
+    private async Task<GpuStartupPlacementDecision> ResolveGpuAsync(
         GpuStartupPlacementRequest request,
         CancellationToken cancellationToken)
     {

@@ -6,9 +6,15 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Overlay;
+using ResourceManager.App.Application.Software;
+using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Overlay;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Endpoints;
+using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -18,9 +24,16 @@ public sealed class PerformanceOverlayEndpointTests
     [Fact]
     public async Task DefaultGetAndPutUseCompleteSettingsAndRouteIdentity()
     {
+        const string executablePath = @"C:\Apps\Overlay\overlay.exe";
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Services.AddSingleton<IPerformanceOverlaySettingsStore, MemoryStore>();
+        var store = new MemoryStore();
+        var registry = new CapturingLaunchRegistry();
+        builder.Services.AddSingleton<IPerformanceOverlaySettingsStore>(store);
+        builder.Services.AddSingleton(new GpuLaunchInterceptionReconciler(
+            new EmptyGpuPolicyStore(), store, new SingleSoftwareRegistryView(executablePath),
+            registry, new UnavailableGpuScheduling(),
+            NullLogger<GpuLaunchInterceptionReconciler>.Instance));
         builder.Services.AddSingleton<DashboardMonitoringCatalogState>();
         await using var app = builder.Build();
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
@@ -61,6 +74,12 @@ public sealed class PerformanceOverlayEndpointTests
         Assert.Equal(saved.SoftwareId, retrieved!.SoftwareId);
         Assert.Equal(saved.Mode, retrieved.Mode);
         Assert.True(retrieved.Enabled);
+        Assert.Equal(executablePath, Assert.Single(registry.OverlayPaths));
+
+        using var externalResponse = await client.PutAsJsonAsync("/api/performance-overlay/software/game",
+            saved with { Mode = "external" });
+        Assert.Equal(HttpStatusCode.OK, externalResponse.StatusCode);
+        Assert.Empty(registry.OverlayPaths);
         await app.StopAsync();
     }
 
@@ -84,5 +103,51 @@ public sealed class PerformanceOverlayEndpointTests
             software[normalized.SoftwareId] = normalized;
             return Task.FromResult(normalized);
         }
+    }
+
+    private sealed class EmptyGpuPolicyStore : IGpuPlacementPolicyStore
+    {
+        public Task<GpuPlacementPolicyDocument> GetAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new GpuPlacementPolicyDocument(
+                GpuPlacementPolicyDocumentVersions.Current, [], [], DateTimeOffset.UnixEpoch));
+        public Task<GpuPlacementSoftwarePolicy> GetOrCreateSoftwarePolicyAsync(
+            string softwareId, string softwareName, string? softwareKind,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<GpuPlacementSoftwarePolicy> SaveSoftwarePolicyAsync(
+            GpuPlacementSoftwarePolicy policy, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<GpuPlacementProcessPolicy> SaveProcessPolicyAsync(
+            GpuPlacementProcessPolicy policy, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class SingleSoftwareRegistryView(string executablePath) : ISoftwareRegistryView
+    {
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SoftwareRecord>>(
+                [new SoftwareRecord("game", "Game", SoftwareKinds.Game, "Game", "registered",
+                    [], [], string.Empty, new SoftwareOperationCapabilities(false, "", "", ""),
+                    null, ExecutablePaths: [executablePath])]);
+
+        public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) =>
+            GetSoftwareAsync(cancellationToken);
+    }
+
+    private sealed class CapturingLaunchRegistry : IGpuLaunchInterceptionRegistry
+    {
+        public IReadOnlyCollection<string> OverlayPaths { get; private set; } = [];
+        public GpuLaunchInterceptionStatus Apply(GpuPlacementProcessPolicy policy) => throw new NotSupportedException();
+        public GpuLaunchInterceptionStatus GetStatus(GpuPlacementProcessPolicy policy) => throw new NotSupportedException();
+        public IReadOnlyList<GpuLaunchInterceptionStatus> Reconcile(
+            GpuPlacementPolicyDocument document, IReadOnlyCollection<string> overlayExecutablePaths)
+        {
+            OverlayPaths = overlayExecutablePaths;
+            return [];
+        }
+        public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules() => throw new NotSupportedException();
+    }
+
+    private sealed class UnavailableGpuScheduling : IGpuSchedulingAvailability
+    {
+        public ValueTask<GpuSchedulingAvailability> EvaluateAsync(CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new GpuSchedulingAvailability(false, null));
     }
 }

@@ -3,10 +3,12 @@ using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.Overlay;
 using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -265,7 +267,10 @@ public sealed class GpuLaunchInterceptionTests
             new StaticRuntimePlanProvider(
                 CompiledRuntimePlan.Default with { GpuPlacement = compiledGpuPlacement }),
             new D3d11ProxyShimRuntime(new TestHostEnvironment(Path.GetTempPath())),
-            new JsonGpuPlacementProcessHistoryStore(new TestHostEnvironment(Path.GetTempPath())));
+            new JsonGpuPlacementProcessHistoryStore(new TestHostEnvironment(Path.GetTempPath())),
+            new JsonPerformanceOverlaySettingsStore(new TestHostEnvironment(Path.GetTempPath())),
+            new EmptySoftwareRegistryView(),
+            NullLogger<GpuStartupPlacementResolver>.Instance);
 
         var decision = await resolver.ResolveAsync(
             new GpuStartupPlacementRequest(executablePath!),

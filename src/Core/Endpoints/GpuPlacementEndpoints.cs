@@ -171,6 +171,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             GpuPlacementProcessPolicy request,
             IGpuPlacementPolicyStore policyStore,
             IGpuLaunchInterceptionRegistry launchInterceptionRegistry,
+            GpuLaunchInterceptionReconciler launchInterceptionReconciler,
             IRuntimeSpecializationCoordinator runtimeSpecialization,
             CancellationToken cancellationToken) =>
         {
@@ -209,7 +210,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             GpuLaunchInterceptionStatus interception;
             try
             {
-                interception = launchInterceptionRegistry.Apply(saved);
+                var statuses = await launchInterceptionReconciler.ReconcileAsync(CancellationToken.None);
+                interception = statuses.FirstOrDefault(status => string.Equals(
+                    status.ExecutablePath, saved.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                    ?? launchInterceptionRegistry.GetStatus(saved);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

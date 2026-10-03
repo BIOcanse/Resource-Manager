@@ -59,7 +59,8 @@ inline Environment ConfigureChildEnvironment(
     const Environment& inherited,
     const std::wstring& policyPath,
     const std::wstring& readyEvent,
-    const std::wstring& vulkanDirectory)
+    const std::wstring& vulkanDirectory,
+    const std::wstring& overlayVulkanDirectory = std::wstring())
 {
     Environment child = inherited;
     child[L"RM_GPU_IFEO_DEPTH"] = L"1";
@@ -73,6 +74,13 @@ inline Environment ConfigureChildEnvironment(
             ? L"VK_LAYER_PATH" : L"VK_ADD_LAYER_PATH";
         PrependEnvironmentList(child, pathVariable, vulkanDirectory);
         PrependEnvironmentList(child, L"VK_INSTANCE_LAYERS", L"VK_LAYER_RESOURCE_MANAGER_gpu_placement");
+    }
+    if (!overlayVulkanDirectory.empty())
+    {
+        const wchar_t* pathVariable = child.find(L"VK_LAYER_PATH") != child.end()
+            ? L"VK_LAYER_PATH" : L"VK_ADD_LAYER_PATH";
+        PrependEnvironmentList(child, pathVariable, overlayVulkanDirectory);
+        PrependEnvironmentList(child, L"VK_INSTANCE_LAYERS", L"VK_LAYER_RESOURCE_MANAGER_performance_overlay");
     }
     return child;
 }
