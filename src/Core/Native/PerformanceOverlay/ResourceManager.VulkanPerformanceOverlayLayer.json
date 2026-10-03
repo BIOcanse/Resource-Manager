@@ -1,0 +1,11 @@
+{
+  "file_format_version": "1.2.0",
+  "layer": {
+    "name": "VK_LAYER_RESOURCE_MANAGER_performance_overlay",
+    "type": "GLOBAL",
+    "library_path": ".\\ResourceManager.VulkanPerformanceOverlayLayer.dll",
+    "api_version": "1.4.341",
+    "implementation_version": "1",
+    "description": "Resource Manager performance overlay present observer"
+  }
+}
