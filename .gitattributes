@@ -17,3 +17,4 @@
 /tools/catalog-validation/software-metadata/Generated/*.json text eol=lf
 /src/Core/Infrastructure/Resources/SoftwareMetadata/*.json text eol=lf
 /src/UI/Frontend/index.html text eol=lf
+/src/Core/Resources/performance-overlay-metric-labels.json text eol=lf
