@@ -1,7 +1,9 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
+import { targetedReport } from "./ja-JP-targetedReport.ts";
 
 const jaJpAppCopy: AppCopy = {
+  targetedReport,
   common: {
     saving: "保存中",
     saveFailed: "保存に失敗しました"

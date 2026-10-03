@@ -32,3 +32,17 @@ public sealed record FrameTimingSnapshot(
     TimeSpan Window,
     bool Complete,
     IReadOnlyList<FrameTimingProcess> Processes);
+
+/// <summary>An application Present interval, identified by its ending Present time.</summary>
+public sealed record FrameIntervalSample(
+    int ProcessId,
+    long ProcessStartKey,
+    FramePresentSource Source,
+    ulong SwapChain,
+    DateTimeOffset EndedAt,
+    double DurationMs);
+
+public sealed record FrameIntervalBatch(
+    DateTimeOffset ObservedAt,
+    bool Complete,
+    IReadOnlyList<FrameIntervalSample> Intervals);

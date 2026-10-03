@@ -15,6 +15,9 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
     // 0 表示读不到启动时间：这个 PID 的帧先丢弃，直到进程启动或退出事件更新它。
     private readonly Dictionary<int, long> startKeys = [];
     private readonly Dictionary<StreamKey, Queue<long>> streams = [];
+    // Keep a stopped process's last timestamps for cursor readers until normal retention expires.
+    // Window statistics continue to see only live streams.
+    private readonly Dictionary<StreamKey, Queue<long>> retiredStreams = [];
 
     public int StreamCount => streams.Count;
 
@@ -96,6 +99,52 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
         return processes;
     }
 
+    public IReadOnlyList<FrameIntervalSample> ReadIntervals(long afterUtcTicks, long throughUtcTicks)
+    {
+        if (throughUtcTicks <= afterUtcTicks)
+        {
+            return [];
+        }
+
+        Prune(throughUtcTicks - Retention.Ticks);
+        var result = new List<FrameIntervalSample>();
+        foreach (var process in streams.Concat(retiredStreams)
+            .GroupBy(pair => (pair.Key.ProcessId, pair.Key.ProcessStartKey)))
+        {
+            // Match Read's runtime-over-kernel rule within the requested interval.
+            var candidates = process.Select(pair => (pair.Key, Timestamps: pair.Value
+                .Where(timestamp => timestamp <= throughUtcTicks && timestamp >= afterUtcTicks - Retention.Ticks)
+                .Order().ToArray())).ToArray();
+            var hasRuntime = candidates.Any(item => item.Key.Source != FramePresentSource.GraphicsKernel
+                && item.Timestamps.Length > 1 && item.Timestamps[^1] > afterUtcTicks);
+            foreach (var (key, timestamps) in candidates)
+            {
+                if (hasRuntime && key.Source == FramePresentSource.GraphicsKernel)
+                {
+                    continue;
+                }
+
+                for (var index = 1; index < timestamps.Length; index++)
+                {
+                    var endedAt = timestamps[index];
+                    var durationTicks = endedAt - timestamps[index - 1];
+                    if (endedAt <= afterUtcTicks || durationTicks <= 0)
+                    {
+                        continue;
+                    }
+
+                    result.Add(new FrameIntervalSample(key.ProcessId, key.ProcessStartKey,
+                        key.Source, key.SwapChain,
+                        new DateTimeOffset(endedAt, TimeSpan.Zero),
+                        TimeSpan.FromTicks(durationTicks).TotalMilliseconds));
+                }
+            }
+        }
+
+        result.Sort(static (left, right) => left.EndedAt.CompareTo(right.EndedAt));
+        return result;
+    }
+
     private static FrameTimingStream? Measure(StreamKey key, Queue<long> timestamps, long windowStart)
     {
         // 实时会话按 CPU 缓冲投递，换核的渲染线程可能乱序到达，先排序再取间隔。
@@ -140,12 +189,27 @@ internal sealed class PresentFrameLedger(Func<int, long?> readProcessStartKey)
                 streams.Remove(key);
             }
         }
+        foreach (var (key, timestamps) in retiredStreams.ToArray())
+        {
+            while (timestamps.Count > 0 && timestamps.Peek() < oldestKeptTicks)
+            {
+                timestamps.Dequeue();
+            }
+            if (timestamps.Count == 0)
+            {
+                retiredStreams.Remove(key);
+            }
+        }
     }
 
     private void RemoveProcess(int processId)
     {
         foreach (var key in streams.Keys.Where(key => key.ProcessId == processId).ToArray())
         {
+            if (retiredStreams.Count < MaximumStreams)
+            {
+                retiredStreams[key] = streams[key];
+            }
             streams.Remove(key);
         }
     }

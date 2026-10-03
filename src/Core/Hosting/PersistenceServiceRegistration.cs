@@ -5,6 +5,7 @@ using ResourceManager.App.Infrastructure.Indexing;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
 using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 
 namespace ResourceManager.App.Hosting;
 
@@ -17,6 +18,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
             services.AddSingleton<ResourceManagerDatabase>();
+            services.AddSingleton<TargetedRecordingStore>();
+            services.AddSingleton<TargetedRecordingService>();
+            services.AddHostedServiceAlias<TargetedRecordingService>();
             services.AddSingleton<SqliteSoftwareFileIndex>();
             services.AddSingleton<ISoftwareFileIndex>(static provider =>
                 provider.GetRequiredService<SqliteSoftwareFileIndex>());

@@ -28,7 +28,7 @@ public sealed class SqlitePersistenceTests : IDisposable
 
         Assert.True(File.Exists(database.DatabasePath));
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
-        Assert.Equal(11L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
+        Assert.Equal(12L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
         Assert.Equal(1L, await ScalarInt64Async(connection, "SELECT sqlite_compileoption_used('ENABLE_FTS5');"));
         Assert.Equal("wal", await ScalarStringAsync(connection, "PRAGMA journal_mode;"));
         Assert.Equal(1L, await ScalarInt64Async(
@@ -65,7 +65,7 @@ public sealed class SqlitePersistenceTests : IDisposable
 
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         Assert.Equal("ok", await ScalarStringAsync(connection, "PRAGMA quick_check(1);"));
-        Assert.Equal(11L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
+        Assert.Equal(12L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public sealed class SqlitePersistenceTests : IDisposable
         await database.EnsureInitializedAsync(CancellationToken.None);
 
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
-        Assert.Equal(11L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
+        Assert.Equal(12L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
         Assert.Equal(0L, await ScalarInt64Async(
             connection,
             "SELECT COUNT(*) FROM pragma_table_info('software_index_entries') WHERE name IN ('software_id', 'software_name');"));
@@ -254,7 +254,10 @@ public sealed class SqlitePersistenceTests : IDisposable
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                DELETE FROM schema_migrations WHERE version = 11;
+                DROP TABLE targeted_frame_interval_chunks;
+                DROP TABLE targeted_resource_samples;
+                DROP TABLE targeted_recordings;
+                DELETE FROM schema_migrations WHERE version IN (11, 12);
                 PRAGMA user_version=10;
                 """;
             await command.ExecuteNonQueryAsync(CancellationToken.None);
@@ -265,7 +268,7 @@ public sealed class SqlitePersistenceTests : IDisposable
 
         await using (var connection = await migrated.OpenConnectionAsync(CancellationToken.None))
         {
-            Assert.Equal(11L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
+            Assert.Equal(12L, await ScalarInt64Async(connection, "PRAGMA user_version;"));
             Assert.Equal(
                 alignedTicks,
                 await ScalarInt64Async(

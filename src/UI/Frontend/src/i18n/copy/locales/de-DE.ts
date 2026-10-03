@@ -1,7 +1,9 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
+import { targetedReport } from "./de-DE-targetedReport.ts";
 
 const deDeAppCopy: AppCopy = {
+  targetedReport,
   common: {
     saving: "Wird gespeichert",
     saveFailed: "Speichern fehlgeschlagen"

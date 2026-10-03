@@ -1,7 +1,9 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
+import { targetedReport } from "./ko-KR-targetedReport.ts";
 
 const koKrAppCopy: AppCopy = {
+  targetedReport,
   common: {
     saving: "저장 중",
     saveFailed: "저장하지 못했습니다"

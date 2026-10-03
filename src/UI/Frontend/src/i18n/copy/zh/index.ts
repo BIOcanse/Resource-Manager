@@ -18,6 +18,7 @@ import { zhSoftwareDetailCopy } from "./softwareDetail.ts";
 import { zhStatusCopy } from "./status.ts";
 import { zhStoresCopy } from "./stores.ts";
 import { zhTaskCenterCopy } from "./taskCenter.ts";
+import { zhTargetedReportCopy } from "./targetedReport.ts";
 
 // 中文基底：全应用文案的唯一权威形状，其他语言按同一形状提供翻译。
 export const zhAppCopy = {
@@ -37,6 +38,7 @@ export const zhAppCopy = {
   ...zhMigrationCopy,
   ...zhHotkeysCopy,
   ...zhTaskCenterCopy,
+  ...zhTargetedReportCopy,
   ...zhRuntimeAndReportsCopy,
   ...zhStoresCopy,
   ...zhRuntimeErrorsCopy,
