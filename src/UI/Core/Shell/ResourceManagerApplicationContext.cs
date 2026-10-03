@@ -1,4 +1,5 @@
 using ResourceManager.NativeUi.Localization;
+using ResourceManager.NativeUi.Overlay;
 using ResourceManager.NativeUi.SystemIntegration;
 using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
@@ -13,6 +14,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly bool startInBackground;
     private readonly Control uiDispatcher = new();
     private readonly NativeUiShutdownCoordinator shutdownCoordinator = new();
+    private readonly PerformanceOverlayCoordinator performanceOverlay;
     private readonly TaskManagerShortcutReplacementController taskManagerShortcutReplacement;
     private readonly ForceTerminateHotkeyController forceTerminateHotkey;
     private readonly ContextMenuStrip trayMenu;
@@ -47,6 +49,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         this.startInBackground = startInBackground;
         uiDispatcher.CreateControl();
         _ = uiDispatcher.Handle;
+        performanceOverlay = new PerformanceOverlayCoordinator(uiDispatcher);
         singleInstance.RequestReceived += OnSingleInstanceRequest;
         singleInstance.StartListening(shutdown.Token);
 
@@ -121,6 +124,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             RunDisposalAction(() => NativeUiText.Changed -= OnInterfaceLanguageChanged);
             RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
             RunDisposalAction(DisposeMainForm);
+            RunDisposalAction(performanceOverlay.Dispose);
             RunDisposalAction(DisposeBackendGeneration);
             RunDisposalAction(singleInstance.Dispose);
             RunDisposalAction(taskManagerShortcutReplacement.Dispose);
@@ -368,6 +372,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             var projection = SetReadyBackendSessionProjection();
             backendReady = true;
             SetBackendConnectionState(BackendConnectionState.Ready);
+            performanceOverlay.Start(session);
             if (mainForm is { IsDisposed: false } form)
             {
                 form.ShowBackendReady(session.AccessToken, projection);
@@ -569,6 +574,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         System.Diagnostics.Trace.WriteLine(unavailable.Message);
         _ = SetUnavailableBackendSessionProjection();
         backendReady = false;
+        performanceOverlay.Stop();
         DisposeBackendGeneration();
         SetBackendConnectionState(BackendConnectionState.Degraded, unavailable.Message);
         ShowBackendUnavailableBalloon(unavailable.Message);
