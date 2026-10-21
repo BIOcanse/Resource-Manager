@@ -18,3 +18,9 @@
 /src/Core/Infrastructure/Resources/SoftwareMetadata/*.json text eol=lf
 /src/UI/Frontend/index.html text eol=lf
 /src/Core/Resources/performance-overlay-metric-labels.json text eol=lf
+
+# SDK payloads and their manifests/notices are verified as delivered bytes.
+# Text normalization would invalidate provider hashes, including mixed line endings.
+/artifacts/sdk/** -text
+/artifacts/disk-sdk/** -text
+/sdk/freedom-point/** -text
