@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <FreedomPointSdkVersion>0.1.0-dev.39</FreedomPointSdkVersion>
-    <RestoreSources>D:/Code/FreedomPoint/artifacts/sdk</RestoreSources>
+    <RestoreSources Condition="'$(RestoreSources)' == ''">$(MSBuildThisFileDirectory)../../../sdk/freedom-point/packages</RestoreSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="FreedomPoint.Core" Version="$(FreedomPointSdkVersion)" />
