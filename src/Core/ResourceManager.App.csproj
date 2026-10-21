@@ -25,7 +25,7 @@
     <ResourceManagerLedgerPowerShell Condition="'$(ResourceManagerLedgerPowerShell)' == ''">pwsh</ResourceManagerLedgerPowerShell>
     <ResourceManagerLedgerZigExecutable Condition="'$(ResourceManagerLedgerZigExecutable)' == ''">zig</ResourceManagerLedgerZigExecutable>
     <ResourceManagerLedgerSdkRoot Condition="'$(ResourceManagerLedgerSdkRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\sdk</ResourceManagerLedgerSdkRoot>
-    <ResourceManagerLedgerFreedomPointFeed Condition="'$(ResourceManagerLedgerFreedomPointFeed)' == ''">D:\Code\FreedomPoint\artifacts\sdk</ResourceManagerLedgerFreedomPointFeed>
+    <ResourceManagerLedgerFreedomPointFeed Condition="'$(ResourceManagerLedgerFreedomPointFeed)' == ''">$(MSBuildProjectDirectory)\..\..\sdk\freedom-point\packages</ResourceManagerLedgerFreedomPointFeed>
     <DiskCheckpointNativeRoot Condition="'$(DiskCheckpointNativeRoot)' == ''">$(MSBuildProjectDirectory)\..\..\artifacts\disk-sdk\native\display-checkpoint</DiskCheckpointNativeRoot>
     <DiskCheckpointPowerShell Condition="'$(DiskCheckpointPowerShell)' == ''">pwsh</DiskCheckpointPowerShell>
   </PropertyGroup>

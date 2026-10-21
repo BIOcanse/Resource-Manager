@@ -1,0 +1,35 @@
+{
+  "schema": "rm/disk-sdk-dependency/v1",
+  "managedVersion": "0.1.0",
+  "nativeSdkVersion": "0.1.3",
+  "builderVersion": "0.1.3",
+  "managedPackage": {
+    "path": "packages/Disk.ReadWrite.0.1.0.nupkg",
+    "length": 12355,
+    "sha256": "2F6A75730F6190F3F7CC3F18944659FFAFACB169D98B39772556F197D3B8783A",
+    "source": "F:\\code\\best agent\\generated\\disk-dotnet\\release-0.1.0\\packages\\Disk.ReadWrite.0.1.0.nupkg"
+  },
+  "sdkManifestSha256": "84243FA37D3D09E60DF0834CB61DBFCD59698C3A9E0DBE196C1148668B278526",
+  "bindingManifestSha256": "2C65231744E3F1AAF46A86534BDBD489EFAF3FA0DC5FF8B3FCCDD95CEF81C0F6",
+  "toolsManifestSha256": "780C9C7A00C2E85318EE9ACE4972E8868258CD5EEC81B4927F741767AB96409D",
+  "declaration": "src/Core/Configuration/Disk/display-checkpoint.disk.json",
+  "declarationSha256": "A7B3960F845EF593164425051FC441F377C7DEF1413FBDA78C5802F35A7178B1",
+  "status": "RM own SDK0.1.3 Native freshly qualified; actual Store regression and product composition pending",
+  "nativeQualification": {
+    "contextPath": "D:\\Code\\Resource-Manager-Development\\.local\\backend-disk-checkpoint-integration\\disk-native-context.json",
+    "runDirectory": "D:\\Code\\Resource-Manager-Development\\.local\\backend-disk-checkpoint-integration\\runs\\productdisknative-26a250b2866e4e449f6cc1afd3c0decf",
+    "identity": "AA6C817456726907CFD28CC689434A9D953269A5899A3599ECC2827FF31580DE",
+    "assets": [
+      {
+        "path": "F:\\code\\Resource-Manager-Development\\generated\\display-checkpoint-a2\\native-productdisknative-26a250b2866e4e449f6cc1afd3c0decf\\Disk.ReadWrite.Native.dll",
+        "length": 1079808,
+        "sha256": "231FEAC003977AE8D420A27B44E7B9DF9178ED468C05730B86D64EDAEA863E4F"
+      },
+      {
+        "path": "F:\\code\\Resource-Manager-Development\\generated\\display-checkpoint-a2\\native-productdisknative-26a250b2866e4e449f6cc1afd3c0decf\\native.json",
+        "length": 1214,
+        "sha256": "A4B57324053965EAA1209E89B70AC14E31D6EE305C55751E5C2E88305D40D328"
+      }
+    ]
+  }
+}

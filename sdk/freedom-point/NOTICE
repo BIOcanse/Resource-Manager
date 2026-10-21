@@ -1,0 +1,11 @@
+FreedomPoint
+Copyright 2026 BIOcanse
+
+FreedomPoint first-party source code and documentation are licensed under
+the Apache License, Version 2.0. See LICENSE.
+
+Third-party components retain their own copyright notices and license terms.
+In particular, bundled Microsoft Roslyn/.NET components are not relicensed
+by this notice. Preserve their accompanying license and third-party notices.
+
+The first-party license was confirmed by the copyright owner on 2026-10-21.

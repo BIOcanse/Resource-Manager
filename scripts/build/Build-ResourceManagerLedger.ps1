@@ -11,7 +11,7 @@ param(
     [Parameter(Mandatory)][string]$WorkRoot,
     [string]$BuildRoot,
     [string]$SdkRoot = (Join-Path $PSScriptRoot '../../artifacts/sdk'),
-    [string]$FreedomPointFeed = 'D:\Code\FreedomPoint\artifacts\sdk',
+    [string]$FreedomPointFeed = (Join-Path $PSScriptRoot '../../sdk/freedom-point/packages'),
     [string]$ConfigurationPath = (Join-Path $PSScriptRoot '../../src/Core/Configuration/Ledger/self-owner.json'),
     [string]$ZigPath = 'zig'
 )

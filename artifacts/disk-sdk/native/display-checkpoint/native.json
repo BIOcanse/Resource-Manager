@@ -1,0 +1,39 @@
+{
+  "library": "Disk.ReadWrite.Native.dll",
+  "compile_policy": {
+    "backend": "llvm",
+    "jobs": 1,
+    "optimization": "ReleaseSafe"
+  },
+  "capacity": {
+    "catalog": {
+      "maximum_directory_entries": 3,
+      "maximum_uid_bytes": 24,
+      "maximum_segments_per_uid": 1
+    },
+    "maximum_readers": 1,
+    "maximum_payload_bytes": 303,
+    "maximum_path_bytes": 98301,
+    "maximum_parameter_bytes": 1,
+    "maximum_runtime_templates": 0,
+    "maximum_subscriptions": 0,
+    "maximum_callback_calls": 0
+  },
+  "recording_marker": "disk_dotnet_recording export; loader reads actual compiled capability",
+  "identity": "AA6C817456726907CFD28CC689434A9D953269A5899A3599ECC2827FF31580DE",
+  "sdk_manifest_sha256": "84243FA37D3D09E60DF0834CB61DBFCD59698C3A9E0DBE196C1148668B278526",
+  "library_sha256": "231FEAC003977AE8D420A27B44E7B9DF9178ED468C05730B86D64EDAEA863E4F",
+  "schema": "disk.dotnet.native.v1",
+  "sdk_version": "0.1.3",
+  "builder_version": "0.1.3",
+  "fixed_uids_hex": [
+    "726d2f646973706c61792f636865636b706f696e742f7633"
+  ],
+  "configuration": {
+    "source": "sdk-default"
+  },
+  "templates": [
+    "checkpoint-a.bin",
+    "checkpoint-b.bin"
+  ]
+}

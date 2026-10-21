@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "component": "Microsoft Roslyn bundled in FreedomPoint.SourceTracking 0.1.0-dev.41",
+  "actualOriginalBinarySource": "Windows .NET SDK 10.0.300 Roslyn/bincore",
+  "assemblies": [
+    {
+      "entry": "lib/net10.0/Microsoft.CodeAnalysis.CSharp.dll",
+      "bytes": 19007272,
+      "sha256": "6A2C562412E0936082343C415EE72526303C4914CF8AE92750C6C561750A53AD",
+      "actualProductVersion": "5.6.0-2.26230.102+caa81fa4971f74880cdab61990cb1b11420939ec",
+      "matchesOriginalWindowsSdk": true
+    },
+    {
+      "entry": "lib/net10.0/Microsoft.CodeAnalysis.dll",
+      "bytes": 8189776,
+      "sha256": "F9A140C3ACA40EA3CB8B922DC3EFCDB7FDCEA1F5AA752106EA381A9AD5D7B5C6",
+      "actualProductVersion": "5.6.0-2.26230.102+caa81fa4971f74880cdab61990cb1b11420939ec",
+      "matchesOriginalWindowsSdk": true
+    }
+  ],
+  "windowsLicenseTextSource": "Original Windows .NET SDK installation root",
+  "vmrRepository": "https://github.com/dotnet/dotnet",
+  "vmrCommit": "caa81fa4971f74880cdab61990cb1b11420939ec",
+  "mappedRoslynRepository": "https://github.com/dotnet/roslyn",
+  "mappedRoslynCommit": "538ae5e66f82b114e58a5deb6472649e687143db",
+  "sourceManifestUrl": "https://raw.githubusercontent.com/dotnet/dotnet/caa81fa4971f74880cdab61990cb1b11420939ec/src/source-manifest.json",
+  "sourceLicenseUrl": "https://raw.githubusercontent.com/dotnet/dotnet/caa81fa4971f74880cdab61990cb1b11420939ec/src/roslyn/License.txt",
+  "sourceNoticesUrl": "https://raw.githubusercontent.com/dotnet/dotnet/caa81fa4971f74880cdab61990cb1b11420939ec/src/roslyn/THIRD-PARTY-NOTICES.txt",
+  "vmrSourceTextsReplaceWindowsBinaryTerms": false,
+  "fullCorrespondingSourceArchiveObtained": false,
+  "byteIdenticalBinaryRebuildProven": false
+}
