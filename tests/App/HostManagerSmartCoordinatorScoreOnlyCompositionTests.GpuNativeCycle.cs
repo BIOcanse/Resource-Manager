@@ -75,9 +75,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(SamplingObservationStatus.Current, inventory.Status);
         Assert.Equal(0U, inventory.SkippedCount);
         Assert.Equal(0U, inventory.OverflowCount);
-        var initialAdapter = Assert.Single(inventory.Adapters, adapter => NativePdhAdapterIdentity.Pack(adapter.Luid) == child.AdapterLuid);
-        var targetAdapter = inventory.Adapters.First(adapter => NativePdhAdapterIdentity.Pack(adapter.Luid) != child.AdapterLuid);
-        var targetKey = NativePdhAdapterIdentity.Pack(targetAdapter.Luid);
+        var initialAdapter = Assert.Single(inventory.Adapters, adapter => WindowsGpuAdapterIdentity.Pack(adapter.Luid) == child.AdapterLuid);
+        var targetAdapter = inventory.Adapters.First(adapter => WindowsGpuAdapterIdentity.Pack(adapter.Luid) != child.AdapterLuid);
+        var targetKey = WindowsGpuAdapterIdentity.Pack(targetAdapter.Luid);
         const string softwareId = "software:owned-native-gpu-cycle";
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, "Owned GPU cycle") with
         {
@@ -85,9 +85,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             SchedulingMode = GpuPlacementSchedulingModes.Precise,
             RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
             RuntimeHotSwitchEnabled = true,
-            AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            TargetGpu = GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(targetAdapter.Name)
-                ? GpuPlacementTargets.IntegratedGpu : GpuPlacementTargets.HighPerformanceGpu
+            AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         });
         var facts = CreateNativeGpuCycleFacts(child.Identity, softwareId, inventory, initialAdapter.Index);
         var ledgerPath = Path.Combine(files.Root, "gpu-cycle-owner.json");
@@ -323,21 +321,36 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     private static SchedulingProcessFactSnapshot CreateNativeGpuCycleFacts(
-        GpuPlacementProcessInstance process, string softwareId, WindowsGpuAdapterInventoryRead inventory, int initialIndex)
+        GpuPlacementProcessInstance process, string softwareId, WindowsGpuAdapterInventoryRead inventory, int initialIndex,
+        bool includeDedicatedMemory = false)
     {
-        const SchedulingProcessMetricMask mask = SchedulingProcessMetricMask.GpuUsage | SchedulingProcessMetricMask.RuntimeState;
+        var gpuMask = SchedulingProcessMetricMask.GpuUsage
+            | (includeDedicatedMemory ? SchedulingProcessMetricMask.GpuDedicatedMemory : SchedulingProcessMetricMask.None);
+        var mask = gpuMask | SchedulingProcessMetricMask.RuntimeState;
         var now = inventory.ObservedAtUtcTicks;
         var datasets = CreateCurrentDatasetObservations(mask, 1, now).ToDictionary(item => item.Key, item => item.Value);
         datasets[SchedulingProcessMetricMask.GpuUsage] = datasets[SchedulingProcessMetricMask.GpuUsage] with
         {
             TopologyGeneration = inventory.Generation, TopologyFingerprint = inventory.TopologyFingerprint
         };
+        if (includeDedicatedMemory)
+            datasets[SchedulingProcessMetricMask.GpuDedicatedMemory] = datasets[SchedulingProcessMetricMask.GpuDedicatedMemory] with
+            {
+                TopologyGeneration = inventory.Generation, TopologyFingerprint = inventory.TopologyFingerprint
+            };
         return new(SamplingObservationStatus.Current, 1, now, 1, 1, 0, 0, mask, mask,
             [new(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath,
                 softwareId, "Owned GPU cycle", "general", "General", 80, mask, 0, 0, 1,
                 inventory.Adapters.Select(adapter => new SchedulingProcessGpuFact(adapter.Index,
-                    NativePdhAdapterIdentity.Pack(adapter.Luid), SchedulingProcessMetricMask.GpuUsage,
-                    adapter.Index == initialIndex ? 5 : 0, 0, 1, 0, inventory.Generation)).ToArray())],
+                    WindowsGpuAdapterIdentity.Pack(adapter.Luid), gpuMask,
+                    adapter.Index == initialIndex ? 5 : 0,
+                    includeDedicatedMemory && adapter.Index == initialIndex ? 100d * (64UL << 20) / adapter.DedicatedVideoMemoryBytes : 0,
+                    1, includeDedicatedMemory ? 1UL : 0UL, inventory.Generation,
+                    includeDedicatedMemory ? inventory.Generation : 0)
+                {
+                    PrivateMemoryBytes = includeDedicatedMemory ? (adapter.Index == initialIndex ? 64UL << 20 : 0) : null,
+                    SharedMemoryBytes = includeDedicatedMemory ? 0 : null
+                }).ToArray())],
             1, now, inventory.Generation, inventory.TopologyFingerprint)
         {
             DatasetObservations = datasets,
@@ -345,20 +358,27 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
     }
 
-    private static HardwareMetricSnapshot CreateNativeGpuCycleHardware(WindowsGpuAdapterInventoryRead inventory, ulong initialKey)
+    private static HardwareMetricSnapshot CreateNativeGpuCycleHardware(WindowsGpuAdapterInventoryRead inventory, ulong initialKey,
+        bool includeDedicatedMemory = false)
     {
         var sensors = new GpuSensorMetrics(new("fixture", "not-requested", null), null, null, null, null, null, null, null, null, null, null);
         return CreateHardwareSnapshot(memoryUsagePercent: 10, cpuUsagePercent: 10) with
         {
             Gpus = inventory.Adapters.Select(adapter => new GpuMetrics(adapter.Index, adapter.Name,
-                NativePdhAdapterIdentity.Pack(adapter.Luid) == initialKey ? 5 : 0,
+                WindowsGpuAdapterIdentity.Pack(adapter.Luid) == initialKey ? 5 : 0,
                 0, 0, 0, 0, 0, adapter.DedicatedVideoMemoryBytes, 0, sensors)).ToArray(),
             GpuInventory = new(SamplingObservationStatus.Current, inventory.Generation, inventory.ObservedAtUtcTicks,
                 inventory.ObservedCount, 0, 0, inventory.TopologyFingerprint,
                 inventory.Adapters.Select(adapter => new SchedulingGpuAdapterObservation(adapter.Index,
-                    NativePdhAdapterIdentity.Pack(adapter.Luid), SchedulingGpuCapabilityMask.Usage,
-                    SchedulingGpuMetricMask.Usage, SamplingObservationStatus.Current, SamplingObservationStatus.Unsupported,
-                    NativePdhAdapterIdentity.Pack(adapter.Luid) == initialKey ? 5 : 0, 0, 0,
+                    WindowsGpuAdapterIdentity.Pack(adapter.Luid), SchedulingGpuCapabilityMask.Usage
+                        | (includeDedicatedMemory ? SchedulingGpuCapabilityMask.DedicatedMemory : SchedulingGpuCapabilityMask.None),
+                    SchedulingGpuMetricMask.Usage | (includeDedicatedMemory
+                        ? SchedulingGpuMetricMask.UsedDedicatedMemory | SchedulingGpuMetricMask.TotalDedicatedMemory
+                        : SchedulingGpuMetricMask.None), SamplingObservationStatus.Current,
+                    includeDedicatedMemory ? SamplingObservationStatus.Current : SamplingObservationStatus.Unsupported,
+                    WindowsGpuAdapterIdentity.Pack(adapter.Luid) == initialKey ? 5 : 0,
+                    includeDedicatedMemory && WindowsGpuAdapterIdentity.Pack(adapter.Luid) == initialKey ? 128UL << 20 : 0,
+                    includeDedicatedMemory ? adapter.DedicatedVideoMemoryBytes : 0,
                     inventory.Generation, inventory.ObservedAtUtcTicks)).ToArray())
         };
     }

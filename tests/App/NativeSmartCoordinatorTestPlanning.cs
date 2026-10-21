@@ -17,3 +17,20 @@ internal static class NativeSmartCoordinatorTestPlanning
         ref NativeSmartCoordinatorSnapshot snapshot)
         => session.Plan(in input, rows, actions, ref snapshot);
 }
+
+// Test evidence is copied synchronously from the actual leased production projection.
+internal sealed class NativeSmartInputCaptureProbe(
+    ResourceManager.App.Infrastructure.Optimization.IHostManagerSmartCoordinatorTransitionProbe? inner = null)
+    : ResourceManager.App.Infrastructure.Optimization.IHostManagerSmartCoordinatorTransitionProbe
+{
+    internal NativeSmartCoordinatorInputRow[] Rows { get; private set; } = [];
+    public void ObserveNativeInputs(ReadOnlySpan<NativeSmartCoordinatorInputRow> inputs)
+    {
+        Rows = inputs.ToArray();
+        inner?.ObserveNativeInputs(inputs);
+    }
+    public void Reach(ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinatorTransitionPoint point)
+        => inner?.Reach(point);
+    public void ObserveShutdown(ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinatorShutdownPoint point)
+        => inner?.ObserveShutdown(point);
+}

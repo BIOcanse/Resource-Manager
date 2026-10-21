@@ -21,10 +21,8 @@ public sealed class JsonControlOverclockConsent : IControlOverclockConsent
         ILogger<JsonControlOverclockConsent>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        consentPath = Path.Combine(
+        consentPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "UserData",
-            "Control",
             "overclock-consent.txt");
         this.logger = logger;
     }

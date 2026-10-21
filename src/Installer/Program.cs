@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ResourceManager.Shared.Localization;
+using ResourceManager.Shared.Packages;
 using System.Security.Principal;
 
 namespace ResourceManager.Installer;
@@ -19,11 +20,21 @@ internal static class Program
                 _ = PackageLayout.Verify(AppContext.BaseDirectory);
                 return 0;
             }
-            var confirmed = args.Length == 4 && args[0] == "--confirmed" && args[2] == "--caller-sid";
+            var confirmed = args.Length == 8 && args[0] == "--confirmed" && args[2] == "--caller-sid"
+                && args[4] == "--target-root" && args[6] == "--previous-root";
             if (!confirmed && args.Length != 0) throw new ArgumentException("Unknown installer argument.");
             var source = PackageLayout.Verify(confirmed ? args[1] : AppContext.BaseDirectory);
-            var target = InstallerWorkflow.TargetFor(source);
-            InstallationRegistry.RequireVacant(target);
+            var previous = UninstallationPlan.ReadIfInstalled();
+            text = ToolText.FromInstallRoot(previous?.Root);
+            var target = confirmed ? PackageLayout.ForRoot(Path.GetFullPath(args[5]), source.Version) : InstallerWorkflow.TargetFor(source, previous);
+            if (confirmed && !string.Equals(previous?.Root ?? "", args[7], StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Installation registration changed after confirmation; reopen the installer.");
+            if (previous is null) InstallationRegistry.RequireVacant(target);
+            else
+            {
+                new WindowsUninstallationRuntime().RequireOwned(previous);
+                InstallationReplacement.RequireSeparateDirectories(previous, source, target);
+            }
             using var identity = WindowsIdentity.GetCurrent();
             var sid = identity.User?.Value ?? throw new InvalidOperationException(text.UserUnknown);
             var admin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
@@ -33,9 +44,7 @@ internal static class Program
             }
             else
             {
-                var steps = new[] { text.InstallFiles, text.InstallRegistry, text.InstallService, text.InstallManager, text.InstallShortcuts };
-                var actions = text.Format(text.InstallLocationFormat, target.Root) + "\n\n" + text.InstallActions + "\n"
-                    + string.Join("\n", steps.Select((step, index) => $"{index + 1}. {step}")) + "\n\n" + text.InstallConsent;
+                var actions = InstallationConsent.Build(text, target, previous);
                 if (MessageBox.Show(actions, text.InstallerTitle, MessageBoxButtons.YesNo,
                         MessageBoxIcon.Information, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
                     return 2;
@@ -46,13 +55,14 @@ internal static class Program
                         UseShellExecute = true,
                         Verb = "runas",
                         WorkingDirectory = source.Root,
-                        ArgumentList = { "--confirmed", source.Root, "--caller-sid", sid }
+                        ArgumentList = { "--confirmed", source.Root, "--caller-sid", sid, "--target-root", target.Root, "--previous-root", previous?.Root ?? "" }
                     }) ?? throw new InvalidOperationException(text.InstallerChildFailed);
                     child.WaitForExit();
                     return child.ExitCode;
                 }
             }
-            InstallerWorkflow.Install(source, target);
+            InstallerWorkflow.Install(source, target, previous is null ? null
+                : new InstallationReplacement(previous, new WindowsInstallationReplacementRuntime(previous)));
             MessageBox.Show(text.Format(text.InstallCompletedFormat, target.Start),
                 "Resource Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return 0;

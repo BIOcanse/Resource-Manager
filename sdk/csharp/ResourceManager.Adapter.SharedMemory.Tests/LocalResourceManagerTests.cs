@@ -5,6 +5,64 @@ namespace ResourceManager.Adapter.SharedMemory.Tests;
 public sealed class LocalResourceManagerTests
 {
     [Fact]
+    public void LegacyLeaseDurationAndEndDoNotChangeActivityFacts()
+    {
+        using var session = CreateSession(4);
+        var table = session.RegisterTable(new(new(7012), 1, LocalResourceDomain.Memory, 2));
+        session.Capabilities.Register(table,
+            new(7012, 7012, LocalResourceEffects.ReleasesLedgerSlot, Destructive: true),
+            (_, _) => ValueTask.FromResult(LocalResourceEffect.NoEffect));
+        var resource = session.RegisterResource(table, new(new(7012), 100, 1,
+            LocalResourceRecoverability.Recoverable, LocalResourceAccessLossImpact.UnobservableNow));
+        session.Touch(resource, 63);
+        var lease = session.BeginUse(resource);
+        var acquired = session.ReadResource(resource);
+        Assert.Equal(64UL, acquired.SettledActivity);
+        session.AdvanceActivityEpoch(19);
+        Assert.Equal(0UL, session.ReadResource(resource).SettledActivity);
+        session.EndUse(lease);
+        var ended = session.ReadResource(resource);
+        Assert.Equal(0UL, ended.SettledActivity);
+        Assert.Equal(acquired.ActivityRevision, ended.ActivityRevision);
+        Assert.Throws<NativeLocalResourceManagerException>(() => session.EndUse(lease));
+        Assert.Equal(ended, session.ReadResource(resource));
+    }
+
+    [Fact]
+    public async Task OpaqueZeroResourceUidCanBeUsedUpdatedPlannedAndReleased()
+    {
+        using var session = CreateSession(4);
+        var table = session.RegisterTable(new(new(7010), 1, LocalResourceDomain.Memory, 2));
+        var calls = 0;
+        session.Capabilities.Register(
+            table,
+            new(7010, 7010, LocalResourceEffects.ReleasesLedgerSlot, Destructive: true),
+            (context, _) =>
+            {
+                Assert.Equal(default, context.ResourceUid);
+                calls++;
+                return ValueTask.FromResult(LocalResourceEffect.Applied(LocalResourceEffects.ReleasesLedgerSlot));
+            });
+        var definition = new LocalResourceDefinition(default, 100, 1,
+            LocalResourceRecoverability.Recoverable, LocalResourceAccessLossImpact.UnobservableNow);
+        var resource = session.RegisterResource(table, definition);
+        var lease = session.BeginUse(resource);
+        var held = session.ReadResource(resource);
+        Assert.Throws<NativeLocalResourceManagerException>(() => session.UpdateResource(resource, definition with { SizeBytes = 200 }));
+        Assert.Equal(held, session.ReadResource(resource));
+        session.EndUse(lease);
+        session.UpdateResource(resource, definition with { SizeBytes = 200 });
+        using (var pump = new LocalResourceManagerPump(session))
+        {
+            await pump.TickAsync(LocalResourceCapacityStrategy.Concentrated,
+                [new(table, LocalResourceCleanupMode.ReleaseAll, 1)]);
+        }
+        Assert.Equal(1, calls);
+        Assert.Equal(2, session.ReadCapacity(table).FreeCount);
+        Assert.Equal(default, session.RegisterResource(table, definition).ResourceUid);
+    }
+
+    [Fact]
     public void NativeContractMatchesManagedLayoutAndStartsNoWorker()
     {
         using var session = CreateSession(4);
@@ -4770,7 +4828,10 @@ public sealed class LocalResourceManagerTests
         var shell = Assert.IsType<LocalResourcePartitionHandle>(
             (await manager.AdmitPartitionAsync(table, 1)).Partition);
         var existing = manager.RegisterResource(shell, 0, PartitionResource(50070));
-        var invalid = PartitionResource(0);
+        var invalid = PartitionResource(0) with
+        {
+            Recoverability = (LocalResourceRecoverability)byte.MaxValue,
+        };
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => manager.AdmitPartitionResourceAsync(shell, invalid));

@@ -1,67 +1,31 @@
 [
-  {"name":"NETStandard.Library.Ref","version":"2.1.0","license":"MIT","authors":"Microsoft","kind":"adapter reference pack"},
   {
-    "name": "Microsoft.Bcl.AsyncInterfaces",
-    "version": "10.0.0",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
+    "name": "Disk.ReadWrite",
+    "version": "0.1.0",
+    "license": "Not declared in package metadata",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
   },
   {
-    "name": "System.Buffers",
-    "version": "4.6.1",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
+    "name": "FreedomPoint.Core",
+    "version": "0.1.0-dev.41",
+    "license": "Not declared in package metadata",
+    "authors": "FreedomPoint.Core",
+    "kind": "managed dependency"
   },
   {
-    "name": "System.IO.Pipelines",
-    "version": "10.0.0",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
+    "name": "ResourceManager.Ledger",
+    "version": "0.1.0-dev.2",
+    "license": "Not declared in package metadata",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
   },
   {
-    "name": "System.Memory",
-    "version": "4.6.3",
+    "name": "coverlet.collector",
+    "version": "6.0.4",
     "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
-  },
-  {
-    "name": "System.Runtime.CompilerServices.Unsafe",
-    "version": "6.1.2",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
-  },
-  {
-    "name": "System.Text.Encodings.Web",
-    "version": "10.0.0",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
-  },
-  {
-    "name": "System.Text.Json",
-    "version": "10.0.0",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
-  },
-  {
-    "name": "System.Threading.Tasks.Extensions",
-    "version": "4.6.3",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "adapter build dependency"
-  },
-  {
-    "name": "Microsoft.NETCore.App.Runtime.win-x64",
-    "version": "10.0.8",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "runtime pack"
+    "authors": "tonerdo",
+    "kind": "test dependency"
   },
   {
     "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
@@ -71,32 +35,11 @@
     "kind": "runtime pack"
   },
   {
-    "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
-    "version": "10.0.8",
+    "name": "Microsoft.Bcl.AsyncInterfaces",
+    "version": "10.0.0",
     "license": "MIT",
     "authors": "Microsoft",
-    "kind": "runtime pack"
-  },
-  {
-    "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
-    "version": "10.0.8",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "publish tool"
-  },
-  {
-    "name": "Microsoft.NET.ILLink.Tasks",
-    "version": "10.0.8",
-    "license": "MIT",
-    "authors": "Microsoft",
-    "kind": "publish tool"
-  },
-  {
-    "name": "coverlet.collector",
-    "version": "6.0.4",
-    "license": "MIT",
-    "authors": "tonerdo",
-    "kind": "test dependency"
+    "kind": "adapter build dependency"
   },
   {
     "name": "Microsoft.CodeCoverage",
@@ -330,11 +273,32 @@
     "kind": "test dependency"
   },
   {
+    "name": "Microsoft.NET.ILLink.Tasks",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
     "name": "Microsoft.NET.Test.Sdk",
     "version": "17.14.1",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Runtime.win-x64",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "runtime pack"
   },
   {
     "name": "Microsoft.TestPlatform.ObjectModel",
@@ -356,6 +320,76 @@
     "license": "LICENSE.txt",
     "authors": "Microsoft",
     "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Web.WebView2",
+    "version": "1.0.3719.77",
+    "authors": "Microsoft",
+    "license": "file: LICENSE.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.BuildTools.MSIX",
+    "version": "1.7.251221100",
+    "authors": "Microsoft",
+    "license": "file: sdk_license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.BuildTools",
+    "version": "10.0.26100.9169",
+    "authors": "Microsoft",
+    "license": "https://aka.ms/WinSDKLicenseURL",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.Windows.SDK.NET.Ref",
+    "version": "10.0.26100.57",
+    "authors": "Microsoft",
+    "license": "https://aka.ms/WinSDKLicenseURL",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.Base",
+    "version": "2.0.4",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.Foundation",
+    "version": "2.3.12",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.InteractiveExperiences",
+    "version": "2.1.9",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsAppSDK.WinUI",
+    "version": "2.3.9",
+    "authors": "Microsoft",
+    "license": "file: license.txt",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "runtime pack"
+  },
+  {
+    "name": "NETStandard.Library.Ref",
+    "version": "2.1.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter reference pack"
   },
   {
     "name": "Newtonsoft.Json",
@@ -400,6 +434,13 @@
     "kind": "managed dependency"
   },
   {
+    "name": "System.Buffers",
+    "version": "4.6.1",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
     "name": "System.CodeDom",
     "version": "10.0.2",
     "license": "MIT",
@@ -414,11 +455,25 @@
     "kind": "test dependency"
   },
   {
+    "name": "System.IO.Pipelines",
+    "version": "10.0.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
     "name": "System.Management",
     "version": "10.0.2",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
+  },
+  {
+    "name": "System.Memory",
+    "version": "4.6.3",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
   },
   {
     "name": "System.Reflection.TypeExtensions",
@@ -428,11 +483,39 @@
     "kind": "managed dependency"
   },
   {
+    "name": "System.Runtime.CompilerServices.Unsafe",
+    "version": "6.1.2",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
     "name": "System.ServiceProcess.ServiceController",
     "version": "10.0.11",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "managed dependency"
+  },
+  {
+    "name": "System.Text.Encodings.Web",
+    "version": "10.0.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.Text.Json",
+    "version": "10.0.0",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.Threading.Tasks.Extensions",
+    "version": "4.6.3",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "adapter build dependency"
   },
   {
     "name": "xunit.abstractions",

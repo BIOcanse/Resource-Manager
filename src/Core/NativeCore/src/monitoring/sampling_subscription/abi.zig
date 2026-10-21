@@ -1,4 +1,5 @@
 const protocol = @import("protocol.zig");
+const std = @import("std");
 const session_module = @import("session.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
@@ -24,6 +25,44 @@ pub export fn rm_sampling_subscription_create(
 pub export fn rm_sampling_subscription_destroy(handle: ?*anyopaque) callconv(.c) void {
     const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return));
     session.destroy();
+}
+
+// The caller serializes bind/operation/unbind for this session and keeps the
+// supplied allocation alive until unbind returns. No slice survives unbind.
+pub export fn rm_sampling_subscription_create_external_scratch(
+    config: ?*const protocol.Config,
+    handle: ?*?*anyopaque,
+) callconv(.c) i32 {
+    const output = handle orelse return code(.invalid_argument);
+    output.* = null;
+    const actual_config = config orelse return code(.invalid_argument);
+    const session = session_module.Session.createExternalScratch(actual_config) catch |err| switch (err) {
+        error.InvalidConfiguration => return code(.abi_mismatch),
+        else => return code(.out_of_memory),
+    };
+    output.* = @ptrCast(session);
+    return code(.ok);
+}
+
+pub export fn rm_sampling_subscription_bind_scratch(
+    handle: ?*anyopaque,
+    pointer: ?[*]u8,
+    byte_count: u64,
+) callconv(.c) i32 {
+    const session: *session_module.Session = @ptrCast(@alignCast(
+        handle orelse return code(.invalid_argument),
+    ));
+    const bytes = pointer orelse return code(.invalid_argument);
+    const length = std.math.cast(usize, byte_count) orelse return code(.invalid_argument);
+    _ = std.math.add(usize, @intFromPtr(bytes), length) catch return code(.invalid_argument);
+    return code(session.bindScratch(bytes[0..length]));
+}
+
+pub export fn rm_sampling_subscription_unbind_scratch(handle: ?*anyopaque) callconv(.c) i32 {
+    const session: *session_module.Session = @ptrCast(@alignCast(
+        handle orelse return code(.invalid_argument),
+    ));
+    return code(session.unbindScratch());
 }
 
 pub export fn rm_sampling_subscription_reconfigure(
@@ -99,6 +138,8 @@ pub export fn rm_sampling_subscription_plan(
     source_capacity: u32,
     expired_sources: ?[*]protocol.ExpiredSourceOutput,
     expired_capacity: u32,
+    triggers: ?[*]protocol.TriggerOutput,
+    trigger_capacity: u32,
 ) callconv(.c) i32 {
     const session: *session_module.Session = @ptrCast(@alignCast(
         handle orelse return code(.invalid_argument),
@@ -112,6 +153,8 @@ pub export fn rm_sampling_subscription_plan(
         source_capacity,
         expired_sources,
         expired_capacity,
+        triggers,
+        trigger_capacity,
     ));
 }
 
@@ -120,6 +163,8 @@ pub export fn rm_sampling_subscription_complete(
     input: ?*const protocol.CompletionInput,
     items: ?[*]const protocol.ItemReference,
     item_count: u32,
+    triggers: ?[*]const protocol.TriggerOutput,
+    trigger_count: u32,
     output: ?*protocol.CompletionOutput,
 ) callconv(.c) i32 {
     const session: *session_module.Session = @ptrCast(@alignCast(
@@ -130,6 +175,8 @@ pub export fn rm_sampling_subscription_complete(
         input orelse return code(.invalid_argument),
         items,
         item_count,
+        triggers,
+        trigger_count,
         output orelse return code(.invalid_argument),
     ));
 }
@@ -161,16 +208,17 @@ fn code(result: ResultCode) i32 {
 
 comptime {
     if (@sizeOf(protocol.Config) != 112) @compileError("sampling subscription Config export size changed");
-    if (@sizeOf(protocol.Capacity) != 64) @compileError("sampling subscription Capacity export size changed");
+    if (@sizeOf(protocol.Capacity) != 72) @compileError("sampling subscription Capacity export size changed");
     if (@sizeOf(protocol.ItemReference) != 32) @compileError("sampling subscription ItemReference export size changed");
     if (@sizeOf(protocol.TrackInput) != 96) @compileError("sampling subscription TrackInput export size changed");
     if (@sizeOf(protocol.RemoveInput) != 72) @compileError("sampling subscription RemoveInput export size changed");
     if (@sizeOf(protocol.ControlInput) != 64) @compileError("sampling subscription ControlInput export size changed");
-    if (@sizeOf(protocol.PlanHeader) != 120) @compileError("sampling subscription PlanHeader export size changed");
+    if (@sizeOf(protocol.PlanHeader) != 128) @compileError("sampling subscription PlanHeader export size changed");
+    if (@sizeOf(protocol.TriggerOutput) != 48) @compileError("sampling subscription TriggerOutput export size changed");
     if (@sizeOf(protocol.DueItemOutput) != 64) @compileError("sampling subscription DueItemOutput export size changed");
     if (@sizeOf(protocol.SourceViewOutput) != 64) @compileError("sampling subscription SourceViewOutput export size changed");
     if (@sizeOf(protocol.ExpiredSourceOutput) != 48) @compileError("sampling subscription ExpiredSourceOutput export size changed");
-    if (@sizeOf(protocol.CompletionInput) != 88) @compileError("sampling subscription CompletionInput export size changed");
+    if (@sizeOf(protocol.CompletionInput) != 96) @compileError("sampling subscription CompletionInput export size changed");
     if (@sizeOf(protocol.CompletionOutput) != 72) @compileError("sampling subscription CompletionOutput export size changed");
     if (@sizeOf(protocol.SnapshotHeader) != 112) @compileError("sampling subscription SnapshotHeader export size changed");
     if (@sizeOf(protocol.SourceStateOutput) != 64) @compileError("sampling subscription SourceStateOutput export size changed");

@@ -8,6 +8,202 @@ namespace Resource_Manager_APP.Tests;
 public sealed class EtwCpuCoreResidencySubscriptionTests
 {
     [Fact]
+    public async Task LossDuringInventoryScanCancelsOldWritesAndCoalescesTheNextScan()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new CrossThreadBindingBroker();
+        using var releaseFirst = new ManualResetEventSlim();
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recovered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        var active = 0;
+        var overlap = 0;
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, (inventory, shouldSeed) =>
+            {
+                if (Interlocked.Increment(ref active) != 1) Interlocked.Increment(ref overlap);
+                try
+                {
+                    var attempt = Interlocked.Increment(ref count);
+                    if (attempt == 1)
+                    {
+                        started.TrySetResult(true);
+                        if (!releaseFirst.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Fixture inventory was not released.");
+                        Assert.False(shouldSeed());
+                        Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
+                    }
+                    else
+                    {
+                        Assert.True(shouldSeed());
+                        inventory.SeedProcess(100, 2000, "Current")!.SeedThread(10);
+                        recovered.TrySetResult(true);
+                    }
+                }
+                catch (Exception error) { recovered.TrySetException(error); throw; }
+                finally { Interlocked.Decrement(ref active); }
+            });
+        using var demand = reader.AcquireSubscription("test.loss-during-inventory", TimeSpan.FromMilliseconds(100));
+        await reader.StartAsync(CancellationToken.None);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var initial = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+            Volatile.Write(ref broker.EventsLost, 1);
+            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > initial);
+            var firstReset = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+            Volatile.Write(ref broker.EventsLost, 2);
+            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > firstReset);
+            Assert.Equal(1, Volatile.Read(ref count));
+            releaseFirst.Set();
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(2, Volatile.Read(ref count));
+            Assert.Equal(0, Volatile.Read(ref overlap));
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(1, reader.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+        }
+        finally
+        {
+            releaseFirst.Set();
+            await reader.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task CumulativeEventLossRefreshesInventoryOnceWithoutRebindingTheSession()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new CrossThreadBindingBroker();
+        var firstInventory = new TaskCompletionSource<CpuResidencyAggregationBuffer.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondInventory = new TaskCompletionSource<CpuResidencyAggregationBuffer.InventorySeed>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var seedCount = 0;
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, (inventory, shouldSeed) =>
+            {
+                if (!shouldSeed()) return;
+                var count = Interlocked.Increment(ref seedCount);
+                inventory.SeedProcess(100, count * 1000L, "Current")!.SeedThread(10);
+                if (count == 1) firstInventory.TrySetResult(inventory);
+                if (count == 2) secondInventory.TrySetResult(inventory);
+            });
+        using var demand = reader.AcquireSubscription("test.loss-inventory", TimeSpan.FromMilliseconds(100));
+        await reader.StartAsync(CancellationToken.None);
+        try
+        {
+            var old = await firstInventory.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await WaitUntilAsync(() => reader.GetDiagnostics().Aggregation?.CurrentThreadCount == 1);
+            var before = reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
+            Volatile.Write(ref broker.EventsLost, 1);
+            await secondInventory.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Null(old.SeedProcess(999, 9999, "Stale"));
+            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
+            Assert.Equal(1, reader.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
+            Assert.True(reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > before);
+            await Task.Delay(250);
+            Assert.Equal(2, Volatile.Read(ref seedCount));
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Null(reader.Read()); // No context switches were supplied by this fixture.
+        }
+        finally { await reader.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
+    public async Task FreezeWhileSubscriptionIsBeingAcquiredReleasesTheReturnedLease()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new CrossThreadBindingBroker();
+        using var reader = new EtwCpuCoreResidencyReader(
+            broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        broker.BeforeLeaseReturn = () => reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
+        using var demand = reader.AcquireSubscription("test.freeze-during-acquisition", TimeSpan.FromSeconds(1));
+        await reader.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+            await WaitUntilAsync(() => broker.DisposeCount == 1);
+            Assert.Null(reader.GetDiagnostics().SessionGeneration);
+            Assert.Null(reader.Read());
+        }
+        finally
+        {
+            await reader.StopAsync(CancellationToken.None);
+        }
+        Assert.Equal(1, broker.DisposeCount);
+    }
+
+    [Fact]
+    public async Task StartingSubscriptionAllowsTheBrokerToBindOnAnotherThread()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new CrossThreadBindingBroker();
+        using var reader = new EtwCpuCoreResidencyReader(
+            broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        using var demand = reader.AcquireSubscription("test.cross-thread-binding", TimeSpan.FromSeconds(1));
+        await reader.StartAsync(CancellationToken.None);
+        try
+        {
+            Assert.True(await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
+        }
+        finally
+        {
+            await reader.StopAsync(CancellationToken.None);
+        }
+        Assert.Equal(1, broker.DisposeCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopDuringPendingSamplingSettlesThePlanBeforeReset(bool dispose)
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new CrossThreadBindingBroker();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        broker.BeforeLeaseReturn = () =>
+        {
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+        };
+        using var demand = reader.AcquireSubscription("test.stop-pending", TimeSpan.FromSeconds(1));
+        await reader.StartAsync(CancellationToken.None);
+        Task stopping = Task.CompletedTask;
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            if (dispose) stopping = Task.Run(reader.Dispose);
+            else stopping = reader.StopAsync(CancellationToken.None);
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    using var admitted = reader.AcquireSubscription("test.await-stop", TimeSpan.FromSeconds(1));
+                    return false;
+                }
+                catch (InvalidOperationException) { return true; }
+            });
+            Assert.False(stopping.IsCompleted);
+            Assert.Equal(0, broker.DisposeCount);
+            Assert.Throws<InvalidOperationException>(() => reader.AcquireSubscription(
+                "test.after-stop", TimeSpan.FromSeconds(1)));
+        }
+        finally
+        {
+            release.Set();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        await reader.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(1, broker.DisposeCount);
+        Assert.Null(reader.GetDiagnostics().SessionGeneration);
+        Assert.Null(reader.Read());
+    }
+
+    [Fact]
     public void ReadAndSubscriptionRegistrationDoNotStartEtw()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
@@ -155,6 +351,50 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         public KernelEtwSessionSnapshot GetSnapshot()
             => new("Unavailable", "Fixture: ETW unavailable.", 0,
                 DateTimeOffset.UnixEpoch, KernelTraceEventParser.Keywords.None, 0, 0);
+    }
+
+    private sealed class CrossThreadBindingBroker : IKernelEtwSessionBroker
+    {
+        private int disposed;
+        private int subscribeCount;
+        public int EventsLost;
+        public int SubscribeCount => Volatile.Read(ref subscribeCount);
+        public int DisposeCount => Volatile.Read(ref disposed);
+        public TaskCompletionSource<bool> BindingCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Action? BeforeLeaseReturn { get; set; }
+
+        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        {
+            Interlocked.Increment(ref subscribeCount);
+            var source = new KernelEtwEventSource();
+            var binding = Task.Run(() => request.Bind(source, new(37, DateTimeOffset.UnixEpoch)));
+            var completed = binding.Wait(TimeSpan.FromSeconds(1));
+            if (!completed)
+            {
+                BindingCompleted.TrySetResult(false);
+                throw new TimeoutException("The reader held its lock across broker subscription.");
+            }
+            source.Activate();
+            BeforeLeaseReturn?.Invoke();
+            BindingCompleted.TrySetResult(true);
+            return new Lease(this, source);
+        }
+
+        public KernelEtwSessionSnapshot GetSnapshot()
+            => new("Running", "fixture", 37, DateTimeOffset.UnixEpoch,
+                KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
+                    | KernelTraceEventParser.Keywords.ContextSwitch, 1 - DisposeCount, Volatile.Read(ref EventsLost));
+
+        private sealed class Lease(CrossThreadBindingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
+        {
+            private int released;
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref released, 1) != 0) return;
+                source.Cancel();
+                Interlocked.Increment(ref owner.disposed);
+            }
+        }
     }
 
     private sealed class PassiveUnavailableBroker : IKernelEtwSessionBroker

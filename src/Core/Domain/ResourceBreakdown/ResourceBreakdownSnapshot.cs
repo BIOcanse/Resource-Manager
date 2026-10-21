@@ -160,6 +160,8 @@ public sealed record ResourceBreakdownSnapshot(
     DateTimeOffset CapturedAt,
     IReadOnlyList<ResourceBreakdownBar> Bars)
 {
+    public ProcessMetricFieldSnapshot? ProcessFields { get; init; }
+
     public ResourceBreakdownSamplingState Sampling { get; init; }
         = ResourceBreakdownSamplingState.Ready(CapturedAt);
 

@@ -107,8 +107,8 @@ export default createSettingsLocale("zh-TW", {
         "description": "允許為軟體精確選擇目標顯示卡。"
       }
     },
-    "automaticMemoryCleanupTitle": "自動清理閾值",
-    "automaticMemoryCleanupDescription": "剩餘低於這個值就啟動後臺清理。",
+    "automaticMemoryCleanupTitle": "緊急清理閾值",
+    "automaticMemoryCleanupDescription": "背景清理依資源壓力分級；此處設定實體記憶體或認可額度剩餘低於多少時進入緊急清理。",
     "physicalMemoryAutomaticCleanupLabel": "實體記憶體剩餘 %",
     "virtualMemoryAutomaticCleanupLabel": "提交額度剩餘 %",
     "memoryOptimizationTargetTitle": "記憶體最佳化目標",

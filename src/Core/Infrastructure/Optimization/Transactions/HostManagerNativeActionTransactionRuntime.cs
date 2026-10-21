@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 
@@ -9,18 +10,23 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
     private readonly HostManagerTransactionJournalDeploymentRuntime journalDeployment;
     private readonly HostManagerAppliedOwnershipRuntime appliedOwnership;
     private readonly HostManagerAuthorityRetirementManager retirements;
+    private readonly Func<ulong, IComputeScratch> createJournalScratch;
+    private HostManagerTransactionJournalRuntime? unpublishedJournal;
     private HostManagerTransactionJournalRuntimePlan? appliedJournalPlan;
     private HostManagerTransactionJournalRuntime? journal;
     private bool disposed;
+    private bool closing;
 
     internal HostManagerNativeActionTransactionRuntime(
         HostManagerTransactionJournalDeploymentRuntime journalDeployment,
         HostManagerAppliedOwnershipRuntime appliedOwnership,
-        HostManagerAuthorityRetirementManager retirements)
+        HostManagerAuthorityRetirementManager retirements,
+        Func<ulong, IComputeScratch> createJournalScratch)
     {
         this.journalDeployment = journalDeployment;
         this.appliedOwnership = appliedOwnership;
         this.retirements = retirements;
+        this.createJournalScratch = createJournalScratch ?? throw new ArgumentNullException(nameof(createJournalScratch));
     }
 
     internal HostManagerAppliedOwnershipRuntime AppliedOwnership => appliedOwnership;
@@ -44,6 +50,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
         try
         {
             ThrowIfDisposed();
+            await CloseUnpublishedJournalAsync();
             await retirements.RetryAsync(cancellationToken);
             var desired = journalDeployment.CaptureDesired();
             if (journal is null)
@@ -79,7 +86,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
         out HostManagerTransactionJournalAdmission? admission)
     {
         var current = journal;
-        if (current is not null
+        if (!Volatile.Read(ref closing) && current is not null
             && current.TryAcquireExecutionAdmission(out var acquired))
         {
             admission = acquired;
@@ -94,7 +101,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
         out HostManagerTransactionJournalAdmission? admission)
     {
         var current = journal;
-        if (current is not null
+        if (!Volatile.Read(ref closing) && current is not null
             && current.TryAcquireRecoveryAdmission(out var acquired))
         {
             admission = acquired;
@@ -115,20 +122,20 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             {
                 return;
             }
-            disposed = true;
+            Volatile.Write(ref closing, true);
+            try { await CloseUnpublishedJournalAsync(); }
+            catch (Exception exception) { disposeFailure = exception; }
             if (journal is not null)
             {
                 try
                 {
                     await journal.DisposeAsync();
+                    journal = null;
                 }
                 catch (Exception exception)
                 {
-                    disposeFailure = exception;
-                }
-                finally
-                {
-                    journal = null;
+                    disposeFailure = disposeFailure is null
+                        ? exception : new AggregateException(disposeFailure, exception);
                 }
             }
             try
@@ -150,18 +157,18 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
                     ? retirementFailure
                     : new AggregateException(disposeFailure, retirementFailure);
             }
+            if (disposeFailure is not null)
+            {
+                throw new InvalidOperationException(
+                    "The Host Manager transaction runtime did not dispose every owned runtime cleanly.",
+                    disposeFailure);
+            }
+            retirements.Dispose();
+            disposed = true;
         }
         finally
         {
             gate.Release();
-            gate.Dispose();
-            retirements.Dispose();
-        }
-        if (disposeFailure is not null)
-        {
-            throw new InvalidOperationException(
-                "The Host Manager transaction runtime did not dispose every owned runtime cleanly.",
-                disposeFailure);
         }
     }
 
@@ -181,11 +188,9 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             retirements.RequireAvailable(
                 storage.JournalPath,
                 storage.PayloadDirectory);
-            opened = await HostManagerTransactionJournalRuntime.OpenAsync(
-                dataRoot,
-                desired.Recreate,
-                desired.HotPublish,
-                cancellationToken);
+            opened = HostManagerTransactionJournalRuntime.Create(
+                dataRoot, desired.Recreate, desired.HotPublish, createJournalScratch);
+            await opened.InitializeAsync(cancellationToken);
             successSettlementAttempted = true;
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 journalDeployment.CompleteSucceeded(attempt),
@@ -295,11 +300,9 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             retirements.RequireAvailable(
                 storage.JournalPath,
                 storage.PayloadDirectory);
-            replacement = await HostManagerTransactionJournalRuntime.OpenAsync(
-                dataRoot,
-                desired.Recreate,
-                desired.HotPublish,
-                cancellationToken);
+            replacement = HostManagerTransactionJournalRuntime.Create(
+                dataRoot, desired.Recreate, desired.HotPublish, createJournalScratch);
+            await replacement.InitializeAsync(cancellationToken);
             if (replacement.State != HostManagerTransactionJournalRuntimeState.ReadyForExecution)
             {
                 throw new InvalidOperationException(
@@ -423,11 +426,9 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             retirements.RequireAvailable(
                 storage.JournalPath,
                 storage.PayloadDirectory);
-            replacement = await HostManagerTransactionJournalRuntime.OpenAsync(
-                dataRoot,
-                desired.Recreate,
-                desired.HotPublish,
-                cancellationToken);
+            replacement = HostManagerTransactionJournalRuntime.Create(
+                dataRoot, desired.Recreate, desired.HotPublish, createJournalScratch);
+            await replacement.InitializeAsync(cancellationToken);
             successSettlementAttempted = true;
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 journalDeployment.CompleteSucceeded(attempt),
@@ -460,7 +461,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             HostManagerModuleKind.TransactionJournal);
 
     private async Task<Exception?> CleanupAttemptAsync(
-        IAsyncDisposable? resource,
+        HostManagerTransactionJournalRuntime? resource,
         HostManagerDeploymentAttemptToken attempt,
         string failureCode,
         bool settleFailure)
@@ -470,7 +471,10 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
         {
             try
             {
-                await resource.DisposeAsync();
+                if (unpublishedJournal is not null && !ReferenceEquals(unpublishedJournal, resource))
+                    throw new InvalidOperationException("A prior unpublished journal is still awaiting close.");
+                unpublishedJournal = resource;
+                await CloseUnpublishedJournalAsync();
             }
             catch (Exception exception)
             {
@@ -491,6 +495,13 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             }
         }
         return failure;
+    }
+
+    private async Task CloseUnpublishedJournalAsync()
+    {
+        if (unpublishedJournal is null) return;
+        await unpublishedJournal.DisposeAsync();
+        unpublishedJournal = null; // Its original durable files remain recovery input.
     }
 
     private async Task RequireAppliedOwnershipEmptyForJournalRecreateAsync(
@@ -523,7 +534,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
+        if (disposed || closing)
         {
             throw new ObjectDisposedException(nameof(HostManagerNativeActionTransactionRuntime));
         }

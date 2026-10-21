@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+
+export default async function controlNumberInitialJourney(page, baseUrl) {
+  await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ controlActualValues: [{ objectId: "A", capabilityId: "fan.duty", number: 47, unit: "%" }] }) });
+  const writes = [];
+  await page.route("**/api/control/objects", route => route.fulfill({ json: {
+    readAt: new Date().toISOString(), objects: ["A", "B", "Fixed"].map(id => ({
+      id, kind: "fan", displayName: `Fan ${id}`, isControllable: id !== "Fixed",
+      platform: { operatingSystem: "windows", vendor: "test" },
+      capabilities: [{ id: "fan.duty", label: "Duty", valueKind: "number", supported: id !== "Fixed",
+        unavailableReason: id === "Fixed" ? "Fixed range" : null,
+        unavailableKind: id === "Fixed" ? "platform" : null,
+        requiredAccessLevel: "normal", range: { minimum: 0, maximum: id === "Fixed" ? 0 : 100,
+          step: 1, unit: "%", defaultValue: null } }]
+    }))
+  } }));
+  await page.route("**/api/control/state/**", route => {
+    writes.push({ id: decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop()),
+      settings: route.request().postDataJSON() });
+    return route.fulfill({ json: { desired: { objects: [] }, lastApply: { outcomes: [], appliedAt: new Date().toISOString() } } });
+  });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "控制面", exact: true }).click();
+  const a = page.locator(".control-object").filter({ hasText: "Fan A" });
+  const b = page.locator(".control-object").filter({ hasText: "Fan B" });
+  const fixed = page.locator(".control-object").filter({ hasText: "Fan Fixed" });
+  await fixed.waitFor();
+  assert.equal(await page.locator(".control-object").count(), 3,
+    "An unsupported fixed (0,0) range must not reject the entire catalog");
+  await fixed.getByRole("radio", { name: "软件管理", exact: true }).click();
+  assert.equal(await fixed.getByRole("checkbox", { name: "固定转速", exact: true }).count(), 0,
+    "An unsupported capability remains read-only when software ownership is selected");
+  await a.locator(".control-capability-actual").filter({ hasText: "47" }).waitFor();
+  for (const card of [a, b]) {
+    await card.getByRole("radio", { name: "软件管理", exact: true }).click();
+    await card.getByRole("checkbox", { name: "固定转速", exact: true }).check();
+  }
+  assert.equal(await a.getByRole("spinbutton").inputValue(), "47");
+  assert.equal(await b.getByRole("spinbutton").inputValue(), "");
+  assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), false);
+  await a.getByRole("button", { name: "应用", exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector(".control-workspace")?.hasAttribute("aria-busy"));
+  assert.equal(writes[0].settings[0].number, 47);
+  await b.getByRole("spinbutton").fill("60");
+  await b.getByRole("spinbutton").press("Enter");
+  await b.getByRole("button", { name: "应用", exact: true }).click();
+  await page.waitForTimeout(100);
+  assert.equal(writes[1].settings[0].number, 60);
+  assert.deepEqual(writes.map(write => write.id), ["A", "B"], "Only editable objects are submitted");
+  return { actualInitial: 47, unknownInitial: "", userEntered: 60, fixedRangeRetainsUsableCatalog: true };
+}

@@ -173,7 +173,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var process = AutomaticGpuProcess();
         return process with { ProcessId = target.ProcessId, ProcessStartKey = target.ProcessStartKey,
             ProcessName = target.ProcessName, ExecutablePath = target.ExecutablePath,
-            Policy = process.Policy with { RuntimeHotSwitchEnabled = false, TargetGpu = GpuPlacementTargets.SystemDefaultGpu } };
+            Policy = process.Policy with { RuntimeHotSwitchEnabled = false,} };
     }
 
     [Theory]

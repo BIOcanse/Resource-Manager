@@ -307,7 +307,32 @@ public sealed record ProcessPolicyExecutorRuntimePlan(
 public sealed class HostManagerPdhCollectorRuntime(
     IRuntimePlanProvider runtimePlanProvider,
     HostManagerDeploymentState deploymentState)
+: IPdhCollectorRuntime
 {
+    NativePdhRuntimePlan IPdhCollectorRuntime.CaptureDesired()
+    {
+        var runtimePlan = runtimePlanProvider.Current;
+        var plan = runtimePlan.HostManager.RequirePublished();
+        return new(runtimePlan.Version, plan.BuildSha256,
+            plan.DeploymentDigests.PdhCollector.RecreateSha256,
+            plan.DeploymentDigests.PdhCollector.HotPublishSha256,
+            plan.BuildSpecialize.PdhCollectorAbiVersion,
+            plan.HostRecreate.PdhCollector.BaselineResetIntervalMilliseconds,
+            plan.HotPublish.PdhCollector.FrameReuseWindowMilliseconds,
+            plan.HotPublish.PdhCollector.LastGoodLifetimeMilliseconds, plan);
+    }
+    object IPdhCollectorRuntime.BeginInitialCreate(NativePdhRuntimePlan plan)
+        => BeginInitialCreate((CompiledHostManagerPlan)plan.HostState!);
+    object IPdhCollectorRuntime.BeginHotPublish(NativePdhRuntimePlan plan)
+        => BeginHotPublish((CompiledHostManagerPlan)plan.HostState!);
+    object IPdhCollectorRuntime.BeginHostRecreateAndHotPublish(NativePdhRuntimePlan plan)
+        => BeginHostRecreateAndHotPublish((CompiledHostManagerPlan)plan.HostState!);
+    void IPdhCollectorRuntime.CompleteSucceeded(object attempt)
+        => CompleteSucceeded((HostManagerDeploymentAttemptToken)attempt);
+    void IPdhCollectorRuntime.CompleteFailed(object attempt, string failureCode)
+        => CompleteFailed((HostManagerDeploymentAttemptToken)attempt, failureCode);
+
+
     public PdhCollectorRuntimePlan CaptureDesired()
     {
         var runtimePlan = runtimePlanProvider.Current;

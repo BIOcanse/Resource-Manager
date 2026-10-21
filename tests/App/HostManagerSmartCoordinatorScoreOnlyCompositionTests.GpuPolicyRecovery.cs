@@ -125,7 +125,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
                 Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
             }
-            finally { File.SetAttributes(blockedPath, FileAttributes.Normal); }
+            finally
+            {
+                // Keep the same blocked write through shutdown restoration. Fixture
+                // disposal then joins this shutdown and removes its writable files.
+                try { await fixture.Coordinator.StopAsync(CancellationToken.None); }
+                finally { File.SetAttributes(blockedPath, FileAttributes.Normal); }
+            }
         }
         using var finalOwner = new JsonHostManagerRollbackStateStore(
             ledgerPath, TimeProvider.System, TimeSpan.FromMinutes(1));

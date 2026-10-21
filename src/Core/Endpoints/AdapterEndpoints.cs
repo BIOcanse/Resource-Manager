@@ -5,7 +5,6 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -19,7 +18,6 @@ using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -28,12 +26,13 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.ResourceTable;
 using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.Security;
 
 namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private static IEndpointRouteBuilder MapAdapterEndpoints(
+    internal static IEndpointRouteBuilder MapAdapterEndpoints(
         this IEndpointRouteBuilder app,
         StartupCapabilitySet startupCapabilities)
     {
@@ -55,6 +54,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
 
         app.MapPost("/api/adapters/register", async (
+            HttpContext context,
             AdapterSoftwareRegistrationRequest request,
             IAdapterResourceMarkerProbe markerProbe,
             IAdapterSoftwareRegistry registry,
@@ -67,7 +67,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 return Results.BadRequest(new { error = validation });
             }
 
-            var probeResult = await markerProbe.ProbeAsync(request.ResourceMarkerEndpoint!, cancellationToken);
+            if (!WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller))
+                return Results.Unauthorized();
+            var probeResult = await markerProbe.ProbeAsync(request,
+                new AdapterRegistrationCaller(caller.WindowsSid, caller.IsAdministrator), cancellationToken);
             if (probeResult.State != AdapterResourceMarkerStates.Online)
             {
                 return Results.BadRequest(new
@@ -77,7 +80,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 });
             }
 
-            var result = await registry.RegisterAsync(request, probeResult, cancellationToken);
+            AdapterRegistrationResult result;
+            try
+            {
+                result = await registry.RegisterAsync(request, probeResult, cancellationToken);
+            }
+            catch (AdapterRegistrationConflictException conflict)
+            {
+                return Results.Conflict(new { error = conflict.Message });
+            }
             await runtimeSpecialization.RebuildAsync("adapter-registered", CancellationToken.None);
             return result.Created
                 ? Results.Created($"/api/adapters/{result.Registration.Id}", result.Registration)

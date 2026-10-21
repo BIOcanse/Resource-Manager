@@ -833,7 +833,7 @@ function ControlObjectCard(props: {
                     aria-label={controlCapabilityLabel(capability)}
                     onChange={(event) => props.onEdit(
                       capability.id,
-                      event.currentTarget.checked ? initialSettingFor(capability) : null)}
+                      event.currentTarget.checked ? initialSettingFor(capability, actualOf(capability.id)?.number) : null)}
                   />
                 </Show>
                 {controlCapabilityLabel(capability)}
@@ -946,7 +946,12 @@ function ControlObjectCard(props: {
           disabled={props.saving || (!hasPendingChanges(edited(), saved()) && !props.takingOver)}
           onClick={props.onDiscard}>{uiText.control.discard}</button>
         <button type="button"
-          disabled={props.saving || !hasPendingChanges(edited(), saved())}
+          disabled={props.saving || !hasPendingChanges(edited(), saved())
+            || edited().some(setting => {
+              const kind = props.object.capabilities.find(c => c.id === setting.capabilityId)?.valueKind;
+              return kind === "number" ? typeof setting.number !== "number" || !Number.isFinite(setting.number)
+                : kind === "curve" && !setting.curve?.length;
+            })}
           onClick={props.onApply}>{uiText.control.apply}</button>
       </div>
     </article>

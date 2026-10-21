@@ -1,9 +1,6 @@
 export const frontendWorkIds = {
   managementInventory: "management.inventory",
   managementBrowserRuntimes: "management.browser-runtimes",
-  migrationRoots: "management.migration.roots",
-  migrationRecords: "management.migration.records",
-  migrationSessions: "management.migration.sessions",
   optimizationReports: "optimization.reports",
   optimizationSmartStatus: "optimization.smart-status",
   detailsDeviceTopology: "details.device-topology",

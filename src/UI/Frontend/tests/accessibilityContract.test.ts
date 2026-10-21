@@ -45,7 +45,6 @@ const dividerConsumerStyles = [
   readSource("styles/device-topology.css"),
   readSource("styles/feedback.css"),
   readSource("styles/management.css"),
-  readSource("styles/migration.css"),
   readSource("styles/monitor.css"),
   readSource("styles/panels.css"),
   readSource("styles/resources.css"),

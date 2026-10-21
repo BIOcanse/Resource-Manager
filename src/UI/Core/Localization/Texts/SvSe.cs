@@ -46,6 +46,7 @@ internal static class SvSe
         BackendPipelineNotReady = "Den lokala tjänstens begärandepipeline är inte klar.",
         NoProcessToTerminate = "Det finns ingen process att avsluta.",
         TerminateRequestCompleted = "Begäran om att avsluta processen har slutförts.",
+        TerminateResultFormat = "{0} / {1} processer avslutades.",
 
         WebViewInitializationFailed = "Det inbäddade gränssnittet kunde inte initieras. Öppna diagnostikmappen för mer information.",
         FrontendIdentityVerificationFailed = "Identitetsverifieringen av klientresurserna misslyckades. Öppna diagnostikmappen för mer information.",

@@ -109,14 +109,8 @@ pub const Bank = struct {
         var previous_software: u64 = 0;
         var previous_path: u64 = 0;
         for (rows) |*row| {
+            // Imported first-observed values are persisted history, not live observations.
             if (!protocol.validPersistedPath(row, config, key_bytes)) return .invalid_argument;
-            if (!protocol.withinFutureSkew(
-                input.command_utc_ms,
-                row.first_observed_utc_ms,
-                config.maximum_future_skew_ms,
-            )) {
-                return .invalid_argument;
-            }
             if (row.executable_path_offset != expected_key_offset) return .invalid_argument;
             expected_key_offset = std.math.add(u32, expected_key_offset, row.executable_path_length) catch
                 return .invalid_argument;

@@ -16,7 +16,6 @@ import type { SoftwareContextMenuTarget } from "../../../components/SoftwareCont
 import {
   browserRuntimeManagementSubpageId,
   managementInventoryKinds,
-  migrationManagementSubpageId,
   type ManagementSubpageId
 } from "../managementNavigation";
 import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../../../types";
@@ -60,6 +59,7 @@ interface ManagementPageProps {
   onAddManualSoftware: (kind: ManagementKind) => void;
   onRefresh: () => void;
   onInstallComponent: (component: ManagedComponent) => void;
+  onVerifyComponent: (component: ManagedComponent) => void;
   onUninstallSoftware: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
@@ -104,18 +104,6 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
       >
         {uiText.managementPage.browserRuntimeTab}
       </button>
-      <Show when={props.runtimeEffectsEnabled}>
-        <button
-          id="managementTab-Migration"
-          class="management-tab"
-          classList={{ active: props.activeSubpage === migrationManagementSubpageId }}
-          type="button"
-          aria-current={props.activeSubpage === migrationManagementSubpageId ? "page" : undefined}
-          onClick={() => props.onSubpageChange(migrationManagementSubpageId)}
-        >
-          {uiText.managementPage.migrationTab}
-        </button>
-      </Show>
     </nav>
   );
 }
@@ -214,6 +202,7 @@ export function ManagementPage(props: ManagementPageProps) {
                       software={props.software}
                       runtimeEffectsEnabled={props.runtimeEffectsEnabled}
                       onInstall={props.onInstallComponent}
+                      onVerify={props.onVerifyComponent}
                       onUninstall={props.onUninstallSoftware}
                       onOpenDetail={(component) => props.onOpenDetail("component", component)}
                     />
@@ -240,6 +229,7 @@ function ComponentCard(props: {
   software: SoftwareRecord[];
   runtimeEffectsEnabled: boolean;
   onInstall: (component: ManagedComponent) => void;
+  onVerify: (component: ManagedComponent) => void;
   onUninstall: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (component: ManagedComponent) => void;
 }) {
@@ -292,6 +282,14 @@ function ComponentCard(props: {
               </button>
             </Show>
           </Show>
+        </Show>
+        <Show when={props.component.canVerify}>
+          <button class="management-action-button" type="button"
+            disabled={!props.runtimeEffectsEnabled || Boolean(activeLabel())}
+            title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly}
+            onClick={() => props.onVerify(props.component)}>
+            {uiText.management.verify}
+          </button>
         </Show>
         <DetailsButton
           label={uiText.managementPage.detailsOf(componentDisplayName(props.component.definition?.id, props.component.definition?.name))}
@@ -382,7 +380,7 @@ function SoftwareCard(props: {
 
 function SettingsButton(props: { onClick: () => void }) {
   return (
-    <button class="management-settings-button" type="button" title={uiText.management.settingsAndMigration} aria-label={uiText.management.settingsAndMigration} onClick={props.onClick}>
+    <button class="management-settings-button" type="button" title={uiText.management.softwareSettings} aria-label={uiText.management.softwareSettings} onClick={props.onClick}>
       <Settings aria-hidden="true" size={16} strokeWidth={2} />
     </button>
   );
@@ -462,6 +460,7 @@ function canAddManualSoftware(kind: ManagementKind) {
 
 function softwareContextTargetFromSoftware(software: SoftwareRecord): SoftwareContextMenuTarget {
   return {
+    kind: "software",
     name: software.name ?? "--",
     softwareId: software.id,
     softwareName: software.name,

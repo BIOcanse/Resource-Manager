@@ -124,7 +124,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             if (requiredFields.HasFlag(ProcessPlacementReadFields.Affinity))
             {
                 affinity = process.ProcessorAffinity.ToInt64();
-                if (affinity <= 0)
+                if (affinity == 0)
                 {
                     return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Unavailable(
                         0,

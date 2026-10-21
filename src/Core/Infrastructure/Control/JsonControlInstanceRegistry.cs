@@ -21,10 +21,8 @@ public sealed class JsonControlInstanceRegistry(
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
     private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly string registryPath = Path.Combine(
+    private readonly string registryPath = ControlDataPaths.FilePath(
         environment.ContentRootPath,
-        "UserData",
-        "Control",
         "instances.json");
     private ControlInstanceRegistryFile? cached;
 

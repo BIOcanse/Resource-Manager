@@ -243,11 +243,15 @@ export function getDiskUsageLayout(
   requestClient: Pick<RequestClient, "request">,
   nodeId?: number,
   signal?: AbortSignal,
-  view?: DiskUsageViewWindow
+  view?: DiskUsageViewWindow,
+  rootIndex?: number
 ): Promise<DiskUsageLayout | null> {
   const parameters = new URLSearchParams();
   if (typeof nodeId === "number") {
     parameters.set("node", String(nodeId));
+  }
+  if (typeof rootIndex === "number") {
+    parameters.set("rootIndex", String(rootIndex));
   }
   if (view) {
     parameters.set("pixelWidth", view.pixelWidth.toFixed(1));

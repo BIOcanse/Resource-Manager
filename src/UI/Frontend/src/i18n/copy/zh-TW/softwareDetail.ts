@@ -26,11 +26,17 @@ export const zhSoftwareDetailCopy = {
     group: "目標軟體"
   },
   softwareDetail: {
+    openPath: "開啟",
+    protection: {
+      title: "二級保護",
+      enabled: "啟用二級保護",
+      hint: "此軟體不參與 CPU、記憶體及 GPU 排程；解除保護後可重新參與。",
+      failed: "無法讀取或儲存保護設定，請重新開啟軟體詳細資料。",
+    },
     tab: {
       overview: "概覽",
       policy: "策略",
       processes: "程序",
-      migration: "遷移"
     },
     option: {
       useDefault: "使用預設設定",
@@ -60,18 +66,14 @@ export const zhSoftwareDetailCopy = {
       paths: "路徑和來源",
       operations: "操作能力",
       gpuScheduling: "GPU 排程",
-      migrationAndRestore: "遷移和恢復",
       relatedInfo: "相關資訊"
     },
     rootNeedsConfirmation: "根目錄需要確認",
     rootNeedsConfirmationDetail: "當前只有可執行檔案位置，尚未確認軟體根目錄。",
     chooseFolder: "選擇資料夾",
     ordinaryGpuMode: "當前為普通配置模式，僅使用系統預設 GPU 選項。",
-    noMigrationRecord: "暫無遷移記錄。",
     processing: "處理中",
     restoreAll: "一鍵恢復",
-    migrateData: "一鍵遷移資料",
-    migrateWholeSoftware: "一鍵遷移整個軟體",
     close: "關閉",
     operationDetailTitle: "操作詳情",
     contentLabel: "內容",
@@ -92,7 +94,6 @@ export const zhSoftwareDetailCopy = {
       gpuSelectionMethod: "顯示卡選擇方式",
       startupGpu: "啟動時 GPU",
       runtimeSelectionMethod: "執行時選擇方式",
-      runtimeTargetGpu: "執行時目標 GPU",
       whenSoftwareChoseGpu: "軟體已選顯示卡時",
       allowRuntimeGpuSwitch: "允許執行時切換顯示卡",
       preferKeepingTargetGpu: "優先保留目標顯示卡",
@@ -168,18 +169,5 @@ export const zhSoftwareDetailCopy = {
       preparing: "正在準備啟動顯示卡設定。",
       recentLaunch: (outcome: string, time: string) => `最近啟動：${outcome} · ${time}`
     },
-    migration: {
-      sourcePath: "原路徑",
-      managedPath: "託管路徑",
-      restored: "已恢復",
-      restore: "恢復",
-      open: "開啟",
-      wholeSoftware: "整個軟體",
-      data: "資料",
-      migrated: "已遷移",
-      summary: (kind: string, state: string) => `${kind} · ${state}`,
-      migratedAt: (time: string) => `遷移於 ${time}`,
-      restoredAt: (time: string) => `恢復於 ${time}`
-    }
   }
 };

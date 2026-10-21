@@ -8,13 +8,17 @@ pub fn complete(
     session: *state.Session,
     input: *const protocol.CompletionInput,
     references: []const protocol.ItemReference,
+    trigger_references: []const protocol.TriggerOutput,
     output: *protocol.CompletionOutput,
 ) ResultCode {
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
 
+    if (!session.scratchReady()) return .invalid_argument;
+
     if (!protocol.validCompletion(input, &session.config)) return .abi_mismatch;
     if (references.len != input.item_count) return .invalid_argument;
+    if (trigger_references.len != input.trigger_count) return .invalid_argument;
     if (!emptyOutput(output)) return .abi_mismatch;
     if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds)) {
         return .stale_frame;
@@ -23,6 +27,12 @@ pub fn complete(
         return .stale_frame;
     }
     if (input.plan_epoch > session.last_plan_epoch) return .stale_frame;
+    if ((session.issued_trigger_count != 0 or trigger_references.len != 0) and
+        (input.plan_epoch != session.issued_trigger_plan_epoch or
+            trigger_references.len != session.issued_trigger_count))
+    {
+        return .stale_frame;
+    }
 
     _ = session.rebuildItemAggregates();
     for (references, 0..) |reference, index| {
@@ -42,6 +52,19 @@ pub fn complete(
             input.completed_at_milliseconds < item.last_sampled_milliseconds)
         {
             return .stale_frame;
+        }
+    }
+
+    for (trigger_references, 0..) |reference, index| {
+        if (!protocol.validTrigger(&reference)) return .abi_mismatch;
+        if (reference.plan_epoch != input.plan_epoch) return .stale_frame;
+        if (!wasIssuedTrigger(session, &reference)) return .stale_frame;
+        for (trigger_references[0..index]) |prior| {
+            if (prior.source_handle == reference.source_handle and
+                prior.item_handle == reference.item_handle)
+            {
+                return .invalid_argument;
+            }
         }
     }
 
@@ -78,8 +101,30 @@ pub fn complete(
         item.last_planned_epoch = 0;
     }
 
+    for (trigger_references) |reference| {
+        if (!activeMembershipMatches(session, &reference, input.plan_epoch)) continue;
+        const membership_index = session.findMembership(reference.source_handle, reference.item_handle) orelse unreachable;
+        const membership = &session.memberships[membership_index];
+        const next_due = state.saturatingAdd(
+            membership.next_trigger_milliseconds,
+            membership.period_milliseconds,
+        );
+        if (membership.trigger_sequence == std.math.maxInt(u64) or next_due == std.math.maxInt(u64)) {
+            membership.trigger_sequence = 0;
+            membership.next_trigger_milliseconds = 0;
+        } else {
+            membership.trigger_sequence += 1;
+            membership.next_trigger_milliseconds = next_due;
+        }
+        membership.last_planned_epoch = 0;
+    }
+
+    @memset(session.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
+    session.issued_trigger_count = 0;
+    session.issued_trigger_plan_epoch = 0;
+
     const active_item_count = session.rebuildItemAggregates();
-    session.alignKnownItems(input.command_at_milliseconds);
+    session.refreshItemDeadlines(input.command_at_milliseconds);
     session.next_wake_milliseconds = session.nextWakeFromAggregates(input.command_at_milliseconds);
     session.commitOperation(input.operation_epoch, input.command_at_milliseconds);
 
@@ -100,6 +145,43 @@ pub fn complete(
         .reserved = .{ 0, 0 },
     };
     return .ok;
+}
+
+fn wasIssuedTrigger(session: *const state.Session, reference: *const protocol.TriggerOutput) bool {
+    for (session.scratch_issued_triggers[0..session.issued_trigger_count]) |issued| {
+        if (issued.struct_size == reference.struct_size and
+            issued.flags == reference.flags and
+            issued.source_handle == reference.source_handle and
+            issued.item_handle == reference.item_handle and
+            issued.scheduled_due_milliseconds == reference.scheduled_due_milliseconds and
+            issued.sequence == reference.sequence and
+            issued.plan_epoch == reference.plan_epoch)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn activeMembershipMatches(
+    session: *const state.Session,
+    reference: *const protocol.TriggerOutput,
+    plan_epoch: u64,
+) bool {
+    const membership_index = session.findMembership(reference.source_handle, reference.item_handle) orelse
+        return false;
+    const membership = &session.memberships[membership_index];
+    const source = &session.sources[membership.source_index];
+    const item = &session.items[membership.item_index];
+    const expected_flags = if (membership.sampling_flags & protocol.SourceFlags.fresh_on_trigger != 0)
+        protocol.TriggerFlags.fresh
+    else
+        0;
+    return source.active and item.active and
+        membership.last_planned_epoch == plan_epoch and
+        membership.next_trigger_milliseconds == reference.scheduled_due_milliseconds and
+        membership.trigger_sequence == reference.sequence and
+        reference.flags == expected_flags;
 }
 
 fn emptyOutput(output: *const protocol.CompletionOutput) bool {

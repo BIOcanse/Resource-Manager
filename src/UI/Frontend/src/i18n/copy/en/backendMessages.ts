@@ -14,9 +14,9 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       downloadable: "The installer can be downloaded from the official source.",
       manualAcquisition: "Open the official source page and put the installer into the Misc installer cache.",
       reusingExternalInstall: (value: string) => `An existing system installation was found and is reused: ${value}`,
-      providerVerified: "The provider is verified by live metrics.",
+      providerVerified: "Hardware readings have been verified.",
       providerRuntimeUnverified: "A provider runtime installed on this system was found, but it is not verified by live readings yet.",
-      componentFilesUnverified: "The component files are in place, but the provider is not verified by live readings yet.",
+      componentFilesUnverified: "Component files are ready; hardware readings have not been verified.",
       runtimeAvailableBridgePending: "The runtime is available, but the provider bridge or live-reading verification is not complete.",
       providerBridgeMissing: "The provider bridge is not connected, or the current hardware or driver returns no verifiable readings.",
       bundledVerified: "The bundled component is verified by live metrics.",
@@ -26,6 +26,7 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       installerDownloadedVersion: (value: string) => `The installer for ${value} was downloaded into the managed dependency directory.`,
       sharedRuntimeInstalled: "The shared WebView2 runtime is installed and detected.",
       installerLaunched: "The installer started visibly. Finish the vendor's installation prompts before using this provider.",
+      runtimeFilesUnavailable: "Required runtime files could not be obtained. Check the connection and retry verification.",
       componentFilesExtracted: "The component files were extracted into the install directory."
     },
     gpuPlacement: {
@@ -44,8 +45,8 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
       windowsUninstallerDescription: "Starts the official uninstaller registered with Windows.",
       noUninstallUnknownRoot: "There is no uninstall entry, so this can only be opened or handled manually; Resource Manager does not delete unknown software roots.",
       manualClassificationNoUninstall: "A manual classification entry does not itself represent an uninstaller; handle it from the software details or the original software entry.",
-      controlledNoUninstall: "Controlled software needs its own uninstall policy record; only data migration restore is supported for now.",
-      selfNoUninstall: "Resource Manager cannot uninstall or migrate itself from here.",
+      controlledNoUninstall: "Controlled software requires its own uninstall policy; no uninstall entry is currently available.",
+      selfNoUninstall: "Use UninstallResourceManager.exe to uninstall Resource Manager and choose whether to keep your user data.",
       adaptedNoUninstall: "Adapted software must declare an uninstall policy in its registration or manifest before Resource Manager can run it.",
       legacyControlledNoUninstall: "L0 controlled registrations have no uninstall policy.",
       portableNoUninstall: "Portable software has no uninstaller; delete the files and refresh the software list to drop the record."

@@ -34,7 +34,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var worker = Path.GetFullPath(Environment.GetEnvironmentVariable("RM_OPENGL_PRODUCT_WORKER")!);
         var adapter = ulong.Parse(Environment.GetEnvironmentVariable("RM_OPENGL_PRODUCT_ADAPTER")!, CultureInfo.InvariantCulture);
         var inventory = new WindowsGpuAdapterOrderReader().ReadInventory();
-        using var resourceCapture = new GpuPlacementMpvResourceCapture(root, NativePdhAdapterIdentity.ComputeTopologyFingerprint(inventory.Adapters));
+        using var resourceCapture = new GpuPlacementMpvResourceCapture(root, WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(inventory.Adapters));
         await using var target = new GpuPlacementMpvTestProcess(executable, root, timeout);
         try
         {
@@ -45,8 +45,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(0U, inventory.SkippedCount);
             Assert.Equal(0U, inventory.OverflowCount);
             var initial = Assert.Single(inventory.Adapters, item => originalRenderer.Contains(item.Name, StringComparison.OrdinalIgnoreCase));
-            var selected = Assert.Single(inventory.Adapters, item => NativePdhAdapterIdentity.Pack(item.Luid) == adapter);
-            var source = NativePdhAdapterIdentity.Pack(initial.Luid);
+            var selected = Assert.Single(inventory.Adapters, item => WindowsGpuAdapterIdentity.Pack(item.Luid) == adapter);
+            var source = WindowsGpuAdapterIdentity.Pack(initial.Luid);
             Assert.NotEqual(source, adapter);
             const string softwareId = "software:owned-mpv-first-use";
             const string displayName = "Owned mpv first use";
@@ -56,9 +56,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
                 RuntimeHotSwitchEnabled = true,
-                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-                TargetGpu = GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(selected.Name)
-                    ? GpuPlacementTargets.IntegratedGpu : GpuPlacementTargets.HighPerformanceGpu
+                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             });
             var facts = CreateNativeGpuCycleFacts(identity, softwareId, inventory, initial.Index);
             var ledgerPath = Path.Combine(root, "recovery.json");

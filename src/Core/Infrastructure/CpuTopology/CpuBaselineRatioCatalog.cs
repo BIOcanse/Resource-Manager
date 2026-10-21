@@ -62,7 +62,8 @@ public sealed partial class CpuBaselineRatioCatalog
         var ratio = document.UnmatchedRatio;
         var source = "uncompensated";
         string? matchedModel = null;
-        if (topology.Specification.Vendor.Equals("Intel", StringComparison.OrdinalIgnoreCase)
+        var vendor = NormalizeVendor(topology.Specification.Vendor);
+        if (vendor == "Intel"
             && intelModels.TryGetValue(NormalizeModelName(topology.CpuName), out var model)
             && model.PhysicalCores == topology.PhysicalCoreCount)
         {
@@ -70,7 +71,7 @@ public sealed partial class CpuBaselineRatioCatalog
             source = $"intel:{model.Basis}";
             matchedModel = model.Name;
         }
-        else if (topology.Specification.Vendor.Equals("AMD", StringComparison.OrdinalIgnoreCase)
+        else if (vendor == "AMD"
             && MatchesHomogeneousAmdLayout(topology)
             && HasCompleteSymmetricCcdLayout(topology))
         {
@@ -80,6 +81,22 @@ public sealed partial class CpuBaselineRatioCatalog
 
         return new CpuBaselineRatioSettings(topology.CpuName, ratio, manualRatio, source,
             matchedModel, document.DatasetVersion);
+    }
+
+    private static string? NormalizeVendor(string vendor)
+    {
+        var value = vendor.Trim();
+        if (value.Equals("Intel", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("GenuineIntel", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Intel";
+        }
+        if (value.Equals("AMD", StringComparison.OrdinalIgnoreCase)
+            || value.Equals("AuthenticAMD", StringComparison.OrdinalIgnoreCase))
+        {
+            return "AMD";
+        }
+        return null;
     }
 
     private static bool MatchesHomogeneousAmdLayout(CpuTopologySnapshot topology)

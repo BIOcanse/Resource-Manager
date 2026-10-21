@@ -20,6 +20,8 @@ var isWindowsService = WindowsServiceHelpers.IsWindowsService();
 var hostEnvironment = BackendHostEnvironment.Compile(
     isWindowsService,
     IsLocalSystem());
+if (hostEnvironment.IsWindowsService)
+    WindowsBackendProcessIdentityAccess.InitializeForCurrentSystemProcess();
 builder.Host.UseWindowsService(options =>
     options.ServiceName = BackendHostEnvironment.WindowsServiceName);
 var loopbackApiPipeline = LoopbackApiPipelineConfigurator.CompileForCurrentProcess();

@@ -28,7 +28,7 @@ public sealed record CompiledHostManagerSamplingSubscriptionBuildPlan(
     string NativeBinarySha256,
     ImmutableArray<CompiledHostManagerSamplingSubscriptionRoleCapacityPlan> RoleCapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x0003_0000U
+    public bool IsPublished => AbiVersion == 0x0004_0000U
         && string.Equals(NativeModule, "sampling_subscription", StringComparison.Ordinal)
         && !string.IsNullOrWhiteSpace(NativeBinaryFileName)
         && NativeBinarySha256.Length == 64
@@ -59,7 +59,7 @@ public sealed record CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan(
     long MinimumIntervalMilliseconds,
     long ActiveTtlMilliseconds,
     long MaximumFutureSkewMilliseconds,
-    long FreshnessGraceMilliseconds)
+    long FreshnessGraceMilliseconds) : ISubscriptionRoleSettings
 {
     public bool IsPublished => RoleId is >= 1 and <= CompiledHostManagerSamplingSubscriptionPlan.RoleCount
         && MinimumIntervalMilliseconds > 0

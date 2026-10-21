@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.NativeScheduling;
@@ -25,7 +26,7 @@ public sealed class HostManagerPlanCompilerTests
         var plan = Compile(loaded);
 
         Assert.Equal(42, plan.SchemaVersion);
-        Assert.Equal(59, plan.ProfileRevision);
+        Assert.Equal(66, plan.ProfileRevision);
         Assert.True(plan.IsPublished);
         Assert.Equal("default", plan.ProfileName);
         Assert.Equal(64, plan.PlanSha256.Length);
@@ -59,7 +60,7 @@ public sealed class HostManagerPlanCompilerTests
             plan.BuildSpecialize.MetricSnapshot.AbiVersion);
         Assert.Equal("metric_snapshot", plan.BuildSpecialize.MetricSnapshot.NativeModule);
         Assert.Equal(0x0002_0000U, plan.BuildSpecialize.ProcessPolicyExecutorAbiVersion);
-        Assert.Equal(0x0001_0000U, plan.BuildSpecialize.PdhCollectorAbiVersion);
+        Assert.Equal(0x0002_0000U, plan.BuildSpecialize.PdhCollectorAbiVersion);
         Assert.Equal<string>(
             [
                 "adapter_private_resource_ledger",
@@ -165,15 +166,16 @@ public sealed class HostManagerPlanCompilerTests
 
         var metricSnapshot = plan.MetricSnapshot;
         Assert.True(metricSnapshot.IsPublished);
-        Assert.Equal(59UL << 32, metricSnapshot.HotPublish.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, metricSnapshot.HotPublish.ConfigurationGeneration);
         Assert.Equal(
-            (59UL << 32) | 1UL,
+            (66UL << 32) | 1UL,
             metricSnapshot.HotPublish.CatalogGenerationBase);
         Assert.Equal(1U, metricSnapshot.HotPublish.CatalogManifestVersion);
         Assert.Equal(64, metricSnapshot.HotPublish.CatalogManifestSha256.Length);
-        Assert.Equal(14, metricSnapshot.HotPublish.SourcePolicies.Length);
-        // 82 = 原来的 79 加上核显那三条（频率 / 温度 / 电压改走 SMU）。
-        Assert.Equal(82, metricSnapshot.HotPublish.RuleTemplates.Length);
+        Assert.Equal(23, metricSnapshot.HotPublish.SourcePolicies.Length);
+        Assert.Equal(299, metricSnapshot.HotPublish.RuleTemplates.Length);
+        Assert.Equal(10, metricSnapshot.HotPublish.RuleTemplates.Count(static rule => rule.ValueKind == 4));
+        Assert.Equal(3, metricSnapshot.HotPublish.RuleTemplates.Count(static rule => rule.ValueKind == 5));
         Assert.Single(
             metricSnapshot.HotPublish.RuleTemplates,
             static rule => string.Equals(
@@ -223,7 +225,7 @@ public sealed class HostManagerPlanCompilerTests
 
         var reportCoordinator = plan.ReportCoordinator;
         Assert.True(reportCoordinator.IsPublished);
-        Assert.Equal(59UL << 32, reportCoordinator.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, reportCoordinator.ConfigurationGeneration);
         Assert.Equal(3_600_000, reportCoordinator.HotPublish.BucketWidthMilliseconds);
         Assert.Equal(86_400_000, reportCoordinator.HotPublish.Window24HoursMilliseconds);
         Assert.Equal(604_800_000, reportCoordinator.HotPublish.Window7DaysMilliseconds);
@@ -294,13 +296,13 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(6, memoryCleanup.EmergencyBatchCount);
 
         var placement = plan.HotPublish.PlacementCoordinator;
-        Assert.Equal(59UL << 32, placement.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, placement.ConfigurationGeneration);
         Assert.Equal(5000, placement.RetryDelayMilliseconds);
         Assert.Equal(30000, placement.ActionTimeoutMilliseconds);
         Assert.Equal(5000, placement.MaximumFutureSkewMilliseconds);
 
         var transactionJournal = plan.HotPublish.TransactionJournal;
-        Assert.Equal(59UL << 32, transactionJournal.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, transactionJournal.ConfigurationGeneration);
         Assert.Equal(3, transactionJournal.MaximumRecoveryAttempts);
         Assert.Equal(5000, transactionJournal.RetryDelayMilliseconds);
         Assert.Equal(300000, transactionJournal.RecoveryDeadlineMilliseconds);
@@ -322,18 +324,22 @@ public sealed class HostManagerPlanCompilerTests
             Encoding.UTF8.GetBytes(missing.ToJsonString()),
             "missing.json"));
 
+        var duplicate = source.Replace(
+            "\"schema_version\": 42,",
+            "\"schema_version\": 42, \"schema_version\": 42,",
+            StringComparison.Ordinal);
+        Assert.NotEqual(source, duplicate);
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(
-            Encoding.UTF8.GetBytes(source.Replace(
-                "\"schema_version\": 42,",
-                "\"schema_version\": 42, \"schema_version\": 42,",
-                StringComparison.Ordinal)),
+            Encoding.UTF8.GetBytes(duplicate),
             "duplicate.json"));
 
+        var wrongType = source.Replace(
+            "\"resource_capacity\": 256",
+            "\"resource_capacity\": \"256\"",
+            StringComparison.Ordinal);
+        Assert.NotEqual(source, wrongType);
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(
-            Encoding.UTF8.GetBytes(source.Replace(
-                "\"resource_capacity\": 256",
-                "\"resource_capacity\": \"256\"",
-                StringComparison.Ordinal)),
+            Encoding.UTF8.GetBytes(wrongType),
             "wrong-type.json"));
     }
 
@@ -471,6 +477,237 @@ public sealed class HostManagerPlanCompilerTests
             StrictHostManagerProfileLoader.LoadBytes(
                 Encoding.UTF8.GetBytes(duplicate.ToJsonString()),
                 "duplicate-public-service-outcome.json")));
+    }
+
+    [Theory]
+    [InlineData(10622, true)]
+    [InlineData(10621, false)]
+    public void DieExpansionCountsEveryInstanceAtTheActualMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        // A profile can remove optional ADLX fields; retain that capacity boundary too.
+        RemoveIntelGpuRules(profile);
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["metric_id_template"]!.GetValue<string>()
+            is "gpu.{gpu}.adlxActivity" or "gpu.{gpu}.adlxVoltage" or "gpu.{gpu}.adlxSampleTimestamp" or "gpu.{gpu}.adlxDedicatedMemoryMb").ToArray())
+            rules.Remove(rule);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(10670, true)]
+    [InlineData(10669, false)]
+    public void OptionalAdlxExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        RemoveIntelGpuRules(profile);
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["metric_id_template"]!.GetValue<string>() == "gpu.{gpu}.adlxDedicatedMemoryMb").ToArray())
+            rules.Remove(rule);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(10686, true)]
+    [InlineData(10685, false)]
+    public void AdlxRawMemoryExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        RemoveIntelGpuRules(profile);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(10974, true)]
+    [InlineData(10973, false)]
+    public void IntelGpuExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        RemoveIntelIntervalRules(profile);
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["metric_id_template"]!.GetValue<string>()
+            is "gpu.{gpu}.igclPciCurrentGeneration" or "gpu.{gpu}.igclPciCurrentWidth" or "gpu.{gpu}.igclPciMaximumGeneration" or "gpu.{gpu}.igclPciMaximumWidth").ToArray()) rules.Remove(rule);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(11006, true)]
+    [InlineData(11005, false)]
+    public void IntelPciExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        RemoveIntelIntervalRules(profile);
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["metric_id_template"]!.GetValue<string>()
+            is "gpu.{gpu}.igclPciMaximumGeneration" or "gpu.{gpu}.igclPciMaximumWidth").ToArray()) rules.Remove(rule);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(11038, true)]
+    [InlineData(11037, false)]
+    public void IntelPciCapabilityExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        RemoveIntelIntervalRules(profile);
+        AssertLegacyMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(11134, true)]
+    [InlineData(11133, false)]
+    public void IntelIntervalExpansionUsesConfiguredGpuLimitAtMetricCapacityBoundary(int maximum, bool accepted)
+        => AssertLegacyMetricCapacity(JsonNode.Parse(ReadDefaultProfile())!.AsObject(), maximum, accepted);
+
+    [Theory]
+    [InlineData(12800, true)]
+    [InlineData(12799, false)]
+    public void FullDefaultMetricExpansionUsesTheActualMetricCapacityBoundary(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        var diskRules = rules.Where(rule =>
+            rule?["source_id"]?.GetValue<string>() == "windows.disk-performance").ToArray();
+
+        // The pre-disk default boundary was 11,262. Seven physical-disk templates add
+        // 224 instances; NVML P-state adds 16 adapters and two per-fan quantities add 512.
+        Assert.Equal(7, diskRules.Length);
+        Assert.All(diskRules, rule =>
+        {
+            Assert.Equal("storage_sensor", rule!["scope_expansion"]!.GetValue<string>());
+            Assert.Equal(32, rule["maximum_instance_count"]!.GetValue<int>());
+        });
+        var addedDiskInstances = diskRules.Sum(rule => rule!["maximum_instance_count"]!.GetValue<int>());
+        Assert.Equal(224, addedDiskInstances);
+        const int previousDefaultBoundary = 11_262;
+        var performanceState = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "gpu_nvidia_performance_state.optional")!;
+        Assert.Equal("gpu_adapter", performanceState["scope_expansion"]!.GetValue<string>());
+        var gpuLimit = profile["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_gpu_adapter_count"]!.GetValue<int>();
+        var addedPerformanceStates = Math.Min(performanceState["maximum_instance_count"]!.GetValue<int>(), gpuLimit);
+        Assert.Equal(16, addedPerformanceStates);
+        var fanRules = rules.Where(rule => rule!["template_id"]!.GetValue<string>()
+            is "fan.nvmlSpeedPercentOfMax" or "fan.nvmlSpeedRpm").ToArray();
+        Assert.Equal(2, fanRules.Length);
+        Assert.All(fanRules, rule =>
+        {
+            Assert.Equal("system_fan", rule!["scope_expansion"]!.GetValue<string>());
+            Assert.Equal(ResourceManager.ReadWrite.Vendors.Nvidia.NvidiaNvmlReader.MaxFanCount,
+                rule["maximum_instance_count"]!.GetValue<int>());
+        });
+        var addedFanInstances = fanRules.Sum(rule => rule!["maximum_instance_count"]!.GetValue<int>());
+        Assert.Equal(512, addedFanInstances);
+        var platformRules = rules.Where(rule => rule!["scope_expansion"]!.GetValue<string>() == "intel_platform").ToArray();
+        Assert.Equal(2, platformRules.Length);
+        Assert.All(platformRules, rule => Assert.Equal(1, rule!["maximum_instance_count"]!.GetValue<int>()));
+        var npuRules = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-memory").ToArray();
+        Assert.Equal(4, npuRules.Length);
+        Assert.All(npuRules, rule => Assert.Equal(64, rule!["maximum_instance_count"]!.GetValue<int>()));
+        var fullDefaultBoundary = previousDefaultBoundary + addedDiskInstances + addedPerformanceStates + addedFanInstances + platformRules.Length + npuRules.Sum(rule => rule!["maximum_instance_count"]!.GetValue<int>());
+        var intelFan = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "fan.igclRpm")!;
+        Assert.Equal(16, intelFan["maximum_instance_count"]!.GetValue<int>());
+        fullDefaultBoundary += intelFan["maximum_instance_count"]!.GetValue<int>();
+        var engineRules = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-engine").ToArray();
+        Assert.Equal(2, engineRules.Length);
+        Assert.All(engineRules, rule => Assert.Equal(256, rule!["maximum_instance_count"]!.GetValue<int>()));
+        fullDefaultBoundary += engineRules.Sum(rule => rule!["maximum_instance_count"]!.GetValue<int>());
+        Assert.Equal(12_800, fullDefaultBoundary);
+        Assert.Equal(accepted ? fullDefaultBoundary : fullDefaultBoundary - 1, maximum);
+
+        AssertMetricCapacity(profile, maximum, accepted);
+    }
+
+    [Theory]
+    [InlineData(65, true)]
+    [InlineData(68, true)]
+    [InlineData(69, false)]
+    public void NpuInstanceCapacityUsesTheOriginalTotalMetricGate(int instances, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        var capacity = profile["host_recreate"]!["metric_snapshot"]!["capacity"]!;
+        Assert.Equal(12800, capacity["maximum_metric_count"]!.GetValue<int>());
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        // Isolate the existing NPU scaling proof; the combined default gate above includes Intel fan slots.
+        rules.Remove(rules.Single(rule => rule!["template_id"]!.GetValue<string>() == "fan.igclRpm"));
+        var npu = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-memory").ToArray();
+        Assert.Equal(4, npu.Length);
+        foreach (var rule in npu) rule!["maximum_instance_count"] = instances;
+        AssertMetricCapacity(profile, 12800, accepted);
+    }
+
+    [Theory]
+    [InlineData(13171, true)]
+    [InlineData(13170, false)]
+    public void FullDefaultNpuShapeUsesTheOriginalRuleGate(int maximum, bool accepted)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        profile["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_rule_count"] = maximum;
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(Encoding.UTF8.GetBytes(profile.ToJsonString()), "npu-rule-boundary.json");
+        if (accepted) Assert.True(Compile(loaded).IsPublished);
+        else Assert.Throws<InvalidDataException>(() => Compile(loaded));
+    }
+
+    private static void RemoveIntelIntervalRules(JsonObject profile)
+    {
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["metric_kind"]!.GetValue<string>() is "floating_counter_ratio" or "floating_counter_percentage").ToArray()) rules.Remove(rule);
+    }
+
+    private static void RemoveIntelGpuRules(JsonObject profile)
+    {
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "intel.igcl").ToArray())
+            rules.Remove(rule);
+    }
+
+    private static void AssertLegacyMetricCapacity(JsonObject profile, int maximum, bool accepted)
+    {
+        // Keep original CPU/GPU boundaries independent of later disk, OEM/NVML fan and NVML P-state fields.
+        // The complete current default is tested separately above.
+        var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
+        foreach (var rule in rules.Where(rule =>
+            rule?["source_id"]?.GetValue<string>() == "windows.disk-performance"
+                || rule?["source_id"]?.GetValue<string>() == "windows.npu-memory"
+                || rule?["source_id"]?.GetValue<string>() == "windows.npu-engine"
+                || rule?["scope_expansion"]?.GetValue<string>() == "intel_platform").ToArray())
+            rules.Remove(rule);
+        foreach (var rule in rules.Where(rule => rule!["template_id"]!.GetValue<string>()
+            is "fan.speed.oem" or "fan.pwmDuty.oem" or "gpu_nvidia_performance_state.optional"
+                or "fan.nvmlSpeedPercentOfMax" or "fan.nvmlSpeedRpm" or "fan.igclRpm").ToArray())
+            rules.Remove(rule);
+        foreach (var rule in rules.Where(rule => rule!["template_id"]!.GetValue<string>()
+            is "fan.speed.wmi" or "fan.speedPercent.wmi"))
+            rule!["maximum_instance_count"] = 32;
+        AssertMetricCapacity(profile, maximum, accepted);
+    }
+
+    private static void AssertMetricCapacity(JsonObject profile, int maximum, bool accepted)
+    {
+        profile["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_metric_count"] = maximum;
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(Encoding.UTF8.GetBytes(profile.ToJsonString()), "die-capacity.json");
+        if (accepted)
+        {
+            Assert.True(Compile(loaded).IsPublished);
+        }
+        else
+        {
+            var error = Assert.Throws<InvalidDataException>(() => Compile(loaded));
+            Assert.Contains("worst-case metric expansion", error.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("die.{die}.{die}.intelPackageEnergyCounter")]
+    [InlineData("die.{package}.intelPackageEnergyCounter")]
+    [InlineData("die.intelPackageEnergyCounter")]
+    public void DieTemplateRejectsDuplicateForeignOrMissingInstancePlaceholders(string metricId)
+    {
+        var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
+        var template = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray()
+            .First(static node => node!["scope_expansion"]!.GetValue<string>() == "cpu_die");
+        template!["metric_id_template"] = metricId;
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(Encoding.UTF8.GetBytes(profile.ToJsonString()), "die-placeholder.json");
+        var error = Assert.Throws<InvalidDataException>(() => Compile(loaded));
+        Assert.Contains("scope expansion", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -616,7 +853,7 @@ public sealed class HostManagerPlanCompilerTests
             Assert.Equal(0U, unchecked((uint)changed.SmartCoordinator.ConfigurationGeneration));
         }
 
-        Assert.Equal(59UL, first.SmartCoordinator.ConfigurationGeneration >> 32);
+        Assert.Equal(66UL, first.SmartCoordinator.ConfigurationGeneration >> 32);
         Assert.Equal(0U, unchecked((uint)first.SmartCoordinator.ConfigurationGeneration));
     }
 
@@ -825,6 +1062,9 @@ public sealed class HostManagerPlanCompilerTests
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        return buffer.ToArray();
+        // Preserve the original pretty-input fixture: several rejection cases mutate its literal properties,
+        // and the digest case explicitly compares pretty and compact representations.
+        var expanded = StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray());
+        return JsonSerializer.SerializeToUtf8Bytes(JsonNode.Parse(expanded), new JsonSerializerOptions { WriteIndented = true });
     }
 }

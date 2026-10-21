@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     native_core_module.linkSystemLibrary("pdh", .{});
+    native_core_module.linkSystemLibrary("iphlpapi", .{});
     native_core_module.linkSystemLibrary("psapi", .{});
     native_core_module.linkSystemLibrary("bcrypt", .{});
 
@@ -26,6 +27,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     test_module.linkSystemLibrary("pdh", .{});
+    test_module.linkSystemLibrary("iphlpapi", .{});
     test_module.linkSystemLibrary("psapi", .{});
     test_module.linkSystemLibrary("bcrypt", .{});
 

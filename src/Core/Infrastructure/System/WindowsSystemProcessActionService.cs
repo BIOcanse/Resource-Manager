@@ -2,14 +2,21 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Domain.LocalSystem;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.Windows;
+using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Infrastructure.LocalSystem;
 
-public sealed class WindowsSystemProcessActionService(IWebHostEnvironment environment) : ISystemProcessActionService
+public sealed class WindowsSystemProcessActionService(
+    IWebHostEnvironment environment,
+    IInteractiveUserSessionBroker sessionBroker) : ISystemProcessActionService
 {
     private const int MaxProcessOperationCount = 64;
     private const int MiniDumpWithFullMemory = 0x00000002;
@@ -17,42 +24,32 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
     private readonly object dumpGate = new();
     private readonly string packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
 
-    public LocalOnlineSearchResult SearchOnline(LocalOnlineSearchRequest request)
+    public LocalOnlineSearchResult SearchOnline(LocalOnlineSearchRequest request, SoftwareOperationCaller caller)
     {
+        UserSessionCallerValidation.RequireActiveUser(caller, sessionBroker);
         var query = CleanQuery(request.Query);
         var url = $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}";
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = url,
-            UseShellExecute = true
-        });
+        var shellRequest = new UserShellExecuteRequest(url, "");
+        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
+            NativeUiLaunchHostedService.ResolveNativeUiPath(),
+            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
 
         return new LocalOnlineSearchResult(query, url, "已用默认浏览器打开在线搜索。");
     }
 
-    public LocalPathOpenResult OpenProperties(LocalPathPropertiesRequest request)
+    public LocalPathOpenResult OpenProperties(LocalPathPropertiesRequest request, SoftwareOperationCaller caller)
     {
+        UserSessionCallerValidation.RequireActiveUser(caller, sessionBroker);
         if (string.IsNullOrWhiteSpace(request.Path))
         {
             throw new InvalidOperationException("路径不能为空。");
         }
 
         var normalizedPath = NormalizeExistingPath(request.Path);
-        // 「属性」这个谓词必须走 ShellExecuteEx 并带上 SEE_MASK_INVOKEIDLIST。
-        // Process.Start 不会设这个标志，所以用它调 properties 一定失败。
-        var info = new NativeMethods.ShellExecuteInfo
-        {
-            Size = Marshal.SizeOf<NativeMethods.ShellExecuteInfo>(),
-            Mask = NativeMethods.SeeMaskInvokeIdList | NativeMethods.SeeMaskFlagNoUi,
-            Verb = "properties",
-            File = normalizedPath,
-            Show = 1
-        };
-        if (!NativeMethods.ShellExecuteEx(ref info))
-        {
-            throw new InvalidOperationException(
-                $"打开属性窗口失败：{new Win32Exception(Marshal.GetLastWin32Error()).Message}");
-        }
+        var shellRequest = new UserShellExecuteRequest(normalizedPath, "", "properties");
+        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
+            NativeUiLaunchHostedService.ResolveNativeUiPath(),
+            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
 
         return new LocalPathOpenResult(
             normalizedPath,
@@ -61,13 +58,14 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
             "已打开属性窗口。");
     }
 
-    public SystemProcessOperationResult TerminateProcesses(SystemProcessOperationRequest request)
+    public SystemProcessOperationResult TerminateProcesses(SystemProcessOperationRequest request, SafeAccessTokenHandle callerToken)
     {
+        DemandAdministrator(callerToken);
         var targets = NormalizeProcessTargets(request.Targets);
         var items = new List<SystemProcessOperationItem>();
         foreach (var target in targets)
         {
-            items.Add(TerminateProcess(target));
+            items.Add(TerminateProcess(target, callerToken));
         }
 
         var succeeded = items.Count(static item => item.State.Equals("Succeeded", StringComparison.OrdinalIgnoreCase));
@@ -78,18 +76,18 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
             items);
     }
 
-    public SystemProcessOperationResult CreateProcessDumps(SystemProcessOperationRequest request)
+    public SystemProcessOperationResult CreateProcessDumps(SystemProcessOperationRequest request, SafeAccessTokenHandle callerToken)
     {
+        var callerSid = DemandAdministrator(callerToken);
         var targets = NormalizeProcessTargets(request.Targets);
-        var dumpDirectory = Path.Combine(packageRoot, "Misc", "ProcessDumps");
-        Directory.CreateDirectory(dumpDirectory);
-
         var items = new List<SystemProcessOperationItem>();
+        string dumpDirectory;
         lock (dumpGate)
         {
+            dumpDirectory = ProcessDumpDirectoryAccess.Prepare(packageRoot, callerSid);
             foreach (var target in targets)
             {
-                items.Add(CreateProcessDump(target, dumpDirectory));
+                items.Add(CreateProcessDump(target, dumpDirectory, callerToken));
             }
         }
 
@@ -102,23 +100,26 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
             dumpDirectory);
     }
 
-    private SystemProcessOperationItem TerminateProcess(NormalizedProcessTarget target)
+    internal static SystemProcessOperationItem TerminateProcess(NormalizedProcessTarget target, SafeAccessTokenHandle callerToken)
     {
         var processId = target.ProcessId;
         if (processId == Environment.ProcessId)
         {
             return OperationItem(target, "ResourceManager", "Skipped", "拒绝结束 Resource Manager 后端进程。");
         }
+        if (processId <= 4)
+        {
+            return OperationItem(target, "System", "Skipped", "CriticalProcessProtected");
+        }
 
         var handle = IntPtr.Zero;
         try
         {
-            handle = OpenExactProcess(
-                target,
-                NativeMethods.ProcessQueryLimitedInformation
-                    | NativeMethods.ProcessTerminate,
-                out var processName,
-                out var mismatch);
+            string? processName = null;
+            var mismatch = false;
+            handle = WindowsIdentity.RunImpersonated(callerToken, () => OpenExactProcess(
+                target, NativeMethods.ProcessQueryLimitedInformation | NativeMethods.ProcessTerminate,
+                out processName, out mismatch));
             if (handle == IntPtr.Zero)
             {
                 return OperationItem(
@@ -128,6 +129,11 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
                     mismatch ? "进程实例已变化，未执行操作。" : "进程不存在或已经退出。");
             }
 
+            // Use the same identity-checked effect handle; an unreadable critical flag is a failure.
+            if (ReadProcessCriticality(handle))
+            {
+                return OperationItem(target, processName, "Skipped", "CriticalProcessProtected");
+            }
             if (!NativeMethods.TerminateProcess(handle, 1))
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -147,20 +153,20 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
         }
     }
 
-    private SystemProcessOperationItem CreateProcessDump(
+    internal static SystemProcessOperationItem CreateProcessDump(
         NormalizedProcessTarget target,
-        string dumpDirectory)
+        string dumpDirectory,
+        SafeAccessTokenHandle callerToken)
     {
         var processId = target.ProcessId;
         var handle = IntPtr.Zero;
         try
         {
-            handle = OpenExactProcess(
-                target,
-                NativeMethods.ProcessQueryInformation
-                    | NativeMethods.ProcessVmRead,
-                out var processName,
-                out var mismatch);
+            string? processName = null;
+            var mismatch = false;
+            handle = WindowsIdentity.RunImpersonated(callerToken, () => OpenExactProcess(
+                target, NativeMethods.ProcessQueryInformation | NativeMethods.ProcessVmRead,
+                out processName, out mismatch));
             if (handle == IntPtr.Zero)
             {
                 return OperationItem(
@@ -209,7 +215,20 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
             : value;
     }
 
-    private static NormalizedProcessTarget[] NormalizeProcessTargets(
+    internal static bool ReadProcessCriticality(IntPtr handle)
+        => NativeMethods.IsProcessCritical(handle, out var critical)
+            ? critical
+            : throw new Win32Exception(Marshal.GetLastWin32Error());
+
+    private static string DemandAdministrator(SafeAccessTokenHandle callerToken)
+    {
+        using var identity = new WindowsIdentity(callerToken.DangerousGetHandle());
+        if (identity.User is not { } sid || !new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+            throw new UnauthorizedAccessException();
+        return sid.Value;
+    }
+
+    internal static NormalizedProcessTarget[] NormalizeProcessTargets(
         IReadOnlyList<SystemProcessIdentity>? targets)
     {
         var candidates = (targets ?? [])
@@ -324,7 +343,7 @@ public sealed class WindowsSystemProcessActionService(IWebHostEnvironment enviro
         return string.IsNullOrWhiteSpace(sanitized) ? "process" : sanitized;
     }
 
-    private readonly record struct NormalizedProcessTarget(
+    internal readonly record struct NormalizedProcessTarget(
         int ProcessId,
         ulong ProcessStartKey);
 }

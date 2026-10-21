@@ -82,6 +82,8 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
       nameFallback: "Hardware support component",
       purposeFallback: "Adds hardware information and related features to Resource Manager.",
       names: {
+          fanControlCore: "Fan control core",
+          hardwareBridge: "Hardware control helper",
         amdSmuPawnIo: "AMD processor sensor support",
         amdRyzenMaster: "AMD Ryzen monitoring support",
         msiAfterburner: "MSI Afterburner",
@@ -97,6 +99,8 @@ export const enStatusCopy: Pick<AppCopy, "status"> = {
         intelPcm: "Intel processor monitoring support"
       },
       purposes: {
+          fanControlCore: "Reads and controls chassis fans using firmware or software curves.",
+          hardwareBridge: "Adjusts processor power limits and voltage, restoring saved original values when released.",
         msiAfterburner: "If Afterburner is already installed, its GPU readings are picked up too. Optional.",
         amdRyzenSdk: "AMD's own SDK. Reads Ryzen power, voltage, current, and temperature.",
         amdSmu: "Reads the SMU tables directly, adding STAPM and per-core readings the SDK does not expose.",

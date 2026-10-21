@@ -94,7 +94,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.NotNull(sample);
         var processes = (IReadOnlyList<HostManagerAutomaticPlacementProcess>)typeof(HostManagerSmartCoordinator)
             .GetMethod("CreateAutomaticPlacementProcesses", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [sample, null, Array.Empty<HostManagerAppliedPlacementReceipt>()])!;
+            .Invoke(null, [sample, null, Array.Empty<HostManagerAppliedPlacementReceipt>(),
+                new Dictionary<string, int>()])!;
         var process = Assert.Single(processes);
         Assert.Equal(expectedBytes.HasValue, process.ObservedDedicatedMemoryBytes.TryGetValue(69842, out var actual));
         if (expectedBytes.HasValue) Assert.Equal(expectedBytes.Value, actual);
@@ -383,8 +384,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
-                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim], TargetGpu = GpuPlacementTargets.IntegratedGpu
-            }), 30, new Dictionary<ulong, double> { [123] = 30 }, new Dictionary<ulong, double>());
+                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],}), 30, new Dictionary<ulong, double> { [123] = 30 }, new Dictionary<ulong, double>());
 
     private static Task<HostManagerPlacementDesired?> CreateGpuDesired(HostManagerSmartCoordinator coordinator,
         HostManagerAutomaticPlacementProcess process, HostManagerAppliedPlacementReceipt? existing, ulong adapter = 123)

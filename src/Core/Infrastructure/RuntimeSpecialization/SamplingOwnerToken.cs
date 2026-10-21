@@ -1,7 +1,14 @@
+using ResourceManager.App.Infrastructure.Monitoring;
+
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
-internal sealed class SamplingOwnerToken
+internal sealed class SamplingOwnerToken : IMetricPublicationPermit
 {
+    ulong IMetricPublicationPermit.WorkspaceIncarnation => WorkspaceIncarnation;
+    ulong IMetricPublicationPermit.ConfigurationGeneration => ConfigurationGeneration;
+    bool IMetricPublicationPermit.IsActive => IsActive;
+    bool IMetricPublicationPermit.TryPublish(Action commit) => TryPublish(commit);
+
     private readonly object gate = new();
     private int active = 1;
 

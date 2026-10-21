@@ -1,4 +1,5 @@
-using ResourceManager.App.Infrastructure.Monitoring.AmdSmu;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
+using ResourceManager.App.Infrastructure.Monitoring;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -15,9 +16,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapGet("/api/debug/amd-smu", (IHostEnvironment environment) =>
         {
-            using var reader = new AmdSmuCpuSensorReader(environment.ContentRootPath);
+            using var reader = AmdSmuHardwareBinding.CreateReader(environment.ContentRootPath);
             return Results.Ok(reader.DescribeSession());
-        }).AllowAnonymous();
+        });
 
         return app;
     }

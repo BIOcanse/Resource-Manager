@@ -31,6 +31,7 @@
                 Style="{StaticResource AccentButtonStyle}" />
         <Button x:Name="RepairButton" Content="" Click="Repair_Click" IsEnabled="False" />
       </StackPanel>
+      <Button x:Name="ImportDataButton" Click="ImportData_Click" />
       <ProgressRing x:Name="Working" IsActive="False" Width="24" Height="24"
                     HorizontalAlignment="Left" />
     </StackPanel>

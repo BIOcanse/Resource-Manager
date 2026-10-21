@@ -143,16 +143,14 @@ public sealed class FreedomPointRegistryTests
             point["source_path"] = "/hot_publish/missing";
             point.Remove("value");
         });
-        var compilation = registry.BeginCompilation(Profile());
-        Assert.Throws<InvalidDataException>(() => compilation.Consume<int>(Address, "consumer"));
-        Assert.Throws<InvalidDataException>(() => compilation.Complete());
+        Assert.Throws<InvalidDataException>(() => registry.BeginCompilation(Profile()));
     }
 
     private static FreedomPointRegistry Parse(Action<JsonObject>? edit = null)
     {
         var root = JsonNode.Parse(Source)!.AsObject();
         edit?.Invoke(root);
-        return FreedomPointRegistry.Parse(JsonSerializer.SerializeToUtf8Bytes(root));
+        return FreedomPointRegistry.Parse(JsonSerializer.SerializeToUtf8Bytes(root), FreedomPointTestFactory.FixtureTargets);
     }
 
     private static JsonObject Point(JsonObject root) => root["children"]![0]!["build"]!["simple"]![0]!.AsObject();
@@ -163,6 +161,6 @@ public sealed class FreedomPointRegistryTests
             .GetManifestResourceStream("ResourceManager.Configuration.HostManager.default.json")!;
         using var bytes = new MemoryStream();
         stream.CopyTo(bytes);
-        return StrictHostManagerProfileLoader.LoadBytes(bytes.ToArray(), "test/default.json").Profile;
+        return StrictHostManagerProfileLoader.LoadBytes(StrictHostManagerProfileLoader.ExpandMetricDefaults(bytes.ToArray()), "test/default.json").Profile;
     }
 }

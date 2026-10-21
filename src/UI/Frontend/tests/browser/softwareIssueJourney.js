@@ -46,7 +46,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
     "Issue label search did not retain only the matching software card");
   await search.fill("");
 
-  await card.getByRole("button", { name: "设置和迁移" }).click();
+  await card.getByRole("button", { name: "软件设置" }).click();
   const dialog = page.getByRole("dialog", { name: "示例软件" });
   await dialog.waitFor({ state: "visible", timeout: 5000 });
   await dialog.getByRole("heading", { name: "问题提示" }).waitFor({ state: "visible" });

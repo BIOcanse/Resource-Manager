@@ -7,6 +7,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 {
     private static IServiceCollection AddResourceManagerRuntimeIdentity(this IServiceCollection services)
     {
+        services.AddSingleton<ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore>();
         services.AddSingleton<IRuntimePackageIdentityResolver, WindowsPackageIdentityResolver>();
         services.AddSingleton<IRuntimeServiceIdentityResolver, WindowsServiceIdentityResolver>();
         services.AddSingleton<IRuntimeRootIdentityResolver, WindowsRuntimeRootIdentityResolver>();

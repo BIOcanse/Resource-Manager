@@ -2,31 +2,44 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.Shared.Packages;
+using ResourceManager.Shared.Localization;
 
 namespace ResourceManager.Updater;
 
 internal static class ManagerSelfUpdate
 {
-    public static bool Schedule(ReleasePackageLayout package, string installRoot, string installedExecutable)
+    public static bool Schedule(ReleasePackageLayout package, string installRoot, string installedExecutable,
+        ToolText? text = null)
+        => Schedule(package, installRoot, installedExecutable, start =>
+        {
+            using var helper = Process.Start(start)
+                ?? throw new InvalidOperationException((text ?? ToolText.FromInstallRoot(installRoot)).ManagerHelperStartFailed);
+        }, text);
+
+    internal static bool Schedule(ReleasePackageLayout package, string installRoot, string installedExecutable,
+        Action<ProcessStartInfo> launch, ToolText? text = null)
     {
-        var source = UpdateManagerPaths.PackagedExecutable(package.Root);
-        if (SameFileContents(source, installedExecutable)) return false;
+        // ApplyAsync has committed this protected copy. Never execute the user's download tree.
+        var source = UpdateManagerPaths.PackagedExecutable(Path.GetFullPath(installRoot));
+        using var verifiedSource = OpenVerifiedManager(installRoot, package.Version, text);
+        if (SameFileContents(verifiedSource, installedExecutable)) return false;
         var start = new ProcessStartInfo(source)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
-            WorkingDirectory = package.Root,
+            WorkingDirectory = Path.GetDirectoryName(source),
             ArgumentList = { "--replace-manager", installRoot, Environment.ProcessId.ToString() }
         };
-        using var helper = Process.Start(start)
-            ?? throw new InvalidOperationException("新版更新管理器帮助进程未能启动。");
+        // Keep the verified bytes read-only until CreateProcess has opened the image.
+        launch(start);
         return true;
     }
 
     public static async Task<string> ReplaceAsync(string executablePath, string installRoot,
-        int oldProcessId, CancellationToken cancellationToken)
+        int oldProcessId, CancellationToken cancellationToken, ToolText? text = null)
     {
         var target = UpdatePlan.RequireRegisteredTarget(installRoot);
+        text ??= ToolText.FromInstallRoot(target);
         var managerDirectory = UpdateManagerPaths.InstalledDirectory(target);
         var installedExecutable = UpdateManagerPaths.InstalledExecutable(target);
         ReleasePackageLayout.RejectReparse(managerDirectory);
@@ -35,36 +48,31 @@ internal static class ManagerSelfUpdate
         try
         {
             var source = Path.GetFullPath(executablePath);
-            var packageRoot = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "..", ".."));
-            var package = ReleasePackageLayout.Verify(packageRoot);
-            if (!source.Equals(UpdateManagerPaths.PackagedExecutable(packageRoot), StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("自身更新只能从已校验发行包的管理器执行。");
-            await WaitForOldManagerExitAsync(installedExecutable, oldProcessId, cancellationToken);
+            if (!source.Equals(UpdateManagerPaths.PackagedExecutable(target), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(text.ManagerSourceInvalid);
+            await WaitForOldManagerExitAsync(installedExecutable, oldProcessId, cancellationToken, text);
             using var operationLock = UpdateManagerCommand.AcquireOperationLock(target);
-            _ = ReleasePackageLayout.Verify(packageRoot);
-            using (var current = JsonDocument.Parse(File.ReadAllText(Path.Combine(target, "release-manifest.json"))))
-                if (!string.Equals(current.RootElement.GetProperty("version").GetString(), package.Version,
-                        StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("管理器发行包与已提交的主程序版本不一致。");
-            byte[] expectedHash;
-            using (var verifiedSource = File.OpenRead(source)) expectedHash = SHA256.HashData(verifiedSource);
+            using var verifiedSource = OpenVerifiedManager(target, text: text);
+            var expectedHash = SHA256.HashData(verifiedSource);
+            verifiedSource.Position = 0;
             var staged = Path.Combine(managerDirectory, "next-" + Guid.NewGuid().ToString("N") + ".exe");
             var backup = Path.Combine(managerDirectory, "previous-" + Guid.NewGuid().ToString("N") + ".exe");
             try
             {
-                File.Copy(source, staged, overwrite: false);
+                using (var stagedOutput = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    verifiedSource.CopyTo(stagedOutput);
                 byte[] stagedHash;
                 using (var stagedStream = File.OpenRead(staged)) stagedHash = SHA256.HashData(stagedStream);
                 if (!expectedHash.AsSpan().SequenceEqual(stagedHash))
-                    throw new InvalidDataException("新版管理器复制后校验失败。");
+                    throw new InvalidDataException(text.ManagerCopyInvalid);
                 File.Replace(staged, installedExecutable, backup);
             }
             finally
             {
                 if (File.Exists(staged)) File.Delete(staged);
             }
-            WriteResult(resultPath, true, $"更新管理器已替换；旧 EXE 备份：{backup}");
-            return "更新管理器自身更新完成。";
+            WriteResult(resultPath, true, text.Format(text.ManagerSelfUpdatedBackupFormat, backup));
+            return text.ManagerSelfUpdated;
         }
         catch (Exception exception)
         {
@@ -84,7 +92,7 @@ internal static class ManagerSelfUpdate
     }
 
     private static async Task WaitForOldManagerExitAsync(string installedExecutable, int oldProcessId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ToolText text)
     {
         var deadline = DateTimeOffset.UtcNow.AddMinutes(5);
         while (DateTimeOffset.UtcNow < deadline)
@@ -118,12 +126,49 @@ internal static class ManagerSelfUpdate
             if (!active) return;
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
-        throw new TimeoutException("等待旧更新管理器退出超时。");
+        throw new TimeoutException(text.ManagerExitTimeout);
     }
 
-    private static bool SameFileContents(string first, string second)
+    internal static FileStream OpenVerifiedManager(string installRoot, string? expectedVersion = null, ToolText? text = null)
     {
-        using var source = File.OpenRead(first);
+        text ??= ToolText.FromInstallRoot(installRoot);
+        var root = Path.GetFullPath(installRoot);
+        foreach (var directory in new[] { root, Path.Combine(root, "Internal"), Path.Combine(root, "Internal", "UpdateManager") })
+            ReleasePackageLayout.RejectReparse(directory);
+        var manifestPath = Path.Combine(root, "release-manifest.json");
+        ReleasePackageLayout.RejectReparse(manifestPath);
+        using var manifestStream = new FileStream(manifestPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var manifest = JsonDocument.Parse(manifestStream);
+        var top = manifest.RootElement;
+        var version = top.GetProperty("version").GetString();
+        if (string.IsNullOrWhiteSpace(version) || (expectedVersion is not null &&
+            !string.Equals(version, expectedVersion, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidDataException(text.ManagerPayloadInvalid);
+        const string relative = "Internal/UpdateManager/ResourceManager.UpdateManager.exe";
+        var entries = top.GetProperty("files").EnumerateArray()
+            .Where(entry => string.Equals(entry.GetProperty("path").GetString(), relative, StringComparison.Ordinal)).ToArray();
+        if (entries.Length != 1) throw new InvalidDataException(text.ManagerPayloadInvalid);
+        var source = UpdateManagerPaths.PackagedExecutable(root);
+        ReleasePackageLayout.RejectReparse(source);
+        var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+        try
+        {
+            if (stream.Length != entries[0].GetProperty("length").GetInt64() ||
+                !Convert.ToHexString(SHA256.HashData(stream)).Equals(entries[0].GetProperty("sha256").GetString(),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(text.ManagerPayloadInvalid);
+            stream.Position = 0;
+            return stream;
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
+    }
+
+    private static bool SameFileContents(Stream source, string second)
+    {
         using var target = File.OpenRead(second);
         if (source.Length != target.Length) return false;
         return SHA256.HashData(source).AsSpan().SequenceEqual(SHA256.HashData(target));

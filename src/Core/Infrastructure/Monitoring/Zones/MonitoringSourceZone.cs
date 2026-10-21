@@ -35,7 +35,18 @@ public class MonitoringSourceZone : IResourceManagerSelfComputeZone
 
     public bool IsLowPower => CurrentMode == ResourceManagerComputeZoneMode.LowPower;
 
-    public void ApplyMode(ResourceManagerComputeZoneMode mode)
+    /// <summary>Checks and publishes under the original mode lock; native reads run outside this lock.</summary>
+    protected bool TryPublishWhileReadable(Action publish)
+    {
+        ArgumentNullException.ThrowIfNull(publish);
+        lock (gate)
+        {
+            if (currentMode == ResourceManagerComputeZoneMode.Freeze) return false;
+            publish(); return true;
+        }
+    }
+
+    public virtual void ApplyMode(ResourceManagerComputeZoneMode mode)
     {
         lock (gate)
         {

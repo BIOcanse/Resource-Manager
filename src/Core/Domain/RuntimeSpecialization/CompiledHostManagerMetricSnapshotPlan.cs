@@ -84,7 +84,7 @@ public sealed record CompiledHostManagerMetricSnapshotBuildPlan(
     string NativeModule,
     CompiledHostManagerMetricSnapshotCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x0003_0000U
+    public bool IsPublished => AbiVersion == 0x000A_0000U
         && string.Equals(NativeModule, "metric_snapshot", StringComparison.Ordinal)
         && CapacityLimits.IsPublished;
 
@@ -103,15 +103,18 @@ public sealed record CompiledHostManagerMetricSnapshotRecreatePlan(
     uint CpuCounterContractVersion)
 {
     private const uint ContractVersionV1 = 0x0001_0000U;
-    private const uint PersistenceContractVersionV2 = 0x0002_0000U;
+    private const uint ContractVersionV3 = 0x0003_0000U;
+    private const uint ContractVersionV4 = 0x0004_0000U;
+    private const uint ContractVersionV5 = 0x0005_0000U;
+    private const uint ContractVersionV7 = 0x0007_0000U;
 
     public bool IsPublished => Capacity.IsPublished
         && !string.IsNullOrWhiteSpace(PersistenceRelativePath)
-        && CatalogContractVersion == ContractVersionV1
-        && ValueContractVersion == ContractVersionV1
-        && ObservationContractVersion == ContractVersionV1
+        && CatalogContractVersion == ContractVersionV5
+        && ValueContractVersion == ContractVersionV3
+        && ObservationContractVersion == ContractVersionV7
         && InventoryContractVersion == ContractVersionV1
-        && PersistenceContractVersion == PersistenceContractVersionV2
+        && PersistenceContractVersion == ContractVersionV4
         && CpuCounterContractVersion == ContractVersionV1;
 
     public static CompiledHostManagerMetricSnapshotRecreatePlan Unpublished { get; } =
@@ -162,11 +165,12 @@ public sealed record CompiledHostManagerMetricSnapshotRuleTemplate(
         && !string.IsNullOrWhiteSpace(SourceId)
         && SourceHandle > 0
         && SourcePriority > 0
-        && ScopeExpansion is >= 1 and <= 7
-        && MetricKind is >= 1 and <= 13
+        && ScopeExpansion is >= 1 and <= 17
+        && MetricKind is >= 1 and <= 18
         && ScopeKind is >= 1 and <= 4
-        && ValueKind is >= 1 and <= 3
+        && ValueKind is >= 1 and <= 6
         && RetentionPolicy is 1 or 2
+        && (MetricKind is not (14 or 15 or 16 or 17 or 18) || (ValueKind == 1 && RetentionPolicy == 2))
         && CapabilityMask > 0
         && (MetricFlags & ~0x0FU) == 0
         && GpuVendorMask <= 0x0FU
@@ -177,7 +181,7 @@ public sealed record CompiledHostManagerMetricSnapshotRuleTemplate(
         && (ScopeExpansion == 4
             ? GpuVendorMask != 0
             : GpuVendorMask == 0 && ApplicabilityMask == 0)
-        && (ScopeExpansion is 1 or 2 or 3 or 7
+        && (ScopeExpansion is 1 or 2 or 3 or 7 or 15
             ? MaximumInstanceCount == 1
             : true);
 }

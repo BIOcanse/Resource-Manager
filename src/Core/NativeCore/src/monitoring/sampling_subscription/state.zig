@@ -1,6 +1,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const alignment = @import("alignment.zig");
+const scratch = @import("scratch.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub const no_index: u32 = std.math.maxInt(u32);
@@ -10,6 +11,7 @@ pub const SourceSlot = struct {
     active: bool = false,
     persistent: bool = false,
     explicit_interval: bool = false,
+    sampling_flags: u32 = 0,
     source_handle: u64 = 0,
     last_seen_milliseconds: u64 = 0,
     observed_interval_milliseconds: u64 = 0,
@@ -31,6 +33,11 @@ pub const MembershipSlot = struct {
     active: bool = false,
     source_index: u32 = 0,
     item_index: u32 = 0,
+    sampling_flags: u32 = 0,
+    period_milliseconds: u64 = 0,
+    next_trigger_milliseconds: u64 = 0,
+    trigger_sequence: u64 = 0,
+    last_planned_epoch: u64 = 0,
 };
 
 pub const Session = struct {
@@ -45,6 +52,12 @@ pub const Session = struct {
     scratch_item_handles: []u64,
     scratch_effective_intervals: []u64,
     scratch_source_counts: []u32,
+    scratch_sampling_counts: []u32,
+    scratch_trigger_due_milliseconds: []u64,
+    scratch_issued_triggers: []protocol.TriggerOutput,
+    owns_scratch: bool,
+    issued_trigger_count: u32 = 0,
+    issued_trigger_plan_epoch: u64 = 0,
     last_operation_epoch: u64 = 0,
     last_command_at_milliseconds: u64 = 0,
     last_plan_epoch: u64 = 0,
@@ -52,6 +65,14 @@ pub const Session = struct {
     state_revision: u64 = 1,
 
     pub fn create(config: *const protocol.Config) !*Session {
+        return createWithScratch(config, true);
+    }
+
+    pub fn createExternalScratch(config: *const protocol.Config) !*Session {
+        return createWithScratch(config, false);
+    }
+
+    fn createWithScratch(config: *const protocol.Config, owns_scratch: bool) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
         const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
@@ -78,15 +99,25 @@ pub const Session = struct {
         errdefer allocator.free(item_index);
         @memset(item_index, no_index);
 
-        const scratch_item_handles = try allocator.alloc(u64, item_capacity);
+        const scratch_capacity = if (owns_scratch) item_capacity else 0;
+        const scratch_item_handles = try allocator.alloc(u64, scratch_capacity);
         errdefer allocator.free(scratch_item_handles);
         @memset(scratch_item_handles, 0);
-        const scratch_effective_intervals = try allocator.alloc(u64, item_capacity);
+        const scratch_effective_intervals = try allocator.alloc(u64, scratch_capacity);
         errdefer allocator.free(scratch_effective_intervals);
         @memset(scratch_effective_intervals, std.math.maxInt(u64));
-        const scratch_source_counts = try allocator.alloc(u32, item_capacity);
+        const scratch_source_counts = try allocator.alloc(u32, scratch_capacity);
         errdefer allocator.free(scratch_source_counts);
         @memset(scratch_source_counts, 0);
+        const scratch_sampling_counts = try allocator.alloc(u32, scratch_capacity);
+        errdefer allocator.free(scratch_sampling_counts);
+        @memset(scratch_sampling_counts, 0);
+        const scratch_trigger_due_milliseconds = try allocator.alloc(u64, scratch_capacity);
+        errdefer allocator.free(scratch_trigger_due_milliseconds);
+        @memset(scratch_trigger_due_milliseconds, std.math.maxInt(u64));
+        const scratch_issued_triggers = try allocator.alloc(protocol.TriggerOutput, membership_capacity);
+        errdefer allocator.free(scratch_issued_triggers);
+        @memset(scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
 
         self.* = .{
             .allocator = allocator,
@@ -99,15 +130,24 @@ pub const Session = struct {
             .scratch_item_handles = scratch_item_handles,
             .scratch_effective_intervals = scratch_effective_intervals,
             .scratch_source_counts = scratch_source_counts,
+            .scratch_sampling_counts = scratch_sampling_counts,
+            .scratch_trigger_due_milliseconds = scratch_trigger_due_milliseconds,
+            .scratch_issued_triggers = scratch_issued_triggers,
+            .owns_scratch = owns_scratch,
         };
         return self;
     }
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
-        allocator.free(self.scratch_source_counts);
-        allocator.free(self.scratch_effective_intervals);
-        allocator.free(self.scratch_item_handles);
+        if (self.owns_scratch) {
+            allocator.free(self.scratch_source_counts);
+            allocator.free(self.scratch_sampling_counts);
+            allocator.free(self.scratch_trigger_due_milliseconds);
+            allocator.free(self.scratch_effective_intervals);
+            allocator.free(self.scratch_item_handles);
+        }
+        allocator.free(self.scratch_issued_triggers);
         allocator.free(self.item_index);
         allocator.free(self.source_index);
         allocator.free(self.memberships);
@@ -116,15 +156,51 @@ pub const Session = struct {
         allocator.destroy(self);
     }
 
+    pub fn bindScratch(self: *Session, bytes: []u8) ResultCode {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        if (self.owns_scratch or self.scratchReady()) return .invalid_argument;
+        const view = scratch.View.bind(bytes, self.config.maximum_item_count) orelse
+            return .invalid_argument;
+        self.scratch_item_handles = view.handles;
+        self.scratch_effective_intervals = view.intervals;
+        self.scratch_source_counts = view.source_counts;
+        self.scratch_sampling_counts = view.sampling_counts;
+        self.scratch_trigger_due_milliseconds = view.trigger_due;
+        return .ok;
+    }
+
+    pub fn unbindScratch(self: *Session) ResultCode {
+        lockMutex(&self.mutex);
+        defer self.mutex.unlock();
+        if (self.owns_scratch) return .invalid_argument;
+        self.scratch_item_handles = &.{};
+        self.scratch_effective_intervals = &.{};
+        self.scratch_source_counts = &.{};
+        self.scratch_sampling_counts = &.{};
+        self.scratch_trigger_due_milliseconds = &.{};
+        return .ok;
+    }
+
+    pub fn scratchReady(self: *const Session) bool {
+        return self.scratch_item_handles.len == self.config.maximum_item_count;
+    }
+
     pub fn reconfigure(self: *Session, config: *const protocol.Config) ResultCode {
         lockMutex(&self.mutex);
         defer self.mutex.unlock();
+        if (!self.scratchReady()) return .invalid_argument;
         if (!protocol.validConfig(config)) return .abi_mismatch;
         if (config.generation <= self.config.generation) return .stale_frame;
         if (!sameCapacities(config, &self.config)) return .invalid_argument;
         self.config = config.*;
+        for (self.memberships) |*membership| {
+            if (!membership.active) continue;
+            const source = &self.sources[membership.source_index];
+            membership.period_milliseconds = self.effectiveSourceInterval(source);
+        }
         _ = self.rebuildItemAggregates();
-        self.alignKnownItems(self.last_command_at_milliseconds);
+        self.refreshItemDeadlines(self.last_command_at_milliseconds);
         self.next_wake_milliseconds =
             self.nextWakeFromAggregates(self.last_command_at_milliseconds);
         self.advanceRevision();
@@ -143,6 +219,9 @@ pub const Session = struct {
         @memset(self.memberships, .{});
         @memset(self.source_index, no_index);
         @memset(self.item_index, no_index);
+        @memset(self.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
+        self.issued_trigger_count = 0;
+        self.issued_trigger_plan_epoch = 0;
         self.last_plan_epoch = 0;
         self.next_wake_milliseconds = 0;
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
@@ -160,6 +239,7 @@ pub const Session = struct {
             .expired_source_capacity = self.config.maximum_expired_source_count,
             .snapshot_source_capacity = self.config.maximum_source_count,
             .snapshot_item_capacity = self.config.maximum_item_count,
+            .trigger_capacity = self.config.maximum_membership_count,
             .reserved_u32 = 0,
             .reserved = .{ 0, 0, 0 },
         };
@@ -200,6 +280,19 @@ pub const Session = struct {
 
     pub fn findItem(self: *const Session, item_handle: u64) ?u32 {
         return findIndex(self.item_index, self.items, item_handle, itemHandleAt);
+    }
+
+    pub fn findMembership(self: *const Session, source_handle: u64, item_handle: u64) ?u32 {
+        const source_index = self.findSource(source_handle) orelse return null;
+        const item_index = self.findItem(item_handle) orelse return null;
+        for (self.memberships, 0..) |membership, index| {
+            if (membership.active and membership.source_index == source_index and
+                membership.item_index == item_index)
+            {
+                return @intCast(index);
+            }
+        }
+        return null;
     }
 
     pub fn removeSourceAt(self: *Session, source_slot_index: u32) void {
@@ -256,6 +349,7 @@ pub const Session = struct {
     pub fn rebuildItemAggregates(self: *Session) u32 {
         @memset(self.scratch_effective_intervals, std.math.maxInt(u64));
         @memset(self.scratch_source_counts, 0);
+        @memset(self.scratch_sampling_counts, 0);
         for (self.memberships) |membership| {
             if (!membership.active) continue;
             const source = &self.sources[membership.source_index];
@@ -263,10 +357,12 @@ pub const Session = struct {
             if (!source.active or !item.active) continue;
             const interval = self.effectiveSourceInterval(source);
             const item_index: usize = @intCast(membership.item_index);
+            self.scratch_source_counts[item_index] += 1;
+            if (membership.sampling_flags & protocol.SourceFlags.fresh_on_trigger != 0) continue;
             if (interval < self.scratch_effective_intervals[item_index]) {
                 self.scratch_effective_intervals[item_index] = interval;
             }
-            self.scratch_source_counts[item_index] += 1;
+            self.scratch_sampling_counts[item_index] += 1;
         }
 
         var active_items: u32 = 0;
@@ -280,23 +376,44 @@ pub const Session = struct {
         var next_wake: u64 = 0;
         for (self.items, 0..) |item, item_index| {
             if (!item.active or self.scratch_source_counts[item_index] == 0) continue;
-            const interval = self.scratch_effective_intervals[item_index];
-            const due_at = alignment.dueAt(
-                item.last_sampled_milliseconds,
-                item.scheduled_due_milliseconds,
-                item.retry_at_milliseconds,
-                interval,
-                now,
-            );
-            if (next_wake == 0 or due_at < next_wake) next_wake = due_at;
+            if (self.scratch_sampling_counts[item_index] != 0) {
+                const interval = self.scratch_effective_intervals[item_index];
+                const due_at = alignment.dueAt(
+                    item.last_sampled_milliseconds,
+                    item.scheduled_due_milliseconds,
+                    item.retry_at_milliseconds,
+                    interval,
+                    now,
+                );
+                if (next_wake == 0 or due_at < next_wake) next_wake = due_at;
+            }
+        }
+        for (self.memberships) |membership| {
+            if (!membership.active or
+                membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0)
+            {
+                continue;
+            }
+            const source = &self.sources[membership.source_index];
+            const item = &self.items[membership.item_index];
+            if (!source.active or !item.active) continue;
+            const due_at = membership.next_trigger_milliseconds;
+            if (due_at != 0 and (next_wake == 0 or due_at < next_wake)) next_wake = due_at;
         }
         return next_wake;
     }
 
-    pub fn alignKnownItems(self: *Session, command_at_milliseconds: u64) void {
+    pub fn refreshItemDeadlines(self: *Session, command_at_milliseconds: u64) void {
         for (self.items, 0..) |*item, item_index| {
             if (!item.active) continue;
             if (self.scratch_source_counts[item_index] == 0) {
+                item.retry_at_milliseconds = 0;
+                item.scheduled_due_milliseconds = 0;
+                item.effective_interval_milliseconds = 0;
+                continue;
+            }
+
+            if (self.scratch_sampling_counts[item_index] == 0) {
                 item.retry_at_milliseconds = 0;
                 item.scheduled_due_milliseconds = 0;
                 item.effective_interval_milliseconds = 0;
@@ -316,14 +433,14 @@ pub const Session = struct {
                 item.scheduled_due_milliseconds = 0;
                 continue;
             }
-            const aligned = alignment.nextDue(
+            const next_due = alignment.nextDue(
                 item.last_sampled_milliseconds,
                 interval,
             );
             if (item.scheduled_due_milliseconds == 0 or
                 item.scheduled_due_milliseconds > command_at_milliseconds)
             {
-                item.scheduled_due_milliseconds = aligned;
+                item.scheduled_due_milliseconds = next_due;
             }
         }
     }
@@ -373,24 +490,15 @@ pub const Session = struct {
 
         const source_index = existing_source_index orelse self.allocateSource(input.source_handle) orelse
             unreachable;
-        for (self.memberships) |*membership| {
-            if (membership.active and membership.source_index == source_index) membership.* = .{};
-        }
-
-        for (handles) |handle| {
-            const item_index = self.findItem(handle) orelse
-                self.allocateItem(handle) orelse unreachable;
-            const membership = self.allocateMembership() orelse unreachable;
-            membership.* = .{
-                .active = true,
-                .source_index = source_index,
-                .item_index = item_index,
-            };
-        }
-
         const source = &self.sources[source_index];
-        const elapsed = input.observed_at_milliseconds - source.last_seen_milliseconds;
-        if (source.last_seen_milliseconds != 0 and elapsed != 0 and elapsed < self.config.active_ttl_milliseconds) {
+        const previous_last_seen = source.last_seen_milliseconds;
+        const previous_sampling_flags = source.sampling_flags;
+        const previous_effective_interval = if (source.active)
+            self.effectiveSourceInterval(source)
+        else
+            0;
+        const elapsed = input.observed_at_milliseconds - previous_last_seen;
+        if (previous_last_seen != 0 and elapsed != 0 and elapsed < self.config.active_ttl_milliseconds) {
             source.observed_interval_milliseconds = if (source.observed_interval_milliseconds == 0)
                 elapsed
             else
@@ -399,16 +507,100 @@ pub const Session = struct {
         source.active = true;
         source.persistent = input.flags & protocol.SourceFlags.persistent != 0;
         source.explicit_interval = input.flags & protocol.SourceFlags.explicit_interval != 0;
+        source.sampling_flags = input.flags & protocol.SourceFlags.trigger_modes;
         source.source_handle = input.source_handle;
         source.last_seen_milliseconds = input.observed_at_milliseconds;
         source.explicit_interval_milliseconds = input.explicit_interval_milliseconds;
         source.item_count = @intCast(handles.len);
+        const period = self.effectiveSourceInterval(source);
+        const sampling_flags_changed = previous_sampling_flags != source.sampling_flags or
+            (previous_effective_interval != 0 and previous_effective_interval != period);
+
+        for (self.memberships) |*membership| {
+            if (!membership.active or membership.source_index != source_index) continue;
+            const old_item_handle = self.items[membership.item_index].item_handle;
+            const retained = std.mem.indexOfScalar(u64, handles, old_item_handle) != null;
+            if (!retained or sampling_flags_changed or
+                membership.period_milliseconds != period or
+                membership.sampling_flags != source.sampling_flags)
+            {
+                membership.* = .{};
+            }
+        }
+
+        for (handles) |handle| {
+            const item_index = self.findItem(handle) orelse
+                self.allocateItem(handle) orelse unreachable;
+            var existing_membership: ?*MembershipSlot = null;
+            for (self.memberships) |*membership| {
+                if (membership.active and membership.source_index == source_index and
+                    membership.item_index == item_index)
+                {
+                    existing_membership = membership;
+                    break;
+                }
+            }
+            if (existing_membership != null) continue;
+            const membership = self.allocateMembership() orelse unreachable;
+            // Resolve the existing phase before writing the new slot: evaluating
+            // this during the struct assignment can expose this slot to the scan.
+            const next_trigger = if (source.sampling_flags & protocol.SourceFlags.periodic_triggers != 0)
+                self.initialTriggerDue(item_index, source.sampling_flags, period, input.command_at_milliseconds)
+            else
+                0;
+            membership.* = .{
+                .active = true,
+                .source_index = source_index,
+                .item_index = item_index,
+                .sampling_flags = source.sampling_flags,
+                .period_milliseconds = period,
+                .next_trigger_milliseconds = next_trigger,
+                .trigger_sequence = if (source.sampling_flags & protocol.SourceFlags.periodic_triggers != 0) 1 else 0,
+            };
+        }
 
         _ = self.rebuildItemAggregates();
-        self.alignKnownItems(input.command_at_milliseconds);
+        self.refreshItemDeadlines(input.command_at_milliseconds);
         self.next_wake_milliseconds = self.nextWakeFromAggregates(input.command_at_milliseconds);
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
         return .ok;
+    }
+
+    fn initialTriggerDue(
+        self: *const Session,
+        item_index: u32,
+        sampling_flags: u32,
+        period_milliseconds: u64,
+        registered_at_milliseconds: u64,
+    ) u64 {
+        if (sampling_flags & protocol.SourceFlags.align_same_item_phase != 0) {
+            var earliest_boundary: u64 = 0;
+            for (self.memberships) |membership| {
+                if (!membership.active or membership.item_index != item_index or
+                    membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
+                    membership.period_milliseconds == 0)
+                {
+                    continue;
+                }
+                const boundary = boundaryAfter(
+                    membership.next_trigger_milliseconds,
+                    membership.period_milliseconds,
+                    registered_at_milliseconds,
+                );
+                if (earliest_boundary == 0 or boundary < earliest_boundary) {
+                    earliest_boundary = boundary;
+                }
+            }
+            if (earliest_boundary != 0) return earliest_boundary;
+        }
+        return saturatingAdd(registered_at_milliseconds, period_milliseconds);
+    }
+
+    fn boundaryAfter(boundary: u64, period: u64, timestamp: u64) u64 {
+        if (boundary > timestamp) return boundary;
+        const steps: u128 = @as(u128, (timestamp - boundary) / period) + 1;
+        const next: u128 = @as(u128, boundary) + steps * period;
+        return if (next > std.math.maxInt(u64)) std.math.maxInt(u64) else @intCast(next);
     }
 
     pub fn remove(self: *Session, input: *const protocol.RemoveInput) ResultCode {
@@ -419,7 +611,7 @@ pub const Session = struct {
         const source_index = self.findSource(input.source_handle) orelse return .no_data;
         self.removeSourceAt(source_index);
         _ = self.rebuildItemAggregates();
-        self.alignKnownItems(input.command_at_milliseconds);
+        self.refreshItemDeadlines(input.command_at_milliseconds);
         self.next_wake_milliseconds = self.nextWakeFromAggregates(input.command_at_milliseconds);
         self.commitOperation(input.operation_epoch, input.command_at_milliseconds);
         return .ok;

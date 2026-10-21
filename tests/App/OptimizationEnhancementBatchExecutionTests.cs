@@ -11,6 +11,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class OptimizationEnhancementBatchExecutionTests
 {
     private const int ProcessId = 4242;
+    private const int FixtureLogicalProcessorCount = 8;
     private const string ProcessName = "batch-target";
     private const string ExecutablePath = @"D:\Apps\batch-target.exe";
     private const string ReportId = "report:batch-target";
@@ -198,7 +199,8 @@ public sealed class OptimizationEnhancementBatchExecutionTests
             store,
             writer,
             new LegacyGpuPreferenceActionRestorer(new ThrowingGraphicsPreferenceStore()),
-            NullLogger<OptimizationA2Service>.Instance);
+            NullLogger<OptimizationA2Service>.Instance,
+            affinityPlanProvider: static () => CpuAffinityPlanner.CreatePrimaryLogicalProcessorPlan(FixtureLogicalProcessorCount));
     }
 
     private static ProcessResourcePolicySnapshot CreateSnapshot(
@@ -215,7 +217,7 @@ public sealed class OptimizationEnhancementBatchExecutionTests
             startedAt,
             priorityClass,
             affinityMask,
-            Environment.ProcessorCount,
+            FixtureLogicalProcessorCount,
             PowerThrottlingControlMask: powerControl,
             PowerThrottlingStateMask: powerState,
             PowerThrottlingRawValue: $"control={powerControl};state={powerState}",
@@ -302,7 +304,7 @@ public sealed class OptimizationEnhancementBatchExecutionTests
 
     private static long GetA2TargetAffinityMask()
     {
-        var plan = CpuAffinityPlanner.CreatePrimaryLogicalProcessorPlan(Environment.ProcessorCount);
+        var plan = CpuAffinityPlanner.CreatePrimaryLogicalProcessorPlan(FixtureLogicalProcessorCount);
         Assert.True(plan.Available, plan.DisabledReason);
         return plan.AffinityMask
             ?? throw new InvalidOperationException("The A2 test requires an affinity-mask plan.");
@@ -544,6 +546,9 @@ public sealed class OptimizationEnhancementBatchExecutionTests
         public Task<ProtectedOptimizationTarget?> ProtectReportAsync(
             OptimizationReportItem report,
             CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
 
         public Task<IReadOnlyList<TrustedOptimizationTarget>> GetTrustedTargetsAsync(
             CancellationToken cancellationToken) => throw new NotSupportedException();

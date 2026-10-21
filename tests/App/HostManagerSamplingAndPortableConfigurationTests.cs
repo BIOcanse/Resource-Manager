@@ -14,11 +14,11 @@ public sealed class HostManagerSamplingAndPortableConfigurationTests
         var plan = HostManagerTestPlanFactory.CreatePlan();
 
         Assert.Equal(42, plan.SchemaVersion);
-        Assert.Equal(59, plan.ProfileRevision);
+        Assert.Equal(66, plan.ProfileRevision);
         Assert.Equal(
-            (59UL << 32) | NativeSamplingSubscriptionAbi.Version,
+            (66UL << 32) | NativeSamplingSubscriptionAbi.Version,
             plan.SamplingSubscription.ConfigurationGeneration);
-        Assert.Equal(59UL << 32, plan.PortableSoftwareRegistry.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, plan.PortableSoftwareRegistry.ConfigurationGeneration);
         Assert.Equal(
             [1, 2, 3, 4, 5, 6, 7],
             plan.SamplingSubscription.Build.RoleCapacityLimits.Select(static role => role.RoleId));
@@ -57,7 +57,7 @@ public sealed class HostManagerSamplingAndPortableConfigurationTests
         var plan = HostManagerTestPlanFactory.CreatePlan(planEpoch: 7);
 
         Assert.Equal(
-            (59UL << 32) | NativeSamplingSubscriptionAbi.Version,
+            (66UL << 32) | NativeSamplingSubscriptionAbi.Version,
             plan.SamplingSubscription.ConfigurationGeneration);
         Assert.All(plan.SamplingSubscription.HotPublish.Roles, static role =>
             Assert.True(role.IsPublished));

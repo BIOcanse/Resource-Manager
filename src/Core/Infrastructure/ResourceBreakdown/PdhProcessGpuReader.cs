@@ -9,7 +9,11 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed class PdhProcessGpuReader
 {
+    internal ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot ReadResidencyFields(
+        ResourceManager.ReadWrite.ProcessFields.ProcessMetricFieldSnapshot inventory)
+        => ResourceManager.ReadWrite.ProcessFields.WindowsPdhProcessGpuFields.Read(snapshotSource, inventory);
     private readonly INativePdhSnapshotSource snapshotSource;
+    internal INativePdhSnapshotSource SnapshotSource => snapshotSource;
     private readonly Func<IReadOnlyCollection<ProcessInstanceKey>, IReadOnlySet<ProcessInstanceKey>>
         validateCurrentProcessInstances;
 
@@ -72,16 +76,20 @@ public sealed class PdhProcessGpuReader
 
         var stableProcesses = CreateStableProcessMap(expectedProcessInstances);
         var usage = HasPayload(usageStatus)
-            ? snapshot.EngineRows
-                .Where(row => row.ProcessId is > 0 and <= int.MaxValue
-                    && stableProcesses.ContainsKey((int)row.ProcessId))
-                .GroupBy(row => (
-                    row.AdapterLuid,
-                    ProcessId: (int)row.ProcessId,
-                    ProcessStartKey: checked((ulong)stableProcesses[(int)row.ProcessId].StartKey)))
+            ? NativePdhGpuUsage.ByProcess(snapshot.EngineRows.Where(row =>
+                row.ProcessId is > 0 and <= int.MaxValue
+                && stableProcesses.TryGetValue((int)row.ProcessId, out var identity)
+                && snapshot.EngineWindows.Count(window => window.AdapterLuid == row.AdapterLuid
+                    && window.ProcessId == row.ProcessId && window.PhysicalIndex == row.PhysicalIndex
+                    && window.EngineIndex == row.EngineIndex && window.BeginFileTime >= identity.StartKey
+                    && window.EndFileTime > window.BeginFileTime && window.BeginCounter > 0
+                    && window.EndCounter > window.BeginCounter && window.CounterFrequency > 0) == 1))
+                .Where(pair => pair.Key.ProcessId is > 0 and <= int.MaxValue
+                    && stableProcesses.ContainsKey((int)pair.Key.ProcessId))
                 .ToDictionary(
-                    static group => group.Key,
-                    static group => Math.Clamp(group.Sum(static row => Sanitize(row.UsagePercent)), 0, 100))
+                    pair => (pair.Key.AdapterLuid, ProcessId: (int)pair.Key.ProcessId,
+                        ProcessStartKey: checked((ulong)stableProcesses[(int)pair.Key.ProcessId].StartKey)),
+                    pair => pair.Value)
             : new Dictionary<(ulong AdapterLuid, int ProcessId, ulong ProcessStartKey), double>();
         var dedicatedMemory = includeDedicatedMemory && HasPayload(memoryStatus)
             ? snapshot.MemoryRows
@@ -166,7 +174,8 @@ public sealed class PdhProcessGpuReader
     }
 
     internal ProcessGpuBreakdownRead ReadBreakdownSnapshot(
-        IReadOnlyList<WindowsGpuAdapter> adapters)
+        IReadOnlyList<WindowsGpuAdapter> adapters,
+        IReadOnlyCollection<ProcessInstanceKey>? expectedProcessInstances = null)
     {
         var adapterIndexByLuid = new Dictionary<ulong, int>();
         foreach (var adapter in adapters)
@@ -175,7 +184,7 @@ public sealed class PdhProcessGpuReader
                 && (adapter.Luid.HighPart != 0 || adapter.Luid.LowPart != 0))
             {
                 adapterIndexByLuid[
-                    NativePdhAdapterIdentity.Pack(adapter.Luid)] =
+                    WindowsGpuAdapterIdentity.Pack(adapter.Luid)] =
                     adapter.Index;
             }
         }
@@ -188,7 +197,7 @@ public sealed class PdhProcessGpuReader
         }
 
         var read = snapshotSource.Read(
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(adapters));
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(adapters));
         ProviderAvailability = read.Availability;
         var snapshot = read.Snapshot;
         var usageStatus = ObservationStatus(
@@ -210,15 +219,13 @@ public sealed class PdhProcessGpuReader
 
         var usageByAdapter =
             new Dictionary<int, Dictionary<int, double>>();
-        // 同一次读、同一个求和口径下的整卡总和。
-        //
-        // **这是分解表的总和，必须从这里出**，不能拿设备自己报的那个占用率去当它。
-        // 那个数（N 卡上是 NVML 的 SM utilization）问的是"卡上有没有核在跑"，
-        // 而这里的分项问的是"这个进程在各引擎上忙了多久"，两个量定义不同、
-        // 采样窗口也不同 —— 拿它当总和，结果就是分项可以比总和还大。
+        var stableProcesses = expectedProcessInstances is null ? null : CreateStableProcessMap(expectedProcessInstances);
+        // 分解条只分解同一采样中最忙引擎的占用，分项和总量同源。
+        // 调度侧独立使用每个进程自己的最忙引擎。
         var usageTotalByAdapter = new Dictionary<int, double>();
         if (HasPayload(usageStatus))
         {
+            var busiest = NativePdhGpuUsage.BusiestEngines(snapshot.EngineRows);
             foreach (var row in snapshot.EngineRows)
             {
                 if (!adapterIndexByLuid.TryGetValue(
@@ -227,6 +234,8 @@ public sealed class PdhProcessGpuReader
                 {
                     continue;
                 }
+                if (!busiest.TryGetValue(row.AdapterLuid, out var engine)
+                    || NativePdhGpuUsage.EngineOf(row) != engine.Key) continue;
 
                 // 总和把**所有**引擎行都算进去，包括归不到进程头上的那些 ——
                 // 那部分正是分解表里的"未归属"，不该在这一步就被丢掉。
@@ -238,6 +247,13 @@ public sealed class PdhProcessGpuReader
                 {
                     continue;
                 }
+
+                if (stableProcesses is not null && (!stableProcesses.TryGetValue((int)row.ProcessId, out var process)
+                    || snapshot.EngineWindows.Count(window => window.AdapterLuid == row.AdapterLuid
+                        && window.ProcessId == row.ProcessId && window.PhysicalIndex == row.PhysicalIndex
+                        && window.EngineIndex == row.EngineIndex && window.BeginFileTime >= process.StartKey
+                        && window.EndFileTime > window.BeginFileTime && window.BeginCounter > 0
+                        && window.EndCounter > window.BeginCounter && window.CounterFrequency > 0) != 1)) continue;
 
                 AddValue(
                     usageByAdapter,
@@ -400,13 +416,8 @@ internal sealed class ProcessGpuBreakdownRead(
             ?? EmptyValues;
 
     /// <summary>
-    /// 这块卡的占用总和，**和分项出自同一次读、同一个求和口径**。
-    ///
-    /// 分解表的总和要用它，不要用设备自己报的占用率：那个数在 N 卡上是 NVML 的
-    /// SM utilization（"卡上有没有核在跑"），和这里的"各引擎忙了多久"不是一个量，
-    /// 采样窗口也不同。两个量凑在一列里，结果就是单个软件能比总和还大。
-    ///
-    /// 读不到就是 null —— 那时这一列如实报不可用，而不是拿另一个量顶上。
+    /// 同一采样中最忙引擎的总占用。分项也是这个引擎的进程占用，供设备读数按份额分解。
+    /// 没有引擎行时返回 null，不用另一种设备读数冒充归属数据。
     /// </summary>
     internal double? GetUsagePercentTotal(int adapterIndex)
         => usageTotalByAdapter is not null

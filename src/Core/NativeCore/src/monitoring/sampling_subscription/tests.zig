@@ -5,12 +5,81 @@ const session_module = @import("session.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 const output_capacity = 8;
+const trigger_output_capacity = output_capacity * 2;
+
+test "external scratch really writes five columns and preserves issued authorization across replacement" {
+    var config = testConfig();
+    const session = try session_module.Session.createExternalScratch(&config);
+    defer session.destroy();
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_item_handles.len);
+    try std.testing.expectEqual(ResultCode.invalid_argument, track(session, 1, 1_000, 1_000, 100, 0, 0, &.{10}));
+
+    var first: [32 * output_capacity]u8 align(8) = @splat(0xCD);
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.bindScratch(first[1..]));
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.bindScratch(first[0..31]));
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(&first));
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.bindScratch(&first));
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers | protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{10}));
+    try std.testing.expectEqual(@intFromPtr(first[0..].ptr), @intFromPtr(session.scratch_item_handles.ptr));
+    try std.testing.expectEqual(@as(u64, 10), session.scratch_item_handles[0]);
+    const issued = runPlan(session, 2, 1, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, issued.code);
+    try std.testing.expectEqual(@as(u32, 1), issued.result.header.trigger_count);
+    const item_index = session.findItem(10).?;
+    try std.testing.expectEqual(@as(u32, 1), session.scratch_source_counts[item_index]);
+    try std.testing.expectEqual(@as(u32, 0), session.scratch_sampling_counts[item_index]);
+    try std.testing.expectEqual(@as(u64, 2_000), session.scratch_trigger_due_milliseconds[item_index]);
+    try std.testing.expectEqual(ResultCode.ok, session.unbindScratch());
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_effective_intervals.len);
+    @memset(&first, 0xEE); // The released allocation cannot retain any useful data.
+    try std.testing.expectEqual(ResultCode.invalid_argument, runPlan(session, 3, 2, 2_000).code);
+
+    var second: [32 * output_capacity]u8 align(8) = @splat(0xAB);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(&second));
+    var forged = issued.result.triggers;
+    forged[0].sequence += 1;
+    try std.testing.expectEqual(ResultCode.stale_frame,
+        completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, forged[0..1]).code);
+    try std.testing.expectEqual(ResultCode.ok,
+        completeWithTriggers(session, 3, 1, 2_000, 2_000, .sampled, &.{10}, issued.result.triggers[0..1]).code);
+    try std.testing.expectEqual(@as(u64, 10), session.scratch_item_handles[0]);
+    try std.testing.expectEqual(@as(u32, 1), session.scratch_source_counts[item_index]);
+    try std.testing.expectEqual(@as(u64, std.math.maxInt(u64)), session.scratch_effective_intervals[item_index]);
+    const next = runPlan(session, 4, 2, 3_000);
+    try std.testing.expectEqual(ResultCode.ok, next.code);
+    try std.testing.expectEqual(@as(u64, 2), next.result.triggers[0].sequence);
+    try std.testing.expectEqual(ResultCode.ok, session.unbindScratch());
+}
+
+test "external scratch ABI rejects missing storage and never transfers its ownership" {
+    var config = testConfig();
+    var handle: ?*anyopaque = null;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok),
+        abi.rm_sampling_subscription_create_external_scratch(&config, &handle));
+    defer abi.rm_sampling_subscription_destroy(handle);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument),
+        abi.rm_sampling_subscription_bind_scratch(handle, null, 0));
+    var bytes: [32 * output_capacity + 8]u8 align(8) = @splat(0xBC);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument),
+        abi.rm_sampling_subscription_bind_scratch(handle, bytes[1..].ptr, bytes.len - 1));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok),
+        abi.rm_sampling_subscription_bind_scratch(handle, &bytes, bytes.len));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_unbind_scratch(handle));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_sampling_subscription_unbind_scratch(handle));
+    const ordinary = try session_module.Session.create(&config);
+    defer ordinary.destroy();
+    try std.testing.expectEqual(ResultCode.invalid_argument, ordinary.bindScratch(&bytes));
+    try std.testing.expectEqual(ResultCode.invalid_argument, ordinary.unbindScratch());
+}
 
 const PlanResult = struct {
     header: protocol.PlanHeader,
     due: [output_capacity]protocol.DueItemOutput,
     sources: [output_capacity]protocol.SourceViewOutput,
     expired: [output_capacity]protocol.ExpiredSourceOutput,
+    triggers: [trigger_output_capacity]protocol.TriggerOutput,
 };
 
 test "module-local C ABI creates queries and destroys an opaque session" {
@@ -32,6 +101,7 @@ test "module-local C ABI creates queries and destroys an opaque session" {
     try std.testing.expectEqual(config.maximum_source_count, capacity.source_capacity);
     try std.testing.expectEqual(config.maximum_item_count, capacity.item_capacity);
     try std.testing.expectEqual(config.maximum_membership_count, capacity.membership_capacity);
+    try std.testing.expectEqual(config.maximum_membership_count, capacity.trigger_capacity);
     try std.testing.expectEqual(protocol.abi_version, abi.rm_sampling_subscription_abi_version());
 }
 
@@ -90,10 +160,11 @@ test "module-local C ABI executes the complete stateful data path" {
         abi.rm_sampling_subscription_track(handle, &track_input, references[0..].ptr, references.len),
     );
 
-    var header = planHeader(2, 1, 1_000, output_capacity, output_capacity, output_capacity);
+    var header = planHeader(2, 1, 1_000, output_capacity, output_capacity, output_capacity, trigger_output_capacity);
     var due = std.mem.zeroes([output_capacity]protocol.DueItemOutput);
     var sources = std.mem.zeroes([output_capacity]protocol.SourceViewOutput);
     var expired = std.mem.zeroes([output_capacity]protocol.ExpiredSourceOutput);
+    var triggers = std.mem.zeroes([trigger_output_capacity]protocol.TriggerOutput);
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ResultCode.ok)),
         abi.rm_sampling_subscription_plan(
@@ -105,6 +176,8 @@ test "module-local C ABI executes the complete stateful data path" {
             sources.len,
             expired[0..].ptr,
             expired.len,
+            triggers[0..].ptr,
+            triggers.len,
         ),
     );
     try std.testing.expectEqual(@as(u32, 2), header.due_item_count);
@@ -122,6 +195,7 @@ test "module-local C ABI executes the complete stateful data path" {
         .completed_at_milliseconds = 1_050,
         .valid_mask = protocol.CompletionValid.required,
         .item_count = 2,
+        .trigger_count = 0,
         .status = @intFromEnum(protocol.CompletionStatus.sampled),
         .flags = 0,
         .reserved_u32 = 0,
@@ -137,12 +211,14 @@ test "module-local C ABI executes the complete stateful data path" {
             &completion_input,
             references[0..].ptr,
             2,
+            null,
+            0,
             &completion_output,
         ),
     );
     try std.testing.expectEqual(@as(u32, 2), completion_output.active_item_count);
 
-    header = planHeader(4, 2, 1_050, output_capacity, output_capacity, output_capacity);
+    header = planHeader(4, 2, 1_050, output_capacity, output_capacity, output_capacity, trigger_output_capacity);
     try std.testing.expectEqual(
         @as(i32, @intFromEnum(ResultCode.ok)),
         abi.rm_sampling_subscription_plan(
@@ -154,6 +230,8 @@ test "module-local C ABI executes the complete stateful data path" {
             sources.len,
             expired[0..].ptr,
             expired.len,
+            triggers[0..].ptr,
+            triggers.len,
         ),
     );
     try std.testing.expectEqual(@as(u32, 0), header.due_item_count);
@@ -251,9 +329,8 @@ test "per-item fastest interval and independent due selection are authoritative"
 
     const next = runPlan(session, 7, 2, 4_000);
     try std.testing.expectEqual(ResultCode.ok, next.code);
-    try std.testing.expectEqual(@as(u32, 2), next.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 1), next.result.header.due_item_count);
     try std.testing.expectEqual(@as(u64, 10), next.result.due[0].item_handle);
-    try std.testing.expectEqual(@as(u64, 20), next.result.due[1].item_handle);
     try std.testing.expectEqual(@as(u64, 4_000), next.result.header.next_wake_milliseconds);
 }
 
@@ -385,10 +462,11 @@ test "plan output capacity is validated before expiry mutation" {
     defer session.destroy();
 
     try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 1, 0, 0, &.{10}));
-    var header = planHeader(2, 1, 6_001, 1, output_capacity, output_capacity);
+    var header = planHeader(2, 1, 6_001, 1, output_capacity, output_capacity, trigger_output_capacity);
     var due = std.mem.zeroes([output_capacity]protocol.DueItemOutput);
     var sources = std.mem.zeroes([output_capacity]protocol.SourceViewOutput);
     var expired = std.mem.zeroes([output_capacity]protocol.ExpiredSourceOutput);
+    var triggers = std.mem.zeroes([trigger_output_capacity]protocol.TriggerOutput);
     const result = session_module.plan(
         session,
         &header,
@@ -398,6 +476,8 @@ test "plan output capacity is validated before expiry mutation" {
         output_capacity,
         &expired,
         output_capacity,
+        &triggers,
+        trigger_output_capacity,
     );
     try std.testing.expectEqual(ResultCode.buffer_too_small, result);
 
@@ -488,7 +568,8 @@ test "timing reconfigure recalculates native next wake" {
     const snapshot_result = runSnapshot(session);
     try std.testing.expectEqual(ResultCode.ok, snapshot_result.code);
     try std.testing.expectEqual(@as(u64, 2), snapshot_result.header.configuration_generation);
-    try std.testing.expectEqual(@as(u64, 2_000), snapshot_result.header.next_wake_milliseconds);
+    // The item completed at 1,000; the new 2,000 interval is relative to it.
+    try std.testing.expectEqual(@as(u64, 3_000), snapshot_result.header.next_wake_milliseconds);
 }
 
 test "fixed slot indices reuse tombstones at full source and membership capacity" {
@@ -531,6 +612,7 @@ test "fixed slot indices reuse tombstones at full source and membership capacity
     var due = std.mem.zeroes([stress_capacity]protocol.DueItemOutput);
     var sources = std.mem.zeroes([stress_capacity]protocol.SourceViewOutput);
     var expired = std.mem.zeroes([stress_capacity]protocol.ExpiredSourceOutput);
+    var triggers = std.mem.zeroes([stress_capacity * 4]protocol.TriggerOutput);
     var header = planHeader(
         operation_epoch,
         1,
@@ -538,6 +620,7 @@ test "fixed slot indices reuse tombstones at full source and membership capacity
         stress_capacity,
         stress_capacity,
         stress_capacity,
+        stress_capacity * 4,
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -550,6 +633,8 @@ test "fixed slot indices reuse tombstones at full source and membership capacity
             stress_capacity,
             &expired,
             stress_capacity,
+            &triggers,
+            stress_capacity * 4,
         ),
     );
     try std.testing.expectEqual(@as(u32, stress_capacity), header.due_item_count);
@@ -615,6 +700,7 @@ test "fixed slot indices reuse tombstones at full source and membership capacity
         stress_capacity,
         stress_capacity,
         stress_capacity,
+        stress_capacity * 4,
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -627,6 +713,8 @@ test "fixed slot indices reuse tombstones at full source and membership capacity
             stress_capacity,
             &expired,
             stress_capacity,
+            &triggers,
+            stress_capacity * 4,
         ),
     );
     try std.testing.expectEqual(@as(u32, stress_capacity), header.expired_source_count);
@@ -672,7 +760,7 @@ test "cold items share the current boundary while retaining independent handles"
     );
 }
 
-test "equal frequency subscriptions converge on one shared time boundary" {
+test "different items with equal intervals retain different completion phases" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);
     defer session.destroy();
@@ -691,18 +779,21 @@ test "equal frequency subscriptions converge on one shared time boundary" {
     const early = runPlan(session, 7, 3, 1_999);
     try std.testing.expectEqual(ResultCode.ok, early.code);
     try std.testing.expectEqual(@as(u32, 0), early.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_000), early.result.header.next_wake_milliseconds);
-    const aligned = runPlan(session, 8, 4, 2_000);
-    try std.testing.expectEqual(ResultCode.ok, aligned.code);
-    try std.testing.expectEqual(@as(u32, 2), aligned.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_000), aligned.result.due[0].scheduled_due_milliseconds);
-    try std.testing.expectEqual(@as(u64, 10), aligned.result.due[0].item_handle);
-    try std.testing.expectEqual(@as(u64, 2_000), aligned.result.due[1].scheduled_due_milliseconds);
-    try std.testing.expectEqual(@as(u64, 20), aligned.result.due[1].item_handle);
+    try std.testing.expectEqual(@as(u64, 2_101), early.result.header.next_wake_milliseconds);
+    const first_due = runPlan(session, 8, 4, 2_101);
+    try std.testing.expectEqual(ResultCode.ok, first_due.code);
+    try std.testing.expectEqual(@as(u32, 1), first_due.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 2_101), first_due.result.due[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 10), first_due.result.due[0].item_handle);
     try std.testing.expectEqual(
         ResultCode.ok,
-        complete(session, 9, 4, 2_000, 2_000, .sampled, &.{ 10, 20 }).code,
+        complete(session, 9, 4, 2_101, 2_101, .sampled, &.{10}).code,
     );
+    const second_due = runPlan(session, 10, 5, 2_701);
+    try std.testing.expectEqual(ResultCode.ok, second_due.code);
+    try std.testing.expectEqual(@as(u32, 1), second_due.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 2_701), second_due.result.due[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 20), second_due.result.due[0].item_handle);
 }
 
 test "a new faster subscription advances the item without delaying an overdue item" {
@@ -746,7 +837,7 @@ test "removing a faster source never postpones an already due item" {
     try std.testing.expectEqual(@as(u64, 1_000), overdue.result.due[0].effective_interval_milliseconds);
 }
 
-test "removing a faster source realigns future work to the remaining absolute boundary" {
+test "removing a faster source uses the remaining interval from the item's completion" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);
     defer session.destroy();
@@ -778,12 +869,12 @@ test "failed retry rebases when a faster source joins" {
     try std.testing.expectEqual(ResultCode.ok, complete(session, 3, 1, 1_000, 1_100, .failed, &.{10}).code);
     try std.testing.expectEqual(ResultCode.ok, track(session, 4, 1_200, 1_200, 200, explicit, 1_000, &.{10}));
 
-    const early = runPlan(session, 5, 2, 1_999);
+    const early = runPlan(session, 5, 2, 2_199);
     try std.testing.expectEqual(@as(u32, 0), early.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_000), early.result.header.next_wake_milliseconds);
-    const due = runPlan(session, 6, 3, 2_000);
+    try std.testing.expectEqual(@as(u64, 2_200), early.result.header.next_wake_milliseconds);
+    const due = runPlan(session, 6, 3, 2_200);
     try std.testing.expectEqual(@as(u32, 1), due.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_000), due.result.due[0].retry_at_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2_200), due.result.due[0].retry_at_milliseconds);
 }
 
 test "failed completion after final source removal does not poison resubscription" {
@@ -816,18 +907,19 @@ test "retired dispatch fields fail closed" {
     const session = try session_module.Session.create(&config);
     defer session.destroy();
     try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, 0, 0, &.{10}));
-    var header = planHeader(2, 1, 1_000, output_capacity, output_capacity, output_capacity);
+    var header = planHeader(2, 1, 1_000, output_capacity, output_capacity, output_capacity, trigger_output_capacity);
     header.request_flags = 1;
     var due = std.mem.zeroes([output_capacity]protocol.DueItemOutput);
     var sources = std.mem.zeroes([output_capacity]protocol.SourceViewOutput);
     var expired = std.mem.zeroes([output_capacity]protocol.ExpiredSourceOutput);
+    var triggers = std.mem.zeroes([trigger_output_capacity]protocol.TriggerOutput);
     try std.testing.expectEqual(
         ResultCode.abi_mismatch,
-        session_module.plan(session, &header, &due, output_capacity, &sources, output_capacity, &expired, output_capacity),
+        session_module.plan(session, &header, &due, output_capacity, &sources, output_capacity, &expired, output_capacity, &triggers, trigger_output_capacity),
     );
 }
 
-test "reconfigure realigns future work to the new default interval" {
+test "reconfigure uses the new default interval from the item's completion" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);
     defer session.destroy();
@@ -843,18 +935,328 @@ test "reconfigure realigns future work to the new default interval" {
     try std.testing.expectEqual(@as(u64, 1_500), snapshot.items[0].scheduled_due_milliseconds);
 }
 
+test "same item subscriptions share one query without aligning other item clocks" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const explicit = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 59_900, 59_900, 100, explicit, 1_000, &.{10}));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 2, 59_900, 59_900, 200, explicit, 60_000, &.{10}));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 3, 59_900, 59_900, 300, explicit, 60_000, &.{20}));
+    const initial = runPlan(session, 4, 1, 59_900);
+    try std.testing.expectEqual(@as(u32, 2), initial.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 2), initial.result.due[0].source_count);
+    const completed = complete(session, 5, 1, 59_900, 59_900, .sampled, &.{ 10, 20 });
+    try std.testing.expectEqual(ResultCode.ok, completed.code);
+    try std.testing.expectEqual(@as(u64, 60_900), completed.output.next_wake_milliseconds);
+    const minute_boundary = runPlan(session, 6, 2, 60_000);
+    try std.testing.expectEqual(@as(u32, 0), minute_boundary.result.header.due_item_count);
+    const fast = runPlan(session, 7, 3, 60_900);
+    try std.testing.expectEqual(@as(u32, 1), fast.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 10), fast.result.due[0].item_handle);
+    try std.testing.expectEqual(@as(u32, 2), fast.result.due[0].source_count);
+    try std.testing.expectEqual(ResultCode.ok, complete(session, 8, 3, 60_900, 60_900, .sampled, &.{10}).code);
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 9, 61_000, 100));
+    const no_fast = runPlan(session, 10, 4, 61_100);
+    try std.testing.expectEqual(@as(u32, 0), no_fast.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 119_900), no_fast.result.header.next_wake_milliseconds);
+}
+
+test "adding another same interval subscriber does not reset or duplicate the item query" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const explicit = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_100, 1_100, 100, explicit, 1_000, &.{10}));
+    _ = runPlan(session, 2, 1, 1_100);
+    try std.testing.expectEqual(ResultCode.ok, complete(session, 3, 1, 1_100, 1_100, .sampled, &.{10}).code);
+    try std.testing.expectEqual(ResultCode.ok, track(session, 4, 1_700, 1_700, 200, explicit, 1_000, &.{10}));
+    const early = runPlan(session, 5, 2, 2_000);
+    try std.testing.expectEqual(@as(u32, 0), early.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 2_100), early.result.header.next_wake_milliseconds);
+    const due = runPlan(session, 6, 3, 2_100);
+    try std.testing.expectEqual(@as(u32, 1), due.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 2), due.result.due[0].source_count);
+    try std.testing.expectEqual(@as(u64, 10), due.result.due[0].item_handle);
+}
+
+test "fresh periodic memberships query once per due period and settle overdue periods separately" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const flags = protocol.SourceFlags.persistent |
+        protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers |
+        protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{10}),
+    );
+
+    const initial = runPlan(session, 2, 1, 1_000);
+    try std.testing.expectEqual(@as(u32, 0), initial.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 0), initial.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_000), initial.result.header.next_wake_milliseconds);
+
+    const first = runPlan(session, 3, 2, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, first.code);
+    try std.testing.expectEqual(@as(u32, 1), first.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 10), first.result.due[0].item_handle);
+    try std.testing.expectEqual(@as(u64, 2_000), first.result.due[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u32, 1), first.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 100), first.result.triggers[0].source_handle);
+    try std.testing.expectEqual(@as(u64, 1), first.result.triggers[0].sequence);
+    try std.testing.expectEqual(protocol.TriggerFlags.fresh, first.result.triggers[0].flags);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        completeWithTriggers(
+            session,
+            4,
+            2,
+            2_000,
+            2_000,
+            .sampled,
+            &.{10},
+            first.result.triggers[0..1],
+        ).code,
+    );
+
+    // Several periods are overdue, but one source-item trigger group is
+    // settled at a time. Completing at the same timestamp exposes the next
+    // original due period rather than collapsing it into one query.
+    const overdue_first = runPlan(session, 5, 3, 5_000);
+    try std.testing.expectEqual(ResultCode.ok, overdue_first.code);
+    try std.testing.expectEqual(@as(u32, 1), overdue_first.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 1), overdue_first.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 3_000), overdue_first.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2), overdue_first.result.triggers[0].sequence);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        completeWithTriggers(
+            session,
+            6,
+            3,
+            5_000,
+            5_000,
+            .failed,
+            &.{10},
+            overdue_first.result.triggers[0..1],
+        ).code,
+    );
+    const overdue_second = runPlan(session, 7, 4, 5_000);
+    try std.testing.expectEqual(ResultCode.ok, overdue_second.code);
+    try std.testing.expectEqual(@as(u32, 1), overdue_second.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 1), overdue_second.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 4_000), overdue_second.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 3), overdue_second.result.triggers[0].sequence);
+}
+
+test "fresh periodic first due is relative to registration command time" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const flags = protocol.SourceFlags.persistent |
+        protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers |
+        protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        trackWithFlags(session, 1, 1_500, 1_000, 100, flags, 1_000, &.{10}),
+    );
+    const before = runPlan(session, 2, 1, 2_499);
+    try std.testing.expectEqual(ResultCode.ok, before.code);
+    try std.testing.expectEqual(@as(u32, 0), before.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_500), before.result.header.next_wake_milliseconds);
+    const due = runPlan(session, 3, 2, 2_500);
+    try std.testing.expectEqual(ResultCode.ok, due.code);
+    try std.testing.expectEqual(@as(u32, 1), due.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_500), due.result.triggers[0].scheduled_due_milliseconds);
+}
+
+test "same-item trigger alignment merges coincident sources and preserves each membership period" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const fresh = protocol.SourceFlags.persistent |
+        protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers |
+        protocol.SourceFlags.fresh_on_trigger;
+    const aligned = fresh | protocol.SourceFlags.align_same_item_phase;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        trackWithFlags(session, 1, 1_000, 1_000, 100, fresh, 1_000, &.{10}),
+    );
+    // Item 10 joins the existing phase at 2,000; item 20 has no same-item
+    // phase to join, so it keeps registration + its own 700 ms period.
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        trackWithFlags(session, 2, 1_500, 1_500, 200, aligned, 700, &.{ 10, 20 }),
+    );
+
+    const before = runPlan(session, 3, 1, 1_999);
+    try std.testing.expectEqual(@as(u32, 0), before.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 0), before.result.header.trigger_count);
+
+    const joined_phase = runPlan(session, 4, 2, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, joined_phase.code);
+    try std.testing.expectEqual(@as(u32, 1), joined_phase.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 10), joined_phase.result.due[0].item_handle);
+    try std.testing.expectEqual(@as(u32, 2), joined_phase.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_000), joined_phase.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2_000), joined_phase.result.triggers[1].scheduled_due_milliseconds);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        completeWithTriggers(
+            session,
+            5,
+            2,
+            2_000,
+            2_000,
+            .sampled,
+            &.{10},
+            joined_phase.result.triggers[0..2],
+        ).code,
+    );
+
+    const unaligned_item = runPlan(session, 6, 3, 2_200);
+    try std.testing.expectEqual(ResultCode.ok, unaligned_item.code);
+    try std.testing.expectEqual(@as(u32, 1), unaligned_item.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 20), unaligned_item.result.due[0].item_handle);
+    try std.testing.expectEqual(@as(u32, 1), unaligned_item.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_200), unaligned_item.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 1), unaligned_item.result.triggers[0].sequence);
+}
+
+test "sampling reconfigure updates periodic membership periods without dropping the next due trigger" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const flags = protocol.SourceFlags.persistent |
+        protocol.SourceFlags.periodic_triggers |
+        protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 0, &.{10}),
+    );
+
+    config.generation = 2;
+    config.default_interval_milliseconds = 500;
+    try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&config));
+
+    const first = runPlanGeneration(session, 2, 1, 2_000, 2);
+    try std.testing.expectEqual(ResultCode.ok, first.code);
+    try std.testing.expectEqual(@as(u32, 1), first.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_000), first.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        completeWithTriggersGeneration(
+            session,
+            3,
+            1,
+            2_000,
+            2_000,
+            .failed,
+            &.{10},
+            first.result.triggers[0..1],
+            2,
+        ).code,
+    );
+
+    const before_next = runPlanGeneration(session, 4, 2, 2_499, 2);
+    try std.testing.expectEqual(@as(u32, 0), before_next.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_500), before_next.result.header.next_wake_milliseconds);
+    const next = runPlanGeneration(session, 5, 3, 2_500, 2);
+    try std.testing.expectEqual(ResultCode.ok, next.code);
+    try std.testing.expectEqual(@as(u32, 1), next.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 2_500), next.result.triggers[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2), next.result.triggers[0].sequence);
+}
+
+test "completion settles only the exact issued triggers still owned after source removal" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const flags = protocol.SourceFlags.persistent |
+        protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers |
+        protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{10}));
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 2, 1_000, 1_000, 200, flags, 1_000, &.{10}));
+
+    const issued = runPlan(session, 3, 1, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, issued.code);
+    try std.testing.expectEqual(@as(u32, 1), issued.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 2), issued.result.header.trigger_count);
+
+    var forged = issued.result.triggers;
+    forged[0].sequence += 1;
+    try std.testing.expectEqual(
+        ResultCode.stale_frame,
+        completeWithTriggers(
+            session,
+            4,
+            1,
+            2_000,
+            2_000,
+            .sampled,
+            &.{10},
+            forged[0..2],
+        ).code,
+    );
+
+    // Unsubscribing one member while collection is in flight withdraws that
+    // trigger, but does not invalidate the other exact row from this plan.
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 4, 2_000, 100));
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        completeWithTriggers(
+            session,
+            5,
+            1,
+            2_000,
+            2_000,
+            .sampled,
+            &.{10},
+            issued.result.triggers[0..2],
+        ).code,
+    );
+
+    // Reusing the freed membership slot starts a new source-item sequence;
+    // completion of the old plan did not advance or lend its sequence to it.
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 6, 2_000, 2_000, 300, flags, 1_000, &.{10}));
+    const next = runPlan(session, 7, 2, 3_000);
+    try std.testing.expectEqual(ResultCode.ok, next.code);
+    try std.testing.expectEqual(@as(u32, 2), next.result.header.trigger_count);
+    try std.testing.expectEqual(@as(u64, 200), next.result.triggers[0].source_handle);
+    try std.testing.expectEqual(@as(u64, 2), next.result.triggers[0].sequence);
+    try std.testing.expectEqual(@as(u64, 300), next.result.triggers[1].source_handle);
+    try std.testing.expectEqual(@as(u64, 1), next.result.triggers[1].sequence);
+}
+
 const PlanCall = struct {
     code: ResultCode,
     result: PlanResult,
 };
 
 fn runPlan(session: *session_module.Session, operation_epoch: u64, plan_epoch: u64, now: u64) PlanCall {
+    return runPlanGeneration(session, operation_epoch, plan_epoch, now, 1);
+}
+
+fn runPlanGeneration(
+    session: *session_module.Session,
+    operation_epoch: u64,
+    plan_epoch: u64,
+    now: u64,
+    configuration_generation: u64,
+) PlanCall {
     var result = PlanResult{
-        .header = planHeader(operation_epoch, plan_epoch, now, output_capacity, output_capacity, output_capacity),
+        .header = planHeader(operation_epoch, plan_epoch, now, output_capacity, output_capacity, output_capacity, trigger_output_capacity),
         .due = std.mem.zeroes([output_capacity]protocol.DueItemOutput),
         .sources = std.mem.zeroes([output_capacity]protocol.SourceViewOutput),
         .expired = std.mem.zeroes([output_capacity]protocol.ExpiredSourceOutput),
+        .triggers = std.mem.zeroes([trigger_output_capacity]protocol.TriggerOutput),
     };
+    result.header.configuration_generation = configuration_generation;
     const code = session_module.plan(
         session,
         &result.header,
@@ -864,6 +1266,8 @@ fn runPlan(session: *session_module.Session, operation_epoch: u64, plan_epoch: u
         output_capacity,
         &result.expired,
         output_capacity,
+        &result.triggers,
+        trigger_output_capacity,
     );
     return .{ .code = code, .result = result };
 }
@@ -875,6 +1279,7 @@ fn planHeader(
     due_capacity: u32,
     source_capacity: u32,
     expired_capacity: u32,
+    trigger_capacity: u32,
 ) protocol.PlanHeader {
     return .{
         .abi_version = protocol.abi_version,
@@ -887,9 +1292,11 @@ fn planHeader(
         .due_item_capacity = due_capacity,
         .source_view_capacity = source_capacity,
         .expired_source_capacity = expired_capacity,
+        .trigger_capacity = trigger_capacity,
         .due_item_count = 0,
         .source_view_count = 0,
         .expired_source_count = 0,
+        .trigger_count = 0,
         .active_source_count = 0,
         .active_item_count = 0,
         .next_wake_milliseconds = 0,
@@ -926,6 +1333,7 @@ fn complete(
         .completed_at_milliseconds = completed_at,
         .valid_mask = protocol.CompletionValid.required,
         .item_count = @intCast(handles.len),
+        .trigger_count = 0,
         .status = @intFromEnum(status),
         .flags = 0,
         .reserved_u32 = 0,
@@ -934,7 +1342,7 @@ fn complete(
     var output = std.mem.zeroes(protocol.CompletionOutput);
     output.abi_version = protocol.abi_version;
     output.struct_size = @sizeOf(protocol.CompletionOutput);
-    const code = session_module.complete(session, &input, &references, @intCast(handles.len), &output);
+    const code = session_module.complete(session, &input, &references, @intCast(handles.len), null, 0, &output);
     return .{ .code = code, .output = output };
 }
 
@@ -960,6 +1368,97 @@ fn track(
         @intCast(handles.len),
     );
     return session_module.track(session, &input, &references, @intCast(handles.len));
+}
+
+fn trackWithFlags(
+    session: *session_module.Session,
+    operation_epoch: u64,
+    command_at: u64,
+    observed_at: u64,
+    source_handle: u64,
+    flags: u32,
+    explicit_interval: u64,
+    handles: []const u64,
+) ResultCode {
+    var references = std.mem.zeroes([output_capacity]protocol.ItemReference);
+    for (handles, 0..) |handle, index| references[index] = itemReference(handle);
+    var input = trackInput(
+        operation_epoch,
+        command_at,
+        observed_at,
+        source_handle,
+        flags,
+        explicit_interval,
+        @intCast(handles.len),
+    );
+    return session_module.track(session, &input, &references, @intCast(handles.len));
+}
+
+fn completeWithTriggers(
+    session: *session_module.Session,
+    operation_epoch: u64,
+    plan_epoch: u64,
+    command_at: u64,
+    completed_at: u64,
+    status: protocol.CompletionStatus,
+    handles: []const u64,
+    triggers: []const protocol.TriggerOutput,
+) CompleteCall {
+    return completeWithTriggersGeneration(
+        session,
+        operation_epoch,
+        plan_epoch,
+        command_at,
+        completed_at,
+        status,
+        handles,
+        triggers,
+        1,
+    );
+}
+
+fn completeWithTriggersGeneration(
+    session: *session_module.Session,
+    operation_epoch: u64,
+    plan_epoch: u64,
+    command_at: u64,
+    completed_at: u64,
+    status: protocol.CompletionStatus,
+    handles: []const u64,
+    triggers: []const protocol.TriggerOutput,
+    configuration_generation: u64,
+) CompleteCall {
+    var references = std.mem.zeroes([output_capacity]protocol.ItemReference);
+    for (handles, 0..) |handle, index| references[index] = itemReference(handle);
+    var input = protocol.CompletionInput{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.CompletionInput),
+        .configuration_generation = configuration_generation,
+        .operation_epoch = operation_epoch,
+        .plan_epoch = plan_epoch,
+        .command_at_milliseconds = command_at,
+        .completed_at_milliseconds = completed_at,
+        .valid_mask = protocol.CompletionValid.required,
+        .item_count = @intCast(handles.len),
+        .trigger_count = @intCast(triggers.len),
+        .status = @intFromEnum(status),
+        .flags = 0,
+        .reserved_u32 = 0,
+        .reserved = .{ 0, 0 },
+    };
+    var output = std.mem.zeroes(protocol.CompletionOutput);
+    output.abi_version = protocol.abi_version;
+    output.struct_size = @sizeOf(protocol.CompletionOutput);
+    const code = session_module.complete(
+        session,
+        &input,
+        &references,
+        @intCast(handles.len),
+        triggers.ptr,
+        @intCast(triggers.len),
+        &output,
+    );
+    return .{ .code = code, .output = output };
 }
 
 fn trackInput(

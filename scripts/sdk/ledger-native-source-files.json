@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "sdk/zig",
+  "archiveRoot": ".",
+  "files": [
+    "src/local_resource_manager/uid.zig",
+    "src/local_resource_manager/protocol.zig",
+    "src/local_resource_manager/memory_region.zig",
+    "src/local_resource_manager/memory_region/windows.zig",
+    "src/local_resource_manager/memory_region/linux.zig",
+    "src/local_resource_manager/allocation_registration.zig",
+    "src/local_resource_manager/activity_window.zig",
+    "src/local_resource_manager/release_check.zig",
+    "src/local_resource_manager/memory_resource.zig",
+    "src/local_resource_manager/owned/native.zig",
+    "src/local_resource_manager/owned/owner.zig",
+    "src/local_resource_manager/owned/types.zig",
+    "src/local_resource_manager/owned/allocation_statistics.zig",
+    "src/local_resource_manager/owned/index.zig",
+    "src/local_resource_manager/owned/index_tests.zig",
+    "src/local_resource_manager/owned/index_transactions.zig",
+    "src/local_resource_manager/owned/notifications.zig",
+    "src/local_resource_manager/owned/sync.zig",
+    "src/local_resource_manager/owned/tree.zig",
+    "src/local_resource_manager/owned/partition_planning.zig",
+    "src/local_resource_manager/owned/audit.zig",
+    "src/local_resource_manager/owned/destruction.zig"
+  ]
+}

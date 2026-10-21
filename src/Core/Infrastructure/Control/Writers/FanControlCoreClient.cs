@@ -15,7 +15,7 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 ///
 /// 通道和硬件写入辅助进程是同一套：标准输入输出上一行一条 JSON，随主程序启停。
 /// 用独立进程而不是引一个库，是因为**碰风扇的代码崩了不该拖累主程序**，
-/// 而且那个核心自己带一条不可协商的规矩：退出时把风扇交还固件。
+/// 临时接管在退出时交还固件，持久固件曲线保留。
 /// </summary>
 public sealed partial class FanControlCoreClient(
     IHostEnvironment environment,
@@ -28,20 +28,28 @@ public sealed partial class FanControlCoreClient(
     /// 一条请求等多久。读一次要走十几次 EC 往返（每个字节还要读三遍取一致），
     /// 所以比一般的 IPC 宽松，但不能无限等 —— 卡住的话整个控制页都会跟着卡。
     /// </summary>
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(90);
 
     private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly SemaphoreSlim inputGate = new(1, 1);
     private Process? process;
+    private ControlHelperErrorOutput? errorOutput;
     private long nextRequestId;
-    private bool disposed;
+    private volatile bool disposed;
+    private Func<ProcessStartInfo, Process?>? startFactory;
+    internal FanControlCoreClient(IHostEnvironment environment, Func<ProcessStartInfo, Process?> startFactory)
+        : this(environment, (ILogger<FanControlCoreClient>?)null) => this.startFactory = startFactory;
+    private volatile bool stopping;
+    private volatile bool temperatureNotifications;
+    private bool refreshDetection;
 
     public bool IsInstalled => ResolveExecutablePath() is not null;
 
     /// <summary>
     /// 这台机器上有哪几个风扇、各自叫什么。
     ///
-    /// **这是"有什么"，不是"现在多少"。** 核心那边 describe 明确不碰硬件 ——
-    /// 挂着哪几个风扇在开通道那一刻就定了，所以这份清单一个进程里问一次就够。
+    /// **这是"有什么"，不是"现在多少"。** 普通 describe 返回已探测能力；
+    /// 显式 ResetDetection 后才重新探测，其他读取复用当前清单。
     ///
     /// 缓存是必须的，不是优化：目录每列一次可控对象都要问它，
     /// 而每次起一个子进程握一次手，列一次对象就要好几秒。
@@ -70,6 +78,7 @@ public sealed partial class FanControlCoreClient(
         lock (describeGate)
         {
             describedFans = null;
+            refreshDetection = true;
         }
         // 曲线也一起丢掉：用户点"重新检测"要的是重新问一遍硬件，
         // 不是看我们上次记下的那份答案。别的软件、或者换了性能档位，
@@ -90,7 +99,7 @@ public sealed partial class FanControlCoreClient(
         JsonElement? response;
         try
         {
-            response = SendAsync("describe", null, CancellationToken.None)
+            response = SendAsync("describe", refreshDetection ? new Dictionary<string, object?> { ["refresh"] = true } : null, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
         }
@@ -111,6 +120,7 @@ public sealed partial class FanControlCoreClient(
                 ? name.GetString()
                 : null;
         needsTemperatures = Flag(result, "needsTemperatures");
+        temperatureNotifications = Flag(result, "temperatureNotifications");
         /*
          * 通道用不上时那句**具体**原因。
          *
@@ -120,6 +130,12 @@ public sealed partial class FanControlCoreClient(
          */
         unavailableReason = Flag(result, "available") ? null : Text(result, "reason");
 
+        refreshDetection = false;
+        return ParseFans(fans, backend);
+    }
+
+    internal static IReadOnlyList<FanCoreFan> ParseFans(JsonElement fans, string? backend)
+    {
         var list = new List<FanCoreFan>();
         foreach (var fan in fans.EnumerateArray())
         {
@@ -144,7 +160,9 @@ public sealed partial class FanControlCoreClient(
                 Flag(fan, "softwareTakeoverCoversAllFans"),
                 Integer(fan, "curvePoints"),
                 Integer(fan, "minimumOnPercent") ?? 0,
-                Flag(fan, "requiresPeriodicReassert")));
+                Flag(fan, "requiresPeriodicReassert"),
+                FirmwareCurveRequires: Text(fan, "firmwareCurveRequires"),
+                SupportsFirmwareCurveReset: Flag(fan, "supportsFirmwareCurveReset")));
         }
         return list;
     }
@@ -163,27 +181,15 @@ public sealed partial class FanControlCoreClient(
         => owner.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
 
     /// <summary>
-    /// 这个风扇现在跑的曲线。核心给不出来就是 null。
-    ///
-    /// **单独一次往返，不跟着 describe 走**：读曲线要把固件的三张表都过一遍，
-    /// 几十次 EC 往返；describe 是画一次界面就要问一遍的，混进去整个控制页都得等。
+    /// 读取核心的曲线回执，无法确认完整读值时返回 null。
+    /// 固件表读取可能较慢，单独请求并缓存；软件计划可能随时退出，每次重新读取。
     /// </summary>
     public async Task<IReadOnlyList<ControlCurvePoint>?> ReadCurveAsync(
         int fanIndex,
         CancellationToken cancellationToken)
     {
-        /*
-         * **缓存是必须的，不是优化。**
-         *
-         * 读一条曲线要把固件的三张表都过一遍，每个字节还得连读到一致才算数 ——
-         * 本机实测一次 11~16 秒。用户勾一下"转速曲线"就得干等十几秒，
-         * 那这项功能等于没有。
-         *
-         * 缓存是安全的，因为**这张表只有被写才会变**：它存在 EC RAM 里，
-         * 固件按它查表，不会自己改。我们写完会把回读的结果直接存进来
-         * （<see cref="StoreCurve"/>），用户点"重新检测硬件"会清掉
-         * （<see cref="ResetDetection"/>）。
-         */
+        // Cache only a confirmed firmware table. Writes, cancellation and explicit
+        // detection reset invalidate it; a software plan's lifetime belongs to the core.
         lock (curveGate)
         {
             if (curves.TryGetValue(fanIndex, out var cached))
@@ -197,30 +203,32 @@ public sealed partial class FanControlCoreClient(
                 new Dictionary<string, object?> { ["fan"] = fanIndex },
                 cancellationToken)
             .ConfigureAwait(false);
-        if (response is not { } result
-            || !result.TryGetProperty("curve", out var curve)
-            || curve.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
+        if (response is not { } result) return null;
+        var points = ParseCurveReceipt(result);
+        if (points is null) return null;
+        StoreCurveReceipt(fanIndex, result, points);
+        return points;
+    }
+
+    // Read and write receipts share one wire boundary. Never publish a partial
+    // curve or turn an unsuccessful response into a confirmed value.
+    internal static IReadOnlyList<ControlCurvePoint>? ParseCurveReceipt(JsonElement response)
+    {
+        if (response.ValueKind != JsonValueKind.Object
+            || !response.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True
+            || !response.TryGetProperty("curve", out var curve) || curve.ValueKind != JsonValueKind.Array
+            || curve.GetArrayLength() == 0) return null;
 
         var points = new List<ControlCurvePoint>();
         foreach (var point in curve.EnumerateArray())
         {
-            if (!point.TryGetProperty("temperatureCelsius", out var celsius)
-                || celsius.ValueKind != JsonValueKind.Number
-                || !point.TryGetProperty("percent", out var percent)
-                || percent.ValueKind != JsonValueKind.Number)
-            {
-                return null;
-            }
-            points.Add(new ControlCurvePoint(celsius.GetDouble(), percent.GetDouble()));
+            if (point.ValueKind != JsonValueKind.Object
+                || !point.TryGetProperty("temperatureCelsius", out var celsius) || celsius.ValueKind != JsonValueKind.Number
+                || !celsius.TryGetDouble(out var temperature) || !double.IsFinite(temperature)
+                || !point.TryGetProperty("percent", out var percent) || percent.ValueKind != JsonValueKind.Number
+                || !percent.TryGetDouble(out var duty) || !double.IsFinite(duty) || duty < 0 || duty > 100) return null;
+            points.Add(new(temperature, duty));
         }
-        if (points.Count == 0)
-        {
-            return null;
-        }
-        StoreCurve(fanIndex, points);
         return points;
     }
 
@@ -273,34 +281,65 @@ public sealed partial class FanControlCoreClient(
     /// 核心那边宁可短暂收不到（它有自己的时效兜底），也不该按着过期的数调速。
     /// </summary>
     public async Task PushTemperaturesAsync(
-        IReadOnlyDictionary<string, double> samples,
+        IReadOnlyDictionary<string, FanTemperatureSample> samples,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(samples);
+        var arguments = new Dictionary<string, object?>
+        {
+            ["samples"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.Celsius),
+            ["observedAtUtcTicks"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.ObservedAtUtcTicks)
+        };
+        if (temperatureNotifications)
+        {
+            if (!await inputGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return;
+            try
+            {
+                if (stopping || process is not { HasExited: false } running) return;
+                arguments["op"] = "temp";
+                arguments["notification"] = true;
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromMilliseconds(500));
+                await running.StandardInput.WriteLineAsync(JsonSerializer.Serialize(arguments).AsMemory(), timeout.Token).ConfigureAwait(false);
+                await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException)
+            {
+                logger?.LogDebug(error, "温度通知未送达。");
+            }
+            finally
+            {
+                inputGate.Release();
+                if (disposed || stopping) Stop();
+            }
+            return;
+        }
+        // Older installed cores still use acknowledged, serialized temperature requests.
         await SendAsync(
                 "temp",
-                new Dictionary<string, object?> { ["samples"] = samples },
+                arguments,
                 cancellationToken,
                 skipIfBusy: true)
             .ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// 记下这个风扇现在跑的曲线。
-    ///
-    /// 写完曲线之后由写入器调：核心在应答里带回的是**写完重新读出来的**那条，
-    /// 那正是新的当前值，不必再花十几秒去读一遍。
-    /// </summary>
-    public void StoreCurve(int fanIndex, IReadOnlyList<ControlCurvePoint> curve)
+    private readonly object curveGate = new();
+    internal void InvalidateCurve(int fanIndex)
     {
-        ArgumentNullException.ThrowIfNull(curve);
+        lock (curveGate) curves.Remove(fanIndex);
+    }
+
+    /// <summary>消费完整有效的曲线回执，只缓存实际归固件执行的表。</summary>
+    internal void StoreCurveReceipt(int fanIndex, JsonElement response, IReadOnlyList<ControlCurvePoint> curve)
+    {
         lock (curveGate)
         {
-            curves[fanIndex] = curve;
+            curves.Remove(fanIndex);
+            if (response.TryGetProperty("execution", out var execution) && execution.ValueKind == JsonValueKind.String
+                && execution.GetString() == ControlFanCurveExecutions.Firmware) curves[fanIndex] = curve;
         }
     }
 
-    private readonly object curveGate = new();
     private readonly Dictionary<int, IReadOnlyList<ControlCurvePoint>> curves = [];
 
     private readonly object describeGate = new();
@@ -319,6 +358,7 @@ public sealed partial class FanControlCoreClient(
         bool skipIfBusy = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
+        ObjectDisposedException.ThrowIf(disposed, this);
         if (skipIfBusy)
         {
             if (!await gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
@@ -330,13 +370,10 @@ public sealed partial class FanControlCoreClient(
         {
             await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
+        var commandStarted = false;
         try
         {
-            if (EnsureStarted() is not { } running)
-            {
-                return null;
-            }
-
+            ObjectDisposedException.ThrowIf(disposed, this);
             var request = new Dictionary<string, object?>(
                 arguments ?? new Dictionary<string, object?>())
             {
@@ -344,23 +381,48 @@ public sealed partial class FanControlCoreClient(
                 ["op"] = operation
             };
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(RequestTimeout);
-
-            await running.StandardInput
-                .WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), timeout.Token)
-                .ConfigureAwait(false);
-            await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+            // Once a hardware operation has started, a closed page must not interrupt its write or restoration.
+            using var timeout = new CancellationTokenSource(RequestTimeout);
+            Process? running;
+            await inputGate.WaitAsync(timeout.Token).ConfigureAwait(false);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (disposed) return null;
+                running = EnsureStarted();
+                if (running is null || disposed) return null; // Startup may finish after Dispose.
+                commandStarted = true;
+                await running.StandardInput
+                    .WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), timeout.Token)
+                    .ConfigureAwait(false);
+                await running.StandardInput.FlushAsync(timeout.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                inputGate.Release();
+                if (disposed || stopping) Stop();
+            }
 
             var line = await running.StandardOutput.ReadLineAsync(timeout.Token)
                 .ConfigureAwait(false);
             if (line is null)
             {
+                if (errorOutput is { } diagnostics)
+                {
+                    try { await diagnostics.Completion.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+                    catch (TimeoutException) { }
+                    unavailableReason = diagnostics.FailureReason;
+                    logger?.LogWarning("Fan helper closed output: {Detail}", diagnostics.Detail);
+                }
                 Stop();
                 return null;
             }
             using var document = JsonDocument.Parse(line);
             return document.RootElement.Clone();
+        }
+        catch (OperationCanceledException) when (!commandStarted && cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception error) when (error is IOException
             or JsonException
@@ -374,6 +436,7 @@ public sealed partial class FanControlCoreClient(
         finally
         {
             gate.Release();
+            if (disposed || stopping) Stop();
         }
     }
 
@@ -381,9 +444,11 @@ public sealed partial class FanControlCoreClient(
     {
         if (process is { HasExited: false })
         {
-            return process;
+            return stopping ? null : process;
         }
-        Stop();
+        // Called under inputGate: an exited process has no pending input ownership.
+        process?.Dispose();
+        process = null;
 
         if (ResolveExecutablePath() is not { } executablePath)
         {
@@ -415,7 +480,12 @@ public sealed partial class FanControlCoreClient(
             {
                 start.Environment["FANCONTROLCORE_LHM_PATH"] = libraryPath;
             }
-            process = Process.Start(start);
+            start.Environment["FANCONTROLCORE_STATE_DIRECTORY"] = Path.Combine(
+                PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "FanControlCore");
+            process = startFactory is not null ? startFactory(start) : Process.Start(start);
+            errorOutput = process is null ? null : new(process.StandardError);
+            stopping = false;
+            temperatureNotifications = false;
             return process;
         }
         catch (Exception error) when (error is IOException
@@ -454,21 +524,21 @@ public sealed partial class FanControlCoreClient(
 
     private void Stop()
     {
-        if (process is null)
-        {
-            return;
-        }
+        // StreamWriter cannot be closed while WriteLineAsync/FlushAsync is in progress.
+        // The active writer finishes the accepted line and calls Stop after releasing inputGate.
+        stopping = true;
+        if (!inputGate.Wait(0)) return;
+        var running = process;
         try
         {
-            if (!process.HasExited)
+            if (running is null) return;
+            if (!running.HasExited)
             {
                 // **关标准输入而不是杀进程**：那个核心读到流尾会把风扇交还固件再退出。
                 // 直接杀掉会把风扇留在我们设的转速上 —— 那正是它要避免的事。
-                process.StandardInput.Close();
-                if (!process.WaitForExit(3000))
-                {
-                    process.Kill(entireProcessTree: true);
-                }
+                running.StandardInput.Close();
+                // A slow EC transaction must finish before normal EOF restoration. Keep its ownership
+                // until exit instead of killing it or starting a second hardware owner.
             }
         }
         catch (Exception error) when (error is InvalidOperationException or IOException)
@@ -477,8 +547,21 @@ public sealed partial class FanControlCoreClient(
         }
         finally
         {
-            process.Dispose();
-            process = null;
+            try
+            {
+                // Keep output available until the command has consumed its reply.
+                if (running is { HasExited: true } && gate.Wait(0))
+                {
+                    try
+                    {
+                        running.Dispose();
+                        process = null;
+                        stopping = false;
+                    }
+                    finally { gate.Release(); }
+                }
+            }
+            finally { inputGate.Release(); }
         }
     }
 
@@ -490,7 +573,7 @@ public sealed partial class FanControlCoreClient(
         }
         disposed = true;
         Stop();
-        gate.Dispose();
+        // Pending command/temperature writers must still release these managed semaphores.
     }
 }
 
@@ -554,4 +637,6 @@ public sealed record FanCoreFan(
     /// 不拿它去跑风扇（联想只在自定义电源模式下执行）。满足不了就把这一项锁住、
     /// 把这句话原样给用户看，**不替他去改那个前置**。
     /// </summary>
-    string? FirmwareCurveRequires = null);
+    string? FirmwareCurveRequires = null,
+    /// <summary>模块实现显式原表恢复。缺少此声明的旧表控制模块不能安全调整或撤销。</summary>
+    bool SupportsFirmwareCurveReset = false);

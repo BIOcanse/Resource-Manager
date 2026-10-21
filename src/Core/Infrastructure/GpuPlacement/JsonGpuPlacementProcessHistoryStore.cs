@@ -139,10 +139,10 @@ public sealed class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environ
 
             var now = DateTimeOffset.Now;
             var identified = (existing ?? CreateObservedProcess(new(
-                process.ProcessName, path, null, process.ProcessId, ["actual-api-call"]), now)) with
+                process.ProcessName, path, null, process.ProcessId, ["actual-api-observation"]), now)) with
             {
                 GraphicsApi = graphicsApi,
-                EvidenceSources = CleanEvidenceSources((existing?.EvidenceSources ?? []).Append("actual-api-call"))
+                EvidenceSources = CleanEvidenceSources((existing?.EvidenceSources ?? []).Append("actual-api-observation"))
             };
             var next = current with
             {

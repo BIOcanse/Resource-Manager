@@ -18,7 +18,7 @@ public sealed class HostManagerDisplayCoordinatorTests
         Assert.True(plan.IsPublished);
         Assert.Equal(NativeDisplayCoordinatorAbi.Version, plan.Build.AbiVersion);
         Assert.Equal("display_coordinator", plan.Build.NativeModule);
-        Assert.Equal(59UL << 32, plan.Recreate.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, plan.Recreate.ConfigurationGeneration);
         Assert.Equal(5U, plan.Recreate.Capacity.MaximumSourceCount);
         Assert.Equal(256U, plan.Recreate.Capacity.MaximumObservationCount);
         Assert.Equal(512U, plan.Recreate.Capacity.MaximumNodeCount);
@@ -130,10 +130,7 @@ public sealed class HostManagerDisplayCoordinatorTests
                 HdrFormats: null,
                 WidthMillimeters: 600,
                 HeightMillimeters: 340,
-                DisplayTechnology: BackendMessage.Create(
-                    BackendMessageDomains.DeviceTopology,
-                    BackendMessageCodes.DeviceTopology.DisplayTechnologyDigital,
-                    DeviceEdidDigitalInterfaces.DisplayPort),
+                IsDigital: true,
                 PanelTechnology: null)
         };
         var batch = Assert.Single(
@@ -205,7 +202,8 @@ public sealed class HostManagerDisplayCoordinatorTests
                 LastRefreshEpoch = 5,
                 Phase = (uint)NativeDisplayCoordinatorPhase.Ready
             };
-            var store = new NativeDisplayCoordinatorPersistenceStore(path);
+            using var store = new NativeDisplayCoordinatorPersistenceStore(path,
+                Path.Combine(AppContext.BaseDirectory, "Native", "DiskCheckpoint", "native.json"));
             store.Save(
                 generation,
                 new NativeDisplayCoordinatorPersistenceImage(
@@ -223,9 +221,11 @@ public sealed class HostManagerDisplayCoordinatorTests
             Assert.Single(loaded.Payloads);
             Assert.Null(store.Load(generation + (1UL << 32)));
 
-            var bytes = File.ReadAllBytes(path);
+            var slot = Path.Combine(NativeDisplayCoordinatorPersistenceStore.ResolveRootPath(path),
+                "data", "checkpoint-a.bin");
+            var bytes = File.ReadAllBytes(slot);
             bytes[32] ^= 0x5A;
-            File.WriteAllBytes(path, bytes);
+            File.WriteAllBytes(slot, bytes);
             Assert.Throws<InvalidDataException>(() => store.Load(generation));
         }
         finally
@@ -296,11 +296,16 @@ public sealed class HostManagerDisplayCoordinatorTests
             Assert.False(File.Exists(Path.GetFullPath(Path.Combine(displayRoot, retired))));
         }
 
+        var readerRoot = Path.GetFullPath(Path.Combine(appRoot, "..", "ReadWriteCore", "Windows", "Devices", "Display"));
+        var ownerSource = File.ReadAllText(Path.Combine(readerRoot, "Coordinator", "NativeDisplayCoordinatorWorkspace.cs"));
+        Assert.Contains("private HostManagerDisplayCoordinatorReadModel readModel", ownerSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("NativeDisplayCoordinatorWorkspace :", File.ReadAllText(Path.Combine(displayRoot,
+            "NativeDisplayCoordinatorWorkspace.cs")), StringComparison.Ordinal);
         var dxgi = File.ReadAllText(Path.Combine(
-            displayRoot,
+            readerRoot,
             "WindowsDxgiDisplayCapabilityReader.cs"));
         var edid = File.ReadAllText(Path.Combine(
-            displayRoot,
+            readerRoot,
             "WindowsMonitorEdidReader.cs"));
         Assert.DoesNotContain("CacheLifetime", dxgi, StringComparison.Ordinal);
         Assert.DoesNotContain("topologyFactory", dxgi, StringComparison.Ordinal);
@@ -375,3 +380,4 @@ public sealed class HostManagerDisplayCoordinatorTests
                 "Could not locate Resource Manager-APP from the test source path.");
     }
 }
+

@@ -46,6 +46,7 @@ internal static class PtPt
         BackendPipelineNotReady = "O pipeline de pedidos do serviço local não está pronto.",
         NoProcessToTerminate = "Não existe nenhum processo para terminar.",
         TerminateRequestCompleted = "O pedido de fim do processo foi concluído.",
+        TerminateResultFormat = "Foram terminados {0} / {1} processos.",
 
         WebViewInitializationFailed = "Falha ao inicializar a interface incorporada. Abra a pasta de diagnósticos para ver os detalhes.",
         FrontendIdentityVerificationFailed = "Falha na verificação de identidade dos recursos de front-end. Abra a pasta de diagnósticos para ver os detalhes.",

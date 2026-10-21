@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PackageId>ResourceManager.ReadWriteCore</PackageId>
+    <Version>0.1.0-dev.83</Version>
+    <Description>Explicit device field reads, writes and dependency contracts.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Authors>BIOcanse</Authors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <EmbeddedResource Include="Windows/Metrics/Configuration/default.metric-snapshot.json"
+                      LogicalName="ResourceManager.ReadWrite.Windows.Metrics.Configuration.Default" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../NOTICE" Pack="true" PackagePath="/" />
+    <None Include="ThirdPartyNotices/EdidModes.NOTICE.md" Pack="true" PackagePath="third-party/display/" />
+    <None Include="ThirdPartyNotices/NativeRuntime.NOTICE.md" Pack="true" PackagePath="third-party/native/" />
+    <None Include="ThirdPartyNotices/TraceEvent.NOTICE.md" Pack="true" PackagePath="third-party/etw/" />
+    <None Include="ThirdPartyNotices/TraceEvent.LICENSE.txt" Pack="true" PackagePath="third-party/etw/" />
+    <None Include="ThirdPartyNotices/SQLite.NOTICE.md" Pack="true" PackagePath="third-party/sqlite/" />
+    <None Include="ThirdPartyNotices/Microsoft.Data.Sqlite.LICENSE.txt" Pack="true" PackagePath="third-party/sqlite/" />
+    <None Include="ThirdPartyNotices/SQLitePCLRaw.LICENSE.txt" Pack="true" PackagePath="third-party/sqlite/" />
+    <None Include="ThirdPartyNotices/SQLite.Native.LICENSE.txt" Pack="true" PackagePath="third-party/sqlite/" />
+    <None Include="../../src/Core/ThirdPartyNotices/Microsoft.MIT.txt" Pack="true" PackagePath="third-party/etw/" />
+    <None Include="../Core/ThirdPartyNotices/Zig.LICENSE.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="../Core/ThirdPartyNotices/GCC.GPL-3.0.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="../Core/ThirdPartyNotices/GCC.Runtime-Exception.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="../Core/ThirdPartyNotices/LibStdCpp.NOTICE.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="../Core/ThirdPartyNotices/MinGW-w64.LICENSE.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="../Core/ThirdPartyNotices/MinGW-w64.Runtime.txt" Pack="true" PackagePath="third-party/native/" />
+    <None Include="$(ReadWriteNativeLibraryPath)" Condition="'$(ReadWriteNativeLibraryPath)' != ''" Pack="true"
+          PackagePath="runtimes/win-x64/native/ResourceManager.NativeCore.dll" Visible="false" />
+    <None Include="$(ReadWriteAdlxLibraryPath)" Condition="'$(ReadWriteAdlxLibraryPath)' != ''" Pack="true"
+          PackagePath="runtimes/win-x64/native/ResourceManager.AdlxBridge.dll" Visible="false" />
+    <None Include="$(ReadWriteDumpAnalysisHelperPath)" Condition="'$(ReadWriteDumpAnalysisHelperPath)' != ''" Pack="true"
+          PackagePath="runtimes/win-x64/native/ResourceManager.DumpAnalysis.exe" Visible="false" />
+    <InternalsVisibleTo Include="ResourceManager" />
+    <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
+  </ItemGroup>
+  <Target Name="RequireReadWriteNativePackageAsset" BeforeTargets="GenerateNuspec">
+    <Error Condition="'$(ReadWriteNativeLibraryPath)' == '' or !Exists('$(ReadWriteNativeLibraryPath)')"
+           Text="Provide the verified Windows x64 NativeCore binary with ReadWriteNativeLibraryPath when packing." />
+    <Error Condition="'$(ReadWriteAdlxLibraryPath)' == '' or !Exists('$(ReadWriteAdlxLibraryPath)')"
+           Text="Provide the verified Windows x64 ADLX bridge with ReadWriteAdlxLibraryPath when packing." />
+    <Error Condition="'$(ReadWriteDumpAnalysisHelperPath)' == '' or !Exists('$(ReadWriteDumpAnalysisHelperPath)')"
+           Text="Provide the verified Windows x64 dump analysis helper with ReadWriteDumpAnalysisHelperPath when packing." />
+  </Target>
+</Project>

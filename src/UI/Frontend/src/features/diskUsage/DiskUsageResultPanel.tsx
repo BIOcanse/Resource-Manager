@@ -2,6 +2,7 @@ import { createSignal, For, Show } from "solid-js";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import { uiText } from "../../text.ts";
 import { DiskUsageTreemapPlane } from "./DiskUsageTreemapPlane";
+import { StandardSelect } from "../../components/StandardSelect.tsx";
 import type { DiskUsageTileFacts } from "./diskUsageLayoutFacts.ts";
 import type { DiskUsageViewWindow } from "./diskUsageViewport.ts";
 import type {
@@ -17,6 +18,8 @@ import type {
 export function DiskUsageResultPanel(props: {
   summary: DiskUsageScanSummary;
   layout: DiskUsageLayout;
+  selectedRootIndex: number;
+  onSelectRoot: (rootIndex: number) => void;
   selectedNodeId: number;
   factsOf: (nodeId: number) => DiskUsageTileFacts | undefined;
   labelOf: (nodeId: number) => string;
@@ -51,6 +54,20 @@ export function DiskUsageResultPanel(props: {
               props.summary.fileCount,
               props.summary.directoryCount)}
           </span>
+          <Show when={props.summary.roots.length > 1}>
+            <StandardSelect<string>
+              class="settings-select disk-usage-root-selector"
+              value={String(props.selectedRootIndex)}
+              options={props.summary.roots.map((root, index) => ({
+                value: String(index),
+                label: root
+              }))}
+              ariaLabel={uiText.diskUsage.rootSelectorLabel}
+              searchable={props.summary.roots.length > 6}
+              searchPlaceholder={uiText.diskUsage.rootSelectorLabel}
+              onChange={(value) => props.onSelectRoot(Number(value))}
+            />
+          </Show>
         </div>
         <div class="disk-usage-view-actions">
           <button

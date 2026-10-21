@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
@@ -25,8 +26,29 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
         Assert.Equal("$(GpuWindowActionRoot)", (string?)exec.Attribute("WorkingDirectory"));
         Assert.Equal(@"cmd.exe /d /c .\build.cmd", (string?)exec.Attribute("Command"));
         Assert.Equal(new[] { "$(GpuWindowActionRoot)\\ResourceManagerGpuWindowAction.cpp", "$(GpuWindowActionRoot)\\WindowActionProtocol.h",
-                "$(MSBuildProjectDirectory)\\Native\\GpuPlacementCommon\\WorkerPipeClient.h", "$(GpuWindowActionRoot)\\build.cmd" },
+                "$(GpuWindowActionRoot)\\..\\GpuPlacementCommon\\WorkerPipeClient.h", "$(GpuWindowActionRoot)\\build.cmd" },
             project.Descendants("GpuWindowActionSource").Select(item => (string?)item.Attribute("Include")).ToArray());
+        var projectDirectory = Path.Combine(RepositoryRoot(), "src", "Core");
+        var rootProperty = Assert.Single(project.Descendants("GpuWindowActionRoot"));
+        Assert.Equal("'$(GpuWindowActionRoot)' == ''", (string?)rootProperty.Attribute("Condition"));
+        Assert.Equal(@"$(MSBuildProjectDirectory)\Native\GpuWindowAction", rootProperty.Value);
+        var defaultRoot = Path.GetFullPath(rootProperty.Value.Replace("$(MSBuildProjectDirectory)", projectDirectory));
+        var externalRoot = Path.Combine(Path.GetTempPath(), "recorded-window-native", "GpuWindowAction");
+        foreach (var root in new[] { defaultRoot, externalRoot })
+        {
+            var inputs = project.Descendants("GpuWindowActionSource").Select(item =>
+                Path.GetFullPath(((string)item.Attribute("Include")!).Replace("$(GpuWindowActionRoot)", root)
+                    .Replace("$(MSBuildProjectDirectory)", projectDirectory))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(Path.Combine(root, "build.cmd"), inputs);
+            Assert.True(QuotedNativeInputs(defaultRoot, root).IsSubsetOf(inputs),
+                "Every local native include must invalidate the helper for both default and external roots.");
+            var common = Path.GetFullPath(Path.Combine(root, "..", "GpuPlacementCommon", "WorkerPipeClient.h"));
+            Assert.Contains(common, inputs);
+            if (root == defaultRoot)
+                Assert.Equal(Path.Combine(projectDirectory, "Native", "GpuPlacementCommon", "WorkerPipeClient.h"), common);
+            else
+                Assert.DoesNotContain(Path.Combine(projectDirectory, "Native", "GpuPlacementCommon", "WorkerPipeClient.h"), inputs);
+        }
         var file = Assert.Single(project.Descendants("None"), item => (string?)item.Attribute("TargetPath") == "GpuPlacementShim\\ResourceManager.GpuWindowAction.exe");
         Assert.Equal("$(GpuWindowActionRoot)\\bin\\win-x64\\ResourceManager.GpuWindowAction.exe", (string?)file.Attribute("Include"));
         Assert.Null(file.Attribute("Condition"));
@@ -66,6 +88,30 @@ public sealed class GpuWindowActionPackagingTests(ITestOutputHelper output)
             testHost = new { processId = Environment.ProcessId, creationFileTimeUtc = creation }, worker, result,
             defaultProductPath = true, environmentOverrideUsed = false, userWindowUsed = false
         }));
+    }
+
+    private static HashSet<string> QuotedNativeInputs(string actualRoot, string projectedRoot)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pending = new Queue<(string Actual, string Projected)>();
+        pending.Enqueue((Path.Combine(actualRoot, "ResourceManagerGpuWindowAction.cpp"),
+            Path.Combine(projectedRoot, "ResourceManagerGpuWindowAction.cpp")));
+        while (pending.TryDequeue(out var entry))
+        {
+            if (!result.Add(entry.Projected)) continue;
+            Assert.InRange(result.Count, 1, 64);
+            Assert.True(File.Exists(entry.Actual), "Missing actual native source: " + entry.Actual);
+            Assert.InRange(new FileInfo(entry.Actual).Length, 0L, 1024L * 1024);
+            foreach (Match include in Regex.Matches(File.ReadAllText(entry.Actual),
+                         "(?m)^\\s*#include\\s*\"([^\"]+)\""))
+            {
+                var relative = include.Groups[1].Value;
+                Assert.InRange(pending.Count, 0, 255);
+                pending.Enqueue((Path.GetFullPath(Path.Combine(Path.GetDirectoryName(entry.Actual)!, relative)),
+                    Path.GetFullPath(Path.Combine(Path.GetDirectoryName(entry.Projected)!, relative))));
+            }
+        }
+        return result;
     }
 
     private static string RepositoryRoot([System.Runtime.CompilerServices.CallerFilePath] string source = "")

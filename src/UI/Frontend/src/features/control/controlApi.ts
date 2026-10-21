@@ -29,6 +29,8 @@ import type {
 } from "./controlTypes.ts";
 
 const valueKinds = ["toggle", "number", "curve"] as const;
+// A page action can serialize several slow EC transactions for multiple fans.
+export const controlHardwareRequestTimeoutMs = 120_000;
 
 function optionalString(value: unknown, path: string): string | null {
   return value === null || value === undefined ? null : requireString(value, path);
@@ -48,8 +50,8 @@ function readRange(value: unknown, path: string): ControlNumberRange | null {
       ? null
       : requireFiniteNumber(record.defaultValue, `${path}.defaultValue`)
   };
-  if (range.maximum <= range.minimum) {
-    throw new ResponseDecodeError(path, "a range whose maximum exceeds its minimum");
+  if (range.maximum < range.minimum || range.step <= 0) {
+    throw new ResponseDecodeError(path, "an ordered range with a positive step");
   }
   return range;
 }
@@ -157,6 +159,7 @@ export function getControlObjectCurve(
 ): Promise<readonly ControlCurvePoint[] | null> {
   return requestClient.request({
     key: `control.curve.${objectId}`,
+    timeoutMs: controlHardwareRequestTimeoutMs,
     url: `/api/control/objects/${encodeURIComponent(objectId)}/curve`,
     fallbackError: uiText.control.loadFailed,
     decoder: controlCurveDecoder,
@@ -198,6 +201,7 @@ export function redetectControlPlatform(
 ): Promise<ControlObjectCatalog> {
   return requestClient.request({
     key: "control.redetect",
+    timeoutMs: controlHardwareRequestTimeoutMs,
     url: "/api/control/redetect",
     fallbackError: uiText.control.loadFailed,
     decoder: controlObjectsDecoder,
@@ -478,6 +482,7 @@ export function applyControlDesiredState(
 ): Promise<ControlStateView> {
   return requestClient.request({
     key: "control.state.apply",
+    timeoutMs: controlHardwareRequestTimeoutMs,
     url: "/api/control/state",
     fallbackError: uiText.control.saveFailed,
     decoder: controlStateDecoder,
@@ -590,6 +595,7 @@ export function setControlObjectSettings(
 ): Promise<ControlStateView> {
   return requestClient.request({
     key: "control.state.set",
+    timeoutMs: controlHardwareRequestTimeoutMs,
     url: `/api/control/state/${encodeURIComponent(objectId)}`,
     fallbackError: uiText.control.saveFailed,
     decoder: controlStateDecoder,

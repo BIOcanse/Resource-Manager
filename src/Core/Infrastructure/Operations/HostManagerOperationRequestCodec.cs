@@ -1,9 +1,9 @@
 using ResourceManager.App.Domain.DiskUsage;
+using ResourceManager.App.Application.DiskUsage;
 using System.Buffers.Binary;
 using System.Text;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Dependencies;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -17,9 +17,6 @@ internal static class HostManagerOperationKinds
     public const string DependencyDownload = "dependency.download";
     public const string DependencyLaunchInstaller = "dependency.launch-installer";
     public const string SoftwareUninstall = "software.uninstall";
-    public const string MigrationExecute = "migration.execute";
-    public const string MigrationRestore = "migration.restore";
-    public const string DiscoveryStart = "discovery.start";
     public const string DiskUsageScan = "disk-usage.scan";
 
     internal static IReadOnlySet<string> All { get; } = new HashSet<string>(
@@ -29,9 +26,6 @@ internal static class HostManagerOperationKinds
             DependencyDownload,
             DependencyLaunchInstaller,
             SoftwareUninstall,
-            MigrationExecute,
-            MigrationRestore,
-            DiscoveryStart,
             DiskUsageScan
         ],
         StringComparer.Ordinal);
@@ -46,12 +40,12 @@ internal static class HostManagerOperationRequestSchemas
     // 载荷格式按 schema id 区分，其余动作仍用布尔载荷，不受影响。
     public const uint ComponentDownload = 0x0111;
     public const uint ComponentInstall = 0x0112;
+    public const uint UserComponentInstall = 0x0113;
     public const uint DependencyDownload = 0x0211;
     public const uint DependencyInstaller = 0x0212;
+    public const uint UserDependencyInstaller = 0x0213;
     public const uint SoftwareUninstall = 0x0301;
-    public const uint MigrationExecute = 0x0401;
-    public const uint MigrationRestore = 0x0402;
-    public const uint DiscoveryStart = 0x0501;
+    public const uint UserSoftwareUninstall = 0x0302;
     public const uint DiskUsageScan = 0x0601;
     public const uint ProgressStage = 0x1001;
     public const uint ProgressMessage = 0x1002;
@@ -93,6 +87,20 @@ internal static class HostManagerOperationRequestCodec
             request.AcknowledgeExternalTerms,
             request.VersionChoice);
 
+    internal static HostManagerOperationSubmitCommand ComponentInstall(
+        string id,
+        ComponentActionRequest request,
+        SoftwareOperationCaller caller)
+        => CreateUserAcquisitionRequest(
+            HostManagerOperationKinds.ComponentInstall,
+            $"安装组件 {ValidateText(id, nameof(id))}",
+            $"component:{id}",
+            HostManagerOperationRequestSchemas.UserComponentInstall,
+            id,
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice,
+            caller);
+
     internal static HostManagerOperationSubmitCommand DependencyDownload(
         string id,
         OptionalDependencyDownloadRequest request)
@@ -117,72 +125,61 @@ internal static class HostManagerOperationRequestCodec
             request.AcknowledgeExternalTerms,
             request.VersionChoice);
 
+    internal static HostManagerOperationSubmitCommand DependencyInstaller(
+        string id,
+        OptionalDependencyInstallRequest request,
+        SoftwareOperationCaller caller)
+        => CreateUserAcquisitionRequest(
+            HostManagerOperationKinds.DependencyLaunchInstaller,
+            $"启动依赖安装器 {ValidateText(id, nameof(id))}",
+            $"dependency:{id}",
+            HostManagerOperationRequestSchemas.UserDependencyInstaller,
+            id,
+            request.AcknowledgeExternalTerms,
+            request.VersionChoice,
+            caller);
+
     internal static HostManagerOperationSubmitCommand SoftwareUninstall(
-        SoftwareOperationRequest request)
-        => CreateBooleanRequest(
+        SoftwareOperationRequest request, SoftwareOperationCaller caller)
+        => new(
             HostManagerOperationKinds.SoftwareUninstall,
             $"卸载软件 {ValidateText(request.Id, nameof(request.Id))}",
             $"software:{request.Id}",
-            HostManagerOperationRequestSchemas.SoftwareUninstall,
-            request.Id,
-            request.ConfirmOperation);
-
-    internal static HostManagerOperationSubmitCommand MigrationExecute(
-        SoftwareDataMigrationRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var payload = Encode(writer =>
-        {
-            WriteString(writer, request.SoftwareName);
-            WriteStringList(writer, request.SourcePaths);
-            WriteString(writer, request.TargetCategory);
-            WriteString(writer, request.MigrationKind);
-            writer.Write(request.ConfirmExecution);
-            writer.Write(request.AllowMediumRisk);
-        });
-        return new HostManagerOperationSubmitCommand(
-            HostManagerOperationKinds.MigrationExecute,
-            $"迁移 {ValidateText(request.SoftwareName, nameof(request.SoftwareName))}",
-            $"migration:{request.SoftwareName}",
-            HostManagerOperationRequestSchemas.MigrationExecute,
+            HostManagerOperationRequestSchemas.UserSoftwareUninstall,
             HostManagerOperationRequestSchemas.Version,
-            payload);
-    }
+            Encode(writer =>
+            {
+                WriteString(writer, request.Id);
+                writer.Write(request.ConfirmOperation);
+                WriteString(writer, caller.WindowsSid);
+                writer.Write(caller.WindowsSessionId);
+            }));
 
-    internal static HostManagerOperationSubmitCommand MigrationRestore(
-        SoftwareDataRestoreRequest request)
+    internal static (SoftwareOperationRequest Request, SoftwareOperationCaller Caller) DecodeUserSoftwareUninstall(ReadOnlySpan<byte> payload)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        return CreateBooleanRequest(
-            HostManagerOperationKinds.MigrationRestore,
-            $"还原迁移 {ValidateText(request.Id, nameof(request.Id))}",
-            $"migration-restore:{request.Id}",
-            HostManagerOperationRequestSchemas.MigrationRestore,
-            request.Id,
-            request.ConfirmExecution);
-    }
-
-    internal static HostManagerOperationSubmitCommand DiscoveryStart(
-        SoftwareDataDiscoveryStartRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var payload = Encode(writer =>
-        {
-            WriteString(writer, request.SoftwareName);
-            WriteStringList(writer, request.ProcessNames);
-            WriteStringList(writer, request.ProgramRootPaths);
-        });
-        return new HostManagerOperationSubmitCommand(
-            HostManagerOperationKinds.DiscoveryStart,
-            $"发现数据 {ValidateText(request.SoftwareName, nameof(request.SoftwareName))}",
-            $"discovery:{request.SoftwareName}",
-            HostManagerOperationRequestSchemas.DiscoveryStart,
-            HostManagerOperationRequestSchemas.Version,
-            payload);
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var request = new SoftwareOperationRequest(ReadString(reader), reader.ReadBoolean());
+        var caller = new SoftwareOperationCaller(ReadString(reader), reader.ReadUInt32());
+        RequireEnd(stream);
+        return (request, caller);
     }
 
     internal static HostManagerOperationSubmitCommand DiskUsageScan(
         DiskUsageScanRequest request)
+        => CreateDiskUsageScan(request, null);
+
+    internal static HostManagerOperationSubmitCommand DiskUsageScan(
+        DiskUsageScanRequest request,
+        DiskUsageResultOwner owner)
+    {
+        owner.Validate();
+        return CreateDiskUsageScan(request, owner);
+    }
+
+    private static HostManagerOperationSubmitCommand CreateDiskUsageScan(
+        DiskUsageScanRequest request,
+        DiskUsageResultOwner? owner)
     {
         ArgumentNullException.ThrowIfNull(request);
         var payload = Encode(writer =>
@@ -191,6 +188,11 @@ internal static class HostManagerOperationRequestCodec
             WriteString(writer, request.Mode);
             // 全局扫描没有目标路径，写个占位，读回来再还原成空串。
             WriteString(writer, string.IsNullOrEmpty(request.Target) ? "*" : request.Target);
+            if (owner is { } caller)
+            {
+                WriteString(writer, caller.WindowsSid);
+                writer.Write(checked((uint)caller.WindowsSessionId));
+            }
         });
         // 同一时刻只允许一个磁盘扫描：域键固定，协调器自己会挡掉重复提交。
         return new HostManagerOperationSubmitCommand(
@@ -202,15 +204,23 @@ internal static class HostManagerOperationRequestCodec
             payload);
     }
 
-    internal static DiskUsageScanRequest DecodeDiskUsageScan(ReadOnlySpan<byte> payload)
+    internal static (DiskUsageScanRequest Request, DiskUsageResultOwner? Owner) DecodeDiskUsageScan(
+        ReadOnlySpan<byte> payload)
     {
         using var stream = new MemoryStream(payload.ToArray(), writable: false);
         using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
         var scope = ReadString(reader);
         var mode = ReadString(reader);
         var target = ReadString(reader);
+        DiskUsageResultOwner? owner = null;
+        if (stream.Position < stream.Length)
+        {
+            var caller = new DiskUsageResultOwner(ReadString(reader), checked((int)reader.ReadUInt32()));
+            caller.Validate();
+            owner = caller;
+        }
         RequireEnd(stream);
-        return new DiskUsageScanRequest(scope, mode, target == "*" ? string.Empty : target);
+        return (new DiskUsageScanRequest(scope, mode, target == "*" ? string.Empty : target), owner);
     }
 
     internal static (string Id, bool Confirm, string? VersionChoice) DecodeAcquisitionRequest(
@@ -223,6 +233,21 @@ internal static class HostManagerOperationRequestCodec
         var versionChoice = reader.ReadBoolean() ? ReadString(reader) : null;
         RequireEnd(stream);
         return (id, confirm, versionChoice);
+    }
+
+    internal static (string Id, bool Confirm, string? VersionChoice, SoftwareOperationCaller Caller)
+        DecodeUserAcquisitionRequest(ReadOnlySpan<byte> payload)
+    {
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var id = ReadString(reader);
+        var confirm = reader.ReadBoolean();
+        var versionChoice = reader.ReadBoolean() ? ReadString(reader) : null;
+        var caller = new SoftwareOperationCaller(ReadString(reader), reader.ReadUInt32());
+        RequireEnd(stream);
+        if (caller.WindowsSessionId == 0)
+            throw new InvalidDataException("The interactive installer request has no Windows session.");
+        return (id, confirm, versionChoice, caller);
     }
 
     internal static (string Id, bool Confirm) DecodeBooleanRequest(
@@ -279,35 +304,6 @@ internal static class HostManagerOperationRequestCodec
         return value;
     }
 
-    internal static SoftwareDataMigrationRequest DecodeMigrationExecute(
-        ReadOnlySpan<byte> payload)
-    {
-        using var stream = new MemoryStream(payload.ToArray(), writable: false);
-        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
-        var result = new SoftwareDataMigrationRequest(
-            ReadString(reader),
-            ReadStringList(reader),
-            ReadString(reader),
-            ReadString(reader),
-            reader.ReadBoolean(),
-            reader.ReadBoolean());
-        RequireEnd(stream);
-        return result;
-    }
-
-    internal static SoftwareDataDiscoveryStartRequest DecodeDiscoveryStart(
-        ReadOnlySpan<byte> payload)
-    {
-        using var stream = new MemoryStream(payload.ToArray(), writable: false);
-        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
-        var result = new SoftwareDataDiscoveryStartRequest(
-            ReadString(reader),
-            ReadStringList(reader),
-            ReadStringList(reader));
-        RequireEnd(stream);
-        return result;
-    }
-
     /// <summary>组件与依赖的获取动作：除了条款确认，还带用户选择的版本（null 表示已验证版本）。</summary>
     private static HostManagerOperationSubmitCommand CreateAcquisitionRequest(
         string kind,
@@ -335,6 +331,37 @@ internal static class HostManagerOperationRequestCodec
                     WriteString(writer, versionChoice);
                 }
             }));
+
+    private static HostManagerOperationSubmitCommand CreateUserAcquisitionRequest(
+        string kind,
+        string title,
+        string domainKey,
+        uint schemaId,
+        string id,
+        bool value,
+        string? versionChoice,
+        SoftwareOperationCaller caller)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (caller.WindowsSessionId == 0)
+            throw new ArgumentOutOfRangeException(nameof(caller), "An interactive request must be bound to a user session.");
+        _ = new System.Security.Principal.SecurityIdentifier(caller.WindowsSid);
+        return new HostManagerOperationSubmitCommand(
+            kind,
+            title,
+            domainKey,
+            schemaId,
+            HostManagerOperationRequestSchemas.Version,
+            Encode(writer =>
+            {
+                WriteString(writer, id);
+                writer.Write(value);
+                writer.Write(versionChoice is not null);
+                if (versionChoice is not null) WriteString(writer, versionChoice);
+                WriteString(writer, caller.WindowsSid);
+                writer.Write(caller.WindowsSessionId);
+            }));
+    }
 
     private static HostManagerOperationSubmitCommand CreateBooleanRequest(
         string kind,
@@ -392,39 +419,6 @@ internal static class HostManagerOperationRequestCodec
             throw new EndOfStreamException();
         }
         return ValidateText(StrictUtf8.GetString(bytes), "payload");
-    }
-
-    private static void WriteStringList(
-        BinaryWriter writer,
-        IReadOnlyList<string> values)
-    {
-        ArgumentNullException.ThrowIfNull(values);
-        if (values.Count > MaximumListCount)
-        {
-            throw new ArgumentException(
-                "An operation request list exceeds its explicit count bound.");
-        }
-        writer.Write(checked((uint)values.Count));
-        foreach (var value in values)
-        {
-            WriteString(writer, value);
-        }
-    }
-
-    private static string[] ReadStringList(BinaryReader reader)
-    {
-        var count = reader.ReadUInt32();
-        if (count > MaximumListCount)
-        {
-            throw new InvalidDataException(
-                "An operation request list count is invalid.");
-        }
-        var values = new string[checked((int)count)];
-        for (var index = 0; index < values.Length; index++)
-        {
-            values[index] = ReadString(reader);
-        }
-        return values;
     }
 
     private static string ValidateText(string value, string parameterName)

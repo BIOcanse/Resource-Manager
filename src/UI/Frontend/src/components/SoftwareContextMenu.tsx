@@ -4,6 +4,7 @@ import { normalizeSystemProcessIdentities } from "../processes/systemProcessIden
 import { uiText } from "../text.ts";
 
 export interface SoftwareContextMenuTarget {
+  kind: "process" | "software";
   name: string;
   softwareId?: string | null;
   softwareName?: string | null;

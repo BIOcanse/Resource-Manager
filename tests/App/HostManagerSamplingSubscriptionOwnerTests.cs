@@ -4,7 +4,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerSamplingSubscriptionOwnerTests
+public sealed partial class HostManagerSamplingSubscriptionOwnerTests
 {
     [Fact]
     public async Task FailedInitialStartCanBeRetriedAfterAValidPlanIsPublished()

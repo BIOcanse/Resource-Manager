@@ -76,6 +76,9 @@ public sealed partial class MainForm
             case "shell.pickFolder":
                 HandleFolderPickerRequest(message);
                 break;
+            case "shell.processAction":
+                _ = HandleProcessActionRequestAsync(message.Clone());
+                break;
             case "shell.language":
                 Localization.NativeUiText.Apply(
                     message.TryGetProperty("language", out var languageProperty)

@@ -2033,8 +2033,7 @@ public sealed unsafe class NativeLocalResourceManagerSession : IDisposable
 
     private static NativeLocalResourceSpec CompileResourceDefinition(LocalResourceDefinition definition)
     {
-        if (definition.ResourceUid.IsEmpty ||
-            definition.Recoverability is < LocalResourceRecoverability.NotRecoverable or > LocalResourceRecoverability.Recoverable ||
+        if (definition.Recoverability is < LocalResourceRecoverability.NotRecoverable or > LocalResourceRecoverability.Recoverable ||
             definition.AccessLossImpact is < LocalResourceAccessLossImpact.Fatal or > LocalResourceAccessLossImpact.UnobservableNow)
         {
             throw new ArgumentOutOfRangeException(nameof(definition));
@@ -2659,7 +2658,6 @@ public sealed unsafe class NativeLocalResourceManagerSession : IDisposable
             intent.Resource.ResourceSlotGeneration == 0 ||
             (intent.Resource.TableId.Low | intent.Resource.TableId.High) == 0 ||
             intent.Resource.TableIncarnation == 0 ||
-            (intent.Resource.ResourceUid.Low | intent.Resource.ResourceUid.High) == 0 ||
             intent.Resource.TableSlotIndex >= Configuration.TableCapacity ||
             intent.Resource.ResourceSlotIndex >= Configuration.ResourceCapacity ||
             intent.SnapshotGeneration != snapshotGeneration ||

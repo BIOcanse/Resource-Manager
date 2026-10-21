@@ -1,8 +1,1 @@
-using ResourceManager.App.Domain.DeviceTopology;
-
-namespace ResourceManager.App.Application.DeviceTopology;
-
-public interface IDeviceTopologyReader
-{
-    DeviceTopologySnapshot ReadSnapshot();
-}
+// Passive contract is owned by ReadWriteCore; its original namespace is preserved.

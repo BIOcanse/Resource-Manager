@@ -97,7 +97,7 @@ public sealed class ControlWriteLayer(
                     {
                         restored = await backend.Writer.RestoreAsync(target,
                             capability with { Range = backend.Availability.Range ?? capability.Range },
-                            retained, cancellationToken).ConfigureAwait(false);
+                            retained, cancellationToken, setting).ConfigureAwait(false);
                     }
                 }
                 catch (Exception error) when (error is not OperationCanceledException)

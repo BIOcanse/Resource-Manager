@@ -27,9 +27,13 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
             new Dictionary<ProcessInstanceKey, ProcessRuntimeStateFact>());
 
     internal static WindowsProcessRuntimeStateSnapshot Capture(
-        IReadOnlyCollection<ProcessInstanceKey> expectedProcesses)
+        IReadOnlyCollection<ProcessInstanceKey> expectedProcesses,
+        InteractiveDesktopObservationStore? desktops = null)
     {
         ArgumentNullException.ThrowIfNull(expectedProcesses);
+        if (desktops is not null) return desktops.Read(expectedProcesses);
+        using (var current = Process.GetCurrentProcess())
+            if (current.SessionId == 0) return Unavailable;
         try
         {
             var expectedByPid = new Dictionary<int, ProcessInstanceKey>();

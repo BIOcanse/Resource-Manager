@@ -1,5 +1,4 @@
-using ResourceManager.App.Domain.FrameTiming;
-
+using ResourceManager.ReadWrite.Windows.Frames;
 namespace ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 
 public sealed record TargetedRecordingHeader(

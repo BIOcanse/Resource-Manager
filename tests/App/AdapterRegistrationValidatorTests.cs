@@ -99,6 +99,35 @@ public sealed class AdapterRegistrationValidatorTests
         Assert.Equal("GPU scheduling capabilities must include normal.", validation);
     }
 
+    [Theory]
+    [InlineData("relative")]
+    [InlineData(@"D:\")]
+    [InlineData(@"D:Apps")]
+    public void ValidateRejectsUnboundedOrNonabsoluteProgramRoots(string path)
+        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [path] }));
+
+    [Theory]
+    [InlineData(@"D:\Apps\Other\worker.exe")]
+    [InlineData(@"D:\Apps\WordMemory2\worker.exe")]
+    [InlineData(@"D:\Apps\WordMemory\..\Other\worker.exe")]
+    [InlineData("worker.exe")]
+    public void ExecutableDeclarationCannotExpandTheRegisteredRoot(string path)
+        => Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { Processes = [new("worker", null, path)] }));
+
+    [Fact]
+    public void ExecutableInsideRootAndNameHintsRemainValid()
+        => Assert.Null(AdapterRegistrationValidator.Validate(CreateRequest(null) with
+            { Processes = [new("worker", null, @"D:\Apps\WordMemory\bin\worker.exe"), new("other", null, null)] }));
+
+    [Fact]
+    public void WindowsSubdirectoriesCannotBeClaimedAsAnAdapterProgramRoot()
+    {
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        Assert.False(string.IsNullOrWhiteSpace(windows));
+        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [Path.Combine(windows, "System32")] }));
+        Assert.NotNull(AdapterRegistrationValidator.Validate(CreateRequest(null) with { ProgramRootPaths = [windows] }));
+    }
+
     private static AdapterSoftwareRegistrationRequest CreateRequest(
         AdapterSoftwareSchedulingCapabilities? schedulingCapabilities)
     {

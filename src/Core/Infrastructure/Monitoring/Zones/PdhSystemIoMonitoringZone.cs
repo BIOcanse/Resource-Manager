@@ -7,12 +7,12 @@ public sealed class PdhSystemIoMonitoringZone : MonitoringSourceZone
     private readonly PdhSystemIoReader reader;
 
     public PdhSystemIoMonitoringZone()
-        : this(ResourceManager.App.Infrastructure.NativeCore.UnavailableNativePdhSnapshotSource.Instance)
+        : this(UnavailableNativePdhSnapshotSource.Instance)
     {
     }
 
     internal PdhSystemIoMonitoringZone(
-        ResourceManager.App.Infrastructure.NativeCore.INativePdhSnapshotSource snapshotSource)
+        ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource snapshotSource)
         : base(MonitoringSourceZoneIds.PdhSystemIo)
     {
         reader = new PdhSystemIoReader(snapshotSource);
@@ -27,8 +27,7 @@ public sealed class PdhSystemIoMonitoringZone : MonitoringSourceZone
                 PdhNetworkMetrics.NotRequested)
             {
                 ProviderAvailability =
-                    ResourceManager.App.Infrastructure.NativeCore
-                        .NativePdhProviderAvailability.NotRequested,
+                    NativePdhProviderAvailability.NotRequested,
                 ObservedAt = null
             };
     }

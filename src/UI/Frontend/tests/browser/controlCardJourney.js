@@ -19,9 +19,12 @@ export default async function controlCardJourney(page, baseUrl) {
       capabilities: [{ id: "fan.curve", label: "Curve", valueKind: "curve", supported: true, requiredAccessLevel: "normal" }]
     }))
   } }));
-  await page.route("**/api/control/objects/*/curve", route => route.fulfill({ json:
-    [40,45,50,55,60,65,70,75,80,85].map((temperatureCelsius, i) => ({ temperatureCelsius, percent: 10 + i * 10 }))
-  }));
+  await page.route("**/api/control/objects/*/curve", route => {
+    const curve = [40,45,50,55,60,65,70,75,80,85].map((temperatureCelsius, i) => ({ temperatureCelsius, percent: 10 + i * 10 }));
+    if (route.request().url().includes("/A/")) curve.push({ temperatureCelsius: 95, percent: 100 });
+    else curve.push({ temperatureCelsius: 120, percent: 100 });
+    return route.fulfill({ json: curve });
+  });
   await page.route("**/api/control/state**", async route => {
     if (route.request().method() !== "PUT") return route.fulfill({ json: state() });
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop());
@@ -43,10 +46,16 @@ export default async function controlCardJourney(page, baseUrl) {
   assert.equal(await a.locator(".fan-curve-grid").count(), 22);
   assert.equal(await a.locator(".control-curve-execution .settings-segment").count(), 2);
   assert.equal(await a.locator(".control-curve-execution [aria-checked=true]").count(), 1);
+  const highPoint = b.getByRole("slider", { name: "120 °C", exact: true });
+  const highX = await highPoint.locator(".fan-curve-point").getAttribute("cx");
+  assert.ok(Number(highX) >= 10 && Number(highX) <= 95, "Loaded 120°C point must be inside the chart plot");
+  await highPoint.press("ArrowDown");
+  assert.equal(await highPoint.getAttribute("aria-valuenow"), "99");
   await a.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".control-object-actions button:disabled").length < 4);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].id, "A");
+  assert.deepEqual(writes[0].settings[0].curve.at(-1), { temperatureCelsius: 95, percent: 100 }, "Loaded high-temperature tail survives Apply");
   assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), true);
   await b.getByRole("button", { name: "撤销改动", exact: true }).click();
   assert.equal(await b.getByRole("radio", { name: "固件自动管理", exact: true }).getAttribute("aria-checked"), "true");
@@ -90,5 +99,15 @@ export default async function controlCardJourney(page, baseUrl) {
     await mkdir(screenshotDirectory, { recursive: true });
     await a.screenshot({ path: join(screenshotDirectory, `card-${width}.png`) });
   }
-  return { cardScopedWrites: writes.length, retainedConcurrentEdit: true, gridLines: 22, viewports: [1440, 390] };
+  await b.getByRole("radio", { name: "软件管理", exact: true }).click();
+  await b.getByRole("checkbox", { name: "转速曲线", exact: true }).check();
+  await highPoint.waitFor();
+  await highPoint.press("ArrowDown");
+  await b.getByRole("button", { name: "应用", exact: true }).click();
+  await page.waitForFunction(() => !document.querySelector(".control-workspace")?.hasAttribute("aria-busy"));
+  assert.deepEqual(writes.at(-1), { id: "B", settings: [{ capabilityId: "fan.curve", curveExecution: "firmware",
+    curve: [...[40,45,50,55,60,65,70,75,80,85].map((temperatureCelsius, i) => ({ temperatureCelsius, percent: 10 + i * 10 })),
+      { temperatureCelsius: 120, percent: 99 }] }] }, "Editing the visible high-temperature point reaches the existing Apply endpoint");
+  return { cardScopedWrites: writes.length, retainedConcurrentEdit: true, gridLines: 22,
+    highTemperaturePoint: 120, viewports: [1440, 390] };
 }

@@ -16,8 +16,9 @@ internal static class InstallationRegistry
 
     public static void RequireVacant(PackageLayout target)
     {
-        if (Directory.Exists(target.Root) || File.Exists(target.Root))
+        if (File.Exists(target.Root))
             throw new InvalidOperationException($"安装目录已存在，不会覆盖或升级：{target.Root}");
+        _ = UserDataArchive.RetainedArchiveAt(target.Root);
         var managerRoot = UpdateManagerPaths.InstalledDirectory(target.Root);
         if (Directory.Exists(managerRoot) || File.Exists(managerRoot))
             throw new InvalidOperationException($"更新管理器目录已存在，不会覆盖：{managerRoot}");
@@ -46,7 +47,8 @@ internal static class InstallationRegistry
             SetOwned(key, target.Root);
             key.SetValue("BackendPath", target.Backend);
             key.SetValue("NativeUiPath", target.NativeUi);
-            key.SetValue("LauncherPath", target.Start);
+            key.SetValue("LauncherPath", target.InternalLauncher);
+            key.SetValue("StartPath", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
             key.SetValue("UpdateManagerPath", UpdateManagerPaths.InstalledExecutable(target.Root));
             key.SetValue("ServiceName", WindowsServiceRegistration.ProductServiceName);
             key.SetValue("AppUserModelId", "ResourceManager.Desktop");
@@ -54,8 +56,8 @@ internal static class InstallationRegistry
         using (var key = machine.CreateSubKey(AppPath))
         {
             SetOwned(key, target.Root);
-            key.SetValue("", target.Start);
-            key.SetValue("Path", target.Root);
+            key.SetValue("", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
+            key.SetValue("Path", UpdateManagerPaths.InstalledDirectory(target.Root));
         }
         using (var key = machine.CreateSubKey(ManagerAppPath))
         {
@@ -70,10 +72,11 @@ internal static class InstallationRegistry
             key.SetValue("DisplayVersion", target.Version);
             key.SetValue("Publisher", "BIOcanse");
             key.SetValue("InstallLocation", target.Root);
-            key.SetValue("DisplayIcon", target.Start);
+            key.SetValue("DisplayIcon", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
             key.SetValue("NoModify", 1, RegistryValueKind.DWord);
             key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-            key.SetValue("NoRemove", 1, RegistryValueKind.DWord);
+            key.SetValue("UninstallString", "\"" + Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), UninstallationPlan.ExecutableName) + "\"");
+            key.DeleteValue("NoRemove", false);
         }
     }
 

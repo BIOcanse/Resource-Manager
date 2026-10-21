@@ -55,7 +55,8 @@ public sealed partial class HostManagerSmartCoordinator
         if (cpuPlacementEnabled || gpuPlacementEnabled)
         {
             var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology;
-            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements);
+            var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
+            var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements, protectionLevels);
             var cpuReservations = cpuPlacementEnabled && topology is not null
                 ? PlanCpuReservations(topology, sample, processes) : null;
             cpuReservationsAvailable = !cpuPlacementEnabled || cpuReservations is not null;
@@ -234,12 +235,16 @@ public sealed partial class HostManagerSmartCoordinator
         CreateAutomaticPlacementProcesses(
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
-        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements)
+        IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
+        IReadOnlyDictionary<string, int> protectionLevels)
     {
         var scoreProjection = CreateNativeComputeScoreProjection(computeScoring);
         var processes = new List<HostManagerAutomaticPlacementProcess>(sample.Targets.Count);
         foreach (var target in sample.Targets)
         {
+            if (protectionLevels.GetValueOrDefault(target.TargetId,
+                    protectionLevels.GetValueOrDefault(target.SoftwareId)) >= OptimizationProtectionLevels.Level2NoOptimization)
+                continue;
             if (target.ProcessIds.Count != 1)
             {
                 throw new InvalidDataException(
@@ -407,8 +412,7 @@ public sealed partial class HostManagerSmartCoordinator
                         && WantsGpuShim(process)
                         && (process.CanonicalGpuScores.Count == 0
                             || !sample.Hardware.GpuInventory.IsCurrentComplete()
-                            || process.Policy.TargetGpu == GpuPlacementTargets.AutoIdleGpu
-                                && !plan.Gpu.Any(p => p.Process.ProcessId == process.ProcessId));
+                            || !plan.Gpu.Any(p => p.Process.ProcessId == process.ProcessId));
                 if (retainForMissingScore)
                 {
                     desired.Add(new HostManagerPlacementDesired(existing, record, 0));

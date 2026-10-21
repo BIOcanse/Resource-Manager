@@ -3,7 +3,6 @@ using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Dependencies;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.CpuTopology;
@@ -94,21 +93,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
                 new DiskUsageScanEffectExecutor(
                     provider.GetRequiredService<IDiskUsageScanner>(),
-                    provider.GetRequiredService<IDiskUsageTreeStore>()));
+                    provider.GetRequiredService<IOwnedDiskUsageTreeStore>()));
             services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
                 new SoftwareOperationEffectExecutor(
                     provider.GetRequiredService<ISoftwareOperationManager>()));
-            services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
-                new MigrationOperationEffectExecutor(
-                    provider.GetRequiredService<ISoftwareDataMigrationManager>(),
-                    restore: false));
-            services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
-                new MigrationOperationEffectExecutor(
-                    provider.GetRequiredService<ISoftwareDataMigrationManager>(),
-                    restore: true));
-            services.AddSingleton<IHostManagerOperationEffectExecutor>(static provider =>
-                new DiscoveryOperationEffectExecutor(
-                    provider.GetRequiredService<ISoftwareDataDiscoveryManager>()));
             services.AddSingleton<HostManagerOperationEffectRouter>(static provider =>
                 new HostManagerOperationEffectRouter(
                     provider.GetServices<IHostManagerOperationEffectExecutor>()));

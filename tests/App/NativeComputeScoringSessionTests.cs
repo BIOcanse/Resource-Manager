@@ -22,7 +22,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.ConfigurationGeneration = configuration.Generation;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
         Assert.Equal(3U, snapshot.OutputCount);
         Assert.Equal(expectedScore, outputs[0].Score, precision: 10);
@@ -54,7 +54,7 @@ public sealed partial class NativeComputeScoringSessionTests
             NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, processes,
+        var status = session.ScoreWithScratchFixture(in envelope, processes,
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
@@ -83,7 +83,7 @@ public sealed partial class NativeComputeScoringSessionTests
             NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(
+        var status = session.ScoreWithScratchFixture(
             in envelope,
             processes,
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty,
@@ -134,7 +134,7 @@ public sealed partial class NativeComputeScoringSessionTests
                 NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete);
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, processes, gpus, outputs, ref snapshot);
+        var status = session.ScoreWithScratchFixture(in envelope, processes, gpus, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
         Assert.Equal(4U, snapshot.ProcessGpuOutputCount);
@@ -182,7 +182,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 0.5;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, processes, gpus, outputs, ref snapshot);
+        var status = session.ScoreWithScratchFixture(in envelope, processes, gpus, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
         Assert.Equal(0.0625, snapshot.WelfareMultiplier, precision: 10);
@@ -254,7 +254,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.WelfareEligibleProcessCount = 1;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, [running, stopped],
+        var status = session.ScoreWithScratchFixture(in envelope, [running, stopped],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
@@ -283,7 +283,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.WelfareEligibleProcessCount = 2;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, [process],
+        var status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
@@ -303,7 +303,7 @@ public sealed partial class NativeComputeScoringSessionTests
             NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, [process],
+        var status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
@@ -311,7 +311,7 @@ public sealed partial class NativeComputeScoringSessionTests
         process = CreateProcess(1, 10, 100, 1, 50);
         process.RuntimeState = NativeComputeScoringRuntimeState.NotRunning;
         envelope.SchedulingGeneration++;
-        status = session.Score(in envelope, [process],
+        status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
@@ -342,7 +342,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 1;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, [process],
+        var status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.Ok, status);
@@ -370,7 +370,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 1;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, [process],
+        var status = session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
@@ -397,7 +397,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.GpuTopologyGeneration = 0;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        var status = session.Score(in envelope, processes, gpus, outputs, ref snapshot);
+        var status = session.ScoreWithScratchFixture(in envelope, processes, gpus, outputs, ref snapshot);
 
         Assert.Equal(NativeComputeScoringStatus.InvalidFacts, status);
     }

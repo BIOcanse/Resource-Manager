@@ -49,6 +49,19 @@ public sealed class CpuBaselineRatioCatalogTests
     }
 
     [Theory]
+    [InlineData("GenuineIntel")]
+    [InlineData("genuineintel")]
+    public void WmiIntelManufacturerStringResolvesTheEmbeddedBaseline(string manufacturer)
+    {
+        var settings = Catalog.Resolve(
+            CreateTopology("Intel(R) Core(TM) i9-14900K", manufacturer, [24]), null);
+
+        Assert.Equal("Core i9-14900K", settings.MatchedModel);
+        Assert.Equal(0.5557, settings.Ratio);
+        Assert.StartsWith("intel:", settings.DefaultSource);
+    }
+
+    [Theory]
     [InlineData("Intel Core i9-14900XYZ", 24, "Intel")]
     [InlineData("Intel Core i9-14900K", 16, "Intel")]
     [InlineData("Intel Core i9-14900K", 24, "Other")]
@@ -69,6 +82,18 @@ public sealed class CpuBaselineRatioCatalogTests
         var settings = Catalog.Resolve(topology, null);
         Assert.Equal(expected, settings.Ratio);
         Assert.StartsWith("amd:", settings.DefaultSource);
+    }
+
+    [Theory]
+    [InlineData("AuthenticAMD")]
+    [InlineData("authenticamd")]
+    public void WmiAmdManufacturerStringResolvesTheProvenCcdBaseline(string manufacturer)
+    {
+        var settings = Catalog.Resolve(
+            CreateTopology("AMD Ryzen 9 9955HX", manufacturer, [8, 8]), null);
+
+        Assert.Equal(0.5, settings.Ratio);
+        Assert.Equal("amd:symmetric-dual-ccd", settings.DefaultSource);
     }
 
     [Theory]

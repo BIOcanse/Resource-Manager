@@ -88,7 +88,8 @@ pub fn decodeReplace(
         header.clock_instance_id,
         input.clock_instance_id,
     );
-    if (same_clock) {
+    // A never-observed empty session has no clock baseline to compare.
+    if (same_clock and header.last_observed_monotonic_milliseconds != 0) {
         if (input.observed_monotonic_milliseconds <
             header.last_observed_monotonic_milliseconds)
         {

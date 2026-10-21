@@ -29,6 +29,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The native workspace is unavailable.");
+        using var operation = workspace.BeginOperation();
         var modePlan = desired.RuntimePlan.OptimizationMode;
         var scoreOnlyEnabled = effectAdmission.IsScoreOnly;
         var now = durableTimeSource.NextUtc();
@@ -167,7 +168,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 scheduleBaseAtMilliseconds = Math.Max(
                     scheduleBaseAtMilliseconds,
-                    workspace.FeedbackRows[checked((int)index)].CompletedAtMilliseconds);
+                    workspace.GetFeedback(index).CompletedAtMilliseconds);
             }
             RequireNativeStatus(workspace.ApplyFeedback(feedbackCount), "feedback");
             ValidateNativeSnapshot(
@@ -225,6 +226,8 @@ public sealed partial class HostManagerSmartCoordinator
         }
         cycleDiagnostics?.CaptureNativeTerminalSnapshot(workspace.Snapshot);
         cycleDiagnostics?.Mark("snapshot-readback");
+        operation.Complete();
+        operation.Dispose(); // The following placement stage no longer reads these buffers.
         authoritativeAppliedFactsRequired = (authoritativeAppliedFactsRequired && !sentAuthoritativeAppliedFacts)
             || workspace.Snapshot.Flags.HasFlag(
                 NativeSmartCoordinatorSnapshotFlags.RequiresAuthoritativeResync);

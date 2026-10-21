@@ -110,8 +110,8 @@ export default createSettingsLocale("de-DE", {
         "description": "Eine bestimmte Ziel-GPU für Software auswählbar machen."
       }
     },
-    "automaticMemoryCleanupTitle": "Schwelle für automatische Bereinigung",
-    "automaticMemoryCleanupDescription": "Hintergrundbereinigung starten, wenn Ressourcen knapp sind und ein sicherer Verschiebevorgang nicht fortgesetzt werden kann.",
+    "automaticMemoryCleanupTitle": "Schwellen für die Notfallbereinigung",
+    "automaticMemoryCleanupDescription": "Die Hintergrundbereinigung richtet sich nach der Ressourcenbelastung. Diese Schwellen bestimmen, wann wenig verbleibender physischer Speicher oder Zusicherungskapazität eine Notfallbereinigung auslöst.",
     "physicalMemoryAutomaticCleanupLabel": "Freier physischer Speicher %",
     "virtualMemoryAutomaticCleanupLabel": "Freie Commit-Kapazität %",
     "memoryOptimizationTargetTitle": "Ziel der Speicheroptimierung",

@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Windows.Metrics.Writes;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
@@ -39,19 +40,27 @@ public sealed class WindowsControlObjectCatalog(
 
     public ControlObjectCatalog ReadObjects()
     {
-        var snapshot = catalogState.Current;
+        var declared = ReadDeclaredObjects();
+        return declared with { Objects = declared.Objects.Select(ResolveAvailability).ToArray() };
+    }
+
+    /// <summary>Original identity/capability projection for the explicit discovered
+    /// frame. Does not probe writers, capture baselines or publish another current.</summary>
+    internal ControlObjectCatalog ReadDeclaredObjects(HardwareMetricSnapshot? snapshot = null, MetricResource? resource = null)
+    {
+        snapshot ??= catalogState.Current;
         var objects = new List<ControlObject>();
         if (snapshot is not null)
         {
             // 核显没有独立标识，跟着处理器走，所以先把处理器的身份定下来。
             var cpuIdentity = cpuIdentityReader.Resolve(snapshot.Cpu.Name);
-            var gpuIdentities = ResolveGpuIdentities(snapshot, cpuIdentity);
-            AddGpus(objects, snapshot, gpuIdentities);
-            AddCpu(objects, snapshot, cpuIdentity);
-            AddFans(objects, snapshot);
+            if (resource is null or MetricResource.Gpu)
+                AddGpus(objects, snapshot, ResolveGpuIdentities(snapshot, cpuIdentity));
+            if (resource is null or MetricResource.Cpu) AddCpu(objects, snapshot, cpuIdentity);
+            if (resource is null or MetricResource.Fan) AddFans(objects, snapshot, describeCore: resource is null);
         }
         return new ControlObjectCatalog(
-            objects.Select(WithChassisTerm).Select(ResolveAvailability).ToArray(),
+            objects.Select(WithChassisTerm).ToArray(),
             DateTimeOffset.UtcNow);
     }
 
@@ -225,10 +234,33 @@ public sealed class WindowsControlObjectCatalog(
                     : DiscreteGpuCapabilities(vendor, gpu, chassis.Read()),
                 $"GPU{gpu.Index}",
                 GpuAttachment: attachment,
-                AdapterIndex: gpu.Index));
+                AdapterIndex: gpu.Index)
+            {
+                AdapterKey = ResolveAdapterKey(snapshot.GpuInventory, gpu.Index),
+                ExpectedPhysicalPnp = ResolveBoundPhysicalPnp(snapshot, gpu.Index)
+            });
         }
     }
 
+    internal static ulong? ResolveAdapterKey(SchedulingGpuInventorySnapshot inventory, int index)
+    {
+        if (!inventory.IsCurrentComplete()) return null;
+        var adapter = inventory.Adapters.SingleOrDefault(adapter => adapter.Index == index);
+        return adapter?.AdapterKey;
+    }
+
+    private static string? ResolveBoundPhysicalPnp(HardwareMetricSnapshot snapshot, int index)
+    {
+        // Scheduling inventory intentionally has no PNP. Carry the same passive
+        // control binding's admitted PNP into the original writer's ExpectedPnp
+        // check; never infer it from a model, ordinal or serialized identity.
+        if (ResolveAdapterKey(snapshot.GpuInventory, index) is not { } key || key == 0) return null;
+        var identities = snapshot.FieldBindings.Values.Where(binding => binding.AdapterKey == key
+            && WindowsMetricControlBindings.TryFind(binding)?.Family == WindowsMetricControlFamily.AmdDesktopGpu)
+            .Select(binding => binding.ControlTarget?.GpuPnp).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return identities.Length == 1 ? identities[0] : null;
+    }
     /// <summary>
     /// 独显能动的那些点。
     ///
@@ -472,6 +504,19 @@ public sealed class WindowsControlObjectCatalog(
             UnavailableReason: reason,
             UnavailableKind: ControlUnavailableKinds.Platform);
 
+    // Pure declaration conversion only. Labels, permissions and admission remain
+    // in Core; shared SDK bounds/defaults and the original raw unit have one owner.
+    private static ControlNumberRange CanonicalRange(string fieldName)
+    {
+        var entry = WindowsMetricControlBindings.FindByName(fieldName)
+            ?? throw new InvalidOperationException("managed-control-definition-missing:" + fieldName);
+        var range = entry.DeclaredRange;
+        if (range.Minimum is not { } minimum || range.Maximum is not { } maximum
+            || range.Step is not { } step)
+            throw new InvalidOperationException("managed-control-declared-range-missing:" + fieldName);
+        return new(minimum, maximum, step, entry.RawUnit, range.DeclaredDefault);
+    }
+
     /// <summary>
     /// 核显能调什么，**两家不一样**，所以按厂商给各自的那一项。
     ///
@@ -492,7 +537,7 @@ public sealed class WindowsControlObjectCatalog(
                     ControlValueKinds.Number,
                     "hardware-bridge",
                     "硬件写入辅助进程",
-                    new ControlNumberRange(-30, 10, 1, ControlUnits.Step, 0),
+                    CanonicalRange("gpu_amd_requested_curve_optimizer_counts"),
                     ControlAccessLevels.Normal)
             ],
             ControlVendors.Intel =>
@@ -505,7 +550,7 @@ public sealed class WindowsControlObjectCatalog(
                     ControlValueKinds.Number,
                     "intel-graphics-driver",
                     "Intel 显卡驱动",
-                    new ControlNumberRange(-200, 200, 5, ControlUnits.Megahertz, 0),
+                    CanonicalRange("gpu_intel_requested_core_clock_offset_mhz"),
                     ControlAccessLevels.Normal)
             ],
             _ => []
@@ -567,21 +612,21 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(5, 200, 1, ControlUnits.Watt)),
+                CanonicalRange("cpu_amd_requested_stapm_power_limit_watts")),
             Unsupported(
                 "cpu.slow-power-limit",
                 "短时功耗上限",
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(5, 200, 1, ControlUnits.Watt)),
+                CanonicalRange("cpu_amd_requested_slow_power_limit_watts")),
             Unsupported(
                 "cpu.fast-power-limit",
                 "瞬时功耗上限",
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(5, 200, 1, ControlUnits.Watt)),
+                CanonicalRange("cpu_amd_requested_fast_power_limit_watts")),
             /*
              * 两条电流墙。功耗墙管散热扛不扛得住，这两条管供电扛不扛得住 ——
              * 同样的瓦数在不同电压下是不同的电流，所以两者各有各的上限。
@@ -593,19 +638,17 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(10, 300, 1, ControlUnits.Ampere)),
+                CanonicalRange("cpu_amd_requested_tdc_vdd_current_limit_amperes")),
             Unsupported(
                 "cpu.edc-limit",
                 "峰值电流上限",
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(10, 400, 1, ControlUnits.Ampere)),
+                CanonicalRange("cpu_amd_requested_edc_vdd_current_limit_amperes")),
             /*
-             * 温度墙。**这一项和上面几条不是一个性质。**
-             *
-             * 功耗墙和电流墙调多高都有温度墙兜底；温度墙调高了，兜底的就是它自己。
-             * 所以它要普通档，而上面那些在安全档就能调。
+             * 温度墙会改变固件温控上限。当前 AMD 温度墙写入尚未实现，
+             * 这里保留普通档的能力声明，执行层仍返回不可用。
              */
             Unsupported(
                 "cpu.temperature-limit",
@@ -613,7 +656,7 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(45, 105, 1, ControlUnits.Celsius),
+                CanonicalRange("cpu_amd_requested_temperature_limit_celsius"),
                 ControlAccessLevels.Normal),
             /*
              * PBO 标量。放宽的是固件那套可靠性预算（FIT）——
@@ -626,7 +669,7 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(1, 10, 1, ControlUnits.Multiplier, 1),
+                CanonicalRange("cpu_amd_requested_pbo_scalar_multiplier"),
                 ControlAccessLevels.Normal),
             // 单位是**档**不是伏：一档大概几毫伏，具体多少随体质变，
             // 厂商也不给换算，编一个伏特数出来只会骗人。
@@ -636,7 +679,7 @@ public sealed class WindowsControlObjectCatalog(
                 ControlValueKinds.Number,
                 componentId,
                 componentName,
-                new ControlNumberRange(-30, 10, 1, ControlUnits.Step, 0),
+                CanonicalRange("cpu_amd_requested_curve_optimizer_counts"),
                 ControlAccessLevels.Normal)
         ];
 
@@ -687,17 +730,17 @@ public sealed class WindowsControlObjectCatalog(
              * 它们在同一个寄存器里，但是两个独立的域。
              */
             Item("cpu.power-limit", "持续功耗上限（PL1）",
-                new ControlNumberRange(5, 200, 1, ControlUnits.Watt)),
+                CanonicalRange("cpu_intel_requested_pl1_power_limit_watts")),
             Item("cpu.short-power-limit", "短时功耗上限（PL2）",
-                new ControlNumberRange(5, 300, 1, ControlUnits.Watt)),
+                CanonicalRange("cpu_intel_requested_pl2_power_limit_watts")),
             /*
              * 时间窗。**它和瓦数是两件事**：同样的 PL2，窗口给 8 秒还是 56 秒，
              * 机器的手感完全不同。合成一项就没法表达了。
              */
             Item("cpu.power-limit-window", "持续功耗时间窗",
-                new ControlNumberRange(1, 128, 1, ControlUnits.Second)),
+                CanonicalRange("cpu_intel_requested_pl1_time_window_seconds")),
             Item("cpu.short-power-limit-window", "短时功耗时间窗",
-                new ControlNumberRange(1, 128, 1, ControlUnits.Second)),
+                CanonicalRange("cpu_intel_requested_pl2_time_window_seconds")),
             /*
              * MMIO 里的那份功耗墙镜像。
              *
@@ -706,7 +749,7 @@ public sealed class WindowsControlObjectCatalog(
              * 所以它是独立的一项，不是上面那条的实现细节。
              */
             Item("cpu.power-limit-mmio", "功耗上限（MMIO 镜像）",
-                new ControlNumberRange(5, 200, 1, ControlUnits.Watt),
+                CanonicalRange("cpu_intel_requested_pl1_mmio_power_limit_watts"),
                 ControlAccessLevels.Normal),
             /*
              * 温度墙。给的是**往下偏多少度**，不是绝对温度 —— 底层就是这么编码的，
@@ -714,23 +757,23 @@ public sealed class WindowsControlObjectCatalog(
              * 和 AMD 那边给绝对温度不一样，这不是不一致，是两家本来就不同。
              */
             Item("cpu.temperature-offset", "温度墙下调",
-                new ControlNumberRange(0, 30, 1, ControlUnits.Celsius, 0),
+                CanonicalRange("cpu_intel_requested_temperature_limit_reduction_celsius"),
                 ControlAccessLevels.Normal),
             /*
              * 电压偏移。Intel 把它分成几个电压域，**各调各的** ——
              * 核心和缓存在多数型号上是绑在一起的，核显和系统代理是另外两路。
              */
             Item("cpu.core-voltage-offset", "核心电压偏移",
-                new ControlNumberRange(-250, 100, 1, ControlUnits.Millivolt, 0),
+                CanonicalRange("cpu_intel_requested_core_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
             Item("cpu.cache-voltage-offset", "缓存电压偏移",
-                new ControlNumberRange(-250, 100, 1, ControlUnits.Millivolt, 0),
+                CanonicalRange("cpu_intel_requested_cache_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
             Item("cpu.igpu-voltage-offset", "核显电压偏移",
-                new ControlNumberRange(-250, 100, 1, ControlUnits.Millivolt, 0),
+                CanonicalRange("cpu_intel_requested_igpu_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
             Item("cpu.system-agent-voltage-offset", "系统代理电压偏移",
-                new ControlNumberRange(-250, 100, 1, ControlUnits.Millivolt, 0),
+                CanonicalRange("cpu_intel_requested_system_agent_voltage_offset_millivolts"),
                 ControlAccessLevels.Root),
             /*
              * 睿频倍频上限。调低是限频降温降耗，调高是超频 ——
@@ -914,10 +957,11 @@ public sealed class WindowsControlObjectCatalog(
     /// </summary>
     private void AddFans(
         List<ControlObject> objects,
-        HardwareMetricSnapshot snapshot)
+        HardwareMetricSnapshot snapshot,
+        bool describeCore = true)
     {
         var ordinal = 0;
-        var described = fanCore.Describe();
+        IReadOnlyList<FanCoreFan> described = describeCore ? fanCore.Describe() : [];
         var coreKnowsGpuFan = false;
         if (described.Count > 0)
         {
@@ -995,7 +1039,11 @@ public sealed class WindowsControlObjectCatalog(
                         Unsupported("fan.zero-rpm", "低负载停转", ControlValueKinds.Toggle, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx),
                         Unsupported("fan.curve", "转速曲线", ControlValueKinds.Curve, "amd-adlx-provider", "AMD ADLX", channel: ControlChannels.Adlx)
                     ], "同一显卡的风扇由驱动统一调节。", Terms: [ControlFanRoles.Gpu],
-                    GpuAttachment: ControlGpuAttachments.Discrete, AdapterIndex: gpu.Index));
+                    GpuAttachment: ControlGpuAttachments.Discrete, AdapterIndex: gpu.Index)
+                {
+                    AdapterKey = ResolveAdapterKey(snapshot.GpuInventory, gpu.Index),
+                    ExpectedPhysicalPnp = ResolveBoundPhysicalPnp(snapshot, gpu.Index)
+                });
                 continue;
             }
             if (coreKnowsGpuFan
@@ -1108,3 +1156,6 @@ public sealed class WindowsControlObjectCatalog(
             : ControlVendors.Unknown;
     }
 }
+
+
+

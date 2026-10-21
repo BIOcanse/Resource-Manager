@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ResourceManager.Shared.Runtime;
+using ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
 namespace ResourceManager.NativeUi;
 
@@ -23,6 +24,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     private readonly HttpClient probeClient;
     private readonly HttpClient actionClient;
     private readonly HttpClient streamClient;
+    private FrontendSessionCredentialReply? backendCredential;
     private BackendRequestAuthorization? requestAuthorization;
     private BackendServiceAvailabilityMonitor? availabilityMonitor;
     private bool disposed;
@@ -30,6 +32,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     private BackendServiceSession(string baseAddress)
     {
         var endpoint = new Uri(baseAddress);
+        BackendPath = ResolveBackendPath();
         probeClient = new HttpClient(CreateLoopbackHandler(), disposeHandler: true)
         {
             BaseAddress = endpoint,
@@ -45,7 +48,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             BaseAddress = endpoint,
             Timeout = Timeout.InfiniteTimeSpan
         };
-        BackendPath = ResolveBackendPath();
     }
 
     public string BackendPath { get; }
@@ -84,27 +86,67 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     }
 
     public async Task<string> TerminateProcessesAsync(
-        IReadOnlyList<int> processIds,
+        IReadOnlyList<ForceTerminateProcessTarget> targets,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        if (processIds.Count == 0)
+        if (targets.Count == 0)
         {
             return NativeUiText.Current.NoProcessToTerminate;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/system/processes/terminate")
         {
-            Content = JsonContent.Create(new { processIds })
+            Content = JsonContent.Create(new { targets })
         };
         GetRequestAuthorization().Apply(request);
         using var response = await actionClient.SendAsync(request, cancellationToken);
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            if (response.StatusCode == HttpStatusCode.Forbidden && RequiresProcessElevation(payload))
+                return SummarizeTermination(await ExecuteElevatedProcessActionAsync(new("terminate",
+                    targets.Select(target => new ProcessActionTarget(target.ProcessId, target.ProcessStartKey)).ToArray()),
+                    cancellationToken), NativeUiText.Current);
             throw new InvalidOperationException(ReadMessage(payload) ?? string.Format(NativeUiText.Current.BackendHttpErrorFormat, (int)response.StatusCode));
         }
-        return ReadMessage(payload) ?? NativeUiText.Current.TerminateRequestCompleted;
+        return SummarizeTermination(payload, NativeUiText.Current);
+    }
+
+    internal static string SummarizeTermination(string payload, NativeText text)
+    {
+        using var json = JsonDocument.Parse(payload);
+        var items = json.RootElement.GetProperty("items");
+        var succeeded = items.EnumerateArray().Count(item => item.GetProperty("state").GetString() == "Succeeded");
+        return string.Format(text.TerminateResultFormat, succeeded, items.GetArrayLength());
+    }
+
+    internal Task<string> ExecuteElevatedProcessActionAsync(ProcessActionBatch batch, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        _ = GetRequestAuthorization();
+        var credential = backendCredential ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
+        return ElevatedProcessActionBroker.ExecuteAsync(batch, credential, cancellationToken);
+    }
+
+    private static bool RequiresProcessElevation(string payload)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(payload);
+            return json.RootElement.TryGetProperty("code", out var error) && error.GetString() == "ProcessActionRequiresElevation";
+        }
+        catch (JsonException) { return false; }
+    }
+
+    internal async Task PublishDesktopAsync(InteractiveDesktopObservation observation, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        using var request = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.EndpointPath)
+        { Content = JsonContent.Create(observation) };
+        GetRequestAuthorization().Apply(request);
+        using var response = await actionClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<string> EnsureConnectedAsync(CancellationToken cancellationToken)
@@ -147,6 +189,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         actionClient.Dispose();
         streamClient.Dispose();
         requestAuthorization = null;
+        backendCredential = null;
     }
 
     private Task<bool> TryConnectAsync(
@@ -163,7 +206,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     {
         try
         {
-            var accessToken = ReadAccessToken();
+            var credential = requireCurrentToken ? backendCredential
+                : await FrontendSessionCredentialClient.AcquireSessionAsync(BackendPath, cancellationToken);
+            var accessToken = credential?.AccessToken;
             if (string.IsNullOrWhiteSpace(accessToken)
                 || requireCurrentToken
                     && !string.Equals(
@@ -173,12 +218,14 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             {
                 return false;
             }
+            backendCredential = credential;
 
             var challenge = RandomNumberGenerator.GetHexString(
                 LoopbackSessionProofContract.ChallengeHexLength);
             using var proofRequest = new HttpRequestMessage(
                 HttpMethod.Get,
                 $"{LoopbackSessionProofContract.EndpointPath}?challenge={challenge}");
+            proofRequest.Headers.TryAddWithoutValidation(AccessTokenHeaderName, accessToken);
             using var proofResponse = await probeClient.SendAsync(
                 proofRequest,
                 HttpCompletionOption.ResponseHeadersRead,
@@ -253,13 +300,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         }
     }
 
-    private static HttpClientHandler CreateLoopbackHandler() => new()
-    {
-        AllowAutoRedirect = false,
-        AutomaticDecompression = DecompressionMethods.None,
-        UseCookies = false,
-        UseProxy = false
-    };
+    private SocketsHttpHandler CreateLoopbackHandler()
+        => BackendProcessConnection.CreateHandler(() => backendCredential is { } credential
+            ? new(credential.ServiceProcessId, credential.ServiceProcessCreatedUtcTicks, BackendPath) : null);
 
     private static async Task<T?> ReadBoundedJsonAsync<T>(
         HttpResponseMessage response,
@@ -321,31 +364,11 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         if (!disposed)
         {
             requestAuthorization = null;
+            backendCredential = null;
             AvailabilityLost?.Invoke(this, unavailable);
         }
     }
 
-    private static string? ReadAccessToken()
-    {
-        try
-        {
-            if (!File.Exists(NativeUiPaths.LoopbackApiTokenPath))
-            {
-                return null;
-            }
-
-            var token = File.ReadAllText(NativeUiPaths.LoopbackApiTokenPath).Trim();
-            return token.Length == 0 ? null : token;
-        }
-        catch (IOException)
-        {
-            return null;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
     private static string? ReadMessage(string payload)
     {
@@ -363,7 +386,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         }
     }
 
-    private static string ResolveBackendPath()
+    internal static string ResolveBackendPath()
     {
         var candidates = ResolveBackendPathCandidates();
         return candidates.FirstOrDefault(File.Exists) ?? candidates[0];

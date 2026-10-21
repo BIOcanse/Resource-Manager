@@ -4,6 +4,8 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class IpHelperNetworkAttributionReader
 {
+    internal sealed record NetworkEndpointSnapshot(IReadOnlyList<NetworkEndpoint> Endpoints, bool Tcp4Complete);
+
     private sealed class MutableNetworkAttribution
     {
         public double ReceiveBytesPerSecond { get; set; }
@@ -30,7 +32,7 @@ public sealed partial class IpHelperNetworkAttributionReader
         }
     }
 
-    private sealed record NetworkEndpoint(
+    internal sealed record NetworkEndpoint(
         string Key,
         int ProcessId,
         string Protocol,

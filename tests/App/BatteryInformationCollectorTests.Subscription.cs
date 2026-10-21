@@ -1,0 +1,75 @@
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed partial class BatteryInformationCollectorTests
+{
+    [Fact]
+    public async Task RealSamplingWorkerCollectsOnlySubscribedBatteryAndOrdinaryReadsUseCache()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"battery-owner-{Guid.NewGuid():N}");
+        using var slots = new HostManagerSamplingSubscriptionTestFixture();
+        var devices = new[] { Device(0), Device(1, true) };
+        var topology = new NativeMetricSnapshotCatalogTopologySnapshot(1, NativeMetricSnapshotCatalogTopologyStatus.Complete, [],
+            NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])
+            { BatteryStatus = NativeMetricSnapshotCatalogTopologyStatus.Complete, Batteries = devices };
+        using var owner = new HostManagerMetricSnapshotOwner(slots.Provider,
+            new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
+            new HostManagerMetricSnapshotCatalogTopologySource(() => topology), new BatteryEnvironment(root),
+            NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
+        await owner.StartAsync(CancellationToken.None);
+        var dashboard = new DashboardMonitoringCatalogState();
+        using (var lease = owner.Acquire())
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+        var opened = new List<string>();
+        var battery = new WindowsBatteryMonitoringZone(new WindowsBatteryReader(enumerate: null, open: path =>
+            { opened.Add(path); return new DeviceQuery { Relative = path == "path-1" }; }));
+        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
+            id == battery.DisplayName ? battery : new MonitoringSourceZone(id)).ToArray());
+        using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), new WindowsMemoryMonitoringZone(),
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
+            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, battery);
+        var request = MetricDeviceFields.CreateRequest(dashboard.Current!, devices[1].ExactIdentityKey,
+            ["battery_all_remaining_capacity_actual_relative_units"]);
+        Assert.Empty(opened);
+        await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        Assert.Empty(opened);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await sampler.StartAsync(timeout.Token);
+        try
+        {
+            await using var stream = sampler.SubscribeAsync("battery-consumer", request, TimeSpan.FromMinutes(10), timeout.Token)
+                .GetAsyncEnumerator(timeout.Token);
+            Assert.True(await stream.MoveNextAsync());
+            var value = Assert.Single(Assert.Single(MetricDeviceFields.Read(stream.Current, devices[1].ExactIdentityKey,
+                new HashSet<string> { "battery_all_remaining_capacity_actual_relative_units" })).Fields);
+            Assert.Equal(SamplingObservationStatus.Current, value.Status);
+            Assert.Equal(25000, value.NumericValue);
+            Assert.Equal(["path-1"], opened);
+            await sampler.GetSnapshotAsync(request, timeout.Token);
+            sampler.ReadLatest(request);
+            Assert.Single(opened);
+        }
+        finally
+        {
+            await sampler.StopAsync(CancellationToken.None);
+            var count = opened.Count;
+            await sampler.GetSnapshotAsync(request, CancellationToken.None);
+            Assert.Equal(count, opened.Count);
+        }
+    }
+
+    private sealed class BatteryEnvironment(string root) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Tests";
+        public string ApplicationName { get; set; } = "ResourceManager";
+        public string ContentRootPath { get; set; } = root;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+}

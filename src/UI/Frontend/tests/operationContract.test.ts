@@ -5,7 +5,6 @@ const sources = {
   api: readSource("../src/api.ts"),
   types: readSource("../src/types.ts"),
   management: readSource("../src/stores/managementStore.ts"),
-  migration: readSource("../src/stores/migrationStore.ts"),
   softwareActions: readSource("../src/app/useSoftwareActions.ts"),
   page: readSource("../src/features/management/components/ManagementPage.tsx"),
   app: readSource("../src/App.tsx"),
@@ -51,24 +50,17 @@ assert.doesNotMatch(
   sources.operationRegistry,
   /activeRefreshInterval|idleRefreshInterval|sourceLease|backendEpoch|projectedEpoch|sourceAcceptedAttempt/);
 assert.match(sources.operationCommands, /componentInstallCommand/);
-assert.match(sources.operationCommands, /migrationDiscoveryStartCommand/);
+assert.doesNotMatch(sources.operationCommands, /migration|discovery/i);
 assert.match(sources.management, /options\.operations\.subscribe/);
 assert.match(sources.management, /options\.operations\.submit/);
 assert.match(sources.management, /options\.operations\.waitForTerminal/);
 assert.match(sources.management, /stateUncertain/);
-assert.match(sources.migration, /migrationExecuteCommand/);
-assert.match(sources.migration, /migrationRestoreCommand/);
-assert.match(sources.migration, /migrationDiscoveryStartCommand/);
-assert.match(sources.migration, /options\.operations\.cancel/);
-assert.match(sources.softwareActions, /migrationRestoreCommand/);
-assert.match(sources.softwareActions, /options\.operations\.waitForTerminal/);
 assert.match(sources.page, /managementActionKeyFromOperation/);
 assert.match(sources.app, /operations: frontendRuntime\.operationRegistry/);
 assert.doesNotMatch(sources.scheduler, /refreshOperations|stopOperationPolling/);
 
 for (const source of [
   sources.management,
-  sources.migration,
   sources.softwareActions
 ]) {
   assert.doesNotMatch(source, /getOperations|getOperation|delay\(800\)/);

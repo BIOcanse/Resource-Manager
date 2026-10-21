@@ -15,7 +15,10 @@ public sealed record CompiledFreedomPoint(
     string? ValueSource,
     string? SourcePath,
     JsonElement? Value,
-    ImmutableArray<string> Consumers);
+    ImmutableArray<string> Consumers)
+{
+    public global::FreedomPoint.PointPath Path { get; init; }
+}
 
 public sealed record CompiledFreedomPointFamily(
     ImmutableArray<CompiledFreedomPoint> Simple,
@@ -36,6 +39,9 @@ public sealed record CompiledFreedomPointTree(
     string DeclarationSha256,
     ImmutableArray<CompiledFreedomPointTable> Children)
 {
+    public string SdkContractFingerprint { get; init; } = string.Empty;
+    internal global::FreedomPoint.PointRegistry? SdkRegistry { get; init; }
+    internal global::FreedomPoint.ResolvedFacts? SdkFacts { get; init; }
     public static CompiledFreedomPointTree Empty { get; } = new(string.Empty, string.Empty, []);
 
     public IEnumerable<CompiledFreedomPoint> EnumeratePoints()

@@ -10,8 +10,7 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// **能做什么由核心报，不由我们假设。** 核心对每个风扇报两件事：
 /// 现在是固件在管还是我们在管（<c>automaticControl</c>），
 /// 以及这条通道给不给任意占空比（<c>supportsDuty</c>）。
-/// 界面据此决定哪一项能动、哪一项置灰 —— 有的机器只有"全速 / 自动"两档，
-/// 那种机器上摆一条能拖的曲线是骗人。
+/// 界面分别按定速、固件曲线和软件曲线能力决定哪一项能动、哪一项置灰。
 /// </summary>
 public sealed class FanControlWriter(
     FanControlCoreClient core,
@@ -21,6 +20,7 @@ public sealed class FanControlWriter(
     internal const string CurveCapabilityId = "fan.curve";
     internal const string DutyCapabilityId = "fan.duty";
     internal const string RpmCapabilityId = "fan.rpm";
+    internal const string RestoreProtocolRequired = "风扇组件不支持原表恢复，请先更新组件。";
 
     /// <summary>
     /// 机身风扇的对象编号前缀，后面跟的是**核心报的那个风扇序号**。
@@ -99,15 +99,16 @@ public sealed class FanControlWriter(
         {
             return ControlWriteAvailability.No("固件没有声明支持风扇控制，只读。", canRead: true);
         }
+        if (fan.FirmwareCurve is not null && !fan.SupportsFirmwareCurveReset)
+            return ControlWriteAvailability.No(RestoreProtocolRequired,
+                kind: ControlUnavailableKinds.Prerequisite, canRead: true);
 
         /*
          * **曲线和定速各有各的前提，不能共用一个。**
          *
-         * 定速是我们直接给一个占空比，所以要这条通道"能给任意占空比"。
-         * 曲线是把一张表交给固件去查，走的是完全不同的机制 ——
-         * 本机就是活例子：`supportsDuty` 是 false（只有全速和自动两档），
-         * 可固件那张曲线表照样读得出来、写得进去。
-         * 先前两者共用 `supportsDuty`，于是曲线被一个和它无关的理由挡在外面。
+         * 定速可以直接给占空比，也可以把固件各温区转速设为同一个值；
+         * 曲线可以由固件查表，也可以由软件执行。分别消费核心声明的能力，
+         * 每项只检查自己的执行前提。
          */
         if (string.Equals(capability.Id, CurveCapabilityId, StringComparison.Ordinal))
         {
@@ -166,17 +167,33 @@ public sealed class FanControlWriter(
         ControlObject target,
         ControlCapability capability,
         IReadOnlySet<string> stillConfigured,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ControlSetting? previousSetting = null)
     {
-        if (stillConfigured.Any(id => id is DutyCapabilityId or CurveCapabilityId or LockMaximumCapabilityId))
+        if (capability.Id != CurveCapabilityId
+            && stillConfigured.Any(id => id is DutyCapabilityId or CurveCapabilityId or LockMaximumCapabilityId))
         {
             return true;
         }
         var index = FanIndexOf(target);
+        var description = core.Describe().FirstOrDefault(fan => fan.Index == index);
+        if (description is null || description.FirmwareCurve is not null && !description.SupportsFirmwareCurveReset)
+            return false;
+        var execution = previousSetting?.CurveExecution
+            ?? (description.FirmwareCurve is not null || description.SupportsFirmwareCurveReset
+                ? ControlFanCurveExecutions.Firmware : ControlFanCurveExecutions.Software);
+        if (capability.Id == CurveCapabilityId && execution is not (ControlFanCurveExecutions.Firmware or ControlFanCurveExecutions.Software))
+            return false;
+        var resetCurve = capability.Id == CurveCapabilityId && execution == ControlFanCurveExecutions.Firmware;
+        if (resetCurve && !description.SupportsFirmwareCurveReset) return false;
+        // Restoring a temporary duty override can restore the firmware table too.
+        // Even a failed receipt cannot prove the old table is still intact.
+        core.InvalidateCurve(index);
         var response = await core.SendAsync("auto",
-            new Dictionary<string, object?> { ["fan"] = index }, cancellationToken).ConfigureAwait(false);
-        return response is { } result && Flag(result, "ok")
+            new Dictionary<string, object?> { ["fan"] = index, ["resetFirmwareCurve"] = resetCurve }, cancellationToken).ConfigureAwait(false);
+        var restored = response is { } result && Flag(result, "ok")
+            && (!resetCurve || Flag(result, "firmwareCurveReset"))
             && FanAt(result, index) is { } fan && Flag(fan, "automaticControl");
+        return restored;
     }
 
     public async Task<ControlApplyOutcome> WriteAsync(
@@ -188,6 +205,11 @@ public sealed class FanControlWriter(
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
         ArgumentNullException.ThrowIfNull(setting);
+
+        var description = core.Describe().FirstOrDefault(fan => fan.Index == FanIndexOf(target));
+        if (description is null) return Failed(target, capability, NoChannel);
+        if (description.FirmwareCurve is not null && !description.SupportsFirmwareCurveReset)
+            return Failed(target, capability, RestoreProtocolRequired);
 
         var fanIndex = FanIndexOf(target);
 
@@ -210,6 +232,7 @@ public sealed class FanControlWriter(
         // **这两个是对称的两个状态，不是一个开关的两个位置** ——
         // 关掉之后风扇归固件管，我们设的东西一律不再生效，界面要能表达这一点。
         var wantsMaximum = setting.Toggle == true;
+        core.InvalidateCurve(fanIndex);
         var response = await core.SendAsync(
             wantsMaximum ? "boost" : "auto",
             new Dictionary<string, object?> { ["fan"] = fanIndex },
@@ -224,13 +247,17 @@ public sealed class FanControlWriter(
             return Failed(target, capability, Text(response, "error") ?? CoreSilent);
         }
 
-        // 回读核对：核心在应答里带回了风扇状态，直接看它到底归谁管。
+        // 回读核对：非自动归属也可能是定速或软件曲线，不能独自确认全速。
         if (FanAt(result, fanIndex) is not { } fan
             || !fan.TryGetProperty("automaticControl", out var automatic)
             || automatic.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
             || automatic.GetBoolean() == wantsMaximum)
         {
             return Failed(target, capability, "下发了，但风扇的控制归属没有跟着变。");
+        }
+        if (wantsMaximum && ProjectReading(target, capability, fan).Toggle != true)
+        {
+            return Failed(target, capability, "写下去了，但回读的值没有变。");
         }
 
         return new ControlApplyOutcome(
@@ -241,14 +268,9 @@ public sealed class FanControlWriter(
     }
 
     /// <summary>
-    /// 把曲线写给固件。
-    ///
-    /// **和定速不是一条路**：定速是我们替固件把风扇按在某个转速上，程序退了就得还回去；
-    /// 曲线是改固件自己查的那张表，**写进去就一直算数，重启也还在**。
-    /// 所以这里不需要、也不应该在退出时撤销 —— 撤销等于用户设的东西悄悄失效。
-    ///
-    /// 核心回的是**写完之后重新读出来的**那条曲线，不是我们发过去的那条：
-    /// 温度会被夹进表能表达的范围、回差会加上去，对不上正是用户该看见的。
+    /// 把用户选择的固件或软件曲线交给核心执行。
+    /// 固件回执来自实际表，软件回执来自活跃执行计划；只有完整有效的回执
+    /// 才能确认应用并保存为曲线读值，不用提交值或部分回执替代。
     /// </summary>
     private async Task<ControlApplyOutcome> WriteCurveAsync(
         ControlObject target,
@@ -262,6 +284,7 @@ public sealed class FanControlWriter(
             return Failed(target, capability, "这条设定里没有曲线。");
         }
 
+        core.InvalidateCurve(fanIndex);
         var response = await core.SendAsync(
             "setcurve",
             new Dictionary<string, object?>
@@ -287,34 +310,12 @@ public sealed class FanControlWriter(
             return Failed(target, capability, reason);
         }
 
-        // 核心把回读的曲线带回来了。读不回来说明它没真的落到表上。
-        if (!result.TryGetProperty("curve", out var written)
-            || written.ValueKind != JsonValueKind.Array
-            || written.GetArrayLength() == 0)
+        var readBack = FanControlCoreClient.ParseCurveReceipt(result);
+        if (readBack is null)
         {
-            return Failed(target, capability, "下发了，但从固件里读不回这条曲线。");
+            return Failed(target, capability, "写下去了，但回读的值没有变。");
         }
-
-        /*
-         * 把回读到的那条记下来 —— **它就是新的当前值**。
-         * 不记的话，下次有人问"现在跑的是哪条曲线"又得花十几秒重读一遍，
-         * 而答案我们这一刻手里就有。
-         */
-        var readBack = new List<ControlCurvePoint>();
-        foreach (var point in written.EnumerateArray())
-        {
-            if (point.TryGetProperty("temperatureCelsius", out var celsius)
-                && celsius.ValueKind == JsonValueKind.Number
-                && point.TryGetProperty("percent", out var percent)
-                && percent.ValueKind == JsonValueKind.Number)
-            {
-                readBack.Add(new ControlCurvePoint(celsius.GetDouble(), percent.GetDouble()));
-            }
-        }
-        if (readBack.Count > 0)
-        {
-            core.StoreCurve(fanIndex, readBack);
-        }
+        core.StoreCurveReceipt(fanIndex, result, readBack);
 
         return new ControlApplyOutcome(
             target.Id,
@@ -408,6 +409,8 @@ public sealed class FanControlWriter(
             return Failed(target, capability, "定速要一个百分比，收到的不是。");
         }
 
+        // Some backends implement fixed duty by modifying their firmware table.
+        core.InvalidateCurve(fanIndex);
         var response = await core.SendAsync(
             "set",
             new Dictionary<string, object?> { ["fan"] = fanIndex, ["percent"] = percent },
@@ -430,11 +433,14 @@ public sealed class FanControlWriter(
     }
 
     private static double? Number(JsonElement? element, string name)
-        => element is { } value
+    {
+        return element is { } value
             && value.TryGetProperty(name, out var property)
             && property.ValueKind == JsonValueKind.Number
-                ? property.GetDouble()
+            && property.TryGetDouble(out var number) && double.IsFinite(number)
+                ? number
                 : null;
+    }
 
     private JsonElement? Ask(string operation)
         => core.SendAsync(operation, null, CancellationToken.None).GetAwaiter().GetResult();

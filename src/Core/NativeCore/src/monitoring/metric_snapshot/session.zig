@@ -15,7 +15,7 @@ pub fn reconfigure(session: *Session, config: *const protocol.Config) ResultCode
     if (!protocol.validConfig(config)) return .abi_mismatch;
     if (session.phase == .completion_open) return .unavailable;
     if (config.generation <= session.config.generation or !sameShape(&session.config, config) or
-        config.resident_byte_budget < session.residentByteCount())
+        config.resident_byte_budget < session.requiredByteCount())
     {
         return .invalid_argument;
     }
@@ -24,6 +24,33 @@ pub fn reconfigure(session: *Session, config: *const protocol.Config) ResultCode
     session.clearCompletion();
     session.config = config.*;
     session.state_revision = next_revision;
+    return .ok;
+}
+
+pub fn synchronizeCounterDemand(session: *Session, input: *const protocol.ControlInput, active_metrics: []const protocol.PlanMetricInput) ResultCode {
+    state.lock(&session.mutex);
+    defer state.unlock(&session.mutex);
+    if (!validControl(session, input)) return .abi_mismatch;
+    if (session.phase == .empty or session.phase == .completion_open) return .unavailable;
+    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds)) return .stale_frame;
+    if (active_metrics.len > session.config.maximum_plan_metric_count) return .invalid_argument;
+    var previous: u64 = 0;
+    for (active_metrics) |metric| {
+        if (metric.struct_size != @sizeOf(protocol.PlanMetricInput) or metric.flags != 0 or
+            metric.metric_handle <= previous or session.active.findMetric(metric.metric_handle) == null) return .invalid_argument;
+        previous = metric.metric_handle;
+    }
+    const revision = session.nextRevision() orelse return .unavailable;
+    // Catalog rules and demand are both ordered by metric handle, including source alternatives.
+    var index: usize = 0;
+    for (session.active.rules[0..session.active.rule_count]) |*rule| {
+        while (index < active_metrics.len and active_metrics[index].metric_handle < rule.definition.metric_handle) : (index += 1) {}
+        if (protocol.isCounterMetric(rule.definition.metric_kind) and
+            (index == active_metrics.len or active_metrics[index].metric_handle != rule.definition.metric_handle)) rule.counter_baseline = .{};
+    }
+    session.last_operation_epoch = input.operation_epoch;
+    session.last_command_at_milliseconds = input.command_at_milliseconds;
+    session.state_revision = revision;
     return .ok;
 }
 
@@ -53,7 +80,6 @@ pub fn reset(session: *Session, input: *const protocol.ControlInput) ResultCode 
     @memset(session.gpu_staging_key_index, catalog.no_index);
     session.gpu_staging_prepared = false;
     @memset(session.source_modes, .{});
-    @memset(session.planned_rule_handles, 0);
     @memset(session.planned_rule_flags, false);
     session.clearCompletion();
     session.planned_rule_count = 0;
@@ -136,6 +162,7 @@ pub fn plan(
     output: *protocol.PlanOutput,
     source_plans: []protocol.SourcePlanOutput,
     metric_plans: []protocol.MetricPlanOutput,
+    scratch_bytes: []u8,
 ) ResultCode {
     return planner.plan(
         session,
@@ -145,11 +172,12 @@ pub fn plan(
         output,
         source_plans,
         metric_plans,
+        scratch_bytes,
     );
 }
 
-pub fn beginCompletion(session: *Session, input: *const protocol.CompletionHeader) ResultCode {
-    return observation.begin(session, input);
+pub fn beginCompletion(session: *Session, input: *const protocol.CompletionHeader, scratch_bytes: []u8) ResultCode {
+    return observation.begin(session, input, scratch_bytes);
 }
 
 pub fn submitRequested(
@@ -443,6 +471,10 @@ pub fn ruleOutput(rule: catalog.RuleRecord) protocol.RuleStateOutput {
         .source_generation = rule.source_generation,
         .observed_at_milliseconds = rule.observed_at_milliseconds,
         .value_bits = rule.value_bits,
+        .value_high_bits = rule.value_high_bits,
+        .byte_count = rule.byte_count,
+        .payload_reserved = 0,
+        .value_bytes = rule.value_bytes,
         .capability_mask = rule.capability_mask,
         .status = @intFromEnum(rule.status),
         .value_kind = rule.definition.value_kind,

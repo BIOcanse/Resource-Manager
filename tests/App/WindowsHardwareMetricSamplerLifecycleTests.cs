@@ -117,6 +117,53 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     }
 
     [Fact]
+    public async Task BoundPublicationWakesOppositeAddressSubscriberWithSameCurrent()
+    {
+        const string canonical = "recorded-memory-used-field";
+        const string legacy = "memory.usage";
+        var definition = MetricFieldRegistry.FindByName("memory_all_physical_used_bytes")!;
+        var observedAt = DateTimeOffset.UtcNow;
+        var frame = CreateCatalogSnapshot() with
+        {
+            WorkspaceIdentity = 1,
+            ConfigurationGeneration = 1,
+            FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            {
+                [canonical] = new("recorded-memory", definition, canonical, "windows.memory") { RequestAliases = [legacy] }
+            },
+            Items = new Dictionary<string, MetricValue>
+            {
+                [canonical] = new(canonical, canonical, "recorded", "", 512, "B", null, null),
+                [legacy] = new(legacy, legacy, "recorded", "", 512, "B", null, null)
+            },
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
+            {
+                [canonical] = new(canonical, SamplingObservationStatus.Current, 1, observedAt.UtcTicks, 1, 1, 1, 1),
+                [legacy] = new(legacy, SamplingObservationStatus.Current, 1, observedAt.UtcTicks, 1, 1, 1, 1)
+            }
+        };
+        foreach (var (published, subscribed) in new[] { (legacy, canonical), (canonical, legacy) })
+        {
+            using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+            var catalog = new DashboardMonitoringCatalogState();
+            catalog.PublishCatalogProbe(frame);
+            using var sampler = CreateSampler(subscriptions, catalog);
+            var owner = Assert.IsType<LastSuccessfulHardwareMetricSnapshot>(typeof(WindowsHardwareMetricSampler)
+                .GetField("publishedSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await using var stream = sampler.SubscribeAsync("bound-notification", MetricSampleRequest.ForIds([subscribed]),
+                TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator(timeout.Token);
+            var next = stream.MoveNextAsync().AsTask();
+            Assert.False(next.IsCompleted);
+            owner.Publish(frame, MetricSampleRequest.ForIds([published]));
+            sampler.PublishCompletedDatasets([published]);
+            Assert.True(await next.WaitAsync(timeout.Token));
+            Assert.Equal(512d, stream.Current.Items[subscribed].NumericValue);
+            Assert.Equal(512d, owner.Read()!.Items[canonical].NumericValue);
+        }
+    }
+
+    [Fact]
     public async Task DuplicateStartIsIdempotentAndStoppedInstanceCanRestart()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
@@ -142,6 +189,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             NullLogger<WindowsHardwareMetricSampler>.Instance);
 
         await sampler.StartAsync(CancellationToken.None);
+        var worker = typeof(WindowsHardwareMetricSampler).GetField("samplingWorker", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        Assert.Equal("ResourceManager.SubscriptionCore", worker.GetType().Assembly.GetName().Name);
         var first = Assert.IsAssignableFrom<Task>(
             sampler.CaptureSamplingWorkerTask());
 

@@ -5,7 +5,10 @@ const wire_contract = @import("wire_contract.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 test "metric snapshot ABI sizes alignments and offsets are fixed" {
-    try std.testing.expectEqual(@as(u32, 0x0003_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000A_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.Capacity, "scratch_byte_count"));
+    try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Capacity, "scratch_alignment"));
+    try std.testing.expectEqual(@as(usize, 100), @offsetOf(protocol.Capacity, "reserved_u32"));
     const expected = .{
         .{ protocol.Config, 160 },
         .{ protocol.Capacity, 104 },
@@ -20,17 +23,17 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         .{ protocol.SourcePlanOutput, 72 },
         .{ protocol.MetricPlanOutput, 72 },
         .{ protocol.RequestedMetricInput, 32 },
-        .{ protocol.ObservationInput, 104 },
+        .{ protocol.ObservationInput, 640 },
         .{ protocol.CpuCounterInput, 136 },
         .{ protocol.GpuInventoryInput, 112 },
         .{ protocol.FinalizeInput, 80 },
         .{ protocol.ControlInput, 56 },
         .{ protocol.ReadInput, 72 },
         .{ protocol.SnapshotHeader, 152 },
-        .{ protocol.MetricOutput, 112 },
+        .{ protocol.MetricOutput, 640 },
         .{ protocol.SourceOutput, 128 },
         .{ protocol.GpuInventoryOutput, 120 },
-        .{ protocol.RuleStateOutput, 120 },
+        .{ protocol.RuleStateOutput, 648 },
         .{ protocol.SourcePersistenceOutput, 184 },
         .{ protocol.PersistenceInput, 64 },
         .{ protocol.PersistenceHeader, 144 },
@@ -126,7 +129,7 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         @offsetOf(protocol.SourcePersistenceOutput, "gpu_retained_count"),
     );
     try std.testing.expectEqual(
-        @as(u64, 0x51b78849c815027d),
+        @as(u64, 0x65f57826a9339df5),
         moduleLayoutFingerprint(),
     );
     try std.testing.expectEqual(

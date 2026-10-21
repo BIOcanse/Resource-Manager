@@ -26,11 +26,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current, 1,
             DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 789,
-            [new(0, "Intel UHD Graphics", 0x8086, 1, 0, new AdapterLuid { LowPart = 123 }, false, 0, WindowsGpuAdapterKind.Integrated),
+            [new(0, "NVIDIA GeForce RTX 3060", 0x10de, 1, 0, new AdapterLuid { LowPart = 123 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated),
              new(1, "NVIDIA GeForce RTX 4090", 0x10de, 2, 0, new AdapterLuid { LowPart = 456 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)]);
         var process = AutomaticGpuProcess();
         var facts = CreateNativeGpuCycleFacts(new(process.ProcessId, process.ProcessStartKey,
-            process.ProcessName, process.ExecutablePath!), process.SoftwareId, inventory, 1);
+            process.ProcessName, process.ExecutablePath!), process.SoftwareId, inventory, 0, includeDedicatedMemory: true);
         var actions = new RecordingRunningGpuActions { Available = true, UnknownApi = true };
         var topology = CreateAutomaticPlacementTopology();
         var duringSave = outcome.EndsWith("-during-save", StringComparison.Ordinal);
@@ -47,7 +47,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             rollbackStateStoreOverride: store,
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(pid, DateTimeOffset.FromFileTime(checked((long)process.ProcessStartKey)))));
-        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 456));
+        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 123, includeDedicatedMemory: true));
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = fixture.RuntimePlan.Version + 1,

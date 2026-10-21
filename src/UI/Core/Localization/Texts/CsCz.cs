@@ -46,6 +46,7 @@ internal static class CsCz
         BackendPipelineNotReady = "Kanál požadavků místní služby není připraven.",
         NoProcessToTerminate = "Není žádný proces k ukončení.",
         TerminateRequestCompleted = "Požadavek na ukončení procesu byl dokončen.",
+        TerminateResultFormat = "Ukončeno {0} / {1} procesů.",
 
         WebViewInitializationFailed = "Vložené rozhraní se nepodařilo inicializovat. Podrobnosti najdete ve složce diagnostiky.",
         FrontendIdentityVerificationFailed = "Ověření identity prostředků frontendu selhalo. Podrobnosti najdete ve složce diagnostiky.",

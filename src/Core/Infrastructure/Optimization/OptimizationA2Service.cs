@@ -11,7 +11,8 @@ public sealed partial class OptimizationA2Service(
     IOptimizationA2Store recordStore,
     IProcessResourcePolicyWriter policyWriter,
     LegacyGpuPreferenceActionRestorer legacyGpuPreferenceActionRestorer,
-    ILogger<OptimizationA2Service> logger) : IOptimizationA2Service
+    ILogger<OptimizationA2Service> logger,
+    Func<CpuAffinityPlan>? affinityPlanProvider = null) : IOptimizationA2Service
 {
     private const string A2Priority = "High";
     private readonly SemaphoreSlim applyGate = new(1, 1);

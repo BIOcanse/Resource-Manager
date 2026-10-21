@@ -10,13 +10,18 @@ pub fn revalidateAndBegin(
     token: *const types.ReservationToken,
     selection: *const types.SelectionOutput,
     input: *const types.RevalidationInput,
+    now_monotonic_timestamp: u64,
     output: *types.RevalidationOutput,
 ) types.PlanError!void {
     output.* = blocked(.snapshot_unavailable);
-    if (!config_module.validate(config) or !validInput(input)) {
+    if (!config_module.validate(config) or !validInput(input) or now_monotonic_timestamp == 0) {
         return error.InvalidRequest;
     }
-    _ = try state.validateReservedSelection(view, token, selection);
+    const slot = try state.validateReservedSelection(view, token, selection);
+    if (slot.pending.deadline_timestamp <= now_monotonic_timestamp) {
+        output.* = blocked(.reservation_expired);
+        return;
+    }
 
     if (input.flags & types.revalidation_flag_snapshot_available == 0) return;
     if (input.authority.source_snapshot_generation <
@@ -67,7 +72,7 @@ pub fn revalidateAndBegin(
         return;
     }
 
-    try state.begin(view, token, 0);
+    try state.begin(view, token, 0, now_monotonic_timestamp);
     output.* = .{
         .allowed = 1,
         .reason = @intFromEnum(types.RevalidationReason.allowed),
@@ -303,12 +308,24 @@ test "private revalidation accepts newer snapshots and Host self trim size drift
     input.granularity = @intFromEnum(types.Granularity.fully_loaded);
     input.demand_mask = types.demand_required_now;
     var output = std.mem.zeroes(types.RevalidationOutput);
-    try revalidateAndBegin(&config, view, &token, &selection, &input, &output);
+    try revalidateAndBegin(&config, view, &token, &selection, &input, 2, &output);
     try testing.expectEqual(@as(u8, 0), output.allowed);
     try testing.expectEqual(@intFromEnum(types.RevalidationReason.required_now), output.reason);
 
     input.demand_mask = 0;
-    try revalidateAndBegin(&config, view, &token, &selection, &input, &output);
+    try testing.expectError(error.InvalidRequest,
+        revalidateAndBegin(&config, view, &token, &selection, &input, 0, &output));
+    try revalidateAndBegin(&config, view, &token, &selection, &input, 100, &output);
+    try testing.expectEqual(@as(u8, 0), output.allowed);
+    try testing.expectEqual(@intFromEnum(types.RevalidationReason.reservation_expired), output.reason);
+    _ = try state.validateReservedSelection(view, &token, &selection);
+    try state.cancel(view, &token);
+    request.now_monotonic_timestamp = 101;
+    request.deadline_timestamp = 200;
+    request.pending_generation += 1;
+    try state.reserve(view, &request, &selection, &token);
+    try state.bindJournal(view, &token, 503, 504);
+    try revalidateAndBegin(&config, view, &token, &selection, &input, 102, &output);
     try testing.expectEqual(@as(u8, 1), output.allowed);
     _ = try state.validateActiveSelection(view, &token, &selection);
     try state.complete(view, &token);
@@ -330,6 +347,7 @@ test "private revalidation accepts newer snapshots and Host self trim size drift
     self_selection.size_bytes = 4096;
     self_selection.configuration_generation = config.generation;
     self_selection.tier = @intFromEnum(types.Tier.physical_memory);
+    request.now_monotonic_timestamp = 103;
     request.pending_generation = 5;
     var self_token = std.mem.zeroes(types.ReservationToken);
     try state.reserve(view, &request, &self_selection, &self_token);
@@ -359,6 +377,7 @@ test "private revalidation accepts newer snapshots and Host self trim size drift
         &self_token,
         &self_selection,
         &self_input,
+        104,
         &output,
     );
     try testing.expectEqual(@as(u8, 1), output.allowed);

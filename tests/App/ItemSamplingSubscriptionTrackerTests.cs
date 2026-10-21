@@ -9,6 +9,32 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ItemSamplingSubscriptionTrackerTests
 {
     [Fact]
+    public void ActiveItemsIncludeSlowDemandDuringNoDueAndFastOnlyPlans()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var tracker = CreateMetricTracker(fixture);
+        Assert.Equal("ResourceManager.SubscriptionCore", tracker.GetType().BaseType!.Assembly.GetName().Name);
+        var now = DateTimeOffset.Parse("2026-10-06T00:00:00Z");
+        tracker.TrackPersistent("slow", MetricSampleRequest.ForIds(["slow.ratio"]), now, TimeSpan.FromMinutes(1));
+        tracker.TrackPersistent("fast", MetricSampleRequest.ForIds(["cpu.usage"]), now, TimeSpan.FromSeconds(1));
+        var initial = tracker.CreatePlan(now);
+        Assert.Equal(new[] { "cpu.usage", "slow.ratio" }, initial.ActiveItemIds);
+        tracker.MarkSampled(initial.Request!, now);
+        var waiting = tracker.CreatePlan(now.AddMilliseconds(100));
+        Assert.Null(waiting.Request); Assert.Empty(waiting.DueItemIds);
+        Assert.Equal(initial.ActiveItemIds, waiting.ActiveItemIds);
+        var fast = tracker.CreatePlan(now.AddSeconds(2));
+        Assert.Equal(new[] { "cpu.usage" }, fast.DueItemIds);
+        Assert.Equal(initial.ActiveItemIds, fast.ActiveItemIds);
+        tracker.MarkSampled(fast.Request!, now.AddSeconds(2));
+        Assert.True(tracker.Remove("slow", now.AddSeconds(2)));
+        Assert.Equal(new[] { "cpu.usage" }, tracker.CreatePlan(now.AddSeconds(2).AddMilliseconds(1)).ActiveItemIds);
+        Assert.True(tracker.Remove("fast", now.AddSeconds(2).AddMilliseconds(2)));
+        var removed = tracker.CreatePlan(now.AddSeconds(2).AddMilliseconds(3));
+        Assert.False(removed.IsActive); Assert.Empty(removed.ActiveItemIds);
+    }
+
+    [Fact]
     public void EquivalentPublishedPlanKeepsTheExistingWorkspaceIncarnation()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
@@ -506,6 +532,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
                     .FreshnessGraceMilliseconds),
             replacementPlan.Schedule.FreshnessGrace);
         Assert.NotNull(replacementPlan.Schedule.NextWakeAt);
+        tracker.MarkSkipped(replacementPlan.Request!, startedAt.AddSeconds(4));
     }
 
     [Fact]
@@ -549,6 +576,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             replacementPlan.Request!.Ids);
         Assert.NotNull(replacementPlan.Schedule.NextWakeAt);
         Assert.Equal((1, 1), tracker.CaptureManagedSourceState());
+        tracker.MarkSkipped(replacementPlan.Request!, startedAt.AddSeconds(6));
     }
 
     private static NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateMetricTracker(

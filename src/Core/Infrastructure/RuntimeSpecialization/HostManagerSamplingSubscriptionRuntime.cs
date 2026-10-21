@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -59,7 +60,9 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
     private readonly RuntimePlanProvider planProvider;
     private readonly HostManagerSamplingSubscriptionRuntime deployment;
     private readonly ILogger<HostManagerSamplingSubscriptionOwner> logger;
+    private readonly Func<ulong, IComputeScratch>? createScratch;
     private WorkspaceHolder? current;
+    private WorkspaceHolder? pending;
     private CompiledHostManagerSamplingSubscriptionPlan? appliedPlan;
     private ulong nextWorkspaceIncarnation;
     private bool started;
@@ -68,11 +71,13 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
     public HostManagerSamplingSubscriptionOwner(
         RuntimePlanProvider planProvider,
         HostManagerSamplingSubscriptionRuntime deployment,
-        ILogger<HostManagerSamplingSubscriptionOwner> logger)
+        ILogger<HostManagerSamplingSubscriptionOwner> logger,
+        ResourceManagerLedgerOwner? ledgerOwner = null)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.logger = logger;
+        createScratch = ledgerOwner is null ? null : ledgerOwner.CreateScratch;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -84,6 +89,13 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
             if (started)
             {
                 return Task.CompletedTask;
+            }
+
+            if (current is not null || pending is not null)
+            {
+                RetireCurrentWorkspace();
+                if (current is not null || pending is not null)
+                    throw new InvalidOperationException("Sampling subscription readers must finish before restart.");
             }
 
             planProvider.Published += OnPublished;
@@ -107,12 +119,14 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
     {
         lock (lifecycleGate)
         {
+            if (disposed)
+                return Task.CompletedTask;
             if (started)
             {
                 planProvider.Published -= OnPublished;
                 started = false;
-                RetireCurrentWorkspace();
             }
+            RetireCurrentWorkspace();
         }
         return Task.CompletedTask;
     }
@@ -176,8 +190,10 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
                 planProvider.Published -= OnPublished;
                 started = false;
             }
-            disposed = true;
             RetireCurrentWorkspace();
+            if (current is not null || pending is not null)
+                throw new InvalidOperationException("Sampling subscription workspace is still in use; dispose after its readers finish.");
+            disposed = true;
         }
         gate.Dispose();
     }
@@ -197,6 +213,7 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
     private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
     {
         var desired = hostPlan.SamplingSubscription;
+        var committed = false;
         gate.EnterWriteLock();
         try
         {
@@ -207,43 +224,59 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
                 && canApplyHot
                 && appliedPlan!.ConfigurationSha256 == desired.ConfigurationSha256)
             {
+                _ = TryClosePending();
                 return;
             }
 
             var recreate = !firstCreation && (!hasCurrent || !canApplyHot);
-            var workspaceIncarnation = NextWorkspaceIncarnation();
             var token = firstCreation
                 ? deployment.BeginInitialCreate(hostPlan)
                 : recreate
                     ? deployment.BeginHostRecreateAndHotPublish(hostPlan)
                     : deployment.BeginHotPublish(hostPlan);
-            NativeSamplingSubscriptionWorkspace? replacement = null;
+            WorkspaceHolder? candidate = null;
             try
             {
-                replacement = new NativeSamplingSubscriptionWorkspace(desired);
-                deployment.CompleteSucceeded(token);
-                var next = new WorkspaceHolder(
+                if (!TryClosePending())
+                    throw new InvalidOperationException("The retired sampling subscription workspace still has readers; replacement is not admitted.");
+                var workspaceIncarnation = NextWorkspaceIncarnation();
+                var replacement = new NativeSamplingSubscriptionWorkspace();
+                candidate = new WorkspaceHolder(
                     replacement,
                     desired.HotPublish.Roles,
                     workspaceIncarnation,
                     desired.ConfigurationGeneration);
+                pending = candidate;
+                replacement.Initialize(desired, createScratch);
+                deployment.CompleteSucceeded(token);
+                committed = true;
                 var previous = current;
-                previous?.Retire();
-                current = next;
+                current = candidate;
                 appliedPlan = desired;
-                replacement = null;
+                pending = previous;
+                _ = TryClosePending();
             }
             catch (Exception ex)
             {
-                replacement?.Dispose();
+                // Successful deployment settlement is never reversed by retirement failure.
+                if (committed)
+                    throw;
+                var failures = new List<Exception> { ex };
+                if (candidate is not null)
+                {
+                    try { _ = TryClosePending(); }
+                    catch (Exception cleanup) { failures.Add(cleanup); }
+                }
                 try
                 {
                     deployment.CompleteFailed(token, "sampling-subscription-apply-failed");
                 }
                 catch (Exception settlement)
                 {
-                    throw new AggregateException(ex, settlement);
+                    failures.Add(settlement);
                 }
+                if (failures.Count > 1)
+                    throw new AggregateException(failures);
                 throw;
             }
         }
@@ -251,7 +284,9 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         {
             logger.LogError(
                 ex,
-                "Host Manager sampling-subscription plan apply failed; the prior workspace remains active.");
+                committed
+                    ? "Host Manager sampling-subscription workspace was published; retired workspace close remains pending."
+                    : "Host Manager sampling-subscription plan apply failed; the prior workspace remains active.");
         }
         finally
         {
@@ -267,14 +302,38 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         gate.EnterWriteLock();
         try
         {
-            current?.Retire();
-            current = null;
-            appliedPlan = null;
+            Exception? failure = null;
+            try { _ = TryClosePending(); }
+            catch (Exception ex) { failure = ex; }
+            try
+            {
+                if (current is not null && current.RetireAndTryClose())
+                {
+                    current = null;
+                    appliedPlan = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                failure = failure is null ? ex : new AggregateException(failure, ex);
+            }
+            if (failure is not null)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
         }
         finally
         {
             gate.ExitWriteLock();
         }
+    }
+
+    private bool TryClosePending()
+    {
+        if (pending is null)
+            return true;
+        if (!pending.RetireAndTryClose())
+            return false;
+        pending = null;
+        return true;
     }
 
     private ulong NextWorkspaceIncarnation()
@@ -287,7 +346,7 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         return ++nextWorkspaceIncarnation;
     }
 
-    internal sealed class SessionLease : IDisposable
+    internal sealed class SessionLease : ISamplingSubscriptionSessionLease<SamplingOwnerToken>
     {
         private WorkspaceHolder? holder;
 
@@ -311,16 +370,21 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
 
         internal SamplingOwnerToken OwnerToken { get; }
 
+        ISubscriptionRoleSettings ISamplingSubscriptionSessionLease<SamplingOwnerToken>.HotPublish => HotPublish;
+        SamplingOwnerToken ISamplingSubscriptionSessionLease<SamplingOwnerToken>.OwnerToken => OwnerToken;
+
         public void Dispose()
             => Interlocked.Exchange(ref holder, null)?.Release();
     }
 
     internal sealed class WorkspaceHolder
     {
+        private readonly object sync = new();
         private readonly NativeSamplingSubscriptionWorkspace workspace;
         private readonly IReadOnlyList<CompiledHostManagerSamplingSubscriptionRoleHotPublishPlan> roles;
         private int referenceCount = 1;
-        private int retired;
+        private bool retired;
+        private bool closed;
 
         public WorkspaceHolder(
             NativeSamplingSubscriptionWorkspace workspace,
@@ -352,32 +416,50 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
 
         public SessionLease Acquire(int roleId)
         {
-            if (Volatile.Read(ref retired) != 0)
+            lock (sync)
             {
-                throw new ObjectDisposedException(nameof(NativeSamplingSubscriptionWorkspace));
+                ObjectDisposedException.ThrowIf(retired, this);
+                var session = workspace.GetSession(roleId);
+                var lease = new SessionLease(this, session, roles[roleId - 1]);
+                referenceCount++;
+                return lease;
             }
-            Interlocked.Increment(ref referenceCount);
-            return new SessionLease(
-                this,
-                workspace.GetSession(roleId),
-                roles[roleId - 1]);
         }
 
-        public void Retire()
+        public bool RetireAndTryClose()
         {
             OwnerToken.Revoke();
-            if (Interlocked.Exchange(ref retired, 1) == 0)
+            lock (sync)
             {
-                Release();
+                if (!retired)
+                {
+                    retired = true;
+                    referenceCount--;
+                }
+                return TryClose();
             }
         }
 
         public void Release()
         {
-            if (Interlocked.Decrement(ref referenceCount) == 0)
+            lock (sync)
             {
-                workspace.Dispose();
+                if (referenceCount <= 0)
+                    throw new InvalidOperationException("Sampling subscription reference was already returned.");
+                referenceCount--;
+                _ = TryClose();
             }
+        }
+
+        private bool TryClose()
+        {
+            if (closed)
+                return true;
+            if (!retired || referenceCount != 0)
+                return false;
+            workspace.Dispose();
+            closed = true;
+            return true;
         }
     }
 }

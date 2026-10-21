@@ -1,0 +1,1246 @@
+[
+  {
+    "Path": "0001000E00000000",
+    "Name": "ledger.activity_bitmap_width",
+    "Description": "Global build-time bitmap width. Supported values are exactly 8, 16, 32 and 64.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.activity_bitmap_width",
+    "DefaultReason": "Global build-time bitmap width. Supported values are exactly 8, 16, 32 and 64.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "bits",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 8,
+        "UnsignedMaximum": 64,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "activity_bitmap_width"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "activity_bitmap_width"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00000001",
+    "Name": "ledger.uid_width_bits",
+    "Description": "Global build-time UID width; the unsigned step restricts values to 128 or 256.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.uid_width_bits",
+    "DefaultReason": "Global build-time UID width; the unsigned step restricts values to 128 or 256.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "bits",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 128,
+        "UnsignedMaximum": 256,
+        "UnsignedStep": 128,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "uid_width_bits"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "uid_width_bits"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040000",
+    "Name": "ledger.table.0.activity_score_epochs",
+    "Description": "Per-table K: number of recent epochs used for activity scoring.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.activity_score_epochs",
+    "DefaultReason": "Per-table K: number of recent epochs used for activity scoring.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": "0001000E00000000",
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_activity_score_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_activity_score_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040001",
+    "Name": "ledger.table.0.idle_epochs",
+    "Description": "Per-table N: inactive epochs required before idle unload; zero disables idle unload.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.idle_epochs",
+    "DefaultReason": "Per-table N: inactive epochs required before idle unload; zero disables idle unload.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": "0001000E00000000",
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_idle_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_idle_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040002",
+    "Name": "ledger.table.0.concentrated_trigger_percent",
+    "Description": "Per-table concentrated trigger; zero disables concentrated capacity protection.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.concentrated_trigger_percent",
+    "DefaultReason": "Per-table concentrated trigger; zero disables concentrated capacity protection.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_concentrated_trigger_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_concentrated_trigger_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040003",
+    "Name": "ledger.table.0.concentrated_target_percent",
+    "Description": "Per-table concentrated capacity-protection target.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.concentrated_target_percent",
+    "DefaultReason": "Per-table concentrated capacity-protection target.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_concentrated_target_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_concentrated_target_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040004",
+    "Name": "ledger.table.0.smooth_trigger_percent",
+    "Description": "Per-table smooth capacity-protection trigger.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.smooth_trigger_percent",
+    "DefaultReason": "Per-table smooth capacity-protection trigger.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_trigger_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_trigger_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040005",
+    "Name": "ledger.table.0.smooth_emergency_percent",
+    "Description": "Per-table inclusive smooth emergency threshold.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.smooth_emergency_percent",
+    "DefaultReason": "Per-table inclusive smooth emergency threshold.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_emergency_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_emergency_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040006",
+    "Name": "ledger.table.0.smooth_interval_epochs",
+    "Description": "Per-table smooth release interval in epochs.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.smooth_interval_epochs",
+    "DefaultReason": "Per-table smooth release interval in epochs.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_interval_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_interval_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040007",
+    "Name": "ledger.table.0.smooth_release_count",
+    "Description": "Per-table number of smooth releases per interval.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.smooth_release_count",
+    "DefaultReason": "Per-table number of smooth releases per interval.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "actions",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_release_count"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_smooth_release_count"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040008",
+    "Name": "ledger.table.0.tick_maximum_actions",
+    "Description": "Per-table upper bound shared by the three Tick stages.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.tick_maximum_actions",
+    "DefaultReason": "Per-table upper bound shared by the three Tick stages.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "actions",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_tick_maximum_actions"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_tick_maximum_actions"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00040009",
+    "Name": "ledger.table.0.release_check_enabled",
+    "Description": "Per-table switch for the pre-release allocation check.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.release_check_enabled",
+    "DefaultReason": "Per-table switch for the pre-release allocation check.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 0,
+        "Unit": "boolean",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": null,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [
+          "false",
+          "true"
+        ],
+        "RequiredSelectionCount": 1
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_check_enabled"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_check_enabled"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0004000A",
+    "Name": "ledger.table.0.release_tolerance_parts_per_million",
+    "Description": "Per-table release-check relative tolerance; 10000 parts per million is one percent.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.release_tolerance_parts_per_million",
+    "DefaultReason": "Per-table release-check relative tolerance; 10000 parts per million is one percent.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "ppm",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 4294967295,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_tolerance_parts_per_million"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_tolerance_parts_per_million"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0004000B",
+    "Name": "ledger.table.0.release_tolerance_bytes",
+    "Description": "Per-table release-check absolute tolerance in bytes.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.release_tolerance_bytes",
+    "DefaultReason": "Per-table release-check absolute tolerance in bytes.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "bytes",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 18446744073709551615,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_tolerance_bytes"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_release_tolerance_bytes"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0004000C",
+    "Name": "ledger.table.0.capacity_protection_method",
+    "Description": "Per-table capacity protection method.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.0.capacity_protection_method",
+    "DefaultReason": "Per-table capacity protection method.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 0,
+        "Unit": "method",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": null,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [
+          "concentrated",
+          "smooth"
+        ],
+        "RequiredSelectionCount": 1
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_capacity_protection_method"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_0_capacity_protection_method"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080000",
+    "Name": "ledger.table.1.activity_score_epochs",
+    "Description": "Per-table K: number of recent epochs used for activity scoring.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.activity_score_epochs",
+    "DefaultReason": "Per-table K: number of recent epochs used for activity scoring.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": "0001000E00000000",
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_activity_score_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_activity_score_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080001",
+    "Name": "ledger.table.1.idle_epochs",
+    "Description": "Per-table N: inactive epochs required before idle unload; zero disables idle unload.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.idle_epochs",
+    "DefaultReason": "Per-table N: inactive epochs required before idle unload; zero disables idle unload.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": "0001000E00000000",
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_idle_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_idle_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080002",
+    "Name": "ledger.table.1.concentrated_trigger_percent",
+    "Description": "Per-table concentrated trigger; zero disables concentrated capacity protection.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.concentrated_trigger_percent",
+    "DefaultReason": "Per-table concentrated trigger; zero disables concentrated capacity protection.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_concentrated_trigger_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_concentrated_trigger_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080003",
+    "Name": "ledger.table.1.concentrated_target_percent",
+    "Description": "Per-table concentrated capacity-protection target.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.concentrated_target_percent",
+    "DefaultReason": "Per-table concentrated capacity-protection target.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_concentrated_target_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_concentrated_target_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080004",
+    "Name": "ledger.table.1.smooth_trigger_percent",
+    "Description": "Per-table smooth capacity-protection trigger.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.smooth_trigger_percent",
+    "DefaultReason": "Per-table smooth capacity-protection trigger.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_trigger_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_trigger_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080005",
+    "Name": "ledger.table.1.smooth_emergency_percent",
+    "Description": "Per-table inclusive smooth emergency threshold.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.smooth_emergency_percent",
+    "DefaultReason": "Per-table inclusive smooth emergency threshold.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "percent",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 100,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_emergency_percent"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_emergency_percent"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080006",
+    "Name": "ledger.table.1.smooth_interval_epochs",
+    "Description": "Per-table smooth release interval in epochs.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.smooth_interval_epochs",
+    "DefaultReason": "Per-table smooth release interval in epochs.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "epochs",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_interval_epochs"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_interval_epochs"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080007",
+    "Name": "ledger.table.1.smooth_release_count",
+    "Description": "Per-table number of smooth releases per interval.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.smooth_release_count",
+    "DefaultReason": "Per-table number of smooth releases per interval.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "actions",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_release_count"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_smooth_release_count"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080008",
+    "Name": "ledger.table.1.tick_maximum_actions",
+    "Description": "Per-table upper bound shared by the three Tick stages.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.tick_maximum_actions",
+    "DefaultReason": "Per-table upper bound shared by the three Tick stages.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "actions",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 1,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_tick_maximum_actions"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_tick_maximum_actions"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E00080009",
+    "Name": "ledger.table.1.release_check_enabled",
+    "Description": "Per-table switch for the pre-release allocation check.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.release_check_enabled",
+    "DefaultReason": "Per-table switch for the pre-release allocation check.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 0,
+        "Unit": "boolean",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": null,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [
+          "false",
+          "true"
+        ],
+        "RequiredSelectionCount": 1
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_check_enabled"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_check_enabled"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0008000A",
+    "Name": "ledger.table.1.release_tolerance_parts_per_million",
+    "Description": "Per-table release-check relative tolerance; 10000 parts per million is one percent.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.release_tolerance_parts_per_million",
+    "DefaultReason": "Per-table release-check relative tolerance; 10000 parts per million is one percent.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "ppm",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 4294967295,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_tolerance_parts_per_million"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_tolerance_parts_per_million"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0008000B",
+    "Name": "ledger.table.1.release_tolerance_bytes",
+    "Description": "Per-table release-check absolute tolerance in bytes.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.release_tolerance_bytes",
+    "DefaultReason": "Per-table release-check absolute tolerance in bytes.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 3,
+        "Unit": "bytes",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": 0,
+        "UnsignedMaximum": 18446744073709551615,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [],
+        "RequiredSelectionCount": 0
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_tolerance_bytes"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_release_tolerance_bytes"
+      }
+    ]
+  },
+  {
+    "Path": "0001000E0008000C",
+    "Name": "ledger.table.1.capacity_protection_method",
+    "Description": "Per-table capacity protection method.",
+    "Status": 0,
+    "PendingReason": null,
+    "Update": 0,
+    "ValueSource": "ledger.declared_defaults",
+    "SourcePointer": "ledger.table.1.capacity_protection_method",
+    "DefaultReason": "Per-table capacity protection method.",
+    "DescriptionResourceKey": null,
+    "ComplexContract": null,
+    "Slots": [
+      {
+        "Kind": 0,
+        "Unit": "method",
+        "IntegerMinimum": null,
+        "IntegerMaximum": null,
+        "IntegerStep": null,
+        "UnsignedMinimum": null,
+        "UnsignedMaximum": null,
+        "UnsignedStep": null,
+        "UnsignedMaximumPoint": null,
+        "DecimalMinimum": null,
+        "DecimalMaximum": null,
+        "Options": [
+          "concentrated",
+          "smooth"
+        ],
+        "RequiredSelectionCount": 1
+      }
+    ],
+    "GenerationTargets": [
+      {
+        "Language": 0,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_capacity_protection_method"
+      },
+      {
+        "Language": 1,
+        "Form": 0,
+        "Scope": "ledger.values",
+        "Symbol": "table_1_capacity_protection_method"
+      }
+    ]
+  }
+]

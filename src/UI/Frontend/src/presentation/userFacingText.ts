@@ -1,14 +1,14 @@
 import { uiText } from "../text.ts";
 import { renderBackendMessage } from "./backendMessage.ts";
-import type { BackendMessage, SoftwareDataMigrationRecord } from "../types";
+import type { BackendMessage } from "../types";
 import type { UserDetailSection } from "./userDetails";
 import {
   compactUserDetailSections,
   userDetailItem,
   userDetailSection
-} from "./userDetails";
+} from "./userDetails.ts";
 
-const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
+const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|diskio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
 
 // 后端状态值 -> 用户状态键；文字本身由当前语言的文案包提供。
 type UserStateKey = keyof typeof uiText.status.state;
@@ -51,6 +51,12 @@ const commonStateKeys: Record<string, UserStateKey> = {
 };
 
 export function userFacingErrorMessage(error: unknown, fallback: string) {
+  if (isApiRequestError(error) && error.kind === "http"
+    && "status" in error && error.status === 403 && "payload" in error
+    && error.payload && typeof error.payload === "object"
+    && "code" in error.payload && error.payload.code === "ProcessActionRequiresElevation") {
+    return uiText.softwareActions.processActionNeedsElevation;
+  }
   if (isApiRequestError(error)
     && (error.kind === "timeout" || error.kind === "invalid-response" || error.kind === "aborted")) {
     return sentence(safeFallback(error.userMessage, fallback));
@@ -60,8 +66,14 @@ export function userFacingErrorMessage(error: unknown, fallback: string) {
 
 export function userFacingMessage(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
+  if (text === "已向用户桌面请求启动 Windows 注册表提供的卸载器；需要提升时由 Windows 提示。完成后请刷新软件清单。")
+    return uiText.softwareActions.uninstallerLaunchRequested;
+  if (text === "The requesting user session is no longer available." || text === "The interactive session user changed.")
+    return uiText.softwareActions.uninstallerSessionUnavailable;
   if (!text || internalImplementationPattern.test(text) || looksLikeRawCode(text)) {
-    return sentence(safeFallback(fallback, uiText.status.stateUpdated));
+    // The caller supplies localized product copy here. Short words such as
+    // "Preparing" must not be classified as backend identifiers.
+    return sentence(fallback.trim() || uiText.status.stateUpdated);
   }
 
   return sentence(text);
@@ -106,43 +118,6 @@ export function userFacingRisk(value: unknown) {
     case "root": return risk.root;
     case "blocked": return risk.blocked;
     default: return risk.unknown;
-  }
-}
-
-export function migrationKindLabel(value: unknown) {
-  return String(value ?? "").toLocaleLowerCase() === "root"
-    ? uiText.status.migration.kindRoot
-    : uiText.status.migration.kindData;
-}
-
-export function migrationTargetCategoryLabel(value: unknown) {
-  return String(value ?? "").toLocaleLowerCase() === "misc"
-    ? uiText.status.migration.targetMisc
-    : uiText.status.migration.targetUser;
-}
-
-export function migrationClassificationLabel(value: unknown) {
-  const migration = uiText.status.migration;
-  switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "applicationroot": return migration.classificationApplicationRoot;
-    case "userappdata": return migration.classificationUserAppData;
-    case "programdata": return migration.classificationProgramData;
-    case "directory": return migration.classificationDirectory;
-    case "file": return migration.classificationFile;
-    case "missing": return migration.classificationMissing;
-    default: return migration.classificationUnknown;
-  }
-}
-
-export function migrationStateLabel(value: unknown) {
-  const migration = uiText.status.migration;
-  switch (String(value ?? "").trim().toLocaleLowerCase()) {
-    case "running": return migration.stateRunning;
-    case "stopped": return migration.stateStopped;
-    case "completed": return migration.stateCompleted;
-    case "restored": return migration.stateRestored;
-    case "failed": return migration.stateFailed;
-    default: return migration.stateUnknown;
   }
 }
 
@@ -209,6 +184,8 @@ export function userFacingMetricUnavailableReason(
 export function componentDisplayName(componentId: unknown, fallback?: unknown) {
   const names = uiText.status.component.names;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
+    case "fan-control-core": return names.fanControlCore;
+    case "hardware-bridge": return names.hardwareBridge;
     case "amd-smu-pawnio-provider": return names.amdSmuPawnIo;
     case "amd-ryzen-master-monitoring-sdk": return names.amdRyzenMaster;
     case "msi-afterburner": return names.msiAfterburner;
@@ -229,6 +206,8 @@ export function componentDisplayName(componentId: unknown, fallback?: unknown) {
 export function componentPurpose(componentId: unknown) {
   const purposes = uiText.status.component.purposes;
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
+    case "fan-control-core": return purposes.fanControlCore;
+    case "hardware-bridge": return purposes.hardwareBridge;
     case "msi-afterburner": return purposes.msiAfterburner;
     case "amd-ryzen-master-monitoring-sdk": return purposes.amdRyzenSdk;
     case "amd-smu-pawnio-provider": return purposes.amdSmu;
@@ -258,24 +237,6 @@ export function componentCategory(componentId: unknown) {
     default:
       return categories.hardwareMonitoring;
   }
-}
-
-export function migrationRecordDetails(record: SoftwareDataMigrationRecord): UserDetailSection[] {
-  const detail = uiText.status.detail;
-  return compactUserDetailSections([
-    userDetailSection(detail.migrationContent, [
-      userDetailItem(detail.software, record.softwareName || detail.unnamedSoftware),
-      userDetailItem(detail.content, migrationKindLabel(record.migrationKind)),
-      userDetailItem(detail.savedLocation, migrationTargetCategoryLabel(record.targetCategory)),
-      userDetailItem(detail.status, migrationStateLabel(record.state)),
-      userDetailItem(detail.createdAt, userFacingDateTime(record.createdAt)),
-      record.restoredAt ? userDetailItem(detail.restoredAt, userFacingDateTime(record.restoredAt)) : null
-    ]),
-    userDetailSection(detail.location, [
-      userDetailItem(detail.sourcePath, record.sourcePath),
-      userDetailItem(detail.destinationPath, record.destinationPath)
-    ])
-  ]);
 }
 
 export function safeUserFact(value: unknown) {

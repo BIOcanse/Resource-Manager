@@ -306,9 +306,6 @@ function taskKindLabel(item: TaskCenterItem): string {
     "dependency.download": uiText.taskCenter.operation.dependencyDownload,
     "dependency.launch-installer": uiText.taskCenter.operation.dependencyLaunchInstaller,
     "software.uninstall": uiText.taskCenter.operation.softwareUninstall,
-    "migration.execute": uiText.taskCenter.operation.migrationExecute,
-    "migration.restore": uiText.taskCenter.operation.migrationRestore,
-    "discovery.start": uiText.taskCenter.operation.discoveryStart,
     "resource-breakdown.layout-settle": uiText.taskCenter.operation.resourceBreakdownLayoutSettle
   };
   return known[item.kind] ?? item.kind;

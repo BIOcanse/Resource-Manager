@@ -25,10 +25,8 @@ public sealed class JsonControlPresetStore : IControlPresetStore
         ILogger<JsonControlPresetStore>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        presetPath = Path.Combine(
+        presetPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "UserData",
-            "Control",
             "presets.json");
         this.logger = logger;
     }

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 namespace ResourceManager.App.Infrastructure.ServiceHosting;
@@ -12,6 +13,16 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
     private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint MaximumAllowed = 0x02000000;
     private const int WtsActive = 0;
+
+    public string? GetUserSid(uint sessionId)
+    {
+        using var current = WindowsIdentity.GetCurrent();
+        using var process = Process.GetCurrentProcess();
+        if (!current.IsSystem && process.SessionId == sessionId) return current.User?.Value;
+        if (!WTSQueryUserToken(sessionId, out var token)) return null;
+        using (token)
+        using (var user = new WindowsIdentity(token.DangerousGetHandle())) return user.User?.Value;
+    }
 
     public IReadOnlyList<uint> GetActiveSessionIds()
     {
@@ -92,6 +103,13 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         uint sessionId,
         string executablePath,
         string arguments)
+        => LaunchInSession(sessionId, executablePath, arguments, null);
+
+    public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executablePath, string arguments)
+        => LaunchInSession(sessionId, executablePath, arguments,
+            new SecurityIdentifier(expectedUserSid).Value);
+
+    private static uint LaunchInSession(uint sessionId, string executablePath, string arguments, string? expectedUserSid)
     {
         var executable = NormalizeExecutablePath(executablePath);
         if (!File.Exists(executable))
@@ -101,6 +119,10 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                 executable);
         }
 
+        if (expectedUserSid is not null
+            && TryLaunchInCurrentUserSession(sessionId, expectedUserSid, executable, arguments, out var currentSessionProcessId))
+            return currentSessionProcessId;
+
         if (!WTSQueryUserToken(sessionId, out var sessionToken))
         {
             throw CreateWin32Exception("WTSQueryUserToken");
@@ -108,6 +130,12 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
 
         using (sessionToken)
         {
+            if (expectedUserSid is not null)
+            {
+                using var user = new WindowsIdentity(sessionToken.DangerousGetHandle());
+                if (user.IsSystem || user.User?.Value != expectedUserSid)
+                    throw new UnauthorizedAccessException("The interactive session user changed.");
+            }
             if (!DuplicateTokenEx(
                     sessionToken,
                     MaximumAllowed,
@@ -181,6 +209,31 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                 }
             }
         }
+    }
+
+    private static bool TryLaunchInCurrentUserSession(
+        uint sessionId,
+        string expectedUserSid,
+        string executable,
+        string arguments,
+        out uint processId)
+    {
+        processId = 0;
+        using var identity = WindowsIdentity.GetCurrent();
+        using var current = Process.GetCurrentProcess();
+        if (identity.IsSystem || current.SessionId != sessionId
+            || identity.User?.Value != expectedUserSid)
+            return false;
+
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = executable,
+            Arguments = arguments,
+            WorkingDirectory = Path.GetDirectoryName(executable),
+            UseShellExecute = false
+        }) ?? throw new InvalidOperationException("The interactive user process did not start.");
+        processId = checked((uint)process.Id);
+        return true;
     }
 
     private static string NormalizeExecutablePath(string path)

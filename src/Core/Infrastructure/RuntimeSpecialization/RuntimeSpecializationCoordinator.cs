@@ -129,11 +129,12 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
                 settings,
                 async (candidate, validationCancellationToken) =>
                 {
-                    candidatePlan = await compiler.CompileAsync(
-                        nextVersion,
-                        reason,
-                        candidate,
-                        validationCancellationToken);
+                    candidatePlan = ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
+                        planProvider.Current, await compiler.CompileAsync(
+                            nextVersion,
+                            reason,
+                            candidate,
+                            validationCancellationToken));
                 },
                 cancellationToken);
         }
@@ -344,7 +345,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     {
         var nextVersion = Interlocked.Increment(ref version);
         var plan = await compiler.CompileAsync(nextVersion, reason, cancellationToken);
-        return Publish(plan);
+        return Publish(ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
+            planProvider.Current, plan));
     }
 
     private RuntimePlanPublicationResult Publish(CompiledRuntimePlan plan)

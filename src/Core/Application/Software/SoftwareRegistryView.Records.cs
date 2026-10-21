@@ -1,6 +1,5 @@
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Messages;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Software;
@@ -33,28 +32,6 @@ public sealed partial class SoftwareRegistryView
                         : BackendMessageCodes.Dependency.ManagedRootEmpty)),
             SoftwareManagementRoles.Dependency,
             MessageCode: status.Message);
-    }
-
-    private static IEnumerable<SoftwareRecord> ToControlledMigrationRecords(IReadOnlyList<SoftwareDataMigrationRecord> migrationRecords)
-    {
-        return migrationRecords
-            .Where(static record => record.State != "Restored")
-            .GroupBy(static record => record.SoftwareName, StringComparer.OrdinalIgnoreCase)
-            .Select(static group =>
-            {
-                var records = group.ToArray();
-                return new SoftwareRecord(
-                    $"managed:migration:{NormalizeId(group.Key)}",
-                    group.Key,
-                    SoftwareKinds.Controlled,
-                    SoftwareDisplayKinds.Controlled,
-                    "migrated",
-                    ["数据迁移"],
-                    records.Select(static record => record.DestinationPath).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                    $"已有 {records.Length} 条迁移记录。",
-                    NoUninstall(BackendMessageCodes.Software.ControlledNoUninstall),
-                    null);
-            });
     }
 
     private static SoftwareRecord ToManualSoftwareRecord(

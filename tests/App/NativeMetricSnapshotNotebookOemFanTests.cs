@@ -1,18 +1,75 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
+using ResourceManager.ReadWrite.Windows.Metrics.Topology;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeMetricSnapshotNotebookOemFanTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WmiFailureDoesNotControlExplicitOemChannelsAndRetentionKeepsOnlyWmiHistory(bool enabled)
+    {
+        var read = WindowsNotebookFanProjection.CreateFanCatalog(new(false, []), enabled, 10);
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, read.Status);
+        Assert.Equal(enabled ? 2 : 0, read.Identities.Count);
+        Assert.All(read.Identities, identity => Assert.NotNull(identity.NotebookOemRole));
+        var plan = NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(
+            HostManagerTestPlanFactory.CreatePlan().MetricSnapshot);
+        var previous = NativeMetricSnapshotCatalogProjection.Create(plan, [], [],
+            new[] { new NativeMetricSnapshotOrdinalCatalogIdentity(7, "wmi|fixture|fan0", 9) }
+                .Concat(WindowsNotebookFanProjection.CreateCatalogIdentities(8, 9)).ToArray(),
+            NativeMetricSnapshotCatalogHandleMap.Empty);
+        var topology = new NativeMetricSnapshotCatalogTopologySnapshot(10,
+            NativeMetricSnapshotCatalogTopologyStatus.Complete, [],
+            NativeMetricSnapshotCatalogTopologyStatus.Complete, [], read.Status, read.Identities);
+        var retained = WindowsMetricCatalogTopologyPublication.RetainUnavailableOptionalIdentities(topology, previous);
+        var wmi = Assert.Single(retained.SystemFans, identity => identity.NotebookOemRole is null && identity.NvmlFan is null);
+        Assert.Equal("wmi|fixture|fan0", wmi.ExactIdentityKey);
+        Assert.Equal(0, wmi.DisplayIndex);
+        var oem = retained.SystemFans.Where(static identity => identity.NotebookOemRole is not null).ToArray();
+        Assert.Equal(enabled ? new[] { 1, 2 } : [], oem.Select(static identity => identity.DisplayIndex));
+        Assert.Equal(enabled ? new[] { WindowsNotebookFanProjection.CpuFanIdentityKey, WindowsNotebookFanProjection.DiscreteGpuFanIdentityKey } : [],
+            oem.Select(static identity => identity.ExactIdentityKey));
+        Assert.Equal(enabled ? new NotebookOemPhysicalFanRole?[] { NotebookOemPhysicalFanRole.Cpu, NotebookOemPhysicalFanRole.DiscreteGpu } : [],
+            oem.Select(static identity => identity.NotebookOemRole));
+        Assert.All(retained.SystemFans, identity =>
+        {
+            Assert.Equal(10UL, identity.TopologyGeneration);
+            Assert.Null(identity.NvmlFan);
+        });
+        var projected = WindowsMetricCatalogTopologyPublication.ProjectCatalog(plan, retained, previous.HandleMap);
+        Assert.All(previous.SystemFanIdentities, identity => Assert.Equal(9UL, identity.TopologyGeneration));
+        Assert.Equal(retained.SystemFans.ToArray(), projected.SystemFanIdentities.ToArray());
+        Assert.Equal(enabled ? 2 : 0, projected.SystemFanIdentities.Count(static identity => identity.NotebookOemRole is not null));
+        Assert.All(projected.RuleBindings.Values.Where(binding => binding.DeviceIdentity == wmi.ExactIdentityKey),
+            binding => Assert.Equal(NativeMetricSnapshotSourceCatalog.HardwareMonitorWmi, binding.SourceId));
+        foreach (var identity in oem)
+        {
+            var bindings = projected.RuleBindings.Values.Where(binding => binding.DeviceIdentity == identity.ExactIdentityKey).ToArray();
+            Assert.NotEmpty(bindings);
+            Assert.All(bindings, binding => Assert.Equal(NativeMetricSnapshotSourceCatalog.NotebookOemFan, binding.SourceId));
+        }
+        var previousWmi = Assert.Single(previous.RuleBindings.Values, binding => binding.DeviceIdentity == wmi.ExactIdentityKey
+            && binding.FieldCode == MetricFieldCode.FanRpm);
+        var currentWmi = Assert.Single(projected.RuleBindings.Values, binding => binding.DeviceIdentity == wmi.ExactIdentityKey
+            && binding.FieldCode == MetricFieldCode.FanRpm);
+        Assert.Equal(previousWmi.ScopeHandle, currentWmi.ScopeHandle);
+        Assert.Equal(previousWmi.MetricHandle, currentWmi.MetricHandle);
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, retained.FanStatus);
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, retained.NotebookOemFanStatus);
+    }
+
     [Fact]
     public void TemporaryMissingCpuFan_DoesNotDisableFollowingSubscribedSamples()
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        using var workspace = new NativeMetricSnapshotWorkspace(compiled,
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
             Path.Combine(Path.GetTempPath(), $"fan-recovery-{Guid.NewGuid():N}.bin"));
-        var catalog = NativeMetricSnapshotCatalogProjection.Create(
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             compiled, [], [], [], workspace.CreateCatalogHandleMap());
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
         var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(
@@ -109,36 +166,104 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
         Assert.Equal(
             3100,
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "cpu.fanRpm",
+                MetricFieldTestBindings.Create("cpu.fanRpm"),
                 sensors,
                 1,
                 gpu));
         Assert.Equal(
             3024,
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "gpu.1.fanRpm",
+                MetricFieldTestBindings.Create("gpu.{gpu}.fanRpm", 1),
                 sensors,
                 1,
                 gpu));
         Assert.Equal(
             48,
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "gpu.1.fanPercent",
+                MetricFieldTestBindings.Create("gpu.{gpu}.fanPercent", 1),
                 sensors,
                 1,
                 gpu));
         Assert.Null(
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "gpu.0.fanRpm",
+                MetricFieldTestBindings.Create("gpu.{gpu}.fanRpm", 0),
                 sensors,
                 1,
                 gpu));
         Assert.Null(
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "gpu.1.temperature",
+                MetricFieldTestBindings.Create("gpu.{gpu}.temperature", 1),
                 sensors,
                 1,
                 gpu));
+    }
+
+    [Fact]
+    public void MechrevoPhysicalFanRolesExposeDistinctRpmAndDutyWithoutChangingAggregates()
+    {
+        var gpu = new PlatformGpuSensor(0, "dGPU fan", "test", null, null, 3200, 64, null, null);
+        var sensors = new NotebookOemFanSensorSnapshot(
+            new HardwareSensorProviderState("Mechrevo UWACPI", "Active", "test"),
+            3000,
+            52,
+            [gpu])
+        {
+            PhysicalFans =
+            [
+                new(WindowsNotebookFanProjection.CpuFanIdentityKey, NotebookOemPhysicalFanRole.Cpu, 3000, 52),
+                new(WindowsNotebookFanProjection.DiscreteGpuFanIdentityKey, NotebookOemPhysicalFanRole.DiscreteGpu, 3200, 64)
+            ]
+        };
+        var cpuRpm = MetricFieldTestBindings.Create("fan.{fan}.speed") with
+        { DeviceIdentity = WindowsNotebookFanProjection.CpuFanIdentityKey };
+        var gpuDuty = MetricFieldTestBindings.Create("fan.{fan}.pwmDutyReported") with
+        { DeviceIdentity = WindowsNotebookFanProjection.DiscreteGpuFanIdentityKey };
+
+        Assert.Equal(3000, WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
+            MetricFieldTestBindings.Create("cpu.fanRpm"), sensors, 1, gpu));
+        Assert.Equal(3200, WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
+            MetricFieldTestBindings.Create("gpu.{gpu}.fanRpm", 1), sensors, 1, gpu));
+        Assert.Equal(3000, WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(cpuRpm, sensors, 1, gpu));
+        Assert.Equal(64, WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(gpuDuty, sensors, 1, gpu));
+        Assert.Null(WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
+            gpuDuty with { DeviceIdentity = "mechrevo|uwacpi|fan|unknown" }, sensors, 1, gpu));
+
+        var catalogIdentities = WindowsNotebookFanProjection.CreateCatalogIdentities(4, 9);
+        Assert.Equal([4, 5], catalogIdentities.Select(static identity => identity.DisplayIndex));
+        Assert.Equal(
+            [WindowsNotebookFanProjection.CpuFanIdentityKey, WindowsNotebookFanProjection.DiscreteGpuFanIdentityKey],
+            catalogIdentities.Select(static identity => identity.ExactIdentityKey));
+        Assert.Equal(
+            new NotebookOemPhysicalFanRole?[]
+            { NotebookOemPhysicalFanRole.Cpu, NotebookOemPhysicalFanRole.DiscreteGpu },
+            catalogIdentities.Select(static identity => identity.NotebookOemRole));
+
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"fan-roles-{Guid.NewGuid():N}.bin"));
+        var allFanIdentities = new[]
+            { new NativeMetricSnapshotOrdinalCatalogIdentity(0, "wmi|fixture|fan0", 9) }
+            .Concat(catalogIdentities).ToArray();
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
+            compiled, [], [], allFanIdentities, workspace.CreateCatalogHandleMap());
+        Assert.Equal(2, catalog.SystemFanIdentities.Count(static identity => identity.NotebookOemRole is not null));
+        foreach (var identity in catalogIdentities)
+        {
+            Assert.All(catalog.RuleBindings.Values.Where(binding =>
+                    binding.DeviceIdentity == identity.ExactIdentityKey),
+                binding => Assert.Equal(NativeMetricSnapshotSourceCatalog.NotebookOemFan, binding.SourceId));
+            Assert.Contains(catalog.RuleBindings.Values, binding =>
+                binding.SourceId == NativeMetricSnapshotSourceCatalog.NotebookOemFan
+                && binding.DeviceIdentity == identity.ExactIdentityKey
+                && binding.FieldCode == MetricFieldCode.FanRpm);
+            Assert.Contains(catalog.RuleBindings.Values, binding =>
+                binding.SourceId == NativeMetricSnapshotSourceCatalog.NotebookOemFan
+                && binding.DeviceIdentity == identity.ExactIdentityKey
+                && binding.FieldCode == MetricFieldCode.FanReportedPwmDuty);
+        }
+        Assert.DoesNotContain(catalog.RuleBindings.Values, binding =>
+            binding.SourceId == NativeMetricSnapshotSourceCatalog.NotebookOemFan
+            && binding.DeviceIdentity == "wmi|fixture|fan0");
     }
 
     [Fact]
@@ -162,7 +287,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
 
         Assert.Null(
             WindowsHardwareMetricSampler.ResolveNotebookOemFanValue(
-                "gpu.1.fanRpm",
+                MetricFieldTestBindings.Create("gpu.{gpu}.fanRpm", 1),
                 sensors,
                 null,
                 null));

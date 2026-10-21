@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -28,6 +29,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class FanCurveTemperatureFeed(
     IMetricSnapshotObservationSource metrics,
     FanControlCoreClient core,
+    DashboardMonitoringCatalogState catalog,
     ILogger<FanCurveTemperatureFeed>? logger = null) : BackgroundService
 {
     /// <summary>
@@ -47,6 +49,7 @@ public sealed class FanCurveTemperatureFeed(
     private static readonly TimeSpan IdleRecheck = TimeSpan.FromMinutes(5);
 
     private const string SubscriptionId = "control.fan-curve.temperature";
+    internal static readonly TimeSpan MaximumSampleAge = TimeSpan.FromSeconds(3);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -85,39 +88,47 @@ public sealed class FanCurveTemperatureFeed(
          * （进程列表、磁盘、网络……），为了两个温度读数把整机开销抬上去。
          * 订阅的频率是按逻辑项算的，订得越窄，代价越小。
          */
-        var request = MetricSampleRequest.ForIds(["cpu.temperature", "gpu.temperature"]);
-        using var lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
-
-        using var timer = new PeriodicTimer(Interval);
-        while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+        var changed = 0;
+        void OnCatalogChanged() => Interlocked.Exchange(ref changed, 1);
+        catalog.Changed += OnCatalogChanged;
+        try
         {
-            if (!core.NeedsTemperatures())
+            var request = TemperatureRequest(catalog.Current);
+            using var lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
+
+            using var timer = new PeriodicTimer(Interval);
+            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                // 情况变了（比如用户把曲线改回固件执行），退出去重新判断。
-                return;
-            }
-            try
-            {
-                // 读当前值，**不触发采样也不等待采样** —— 采样是订阅那条独立的路。
-                if (metrics.ReadLatest(request) is not { } snapshot)
+                if (Volatile.Read(ref changed) != 0) return;
+                if (!core.NeedsTemperatures())
                 {
-                    continue;
+                    // 情况变了（比如用户把曲线改回固件执行），退出去重新判断。
+                    return;
                 }
-                if (Collect(snapshot) is { Count: > 0 } samples)
+                try
                 {
-                    await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
+                    // 读当前值，**不触发采样也不等待采样** —— 采样是订阅那条独立的路。
+                    if (metrics.ReadLatest(request) is not { } snapshot)
+                    {
+                        continue;
+                    }
+                    if (Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
+                    {
+                        await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
+                    }
                 }
-            }
-            catch (Exception error) when (error is not OperationCanceledException)
-            {
-                /*
-                 * 一拍没推成不该把这条喂料停掉 —— 停了核心那边会因为收不到温度
-                 * 把风扇交还固件，而问题可能只是这一次没赶上。
-                 * 真的一直推不动，核心自己的时效机制会兜底。
-                 */
-                logger?.LogDebug(error, "这一拍温度没推过去。");
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    /*
+                     * 一拍没推成不该把这条喂料停掉 —— 停了核心那边会因为收不到温度
+                     * 把风扇交还固件，而问题可能只是这一次没赶上。
+                     * 真的一直推不动，核心自己的时效机制会兜底。
+                     */
+                    logger?.LogDebug(error, "这一拍温度没推过去。");
+                }
             }
         }
+        finally { catalog.Changed -= OnCatalogChanged; }
     }
 
     /// <summary>
@@ -128,20 +139,34 @@ public sealed class FanCurveTemperatureFeed(
     ///
     /// **读不到就不放进去**，不要填 0 —— 那会让曲线以为现在很凉。
     /// </summary>
-    private static Dictionary<string, double> Collect(HardwareMetricSnapshot snapshot)
+    internal static MetricSampleRequest TemperatureRequest(HardwareMetricSnapshot? snapshot)
     {
-        var samples = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        if (snapshot.Cpu.Sensors.TemperatureCelsius is { } cpu && double.IsFinite(cpu))
+        return MetricSampleRequest.ForIds(new[] { "cpu.temperature" }.Concat(
+            snapshot?.Items.Keys.Where(id => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
+                && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase)) ?? []));
+    }
+
+    internal static Dictionary<string, FanTemperatureSample> Collect(HardwareMetricSnapshot snapshot, DateTimeOffset now)
+    {
+        var samples = new Dictionary<string, FanTemperatureSample>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in TemperatureRequest(snapshot).Ids)
         {
-            samples["cpu"] = cpu;
-        }
-        foreach (var gpu in snapshot.Gpus)
-        {
-            if (gpu.Sensors.TemperatureCelsius is { } celsius && double.IsFinite(celsius))
+            if (!snapshot.TryGetCurrentDataset(id, out var observation)
+                || observation.ObservedAtUtcTicks <= 0 || observation.ObservedAtUtcTicks > now.UtcTicks
+                || now.UtcTicks - observation.ObservedAtUtcTicks > MaximumSampleAge.Ticks
+                || !snapshot.Items.TryGetValue(id, out var item)
+                || item.NumericValue is not { } celsius || !double.IsFinite(celsius)) continue;
+            if (id.Equals("cpu.temperature", StringComparison.OrdinalIgnoreCase))
+                samples["cpu"] = new(celsius, observation.ObservedAtUtcTicks);
+            else
             {
-                samples[$"gpu{gpu.Index}"] = celsius;
+                var parts = id.Split('.');
+                if (parts.Length == 3 && int.TryParse(parts[1], out var index) && index >= 0)
+                    samples[$"gpu{index}"] = new(celsius, observation.ObservedAtUtcTicks);
             }
         }
         return samples;
     }
 }
+
+public sealed record FanTemperatureSample(double Celsius, long ObservedAtUtcTicks);

@@ -1,0 +1,98 @@
+{
+  "contractFingerprint": "C04C7A18857583E4F650A705A5047B56B5901DA7CF69E7C3DA1CCBCCD078C7F8",
+  "groups": [
+    {
+      "key": "resource-manager/backend",
+      "parent": null,
+      "name": "backend",
+      "description": "Backend-owned decisions. Current migration covers CPU remediation and its existing scheduling/history consumers, not every backend setting.",
+      "order": 0,
+      "points": []
+    },
+    {
+      "key": "resource-manager/backend/monitoring",
+      "parent": "resource-manager/backend",
+      "name": "monitoring",
+      "description": "Backend subscriptions publish current values; readers do not sample.",
+      "order": 0,
+      "points": []
+    },
+    {
+      "key": "resource-manager/backend/monitoring/cpu_residency",
+      "parent": "resource-manager/backend/monitoring",
+      "name": "cpu_residency",
+      "description": "Per-process CPU core observations, distinct from a weighted CPU score.",
+      "order": 0,
+      "points": [
+        "0001000200080000",
+        "0001000200090000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling",
+      "parent": "resource-manager/backend",
+      "name": "scheduling",
+      "description": "Scheduling reads shared snapshots and requests persistent backend subscriptions.",
+      "order": 1,
+      "points": [
+        "00010002000C0000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling/transitions",
+      "parent": "resource-manager/backend/scheduling",
+      "name": "transitions",
+      "description": "Transition decisions, game startup grace and failure retry are independent quantities.",
+      "order": 0,
+      "points": [
+        "0001000200120000",
+        "0001000200120001",
+        "0001000200120002",
+        "0001000200130000",
+        "0001000200130001"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scheduling/placement",
+      "parent": "resource-manager/backend/scheduling",
+      "name": "placement",
+      "description": "Placement is not the CPU score denominator.",
+      "order": 1,
+      "points": [
+        "0001000200140000",
+        "0001000200150000",
+        "0001000200160000",
+        "0001000200170000",
+        "0001000200170001"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scoring",
+      "parent": "resource-manager/backend",
+      "name": "scoring",
+      "description": "One software-scoring definition; CPU and GPU remain separate resource dimensions.",
+      "order": 2,
+      "points": [
+        "0001000200190000",
+        "00010002001B0000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/scoring/cpu",
+      "parent": "resource-manager/backend/scoring",
+      "name": "cpu",
+      "description": "Physical-core usage is weighted by the compiled per-core capacity and divided by the shared machine baseline. CPU-input and score smoothing remain separate pending consumers.",
+      "order": 0,
+      "points": [
+        "00010002001D0000",
+        "00010002001E0000",
+        "00010002001E0001",
+        "00010002001E0002",
+        "00010002001F0000",
+        "00010002001F0001",
+        "00010002001F0002",
+        "00010002001F0003"
+      ]
+    }
+  ]
+}

@@ -54,8 +54,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
-                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim], TargetGpu = GpuPlacementTargets.IntegratedGpu
-            };
+                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],};
             var callbackRuntime = new WindowsGpuCallbackPreparationRuntime();
             D3d11ProxyShimRuntime runtime = null!;
             var path = Path.Combine(root, "recovery.json");

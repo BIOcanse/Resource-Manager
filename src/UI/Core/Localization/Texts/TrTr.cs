@@ -46,6 +46,7 @@ internal static class TrTr
         BackendPipelineNotReady = "Yerel hizmet istek işlem hattı hazır değil.",
         NoProcessToTerminate = "Sonlandırılacak işlem yok.",
         TerminateRequestCompleted = "İşlem sonlandırma isteği tamamlandı.",
+        TerminateResultFormat = "{0} / {1} işlem sonlandırıldı.",
 
         WebViewInitializationFailed = "Gömülü arayüz başlatılamadı. Ayrıntılar için tanılama klasörünü açabilirsiniz.",
         FrontendIdentityVerificationFailed = "Ön uç kaynaklarının kimlik doğrulaması başarısız oldu. Ayrıntılar için tanılama klasörünü açabilirsiniz.",

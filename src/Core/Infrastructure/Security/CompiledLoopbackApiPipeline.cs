@@ -1,4 +1,6 @@
 using System.Security.Principal;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using ResourceManager.App.Infrastructure.ServiceHosting;
 
 namespace ResourceManager.App.Infrastructure.Security;
 
@@ -64,6 +66,8 @@ public static class LoopbackApiPipelineConfigurator
     {
         services.AddSingleton<LoopbackApiAccessToken>();
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
+        services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
+        services.AddHostedService<FrontendSessionCredentialHostedService>();
     }
 
     private static void ConfigureAuthenticationMiddleware(WebApplication application)

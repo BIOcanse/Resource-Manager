@@ -87,7 +87,6 @@ pub fn importState(
     if (session.phase == .completion_open) return .unavailable;
     if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds) or
         input.operation_epoch <= header.last_operation_epoch or
-        input.command_at_milliseconds < header.last_command_at_milliseconds or
         header.state_revision < session.state_revision or
         header.last_plan_epoch < session.last_plan_epoch or
         header.captured_at_milliseconds < session.captured_at_milliseconds)
@@ -282,7 +281,11 @@ fn validImportHeader(
     if (phase != .catalog_ready and phase != .ready and phase != .failed_retained) {
         return false;
     }
-    return session.futureTimeValid(header.captured_at_milliseconds, input.command_at_milliseconds);
+    // Validate the persisted timeline against its own historical command time.
+    return session.futureTimeValid(
+        header.captured_at_milliseconds,
+        header.last_command_at_milliseconds,
+    );
 }
 
 fn validSourceState(
@@ -524,13 +527,7 @@ fn validRuleState(
             input.observed_at_milliseconds == 0 or
             input.observed_at_milliseconds > captured_at_milliseconds or
             input.observed_at_milliseconds > source.last_current_at_milliseconds or
-            !protocol.validValue(
-                definition.value_kind,
-                definition.flags,
-                definition.minimum_value_bits,
-                definition.maximum_value_bits,
-                input.value_bits,
-            ))
+            !protocol.validPayload(definition.*, input.*))
         {
             return false;
         }
@@ -550,7 +547,7 @@ fn validRuleState(
         return true;
     }
     if (status == .current or status == .retained or
-        input.source_generation != 0 or input.value_bits != 0)
+        input.source_generation != 0 or input.value_bits != 0 or !protocol.emptyPayload(input.*))
     {
         return false;
     }
@@ -610,6 +607,9 @@ fn ruleRecord(
         .source_generation = input.source_generation,
         .observed_at_milliseconds = input.observed_at_milliseconds,
         .value_bits = input.value_bits,
+        .value_high_bits = input.value_high_bits,
+        .byte_count = input.byte_count,
+        .value_bytes = input.value_bytes,
         .capability_mask = input.capability_mask,
         .quality = input.quality,
         .sample_duration_milliseconds = input.sample_duration_milliseconds,

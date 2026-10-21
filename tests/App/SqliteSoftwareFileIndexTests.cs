@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -179,6 +181,57 @@ public sealed class SqliteSoftwareFileIndexTests : IDisposable
         catch (IOException)
         {
         }
+    }
+
+    [Fact]
+    public async Task CallerSnapshotExcludesUnreadableChildFilesAndDoesNotChangeServiceTotals()
+    {
+        var index = CreateIndex();
+        var root = Directory.CreateDirectory(Path.Combine(testRoot, "visible-app")).FullName;
+        var privateDirectory = Directory.CreateDirectory(Path.Combine(root, "private")).FullName;
+        var deniedFile = Path.Combine(root, "denied.bin");
+        var goneFile = Path.Combine(root, "gone.bin");
+        await File.WriteAllBytesAsync(Path.Combine(root, "public.bin"), new byte[7]);
+        await File.WriteAllBytesAsync(deniedFile, new byte[13]);
+        await File.WriteAllBytesAsync(Path.Combine(privateDirectory, "secret.bin"), new byte[29]);
+        await File.WriteAllBytesAsync(goneFile, new byte[11]);
+        await index.GetOrRefreshAsync(new("visible-app", "Visible App", [new(root, "Program")]),
+            TimeSpan.Zero, true, default);
+        File.Delete(goneFile);
+
+        using var caller = WindowsIdentity.GetCurrent();
+        var fileSecurity = new FileInfo(deniedFile).GetAccessControl();
+        var fileDeny = new FileSystemAccessRule(caller.User!, FileSystemRights.ReadData, AccessControlType.Deny);
+        var directorySecurity = new DirectoryInfo(privateDirectory).GetAccessControl();
+        var directoryDeny = new FileSystemAccessRule(caller.User!, FileSystemRights.ListDirectory, AccessControlType.Deny);
+        fileSecurity.AddAccessRule(fileDeny);
+        directorySecurity.AddAccessRule(directoryDeny);
+        new FileInfo(deniedFile).SetAccessControl(fileSecurity);
+        new DirectoryInfo(privateDirectory).SetAccessControl(directorySecurity);
+        try
+        {
+            var snapshot = (await index.GetSnapshotAsync("visible-app", default,
+                WindowsFileIndexCallerAccess.CreatePathFilter(caller.AccessToken)))!;
+            Assert.Equal(7, snapshot.TotalBytes);
+            Assert.Equal(1, snapshot.FileCount);
+            Assert.Equal(7, Assert.Single(snapshot.Roots).TotalBytes);
+            var serviceSnapshot = (await index.GetSnapshotAsync("visible-app", default))!;
+            Assert.Equal(60, serviceSnapshot.TotalBytes);
+            Assert.Equal(4, serviceSnapshot.FileCount);
+            Assert.Null(await index.GetSnapshotAsync("visible-app", default, (_, _) => false));
+        }
+        finally
+        {
+            fileSecurity.RemoveAccessRuleSpecific(fileDeny);
+            directorySecurity.RemoveAccessRuleSpecific(directoryDeny);
+            new FileInfo(deniedFile).SetAccessControl(fileSecurity);
+            new DirectoryInfo(privateDirectory).SetAccessControl(directorySecurity);
+        }
+        // A later caller receives a fresh ACL view, not another request's cached denial.
+        var after = (await index.GetSnapshotAsync("visible-app", default,
+            WindowsFileIndexCallerAccess.CreatePathFilter(caller.AccessToken)))!;
+        Assert.Equal(49, after.TotalBytes);
+        Assert.Equal(3, after.FileCount);
     }
 
     private SqliteSoftwareFileIndex CreateIndex()

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.Diagnostics;
 using ResourceManager.App.Domain.Metrics;
@@ -48,6 +49,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var plan = LoadScale256HostedCyclePlan(evidenceRoot, cyclePlanPath);
         var permits = CreateScale256HostedPermits(plan);
         var source = new HostedScoreOnlyEpochSource();
+        var schedulingClock = new Scale256OneShotTimeProvider();
+        var clockTrace = new Scale256ClockTrace(source, "controlled");
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             performanceLogEnabled: true,
@@ -57,6 +60,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
+            timeProvider: schedulingClock,
+            coordinatorLogger: clockTrace,
             failFastEffects: true);
         source.ConfigureHistory(fixture.RuntimePlan.HostManager.DataHistory);
         var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(
@@ -71,7 +76,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             permits,
             fixture.RuntimePlan.HostManager.RequirePublished()
                 .HotPublish.SmartCoordinator.ProcessStateMultipliers);
-        fixture.Coordinator.OuterLoopProbe = traceProbe;
+        clockTrace.ForwardTo = traceProbe;
+        fixture.Coordinator.OuterLoopProbe = clockTrace;
         fixture.Coordinator.TransitionProbe = shutdownProbe;
         fixture.DebugLogWriter.DisableRecordRetention();
         fixture.DebugLogWriter.AttachRecordObserver(capture);
@@ -105,6 +111,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var recordObserverAttached = true;
         var hostStopped = false;
         var writerStopped = false;
+        var completed = false;
         long hostStartRequestedAtQpcTicks = 0;
         long hostStartReturnedAtQpcTicks = 0;
         long hostStopRequestedAtQpcTicks = 0;
@@ -119,7 +126,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var concrete = host.Services.GetRequiredService<HostManagerSmartCoordinator>();
             Assert.Same(fixture.Coordinator, concrete);
 
-            source.Enqueue(permits[0]);
+            EnqueueScale256ClockPermit(source, clockTrace, permits[0]);
             hostStartRequestedAtQpcTicks = Stopwatch.GetTimestamp();
             using (var cancellation =
                    new CancellationTokenSource(TimeSpan.FromSeconds(10)))
@@ -136,13 +143,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                  sequence <= Scale256HostedTotalCycleCount;
                  sequence += 2)
             {
-                source.Enqueue(permits[sequence - 1]);
-                source.Enqueue(permits[sequence]);
+                EnqueueScale256ClockPermit(source, clockTrace, permits[sequence - 1]);
+                EnqueueScale256ClockPermit(source, clockTrace, permits[sequence]);
                 await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-                await WaitForHostedScoreOnlyDeadlineVersionAsync(
-                    deadline,
-                    checked((ulong)(sequence + 1)),
-                    TimeSpan.FromSeconds(5));
+                await AdvanceScale256ScheduledCycleAsync(
+                    schedulingClock, deadline, checked((ulong)(sequence + 1)));
             }
 
             Assert.Equal(Scale256HostedTotalCycleCount, source.CompletedCount);
@@ -244,6 +249,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     durableBeforeSha256,
                     ComputeHostedScoreOnlyIdentitySha256(durableAfterStop));
             }
+            completed = true;
+        }
+        catch (Exception error)
+        {
+            clockTrace.Record("test-failure", new { error.Message }, error.ToString());
+            throw;
         }
         finally
         {
@@ -280,12 +291,400 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 {
                 }
             }
+            if (!completed)
+            {
+                var failureTrace = Path.Combine(writerRoot, "scale256-clock-failure.json");
+                clockTrace.Write(failureTrace, "failed; original test exception retained");
+                Console.WriteLine("Scale256 failure evidence retained: " + failureTrace);
+            }
             host?.Dispose();
-            if (ownsWriterRoot)
+            if (completed && ownsWriterRoot)
             {
                 DeleteScale256HostedOwnedWriterRoot(writerRoot);
             }
         }
+    }
+
+    [Fact]
+    public async Task Scale256SystemClockEmptySupplyPublishesFallbackAtExplicitBoundary()
+    {
+        var permits = CreateScale256HostedPermits(CreateDefaultScale256HostedCyclePlan("system-clock-causality"));
+        var source = new HostedScoreOnlyEpochSource();
+        var trace = new Scale256ClockTrace(source, "system");
+        await using var fixture = await CreateScale256ClockFixtureAsync(source, trace, TimeProvider.System);
+        var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline")!;
+        using var bootstrapRelease = new ManualResetEventSlim();
+        using var fallbackRelease = new ManualResetEventSlim();
+        var bootstrapReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fallbackReached = new TaskCompletionSource<HostManagerWakeDeadlineSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fallbackHeld = 0;
+        trace.AfterObserve = value =>
+        {
+            if (value.Phase != HostManagerSmartCoordinatorOuterLoopPhase.GateReleased) return;
+            if (value.Trigger == HostManagerSmartCoordinatorOuterLoopTrigger.ScheduledBootstrap)
+            {
+                bootstrapReached.TrySetResult();
+                if (!bootstrapRelease.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The causal bootstrap barrier was not released.");
+            }
+            else if (value.Trigger == HostManagerSmartCoordinatorOuterLoopTrigger.Scheduled
+                && trace.HasUnplannedCycleError && Interlocked.Exchange(ref fallbackHeld, 1) == 0)
+            {
+                var snapshot = deadline.Snapshot;
+                trace.Record("fallback-deadline-after-error", snapshot);
+                fallbackReached.TrySetResult(snapshot);
+                // Hold only after the production gate was released, outside its Profiler.
+                if (!fallbackRelease.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException("The causal fallback barrier was not released.");
+            }
+        };
+        fixture.Coordinator.OuterLoopProbe = trace;
+        using var host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+        try
+        {
+            EnqueueScale256ClockPermit(source, trace, permits[0]);
+            await host.StartAsync(CancellationToken.None);
+            await bootstrapReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1UL, deadline.Snapshot.Version);
+            EnqueueScale256ClockPermit(source, trace, permits[1]);
+            EnqueueScale256ClockPermit(source, trace, permits[2]);
+            await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+            Assert.Equal(2UL, deadline.Snapshot.Version);
+            bootstrapRelease.Set();
+            await trace.WaitForPublicationAsync(3);
+            trace.Record("driver-pause-start", deadline.Snapshot);
+            await Task.Delay(Scale256ClockCausalityWallPause);
+            var fallback = await fallbackReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            trace.Record("driver-pause-end", fallback);
+            Assert.Equal(4UL, fallback.Version);
+            Assert.True(fallback.HasDeadline);
+            Assert.Equal(3, source.CompletedCount);
+            Assert.Equal(3UL, fixture.Workspace.Snapshot.CycleSequence);
+            trace.AssertCompletedCycles(3);
+            Assert.True(trace.HasUnplannedCycleError);
+            Assert.Equal(0U, fixture.Workspace.Snapshot.ActionCount);
+            fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
+        }
+        finally
+        {
+            bootstrapRelease.Set();
+            fallbackRelease.Set();
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try { await host.StopAsync(stop.Token); }
+            finally
+            {
+                fixture.Coordinator.OuterLoopProbe = null;
+                WriteScale256ClockCausalityTrace(trace, "system-empty-supply");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Scale256ControlledClockHoldsThirdVersionAcrossSameWallPauseThenRunsOnlyFourthAndFifth()
+    {
+        var permits = CreateScale256HostedPermits(CreateDefaultScale256HostedCyclePlan("controlled-clock-causality"));
+        var source = new HostedScoreOnlyEpochSource();
+        var clock = new Scale256OneShotTimeProvider();
+        var trace = new Scale256ClockTrace(source, "controlled");
+        await using var fixture = await CreateScale256ClockFixtureAsync(source, trace, clock);
+        var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline")!;
+        fixture.Coordinator.OuterLoopProbe = trace;
+        using var host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+        try
+        {
+            EnqueueScale256ClockPermit(source, trace, permits[0]);
+            await host.StartAsync(CancellationToken.None);
+            await WaitForHostedScoreOnlyDeadlineVersionAsync(deadline, 1, TimeSpan.FromSeconds(5));
+            EnqueueScale256ClockPermit(source, trace, permits[1]);
+            EnqueueScale256ClockPermit(source, trace, permits[2]);
+            await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+            await AdvanceScale256ScheduledCycleAsync(clock, deadline, 3);
+            var before = deadline.Snapshot;
+            trace.Record("driver-pause-start", before);
+            await Task.Delay(Scale256ClockCausalityWallPause);
+            trace.Record("driver-pause-end", deadline.Snapshot);
+            Assert.Equal(before, deadline.Snapshot);
+            Assert.Equal(3UL, before.Version);
+            Assert.Equal(3, source.CompletedCount);
+            Assert.False(trace.HasUnplannedCycleError);
+            EnqueueScale256ClockPermit(source, trace, permits[3]);
+            EnqueueScale256ClockPermit(source, trace, permits[4]);
+            await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+            Assert.Equal(4UL, deadline.Snapshot.Version);
+            await AdvanceScale256ScheduledCycleAsync(clock, deadline, 5);
+            Assert.Equal(5UL, deadline.Snapshot.Version);
+            Assert.Equal(5, source.CompletedCount);
+            Assert.Equal(5UL, fixture.Workspace.Snapshot.CycleSequence);
+            trace.AssertCompletedCycles(5);
+            Assert.False(trace.HasUnplannedCycleError);
+            Assert.Equal(0U, fixture.Workspace.Snapshot.ActionCount);
+            fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
+        }
+        finally
+        {
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            try { await host.StopAsync(stop.Token); }
+            finally
+            {
+                fixture.Coordinator.OuterLoopProbe = null;
+                WriteScale256ClockCausalityTrace(trace, "controlled-empty-supply");
+            }
+        }
+    }
+
+    private static readonly TimeSpan Scale256ClockCausalityWallPause =
+        TimeSpan.FromMilliseconds(2 * HostedScoreOnlyEventIntervalMilliseconds);
+
+    private static async Task<ScoreOnlyCoordinatorFixture> CreateScale256ClockFixtureAsync(
+        HostedScoreOnlyEpochSource source, Scale256ClockTrace trace, TimeProvider clock)
+    {
+        var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            performanceLogEnabled: true, smartCoordinatorMaximumProcesses: Scale256HostedProcessCount,
+            metricSamplerOverride: source, processFactsOverride: source,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(source.ReadCpuCoreResidency),
+            normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
+            eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
+            timeProvider: clock, coordinatorLogger: trace, failFastEffects: true);
+        source.ConfigureHistory(fixture.RuntimePlan.HostManager.DataHistory);
+        return fixture;
+    }
+
+    private static void EnqueueScale256ClockPermit(HostedScoreOnlyEpochSource source,
+        Scale256ClockTrace trace, HostedScoreOnlyCyclePermit permit)
+    {
+        source.Enqueue(permit);
+        trace.Record("permit-enqueued", new { permit.Sequence, permit.Trigger, permit.SourceGeneration });
+    }
+
+    private static async Task AdvanceScale256ScheduledCycleAsync(Scale256OneShotTimeProvider clock,
+        HostManagerVersionedWakeDeadline deadline, ulong expectedVersion)
+    {
+        var published = deadline.Snapshot;
+        Assert.Equal(expectedVersion - 1, published.Version);
+        Assert.True(published.HasDeadline);
+        if (published.DeadlineTimestamp > clock.GetTimestamp())
+            await clock.WaitForTimerAsync(published.DeadlineTimestamp);
+        clock.AdvanceTo(published.DeadlineTimestamp);
+        await WaitForHostedScoreOnlyDeadlineVersionAsync(deadline, expectedVersion, TimeSpan.FromSeconds(5));
+    }
+
+    private static void WriteScale256ClockCausalityTrace(Scale256ClockTrace trace, string caseName)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "resource-manager-scale256-clock-causality", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, caseName + ".json");
+        trace.Write(path, "causality-regression");
+        Console.WriteLine("Scale256 clock causality trace: " + path);
+    }
+
+    /// <summary>Only test scheduling time moves. The production Profiler still uses
+    /// Stopwatch, Process.TotalProcessorTime and allocation counters.</summary>
+    private sealed class Scale256OneShotTimeProvider : TimeProvider
+    {
+        private readonly object sync = new();
+        private readonly HashSet<OneShotTimer> timers = [];
+        private readonly long origin = Stopwatch.GetTimestamp();
+        private readonly DateTimeOffset utcOrigin = DateTimeOffset.UtcNow;
+        private long timestamp = Stopwatch.GetTimestamp();
+        private TaskCompletionSource changed = NewSignal();
+        public override long TimestampFrequency => Stopwatch.Frequency;
+        public override long GetTimestamp() { lock (sync) return timestamp; }
+        public override DateTimeOffset GetUtcNow()
+        { lock (sync) return utcOrigin + GetElapsedTime(origin, timestamp); }
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            ArgumentNullException.ThrowIfNull(callback);
+            var timer = new OneShotTimer(this, callback, state);
+            timer.Change(dueTime, period);
+            return timer;
+        }
+        internal async Task WaitForTimerAsync(long target)
+        {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (true)
+            {
+                Task wait;
+                lock (sync)
+                {
+                    if (timers.Any(timer => timer.Due is { } due && due <= target)) return;
+                    wait = changed.Task;
+                }
+                await wait.WaitAsync(cancellation.Token);
+            }
+        }
+        internal void AdvanceTo(long target)
+        {
+            List<(OneShotTimer Timer, ulong Generation)> due = [];
+            lock (sync)
+            {
+                if (target < timestamp) throw new ArgumentOutOfRangeException(nameof(target));
+                timestamp = target;
+                foreach (var timer in timers.ToArray())
+                    if (timer.Due is { } at && at <= target)
+                    {
+                        due.Add((timer, timer.Generation));
+                        timer.Due = null;
+                        timers.Remove(timer);
+                    }
+                SignalChanged();
+            }
+            foreach (var entry in due) entry.Timer.Fire(entry.Generation);
+        }
+        private void SignalChanged()
+        {
+            var previous = changed;
+            changed = NewSignal();
+            previous.TrySetResult();
+        }
+        private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private sealed class OneShotTimer(Scale256OneShotTimeProvider owner, TimerCallback callback, object? state) : ITimer
+        {
+            private bool disposed;
+            internal long? Due;
+            internal ulong Generation;
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                if (period != Timeout.InfiniteTimeSpan) throw new NotSupportedException("The corpus clock permits only one-shot timers.");
+                if (dueTime < TimeSpan.Zero && dueTime != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(dueTime));
+                lock (owner.sync)
+                {
+                    if (disposed) return false;
+                    Generation = checked(Generation + 1);
+                    owner.timers.Remove(this);
+                    if (dueTime == Timeout.InfiniteTimeSpan) Due = null;
+                    else
+                    {
+                        var delta = ((Int128)dueTime.Ticks * Stopwatch.Frequency + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond;
+                        if (delta > long.MaxValue - owner.timestamp) throw new ArgumentOutOfRangeException(nameof(dueTime));
+                        Due = owner.timestamp + (long)delta;
+                        if (owner.timers.Count >= 64) throw new InvalidOperationException("The bounded corpus timer set overflowed.");
+                        owner.timers.Add(this);
+                    }
+                    owner.SignalChanged();
+                    return true;
+                }
+            }
+            internal void Fire(ulong generation)
+            {
+                lock (owner.sync)
+                {
+                    if (disposed || Generation != generation) return;
+                    Generation = checked(Generation + 1);
+                }
+                callback(state);
+            }
+            public void Dispose()
+            {
+                lock (owner.sync)
+                {
+                    disposed = true;
+                    Generation = checked(Generation + 1);
+                    Due = null;
+                    owner.timers.Remove(this);
+                    owner.SignalChanged();
+                }
+            }
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
+    }
+
+    private sealed class Scale256ClockTrace(HostedScoreOnlyEpochSource source, string clockMode)
+        : ILogger<HostManagerSmartCoordinator>, IHostManagerSmartCoordinatorOuterLoopProbe
+    {
+        private readonly object sync = new();
+        private readonly List<Scale256ClockTraceEntry> entries = [];
+        // Allocate once before the fixture starts: observing inner phases must not
+        // add boxing, anonymous objects, growing lists or TCS allocations to its budget.
+        private readonly Scale256ObservedClockEvent[] outerEvents = new Scale256ObservedClockEvent[4096];
+        private int outerCount;
+        private readonly HashSet<ulong> publications = [];
+        private TaskCompletionSource changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool unplannedCycleError;
+        internal IHostManagerSmartCoordinatorOuterLoopProbe? ForwardTo { get; set; }
+        internal Action<HostManagerSmartCoordinatorOuterLoopEvent>? AfterObserve { get; set; }
+        internal bool HasUnplannedCycleError { get { lock (sync) return unplannedCycleError; } }
+        public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
+        {
+            var completed = source.CompletedCount;
+            lock (sync)
+            {
+                if (outerCount == outerEvents.Length) throw new InvalidOperationException("The bounded outer clock trace overflowed.");
+                outerEvents[outerCount++] = new(value, Stopwatch.GetTimestamp(), completed);
+                if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished
+                    && value.PublishedDeadline is { } published)
+                {
+                    publications.Add(published.Version);
+                    var previous = changed;
+                    changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    previous.TrySetResult();
+                }
+            }
+            ForwardTo?.Observe(in value);
+            AfterObserve?.Invoke(value);
+        }
+        internal void Record(string kind, object detail, string? error = null)
+        {
+            var completed = source.CompletedCount;
+            lock (sync)
+            {
+                if (entries.Count >= 8192) throw new InvalidOperationException("The bounded raw clock trace overflowed.");
+                entries.Add(new(kind, Stopwatch.GetTimestamp(), completed, detail, error));
+                if (error?.Contains("The production hosted loop requested an unplanned score-only cycle.", StringComparison.Ordinal) == true)
+                    unplannedCycleError = true;
+                var previous = changed;
+                changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                previous.TrySetResult();
+            }
+        }
+        internal async Task WaitForPublicationAsync(ulong version)
+        {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (true)
+            {
+                Task wait;
+                lock (sync) { if (publications.Contains(version)) return; wait = changed.Task; }
+                await wait.WaitAsync(cancellation.Token);
+            }
+        }
+        internal void AssertCompletedCycles(int count)
+        {
+            HostManagerSmartCoordinatorOuterLoopEvent[] native, published;
+            lock (sync)
+            {
+                var outer = outerEvents.Take(outerCount).Select(entry => entry.Value).ToArray();
+                native = outer.Where(value => value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.NativeSequenceAssigned).ToArray();
+                published = outer.Where(value => value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished).ToArray();
+            }
+            Assert.Equal(Enumerable.Range(1, count).Select(value => (ulong?)value), native.Select(value => value.NativeCycleSequence));
+            Assert.Equal(Enumerable.Range(1, count).Select(value => (ulong)value), published.Select(value => value.PublishedDeadline!.Value.Version));
+            Assert.Equal(Enumerable.Range(1, count).Select(value => value == 1
+                ? HostManagerSmartCoordinatorOuterLoopTrigger.ScheduledBootstrap
+                : value % 2 == 0 ? HostManagerSmartCoordinatorOuterLoopTrigger.Manual
+                : HostManagerSmartCoordinatorOuterLoopTrigger.Scheduled), native.Select(value => value.Trigger));
+        }
+
+        internal void Write(string path, string outcome)
+        {
+            Scale256ClockTraceEntry[] snapshot;
+            Scale256ObservedClockEvent[] observed;
+            lock (sync) { snapshot = entries.ToArray(); observed = outerEvents.Take(outerCount).ToArray(); }
+            File.WriteAllText(path, JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1, clockMode, outcome,
+                schedulingScope = "permit-driven test scheduling; no OS wake-performance claim",
+                profilerClock = "production Stopwatch/Process.TotalProcessorTime/allocated bytes",
+                qpcFrequency = Stopwatch.Frequency, entries = snapshot, outerEvents = observed
+            }, ScoreOnlyPerformanceJsonOptions));
+        }
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel level) => level >= LogLevel.Warning;
+        public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (IsEnabled(level)) Record("host-log", new { level, eventId.Id, message = formatter(state, exception) }, exception?.ToString());
+        }
+        private readonly record struct Scale256ObservedClockEvent(HostManagerSmartCoordinatorOuterLoopEvent Value,
+            long QpcTicks, int CompletedPermits);
+        private sealed record Scale256ClockTraceEntry(string Kind, long QpcTicks,
+            int CompletedPermits, object Detail, string? Error);
     }
 
     private static Scale256HostedCyclePlan LoadScale256HostedCyclePlan(
@@ -535,6 +934,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 evidenceRunId = plan.EvidenceRunId,
                 measurementContract = Scale256HostedMeasurementContract,
                 timingScope = Scale256HostedMeasurementBoundary,
+                clockMode = "controlled",
+                schedulingScope = "permit-driven; not OS wake-performance evidence",
+                profilerClock = "production Stopwatch/Process.TotalProcessorTime/allocated bytes",
                 qpcFrequency = Stopwatch.Frequency,
                 topology = new
                 {
@@ -671,6 +1073,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 integritySatisfied = true,
                 performanceQualified = true,
                 budgetSource = "production-inner-profiler-sequences-10-through-137",
+                clockMode = "controlled",
+                osWakePerformanceClaimed = false,
                 thresholds = new
                 {
                     elapsedP99Milliseconds =

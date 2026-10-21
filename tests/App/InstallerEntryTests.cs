@@ -18,7 +18,7 @@ public sealed class InstallerEntryTests
             Directory.CreateDirectory(Path.Combine(root, "Config"));
             var files = new[]
             {
-                "Install.exe", "Start.exe", "Bin/ResourceManager/ResourceManager.exe",
+                "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
                 "Bin/ResourceManager/wwwroot/index.html",
                 "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
                 "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",
@@ -63,7 +63,7 @@ public sealed class InstallerEntryTests
             StartMenuShortcut.CreateManager(target, managerShortcut);
             Assert.True(new FileInfo(managerShortcut).Length > 0);
             Assert.Equal(target, StartMenuShortcut.ReadTarget(managerShortcut));
-            Assert.Equal(Path.Combine(root, "ResourceManager.UpdateManager", "ResourceManager.UpdateManager.exe"),
+            Assert.Equal(Path.Combine(root, "ResourceManager", "Internal", "Management", "ResourceManager.UpdateManager.exe"),
                 ResourceManager.Shared.Packages.UpdateManagerPaths.InstalledExecutable(Path.Combine(root, "ResourceManager")));
         }
         finally { Directory.Delete(root, true); }

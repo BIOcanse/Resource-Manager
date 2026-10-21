@@ -110,8 +110,8 @@ export default createSettingsLocale("fr-FR", {
         "description": "Permettre de sélectionner un GPU précis pour un logiciel."
       }
     },
-    "automaticMemoryCleanupTitle": "Seuil de nettoyage automatique",
-    "automaticMemoryCleanupDescription": "Démarrer le nettoyage en arrière-plan lorsque les ressources sont faibles et qu’un déplacement sûr ne peut continuer.",
+    "automaticMemoryCleanupTitle": "Seuils de nettoyage d’urgence",
+    "automaticMemoryCleanupDescription": "Le nettoyage en arrière-plan suit les niveaux de pression sur les ressources. Ces seuils déterminent quand le faible niveau de mémoire physique ou de capacité d’engagement restante déclenche un nettoyage d’urgence.",
     "physicalMemoryAutomaticCleanupLabel": "Mémoire physique libre %",
     "virtualMemoryAutomaticCleanupLabel": "Marge d’engagement mémoire %",
     "memoryOptimizationTargetTitle": "Cible d’optimisation mémoire",

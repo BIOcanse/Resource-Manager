@@ -1,0 +1,85 @@
+# ResourceManager.SubscriptionCore
+
+## Current source candidate
+
+ReadWriteCore `0.1.0-dev.69` and SubscriptionCore `0.1.0-dev.72` are the current local source candidates; the last accepted product combination used `0.1.0-dev.68` / `0.1.0-dev.71`. DisplayID 2.0/2.1 containers with supported Type VII/X modes may also contain recognized non-mode CTA audio/color/HDR blocks without losing the existing mode declarations. Embedded mode/reference blocks remain unavailable, and complete raw EDID remains independent. No model, field identity, owner, sampling, or SDK pin changes are introduced. Product and independent package qualification of these new candidates is pending; they are not a published release.
+
+## Intel PSys raw platform evidence and accepted publication
+
+The Intel PSys acceptance below was originally qualified with ReadWriteCore/SubscriptionCore `0.1.0-dev.54` / `0.1.0-dev.57`. The interfaces and publication semantics below use the original hardware metric owner and collection borrow. See the project contract `docs/intel_psys_register_evidence_collection.md` and current evidence in `.local/backend-intel-psys-evidence/` for acceptance scope and results.
+
+The two canonical fields are `system_intel_psys_energy_counter_raw` (`unsigned64`, `count`) and `system_intel_psys_energy_unit_joules` (`float64`, `J/count`). They belong to one `intel_platform` target, admitted only for GenuineIntel family 6 model 4E/5E with complete consistent single-package topology and matching current CPUID evidence. The package identity associates this platform locally; it is not a permanent platform serial number. The original Intel reader reads MSR 64D low 32 bits for raw demand and MSR 606 ESU for unit demand independently. Successful zero does not prove BIOS measurement enablement or zero consumption. These are raw register evidence and a nominal unit declaration, not effective joules, interval watts or wall power. Hardware, BIOS validity and OEM domain coverage remain unverified.
+
+Use the existing discovered hardware metric catalog, exact field references and original owner/current/borrow interfaces. Directory failure preserves definitions and clears current values; successful empty or inapplicable topology retires the platform target. Native source completions and values now enter the original accepted publication callback only after the final cancellation check. A rejected publication permit, retired borrow or cancellation before acceptance does not advance native current; prepared control fields are overlaid onto the newly committed native frame rather than restoring an older numeric frame. The original acceptance boundary remains the owner; this adds no owner, cache, resource action or background polling.
+
+GPU `GpuMetrics.AdapterKey` is exact current catalog LUID routing metadata with `JsonIgnore`. It is matched against physical identity and the current catalog before control mapping, including initial discovery with no numeric GPU templates. It is not a new telemetry field or persistent identity, and it adds no JSON wire property.
+
+## NPU declarations and NVIDIA fan subscriptions
+
+The original typed information borrow from `DeviceTopologyCaptureOwner.CreateNpuInformation()` exposes the same five NPU declarations and current values used by direct collection. NVIDIA fan fields use the original hardware metric owner's borrow with exact physical GPU/fan selectors. Pass these existing borrows to `NativeFieldSubscriptionComposition`; the planner schedules selected fields without creating another reader or current-value cache. Stopping the composition retires its demand and publication permit while the caller still owns the original capture owner. Cached reads do not capture. NVML percentage and RPM retain their intended-speed meanings, independent failure and valid zero; they are not mechanical tachometer certification.
+
+## Input, display and OpenCL subscriptions
+
+The existing frame owner borrow, explicit-result owner borrow and scoped OpenCL topology borrow compose through the same native planner and worker. They observe each original current and publication signal. An explicit Raw Input session or benchmark import must first publish a result; subscription does not start recording, scanning or a benchmark. Display completion is available only for the evidenced legacy-flip path, and OpenCL binding requires exact verified identities.
+
+The native field composition has two explicit sampling modes. `HighestFrequencyShared` is the default: the same item is collected at its highest effective demand, and each subscription delivers the latest completed current on its own period. `FreshOnTrigger` queries on every subscription trigger; exactly coincident triggers for the same item share one query. `FieldSubscriptionOptions.AlignSameItemPhase` is an independent optional switch, off by default. It changes only same-item starting phases, preserving periods and real observation times. Independently due different items may still be collected in one batch.
+
+```csharp
+var options = new FieldSubscriptionOptions(
+    FieldSubscriptionSamplingMode.FreshOnTrigger, AlignSameItemPhase: true);
+await foreach (var readings in subscriptions.SubscribeAsync(
+    "dashboard", selectedFields, TimeSpan.FromSeconds(1), options, cancellationToken))
+{
+    // Each reading retains its original ObservedAt and measurement window.
+}
+```
+
+Without alignment, the first delivery trigger is one period after registration. With alignment, it is the next same-item phase boundary after registration. The native field entry requires whole millisecond periods at or above the explicit role minimum; it rejects unsupported periods instead of rounding them. Already-due queries are not delayed to merge them. Overdue triggers settle individually. A slow enumerator receives the latest completed delivery round; this does not suppress actual query triggers. Periodic owners declare `SupportsPeriodicDelivery`; mixed periodic owners and explicit sampling options await every selected result for a round. The old entry over legacy publication adapters keeps publication-triggered delivery and the other owners' current values until those adapters adopt the original planner's periodic contract.
+
+`FieldCollectionBinding.SourceKind` describes query capability, and `FieldCollectionResult.QueriedFields` identifies fields actually queried by that attempt. `Committed` alone is not query evidence. A failed or skipped fresh query yields unavailable values; a passive submitted-result field yields unsupported for fresh sampling. Subscribing never starts a Raw Input recording, ETW source or benchmark implicitly. Existing publication-only host adapters retain their original entry points and reject explicit sampling options until their original planner integration is completed.
+
+## Existing Host periodic field owners
+
+The Host metric, process, device-information, CPU-topology and CPU-residency field adapters use their original native tracker and worker for both interval-only and explicit-option calls. The interval-only entry selects `HighestFrequencyShared`. Device information, ACPI, software, services and selected OS categories keep their original collection scopes. A passive MFT result is delivered from its original current on the subscriber's period; it does not start a scan, and `FreshOnTrigger` reports unsupported for that passive field.
+
+`NativeFieldSubscriptionDelivery` is the shared projection used by these adapters and `NativeFieldSubscriptionComposition`. An owner registers the exact fields and `FieldCollectionBinding` entries, passes original native triggers to `Deliver`, and forms query results with `CaptureCompleted` while its original publication gate is held. Explicit queried publication keys determine `QueriedFields`; completion status or observation timestamps do not establish a query. This component owns only unfinished delivery rounds and one bounded latest complete round, with no timer, worker or second field current. `RetireAll` closes existing registrations and permits later registration by a restarted original owner.
+
+`NativeItemSamplingSubscriptionTracker.GetDeliveryItemIds` returns the tracker's actual native delivery item identities, including its existing coalesced-capture mode. `ValidatePeriod` checks whole milliseconds against that role's current minimum policy. An adapter does not reconstruct the tracker's private item names or clamp a requested period.
+
+## Default Windows owner composition
+
+Discover a `WindowsProcessFieldOwner` or `WindowsHardwareMetricOwner` explicitly, then select exact canonical `FieldReference` entries from its catalog. `BorrowSubscriptionCapture()` provides that owner's same backend, current values and publication signal. Supply the explicit role policy and matching native capacities to `NativeFieldSubscriptionComposition`, call `StartAsync`, and use it with `FieldSubscriptionCore`. Construction does not create a native session or start collection.
+
+The composition uses the original native tracker and worker. Fields sharing an original collection item share due queries; process basic and network datasets keep separate frequencies. A field binding retains its original process birth or device identity after directory retirement and reports unavailable values instead of selecting a replacement identity. Default streams read the owner's sole current on their own triggers; fresh streams deliver that attempt's transient results. No second current-value cache is created.
+
+`StopAsync` first revokes publication permission, then cancels and drains the worker, clears native demand and closes the subscription session. Old leases cannot remove a new run's demand. `DisposeAsync` releases only its collection borrow. The caller still owns the read/write owner and may collect directly after stopping subscriptions. Last subscription demand releases only its resource use; other borrows and direct calls retain their original lifetime.
+
+The independent consumer checks actual Windows process image/CPU and CPU/memory subscriptions, same current values, and direct collection after stopping. Unavailable sources are reported separately. Resource release and failure/retirement races use recorded lower-source tests over the original native workspace; this does not certify live ETW or hardware setting.
+
+Internal candidate: the existing native subscription session and typed ABI, extracted from the Resource Manager host. It has no product assembly dependency and uses the Windows x64 NativeCore runtime owned by its ReadWriteCore package dependency.
+
+Use `ResourceManager.Subscription.Native.NativeSamplingSubscriptionSession` with an explicit `NativeSamplingSubscriptionConfiguration`. `Track`, `Plan`, `Complete`, `Remove`, `Snapshot` and `Dispose` call the same native planner used by the product. Source and item handles are supplied by the caller; the planner merges item demand at the fastest effective frequency. A session owns its native allocation and serializes its calls; dispose it when its owner is finished.
+
+`ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<TRequest, TContext>` is the same managed demand/request tracker used by the product. Supply a session owner/lease, compiled role settings and request projection functions. Publication context is carried unchanged as `TContext`; the caller keeps its own publication authority. Track explicit or transient demand, create the due request, and settle that exact request after sampling. Workspace replay and in-flight lease retention remain in this one implementation.
+
+`FieldSubscriptionCore` accepts the same `ReadWriteCore` used by direct callers and an `IFieldSubscriptionBackend` for the demand owner and publication stream. `Acquire(id, fields, interval)` returns a demand lease; `SubscribeAsync(id, fields, interval, cancellationToken)` yields typed field batches and releases demand when enumeration ends. Both validate exact device/field references against the explicit catalog without collecting. The product adapter calls the original sampler's leases and notifications; direct collection bypasses this facade and publishes to the same current values. Loading a library or creating a planner does not start collection or install dependencies.
+
+`NativeSamplingSubscriptionWorker<TRequest, TContext>` runs the product's actual planning/wake/collection/settlement/retry loop. Supply the original tracker, a caller-owned wake semaphore, active-demand/resource synchronization, diagnostics, an explicit failure retry interval and a collection/publication callback. `RunAsync` runs until cancellation without creating a background task itself; `NotifyDemandChanged` wakes it after a source changes. The callback receives the exact plan/context and may call the same public read/write collection API. Completed failures and null-value publication remain the read/write backend's responsibility. The loop settles interrupted plans and synchronizes empty resource demand on exit; it does not dispose sessions, read providers, current values or caller-owned signals. A second concurrent run is rejected, and the same worker may run again after the first finishes.
+
+The product directly consumes that same loop while keeping its original hosted publication ticket and task lifetime. Independent consumption exercises both an explicit field tick and a real timed worker with recorded read providers, including direct publication, fastest-only due batches, demand removal, failure recovery, cancelled capture and restart. `InformationFieldSubscriptionBackend` connects the caller's original demand leases and publication streams; `CompositeFieldSubscriptionBackend` routes mixed numeric, information and process fields to those same owners. No second current-value cache or worker is created. Remaining collector/driver resource implementations are still being separated; independent hardware coverage is recorded by the read/write package consumer.
+
+`RunAsync` also accepts an explicit `planCreated` callback. The host may inspect the exact plan, including idle/waiting plans, to apply its existing publication schedule or stop rule. The library does not interpret role IDs or publication state. Diagnostics can propagate an exception to stop a role or return to allow the caller-configured retry; the product keeps each role's original failure policy. All seven product roles use this worker, with collectors, ETW sessions and publication owned by their existing adapters.
+
+The sampling ABI is `0x00040000`. Capacity is 72 bytes, PlanHeader 128 bytes, TriggerOutput 48 bytes and CompletionInput 96 bytes. Trigger capacity follows the explicitly configured maximum membership count. Configuration and command structs must use their published sizes, validity masks and zero reserved fields. Plan completion settles the exact issued plan/items and triggers before the next plan. The packaged runtime is Windows x64; other platform assets are not included.
+
+Package consumption is exercised by `tests/SubscriptionCore/PackageConsumer`. Product frequency/publication/workspace lifecycle acceptance remains in `tests/App`. Overall SDK finalization, licensing and combined open source delivery are pending.
+
+The default typed collection borrows also support software, services and machine uptime through the original information current and publication signal. Their explicit `NativeFieldSubscriptionComposition` uses the same planner and worker; stopping it retires its demand and publication permit while the caller-owned read/write owner remains available for direct collection. Canonical managed settings use the hardware owner's existing borrow and require explicit discovery before selection; subscription sampling does not probe control capabilities.
+
+## Explicit indexed-query and driver information subscriptions
+
+For indexed metadata, explicitly create and discover a fixed `SqliteIndexedFileOwner.CreateInformationQuery(text, limit, canReadPath)`. Pass that query's `BorrowSubscriptionCapture()` to the same `NativeFieldSubscriptionComposition`; direct reading and subscription use that query's sole result publication. Keep the query, original database and native pool alive until their users finish. Stopping or disposing the subscription releases its borrow, while the caller owns the query and original resources. No file scan or index refresh is started by subscription construction.
+
+Driver declarations use `DeviceTopologyCaptureOwner.CreateDriverInformation()`, its backend and the same typed information borrow. The original role2 capture item is scheduled by the existing native planner and worker. The caller-owned capture owner remains usable for direct collection after stopping subscriptions.
+
+OS selected declarations use the original information borrow and native composition. MFT result/store or explicit detailed-view borrows observe committed scan results; the subscription interval is not a scan cadence. The Host uses the existing result-store registration and original event stream, preserving product operation authorization.

@@ -5,6 +5,7 @@ namespace ResourceManager.App.Application.GpuPlacement;
 public interface IRunningGpuPlacementActionService
 {
     bool HasUnreleasedExternalControl => false;
+    Task RecoverExternalControlAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken);
 

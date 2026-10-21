@@ -41,8 +41,35 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
                 NativeMetricSnapshotSourceCatalog.AmdSmu,
                 MonitoringSourceZoneIds.VendorAmdSmu),
             (
+                NativeMetricSnapshotSourceCatalog.IntelMsr,
+                MonitoringSourceZoneIds.VendorIntelMsr),
+            (
+                NativeMetricSnapshotSourceCatalog.IntelGcl,
+                MonitoringSourceZoneIds.VendorIntelGcl),
+            (
                 NativeMetricSnapshotSourceCatalog.WindowsStorageSensors,
                 MonitoringSourceZoneIds.WindowsStorageSensors),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsDiskPerformance,
+                MonitoringSourceZoneIds.WindowsStorageSensors),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsNvmeHealth,
+                MonitoringSourceZoneIds.WindowsStorageSensors),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsAtaSmart,
+                MonitoringSourceZoneIds.WindowsStorageSensors),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsBattery,
+                MonitoringSourceZoneIds.WindowsBattery),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsNetworkInterface,
+                MonitoringSourceZoneIds.IpHelperNetwork),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsNpuEngine,
+                MonitoringSourceZoneIds.WindowsNpuEngine),
+            (
+                NativeMetricSnapshotSourceCatalog.WindowsNpuMemory,
+                MonitoringSourceZoneIds.WindowsNpuMemory),
             (
                 NativeMetricSnapshotSourceCatalog.HardwareMonitorWmi,
                 MonitoringSourceZoneIds.HardwareMonitorWmi),
@@ -54,7 +81,9 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
                 MonitoringSourceZoneIds.PdhSystemIo)
         ];
 
-        Assert.Equal(14, mappings.Length);
+        Assert.Equal(HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish.SourcePolicies
+            .Select(static policy => policy.SourceId).Order(StringComparer.Ordinal),
+            mappings.Select(static mapping => mapping.SourceId).Order(StringComparer.Ordinal));
         Assert.Equal(
             mappings.Length,
             mappings.Select(static value => value.SourceId)

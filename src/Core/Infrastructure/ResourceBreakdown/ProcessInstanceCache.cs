@@ -2,8 +2,6 @@ using System.Collections.Concurrent;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
-internal readonly record struct ProcessInstanceKey(int ProcessId, long StartKey);
-
 internal sealed class ProcessInstanceCache<TValue>
     where TValue : class
 {

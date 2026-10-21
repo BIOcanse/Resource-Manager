@@ -2,6 +2,7 @@
 param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
 $app = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'src\Core'
 $raw = & dotnet msbuild (Join-Path $app 'ResourceManager.App.csproj') -nologo -getItem:Content,None,EmbeddedResource
 if ($LASTEXITCODE -ne 0) { throw 'Cannot evaluate publication inputs.' }

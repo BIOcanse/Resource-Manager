@@ -1,5 +1,4 @@
-using ResourceManager.App.Domain.FrameTiming;
-
+using ResourceManager.ReadWrite.Windows.Frames;
 namespace Resource_Manager_APP.Tests;
 
 public sealed class FrameIntervalStatisticsTests

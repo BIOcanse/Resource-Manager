@@ -46,6 +46,7 @@ internal static class ZhTw
         BackendPipelineNotReady = "本機服務要求管線尚未就緒。",
         NoProcessToTerminate = "沒有可結束的處理程序。",
         TerminateRequestCompleted = "處理程序終止要求已完成。",
+        TerminateResultFormat = "已結束 {0} / {1} 個行程。",
 
         WebViewInitializationFailed = "內嵌介面初始化失敗。可以開啟診斷資料夾查看詳細資訊。",
         FrontendIdentityVerificationFailed = "前端資源身分驗證失敗。可以開啟診斷資料夾查看詳細資訊。",

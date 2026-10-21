@@ -390,7 +390,7 @@ int wmain(int argc, wchar_t** argv)
             Check(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user), "broker-child-native-identity");
             std::printf("{\"childPid\":%lu,\"creationFileTimeUtc\":%llu}\n", GetCurrentProcessId(),
                 (static_cast<unsigned long long>(created.dwHighDateTime) << 32) | created.dwLowDateTime);
-            Check(environment(L"RM_GPU_IFEO_DEPTH") == L"1", "broker-child-depth");
+            Check(environment(L"RM_GPU_IFEO_DEPTH").empty(), "broker-child-no-inherited-launch-block");
             const std::wstring expectedPolicy = std::wcscmp(argv[6], L"-") == 0 ? L"" : argv[6];
             Check(environment(L"RM_GPU_SHIM_POLICY_FILE") == expectedPolicy, "broker-child-policy-not-self-configured");
             const bool expectedVulkan = std::wcstoull(argv[2], nullptr, 16) != 0;

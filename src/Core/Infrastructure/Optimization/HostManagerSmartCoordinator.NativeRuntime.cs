@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.Settings;
@@ -195,7 +197,8 @@ public sealed partial class HostManagerSmartCoordinator
                         desired.RuntimePlan.HostManager.CpuScoring!,
                         desired.RuntimePlan.OptimizationMode,
                         binding,
-                        capturedSample);
+                        capturedSample,
+                        await ResolveNativeProtectionLevelsAsync(cancellationToken));
                     cycleDiagnostics?.CaptureScoring(scoring);
                 }
                 else
@@ -324,12 +327,14 @@ public sealed partial class HostManagerSmartCoordinator
         }
         cycleDiagnostics?.CaptureSample(sample);
         cycleDiagnostics?.Mark("sampling");
+        var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
         var computeScoring = RunSchedulingAuthority(
             desired.SmartCoordinator,
             desired.RuntimePlan.HostManager.CpuScoring!,
             modePlan,
             schedulingPlanBinding,
-            sample);
+            sample,
+            protectionLevels);
         cycleDiagnostics?.CaptureScoring(computeScoring);
         var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
             HostManagerSmartControlZoneIds.PolicyExecution);
@@ -345,7 +350,6 @@ public sealed partial class HostManagerSmartCoordinator
         cycleDiagnostics?.CaptureGuards(
             policyExecutionEnabled,
             cpuPlacementEnabled || gpuPlacementEnabled);
-        var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
         cycleDiagnostics?.Mark("scheduling-authority");
         var ownershipSnapshot = effectAdmission.TryAcquire(
             HostManagerCycleEffectKind.ExitedOwnershipReconciliation,
@@ -520,41 +524,68 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 logger.LogWarning(
                     fallbackException,
-                    "Resource Manager self memory-mode Normal fallback could not be published; capacity maintenance will still run.");
+                    "Resource Manager self memory-mode Normal fallback could not be published; owned-memory maintenance will still run.");
             }
         }
 
+        var previousTrimSnapshot = selfLocalResourceManagerOwner.LastTrimResults;
         try
         {
             var result = await selfLocalResourceManagerOwner.TickAsync(
                 cancellationToken);
-            if (result.Manager.CapacityActionCount != 0)
+            if (result.Ledger.Released != 0)
             {
-                var releasedSlots = result.Manager.Tables.Sum(
-                    static table => table.ReleasedSlotCount);
                 logger.LogInformation(
-                    "Resource Manager self ledger capacity maintenance attempted {ActionCount} actions, released {ReleasedSlotCount} entries, and left {RemainingSlots} free slots.",
-                    result.Manager.CapacityActionCount,
-                    releasedSlots,
-                    result.Capacity.FreeCount);
+                    "Resource Manager owned-memory Ledger released {ReleasedCount} resources while scanning {ScannedCount}; {RegisteredBytes} bytes remain registered ({SystemPageBytes} system-page bytes).",
+                    result.Ledger.Released,
+                    result.Ledger.Scanned,
+                    result.Memory.RegisteredBytes,
+                    result.Memory.SystemPageBytes);
             }
-            if (result.Manager.UncertainExecutions.Count != 0)
-            {
-                logger.LogWarning(
-                    "Resource Manager self ledger added {NewPendingCount} uncertain executions; {PendingCount} remain unresolved.",
-                    result.Manager.UncertainExecutions.Count,
-                    result.PendingUncertainExecutionCount);
-            }
+            LogSelfWorkingSetResults(logger, result.TrimResults.Concat(result.RecheckedTrimObservations));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            LogFailedTickWorkingSets();
             throw;
         }
         catch (Exception exception)
         {
+            LogFailedTickWorkingSets();
             logger.LogWarning(
                 exception,
                 "Resource Manager self ledger maintenance failed closed for this cycle.");
+        }
+
+        void LogFailedTickWorkingSets()
+        {
+            var observed = selfLocalResourceManagerOwner.LastTrimResults;
+            // Cancellation before this Tick acquired its gate leaves the previous
+            // snapshot untouched. Do not log that earlier cycle a second time.
+            if (!ReferenceEquals(previousTrimSnapshot, observed))
+                LogSelfWorkingSetResults(logger, observed);
+        }
+    }
+
+    internal static void LogSelfWorkingSetResults(ILogger logger,
+        IEnumerable<ResourceManagerSelfWorkingSetTrimResult> trims)
+    {
+        foreach (var trim in trims)
+        {
+            if (trim.Status != ResourceManager.Adapter.AdapterResourceActionStatus.Completed
+                || trim.ObservationPending)
+            {
+                logger.LogWarning(
+                    "Resource Manager {ProcessGroup} OS working-set batch returned {Status}; {RequestCount} exact process instances, observation pending {ObservationPending}, writer failure {Failure}. OS batch evidence {BatchEvidence}.",
+                    trim.Group, trim.Status, trim.Requests.Count,
+                    trim.ObservationPending, trim.Failure, System.Text.Json.JsonSerializer.Serialize(trim));
+            }
+            else
+            {
+                logger.LogDebug(
+                    "Resource Manager {ProcessGroup} OS working-set trim completed for {RequestCount} exact process instances; residency observations {Observations}.",
+                    trim.Group, trim.Requests.Count, trim.Observations);
+            }
         }
     }
 
@@ -591,8 +622,7 @@ public sealed partial class HostManagerSmartCoordinator
             state = await ReserveRollbackSessionAsync(
                 cancellationToken);
             var nextIncarnation = state.NativeHostSessionIncarnation;
-            EnsureNativeWorkspace(desired);
-            nativeHostSessionIncarnation = nextIncarnation;
+            EnsureNativeWorkspace(desired, nextIncarnation);
             return state;
         }
 
@@ -603,7 +633,7 @@ public sealed partial class HostManagerSmartCoordinator
                 "The Host Manager native workspace lost its durable host session incarnation.");
         }
 
-        EnsureNativeWorkspace(desired);
+        EnsureNativeWorkspace(desired, nativeHostSessionIncarnation);
         return state;
     }
 
@@ -611,7 +641,7 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerSmartCoordinatorRuntimePlan desired,
         ulong durableIncarnation)
     {
-        if (nativeWorkspace is null || appliedNativeRuntimePlan is null)
+        if (nativeWorkspace is null || appliedNativeRuntimePlan is null || pendingNativeWorkspaceClose is not null)
         {
             return false;
         }
@@ -641,8 +671,14 @@ public sealed partial class HostManagerSmartCoordinator
         return true;
     }
 
-    private void EnsureNativeWorkspace(HostManagerSmartCoordinatorRuntimePlan desired)
+    private void EnsureNativeWorkspace(HostManagerSmartCoordinatorRuntimePlan desired, ulong incarnation)
     {
+        if (pendingNativeWorkspaceClose is not null)
+        {
+            pendingNativeWorkspaceClose.Dispose();
+            pendingNativeWorkspaceClose = null;
+        }
+        nativeWorkspace?.RequireNoOutstandingOperation();
         if (nativeWorkspace is null)
         {
             var attempt = smartCoordinatorRuntime.BeginInitialCreate(desired.HostPlan);
@@ -650,7 +686,7 @@ public sealed partial class HostManagerSmartCoordinator
             NativeSmartCoordinatorWorkspace? created = null;
             try
             {
-                created = new NativeSmartCoordinatorWorkspace(in configuration);
+                created = new NativeSmartCoordinatorWorkspace(in configuration, selfLocalResourceManagerOwner.CreateScratch);
             }
             catch (Exception exception)
             {
@@ -668,11 +704,12 @@ public sealed partial class HostManagerSmartCoordinator
             }
             catch
             {
-                created.Dispose();
+                RetireFailedNativeWorkspace(created);
                 throw;
             }
             nativeWorkspace = created;
             appliedNativeRuntimePlan = desired;
+            nativeHostSessionIncarnation = incarnation;
             authoritativeAppliedFactsRequired = true;
             return;
         }
@@ -748,20 +785,26 @@ public sealed partial class HostManagerSmartCoordinator
 
         var recreateAttempt = smartCoordinatorRuntime.BeginHostRecreateAndHotPublish(desired.HostPlan);
         NativeSmartCoordinatorWorkspace replacement;
+        NativeSmartCoordinatorWorkspace? constructed = null;
         try
         {
             ReachTransitionPoint(
                 HostManagerSmartCoordinatorTransitionPoint.BeforeReplacementCreate);
             var configuration = desired.Configuration;
-            replacement = new NativeSmartCoordinatorWorkspace(in configuration);
+            replacement = new NativeSmartCoordinatorWorkspace(in configuration, selfLocalResourceManagerOwner.CreateScratch);
+            constructed = replacement;
             ReachTransitionPoint(
                 HostManagerSmartCoordinatorTransitionPoint.AfterReplacementCreate);
         }
         catch (Exception exception)
         {
+            Exception? cleanup = null;
+            try { if (constructed is not null) RetireFailedNativeWorkspace(constructed); }
+            catch (Exception close) { cleanup = close; }
             SettleSmartCoordinatorFailed(
                 recreateAttempt,
                 $"native-smart-coordinator:{exception.GetType().Name}");
+            if (cleanup is not null) throw new AggregateException(exception, cleanup);
             throw;
         }
 
@@ -777,16 +820,29 @@ public sealed partial class HostManagerSmartCoordinator
         }
         catch
         {
-            replacement.Dispose();
+            RetireFailedNativeWorkspace(replacement);
             throw;
         }
-        ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.BeforePointerCutover);
+        try { ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.BeforePointerCutover); }
+        catch { RetireFailedNativeWorkspace(replacement); throw; }
         var previous = nativeWorkspace;
+        pendingNativeWorkspaceClose = previous;
         nativeWorkspace = replacement;
         appliedNativeRuntimePlan = desired;
+        nativeHostSessionIncarnation = incarnation;
         authoritativeAppliedFactsRequired = true;
         ReachTransitionPoint(HostManagerSmartCoordinatorTransitionPoint.AfterPointerCutover);
         previous.Dispose();
+        pendingNativeWorkspaceClose = null;
+    }
+
+    private void RetireFailedNativeWorkspace(NativeSmartCoordinatorWorkspace candidate)
+    {
+        if (pendingNativeWorkspaceClose is not null && !ReferenceEquals(pendingNativeWorkspaceClose, candidate))
+            throw new InvalidOperationException("A previous smart workspace still requires close.");
+        pendingNativeWorkspaceClose = candidate;
+        candidate.Dispose();
+        pendingNativeWorkspaceClose = null;
     }
 
     private void SettleSmartCoordinatorFailed(
@@ -841,7 +897,8 @@ public sealed partial class HostManagerSmartCoordinator
         var softwareKeys = new HashSet<ulong>();
         var gpuStates = new HashSet<(ulong TargetKey, uint ProcessId,
             ulong ProcessStartKey, uint DeviceIndex)>();
-        foreach (var row in workspace.InputRows[..checked((int)inputCount)])
+        using var view = workspace.CreateScratchView();
+        foreach (var row in view.Inputs[..checked((int)inputCount)])
         {
             if (row.ValidMask.HasFlag(
                     NativeSmartCoordinatorInputValidity.ProcessIdentity)

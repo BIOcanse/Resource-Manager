@@ -1,4 +1,5 @@
-using ResourceManager.App.Infrastructure.Windows;
+using static ResourceManager.ReadWrite.Windows.Cpu.WindowsCpuOsTopologyReader;
+using ResourceManager.App.Domain.CpuTopology;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
@@ -9,10 +10,11 @@ public sealed partial class WindowsCpuTopologyReader
         IReadOnlyList<PhysicalCoreRecord> coreRecords,
         int logicalProcessorCount,
         IReadOnlyList<CpuSetRecord> cpuSetRecords,
+        IReadOnlyList<CpuOsDie>? dies,
         ICollection<string> notes)
     {
-        var dieRecords = TryReadProcessorRelationshipGroups(NativeMethods.RelationProcessorDie, "Die", notes);
-        if (dieRecords.Count > 1)
+        var dieRecords = dies?.Select(static die => die.LogicalProcessorIds.ToArray()).ToArray() ?? [];
+        if (dieRecords.Length > 1)
         {
             return CreateCcdRecords(dieRecords, "RelationProcessorDie");
         }
@@ -50,25 +52,6 @@ public sealed partial class WindowsCpuTopologyReader
 
         notes.Add("未识别到多个 CCD；全部核心归入单个 CPU group。");
         return CreateCcdRecords([Enumerable.Range(0, logicalProcessorCount).ToArray()], "SingleCpuGroup");
-    }
-
-    private IReadOnlyList<int[]> TryReadProcessorRelationshipGroups(
-        int relationship,
-        string displayName,
-        ICollection<string> notes)
-    {
-        try
-        {
-            return QueryLogicalProcessorRecords(relationship)
-                .Select(static record => record.LogicalProcessorIds.Distinct().Order().ToArray())
-                .Where(static ids => ids.Length > 0)
-                .ToArray();
-        }
-        catch (Exception ex) when (IsExpectedNativeException(ex))
-        {
-            notes.Add($"读取 {displayName} 分组失败：{ex.Message}");
-            return [];
-        }
     }
 
     private static IReadOnlyList<int[]> TryReadCpuSetLastLevelCacheGroups(IReadOnlyList<CpuSetRecord> cpuSetRecords)

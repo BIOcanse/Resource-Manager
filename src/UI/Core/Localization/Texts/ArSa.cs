@@ -46,6 +46,7 @@ internal static class ArSa
         BackendPipelineNotReady = "مسار طلبات الخدمة المحلية غير جاهز.",
         NoProcessToTerminate = "لا توجد عملية لإنهائها.",
         TerminateRequestCompleted = "اكتمل طلب إنهاء العملية.",
+        TerminateResultFormat = "تم إنهاء {0} / {1} من العمليات.",
 
         WebViewInitializationFailed = "تعذّر تهيئة الواجهة المضمّنة. افتح مجلد التشخيص للاطلاع على التفاصيل.",
         FrontendIdentityVerificationFailed = "فشل التحقق من هوية موارد الواجهة الأمامية. افتح مجلد التشخيص للاطلاع على التفاصيل.",

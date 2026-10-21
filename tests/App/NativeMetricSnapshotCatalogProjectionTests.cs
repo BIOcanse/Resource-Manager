@@ -1,3 +1,9 @@
+using ResourceManager.ReadWrite.Vendors.Intel.Msr;
+using ResourceManager.ReadWrite.Vendors.Nvidia;
+using ResourceManager.ReadWrite.Windows.Cpu.Models;
+using ResourceManager.ReadWrite.Windows.Devices.Battery;
+using ResourceManager.ReadWrite.Windows.Devices.Npu;
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Domain.Metrics;
@@ -11,13 +17,13 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     [Fact]
     public void GpuOnlyWildcardProjectsActualGpuHandlesAndCapacity()
     {
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
             [new(0, "GPU", "gpu-test", 0x101UL, 1, VendorNvidia, true)], [], [],
             NativeMetricSnapshotCatalogHandleMap.Empty);
         var ids = NativeMetricSnapshotRequestProjection.CreateMetricHandles(
             MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([]), projection)
-            .Select(handle => projection.MetricIds[handle]).ToHashSet();
+            .Select(handle => projection.MetricBindings[handle].LegacyMetricId).ToHashSet();
         Assert.Contains("gpu.0.usage", ids);
         Assert.Contains("gpu.0.vram", ids);
         Assert.Contains("gpu.0.vramTotal", ids);
@@ -26,10 +32,10 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     }
 
     [Fact]
-    public void CatalogProbeProjectsEveryActiveMetricHandle()
+    public void CatalogProbeDoesNotRequestNumericHandles()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [],
             [],
@@ -41,17 +47,14 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                 MetricSampleRequest.CatalogProbe,
                 projection);
 
-        Assert.NotEmpty(handles);
-        Assert.Equal(
-            projection.MetricHandles.Values.Distinct().Order(),
-            handles);
+        Assert.Empty(handles);
     }
 
     [Fact]
     public void UnavailableRequestedMetricsProduceAnEmptyNativeIntersection()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [],
             [],
@@ -71,7 +74,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     public void CompositeUsageRequestsIncludeTheirInternalCapacityMetrics()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [
                 new(
@@ -106,7 +109,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                     ]),
                 projection);
         var metricIds = handles
-            .Select(projection.MetricIds.GetValueOrDefault)
+            .Select(handle => projection.MetricBindings[handle].LegacyMetricId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.Contains("memory.usage", metricIds);
@@ -123,7 +126,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     public void UnrelatedRequestsDoNotIncludeInternalCapacityMetrics()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [
                 new(
@@ -149,7 +152,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                     ]),
                 projection);
         var metricIds = handles
-            .Select(projection.MetricIds.GetValueOrDefault)
+            .Select(handle => projection.MetricBindings[handle].LegacyMetricId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.DoesNotContain("memory.total", metricIds);
@@ -162,7 +165,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
 
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [],
             [],
@@ -181,11 +184,11 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             projection.Rules.Select(static row => row.MetricHandle),
             projection.Rules.Select(static row => row.MetricHandle).Order());
         Assert.Contains(
-            projection.MetricIds,
-            static pair => pair.Value == "cpu.usage");
+            projection.MetricBindings.Values,
+            static binding => binding.LegacyMetricId == "cpu.usage");
         Assert.Equal(
             projection.MetricIds.Count,
-            projection.MetricHandles.Count);
+            projection.MetricHandles.Values.Distinct().Count());
         Assert.Equal(
             projection.Sources.Length,
             projection.SourceIds.Count);
@@ -227,11 +230,11 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                 binding.SourceId);
         }
         Assert.Contains(
-            projection.MetricIds,
-            static pair => pair.Value == "disk.total.readBytesPerSec");
+            projection.MetricBindings.Values,
+            static binding => binding.LegacyMetricId == "disk.total.readBytesPerSec");
         Assert.DoesNotContain(
-            projection.MetricIds,
-            static pair => pair.Value.StartsWith(
+            projection.MetricBindings.Values,
+            static binding => binding.LegacyMetricId.StartsWith(
                 "gpu.",
                 StringComparison.Ordinal));
 
@@ -273,13 +276,13 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                 true)
         ];
 
-        var first = NativeMetricSnapshotCatalogProjection.Create(
+        var first = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             identities,
             [],
             [],
             NativeMetricSnapshotCatalogHandleMap.Empty);
-        var second = NativeMetricSnapshotCatalogProjection.Create(
+        var second = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             identities.Reverse().ToArray(),
             [],
@@ -309,16 +312,11 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.Equal(
             first.MetricIds.OrderBy(static pair => pair.Key).ToArray(),
             second.MetricIds.OrderBy(static pair => pair.Key).ToArray());
-        Assert.Contains(first.MetricIds, static pair =>
-            pair.Value == "gpu.0.vram");
-        Assert.DoesNotContain(first.MetricIds, static pair =>
-            pair.Value == "gpu.1.vram");
-        Assert.Contains(first.MetricIds, static pair =>
-            pair.Value == "gpu.1.graphicsClock");
-        Assert.DoesNotContain(first.MetricIds, static pair =>
-            pair.Value == "gpu.0.boardPower");
-        Assert.DoesNotContain(first.MetricIds, static pair =>
-            pair.Value == "gpu.1.boardPower");
+        Assert.Contains("gpu.0.vram", first.LegacyMetricHandles.Keys);
+        Assert.DoesNotContain("gpu.1.vram", first.LegacyMetricHandles.Keys);
+        Assert.Contains("gpu.1.graphicsClock", first.LegacyMetricHandles.Keys);
+        Assert.DoesNotContain("gpu.0.boardPower", first.LegacyMetricHandles.Keys);
+        Assert.DoesNotContain("gpu.1.boardPower", first.LegacyMetricHandles.Keys);
 
         var nvidiaScope = first.GpuScopeBindings.Single(
             static pair => pair.Value.DisplayIndex == 0).Key;
@@ -376,7 +374,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
 
         Assert.Throws<InvalidOperationException>(() =>
-            NativeMetricSnapshotCatalogProjection.Create(
+            NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
                 plan,
                 [
                     new(
@@ -400,7 +398,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                 [],
                 NativeMetricSnapshotCatalogHandleMap.Empty));
         Assert.Throws<InvalidOperationException>(() =>
-            NativeMetricSnapshotCatalogProjection.Create(
+            NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
                 plan,
                 [
                     new(
@@ -416,7 +414,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                 [],
                 NativeMetricSnapshotCatalogHandleMap.Empty));
         Assert.Throws<InvalidOperationException>(() =>
-            NativeMetricSnapshotCatalogProjection.Create(
+            NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
                 plan,
                 [new(0, "GPU A", "gpu-a", 1, 1, 3, true)],
                 [],
@@ -434,7 +432,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             new(30, "fan-b", 1)
         ];
 
-        var projection = NativeMetricSnapshotCatalogProjection.Create(
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             [],
             [],
@@ -442,11 +440,11 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             NativeMetricSnapshotCatalogHandleMap.Empty);
 
         Assert.Contains(
-            projection.MetricIds,
-            static pair => pair.Value == "fan.20.speed");
+            projection.MetricBindings.Values,
+            static binding => binding.LegacyMetricId == "fan.20.speed");
         Assert.Contains(
-            projection.MetricIds,
-            static pair => pair.Value == "fan.30.speed");
+            projection.MetricBindings.Values,
+            static binding => binding.LegacyMetricId == "fan.30.speed");
     }
 
     [Fact]
@@ -479,7 +477,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         };
 
         var exception = Assert.Throws<InvalidOperationException>(() =>
-            NativeMetricSnapshotCatalogProjection.Create(
+            NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
                 changedPlan,
                 [],
                 [],
@@ -500,23 +498,21 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             new(0, "GPU A", "gpu-a", 0xA1UL, 1, VendorNvidia, true),
             new(1, "GPU B", "gpu-b", 0xB1UL, 1, VendorAmd, false)
         ];
-        var first = NativeMetricSnapshotCatalogProjection.Create(
+        var first = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             firstTopology,
             [],
             [],
             NativeMetricSnapshotCatalogHandleMap.Empty);
-        var firstAUsage = first.MetricIds.Single(
-            static pair => pair.Value == "gpu.0.usage").Key;
-        var firstBUsage = first.MetricIds.Single(
-            static pair => pair.Value == "gpu.1.usage").Key;
+        var firstAUsage = first.MetricHandles["gpu.0.usage"];
+        var firstBUsage = first.MetricHandles["gpu.1.usage"];
 
         NativeMetricSnapshotGpuCatalogIdentity[] reordered =
         [
             new(0, "GPU B", "gpu-b", 0xB2UL, 2, VendorAmd, false),
             new(1, "GPU A", "gpu-a", 0xA2UL, 2, VendorNvidia, true)
         ];
-        var second = NativeMetricSnapshotCatalogProjection.Create(
+        var second = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             reordered,
             [],
@@ -525,12 +521,10 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
 
         Assert.Equal(
             firstAUsage,
-            second.MetricIds.Single(
-                static pair => pair.Value == "gpu.1.usage").Key);
+            second.MetricHandles["gpu.1.usage"]);
         Assert.Equal(
             firstBUsage,
-            second.MetricIds.Single(
-                static pair => pair.Value == "gpu.0.usage").Key);
+            second.MetricHandles["gpu.0.usage"]);
         Assert.NotEqual(
             first.CatalogIdentitySha256,
             second.CatalogIdentitySha256);
@@ -541,7 +535,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             new(1, "GPU A", "gpu-a", 0xA3UL, 3, VendorNvidia, true),
             new(2, "GPU C", "gpu-c", 0xC3UL, 3, VendorAmd, false)
         ];
-        var third = NativeMetricSnapshotCatalogProjection.Create(
+        var third = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             inserted,
             [],
@@ -549,12 +543,10 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             second.HandleMap);
         Assert.Equal(
             firstAUsage,
-            third.MetricIds.Single(
-                static pair => pair.Value == "gpu.1.usage").Key);
+            third.MetricHandles["gpu.1.usage"]);
         Assert.Equal(
             firstBUsage,
-            third.MetricIds.Single(
-                static pair => pair.Value == "gpu.0.usage").Key);
+            third.MetricHandles["gpu.0.usage"]);
     }
 
     private static IReadOnlyList<NativeMetricSnapshotMetricDefinitionInput>
@@ -562,8 +554,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             NativeMetricSnapshotCatalogProjection projection,
             string metricId)
     {
-        var handle = projection.MetricIds.Single(
-            pair => pair.Value == metricId).Key;
+        var handle = projection.MetricHandles[metricId];
         return projection.Rules
             .Where(row => row.MetricHandle == handle)
             .ToArray();
@@ -571,4 +562,131 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
 
     private const uint VendorNvidia = 1;
     private const uint VendorAmd = 2;
+    [Fact]
+    public void NewAbiNativeCapacityReportsTheExactFiveCapacityIncreaseWithinTheSame64MiBBudget()
+    {
+        var configuration = ResourceManager.ReadWrite.Windows.Metrics.Configuration.WindowsMetricConfiguration.Default;
+        var original = configuration.Configuration;
+        original.MaximumMetricCount = 12288;
+        original.MaximumRequestedCount = 12288;
+        original.MaximumObservationCount = 12288;
+        original.MaximumPlanMetricCount = 12288;
+        original.MaximumMetricPlanCount = 12288;
+        // Both workspaces call the same current ABI10 DLL. This is a capacity-input
+        // comparison, not a claim that the historical ABI8 binary is interchangeable.
+        using var before = new NativeMetricSnapshotWorkspace(original, configuration.CatalogConfiguration);
+        using var after = new NativeMetricSnapshotWorkspace(configuration.Configuration, configuration.CatalogConfiguration);
+        Assert.Equal(0x000A_0000U, before.Configuration.AbiVersion); Assert.Equal(before.Configuration.AbiVersion, after.Configuration.AbiVersion);
+        Assert.Equal(12288U, before.Capacity.MetricCapacity); Assert.Equal(12800U, after.Capacity.MetricCapacity);
+        Assert.Equal(1_013_760UL, (after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) - (before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount));
+        Assert.Equal(67_108_864UL, before.Configuration.ResidentByteBudget); Assert.Equal(before.Configuration.ResidentByteBudget, after.Configuration.ResidentByteBudget);
+        Assert.True(checked(before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount) <= before.Configuration.ResidentByteBudget);
+        Assert.True(checked(after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) <= after.Configuration.ResidentByteBudget);
+        Assert.Equal(before.Configuration.MaximumRuleCount, after.Configuration.MaximumRuleCount);
+        Assert.Equal(before.Configuration.MaximumSourceCount, after.Configuration.MaximumSourceCount);
+        Assert.Equal(before.Configuration.MetricIndexCapacity, after.Configuration.MetricIndexCapacity);
+        Assert.Equal(before.Configuration.RuleIndexCapacity, after.Configuration.RuleIndexCapacity);
+    }
+    [Fact]
+    public void MaximumApplicableDirectoriesIncludingNpu64FitOneRealNativeCatalog()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        var config = NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan);
+        var templates = config.RuleTemplates;
+        int Bound(uint scope, string? source = null)
+            => checked((int)Assert.Single(templates.Where(row => row.ScopeExpansion == scope
+                && (source is null || row.SourceId == source)).Select(row => row.MaximumInstanceCount).Distinct()));
+
+        // Catalog-capacity envelope, not a claim that one physical machine has
+        // every CPU/MSR/disk capability simultaneously. No reader is invoked.
+        var gpus = Enumerable.Range(0, checked((int)config.MaximumGpuAdapterCount))
+            .Select(i => new NativeMetricSnapshotGpuCatalogIdentity(i, "Recorded maximum GPU",
+                @"PCI\VEN_10DE&DEV_2684\CAPACITY_" + i, (ulong)i + 1, 1, VendorNvidia, true)).ToArray();
+        var disks = Enumerable.Range(0, Bound(5)).Select(i =>
+            new NativeMetricSnapshotOrdinalCatalogIdentity(i, "recorded-storage|" + i, 1)
+                { SupportsNvmeHealth = true, SupportsAtaSmart = true }).ToArray();
+        var fans = new List<NativeMetricSnapshotOrdinalCatalogIdentity>();
+        for (var i = 0; i < Bound(6, NativeMetricSnapshotSources.HardwareMonitorWmi); i++)
+            fans.Add(new(i, "recorded-wmi-fan|" + i, 1));
+        var nvmlCount = Bound(6, NativeMetricSnapshotSources.NvidiaNvml);
+        Assert.Equal(NvidiaNvmlReader.MaxFanCount, nvmlCount);
+        Assert.Equal(16, gpus.Length);
+        for (var i = 0; i < nvmlCount; i++)
+        {
+            var fan = new NvidiaNvmlFanIdentity(gpus[i / NvidiaNvmlReader.MaxFansPerDevice].ExactIdentityKey,
+                (uint)(i % NvidiaNvmlReader.MaxFansPerDevice));
+            fans.Add(new(fans.Count, fan.ExactIdentityKey, 1) { NvmlFan = fan });
+        }
+        // Original OEM route has exactly two role identities, not 64 invented roles.
+        var oem = WindowsNotebookFanProjection.CreateCatalogIdentities(fans.Count, 1);
+        Assert.Equal(2, oem.Count);
+        Assert.True(oem.Count <= Bound(6, NativeMetricSnapshotSources.NotebookOemFan));
+        fans.AddRange(oem);
+        var intelFanDirectoryId = Guid.NewGuid();
+        for (var i = 0; i < Bound(6, NativeMetricSnapshotSources.IntelGcl); i++)
+        {
+            var fan = new ResourceManager.ReadWrite.Vendors.Intel.IntelGclFanIdentity(gpus[0].ExactIdentityKey, intelFanDirectoryId, (uint)i);
+            fans.Add(new(fans.Count, fan.ExactIdentityKey, 1) { IgclFan = fan });
+        }
+        using var engines = new NpuEngineRecordedResources.Directory(Bound(17));
+        var batteries = Enumerable.Range(0, Bound(8)).Select(i => new BatteryCatalogIdentity(i,
+            @"\\?\RECORDED-BATTERY-" + i, "capacity-battery-" + i,
+            new BatteryInformation(i % 2 == 0 ? 0U : 0x40000000U, "LION", 100, 100, 1))).ToArray();
+        var numa = Enumerable.Range(0, Bound(9)).Select(i => new NumaMemoryCatalogIdentity((ushort)i)).ToArray();
+        var interfaces = Enumerable.Range(0, Bound(14)).Select(i =>
+            new NetworkInterfaceCatalogIdentity(i, new Guid(i + 1, 1, 2, new byte[8]), (ulong)i + 1, (uint)i + 1)).ToArray();
+        var npus = Enumerable.Range(0, Bound(16)).Select(i => new NpuMemoryCatalogIdentity(@"ACPI\RECORDED_NPU\CAPACITY_" + i)).ToArray();
+        var cpus = new List<IntelMsrCatalogIdentity>();
+        AddCpus(IntelMsrTargetKind.PhysicalCore, 10);
+        AddCpus(IntelMsrTargetKind.Package, 11);
+        AddCpus(IntelMsrTargetKind.LogicalProcessor, 12);
+        AddCpus(IntelMsrTargetKind.PhysicalDie, 13);
+        AddCpus(IntelMsrTargetKind.Platform, 15);
+
+        using var workspace = new NativeMetricSnapshotWorkspace(
+            NativeMetricSnapshotHostConfiguration.CreateConfiguration(plan), config);
+        Assert.Equal(12800U, workspace.Capacity.MetricCapacity);
+        Assert.Equal(16384U, workspace.Capacity.RuleCapacity);
+        Assert.True(checked(workspace.Capacity.ResidentByteCount + workspace.Capacity.ScratchByteCount) <= plan.Recreate.Capacity.ResidentByteBudget);
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, gpus, disks, fans,
+            workspace.CreateCatalogHandleMap(), cpuVendor: MetricVendor.All, batteries: batteries,
+            numaNodes: numa, intelCpus: cpus, networkInterfaces: interfaces, npuMemoryIdentities: npus, npuEngineIdentities: engines.Identities, npuEngineDirectory: engines);
+        Assert.Equal(256, projection.NpuEngineIdentities.Length);
+        Assert.Equal(512, projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNpuEngine));
+        Assert.Equal(16, projection.SystemFanIdentities.Count(row => row.IgclFan is not null));
+        Assert.Equal(64, projection.NpuMemoryIdentities.Length);
+        Assert.Equal(256, projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNpuMemory));
+        Assert.Equal(2432, projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNetworkInterface));
+        Assert.Equal(1696, projection.RuleBindings.Values.Count(row => row.SourceId is
+            NativeMetricSnapshotSources.WindowsStorageSensors or NativeMetricSnapshotSources.WindowsDiskPerformance
+            or NativeMetricSnapshotSources.WindowsNvmeHealth or NativeMetricSnapshotSources.WindowsAtaSmart));
+        Assert.Equal(660, projection.RuleBindings.Values.Count(row => row.Field?.Resource == MetricResource.Fan));
+        Assert.Equal(12103, projection.Rules.Length);
+        Assert.Equal(12069, projection.MetricBindings.Count);
+        // These are the original native replacement and native header, not a
+        // managed row-count-only assertion or a replacement workspace stub.
+        var header = workspace.ReplaceCatalog(projection, DateTimeOffset.UtcNow);
+        Assert.Equal((uint)NativeMetricSnapshotPhase.CatalogReady, header.Phase);
+        Assert.Equal((uint)projection.Sources.Length, header.SourceCount);
+        Assert.Equal((uint)projection.Rules.Length, header.RuleCount);
+        Assert.Equal((uint)projection.MetricBindings.Count, header.MetricCount);
+        Assert.Equal(projection.CatalogIdentitySha256, workspace.ReadCatalog().CatalogIdentitySha256);
+
+        void AddCpus(IntelMsrTargetKind kind, uint scope)
+        {
+            var maximum = Bound(scope);
+            for (var i = 0; i < maximum; i++)
+                cpus.Add(new IntelMsrCatalogIdentity(i, "recorded-intel-capacity|" + kind + "|" + i,
+                    new CpuProcessorAddress((ushort)(i / 64), (byte)(i % 64)), 0x406E0, (uint)i, kind, true, true)
+                {
+                    SupportsPerformanceFeedback = true,
+                    RaplProfile = new IntelRaplProfile(IntelRaplDomains.Package | IntelRaplDomains.Pp0
+                        | IntelRaplDomains.Pp1 | IntelRaplDomains.Dram)
+                    { PowerInformationDomains = IntelRaplDomains.Package | IntelRaplDomains.Dram, DramPowerUsesRaplUnits = true },
+                    ThermalStatusCapabilities = IntelThermalStatusCapabilities.Raw | IntelThermalStatusCapabilities.Thermal
+                        | IntelThermalStatusCapabilities.Power | IntelThermalStatusCapabilities.Current | IntelThermalStatusCapabilities.CrossDomain
+                });
+        }
+    }
+
 }

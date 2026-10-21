@@ -53,6 +53,7 @@ internal sealed record NativeText
     public required string BackendPipelineNotReady { get; init; }
     public required string NoProcessToTerminate { get; init; }
     public required string TerminateRequestCompleted { get; init; }
+    public required string TerminateResultFormat { get; init; }
 
     // WebView 与前端资源
     public required string WebViewInitializationFailed { get; init; }

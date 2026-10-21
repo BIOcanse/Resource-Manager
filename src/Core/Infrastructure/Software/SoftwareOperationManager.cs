@@ -1,21 +1,24 @@
-using System.Diagnostics;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
 public sealed class SoftwareOperationManager(
     IOptionalDependencyManager dependencyManager,
     IInstalledSoftwareInventory installedSoftwareInventory,
-    IFileChangeTracker fileChangeTracker) : ISoftwareOperationManager
+    IFileChangeTracker fileChangeTracker,
+    IInteractiveUserSessionBroker sessionBroker) : ISoftwareOperationManager
 {
     private const string DependencyPrefix = "dependency:";
 
     public async Task<SoftwareOperationResult> UninstallAsync(
         SoftwareOperationRequest request,
+        SoftwareOperationCaller? caller,
         CancellationToken cancellationToken)
     {
         if (!request.ConfirmOperation)
@@ -31,7 +34,7 @@ public sealed class SoftwareOperationManager(
 
         if (request.Id.StartsWith("windows-installed:", StringComparison.OrdinalIgnoreCase))
         {
-            return await LaunchWindowsUninstallerAsync(request.Id, cancellationToken);
+            return await LaunchWindowsUninstallerAsync(request.Id, caller, cancellationToken);
         }
 
         throw new InvalidOperationException("该软件当前没有可执行的卸载策略。");
@@ -79,9 +82,11 @@ public sealed class SoftwareOperationManager(
 
     private async Task<SoftwareOperationResult> LaunchWindowsUninstallerAsync(
         string id,
+        SoftwareOperationCaller? caller,
         CancellationToken cancellationToken)
     {
-        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
+        ValidateUninstallerCaller(caller, sessionBroker);
+        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(caller!.WindowsSid, cancellationToken);
         var entry = installedSoftware.FirstOrDefault(item => item.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException("未在 Windows 已安装软件清单中找到该条目。");
 
@@ -90,21 +95,22 @@ public sealed class SoftwareOperationManager(
             throw new InvalidOperationException("缺少卸载入口，Resource Manager 不会删除未知软件根目录。");
         }
 
-        var command = WindowsCommandLine.Parse(entry.UninstallString);
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = command.FileName,
-            Arguments = command.Arguments,
-            UseShellExecute = true,
-            WorkingDirectory = ResolveWorkingDirectory(command.FileName)
-        };
-
-        Process.Start(startInfo);
+        var command = WindowsInstalledSoftwareInventory.ParseExecutableCommandLine(entry.UninstallString);
+        cancellationToken.ThrowIfCancellationRequested();
+        var shellRequest = new UserShellExecuteRequest(command.FileName, command.Arguments);
+        _ = sessionBroker.LaunchUserShell(caller.WindowsSessionId, caller.WindowsSid,
+            NativeUiLaunchHostedService.ResolveNativeUiPath(),
+            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
 
         return new SoftwareOperationResult(
             id,
-            "UninstallerStarted",
-            "已启动 Windows 注册表提供的卸载器。完成后软件会在下一次清单刷新时消失；当前阶段不根据全盘空间差推断释放容量。");
+            "UninstallerLaunchRequested",
+            "已向用户桌面请求启动 Windows 注册表提供的卸载器；需要提升时由 Windows 提示。完成后请刷新软件清单。");
+    }
+
+    internal static void ValidateUninstallerCaller(SoftwareOperationCaller? caller, IInteractiveUserSessionBroker broker)
+    {
+        UserSessionCallerValidation.RequireActiveUser(caller, broker);
     }
 
     private static string NormalizePath(string path)
@@ -119,46 +125,4 @@ public sealed class SoftwareOperationManager(
             && candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? ResolveWorkingDirectory(string fileName)
-    {
-        try
-        {
-            var fullPath = Path.GetFullPath(Environment.ExpandEnvironmentVariables(fileName));
-            return File.Exists(fullPath) ? Path.GetDirectoryName(fullPath) : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
-
-    private sealed record WindowsCommandLine(string FileName, string Arguments)
-    {
-        public static WindowsCommandLine Parse(string commandLine)
-        {
-            var text = commandLine.Trim();
-            if (text.Length == 0)
-            {
-                throw new InvalidOperationException("卸载命令为空。");
-            }
-
-            if (text[0] == '"')
-            {
-                var endQuote = text.IndexOf('"', 1);
-                if (endQuote < 0)
-                {
-                    throw new InvalidOperationException("卸载命令格式无效。");
-                }
-
-                return new WindowsCommandLine(
-                    text[1..endQuote],
-                    text[(endQuote + 1)..].TrimStart());
-            }
-
-            var firstSpace = text.IndexOf(' ');
-            return firstSpace < 0
-                ? new WindowsCommandLine(text, "")
-                : new WindowsCommandLine(text[..firstSpace], text[(firstSpace + 1)..].TrimStart());
-        }
-    }
 }

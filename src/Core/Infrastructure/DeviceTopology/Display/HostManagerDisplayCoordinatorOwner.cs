@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
@@ -17,6 +18,14 @@ public sealed class HostManagerDisplayCoordinatorOwner :
     private readonly RuntimePersistenceCapabilityPolicy persistenceCapability;
     private readonly string hostManagerDataRoot;
     private readonly ILogger<HostManagerDisplayCoordinatorOwner> logger;
+    private readonly Func<NativeDisplayCoordinatorConfiguration, NativeDisplayCoordinatorPersistenceCallbacks?, NativeDisplayCoordinatorWorkspace> createWorkspace;
+    private readonly Func<string, IDisplayCoordinatorCheckpointStore> createCheckpointStore;
+    // This gate drains actual checkpoint I/O, independently of native reader leases.
+    private readonly object checkpointGate = new();
+    private readonly List<CheckpointStore> pendingCheckpointCloses = [];
+    private CheckpointBinding? allowedBinding;
+    private CheckpointStore? currentCheckpointStore;
+    private int disposeStarted;
     private WorkspaceHolder? current;
     private CompiledHostManagerDisplayCoordinatorPlan? appliedPlan;
     private IReadOnlyList<DeviceTopologyOemDisplayConnectorProfile> profiles = [];
@@ -32,7 +41,24 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         RuntimePersistenceCapabilityPolicy persistenceCapability,
         IHostEnvironment environment,
         ILogger<HostManagerDisplayCoordinatorOwner> logger)
+        : this(planProvider, deployment, persistenceCapability, environment, logger,
+            static (configuration, callbacks) => new NativeDisplayCoordinatorWorkspace(in configuration, callbacks),
+            static path => new NativeDisplayCoordinatorPersistenceStore(path,
+                Path.Combine(AppContext.BaseDirectory, "Native", "DiskCheckpoint", "native.json")))
     {
+    }
+
+    internal HostManagerDisplayCoordinatorOwner(
+        RuntimePlanProvider planProvider,
+        HostManagerDisplayCoordinatorRuntime deployment,
+        RuntimePersistenceCapabilityPolicy persistenceCapability,
+        IHostEnvironment environment,
+        ILogger<HostManagerDisplayCoordinatorOwner> logger,
+        Func<NativeDisplayCoordinatorConfiguration, NativeDisplayCoordinatorPersistenceCallbacks?, NativeDisplayCoordinatorWorkspace> createWorkspace,
+        Func<string, IDisplayCoordinatorCheckpointStore> createCheckpointStore)
+    {
+        this.createWorkspace = createWorkspace;
+        this.createCheckpointStore = createCheckpointStore;
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.persistenceCapability = persistenceCapability;
@@ -100,8 +126,10 @@ public sealed class HostManagerDisplayCoordinatorOwner :
 
     public void Dispose()
     {
-        if (disposed)
+        // Repeated disposal may retry a failed normal Close, but H is already disposed.
+        if (Interlocked.Exchange(ref disposeStarted, 1) != 0)
         {
+            lock (checkpointGate) RetryPendingCheckpointCloses();
             return;
         }
         if (started)
@@ -112,10 +140,21 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
-            current?.Retire();
+            lock (checkpointGate)
+            {
+                if (allowedBinding is not null) allowedBinding.Store = null;
+                allowedBinding = null;
+                RetryPendingCheckpointCloses();
+                var previousStore = currentCheckpointStore;
+                currentCheckpointStore = null;
+                if (previousStore is not null) CloseCheckpointStore(previousStore);
+            }
+            // Native leases can complete later. Never wait for W while holding P.
+            var previous = current;
             current = null;
             appliedPlan = null;
             disposed = true;
+            previous?.Retire();
         }
         finally
         {
@@ -124,69 +163,96 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         }
     }
 
+    internal static unsafe NativeDisplayCoordinatorConfiguration CreateConfiguration(CompiledHostManagerDisplayCoordinatorPlan plan)
+    {
+        var recreate = plan.Recreate;
+        var capacity = recreate.Capacity;
+        return new NativeDisplayCoordinatorConfiguration
+        {
+            AbiVersion = NativeDisplayCoordinatorAbi.Version,
+            StructSize = checked((uint)System.Runtime.CompilerServices.Unsafe.SizeOf<NativeDisplayCoordinatorConfiguration>()),
+            Generation = recreate.ConfigurationGeneration,
+            MaximumSourceCount = capacity.MaximumSourceCount,
+            MaximumObservationCount = capacity.MaximumObservationCount,
+            MaximumNodeCount = capacity.MaximumNodeCount,
+            MaximumEdgeCount = capacity.MaximumEdgeCount,
+            MaximumCapabilityCount = capacity.MaximumCapabilityCount,
+            MaximumDiffEntryCount = capacity.MaximumDiffEntryCount,
+            MaximumTextBindingCount = capacity.MaximumTextBindingCount,
+            MaximumTextByteCount = capacity.MaximumTextByteCount,
+            MaximumUnresolvedCount = capacity.MaximumUnresolvedCount,
+            MaximumSourceBatchCount = capacity.MaximumSourceBatchCount,
+            IdentityIndexCapacity = capacity.IdentityIndexCapacity,
+            TextIndexCapacity = capacity.TextIndexCapacity,
+            ResidentByteBudget = capacity.ResidentByteBudget,
+            RequiredSourceMask = recreate.RequiredSourceMask,
+            OptionalSourceMask = recreate.OptionalSourceMask,
+            IdentitySourcePriorityOrder = recreate.IdentitySourcePriorityOrder,
+            FriendlyNameSourcePriorityOrder = recreate.FriendlyNameSourcePriorityOrder,
+            CapabilitySourcePriorityOrder = recreate.CapabilitySourcePriorityOrder,
+            ProjectionSourcePriorityOrder = recreate.ProjectionSourcePriorityOrder,
+            IdentityContractVersion = recreate.IdentityContractVersion,
+            CapabilityContractVersion = recreate.CapabilityContractVersion,
+            MaximumFutureSkewMilliseconds = recreate.MaximumFutureSkewMilliseconds,
+        };
+    }
+
     private void OnPublished(CompiledRuntimePlan plan)
         => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
 
-    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
+    internal void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
     {
+        ThrowIfDisposed();
         var desired = hostPlan.DisplayCoordinator;
         gate.EnterWriteLock();
         try
         {
-            if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256)
-            {
-                return;
-            }
-            var initial = current is null;
-            var token = initial
+            if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256) return;
+            var token = current is null
                 ? deployment.BeginInitialCreate(hostPlan)
                 : deployment.BeginHostRecreate(hostPlan);
             NativeDisplayCoordinatorWorkspace? replacement = null;
             WorkspaceHolder? next = null;
+            CheckpointBinding? nextBinding = null;
+            CheckpointStore? candidateStore = null;
             try
             {
-                replacement = new NativeDisplayCoordinatorWorkspace(
-                    desired,
-                    persistenceCapability.MutablePersistenceEnabled
-                        ? ResolvePersistencePath(desired.Recreate.PersistenceRelativePath)
-                        : null);
+                if (!desired.IsPublished)
+                    throw new ArgumentException("The display-coordinator plan must be published.", "plan");
+                if (persistenceCapability.MutablePersistenceEnabled)
+                {
+                    var legacyPath = ResolvePersistencePath(desired.Recreate.PersistenceRelativePath);
+                    var rootPath = NativeDisplayCoordinatorPersistenceStore.ResolveRootPath(legacyPath);
+                    lock (checkpointGate)
+                    {
+                        if (currentCheckpointStore is not null
+                            && string.Equals(currentCheckpointStore.RootPath, rootPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidateStore = currentCheckpointStore;
+                        }
+                        else
+                        {
+                            // Never open a second writer beside a failed, still-valid Close.
+                            RetryPendingCheckpointCloses(rootPath, throwOnFailure: true);
+                            candidateStore = new(rootPath, createCheckpointStore(legacyPath));
+                        }
+                    }
+                    nextBinding = new(desired.Recreate.ConfigurationGeneration, candidateStore);
+                }
+                var binding = nextBinding;
+                var callbacks = binding is null ? null : new NativeDisplayCoordinatorPersistenceCallbacks(
+                    generation => LoadCheckpoint(binding, generation),
+                    (generation, image) => SaveCheckpoint(binding, generation, image));
+                replacement = createWorkspace(CreateConfiguration(desired), callbacks);
                 next = new WorkspaceHolder(replacement);
                 replacement = null;
             }
             catch (Exception ex)
             {
-                Exception? cleanupFailure = null;
-                try
-                {
-                    next?.Retire();
-                }
-                catch (Exception cleanup)
-                {
-                    cleanupFailure = cleanup;
-                }
-                try
-                {
-                    replacement?.Dispose();
-                }
-                catch (Exception cleanup)
-                {
-                    cleanupFailure = cleanupFailure is null
-                        ? cleanup
-                        : new AggregateException(cleanupFailure, cleanup);
-                }
-
+                var cleanupFailure = CleanupCandidate(next, replacement, nextBinding, candidateStore);
                 Exception? settlementFailure = null;
-                try
-                {
-                    deployment.CompleteFailed(
-                        token,
-                        "display-coordinator-apply-failed");
-                }
-                catch (Exception settlement)
-                {
-                    settlementFailure = settlement;
-                }
-
+                try { deployment.CompleteFailed(token, "display-coordinator-apply-failed"); }
+                catch (Exception settlement) { settlementFailure = settlement; }
                 throw (cleanupFailure, settlementFailure) switch
                 {
                     (null, null) => ex,
@@ -198,45 +264,135 @@ public sealed class HostManagerDisplayCoordinatorOwner :
 
             var previous = current;
             var previousPlan = appliedPlan;
-            current = next;
-            appliedPlan = desired;
+            CheckpointStore? retiredStore = null;
             try
             {
-                deployment.CompleteSucceeded(token);
-            }
-            catch
-            {
-                current = previous;
-                appliedPlan = previousPlan;
-                next.Retire();
-                throw;
-            }
+                lock (checkpointGate)
+                {
+                    current = next;
+                    appliedPlan = desired;
+                    try { deployment.CompleteSucceeded(token); }
+                    catch
+                    {
+                        current = previous;
+                        appliedPlan = previousPlan;
+                        throw;
+                    }
+                    // Only nonthrowing reference assignments follow successful settlement.
+                    var previousBinding = allowedBinding;
+                    var previousStore = currentCheckpointStore;
+                    allowedBinding = nextBinding;
+                    currentCheckpointStore = candidateStore;
+                    if (previousBinding is not null) previousBinding.Store = null;
 
-            next = null;
-            try
-            {
-                previous?.Retire();
+                    // Acquiring P drained entered Saves; revoked callbacks cannot touch this store.
+                    if (previousStore is not null && !ReferenceEquals(previousStore, candidateStore))
+                        retiredStore = previousStore;
+                }
             }
             catch (Exception ex)
             {
-                logger.LogError(
-                    ex,
-                    "The retired display-coordinator workspace could not be disposed.");
+                // Only settlement can fail before switching the permission. Close reports separately.
+                var cleanup = CleanupCandidate(next, null, nextBinding, candidateStore);
+                if (cleanup is not null) throw new AggregateException(ex, cleanup);
+                throw;
+            }
+            // Keep post-publication Close failures out of candidate rollback.
+            if (retiredStore is not null)
+            {
+                lock (checkpointGate) CloseCheckpointStore(retiredStore);
+            }
+            try { previous?.Retire(); }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "The retired display-coordinator workspace could not be disposed.");
             }
         }
         catch (Exception ex) when (!throwOnFailure)
         {
-            logger.LogError(
-                ex,
-                "Host Manager display-coordinator apply failed; the prior workspace remains active.");
+            logger.LogError(ex, "Host Manager display-coordinator apply failed; the prior workspace remains active.");
         }
-        finally
+        finally { gate.ExitWriteLock(); }
+    }
+
+    private NativeDisplayCoordinatorPersistenceImage? LoadCheckpoint(CheckpointBinding binding, ulong generation)
+    {
+        lock (checkpointGate)
         {
-            gate.ExitWriteLock();
+            // Load is called only synchronously inside candidate construction while H is held.
+            if (generation != binding.ConfigurationGeneration)
+                throw new InvalidOperationException("The display checkpoint Load generation does not match its workspace.");
+            return (binding.Store ?? throw new ObjectDisposedException(nameof(CheckpointBinding))).Store.Load(generation);
         }
     }
 
-    private WorkspaceLease Acquire()
+    private void SaveCheckpoint(CheckpointBinding binding, ulong generation, NativeDisplayCoordinatorPersistenceImage image)
+    {
+        lock (checkpointGate)
+        {
+            if (!ReferenceEquals(allowedBinding, binding)) return;
+            if (generation != binding.ConfigurationGeneration)
+                throw new InvalidOperationException("The display checkpoint Save generation does not match its workspace.");
+            binding.Store!.Store.Save(generation, image);
+        }
+    }
+
+    private Exception? CleanupCandidate(WorkspaceHolder? holder, NativeDisplayCoordinatorWorkspace? workspace,
+        CheckpointBinding? binding, CheckpointStore? candidate)
+    {
+        lock (checkpointGate)
+        {
+            if (binding is not null) binding.Store = null;
+            if (candidate is not null && !ReferenceEquals(candidate, currentCheckpointStore))
+                CloseCheckpointStore(candidate);
+        }
+        Exception? failure = null;
+        try { holder?.Retire(); }
+        catch (Exception ex) { failure = ex; }
+        try { workspace?.Dispose(); }
+        catch (Exception ex) { failure = failure is null ? ex : new AggregateException(failure, ex); }
+        return failure;
+    }
+
+    // Caller holds P. Failed Close objects alone remain reachable for explicit normal retry.
+    private void CloseCheckpointStore(CheckpointStore checkpoint)
+    {
+        try { checkpoint.Store.Dispose(); }
+        catch (Exception ex)
+        {
+            if (!pendingCheckpointCloses.Contains(checkpoint)) pendingCheckpointCloses.Add(checkpoint);
+            logger.LogError(ex, "The display checkpoint writer could not be closed for {RootPath}; normal Close remains pending.", checkpoint.RootPath);
+        }
+    }
+
+    private void RetryPendingCheckpointCloses(string? rootPath = null, bool throwOnFailure = false)
+    {
+        for (var index = pendingCheckpointCloses.Count - 1; index >= 0; index--)
+        {
+            var pending = pendingCheckpointCloses[index];
+            if (rootPath is not null && !string.Equals(rootPath, pending.RootPath, StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                pending.Store.Dispose();
+                pendingCheckpointCloses.RemoveAt(index);
+            }
+            catch (Exception ex)
+            {
+                if (throwOnFailure) throw;
+                logger.LogError(ex, "The display checkpoint writer Close retry failed for {RootPath}.", pending.RootPath);
+            }
+        }
+    }
+
+    private sealed record CheckpointStore(string RootPath, IDisplayCoordinatorCheckpointStore Store);
+
+    private sealed class CheckpointBinding(ulong configurationGeneration, CheckpointStore store)
+    {
+        internal ulong ConfigurationGeneration { get; } = configurationGeneration;
+        internal CheckpointStore? Store { get; set; } = store;
+    }
+
+    internal WorkspaceLease Acquire()
     {
         ThrowIfDisposed();
         gate.EnterReadLock();
@@ -283,9 +439,9 @@ public sealed class HostManagerDisplayCoordinatorOwner :
     }
 
     private void ThrowIfDisposed()
-        => ObjectDisposedException.ThrowIf(disposed, this);
+        => ObjectDisposedException.ThrowIf(disposed || Volatile.Read(ref disposeStarted) != 0, this);
 
-    private sealed class WorkspaceHolder(NativeDisplayCoordinatorWorkspace workspace)
+    internal sealed class WorkspaceHolder(NativeDisplayCoordinatorWorkspace workspace)
     {
         private int referenceCount = 1;
         private int retired;
@@ -318,7 +474,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         }
     }
 
-    private sealed class WorkspaceLease(WorkspaceHolder holder) : IDisposable
+    internal sealed class WorkspaceLease(WorkspaceHolder holder) : IDisposable
     {
         private WorkspaceHolder? holder = holder;
 

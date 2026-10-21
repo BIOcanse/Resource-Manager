@@ -80,6 +80,7 @@ public sealed class ProductUpdateCoordinator(
             var package = ReleasePackageLayout.Verify(packageRoot);
             if (!string.Equals(package.Version.TrimStart('v'), option.Version.TrimStart('v'), StringComparison.Ordinal))
                 throw new InvalidDataException("发行包版本与目录目标不一致。");
+            ProductUpdateDownload.RecordReady(packageRoot, root, package.Version);
             var updater = ResolveInstalledManager(root);
             var process = Process.Start(new ProcessStartInfo(updater)
             {

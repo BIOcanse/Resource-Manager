@@ -220,16 +220,6 @@ internal static class HostManagerAutomaticPlacementPlanner
             return [];
         }
 
-        var integrated = adapters
-            .Where(static adapter => adapter.IsIntegrated)
-            .OrderByDescending(static adapter => adapter.PerformanceCapacity)
-            .ThenBy(static adapter => adapter.AdapterKey)
-            .ToArray();
-        var highPerformance = adapters
-            .Where(static adapter => !adapter.IsIntegrated)
-            .OrderByDescending(static adapter => adapter.PerformanceCapacity)
-            .ThenBy(static adapter => adapter.AdapterKey)
-            .ToArray();
         var ordered = adapters.Where(a => double.IsFinite(a.PerformanceCapacity) && a.PerformanceCapacity > 0)
             .OrderByDescending(a => a.PerformanceCapacity).ThenBy(a => a.AdapterKey).ToArray();
         var selectedByProcess = new Dictionary<int, GpuPlacementState>();
@@ -237,27 +227,15 @@ internal static class HostManagerAutomaticPlacementPlanner
         var automatic = new List<(GpuCandidate Candidate, GpuPlacementState Current)>();
         foreach (var candidate in candidates)
         {
-            var target = GpuPlacementTargets.Normalize(candidate.Process.Policy.TargetGpu);
             var current = adapters.Where(a => candidate.Process.ObservedGpuUsagePercent.GetValueOrDefault(a.AdapterKey) > 0
                     || candidate.Process.ObservedDedicatedMemoryBytes.GetValueOrDefault(a.AdapterKey) > 0)
                 .OrderByDescending(a => candidate.Process.ObservedGpuUsagePercent.GetValueOrDefault(a.AdapterKey))
                 .ThenByDescending(a => candidate.Process.ObservedDedicatedMemoryBytes.GetValueOrDefault(a.AdapterKey))
                 .FirstOrDefault();
             if (current is not null) observedByProcess[candidate.Process.ProcessId] = current.AdapterKey;
-            if (target == GpuPlacementTargets.AutoIdleGpu)
-            {
-                if (current is null || !ordered.Contains(current)) continue;
-                selectedByProcess[candidate.Process.ProcessId] = current;
-                automatic.Add((candidate, current));
-                continue;
-            }
-            var selected = target switch
-            {
-                GpuPlacementTargets.IntegratedGpu => integrated.FirstOrDefault(),
-                GpuPlacementTargets.HighPerformanceGpu => highPerformance.FirstOrDefault(),
-                _ => null
-            };
-            if (selected is not null) selectedByProcess[candidate.Process.ProcessId] = selected;
+            if (current is null || !ordered.Contains(current)) continue;
+            selectedByProcess[candidate.Process.ProcessId] = current;
+            automatic.Add((candidate, current));
         }
 
         // Shared usage is not releasable byte-for-byte. Drain a source, then let the
@@ -295,8 +273,7 @@ internal static class HostManagerAutomaticPlacementPlanner
         {
             var selected = selectedByProcess[c.Process.ProcessId];
             return new HostManagerAutomaticGpuPlacement(c.Process, c.CanonicalScore, selected.IsIntegrated,
-                selected.AdapterKey, c.Process.Policy.TargetGpu == GpuPlacementTargets.AutoIdleGpu
-                    ? "automatic-gpu-performance-overflow" : "explicit-gpu-class")
+                selected.AdapterKey, "automatic-gpu-performance-overflow")
             { ObservedAdapterKey = observedByProcess.GetValueOrDefault(c.Process.ProcessId) };
         }).ToArray();
     }

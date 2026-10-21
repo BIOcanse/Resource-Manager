@@ -19,21 +19,23 @@ pub fn dueAt(
 
 pub fn nextDue(completed_at_milliseconds: u64, interval_milliseconds: u64) u64 {
     std.debug.assert(interval_milliseconds != 0);
-    const boundary = completed_at_milliseconds / interval_milliseconds;
-    const next_boundary = std.math.add(u64, boundary, 1) catch return std.math.maxInt(u64);
-    return std.math.mul(u64, next_boundary, interval_milliseconds) catch std.math.maxInt(u64);
+    // Each item owns its cadence. Equal intervals on different items must not
+    // move either query onto an unrelated wall-clock boundary.
+    return std.math.add(u64, completed_at_milliseconds, interval_milliseconds) catch
+        std.math.maxInt(u64);
 }
 
-test "same interval settles on the same future boundary" {
-    try std.testing.expectEqual(@as(u64, 2_000), nextDue(1_001, 1_000));
-    try std.testing.expectEqual(@as(u64, 2_000), nextDue(1_999, 1_000));
-    try std.testing.expectEqual(@as(u64, 5_000), nextDue(1_001, 5_000));
+test "next due keeps the item's own completion phase" {
+    try std.testing.expectEqual(@as(u64, 2_001), nextDue(1_001, 1_000));
+    try std.testing.expectEqual(@as(u64, 2_999), nextDue(1_999, 1_000));
+    try std.testing.expectEqual(@as(u64, 6_001), nextDue(1_001, 5_000));
+    try std.testing.expectEqual(@as(u64, 119_999), nextDue(59_999, 60_000));
 }
 
-test "alignment never delays a future sample beyond its interval" {
+test "next due uses the full interval and saturates overflow" {
     const completed: u64 = 12_345;
     const interval: u64 = 5_000;
     const due = nextDue(completed, interval);
-    try std.testing.expect(due > completed);
-    try std.testing.expect(due <= completed + interval);
+    try std.testing.expectEqual(completed + interval, due);
+    try std.testing.expectEqual(std.math.maxInt(u64), nextDue(std.math.maxInt(u64) - 1, 5));
 }

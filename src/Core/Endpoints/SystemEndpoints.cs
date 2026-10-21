@@ -1,11 +1,11 @@
 using ResourceManager.App.Application.Adaptation;
+using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.Scheduling;
@@ -21,7 +21,6 @@ using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -62,6 +61,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             DisableResponseCache(response);
             await response.WriteAsJsonAsync(topologyReader.GetSnapshot(), cancellationToken);
+        }).AllowAnonymous();
+
+        app.MapGet("/api/cpu/topology/fields", (
+            HttpResponse response,
+            ICpuTopologyReader topologyReader) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(topologyReader.GetInformationSnapshot());
         }).AllowAnonymous();
 
         app.MapGet("/api/cpu/topology/exclusive-bindings", async (
@@ -210,11 +217,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             app.MapPost("/api/system/open-path", (
                 LocalPathOpenRequest request,
+                HttpContext context,
                 ILocalPathOpener pathOpener) =>
             {
+                if (!TryReadInteractiveCaller(context, out var interactiveCaller))
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
-                    return Results.Ok(pathOpener.Open(request));
+                    return Results.Ok(pathOpener.Open(request, interactiveCaller));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -224,11 +238,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
             app.MapPost("/api/system/open-properties", (
                 LocalPathPropertiesRequest request,
+                HttpContext context,
                 ISystemProcessActionService processActions) =>
             {
+                if (!TryReadInteractiveCaller(context, out var caller))
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
-                    return Results.Ok(processActions.OpenProperties(request));
+                    return Results.Ok(processActions.OpenProperties(request, caller));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -238,11 +259,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
             app.MapPost("/api/system/search-online", (
                 LocalOnlineSearchRequest request,
+                HttpContext context,
                 ISystemProcessActionService processActions) =>
             {
+                if (!TryReadInteractiveCaller(context, out var caller))
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
-                    return Results.Ok(processActions.SearchOnline(request));
+                    return Results.Ok(processActions.SearchOnline(request, caller));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -252,11 +280,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
             app.MapPost("/api/system/processes/terminate", (
                 SystemProcessOperationRequest request,
+                HttpContext context,
                 ISystemProcessActionService processActions) =>
             {
+                if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out var token))
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                using var callerToken = token;
+                if (caller.ProcessId == Environment.ProcessId || !caller.IsAdministrator)
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
-                    return Results.Ok(processActions.TerminateProcesses(request));
+                    return Results.Ok(processActions.TerminateProcesses(request, callerToken));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -266,11 +304,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
             app.MapPost("/api/system/processes/dump", (
                 SystemProcessOperationRequest request,
+                HttpContext context,
                 ISystemProcessActionService processActions) =>
             {
+                if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out var token))
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
+                using var callerToken = token;
+                if (caller.ProcessId == Environment.ProcessId || !caller.IsAdministrator)
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
                 try
                 {
-                    return Results.Ok(processActions.CreateProcessDumps(request));
+                    return Results.Ok(processActions.CreateProcessDumps(request, callerToken));
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Results.Json(new { code = "ProcessActionRequiresElevation" }, statusCode: StatusCodes.Status403Forbidden);
                 }
                 catch (InvalidOperationException ex)
                 {
@@ -280,5 +328,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
 
         return app;
+    }
+
+    private static bool TryReadInteractiveCaller(HttpContext context, out SoftwareOperationCaller caller)
+    {
+        caller = null!;
+        if (!WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var identity)
+            || identity.ProcessId == Environment.ProcessId
+            || identity.WindowsSessionId <= 0)
+            return false;
+
+        caller = new SoftwareOperationCaller(identity.WindowsSid, checked((uint)identity.WindowsSessionId));
+        return true;
     }
 }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
+const scratch_module = @import("scratch.zig");
 const session_module = @import("session.zig");
 const persistence = @import("persistence.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
@@ -8,6 +9,66 @@ const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 const source_count = 3;
 const rule_count = 3;
 const metric_count = 2;
+
+test "floating counters commit fractional SDK deltas atomically for ratio and percentage" {
+    inline for (.{ protocol.MetricKind.floating_counter_ratio, protocol.MetricKind.floating_counter_percentage }) |kind| {
+        var config = testConfig(1);
+        const session_scratch = try testScratch(&config);
+        defer std.testing.allocator.free(session_scratch);
+        const session = try state.Session.create(&config);
+        defer session.destroy();
+        var sources = testSources();
+        var rules = testRules();
+        for (rules[0..2]) |*rule| {
+            rule.metric_kind = @intFromEnum(kind);
+            rule.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
+            rule.flags = protocol.MetricFlags.nonnegative;
+            rule.minimum_value_bits = @bitCast(@as(f64, 0));
+            rule.maximum_value_bits = @bitCast(@as(f64, if (kind == .floating_counter_percentage) 100 else std.math.floatMax(f64)));
+        }
+        try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+        const requested = [_]protocol.PlanMetricInput{planMetric(100)};
+        const requested_rules = [_]protocol.RequestedMetricInput{requestedRule(1_001)};
+        const modes = testModes();
+        for (0..2) |index| {
+            const at: u64 = 200 + index * 1000;
+            const epoch: u64 = 2 + index * 2;
+            var output = std.mem.zeroes(protocol.PlanOutput);
+            var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+            var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+            try std.testing.expectEqual(ResultCode.ok, runPlan(session, session_scratch, epoch, index + 1, at, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+            var header = metricCompletion(epoch + 1, index + 1, 10, 1, index + 1, at, 1, 1, 0);
+            header.capability_generation = source_plans[0].capability_generation;
+            header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+            try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, session_scratch));
+            try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &requested_rules));
+            var observation = unsignedObservation(1_001, 100, 10, rules[0].scope_handle, at, 0);
+            observation.flags = protocol.ObservationFlags.floating_counter_pair;
+            observation.value_kind = @intFromEnum(protocol.ValueKind.float64);
+            observation.source_observation_sequence = index + 1;
+            observation.value_bits = @bitCast(@as(f64, if (index == 0) 1000.125 else 1000.625));
+            observation.value_high_bits = @bitCast(@as(f64, if (index == 0) 10.125 else 12.125));
+            try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{observation}));
+            var finalize = finalizeInput(epoch + 1, index + 1, 10, at);
+            const rule_index = session.active.findRule(1_001).?;
+            if (index == 1) {
+                finalize.catalog_generation += 1;
+                try std.testing.expectEqual(ResultCode.abi_mismatch, session_module.finalizeCompletion(session, &finalize));
+                try std.testing.expectEqual(@as(u64, @bitCast(@as(f64, 1000.125))), session.active.rules[rule_index].counter_baseline.primary);
+                finalize.catalog_generation -= 1;
+            }
+            try std.testing.expectEqual(ResultCode.ok, session_module.finalizeCompletion(session, &finalize));
+            const record = session.active.rules[rule_index];
+            if (index == 0) {
+                try std.testing.expectEqual(protocol.MetricStatus.unavailable, record.status);
+            } else {
+                try std.testing.expectEqual(protocol.MetricStatus.current, record.status);
+                try std.testing.expectEqual(@as(f64, if (kind == .floating_counter_percentage) 25 else 0.25), @as(f64, @bitCast(record.value_bits)));
+                try std.testing.expectEqual(@as(u64, 2000), record.sample_duration_milliseconds);
+            }
+        }
+    }
+}
 
 test "catalog semantic fingerprint is field-ordered and stable" {
     const sources = testSources();
@@ -20,6 +81,8 @@ test "catalog semantic fingerprint is field-ordered and stable" {
 
 test "catalog plan CPU baseline GPU inventory and exact snapshot are one state machine" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -41,6 +104,7 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -70,7 +134,7 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
     var first_header = metricCompletion(3, 1, 10, 1, 1, 300, 2, 1, 1);
     first_header.capability_generation = source_plans[0].capability_generation;
     first_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &first_header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &first_header, session_scratch));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.submitRequested(session, &requested_rules),
@@ -105,6 +169,7 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -119,7 +184,7 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
     var second_header = metricCompletion(5, 2, 10, 1, 2, 500, 2, 1, 1);
     second_header.capability_generation = source_plans[0].capability_generation;
     second_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &second_header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &second_header, session_scratch));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.submitRequested(session, &requested_rules),
@@ -145,7 +210,7 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
     var gpu_header = gpuCompletion(6, 2, 30, 1, 1, 600, 2);
     gpu_header.capability_generation = source_plans[1].capability_generation;
     gpu_header.plan_token_fingerprint = source_plans[1].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &gpu_header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &gpu_header, session_scratch));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.submitRequested(session, &.{}),
@@ -201,6 +266,8 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
 
 test "catalog replacement is atomic and permits priority independent handle ordering" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -233,6 +300,8 @@ test "catalog replacement is atomic and permits priority independent handle orde
 
 test "hot reconfigure invalidates old plan authority and preserves the epoch lower bound" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -251,6 +320,7 @@ test "hot reconfigure invalidates old plan authority and preserves the epoch low
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -274,7 +344,7 @@ test "hot reconfigure invalidates old plan authority and preserves the epoch low
     old_header.plan_token_fingerprint = old_source_plan.plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.stale_frame,
-        session_module.beginCompletion(session, &old_header),
+        session_module.beginCompletion(session, &old_header, session_scratch),
     );
 
     source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
@@ -283,6 +353,7 @@ test "hot reconfigure invalidates old plan authority and preserves the epoch low
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             3,
             2,
             300,
@@ -300,7 +371,7 @@ test "hot reconfigure invalidates old plan authority and preserves the epoch low
     new_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &new_header),
+        session_module.beginCompletion(session, &new_header, session_scratch),
     );
     var abort = finalizeInput(4, 2, 10, 400);
     abort.configuration_generation = 2;
@@ -312,6 +383,8 @@ test "hot reconfigure invalidates old plan authority and preserves the epoch low
 
 test "completion and observation timestamps are nonzero bounded and monotonic" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -330,6 +403,7 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -347,7 +421,7 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
     zero_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.abi_mismatch,
-        session_module.beginCompletion(session, &zero_header),
+        session_module.beginCompletion(session, &zero_header, session_scratch),
     );
     try std.testing.expectEqual(revision_before_zero, session.state_revision);
 
@@ -356,7 +430,7 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
     first_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &first_header),
+        session_module.beginCompletion(session, &first_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -386,6 +460,7 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -402,7 +477,7 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
     second_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &second_header),
+        session_module.beginCompletion(session, &second_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -424,6 +499,8 @@ test "completion and observation timestamps are nonzero bounded and monotonic" {
 
 test "mark unavailable preserves observation ordering authority" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -443,6 +520,7 @@ test "mark unavailable preserves observation ordering authority" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -459,7 +537,7 @@ test "mark unavailable preserves observation ordering authority" {
     current_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &current_header),
+        session_module.beginCompletion(session, &current_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -482,6 +560,7 @@ test "mark unavailable preserves observation ordering authority" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -499,7 +578,7 @@ test "mark unavailable preserves observation ordering authority" {
     unavailable_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &unavailable_header),
+        session_module.beginCompletion(session, &unavailable_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -520,6 +599,7 @@ test "mark unavailable preserves observation ordering authority" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             6,
             3,
             600,
@@ -536,7 +616,7 @@ test "mark unavailable preserves observation ordering authority" {
     stale_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &stale_header),
+        session_module.beginCompletion(session, &stale_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -557,6 +637,8 @@ test "mark unavailable preserves observation ordering authority" {
 
 test "late catalog rejection restores staging rows indexes and GPU scratch" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -584,20 +666,24 @@ test "late catalog rejection restores staging rows indexes and GPU scratch" {
     try std.testing.expect(session.staging.findRule(1_001) != null);
     try std.testing.expect(session.staging.findRule(1_001 + 100) == null);
 
-    try completeCpuCycle(session, 3, 4, 1, 300, 400, 1, 100, 500, 500, 1_000);
+    try completeCpuCycle(session, session_scratch, 3, 4, 1, 300, 400, 1, 100, 500, 500, 1_000);
     try std.testing.expectEqual(@as(u64, 1), session.active.sources[0].source_generation);
 }
 
 test "persistence restores one canonical image and rejects corruption" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
     var rules = testRules();
     try std.testing.expectEqual(
         ResultCode.ok,
-        replaceCatalog(source_session, 1, 1, 100, &sources, &rules),
+        replaceCatalog(source_session, 1, 1, 10_000, &sources, &rules),
     );
+    // Keep a persisted historical capture later than the importer's rolled-back clock.
+    source_session.captured_at_milliseconds = 10_000;
 
     var source_outputs = std.mem.zeroes([source_count]protocol.SourcePersistenceOutput);
     var rule_outputs = std.mem.zeroes([rule_count]protocol.RuleStateOutput);
@@ -621,13 +707,15 @@ test "persistence restores one canonical image and rejects corruption" {
         ),
     );
 
+    const restored_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(restored_session_scratch);
     const restored_session = try state.Session.create(&config);
     defer restored_session.destroy();
     try std.testing.expectEqual(
         ResultCode.ok,
         replaceCatalog(restored_session, 1, 1, 100, &sources, &rules),
     );
-    var import_input = persistenceInput(2, 200);
+    var import_input = persistenceInput(2, 1_000);
     var corrupt = persisted;
     corrupt.checksum ^= 1;
     const before_revision = restored_session.state_revision;
@@ -658,10 +746,14 @@ test "persistence restores one canonical image and rejects corruption" {
         source_session.semantic_fingerprint,
         restored_session.semantic_fingerprint,
     );
+    try std.testing.expectEqual(@as(u64, 1_000), restored_session.last_command_at_milliseconds);
+    try std.testing.expectEqual(@as(u64, 10_000), restored_session.captured_at_milliseconds);
 }
 
 test "diagnostic-only CPU progression preserves committed generation and reset is monotonic" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -671,11 +763,11 @@ test "diagnostic-only CPU progression preserves committed generation and reset i
         replaceCatalog(session, 1, 1, 100, &sources, &rules),
     );
 
-    try completeCpuCycle(session, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
-    try completeCpuCycle(session, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
+    try completeCpuCycle(session, session_scratch, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
+    try completeCpuCycle(session, session_scratch, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
     const semantic_generation = session.committed_generation;
     const revision_before = session.state_revision;
-    try completeCpuCycle(session, 6, 7, 3, 600, 700, 3, 200, 800, 800, 1_400);
+    try completeCpuCycle(session, session_scratch, 6, 7, 3, 600, 700, 3, 200, 800, 800, 1_400);
     try std.testing.expectEqual(semantic_generation, session.committed_generation);
     try std.testing.expect(session.state_revision > revision_before);
 
@@ -691,6 +783,8 @@ test "diagnostic-only CPU progression preserves committed generation and reset i
 
 test "GPU partial completion retains the full image and identity drift is retryable" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -709,6 +803,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -722,6 +817,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
     );
     try completeGpuCycle(
         session,
+        session_scratch,
         3,
         1,
         1,
@@ -741,6 +837,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -754,6 +851,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
     );
     try completeGpuCycle(
         session,
+        session_scratch,
         5,
         2,
         2,
@@ -777,6 +875,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             6,
             3,
             600,
@@ -793,7 +892,7 @@ test "GPU partial completion retains the full image and identity drift is retrya
     final_header.plan_token_fingerprint = source_plans[1].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &final_header),
+        session_module.beginCompletion(session, &final_header, session_scratch),
     );
     try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &.{}));
     try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{}));
@@ -851,6 +950,8 @@ test "GPU partial completion retains the full image and identity drift is retrya
 
 test "source incarnation change invalidates CPU baseline and old current facts" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -859,8 +960,8 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
         ResultCode.ok,
         replaceCatalog(session, 1, 1, 100, &sources, &rules),
     );
-    try completeCpuCycle(session, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
-    try completeCpuCycle(session, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
+    try completeCpuCycle(session, session_scratch, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
+    try completeCpuCycle(session, session_scratch, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
     const cpu_rule_index = session.active.findRule(1_001).?;
     try std.testing.expectEqual(
         protocol.MetricStatus.current,
@@ -876,6 +977,7 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             6,
             3,
             600,
@@ -894,7 +996,7 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
     memory.source_observation_sequence = 1;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &restart_header),
+        session_module.beginCompletion(session, &restart_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -923,6 +1025,7 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             8,
             4,
             800,
@@ -941,7 +1044,7 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
     warm_counter.source_incarnation = 2;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &warm_header),
+        session_module.beginCompletion(session, &warm_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -966,6 +1069,8 @@ test "source incarnation change invalidates CPU baseline and old current facts" 
 
 test "capability generation is monotonic and unsupported cannot revive in place" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -984,6 +1089,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -1001,7 +1107,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
     unsupported.status = @intFromEnum(protocol.SourceStatus.unsupported);
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &unsupported),
+        session_module.beginCompletion(session, &unsupported, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -1018,6 +1124,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
         ResultCode.stale_frame,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -1034,6 +1141,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -1053,7 +1161,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
     unsupported_generation_two.status = @intFromEnum(protocol.SourceStatus.unsupported);
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &unsupported_generation_two),
+        session_module.beginCompletion(session, &unsupported_generation_two, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -1071,6 +1179,7 @@ test "capability generation is monotonic and unsupported cannot revive in place"
         ResultCode.stale_frame,
         runPlan(
             session,
+            session_scratch,
             6,
             3,
             600,
@@ -1086,6 +1195,8 @@ test "capability generation is monotonic and unsupported cannot revive in place"
 
 test "field unsupported remains closed until a newer accepted capability generation" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -1104,6 +1215,7 @@ test "field unsupported remains closed until a newer accepted capability generat
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -1119,7 +1231,7 @@ test "field unsupported remains closed until a newer accepted capability generat
     var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
     header.capability_generation = source_plans[0].capability_generation;
     header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, session_scratch));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.submitRequested(session, &.{requestedRule(2_001)}),
@@ -1141,6 +1253,7 @@ test "field unsupported remains closed until a newer accepted capability generat
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             4,
             2,
             400,
@@ -1160,6 +1273,7 @@ test "field unsupported remains closed until a newer accepted capability generat
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             5,
             3,
             500,
@@ -1177,6 +1291,7 @@ test "field unsupported remains closed until a newer accepted capability generat
         ResultCode.stale_frame,
         runPlan(
             session,
+            session_scratch,
             6,
             4,
             600,
@@ -1192,6 +1307,8 @@ test "field unsupported remains closed until a newer accepted capability generat
 
 test "retained unsupported suppression survives persistence until capability advances" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
@@ -1210,6 +1327,7 @@ test "retained unsupported suppression survives persistence until capability adv
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             2,
             1,
             200,
@@ -1226,7 +1344,7 @@ test "retained unsupported suppression survives persistence until capability adv
     current_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(source_session, &current_header),
+        session_module.beginCompletion(source_session, &current_header, source_session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -1249,6 +1367,7 @@ test "retained unsupported suppression survives persistence until capability adv
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             4,
             2,
             400,
@@ -1265,7 +1384,7 @@ test "retained unsupported suppression survives persistence until capability adv
     unsupported_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(source_session, &unsupported_header),
+        session_module.beginCompletion(source_session, &unsupported_header, source_session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -1291,6 +1410,7 @@ test "retained unsupported suppression survives persistence until capability adv
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             6,
             3,
             600,
@@ -1330,6 +1450,8 @@ test "retained unsupported suppression survives persistence until capability adv
         rule_outputs[2].unsupported_until_capability_generation,
     );
 
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     try std.testing.expectEqual(
@@ -1352,6 +1474,7 @@ test "retained unsupported suppression survives persistence until capability adv
         ResultCode.ok,
         runPlan(
             target,
+            target_scratch,
             8,
             4,
             800,
@@ -1369,6 +1492,7 @@ test "retained unsupported suppression survives persistence until capability adv
         ResultCode.ok,
         runPlan(
             target,
+            target_scratch,
             9,
             5,
             900,
@@ -1385,6 +1509,8 @@ test "retained unsupported suppression survives persistence until capability adv
 
 test "persistence rejects source rule and time closure drift atomically" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
@@ -1393,8 +1519,8 @@ test "persistence rejects source rule and time closure drift atomically" {
         ResultCode.ok,
         replaceCatalog(source_session, 1, 1, 100, &sources, &rules),
     );
-    try completeCpuCycle(source_session, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
-    try completeCpuCycle(source_session, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
+    try completeCpuCycle(source_session, source_session_scratch, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
+    try completeCpuCycle(source_session, source_session_scratch, 4, 5, 2, 400, 500, 2, 150, 650, 650, 1_200);
 
     var source_outputs = std.mem.zeroes([source_count]protocol.SourcePersistenceOutput);
     var rule_outputs = std.mem.zeroes([rule_count]protocol.RuleStateOutput);
@@ -1426,6 +1552,8 @@ test "persistence rejects source rule and time closure drift atomically" {
         &rule_outputs,
         &gpu_outputs,
     );
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     try std.testing.expectEqual(
@@ -1450,8 +1578,12 @@ test "persistence rejects source rule and time closure drift atomically" {
 
 test "persistence import invalidates local plan authority even at the same plan epoch" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     var sources = testSources();
@@ -1476,6 +1608,7 @@ test "persistence import invalidates local plan authority even at the same plan 
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             2,
             1,
             200,
@@ -1491,6 +1624,7 @@ test "persistence import invalidates local plan authority even at the same plan 
         ResultCode.ok,
         runPlan(
             target,
+            target_scratch,
             2,
             1,
             200,
@@ -1542,12 +1676,13 @@ test "persistence import invalidates local plan authority even at the same plan 
     stale_header.plan_token_fingerprint = target_source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.stale_frame,
-        session_module.beginCompletion(target, &stale_header),
+        session_module.beginCompletion(target, &stale_header, target_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
         runPlan(
             target,
+            target_scratch,
             5,
             2,
             500,
@@ -1563,6 +1698,8 @@ test "persistence import invalidates local plan authority even at the same plan 
 
 test "persistence rejects impossible source accounting and phase images atomically" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
@@ -1571,7 +1708,7 @@ test "persistence rejects impossible source accounting and phase images atomical
         ResultCode.ok,
         replaceCatalog(source_session, 1, 1, 100, &sources, &rules),
     );
-    try completeCpuCycle(source_session, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
+    try completeCpuCycle(source_session, source_session_scratch, 2, 3, 1, 200, 300, 1, 100, 500, 500, 1_000);
 
     var source_outputs = std.mem.zeroes([source_count]protocol.SourcePersistenceOutput);
     var rule_outputs = std.mem.zeroes([rule_count]protocol.RuleStateOutput);
@@ -1595,6 +1732,8 @@ test "persistence rejects impossible source accounting and phase images atomical
         ),
     );
 
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     try std.testing.expectEqual(
@@ -1723,6 +1862,8 @@ test "persistence rejects impossible source accounting and phase images atomical
 
 test "persistence requires incarnation reset proof and a closed GPU retained image" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
@@ -1741,6 +1882,7 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             2,
             1,
             200,
@@ -1754,6 +1896,7 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
     );
     try completeGpuCycle(
         source_session,
+        source_session_scratch,
         3,
         1,
         1,
@@ -1770,6 +1913,7 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
         ResultCode.ok,
         runPlan(
             source_session,
+            source_session_scratch,
             4,
             2,
             400,
@@ -1783,6 +1927,7 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
     );
     try completeGpuCycle(
         source_session,
+        source_session_scratch,
         5,
         2,
         2,
@@ -1818,6 +1963,8 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
     try std.testing.expectEqual(@as(u32, 2), source_outputs[2].gpu_retained_count);
     try std.testing.expectEqual(@as(u64, 250), gpu_outputs[0].observed_at_milliseconds);
 
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     try std.testing.expectEqual(
@@ -1962,6 +2109,8 @@ test "persistence requires incarnation reset proof and a closed GPU retained ima
 
 test "failed revision and generation exhaustion commands leave authoritative state unchanged" {
     var config = testConfig(1);
+    const begin_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(begin_session_scratch);
     const begin_session = try state.Session.create(&config);
     defer begin_session.destroy();
     var sources = testSources();
@@ -1980,6 +2129,7 @@ test "failed revision and generation exhaustion commands leave authoritative sta
         ResultCode.ok,
         runPlan(
             begin_session,
+            begin_session_scratch,
             2,
             1,
             200,
@@ -2000,7 +2150,7 @@ test "failed revision and generation exhaustion commands leave authoritative sta
     header.plan_token_fingerprint ^= 1;
     try std.testing.expectEqual(
         ResultCode.stale_frame,
-        session_module.beginCompletion(begin_session, &header),
+        session_module.beginCompletion(begin_session, &header, begin_session_scratch),
     );
     try std.testing.expectEqual(phase_before_begin, begin_session.phase);
     try std.testing.expectEqualDeep(completion_before_begin, begin_session.completion);
@@ -2008,12 +2158,14 @@ test "failed revision and generation exhaustion commands leave authoritative sta
     begin_session.state_revision = std.math.maxInt(u64);
     try std.testing.expectEqual(
         ResultCode.unavailable,
-        session_module.beginCompletion(begin_session, &header),
+        session_module.beginCompletion(begin_session, &header, begin_session_scratch),
     );
     try std.testing.expectEqual(phase_before_begin, begin_session.phase);
     try std.testing.expectEqualDeep(completion_before_begin, begin_session.completion);
     try std.testing.expectEqual(std.math.maxInt(u64), begin_session.state_revision);
 
+    const abort_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(abort_session_scratch);
     const abort_session = try state.Session.create(&config);
     defer abort_session.destroy();
     try std.testing.expectEqual(
@@ -2026,6 +2178,7 @@ test "failed revision and generation exhaustion commands leave authoritative sta
         ResultCode.ok,
         runPlan(
             abort_session,
+            abort_session_scratch,
             2,
             1,
             200,
@@ -2041,7 +2194,7 @@ test "failed revision and generation exhaustion commands leave authoritative sta
     header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(abort_session, &header),
+        session_module.beginCompletion(abort_session, &header, abort_session_scratch),
     );
     const completion_before_abort = abort_session.completion;
     abort_session.state_revision = std.math.maxInt(u64);
@@ -2053,6 +2206,8 @@ test "failed revision and generation exhaustion commands leave authoritative sta
     try std.testing.expectEqual(protocol.Phase.completion_open, abort_session.phase);
     try std.testing.expectEqualDeep(completion_before_abort, abort_session.completion);
 
+    const reset_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(reset_session_scratch);
     const reset_session = try state.Session.create(&config);
     defer reset_session.destroy();
     try std.testing.expectEqual(
@@ -2074,6 +2229,8 @@ test "failed revision and generation exhaustion commands leave authoritative sta
 
 test "CPU counter reset reasons cover overflow regression and frequency changes" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -2083,9 +2240,10 @@ test "CPU counter reset reasons cover overflow regression and frequency changes"
         replaceCatalog(session, 1, 1, 100, &sources, &rules),
     );
 
-    try completeCpuCycleWithFrequency(session, 2, 3, 1, 200, 300, 1, 0, 0, 0, 100, 1_000);
+    try completeCpuCycleWithFrequency(session, session_scratch, 2, 3, 1, 200, 300, 1, 0, 0, 0, 100, 1_000);
     try completeCpuCycleWithFrequency(
         session,
+        session_scratch,
         4,
         5,
         2,
@@ -2106,6 +2264,7 @@ test "CPU counter reset reasons cover overflow regression and frequency changes"
 
     try completeCpuCycleWithFrequency(
         session,
+        session_scratch,
         6,
         7,
         3,
@@ -2127,6 +2286,8 @@ test "CPU counter reset reasons cover overflow regression and frequency changes"
 
 test "catalog replacement preserves only the exact GPU inventory source definition" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -2145,6 +2306,7 @@ test "catalog replacement preserves only the exact GPU inventory source definiti
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -2158,6 +2320,7 @@ test "catalog replacement preserves only the exact GPU inventory source definiti
     );
     try completeGpuCycle(
         session,
+        session_scratch,
         3,
         1,
         1,
@@ -2189,6 +2352,8 @@ test "catalog replacement preserves only the exact GPU inventory source definiti
 
 test "catalog generation exhaustion restores prepared GPU staging exactly" {
     var config = testConfig(1);
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
     var sources = testSources();
@@ -2207,6 +2372,7 @@ test "catalog generation exhaustion restores prepared GPU staging exactly" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -2220,6 +2386,7 @@ test "catalog generation exhaustion restores prepared GPU staging exactly" {
     );
     try completeGpuCycle(
         session,
+        session_scratch,
         3,
         1,
         1,
@@ -2258,6 +2425,8 @@ test "catalog generation exhaustion restores prepared GPU staging exactly" {
 
 test "persistence rejects rollback drift and revision exhaustion without publishing staging" {
     var config = testConfig(1);
+    const source_session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(source_session_scratch);
     const source_session = try state.Session.create(&config);
     defer source_session.destroy();
     var sources = testSources();
@@ -2290,6 +2459,8 @@ test "persistence rejects rollback drift and revision exhaustion without publish
         ),
     );
 
+    const target_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(target_scratch);
     const target = try state.Session.create(&config);
     defer target.destroy();
     try std.testing.expectEqual(
@@ -2366,14 +2537,18 @@ test "declared capacities and resident budget are exact production gates" {
     config.gpu_luid_index_capacity = 2;
     config.gpu_key_index_capacity = 2;
 
+    const probe_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(probe_scratch);
     const probe = try state.Session.create(&config);
-    const exact_resident = probe.residentByteCount();
+    const exact_resident = probe.requiredByteCount();
     probe.destroy();
     config.resident_byte_budget = exact_resident;
+    const session_scratch = try testScratch(&config);
+    defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
-    try std.testing.expectEqual(exact_resident, session.residentByteCount());
-    try std.testing.expectEqual(exact_resident, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(exact_resident, session.requiredByteCount());
+    try std.testing.expectEqual(exact_resident, session.capacity().resident_byte_count + session.capacity().scratch_byte_count);
 
     var sources = testSources();
     var rules = testRules();
@@ -2393,6 +2568,7 @@ test "declared capacities and resident budget are exact production gates" {
         ResultCode.ok,
         runPlan(
             session,
+            session_scratch,
             2,
             1,
             200,
@@ -2407,6 +2583,7 @@ test "declared capacities and resident budget are exact production gates" {
     try std.testing.expectEqual(@as(u32, 2), plan_output.metric_plan_count);
     try completeGpuCycle(
         session,
+        session_scratch,
         3,
         1,
         1,
@@ -2429,7 +2606,7 @@ test "declared capacities and resident budget are exact production gates" {
     cpu_header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
     try std.testing.expectEqual(
         ResultCode.ok,
-        session_module.beginCompletion(session, &cpu_header),
+        session_module.beginCompletion(session, &cpu_header, session_scratch),
     );
     try std.testing.expectEqual(
         ResultCode.ok,
@@ -2472,6 +2649,7 @@ test "declared capacities and resident budget are exact production gates" {
 
 fn completeCpuCycle(
     session: *state.Session,
+    scratch_bytes: []u8,
     plan_operation_epoch: u64,
     completion_operation_epoch: u64,
     plan_epoch: u64,
@@ -2485,6 +2663,7 @@ fn completeCpuCycle(
 ) !void {
     return completeCpuCycleWithFrequency(
         session,
+        scratch_bytes,
         plan_operation_epoch,
         completion_operation_epoch,
         plan_epoch,
@@ -2501,6 +2680,7 @@ fn completeCpuCycle(
 
 fn completeCpuCycleWithFrequency(
     session: *state.Session,
+    scratch_bytes: []u8,
     plan_operation_epoch: u64,
     completion_operation_epoch: u64,
     plan_epoch: u64,
@@ -2522,6 +2702,7 @@ fn completeCpuCycleWithFrequency(
         ResultCode.ok,
         runPlan(
             session,
+            scratch_bytes,
             plan_operation_epoch,
             plan_epoch,
             plan_at,
@@ -2546,7 +2727,7 @@ fn completeCpuCycleWithFrequency(
     );
     header.capability_generation = source_plans[0].capability_generation;
     header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, scratch_bytes));
     try std.testing.expectEqual(
         ResultCode.ok,
         session_module.submitRequested(session, &.{requestedRule(1_001)}),
@@ -2579,6 +2760,7 @@ fn completeCpuCycleWithFrequency(
 
 fn completeGpuCycle(
     session: *state.Session,
+    scratch_bytes: []u8,
     completion_operation_epoch: u64,
     plan_epoch: u64,
     sequence: u64,
@@ -2602,7 +2784,7 @@ fn completeGpuCycle(
     header.expected_gpu_inventory_count = expected_count;
     header.status = @intFromEnum(status);
     header.overflow_count = expected_count - @as(u32, @intCast(inputs.len));
-    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header));
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, scratch_bytes));
     try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &.{}));
     try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{}));
     try std.testing.expectEqual(ResultCode.ok, session_module.submitGpuInventory(session, inputs));
@@ -2832,6 +3014,7 @@ fn sourceMode(handle: u64) protocol.SourceModeInput {
 
 fn runPlan(
     session: *state.Session,
+    scratch_bytes: []u8,
     operation_epoch: u64,
     plan_epoch: u64,
     command_at: u64,
@@ -2865,6 +3048,7 @@ fn runPlan(
         output,
         source_plans,
         metric_plans,
+        scratch_bytes,
     );
 }
 
@@ -3126,4 +3310,334 @@ fn persistenceInput(operation_epoch: u64, command_at: u64) protocol.PersistenceI
         .flags = 0,
         .reserved = .{ 0, 0 },
     };
+}
+
+test "integer timed counters commit original rate and microsecond percentage atomically" {
+    inline for (.{ protocol.MetricKind.timed_counter_rate, protocol.MetricKind.timed_microsecond_counter_percentage }) |kind| {
+        var config = testConfig(1);
+        const session_scratch = try testScratch(&config);
+        defer std.testing.allocator.free(session_scratch);
+        const session = try state.Session.create(&config);
+        defer session.destroy();
+        var sources = testSources();
+        var rules = testRules();
+        for (rules[0..2]) |*rule| {
+            rule.metric_kind = @intFromEnum(kind);
+            rule.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
+            rule.flags = protocol.MetricFlags.nonnegative;
+            rule.minimum_value_bits = @bitCast(@as(f64, 0));
+            rule.maximum_value_bits = @bitCast(std.math.floatMax(f64));
+        }
+        try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+        const requested = [_]protocol.PlanMetricInput{planMetric(100)};
+        const requested_rules = [_]protocol.RequestedMetricInput{requestedRule(1_001)};
+        const modes = testModes();
+        for (0..2) |index| {
+            const at: u64 = 200 + index * 1000;
+            const epoch: u64 = 2 + index * 2;
+            var output = std.mem.zeroes(protocol.PlanOutput);
+            var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+            var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+            try std.testing.expectEqual(ResultCode.ok, runPlan(session, session_scratch, epoch, index + 1, at, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+            var header = metricCompletion(epoch + 1, index + 1, 10, 1, index + 1, at, 1, 1, 0);
+            header.capability_generation = source_plans[0].capability_generation;
+            header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+            try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, session_scratch));
+            try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &requested_rules));
+            var sample = unsignedObservation(1_001, 100, 10, rules[0].scope_handle, at, 0);
+            sample.flags = protocol.ObservationFlags.timed_counter;
+            sample.value_kind = @intFromEnum(protocol.ValueKind.float64);
+            sample.source_observation_sequence = index + 1;
+            sample.value_bits = (@as(u64, 1) << 60) + @as(u64, @intCast(index)) * 500_000;
+            sample.value_high_bits = 100 + @as(u64, @intCast(index)) * 1_000_000;
+            sample.counter_ticks_per_second = 1_000_000;
+            try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{sample}));
+            var finalize = finalizeInput(epoch + 1, index + 1, 10, at);
+            const rule_index = session.active.findRule(1_001).?;
+            if (index == 1) {
+                finalize.catalog_generation += 1;
+                try std.testing.expectEqual(ResultCode.abi_mismatch, session_module.finalizeCompletion(session, &finalize));
+                try std.testing.expectEqual(@as(u64, 1) << 60, session.active.rules[rule_index].counter_baseline.primary);
+                finalize.catalog_generation -= 1;
+            }
+            try std.testing.expectEqual(ResultCode.ok, session_module.finalizeCompletion(session, &finalize));
+            const record = session.active.rules[rule_index];
+            if (index == 0) {
+                try std.testing.expectEqual(protocol.MetricStatus.unavailable, record.status);
+            } else {
+                try std.testing.expectEqual(protocol.MetricStatus.current, record.status);
+                try std.testing.expectEqual(@as(f64, if (kind == .timed_counter_rate) 500_000 else 50), @as(f64, @bitCast(record.value_bits)));
+                try std.testing.expectEqual(@as(u64, 1000), record.sample_duration_milliseconds);
+            }
+        }
+    }
+}
+
+fn testScratch(config: *const protocol.Config) ![]align(8) u8 {
+    const layout = try scratch_module.Layout.init(config);
+    return std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count);
+}
+
+test "external metric region is the real completion storage and failures retain its address" {
+    const native_abi = @import("abi.zig");
+    var config = testConfig(1);
+    const layout = try scratch_module.Layout.init(&config);
+    const first = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + 8);
+    defer std.testing.allocator.free(first);
+    const second = try testScratch(&config);
+    defer std.testing.allocator.free(second);
+    @memset(first, 0xA5);
+    @memset(second, 0xCC);
+    const session = try state.Session.create(&config);
+    var alive = true;
+    defer if (alive) session.destroy();
+    try std.testing.expectEqual(session.requiredByteCount(), session.residentByteCount() + layout.byte_count);
+    try std.testing.expectEqual(@as(u32, 8), session.capacity().scratch_alignment);
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    const requested = [_]protocol.PlanMetricInput{planMetric(200)};
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, first, 2, 1, 200, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    const handles = layout.column(u64, first, layout.plan_handles, config.maximum_plan_metric_count);
+    try std.testing.expectEqual(@as(u64, 2_001), handles[0]);
+    var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, session_module.beginCompletion(session, &header, second[0 .. second.len - 1]));
+    try std.testing.expectEqual(ResultCode.invalid_argument, session_module.beginCompletion(session, &header, first[1 .. layout.byte_count + 1]));
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), &header, null, second.len));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), &header, second.ptr, std.math.maxInt(u64)));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), &header, second.ptr, second.len));
+    try std.testing.expectEqual(@intFromPtr(second.ptr) + layout.observations, @intFromPtr(session.observations.ptr));
+    try std.testing.expectEqual(@intFromPtr(second.ptr) + layout.requested, @intFromPtr(session.requested_rule_indices.ptr));
+    try std.testing.expectEqual(ResultCode.unavailable, session_module.beginCompletion(session, &header, first));
+    try std.testing.expectEqual(@intFromPtr(second.ptr), @intFromPtr(session.observations.ptr));
+    try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &.{requestedRule(2_001)}));
+    try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{unsignedObservation(2_001, 200, 10, 2, 300, 4096)}));
+    const observations = layout.column(protocol.ObservationInput, second, layout.observations, config.maximum_observation_count);
+    try std.testing.expectEqual(@as(u64, 4096), observations[0].value_bits);
+    var finish = finalizeInput(3, 1, 10, 300);
+    finish.catalog_generation += 1;
+    try std.testing.expectEqual(ResultCode.abi_mismatch, session_module.finalizeCompletion(session, &finish));
+    try std.testing.expectEqual(ResultCode.abi_mismatch, session_module.abortCompletion(session, &finish));
+    try std.testing.expectEqual(@intFromPtr(second.ptr), @intFromPtr(session.observations.ptr));
+    try std.testing.expectEqual(ResultCode.unavailable, runPlan(session, first, 4, 2, 400, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    finish.catalog_generation -= 1;
+    try std.testing.expectEqual(ResultCode.ok, session_module.finalizeCompletion(session, &finish));
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    try std.testing.expectEqual(@as(usize, 0), session.requested_rule_indices.len);
+    try std.testing.expectEqual(@as(u64, 4096), session.active.rules[session.active.findRule(2_001).?].value_bits);
+    @memset(second, 0xA5);
+    const reset = controlInput(4, 400);
+    try std.testing.expectEqual(ResultCode.ok, session_module.reset(session, &reset));
+    for (second) |value| try std.testing.expectEqual(@as(u8, 0xA5), value);
+    try std.testing.expectEqual(@as(u64, 0), session.catalog_generation);
+    try std.testing.expectEqual(@as(u32, 0), session.active.source_count);
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 5, 1, 500, &sources, &rules));
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, first, 6, 2, 600, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    header = metricCompletion(7, 2, 10, 1, 1, 700, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, first));
+    const before_destroy = try std.testing.allocator.dupe(u8, first);
+    defer std.testing.allocator.free(before_destroy);
+    session.destroy();
+    alive = false;
+    try std.testing.expectEqualSlices(u8, before_destroy, first);
+}
+
+test "successful abort detaches every external completion slice" {
+    var config = testConfig(1);
+    const bytes = try testScratch(&config);
+    defer std.testing.allocator.free(bytes);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    const requested = [_]protocol.PlanMetricInput{planMetric(200)};
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, bytes, 2, 1, 200, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, bytes));
+    const finish = finalizeInput(3, 1, 10, 300);
+    try std.testing.expectEqual(ResultCode.ok, session_module.abortCompletion(session, &finish));
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    try std.testing.expectEqual(@as(usize, 0), session.requested_rule_indices.len);
+    try std.testing.expectEqual(@as(usize, 0), session.requested_rule_flags.len);
+    try std.testing.expectEqual(@as(usize, 0), session.observation_slot_by_rule.len);
+}
+
+test "Plan rejects real aliases before clearing any actual capacity or committing state" {
+    const native_abi = @import("abi.zig");
+    var config = testConfig(1);
+    const layout = try scratch_module.Layout.init(&config);
+    const allocation = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + 4096);
+    defer std.testing.allocator.free(allocation);
+    // Leave real storage before and after the required prefix to exercise exact extents.
+    const region = allocation[2048 .. 2048 + layout.byte_count];
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    const before_modes = try std.testing.allocator.dupe(state.SourceModeState, session.source_modes);
+    defer std.testing.allocator.free(before_modes);
+    const revision = session.state_revision;
+    const phase = session.phase;
+    const operation = session.last_operation_epoch;
+    const Alias = enum { input, requested, modes, output, sources, metrics, unused_output_tail, input_output };
+    for (std.enums.values(Alias)) |alias| {
+        @memset(allocation, 0xA5);
+        var input = protocol.PlanInput{
+            .abi_version = protocol.abi_version,
+            .struct_size = @sizeOf(protocol.PlanInput),
+            .configuration_generation = config.generation,
+            .catalog_generation = session.catalog_generation,
+            .operation_epoch = 2,
+            .plan_epoch = 1,
+            .command_at_milliseconds = 200,
+            .requested_metric_count = 1,
+            .source_mode_count = source_count,
+            .source_plan_capacity = 4,
+            .metric_plan_capacity = 4,
+            .flags = 0,
+            .reserved = .{ 0, 0 },
+        };
+        var requested = [_]protocol.PlanMetricInput{planMetric(200)};
+        var modes = testModes();
+        var output = std.mem.zeroes(protocol.PlanOutput);
+        var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+        var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+        var input_pointer: *const protocol.PlanInput = &input;
+        var requested_slice: []const protocol.PlanMetricInput = &requested;
+        var modes_slice: []const protocol.SourceModeInput = &modes;
+        var output_pointer: *protocol.PlanOutput = &output;
+        var source_slice: []protocol.SourcePlanOutput = &source_plans;
+        var metric_slice: []protocol.MetricPlanOutput = &metric_plans;
+        const inside = region.ptr + layout.plan_handles;
+        switch (alias) {
+            .input => {
+                const value: *protocol.PlanInput = @ptrCast(@alignCast(inside));
+                value.* = input;
+                input_pointer = value;
+            },
+            .requested => {
+                const value: *protocol.PlanMetricInput = @ptrCast(@alignCast(inside));
+                value.* = requested[0];
+                requested_slice = @as([*]const protocol.PlanMetricInput, @ptrCast(value))[0..1];
+            },
+            .modes => {
+                const value: [*]protocol.SourceModeInput = @ptrCast(@alignCast(inside));
+                @memcpy(value[0..source_count], &modes);
+                modes_slice = value[0..source_count];
+            },
+            .output => output_pointer = @ptrCast(@alignCast(inside)),
+            .sources => source_slice = @as([*]protocol.SourcePlanOutput, @ptrCast(@alignCast(inside)))[0..4],
+            .metrics => metric_slice = @as([*]protocol.MetricPlanOutput, @ptrCast(@alignCast(inside)))[0..4],
+            .unused_output_tail => {
+                // Only the fourth source output (unused by the three-source catalogue)
+                // overlaps scratch. Plan still clears that full capacity extent.
+                const start = allocation.ptr + 2048 - source_count * @sizeOf(protocol.SourcePlanOutput);
+                source_slice = @as([*]protocol.SourcePlanOutput, @ptrCast(@alignCast(start)))[0..4];
+            },
+            .input_output => {
+                // Pairwise alias outside scratch must also be rejected before input is overwritten.
+                const value: *protocol.PlanInput = @ptrCast(@alignCast(region.ptr + layout.byte_count + 512));
+                value.* = input;
+                input_pointer = value;
+                output_pointer = @ptrCast(value);
+            },
+        }
+        const before = try std.testing.allocator.dupe(u8, allocation);
+        defer std.testing.allocator.free(before);
+        try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), native_abi.rm_metric_snapshot_plan(
+            @ptrCast(session),
+            input_pointer,
+            requested_slice.ptr,
+            @intCast(requested_slice.len),
+            modes_slice.ptr,
+            @intCast(modes_slice.len),
+            output_pointer,
+            source_slice.ptr,
+            @intCast(source_slice.len),
+            metric_slice.ptr,
+            @intCast(metric_slice.len),
+            region.ptr,
+            region.len,
+        ));
+        try std.testing.expectEqualSlices(u8, before, allocation);
+        for (before_modes, session.source_modes) |before_mode, after_mode| try std.testing.expectEqualDeep(before_mode, after_mode);
+        try std.testing.expectEqual(revision, session.state_revision);
+        try std.testing.expectEqual(phase, session.phase);
+        try std.testing.expectEqual(operation, session.last_operation_epoch);
+        try std.testing.expectEqual(@as(u64, 0), session.last_plan_epoch);
+        try std.testing.expectEqualDeep(std.mem.zeroes(protocol.PlanOutput), output);
+        try std.testing.expectEqualDeep(std.mem.zeroes([4]protocol.SourcePlanOutput), source_plans);
+        try std.testing.expectEqualDeep(std.mem.zeroes([4]protocol.MetricPlanOutput), metric_plans);
+    }
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    const requested = [_]protocol.PlanMetricInput{planMetric(200)};
+    const modes = testModes();
+    // Extra caller tail is not owned by Native. Output exactly adjacent to the
+    // required prefix is accepted even though the supplied allocation is larger.
+    const tail_output: *protocol.PlanOutput = @ptrCast(@alignCast(region.ptr + layout.byte_count));
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, allocation[2048..], 2, 1, 200, 0, &requested, &modes, tail_output, &source_plans, &metric_plans));
+    try std.testing.expectEqual(@as(u64, 1), tail_output.plan_epoch);
+}
+
+test "Begin rejects valid header in real scratch without binding or writing then accepts adjacent tail" {
+    const native_abi = @import("abi.zig");
+    var config = testConfig(1);
+    const layout = try scratch_module.Layout.init(&config);
+    const region = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + @sizeOf(protocol.CompletionHeader));
+    defer std.testing.allocator.free(region);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    const requested = [_]protocol.PlanMetricInput{planMetric(200)};
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, region, 2, 1, 200, 0, &requested, &modes, &output, &source_plans, &metric_plans));
+    var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    const revision = session.state_revision;
+    const phase = session.phase;
+    const alias: *protocol.CompletionHeader = @ptrCast(@alignCast(region.ptr));
+    alias.* = header;
+    const before = try std.testing.allocator.dupe(u8, region);
+    defer std.testing.allocator.free(before);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), alias, region.ptr, region.len));
+    try std.testing.expectEqualSlices(u8, before, region);
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(phase, session.phase);
+    try std.testing.expectEqual(@as(usize, 0), session.observations.len);
+    try std.testing.expectEqual(@as(usize, 0), session.requested_rule_indices.len);
+    try std.testing.expectEqual(@as(usize, 0), session.requested_rule_flags.len);
+    try std.testing.expectEqual(@as(usize, 0), session.observation_slot_by_rule.len);
+    const tail: *protocol.CompletionHeader = @ptrCast(@alignCast(region.ptr + layout.byte_count));
+    tail.* = header;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), tail, region.ptr, region.len));
+    try std.testing.expectEqualDeep(header, session.completion);
+    try std.testing.expectEqualDeep(header, tail.*);
+    const finish = finalizeInput(3, 1, 10, 300);
+    try std.testing.expectEqual(ResultCode.ok, session_module.abortCompletion(session, &finish));
 }

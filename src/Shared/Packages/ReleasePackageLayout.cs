@@ -58,9 +58,11 @@ public sealed record ReleasePackageLayout(string Root, string Version, string Ba
         var config = Path.Combine(root, "Config");
         if (!Directory.Exists(config) || Directory.EnumerateFileSystemEntries(config).Any())
             throw new InvalidDataException("发行包 Config 必须存在且为空。");
+        if (Directory.Exists(UpdateManagerPaths.InstalledDirectory(root)))
+            throw new InvalidDataException("A release package must not contain the installed management directory.");
         var layout = ForRoot(root, version);
         foreach (var path in new[] { layout.Backend, layout.NativeUi, layout.InternalLauncher,
-                     layout.Start, layout.Installer, UpdateManagerPaths.PackagedExecutable(root),
+                     layout.Start, layout.Installer, Path.Combine(root, UninstallationPlan.ExecutableName), UpdateManagerPaths.PackagedExecutable(root),
                      Path.Combine(root, "Bin", "ResourceManager", "wwwroot", "index.html") })
             if (!File.Exists(path)) throw new InvalidDataException($"发行包缺少程序：{path}");
         return layout;

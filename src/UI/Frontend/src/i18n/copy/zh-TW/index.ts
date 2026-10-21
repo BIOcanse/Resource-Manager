@@ -4,7 +4,6 @@ import { zhDeviceAdaptersCopy } from "./deviceAdapters.ts";
 import { zhDeviceDetailsCopy } from "./deviceDetails.ts";
 import { zhDeviceTopologyCopy } from "./deviceTopology.ts";
 import { zhHotkeysCopy } from "./hotkeys.ts";
-import { zhMigrationCopy } from "./migration.ts";
 import { zhMetricLabelsCopy } from "./metricLabels.ts";
 import { zhMonitorCopy } from "./monitor.ts";
 import { zhMonitorViewsCopy } from "./monitorViews.ts";
@@ -35,7 +34,6 @@ export const zhAppCopy = {
   ...zhDetailsCopy,
   ...zhSoftwareDetailCopy,
   ...zhSoftwareActionsCopy,
-  ...zhMigrationCopy,
   ...zhHotkeysCopy,
   ...zhTaskCenterCopy,
   ...zhTwTargetedReportCopy,

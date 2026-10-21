@@ -77,13 +77,15 @@ public interface IControlWriter
     /// 只有两项都没了才该真正解锁。
     ///
     /// 返回 false 表示"试了但没成功"。
+    /// <paramref name="previousSetting"/> 是被移除的原设定；曲线释放据此区分固件持久表与软件临时接管。
     /// 默认写回明确的数值默认值；没有默认值时返回 false，由有状态写入器实现释放。
     /// </summary>
     Task<bool> RestoreAsync(
         ControlObject target,
         ControlCapability capability,
         IReadOnlySet<string> stillConfigured,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ControlSetting? previousSetting = null)
         => ControlWriterRestoration.RestoreDefaultAsync(this, target, capability, cancellationToken);
 
     /// <summary>

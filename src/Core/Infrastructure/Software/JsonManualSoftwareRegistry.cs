@@ -100,23 +100,39 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
     private async Task<IReadOnlyList<ManualSoftwareRecord>> LoadCoreAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(storagePath))
+        FileStream stream;
+        try
+        {
+            stream = File.OpenRead(storagePath);
+        }
+        catch (FileNotFoundException)
+        {
+            return [];
+        }
+        catch (DirectoryNotFoundException)
         {
             return [];
         }
 
-        try
+        await using (stream)
         {
-            await using var stream = File.OpenRead(storagePath);
-            var records = await JsonSerializer.DeserializeAsync<List<ManualSoftwareRecord>>(
-                stream,
-                JsonOptions,
-                cancellationToken);
-            return NormalizeRecords(records ?? []);
-        }
-        catch
-        {
-            return [];
+            List<ManualSoftwareRecord?>? records;
+            try
+            {
+                records = await JsonSerializer.DeserializeAsync<List<ManualSoftwareRecord?>>(
+                    stream,
+                    JsonOptions,
+                    cancellationToken);
+            }
+            catch (JsonException error)
+            {
+                throw new InvalidDataException("The manual software registry is not valid JSON; its contents were left unchanged.", error);
+            }
+
+            if (records is null || records.Any(static record => record is null))
+                throw new InvalidDataException("The manual software registry contains an invalid record; its contents were left unchanged.");
+
+            return NormalizeRecords(records.Select(static record => record!));
         }
     }
 
@@ -130,15 +146,39 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             Directory.CreateDirectory(directory);
         }
 
-        await using var stream = File.Create(storagePath);
-        await JsonSerializer.SerializeAsync(stream, NormalizeRecords(records), JsonOptions, cancellationToken);
-        await stream.FlushAsync(cancellationToken);
+        var temporaryPath = storagePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await using (var stream = new FileStream(temporaryPath, new FileStreamOptions
+            {
+                Mode = FileMode.CreateNew,
+                Access = FileAccess.Write,
+                Share = FileShare.None,
+                Options = FileOptions.WriteThrough
+            }))
+            {
+                await JsonSerializer.SerializeAsync(stream, NormalizeRecords(records), JsonOptions, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temporaryPath, storagePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
     }
 
     private static IReadOnlyList<ManualSoftwareRecord> NormalizeRecords(IEnumerable<ManualSoftwareRecord> records)
     {
-        return records
-            .Where(static record => !string.IsNullOrWhiteSpace(record.Id) && !string.IsNullOrWhiteSpace(record.Name))
+        var materialized = records.ToArray();
+        if (materialized.Any(static record => record is null
+                || string.IsNullOrWhiteSpace(record.Id)
+                || string.IsNullOrWhiteSpace(record.Name)))
+            throw new InvalidDataException("The manual software registry contains a record without an ID or name; its contents were left unchanged.");
+
+        return materialized
             .Select(static record => record with
             {
                 Kind = NormalizeKind(record.Kind),

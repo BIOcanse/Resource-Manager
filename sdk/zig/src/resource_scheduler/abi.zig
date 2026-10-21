@@ -242,6 +242,7 @@ pub export fn rm_resource_scheduler_revalidate_and_begin_reservation(
     token: ?*const types.ReservationToken,
     selection: ?*const types.SelectionOutput,
     input: ?*const types.RevalidationInput,
+    now_monotonic_timestamp: u64,
     output: ?*types.RevalidationOutput,
 ) callconv(.c) i32 {
     const view = scheduler.state.open(mutableBytes(state_buffer, state_size) orelse
@@ -252,6 +253,7 @@ pub export fn rm_resource_scheduler_revalidate_and_begin_reservation(
         token orelse return result(.invalid_argument),
         selection orelse return result(.invalid_argument),
         input orelse return result(.invalid_argument),
+        now_monotonic_timestamp,
         output orelse return result(.invalid_argument),
     ) catch |err| return mapError(err);
     return result(.ok);
@@ -566,7 +568,7 @@ test "feedback identity mismatch never consumes active reservation" {
     var token = std.mem.zeroes(types.ReservationToken);
     try scheduler.state.reserve(view, &reservation, &selection, &token);
     try scheduler.state.bindJournal(view, &token, 36, 37);
-    try scheduler.state.begin(view, &token, 0);
+    try scheduler.state.begin(view, &token, 0, 101);
 
     var capacity = std.mem.zeroes(types.CapacityInput);
     capacity.total_physical_bytes = 8192;

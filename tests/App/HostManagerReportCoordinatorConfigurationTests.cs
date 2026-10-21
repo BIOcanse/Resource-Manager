@@ -15,7 +15,7 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.True(plan.IsPublished);
         Assert.Equal(NativeReportCoordinatorAbi.Version, plan.Build.AbiVersion);
         Assert.Equal("report_coordinator", plan.Build.NativeModule);
-        Assert.Equal(59UL << 32, plan.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, plan.ConfigurationGeneration);
         Assert.Equal(16, plan.Recreate.Capacity.MaximumSourceCount);
         Assert.Equal(64, plan.Recreate.Capacity.MaximumRuleCount);
         Assert.Equal(2048, plan.Recreate.Capacity.MaximumObservationCount);
@@ -79,7 +79,7 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
     public void WorkspaceProjectsEveryPublishedCapacityAndTimingField()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;
-        using var workspace = new NativeReportCoordinatorWorkspace(plan, 101, 102);
+        using var workspace = new NativeReportCoordinatorWorkspace(plan, 101, 102, OperationScratchFixture.Create);
         var capacity = workspace.Session.Capacity;
 
         Assert.Equal(plan.Recreate.Rules.Length, workspace.Rules.Length);
@@ -100,13 +100,13 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
             capacity.PersistenceOperationCapacity);
         Assert.Equal(
             plan.Recreate.Capacity.MaximumReportOutputCount,
-            workspace.ReportBuffer.Length);
+            workspace.Layout.ReportCapacity);
         Assert.Equal(
             plan.Recreate.Capacity.MaximumPersistenceOperationCount,
-            workspace.PersistenceBuffer.Length);
+            workspace.Layout.PersistenceCapacity);
         Assert.Equal(
             plan.Recreate.Capacity.MaximumPersistenceOperationCount,
-            workspace.FeedbackBuffer.Length);
+            workspace.Layout.PersistenceCapacity);
     }
 
     [Fact]

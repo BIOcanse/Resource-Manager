@@ -46,6 +46,7 @@ internal static class HiIn
         BackendPipelineNotReady = "स्थानीय सेवा की अनुरोध पाइपलाइन तैयार नहीं है।",
         NoProcessToTerminate = "समाप्त करने के लिए कोई प्रक्रिया नहीं है।",
         TerminateRequestCompleted = "प्रक्रिया समाप्त करने का अनुरोध पूरा हो गया।",
+        TerminateResultFormat = "{0} / {1} प्रक्रियाएँ समाप्त की गईं।",
 
         WebViewInitializationFailed = "एम्बेडेड इंटरफ़ेस प्रारंभ नहीं हो सका। विवरण के लिए डायग्नोस्टिक्स फ़ोल्डर खोलें।",
         FrontendIdentityVerificationFailed = "फ़्रंटएंड संसाधनों का पहचान सत्यापन विफल रहा। विवरण के लिए डायग्नोस्टिक्स फ़ोल्डर खोलें।",

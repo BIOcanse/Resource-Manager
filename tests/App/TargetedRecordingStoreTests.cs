@@ -1,8 +1,8 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
-using ResourceManager.App.Domain.FrameTiming;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 using ResourceManager.App.Infrastructure.Persistence;

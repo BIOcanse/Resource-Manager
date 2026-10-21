@@ -16,13 +16,15 @@ public sealed class ResourceBreakdownWireSnapshot
         IReadOnlyList<ResourceBreakdownBar> bars,
         IReadOnlyList<ResourceSoftwareSegment> softwareCatalog,
         IReadOnlyDictionary<string, int> softwareIndexes,
-        IReadOnlySet<string> processDetailSoftwareIds)
+        IReadOnlySet<string> processDetailSoftwareIds,
+        ProcessMetricFieldSnapshot? processFields)
     {
         CapturedAt = capturedAt;
         Bars = bars;
         SoftwareCatalog = softwareCatalog;
         SoftwareIndexes = softwareIndexes;
         ProcessDetailSoftwareIds = processDetailSoftwareIds;
+        ProcessFields = processFields;
     }
 
     internal DateTimeOffset? CapturedAt { get; }
@@ -34,6 +36,7 @@ public sealed class ResourceBreakdownWireSnapshot
     internal IReadOnlyDictionary<string, int> SoftwareIndexes { get; }
 
     internal IReadOnlySet<string> ProcessDetailSoftwareIds { get; }
+    internal ProcessMetricFieldSnapshot? ProcessFields { get; }
 
     internal static ResourceBreakdownWireSnapshot Create(
         ResourceBreakdownSnapshot source,
@@ -81,13 +84,21 @@ public sealed class ResourceBreakdownWireSnapshot
             .Select(datasetId => currentDatasets[datasetId].CapturedAt)
             .DefaultIfEmpty(null)
             .Max();
+        var fieldNames = visibleIds.Where(static id => ProcessMetricFieldRegistry.Find(id) is not null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var processFields = fieldNames.Count > 0
+            ? source.ProcessFields?.Select(fieldNames) ?? ProcessMetricFieldSnapshot.Empty(fieldNames)
+            : null;
+        if (processFields is not null)
+            processFields = processFields.ClearUnavailable(currentDatasets.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase));
         return new ResourceBreakdownWireSnapshot(
             capturedAt,
             bars,
             catalog,
             indexes,
             processDetailSoftwareIds
-                ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            processFields);
     }
 }
 
@@ -111,6 +122,11 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
         WriteNullableTimestamp(writer, "capturedAt", value.CapturedAt);
         WriteSoftwareCatalog(writer, value.SoftwareCatalog);
         WriteBars(writer, value);
+        if (value.ProcessFields is not null)
+        {
+            writer.WritePropertyName("processFields");
+            JsonSerializer.Serialize(writer, value.ProcessFields, options);
+        }
         writer.WriteEndObject();
     }
 

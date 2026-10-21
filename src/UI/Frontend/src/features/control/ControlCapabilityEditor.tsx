@@ -4,7 +4,8 @@ import { controlCapabilityLabel, controlDisplayText } from "./controlPresentatio
 import {
   curveFromStops,
   defaultStops,
-  stopsFromCurve
+  stopsFromCurve,
+  temperaturesFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
@@ -37,33 +38,9 @@ export {
 /**
  * 勾上这一项时给它什么初值。
  *
- * 就是它本来显示的那个数 —— 没勾的时候界面上显示的是默认值，
- * 勾上之后先停在同一个数，不会因为勾一下就把硬件改了。
- * 之后用户拖到哪儿是他的事。
+ * 使用当前实际读数或明确声明的默认值；读不到则留空，用户填写后才能应用。
  */
-export function initialSettingFor(capability: ControlCapability): ControlSetting {
-  if (capability.valueKind === "toggle") {
-    return { capabilityId: capability.id, toggle: true };
-  }
-  if (capability.valueKind === "curve") {
-    /*
-     * **勾上的那一刻不给曲线。**
-     *
-     * 起点必须是机器现在真在跑的那条，而那条要去固件里读（十几秒）——
-     * 这里是同步的，给不了。先前这里铺了一条 `defaultStops()` 编出来的曲线，
-     * 于是用户一勾就看到一条和这台机器毫无关系的线，还以为那是现状。
-     *
-     * 留空，由曲线编辑器接手去读；读到之前它显示"正在读取"，
-     * 读不到才退回默认曲线。
-     */
-    return { capabilityId: capability.id, curve: null };
-  }
-  return {
-    capabilityId: capability.id,
-    number: capability.range?.defaultValue ?? capability.range?.minimum ?? 0,
-    unit: capability.range?.unit ?? ""
-  };
-}
+export { initialSettingFor } from "./controlInitialSetting.ts";
 
 /**
  * 一项能力的编辑器。
@@ -153,11 +130,10 @@ function NumberEditor(props: {
   /*
    * 没设过就显示默认值，但**不写进期望状态** —— 显示什么和设了什么是两回事。
    *
-   * 读不到默认值时落在下界，不是落在 0：温度上限的范围是 45~105，
-   * 摆一个"0 °C"既不在范围里，也让人以为这台机器的温度墙是 0 度。
+   * 没有实际读数或声明默认值就留空，由用户明确填写后才能应用。
    */
   const shown = () =>
-    props.setting?.number ?? range()?.defaultValue ?? range()?.minimum ?? 0;
+    props.setting?.number ?? props.actual ?? range()?.defaultValue ?? null;
 
   /*
    * 数字框里正在敲的那串字。
@@ -228,7 +204,7 @@ function NumberEditor(props: {
               step={bounds().step}
               // 值超出量程时**把手停在端点，值本身不动** —— 打字可以超出，
               // 滑块只是画不出那么远。
-              value={sliderThumbValue(shown(), bounds())}
+              value={sliderThumbValue(shown() ?? bounds().minimum, bounds())}
               disabled={props.disabled}
               onInput={(event) => props.onChange({
                 capabilityId: props.capability.id,
@@ -269,7 +245,7 @@ function NumberEditor(props: {
         所以"按一下动一格"和框里显示的精度天然对得上。
       */}
       <Show when={range()} fallback={
-        <span class="control-editor-value">{formatControlNumber(shown(), undefined)}</span>
+        <span class="control-editor-value">{shown() === null ? "—" : formatControlNumber(shown()!, undefined)}</span>
       }>
         {(bounds) => (
           <label class="control-editor-value">
@@ -284,7 +260,7 @@ function NumberEditor(props: {
                 量程由旁边的滑块表达，能不能真写进去由硬件说了算。
               */
               step={bounds().step}
-              value={draft() ?? formatControlNumber(shown(), bounds().step)}
+              value={draft() ?? (shown() === null ? "" : formatControlNumber(shown()!, bounds().step))}
               disabled={props.disabled}
               aria-label={controlCapabilityLabel(props.capability)}
               onInput={(event) => setDraft(event.currentTarget.value)}
@@ -311,8 +287,8 @@ function NumberEditor(props: {
  * 曲线编辑：曲线上的点，上下拖。
  *
  * 交互沿用这类工具的通行做法（Afterburner / FanControl）：横轴温度、纵轴转速，
- * 点就落在曲线上。点的温度固定在每 5 度，只能上下动 —— 所以每次调整都落在
- * 同一组温度上，可预期、可对比。相邻点直线插值。
+ * 点就落在曲线上。保留当前曲线的温度点，只能上下动；新曲线使用默认十点。
+ * 相邻点直线插值。
  */
 function CurveEditor(props: {
   capability: ControlCapability;
@@ -334,7 +310,8 @@ function CurveEditor(props: {
   let mounted = true;
   onCleanup(() => { mounted = false; });
 
-  const stops = createMemo(() => stopsFromCurve(props.setting?.curve));
+  const temperatures = createMemo(() => temperaturesFromCurve(props.setting?.curve));
+  const stops = createMemo(() => stopsFromCurve(props.setting?.curve, temperatures()));
   const configured = () => props.setting?.curve != null;
 
   /*
@@ -362,7 +339,7 @@ function CurveEditor(props: {
   const write = (next: number[], mode?: string) =>
     props.onChange({
       capabilityId: props.capability.id,
-      curve: curveFromStops(next),
+      curve: curveFromStops(next, temperatures()),
       curveExecution: mode ?? execution()
     });
 
@@ -388,7 +365,11 @@ function CurveEditor(props: {
     const stillSelected = () => mounted && props.setting === requestedSetting && !props.disabled;
     try {
       const firmware = await getControlObjectCurve(runtime.requestClient, props.objectId);
-      if (stillSelected()) write(firmware ? stopsFromCurve(firmware) : defaultStops());
+      if (stillSelected()) props.onChange({
+        capabilityId: props.capability.id,
+        curve: firmware ?? curveFromStops(defaultStops()),
+        curveExecution: execution()
+      });
     } catch {
       // 读不到就用默认曲线起步。这里不报错：用户要的是开始编曲线，
       // 而那件事并不依赖读得到固件当前值。
@@ -473,7 +454,7 @@ function CurveEditor(props: {
           </button>
         }
       >
-        <FanCurveChart stops={stops()} disabled={props.disabled} onChange={write} />
+        <FanCurveChart temperatures={temperatures()} stops={stops()} disabled={props.disabled} onChange={write} />
       </Show>
     </div>
   );

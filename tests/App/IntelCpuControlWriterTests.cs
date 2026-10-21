@@ -1,6 +1,6 @@
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Control.Writers;
-using ResourceManager.App.Infrastructure.Control.Writers.Intel;
+using ResourceManager.ReadWrite.Vendors.Intel;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -132,5 +132,43 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         public bool CanWriteMsr(uint register) => register is 0x150 or 0x610;
         public void Dispose() { }
     }
+    [Fact]
+    public async Task DisplayNameChangeDoesNotLoseAnExistingRestoreBaseline()
+    {
+        var io = new Hardware();
+        var original = io.Limits;
+        var capability = Cap("cpu.power-limit");
+        using (var writer = new IntelCpuControlWriter(() => io, Baseline))
+            Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(Cpu(), capability, new(capability.Id, Number: 45), default)).Status);
+        using var restarted = new IntelCpuControlWriter(() => io, Baseline);
+        Assert.True(await restarted.RestoreAsync(Cpu() with { DisplayName = "Localized CPU name" }, capability, new HashSet<string>(), default));
+        Assert.Equal(original, io.Limits);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyDisplayKeysMigrateOnlyWhenTheRestoreValueIsUnambiguous(bool conflict)
+    {
+        var io = new Hardware();
+        var original = io.Limits;
+        var capability = Cap("cpu.power-limit");
+        var mask = IntelRaplEncoding.FieldMask(false, false);
+        Directory.CreateDirectory(folder);
+        var stored = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, ulong>
+        {
+            [$"{Cpu().Id}\nFirst name\n{capability.Id}"] = original & mask,
+            [$"{Cpu().Id}\nSecond name\n{capability.Id}"] = conflict ? 0 : original & mask
+        });
+        File.WriteAllText(Baseline, stored);
+        io.Limits = IntelRaplEncoding.SetPower(io.Limits, io.Units, false, 45);
+        var before = io.Limits;
+        using var writer = new IntelCpuControlWriter(() => io, Baseline);
+        Assert.Equal(!conflict, await writer.RestoreAsync(Cpu() with { DisplayName = "Third name" }, capability, new HashSet<string>(), default));
+        Assert.Equal(conflict ? before : original, io.Limits);
+        if (conflict) { Assert.Equal(stored, File.ReadAllText(Baseline)); Assert.Equal(0, io.SettingWrites); }
+        else Assert.Empty(System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, ulong>>(File.ReadAllText(Baseline))!);
+    }
+
     public void Dispose() { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
 }

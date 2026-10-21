@@ -26,13 +26,27 @@ public sealed class WindowsLoopbackApiAdministratorReaderTests
         await using var app = builder.Build();
         app.MapGet("/caller", (HttpContext context) =>
         {
-            var found = WindowsLoopbackApiAdministratorReader.TryReadCaller(context, out var pid, out var admin);
-            return new Caller(found, pid, admin);
+            if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out var token))
+                return new Caller(false, 0, false);
+            using (token)
+            {
+                var sid = WindowsIdentity.RunImpersonated(token, () =>
+                {
+                    using var identity = WindowsIdentity.GetCurrent();
+                    return identity.User?.Value;
+                });
+                Assert.Equal(caller.WindowsSid, sid);
+                return new Caller(true, caller.ProcessId, caller.IsAdministrator);
+            }
         });
+        app.MapGet("/self-administrator", (HttpContext context) =>
+            new WindowsLoopbackApiAdministratorReader().IsAdministrator(context));
         await app.StartAsync().WaitAsync(TimeSpan.FromSeconds(15));
         try
         {
             var url = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            using var self = new HttpClient();
+            Assert.False(await self.GetFromJsonAsync<bool>(url + "/self-administrator"));
             var command = $"$ErrorActionPreference='Stop'; $r=[Net.WebRequest]::Create('{url}/caller'); $r.Proxy=$null; "
                 + "$s=$r.GetResponse(); $reader=[IO.StreamReader]::new($s.GetResponseStream()); "
                 + "try { [Console]::Out.Write($reader.ReadToEnd()) } finally { $reader.Dispose(); $s.Dispose() }";

@@ -334,7 +334,8 @@ public sealed class HostResourceScheduler : IDisposable
     internal ResourceSchedulerRevalidationResult RevalidateAndBeginReservation(
         ResourceSchedulerReservationToken token,
         ResourceSchedulerSelection selection,
-        ResourceSchedulerRevalidationResource resource)
+        ResourceSchedulerRevalidationResource resource,
+        ulong nowMonotonicTimestamp)
     {
         lock (sync)
         {
@@ -342,7 +343,8 @@ public sealed class HostResourceScheduler : IDisposable
             var result = holder.Session.RevalidateAndBeginReservation(
                 token,
                 selection,
-                resource);
+                resource,
+                nowMonotonicTimestamp);
             if (result.Allowed)
             {
                 holder.MarkActive(token);

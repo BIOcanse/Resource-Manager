@@ -1,7 +1,10 @@
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.ProcessAttribution;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using System.Collections.Immutable;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
@@ -12,11 +15,13 @@ public sealed partial class WindowsResourceBreakdownSampler
         RuntimeProcessAttributionCatalog catalog)
     {
         var processById = processSamples.ToDictionary(static process => process.ProcessId);
+        var baseScorePlan = runtimePlanProvider.Current.BaseScore;
         return new ProcessAttributionSnapshot(
             processSamples,
             processById,
             BuildAttributionMap(processSamples, catalog),
-            catalog);
+            baseScorePlan,
+            catalog.GetSoftwareBaseScores(baseScorePlan));
     }
 
     private IReadOnlyDictionary<int, RuntimeSoftwareAttribution> BuildAttributionMap(
@@ -81,7 +86,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         IReadOnlyList<ProcessResourceSample> Processes,
         IReadOnlyDictionary<int, ProcessResourceSample> ProcessById,
         IReadOnlyDictionary<int, RuntimeSoftwareAttribution> AttributionByProcessId,
-        RuntimeProcessAttributionCatalog Catalog);
+        CompiledBaseScorePlan BaseScorePlan,
+        ImmutableArray<SoftwareBaseScore> SoftwareBaseScores);
 
     private sealed record CachedProcessAttribution(
         long CatalogGeneration,

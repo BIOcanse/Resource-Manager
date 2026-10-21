@@ -43,7 +43,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var compiled =
                 HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             using var workspace =
-                new NativeMetricSnapshotWorkspace(compiled, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path);
             var projection = CreateProjection(
                 compiled,
                 workspace.CreateCatalogHandleMap(),
@@ -159,7 +159,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
 
             using var workspace =
-                new NativeMetricSnapshotWorkspace(plan, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path);
             var projection = CreateProjection(
                 plan,
                 workspace.CreateCatalogHandleMap(),
@@ -192,7 +192,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             NativeMetricSnapshotPersistenceImage image;
             using (var original =
-                   new NativeMetricSnapshotWorkspace(plan, path))
+                   NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
             {
                 var projection = CreateProjection(
                     plan,
@@ -213,7 +213,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 image with { Header = rejectedHeader });
 
             using var restarted =
-                new NativeMetricSnapshotWorkspace(plan, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path);
             var restartedProjection = CreateProjection(
                 plan,
                 restarted.CreateCatalogHandleMap(),
@@ -245,7 +245,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
         try
         {
             var original = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-            using (var first = new NativeMetricSnapshotWorkspace(original, path))
+            using (var first = NativeMetricSnapshotHostConfiguration.CreateWorkspace(original, path))
             {
                 var projection = CreateProjection(
                     original,
@@ -260,7 +260,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 profile["profile_revision"] = JsonValue.Create(56);
             }).MetricSnapshot;
             using var replacement =
-                new NativeMetricSnapshotWorkspace(upgraded, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(upgraded, path);
 
             Assert.NotEqual(
                 original.HotPublish.ConfigurationGeneration,
@@ -282,11 +282,14 @@ public sealed class NativeMetricSnapshotWorkspaceTests
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "state.bin");
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        var workspace = new NativeMetricSnapshotWorkspace(plan, path);
+        var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path);
         var holder =
             new HostManagerMetricSnapshotOwner.WorkspaceHolder(
                 1,
-                workspace);
+                workspace,
+                new(0, NativeMetricSnapshotCatalogTopologyStatus.Unavailable, [],
+                    NativeMetricSnapshotCatalogTopologyStatus.Unavailable, [],
+                    NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []));
         holder.AddReference();
         try
         {
@@ -347,7 +350,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             ulong firstGeneration;
             ulong firstGpuUsageHandle;
-            using (var first = new NativeMetricSnapshotWorkspace(plan, path))
+            using (var first = NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
             {
                 var projection = CreateProjection(
                     plan,
@@ -366,13 +369,12 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                     projection,
                     DateTimeOffset.UtcNow);
                 firstGeneration = header.CatalogGeneration;
-                firstGpuUsageHandle = projection.MetricIds.Single(
-                    static pair => pair.Value == "gpu.0.usage").Key;
+                firstGpuUsageHandle = projection.MetricHandles["gpu.0.usage"];
                 _ = first.ExportAndPersist(DateTimeOffset.UtcNow);
             }
 
             using (var restarted =
-                   new NativeMetricSnapshotWorkspace(plan, path))
+                   NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
             {
                 var projection = CreateProjection(
                     plan,
@@ -394,13 +396,12 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 Assert.Equal(firstGeneration, header.CatalogGeneration);
                 Assert.Equal(
                     firstGpuUsageHandle,
-                    projection.MetricIds.Single(
-                        static pair => pair.Value == "gpu.0.usage").Key);
+                    projection.MetricHandles["gpu.0.usage"]);
                 _ = restarted.ExportAndPersist(DateTimeOffset.UtcNow);
             }
 
             using (var drifted =
-                   new NativeMetricSnapshotWorkspace(plan, path))
+                   NativeMetricSnapshotHostConfiguration.CreateWorkspace(plan, path))
             {
                 var projection = CreateProjection(
                     plan,
@@ -432,10 +433,155 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                     header.CatalogGeneration);
                 Assert.Equal(
                     firstGpuUsageHandle,
-                    projection.MetricIds.Single(
-                        static pair => pair.Value == "gpu.0.usage").Key);
+                    projection.MetricHandles["gpu.0.usage"]);
                 _ = drifted.ExportAndPersist(DateTimeOffset.UtcNow);
             }
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ClockRollbackImportsCheckpointHistoryAndAllowsNextPlan()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            $"metric-clock-rollback-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "state.bin");
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        var checkpointAt = DateTimeOffset.FromUnixTimeMilliseconds(20_000);
+        var observedAt = checkpointAt.AddMilliseconds(2);
+        var completionAt = checkpointAt.AddMilliseconds(3);
+        var rolledBackCommandAt = DateTimeOffset.FromUnixTimeMilliseconds(1_000);
+        ulong metricHandle = 0;
+        ulong expectedValueBits = 0;
+        try
+        {
+            using (var original =
+                   NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path))
+            {
+                var projection = CreateProjection(
+                    compiled,
+                    original.CreateCatalogHandleMap(),
+                    []);
+                _ = original.ReplaceCatalog(projection, checkpointAt);
+                metricHandle = projection.MetricHandles["memory.usage"];
+                var runtimeModes = projection.Sources
+                    .Select(static source =>
+                        new NativeMetricSnapshotSourceRuntimeMode(
+                            source.SourceHandle,
+                            1,
+                            NativeMetricSnapshotZoneMode.Normal,
+                            NativeMetricSnapshotSourceAvailability.Available))
+                    .ToArray();
+                var plan = original.PlanCollection(
+                    [metricHandle],
+                    runtimeModes,
+                    includeGpuInventory: false,
+                    checkpointAt.AddMilliseconds(1));
+                var metricPlan = Assert.Single(
+                    plan.Metrics.Where(metric =>
+                        metric.MetricHandle == metricHandle
+                        && (metric.Flags
+                            & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) != 0));
+                var sourcePlan = Assert.Single(
+                    plan.Sources.Where(source =>
+                        source.SourceHandle == metricPlan.SourceHandle));
+                var binding = projection.RuleBindings[metricPlan.RuleHandle];
+                expectedValueBits = ValueBits(metricPlan.ValueKind, 123);
+                var observation = new NativeMetricSnapshotObservationInput
+                {
+                    StructSize = checked((uint)Unsafe.SizeOf<
+                        NativeMetricSnapshotObservationInput>()),
+                    Flags = 0,
+                    RuleHandle = metricPlan.RuleHandle,
+                    MetricHandle = metricPlan.MetricHandle,
+                    SourceHandle = metricPlan.SourceHandle,
+                    ScopeHandle = metricPlan.ScopeHandle,
+                    SourceObservationSequence = 1,
+                    ObservedAtMilliseconds = checked(
+                        (ulong)observedAt.ToUnixTimeMilliseconds()),
+                    ValueBits = expectedValueBits,
+                    CapabilityMask = binding.CapabilityMask,
+                    ValidMask = (ulong)(
+                        NativeMetricSnapshotObservationValidity.Required
+                        | NativeMetricSnapshotObservationValidity.Value),
+                    Status = (uint)NativeMetricSnapshotObservationStatus.Current,
+                    ValueKind = metricPlan.ValueKind,
+                    Quality = 100,
+                    ReservedU32 = 0,
+                    SampleDurationMilliseconds = 1
+                };
+                _ = original.CompleteSource(
+                    plan,
+                    new NativeMetricSnapshotSourceCompletion(
+                        sourcePlan.SourceHandle,
+                        1,
+                        1,
+                        observedAt,
+                        NativeMetricSnapshotSourceStatus.Complete,
+                        [observation],
+                        null,
+                        ImmutableArray<NativeMetricSnapshotGpuInventoryInput>.Empty,
+                        0,
+                        0),
+                    completionAt);
+                Assert.True(original.PersistRecoveryCheckpointIfAdvanced(completionAt));
+            }
+
+            using var restored =
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path);
+            var restoredProjection = CreateProjection(
+                compiled,
+                restored.CreateCatalogHandleMap(),
+                []);
+            var restoredHeader = restored.ReplaceCatalog(
+                restoredProjection,
+                rolledBackCommandAt);
+            Assert.Equal(
+                NativeMetricSnapshotPhase.Ready,
+                (NativeMetricSnapshotPhase)restoredHeader.Phase);
+            Assert.Equal(
+                (ulong)completionAt.ToUnixTimeMilliseconds(),
+                restoredHeader.CapturedAtMilliseconds);
+
+            var committed = restored.ReadCommitted();
+            var restoredMetric = Assert.Single(committed.Metrics.Where(metric =>
+                metric.MetricHandle == metricHandle));
+            Assert.Equal(expectedValueBits, restoredMetric.ValueBits);
+            Assert.Equal(
+                (ulong)observedAt.ToUnixTimeMilliseconds(),
+                restoredMetric.ObservedAtMilliseconds);
+
+            var restoredModes = restoredProjection.Sources
+                .Select(static source =>
+                    new NativeMetricSnapshotSourceRuntimeMode(
+                        source.SourceHandle,
+                        1,
+                        NativeMetricSnapshotZoneMode.Normal,
+                        NativeMetricSnapshotSourceAvailability.Available))
+                .ToArray();
+            var nextPlan = restored.PlanCollection(
+                [metricHandle],
+                restoredModes,
+                includeGpuInventory: false,
+                rolledBackCommandAt.AddMilliseconds(1));
+            Assert.Single(nextPlan.Metrics.Where(metric =>
+                metric.MetricHandle == metricHandle
+                && (metric.Flags
+                    & (uint)NativeMetricSnapshotMetricPlanFlags.Selected) != 0));
+
+            var afterPlan = restored.ReadCommitted();
+            Assert.Equal(
+                (ulong)completionAt.ToUnixTimeMilliseconds(),
+                afterPlan.Header.CapturedAtMilliseconds);
+            Assert.Equal(
+                (ulong)observedAt.ToUnixTimeMilliseconds(),
+                Assert.Single(afterPlan.Metrics.Where(metric =>
+                    metric.MetricHandle == metricHandle)).ObservedAtMilliseconds);
         }
         finally
         {
@@ -456,7 +602,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             ulong firstGeneration;
             ulong firstHandle;
-            using (var original = new NativeMetricSnapshotWorkspace(compiled, path))
+            using (var original = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path))
             {
                 var catalog = CreateProjection(compiled, original.CreateCatalogHandleMap(),
                     [new(0, "GPU A", "gpu-a", 0xA1UL, 1, VendorNvidia, true)]);
@@ -467,7 +613,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 _ = original.ExportAndPersist(DateTimeOffset.UtcNow);
             }
 
-            using var restarted = new NativeMetricSnapshotWorkspace(compiled, path);
+            using var restarted = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path);
             var current = CreateProjection(compiled, restarted.CreateCatalogHandleMap(),
                 [new(0, "GPU A", "gpu-a", restartedLuid, 2, VendorNvidia, true)]);
             _ = restarted.ReplaceCatalog(current, DateTimeOffset.UtcNow);
@@ -502,7 +648,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var compiled =
                 HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             using var workspace =
-                new NativeMetricSnapshotWorkspace(compiled, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path);
             var projection = CreateProjection(
                 compiled,
                 workspace.CreateCatalogHandleMap(),
@@ -611,7 +757,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             var compiled =
                 HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
             using var workspace =
-                new NativeMetricSnapshotWorkspace(compiled, path);
+                NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, path);
             var projection = CreateProjection(
                 compiled,
                 workspace.CreateCatalogHandleMap(),
@@ -716,7 +862,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             .CompiledHostManagerMetricSnapshotPlan plan,
         NativeMetricSnapshotCatalogHandleMap handles,
         IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> gpuAdapters)
-        => NativeMetricSnapshotCatalogProjection.Create(
+        => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
             gpuAdapters,
             [],

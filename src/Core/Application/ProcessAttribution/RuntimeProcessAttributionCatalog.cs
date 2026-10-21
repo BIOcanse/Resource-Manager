@@ -116,26 +116,35 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         }
 
         var generation = current is null ? 1 : checked(current.Generation + 1);
-        return new RuntimeProcessAttributionCatalog(
-            generation,
-            version,
+        var pipeline = new RuntimeProcessAttributionPipeline(
             softwareRecords,
-            new RuntimeProcessAttributionPipeline(
-                softwareRecords,
-                adapterRegistrations,
-                controlledRegistrations,
-                packageIdentityResolver,
-                serviceIdentityResolver,
-                rootIdentityResolver,
-                systemClassifier,
-                softwareIdentityCatalog,
-                softwareIdentityOwner),
+            adapterRegistrations,
+            controlledRegistrations,
             packageIdentityResolver,
             serviceIdentityResolver,
             rootIdentityResolver,
             systemClassifier,
             softwareIdentityCatalog,
             softwareIdentityOwner);
+        try
+        {
+            return new RuntimeProcessAttributionCatalog(
+                generation,
+                version,
+                softwareRecords,
+                pipeline,
+                packageIdentityResolver,
+                serviceIdentityResolver,
+                rootIdentityResolver,
+                systemClassifier,
+                softwareIdentityCatalog,
+                softwareIdentityOwner);
+        }
+        catch
+        {
+            pipeline.Dispose();
+            throw;
+        }
     }
 
     public void Dispose()

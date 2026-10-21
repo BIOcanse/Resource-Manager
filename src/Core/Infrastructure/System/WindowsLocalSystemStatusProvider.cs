@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Domain.LocalSystem;
+using ResourceManager.ReadWrite.Windows.SystemInformation;
 
 namespace ResourceManager.App.Infrastructure.LocalSystem;
 
@@ -8,10 +9,13 @@ public sealed class WindowsLocalSystemStatusProvider : ILocalSystemStatusProvide
     public LocalSystemStatus GetStatus()
     {
         var capturedAt = DateTimeOffset.Now;
-        var uptime = TimeSpan.FromMilliseconds(Math.Max(0, Environment.TickCount64));
+        var reading = WindowsMachineUptimeReader.Read();
+        var uptime = reading?.Elapsed ?? TimeSpan.Zero;
         return new LocalSystemStatus(
             capturedAt,
             capturedAt - uptime,
-            (long)Math.Floor(uptime.TotalSeconds));
+            checked((long)(reading?.Seconds ?? 0)));
     }
 }
+
+

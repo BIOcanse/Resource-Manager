@@ -2,12 +2,10 @@ using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.Dependencies;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
@@ -19,6 +17,30 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class SoftwareRegistryViewTests
 {
+    [Fact]
+    public async Task GetSoftwareAsync_ForwardsAuthenticatedCallerSidToWindowsInventory()
+    {
+        const string callerSid = "S-1-5-21-1-2-3-1001";
+        var inventory = new StaticInstalledSoftwareInventory([]);
+        var dependencyManager = new EmptyDependencyManager();
+        var view = new SoftwareRegistryView(
+            new StaticAdapterSoftwareRegistry([]),
+            new InMemoryControlledSoftwareRegistry(),
+            dependencyManager,
+            new EmptyManualSoftwareRegistry(),
+            new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
+                new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, SoftwarePolicyAssignment>(StringComparer.OrdinalIgnoreCase))),
+            inventory,
+            SoftwareIdentityCatalogTestData.Empty,
+            new StaticPortableSoftwareRegistry([]));
+
+        _ = await view.GetSoftwareAsync(callerSid, CancellationToken.None);
+
+        Assert.Equal(callerSid, inventory.RequestedUserSid);
+        Assert.Equal(callerSid, dependencyManager.RequestedWindowsSid);
+    }
+
     [Fact]
     public async Task GetSoftwareAsync_ClassifiesExactCatalogIdentityBeforePolicyOverrides()
     {
@@ -50,7 +72,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(profile),
             new StaticInstalledSoftwareInventory([
@@ -101,7 +122,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new StaticManualSoftwareRegistry([manualRecord]),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase),
@@ -136,7 +156,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase)
@@ -197,7 +216,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([adapter]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase),
@@ -231,7 +249,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase),
@@ -271,7 +288,6 @@ public sealed class SoftwareRegistryViewTests
             new StaticAdapterSoftwareRegistry([]),
             new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(),
-            new EmptyMigrationManager(),
             new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(
                 new Dictionary<string, SoftwarePolicyGroup>(StringComparer.OrdinalIgnoreCase),
@@ -295,9 +311,19 @@ public sealed class SoftwareRegistryViewTests
 
     private sealed class StaticInstalledSoftwareInventory(IReadOnlyList<InstalledSoftwareEntry> entries) : IInstalledSoftwareInventory
     {
+        public string? RequestedUserSid { get; private set; }
+
         public Task<IReadOnlyList<InstalledSoftwareEntry>> GetInstalledSoftwareAsync(CancellationToken cancellationToken)
         {
             return Task.FromResult(entries);
+        }
+
+        public Task<IReadOnlyList<InstalledSoftwareEntry>> GetInstalledSoftwareAsync(
+            string? windowsSid,
+            CancellationToken cancellationToken)
+        {
+            RequestedUserSid = windowsSid;
+            return GetInstalledSoftwareAsync(cancellationToken);
         }
     }
 
@@ -425,39 +451,21 @@ public sealed class SoftwareRegistryViewTests
         }
     }
 
-    private sealed class EmptyMigrationManager : ISoftwareDataMigrationManager
-    {
-        public MigrationRoots GetRoots()
-        {
-            return new MigrationRoots(@"D:\UserData", @"D:\Misc", @"D:\Dependencies", @"D:\Misc\SoftwareRoots");
-        }
-
-        public Task<IReadOnlyList<SoftwareDataMigrationRecord>> GetRecordsAsync(CancellationToken cancellationToken)
-        {
-            return Task.FromResult<IReadOnlyList<SoftwareDataMigrationRecord>>([]);
-        }
-
-        public SoftwareDataMigrationPlan Preview(SoftwareDataMigrationRequest request)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<SoftwareDataMigrationResult> ExecuteAsync(SoftwareDataMigrationRequest request, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
-
-        public Task<SoftwareDataRestoreResult> RestoreAsync(SoftwareDataRestoreRequest request, CancellationToken cancellationToken)
-        {
-            throw new NotSupportedException();
-        }
-    }
-
     private sealed class EmptyDependencyManager : IOptionalDependencyManager
     {
+        public string? RequestedWindowsSid { get; private set; }
+
         public Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(CancellationToken cancellationToken)
         {
             return Task.FromResult<IReadOnlyList<OptionalDependencyStatus>>([]);
+        }
+
+        public Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(
+            string? windowsSid,
+            CancellationToken cancellationToken)
+        {
+            RequestedWindowsSid = windowsSid;
+            return GetStatusesAsync(cancellationToken);
         }
 
         public Task<OptionalDependencyStatus?> GetStatusAsync(string id, CancellationToken cancellationToken)
@@ -484,7 +492,8 @@ public sealed class SoftwareRegistryViewTests
             string id,
             bool acknowledgeExternalTerms,
             string? versionChoice,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            SoftwareOperationCaller? caller = null)
         {
             throw new NotSupportedException();
         }

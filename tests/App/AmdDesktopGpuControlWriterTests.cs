@@ -1,6 +1,6 @@
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Control.Writers;
-using ResourceManager.App.Infrastructure.Control.Writers.Amd;
+using ResourceManager.ReadWrite.Vendors.Amd;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -135,7 +135,7 @@ public sealed class AmdDesktopGpuControlWriterTests : IDisposable
         public AdlxGfxMode Mode = AdlxGfxMode.Absolute;
         public int Reads, Writes;
         public bool IgnoreWrites, Missing, ChangeIdentity;
-        public AdlxTuningValue Read(ControlObject target, int field)
+        public AdlxTuningValue Read(int? adapterIndex, int field)
         {
             Reads++;
             if (Missing) throw new DllNotFoundException("missing driver");

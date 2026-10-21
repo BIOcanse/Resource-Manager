@@ -25,13 +25,16 @@ public sealed partial class MainForm : Form
     private readonly Action editableHotkeysChanged;
     private string? loopbackApiAccessToken;
     private FrontendBackendSessionProjection? backendSessionProjection;
+    private readonly Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction;
 
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
-        Action editableHotkeysChanged)
+        Action editableHotkeysChanged,
+        Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null)
     {
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
         this.editableHotkeysChanged = editableHotkeysChanged;
+        this.elevatedProcessAction = elevatedProcessAction;
         frontendHost = new WebView2FrontendHost(
             new WebView2HostConfiguration(
                 NativeUiPaths.WebViewUserDataFolder,

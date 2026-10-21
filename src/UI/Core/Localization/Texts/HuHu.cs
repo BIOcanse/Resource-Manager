@@ -46,6 +46,7 @@ internal static class HuHu
         BackendPipelineNotReady = "A helyi szolgáltatás kéréscsatornája nem áll készen.",
         NoProcessToTerminate = "Nincs leállítandó folyamat.",
         TerminateRequestCompleted = "A folyamat leállítási kérése befejeződött.",
+        TerminateResultFormat = "{0} / {1} folyamat leállítva.",
 
         WebViewInitializationFailed = "A beágyazott felület inicializálása sikertelen. A részletekért nyissa meg a diagnosztikai mappát.",
         FrontendIdentityVerificationFailed = "Az előtérbeli erőforrások azonosságának ellenőrzése sikertelen. A részletekért nyissa meg a diagnosztikai mappát.",

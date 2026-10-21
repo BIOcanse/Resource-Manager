@@ -80,6 +80,7 @@ internal static class LegacyInstallationAdoption
         var shortcutCreated = false;
         try
         {
+            if (Directory.Exists(parent)) ReleasePackageLayout.RejectReparse(parent);
             Directory.CreateDirectory(stage);
             File.Copy(UpdateManagerPaths.PackagedExecutable(plan.Package.Root), stageExecutable);
             Directory.Move(stage, managerRoot);
@@ -237,8 +238,8 @@ internal static class LegacyInstallationAdoption
         uninstall.SetValue("DisplayIcon", start);
         uninstall.SetValue("NoModify", 1, RegistryValueKind.DWord);
         uninstall.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-        uninstall.SetValue("NoRemove", 1, RegistryValueKind.DWord);
-        uninstall.DeleteValue("UninstallString", false);
+        uninstall.DeleteValue("NoRemove", false);
+        uninstall.SetValue("UninstallString", "\"" + Path.Combine(UpdateManagerPaths.InstalledDirectory(root), UninstallationPlan.ExecutableName) + "\"");
         product.DeleteValue(Pending, false);
         return "旧版桌面登记已切换到 Start.exe。";
     }

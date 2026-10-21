@@ -46,6 +46,7 @@ internal static class EsMx
         BackendPipelineNotReady = "La canalización de solicitudes del servicio local no está lista.",
         NoProcessToTerminate = "No hay ningún proceso que terminar.",
         TerminateRequestCompleted = "La solicitud para terminar el proceso se completó.",
+        TerminateResultFormat = "Se finalizaron {0} / {1} procesos.",
 
         WebViewInitializationFailed = "No se pudo inicializar la interfaz incrustada. Abre la carpeta de diagnósticos para ver los detalles.",
         FrontendIdentityVerificationFailed = "Error al verificar la identidad de los recursos del front-end. Abre la carpeta de diagnósticos para ver los detalles.",

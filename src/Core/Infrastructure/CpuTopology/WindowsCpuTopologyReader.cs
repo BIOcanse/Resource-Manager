@@ -1,3 +1,4 @@
+using static ResourceManager.ReadWrite.Windows.Cpu.WindowsCpuOsTopologyReader;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
 
@@ -6,8 +7,13 @@ namespace ResourceManager.App.Infrastructure.CpuTopology;
 public sealed partial class WindowsCpuTopologyReader(
     ICpuCorePerformanceOverrideStore performanceOverrideStore) : ICpuTopologySampler
 {
-    private readonly object usageGate = new();
-    private IReadOnlyList<ProcessorTimes>? previousTimes;
+    private readonly WindowsCpuOsTopologyReader osReader = new();
+
+    internal WindowsCpuTopologyReader(ICpuCorePerformanceOverrideStore performanceOverrideStore,
+        Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes) : this(performanceOverrideStore)
+    {
+        osReader = new WindowsCpuOsTopologyReader(readProcessorTimes);
+    }
 
     public CpuTopologySnapshot CaptureSnapshot() => Capture(includeUsage: true);
 
@@ -16,19 +22,27 @@ public sealed partial class WindowsCpuTopologyReader(
     private CpuTopologySnapshot Capture(bool includeUsage)
     {
         var notes = new List<string>();
-        var cpuSpecification = ResolveCpuSpecification();
+        var osFeatures = WindowsCpuOsFeatureReader.Read();
+        var osEnabledStateMask = WindowsCpuOsFeatureReader.ReadEnabledStateMask();
+        var cpuSpecification = ResolveCpuSpecification() with { Cpuid = CpuIdentityInformationReader.Read(osFeatures ?? []) };
         var cpuName = cpuSpecification.Name;
         var cpuPreset = CpuCorePerformancePresetResolver.Classify(cpuName);
-        var coreRecords = ReadPhysicalCoreRecords(notes);
+        var coreRecords = ReadPhysicalCoreRecords(notes, out var reportedCores);
+        var packages = ReadPackageInformation(reportedCores, notes);
+        var dies = ReadDieInformation(reportedCores, packages, notes);
         var cpuSetRecords = ReadCpuSetRecords(notes);
-        var cacheRecords = ReadCacheRecords(notes);
+        var cacheRecords = ReadCacheRecords(notes, out var cacheAvailable);
+        var caches = cacheRecords.Select(ToCacheInformation).ToArray();
+        var numaNodes = ReadNumaNodes(notes);
+        var threadCpuid = reportedCores is null ? null : WindowsCpuThreadCpuidReader.Read(
+            reportedCores.SelectMany(static core => core.LogicalProcessorIds).Distinct().Order().ToArray(), notes);
         var logicalProcessorCount = Math.Max(
             Environment.ProcessorCount,
             coreRecords.SelectMany(static core => core.LogicalProcessors).Select(static logical => logical.GlobalId).DefaultIfEmpty(-1).Max() + 1);
         var usageValues = includeUsage
             ? ReadLogicalProcessorUsage(logicalProcessorCount, notes)
             : new double?[logicalProcessorCount];
-        var ccdRecords = ReadCcdRecords(cpuName, coreRecords, logicalProcessorCount, cpuSetRecords, notes);
+        var ccdRecords = ReadCcdRecords(cpuName, coreRecords, logicalProcessorCount, cpuSetRecords, dies, notes);
         var performanceScores = CpuCorePerformancePresetResolver.Resolve(
             cpuName,
             CreatePerformanceInputs(coreRecords, cpuSetRecords));
@@ -135,7 +149,7 @@ public sealed partial class WindowsCpuTopologyReader(
                 ? "ModelPreset + GetSystemCpuSetInformation + GetLogicalProcessorInformationEx"
                 : "ModelPreset + GetLogicalProcessorInformationEx",
             !includeUsage ? "None" : usageValues.Any(static value => value.HasValue)
-                ? "NtQuerySystemInformation(SystemProcessorPerformanceInformation)"
+                ? "NtQuerySystemInformationEx(SystemProcessorPerformanceInformation)"
                 : "WaitingForSecondSample",
             CpuTopologyAffinityTargetKinds.LogicalProcessorMask,
             visualLayout.Kind,
@@ -147,14 +161,30 @@ public sealed partial class WindowsCpuTopologyReader(
             ccds,
             physicalCores.OrderBy(static core => core.Index).ToArray(),
             logicalProcessors.OrderBy(static logical => logical.Id).ToArray(),
-            notes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            notes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray())
+        {
+            Caches = caches,
+            OsTopologyInformation = new(reportedCores, cacheAvailable ? caches : null)
+            {
+                NumaNodes = numaNodes,
+                Packages = packages,
+                Dies = dies,
+                OsUsableFeatures = osFeatures,
+                OsEnabledXStateMask = osEnabledStateMask,
+                ThreadCpuid = threadCpuid,
+                LogicalProcessorBusyPercent = includeUsage ? usageValues : null
+            }
+        };
     }
 
-    private static IReadOnlyList<CacheRelationshipRecord> ReadCacheRecords(ICollection<string> notes)
+    private static IReadOnlyList<CacheRelationshipRecord> ReadCacheRecords(ICollection<string> notes, out bool available)
     {
+        available = false;
         try
         {
-            return QueryCacheRecords();
+            var records = QueryCacheRecords();
+            available = true;
+            return records;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
         {

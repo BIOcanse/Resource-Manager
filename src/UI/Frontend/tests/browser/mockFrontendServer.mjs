@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
+import { extname, resolve, sep, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const port = Number(process.env.RM_FRONTEND_HARNESS_PORT || 4177);
@@ -8,6 +8,11 @@ const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
   ? resolve(process.env.RM_FRONTEND_STATIC_ROOT)
   : fileURLToPath(new URL("../../../../../src/Core/wwwroot/", import.meta.url));
 const now = () => new Date().toISOString();
+const recordedEdidState = JSON.parse(await readFile(process.env.RM_EDID_UI_STATE_JSON || new URL("../fixtures/displayEdid.json", import.meta.url), "utf8"));
+const recordedType3State = JSON.parse(await readFile(process.env.RM_EDID_UI_TYPE3_STATE_JSON || new URL("../fixtures/displayEdidType3.json", import.meta.url), "utf8"));
+const typeXWirePath = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
+if (typeXWirePath && !isAbsolute(typeXWirePath)) throw new Error("TypeX wire path must be absolute");
+const recordedTypeXState = typeXWirePath ? JSON.parse(await readFile(typeXWirePath, "utf8")) : null;
 const defaultScenario = {
   capabilities: "ready",
   settings: "ready",
@@ -17,7 +22,12 @@ const defaultScenario = {
   settingsRevision: "frontend-harness-r1",
   settingsTheme: "system",
   localSystemIntervalMs: null,
+  performanceMonitorRefreshIntervalMs: null,
+  diskUsageScanFailure: false,
+  diskUsageMultiRoot: false,
+  diskUsageRootIndexOneDelayMs: 0,
   deviceTopologyDelayMs: 0,
+  displayEdid: "off",
   animations: "normal",
   gpuGrade: "normal",
   resourceBreakdownGeneration: 0,
@@ -38,6 +48,47 @@ const defaultScenario = {
   pausedSubscriptionPaths: []
 };
 const scenario = structuredClone(defaultScenario);
+const emptyDiskUsageLayout = Buffer.alloc(64);
+emptyDiskUsageLayout.writeUInt32LE(0x55444d52, 0);
+emptyDiskUsageLayout.writeUInt32LE(1, 4);
+emptyDiskUsageLayout.writeUInt32LE(0, 8);
+emptyDiskUsageLayout.writeInt32LE(-1, 12);
+const diskUsageSummary = {
+  scope: "allVolumes",
+  mode: "fast",
+  target: "",
+  roots: ["C:\\", "D:\\"],
+  scanKind: "masterFileTable",
+  skipped: [],
+  completedAt: "2026-10-09T12:00:00.000Z",
+  durationSeconds: 2.5,
+  totalBytes: 91_000_000,
+  scannedBytes: 91_000_000,
+  fileCount: 17,
+  directoryCount: 5,
+  skippedCount: 0
+};
+const diskUsageLayouts = new Map([
+  ["root-c", createDiskUsageLayout("C:\\", 0, 18_000_000, [
+    diskUsageTile(0, -1, 0, 18_000_000, "", true, 17),
+    diskUsageTile(1, 0, 1, 8_000_000, "Projects", true, 4)
+  ])],
+  ["root-d", createDiskUsageLayout("D:\\", 2, 73_000_000, [
+    diskUsageTile(2, -1, 0, 73_000_000, "", true, 17),
+    diskUsageTile(3, 2, 1, 22_000_000, "Projects", true, 4)
+  ])],
+  ["child-c", createDiskUsageLayout("C:\\Projects", 1, 8_000_000, [
+    diskUsageTile(1, 0, 0, 8_000_000, "", true, 4),
+    diskUsageTile(5, 1, 1, 3_000_000, "Archive", true, 2)
+  ])],
+  ["child-d", createDiskUsageLayout("D:\\Projects", 3, 22_000_000, [
+    diskUsageTile(3, 2, 0, 22_000_000, "", true, 4),
+    diskUsageTile(4, 3, 1, 9_000_000, "Archive", true, 2)
+  ])],
+  ["nested-d", createDiskUsageLayout("D:\\Projects\\Archive", 4, 9_000_000, [
+    diskUsageTile(4, 3, 0, 9_000_000, "", true, 2)
+  ])]
+]);
 const requestTelemetry = Object.create(null);
 const ndjsonPublishers = new Map();
 const operationSubscribers = new Set();
@@ -184,7 +235,7 @@ async function handleApi(request, response, url) {
       id: "gpu:test", kind: "gpu", displayName: "Fixture GPU",
       platform: { operatingSystem: "windows", vendor: "nvidia" }, isControllable: true,
       capabilities: [
-        { id: "gpu.temperature-limit", label: "Temperature limit", valueKind: "number", supported: false, unavailableReason: "Read-only hardware reading", unavailableKind: "platform", requiredAccessLevel: "normal" },
+        { id: "gpu.temperature-limit", label: "Temperature limit", valueKind: "number", supported: false, unavailableReason: "Read-only hardware reading", unavailableKind: "platform", requiredAccessLevel: "normal", range: { minimum: 89, maximum: 89, step: 1, unit: "°C", defaultValue: 89 } },
         { id: "gpu.dynamic-boost-enabled", label: "Dynamic Boost", valueKind: "toggle", supported: true, requiredAccessLevel: "normal" },
         { id: "gpu.voltage-offset", label: "Voltage", valueKind: "number", supported: false, unavailableReason: "Requires Root", unavailableKind: "access-level", requiredAccessLevel: "root", range: { minimum: -100, maximum: 100, step: 1, unit: "mV", defaultValue: 0 } }
       ]
@@ -263,6 +314,81 @@ async function handleApi(request, response, url) {
       appliedTargetCount: 0,
       message: "frontend performance harness"
     });
+  }
+  if (path === "/api/disk-usage/volumes" && request.method === "GET") {
+    if (scenario.diskUsageMultiRoot === true) {
+      return json(response, 200, [
+        {
+          volumeId: "C:",
+          label: "Recorded system volume",
+          fileSystem: "NTFS",
+          volumeKind: "physical",
+          totalBytes: 1_000_000_000,
+          freeBytes: 250_000_000,
+          isReady: true,
+          supportsMasterFileTable: true
+        },
+        {
+          volumeId: "D:",
+          label: "Recorded data volume",
+          fileSystem: "NTFS",
+          volumeKind: "physical",
+          totalBytes: 2_000_000_000,
+          freeBytes: 500_000_000,
+          isReady: true,
+          supportsMasterFileTable: true
+        }
+      ]);
+    }
+    return json(response, 200, [{
+      volumeId: "C:",
+      label: "Harness volume",
+      fileSystem: "NTFS",
+      volumeKind: "physical",
+      totalBytes: 1_000_000_000,
+      freeBytes: 250_000_000,
+      isReady: true,
+      supportsMasterFileTable: true
+    }]);
+  }
+  if (path === "/api/disk-usage/summary" && request.method === "GET") {
+    return json(response, 200,
+      scenario.diskUsageMultiRoot === true ? diskUsageSummary : null);
+  }
+  if (path === "/api/disk-usage/layout" && request.method === "GET") {
+    if (scenario.diskUsageMultiRoot === true) {
+      const nodeId = url.searchParams.get("node");
+      const rootIndex = url.searchParams.get("rootIndex");
+      if (rootIndex === "1") {
+        await delay(normalizeDelay(scenario.diskUsageRootIndexOneDelayMs));
+      }
+      const layout = nodeId !== null
+        ? diskUsageLayouts.get(layoutKeyForNode(nodeId))
+        : diskUsageLayouts.get(rootIndex === "1" ? "root-d" : "root-c");
+      if (!layout) {
+        return json(response, 404, { error: "recorded disk layout was not found" });
+      }
+      response.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "no-store"
+      });
+      if (!response.destroyed && !response.writableEnded) {
+        response.end(layout);
+      }
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "no-store"
+    });
+    response.end(emptyDiskUsageLayout);
+    return;
+  }
+  if (path === "/api/disk-usage/scan" && request.method === "POST") {
+    await readBody(request);
+    return scenario.diskUsageScanFailure
+      ? json(response, 503, { error: "fixture scan submission failure" })
+      : json(response, 409, { error: "scan failure scenario is not enabled" });
   }
   if (path === "/api/settings/app") {
     if (scenario.settings === "error" && request.method === "GET") {
@@ -403,7 +529,6 @@ async function handleApi(request, response, url) {
         allowedProviders: [],
         schedulingMode: "Ordinary",
         startupTargetGpu: "SystemDefaultGpu",
-        targetGpu: "SystemDefaultGpu",
         runtimeSchedulingMode: "Ordinary",
         explicitSelectionMode: "DefaultSkip",
         runtimeHotSwitchEnabled: false,
@@ -481,9 +606,9 @@ function fixtureOperations() {
     active,
     {
       id: "000000000000000000000000000000a2",
-      kind: "migration.restore",
-      domainKey: "migration.frontend-harness",
-      title: "恢复示例软件数据",
+      kind: "software.uninstall",
+      domainKey: "software.frontend-harness",
+      title: "卸载示例软件",
       state: "succeeded",
       configurationGeneration: "1",
       stateRevision: "3",
@@ -494,7 +619,7 @@ function fixtureOperations() {
       completedAt: "2026-08-22T11:50:03.000Z",
       cancelRequested: false,
       progress: null,
-      result: "恢复完成",
+      result: "卸载完成",
       error: null
     }
   ];
@@ -547,7 +672,7 @@ function fixtureHdmiPort() {
     locationInfo: null,
     locationPaths: [],
     classGuid: null,
-    display: null,
+    display: scenario.displayEdid === "off" ? null : fixtureDisplayEdid(),
     network: null,
     idResolution: null,
     advancedInterconnect: null,
@@ -561,6 +686,90 @@ function fixtureHdmiPort() {
     smartDevice: null,
     storage: null
   };
+}
+
+function diskUsageTile(nodeId, parentNodeId, depth, sizeBytes, name, isDirectory, fileCount) {
+  return {
+    nodeId,
+    parentNodeId,
+    depth,
+    sizeBytes,
+    name,
+    isDirectory,
+    fileCount,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1
+  };
+}
+
+function createDiskUsageLayout(rootPath, rootNodeId, rootSizeBytes, tiles) {
+  const encodedNames = tiles.map((tile) => Buffer.from(tile.name, "utf8"));
+  const rootPathBytes = Buffer.from(rootPath, "utf8");
+  const count = tiles.length;
+  const columnsBytes = (8 * count) + (4 * count * 4) + (4 * count * 4) + count;
+  const padding = (4 - (columnsBytes % 4)) % 4;
+  const namesBytes = encodedNames.reduce((total, name) => total + name.length, 0);
+  const buffer = Buffer.alloc(64 + columnsBytes + padding + (4 * count) + namesBytes + rootPathBytes.length);
+  buffer.writeUInt32LE(0x55444d52, 0);
+  buffer.writeUInt32LE(1, 4);
+  buffer.writeUInt32LE(count, 8);
+  buffer.writeInt32LE(rootNodeId, 12);
+  buffer.writeUInt32LE(0, 16);
+  buffer.writeDoubleLE(rootSizeBytes, 24);
+  buffer.writeFloatLE(0, 32);
+  buffer.writeFloatLE(0, 36);
+  buffer.writeFloatLE(1, 40);
+  buffer.writeFloatLE(1, 44);
+  buffer.writeFloatLE(1000, 48);
+  buffer.writeFloatLE(700, 52);
+  buffer.writeFloatLE(1, 56);
+  buffer.writeUInt32LE(rootPathBytes.length, 60);
+
+  let offset = 64;
+  for (let index = 0; index < count; index++) {
+    buffer.writeDoubleLE(tiles[index].sizeBytes, offset + (index * 8));
+  }
+  offset += 8 * count;
+  for (const field of ["nodeId", "parentNodeId", "depth", "fileCount"]) {
+    for (let index = 0; index < count; index++) {
+      buffer.writeInt32LE(tiles[index][field], offset + (index * 4));
+    }
+    offset += 4 * count;
+  }
+  for (const field of ["x", "y", "width", "height"]) {
+    for (let index = 0; index < count; index++) {
+      buffer.writeFloatLE(tiles[index][field], offset + (index * 4));
+    }
+    offset += 4 * count;
+  }
+  for (let index = 0; index < count; index++) {
+    buffer[offset + index] = tiles[index].isDirectory ? 1 : 0;
+  }
+  offset += count + padding;
+  for (let index = 0; index < count; index++) {
+    buffer.writeUInt32LE(encodedNames[index].length, offset + (index * 4));
+  }
+  offset += 4 * count;
+  for (const name of encodedNames) {
+    name.copy(buffer, offset);
+    offset += name.length;
+  }
+  rootPathBytes.copy(buffer, offset);
+  return buffer;
+}
+
+function layoutKeyForNode(nodeId) {
+  switch (nodeId) {
+    case "0": return "root-c";
+    case "1": return "child-c";
+    case "2": return "root-d";
+    case "3": return "child-d";
+    case "4": return "nested-d";
+    case "5": return "child-c";
+    default: return undefined;
+  }
 }
 
 function trackRequest(response, path, query) {
@@ -679,6 +888,7 @@ function delay(milliseconds) {
 }
 
 function applyScenarioPatch(patch) {
+  if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   settleMockValueSlots(patch);
   if (Object.hasOwn(patch, "operations")
@@ -692,6 +902,16 @@ function applyScenarioPatch(patch) {
       mode: "custom",
       preset: "responsive",
       customValue: patch.localSystemIntervalMs
+    };
+  }
+  if (Number.isSafeInteger(patch.performanceMonitorRefreshIntervalMs)
+    && patch.performanceMonitorRefreshIntervalMs >= 500
+    && patch.performanceMonitorRefreshIntervalMs <= 300000) {
+    appSettings.performance ??= {};
+    appSettings.performance.monitorRefreshIntervalMs = {
+      mode: "custom",
+      preset: "responsive",
+      customValue: patch.performanceMonitorRefreshIntervalMs
     };
   }
   if (typeof patch.settingsTheme === "string") {
@@ -1090,6 +1310,40 @@ function resourceTable(processMode, capturedAt = now()) {
   };
 }
 
+function fixtureDisplayEdid() {
+  const type3 = scenario.displayEdid.startsWith("type3");
+  const typex = scenario.displayEdid === "typex";
+  if (typex && !recordedTypeXState) throw new Error("TypeX real wire input missing");
+  const display = structuredClone((typex ? recordedTypeXState : type3 ? recordedType3State : recordedEdidState).snapshot.ports[0].display);
+  if (scenario.displayEdid === "type3Inactive") {
+    display.active = false; display.targetAvailable = false; display.resolution = null; display.refreshRate = null;
+    for (const key of ["currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) display[key] = null;
+  }
+  if (scenario.displayEdid === "type3Unknown") {
+    const bytes = Buffer.from(display.edidRawDeclaredBase64, "base64"); bytes[139] = 9;
+    bytes[142] = 0; bytes[142] = (-bytes.subarray(129, 142).reduce((sum, value) => sum + value, 0)) & 255;
+    bytes[255] = 0; bytes[255] = (-bytes.subarray(128, 255).reduce((sum, value) => sum + value, 0)) & 255;
+    display.modeCapabilityDeclared = null; display.edidRawDeclaredBase64 = bytes.toString("base64");
+  }
+  if (scenario.displayEdid === "inactive") {
+    display.active = false; display.targetAvailable = false; display.resolution = null; display.refreshRate = null;
+    for (const key of ["currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) display[key] = null;
+  }
+  if (scenario.displayEdid === "unknown") {
+    display.modeCapabilityDeclared = null; const bytes = Buffer.from(display.edidRawDeclaredBase64, "base64");
+    bytes[126] = 4; bytes[127] = 0; bytes[127] = (-bytes.subarray(0, 127).reduce((sum, value) => sum + value, 0)) & 255;
+    display.edidRawDeclaredBase64 = bytes.toString("base64");
+  }
+  if (scenario.displayEdid === "empty") {
+    const bytes = Buffer.from(display.edidRawDeclaredBase64, "base64").subarray(0, 128); bytes.fill(0, 54, 126); for (const offset of [54, 72, 90, 108]) bytes[offset + 3] = 0x10; bytes[126] = 0; bytes[127] = 0;
+    bytes[127] = (-bytes.subarray(0, 127).reduce((sum, value) => sum + value, 0)) & 255;
+    display.edidRawDeclaredBase64 = bytes.toString("base64");
+    display.modeCapabilityDeclared = { modes: [], ranges: [], selectionDeclarations: [], edidRevision: 4, baseFeatures: 2, ctaFlags: null };
+  }
+  if (scenario.displayEdid === "emptyRaw") { display.edidRawDeclaredBase64 = ""; display.modeCapabilityDeclared = null; }
+  if (scenario.displayEdid === "legacy") for (const key of ["modeCapabilityDeclared", "edidRawDeclaredBase64", "currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) delete display[key];
+  return display;
+}
 function fixtureDeviceTopologyState(capturedAt = now()) {
   return {
     schemaVersion: "4.0.0",
@@ -1105,7 +1359,8 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
         baseBoardManufacturer: null,
         baseBoardProduct: null
       },
-      ports: [fixtureHdmiPort()],
+      ports: scenario.displayEdid === "identity" ? [fixtureHdmiPort(), { ...fixtureHdmiPort(), id: "fixture-hdmi-2", deviceId: "DISPLAY\\FIXTURE_HDMI_2",
+        display: { ...fixtureDisplayEdid(), monitorDevicePath: "different-monitor-path", modeCapabilityDeclared: null } }] : [fixtureHdmiPort()],
       notes: []
     },
     contentGeneration: 1,
@@ -1404,7 +1659,7 @@ function writeSubscriptionChannelFrame(response, subscriptionId, value) {
 function subscriptionPayloadFactory(url) {
   switch (url.pathname) {
     case "/api/control/actual/subscribe":
-      return publishedAt => ({ readAt: publishedAt, values: [
+      return publishedAt => ({ readAt: publishedAt, values: scenario.controlActualValues ?? [
         { objectId: "gpu:test", capabilityId: "gpu.temperature-limit", number: 89, unit: "°C" },
         { objectId: "gpu:test", capabilityId: "gpu.dynamic-boost-enabled", toggle: false },
         { objectId: "gpu:test", capabilityId: "gpu.voltage-offset", number: 0, unit: "mV" }

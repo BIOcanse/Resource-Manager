@@ -5,6 +5,7 @@ import {
   getComponents,
   getSoftware,
   openPath,
+  verifyComponent as requestComponentVerification,
 } from "../api";
 import { getBrowserRuntimeSnapshot } from "../features/browserRuntimes/browserRuntimeApi";
 import {
@@ -85,6 +86,7 @@ export interface ManagementStore {
   refreshBrowserRuntimes: (forceRefresh?: boolean) => Promise<void>;
   refreshState: (userInitiated: boolean) => Promise<void>;
   installComponent: (component: ManagedComponent) => Promise<void>;
+  verifyComponent: (component: ManagedComponent) => Promise<void>;
   /** 当前打开的组件获取对话框（条款 + 版本选择）；null 表示没有打开。 */
   acquisitionRequest: Accessor<ComponentAcquisitionRequest | null>;
   cancelAcquisition: () => void;
@@ -394,6 +396,27 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
+  async function verifyComponent(component: ManagedComponent) {
+    const id = component.definition?.id;
+    if (!options.runtimeEffectsEnabled() || !component.canVerify || !id) return;
+    const key = managementActionKey("component", id);
+    if (actionLabels()[key]) return;
+    setActionLabel(key, uiText.stores.progressWorking);
+    try {
+      const result = await requestComponentVerification(id);
+      options.showToast({
+        tone: result.state === "runtimeFilesUnavailable" ? "warning" : "info",
+        title: uiText.management.verify,
+        message: renderBackendMessage(result.message)
+      });
+    } catch (error) {
+      showErrorToast(error, uiText.stores.actionFailed);
+    } finally {
+      clearActionLabel(key);
+      await refreshComponents();
+    }
+  }
+
   async function uninstallSoftware(softwareRecord: SoftwareRecord, actionKey = managementActionKey("software", softwareRecord.id)) {
     if (!options.runtimeEffectsEnabled() || !options.mutablePersistenceEnabled()) {
       options.showToast({
@@ -509,6 +532,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     refreshBrowserRuntimes,
     refreshState,
     installComponent,
+    verifyComponent,
     acquisitionRequest,
     cancelAcquisition,
     confirmAcquisition,

@@ -204,7 +204,7 @@ public sealed class HostManagerRuntimePublicationTests
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        var loaded = StrictHostManagerProfileLoader.LoadBytes(buffer.ToArray(), "test/profile.json");
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray()), "test/profile.json");
         return new HostManagerPlanCompiler().Compile(
             loaded,
             HostManagerTestPlanFactory.CreateSettingsInput(AppSettingsDefaults.Create().Performance),

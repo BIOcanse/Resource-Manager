@@ -5,20 +5,23 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class NativeMetricSnapshotAbiTests
+public sealed partial class NativeMetricSnapshotAbiTests
 {
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0003_0000U, NativeMetricSnapshotAbi.Version);
-        Assert.Equal(0x0002_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
-        Assert.Equal(0x51B7_8849_C815_027DUL, NativeMetricSnapshotAbi.LayoutFingerprint);
+        Assert.Equal(0x000A_0000U, NativeMetricSnapshotAbi.Version);
+        Assert.Equal(0x0004_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
+        Assert.Equal(0x65F57826A9339DF5UL, NativeMetricSnapshotAbi.LayoutFingerprint);
         Assert.Equal(
             NativeMetricSnapshotAbi.WireContractFingerprint,
             ComputeWireContractFingerprint());
 
         AssertSize<NativeMetricSnapshotConfiguration>(160);
         AssertSize<NativeMetricSnapshotCapacity>(104);
+        AssertOffset<NativeMetricSnapshotCapacity>(nameof(NativeMetricSnapshotCapacity.ScratchByteCount), 88);
+        AssertOffset<NativeMetricSnapshotCapacity>(nameof(NativeMetricSnapshotCapacity.ScratchAlignment), 96);
+        AssertOffset<NativeMetricSnapshotCapacity>(nameof(NativeMetricSnapshotCapacity.ReservedU32), 100);
         AssertSize<NativeMetricSnapshotSourcePolicyInput>(64);
         AssertSize<NativeMetricSnapshotMetricDefinitionInput>(96);
         AssertSize<NativeMetricSnapshotCatalogReplaceInput>(96);
@@ -30,17 +33,17 @@ public sealed class NativeMetricSnapshotAbiTests
         AssertSize<NativeMetricSnapshotSourcePlanOutput>(72);
         AssertSize<NativeMetricSnapshotMetricPlanOutput>(72);
         AssertSize<NativeMetricSnapshotRequestedMetricInput>(32);
-        AssertSize<NativeMetricSnapshotObservationInput>(104);
+        AssertSize<NativeMetricSnapshotObservationInput>(640);
         AssertSize<NativeMetricSnapshotCpuCounterInput>(136);
         AssertSize<NativeMetricSnapshotGpuInventoryInput>(112);
         AssertSize<NativeMetricSnapshotFinalizeInput>(80);
         AssertSize<NativeMetricSnapshotControlInput>(56);
         AssertSize<NativeMetricSnapshotReadInput>(72);
         AssertSize<NativeMetricSnapshotSnapshotHeader>(152);
-        AssertSize<NativeMetricSnapshotMetricOutput>(112);
+        AssertSize<NativeMetricSnapshotMetricOutput>(640);
         AssertSize<NativeMetricSnapshotSourceOutput>(128);
         AssertSize<NativeMetricSnapshotGpuInventoryOutput>(120);
-        AssertSize<NativeMetricSnapshotRuleStateOutput>(120);
+        AssertSize<NativeMetricSnapshotRuleStateOutput>(648);
         AssertSize<NativeMetricSnapshotSourcePersistenceOutput>(184);
         AssertSize<NativeMetricSnapshotPersistenceInput>(64);
         AssertSize<NativeMetricSnapshotPersistenceHeader>(144);
@@ -125,6 +128,10 @@ public sealed class NativeMetricSnapshotAbiTests
         Assert.Equal(4U, (uint)NativeMetricSnapshotObservationStatus.Skipped);
         Assert.Equal(5U, (uint)NativeMetricSnapshotMetricStatus.Skipped);
         Assert.Equal(13U, (uint)NativeMetricSnapshotMetricKind.CustomNumeric);
+        Assert.Equal(16U, (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio);
+        Assert.Equal(17U, (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage);
+        Assert.Equal(4U, (uint)NativeMetricSnapshotObservationFlags.FloatingCounterPair);
+        Assert.Equal(7U, (uint)NativeMetricSnapshotObservationFlags.Known);
         Assert.Equal(4U, (uint)NativeMetricSnapshotScopeKind.GpuAdapter);
         Assert.Equal(3U, (uint)NativeMetricSnapshotValueKind.Unsigned64);
         Assert.Equal(0x0FU, (uint)NativeMetricSnapshotMetricFlags.Known);
@@ -140,6 +147,7 @@ public sealed class NativeMetricSnapshotAbiTests
     [Fact]
     public void RealNativeLibraryPublishesExactWireContractAndCapacity()
     {
+        Assert.Equal("ResourceManager.ReadWriteCore", typeof(NativeMetricSnapshotSession).Assembly.GetName().Name);
         var configuration = CreateConfiguration();
         using var session = new NativeMetricSnapshotSession(in configuration);
 
@@ -159,7 +167,7 @@ public sealed class NativeMetricSnapshotAbiTests
             configuration.MaximumGpuAdapterCount,
             session.Capacity.GpuAdapterCapacity);
         Assert.InRange(
-            session.Capacity.ResidentByteCount,
+            checked(session.Capacity.ResidentByteCount + session.Capacity.ScratchByteCount),
             1UL,
             configuration.ResidentByteBudget);
         Assert.Equal(
@@ -228,7 +236,7 @@ public sealed class NativeMetricSnapshotAbiTests
         Assert.NotEqual(first, changed);
     }
 
-    private static NativeMetricSnapshotConfiguration CreateConfiguration()
+    internal static NativeMetricSnapshotConfiguration CreateConfiguration()
         => new()
         {
             AbiVersion = NativeMetricSnapshotAbi.Version,
@@ -384,6 +392,11 @@ public sealed class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotMetricKind.GpuVramTotal,
             (uint)NativeMetricSnapshotMetricKind.GpuSensor,
             (uint)NativeMetricSnapshotMetricKind.CustomNumeric,
+            (uint)NativeMetricSnapshotMetricKind.CounterRatio,
+            (uint)NativeMetricSnapshotMetricKind.TimedCounterRate,
+            (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio,
+            (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage,
+            (uint)NativeMetricSnapshotMetricKind.TimedMicrosecondCounterPercentage,
             (uint)NativeMetricSnapshotScopeKind.Host,
             (uint)NativeMetricSnapshotScopeKind.Cpu,
             (uint)NativeMetricSnapshotScopeKind.Memory,
@@ -391,6 +404,10 @@ public sealed class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotValueKind.Float64,
             (uint)NativeMetricSnapshotValueKind.Signed64,
             (uint)NativeMetricSnapshotValueKind.Unsigned64,
+            (uint)NativeMetricSnapshotValueKind.Unsigned128,
+            (uint)NativeMetricSnapshotValueKind.Bytes,
+            (uint)NativeMetricSnapshotValueKind.Boolean,
+            NativeMetricSnapshotAbi.MaximumValueBytes,
 
             (uint)NativeMetricSnapshotMetricFlags.Percentage,
             (uint)NativeMetricSnapshotMetricFlags.Nonnegative,
@@ -416,6 +433,10 @@ public sealed class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotPlanOutputFlags.GpuInventorySelected,
             (uint)NativeMetricSnapshotPlanOutputFlags.GpuInventoryUnavailable,
             (uint)NativeMetricSnapshotPlanOutputFlags.Known,
+            (uint)NativeMetricSnapshotObservationFlags.CounterPair,
+            (uint)NativeMetricSnapshotObservationFlags.TimedCounter,
+            (uint)NativeMetricSnapshotObservationFlags.FloatingCounterPair,
+            (uint)NativeMetricSnapshotObservationFlags.Known,
             (ulong)NativeMetricSnapshotObservationValidity.Value,
             (ulong)NativeMetricSnapshotObservationValidity.ObservedAt,
             (ulong)NativeMetricSnapshotObservationValidity.Capability,
@@ -465,7 +486,7 @@ public sealed class NativeMetricSnapshotAbiTests
     private static ulong MixIntegerType(ulong hash, Type type)
     {
         hash = Mix(hash, 1);
-        hash = Mix(hash, type == typeof(uint) || type == typeof(ulong) ? 1UL : 0UL);
+        hash = Mix(hash, type == typeof(uint) || type == typeof(ulong) || type == typeof(byte) ? 1UL : 0UL);
         return Mix(hash, (ulong)(PrimitiveSize(type) * 8));
     }
 
@@ -484,7 +505,7 @@ public sealed class NativeMetricSnapshotAbiTests
     }
 
     private static int PrimitiveSize(Type type)
-        => type == typeof(uint) || type == typeof(int)
+        => type == typeof(byte) ? 1 : type == typeof(uint) || type == typeof(int)
             ? 4
             : type == typeof(ulong) || type == typeof(long)
                 ? 8

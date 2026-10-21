@@ -7,6 +7,8 @@ public sealed partial class HostManagerSmartCoordinator
     internal static uint ValidateNativeActionBatch(
         NativeSmartCoordinatorWorkspace workspace)
     {
+        using var view = workspace.CreateScratchView();
+        var actions = view.Actions;
         var snapshot = workspace.Snapshot;
         if (workspace.PlannedActionCount > checked(snapshot.ProcessCount + snapshot.SoftwareCount))
         {
@@ -26,7 +28,7 @@ public sealed partial class HostManagerSmartCoordinator
         NativeSmartCoordinatorAction? previous = null;
         for (uint index = 0; index < workspace.PlannedActionCount; index++)
         {
-            var action = workspace.GetPlannedAction(index);
+            var action = actions[checked((int)index)];
             ValidateNativeAction(action, index, snapshot);
             if (previous.HasValue && NativeActionComesBefore(action, previous.Value))
             {

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   decodeResourceBreakdownWireSnapshot,
   type ResourceBreakdownWireSnapshot
 } from "../src/api/resourceBreakdownWire.ts";
+import { formatBytesPerSecond } from "../src/presentation/byteUnits.ts";
+import { formatResourceBarValue } from "../src/features/resourceBreakdown/resourceBreakdownValue.ts";
+import type { ResourceBreakdownBar } from "../src/types";
 
 const wire: ResourceBreakdownWireSnapshot = {
   version: 8,
@@ -79,3 +83,14 @@ assert.deepEqual(unavailable.bars, []);
 assert.equal("totalDisplay" in (bar as object), false);
 assert.equal("displayValue" in (software as object), false);
 assert.equal("displayValue" in (process as object), false);
+
+const diskRate = { metricId: "disk.read", unit: "B/s" } satisfies Pick<ResourceBreakdownBar, "metricId" | "unit">;
+const formattedDiskRate = formatResourceBarValue(diskRate, 8_388_608);
+assert.equal(formattedDiskRate, formatBytesPerSecond(8_388_608));
+assert.notEqual(formattedDiskRate, "8388608.0 B/s");
+assert.equal(formatResourceBarValue(diskRate, null), "-");
+const breakdownSource = readFileSync(
+  new URL("../src/features/resourceBreakdown/ResourceBreakdown.tsx", import.meta.url),
+  "utf8");
+assert.match(breakdownSource, /import \{ formatResourceBarValue \} from "\.\/resourceBreakdownValue"/);
+assert.match(breakdownSource, /formatResourceBarValue\(props\.bar, props\.bar\.totalValue\)/);

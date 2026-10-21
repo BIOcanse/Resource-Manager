@@ -1,16 +1,14 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
+using ResourceManager.ReadWrite.Windows.Services;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
-using ResourceManager.App.Infrastructure.Windows;
 
 namespace ResourceManager.App.Infrastructure.ProcessIdentity;
 
 public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityResolver
 {
-    private const int ErrorMoreData = 234;
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
     private readonly object gate = new();
     private ServiceSnapshot cachedSnapshot = ServiceSnapshot.Unavailable;
@@ -83,86 +81,18 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
 
     private static ServiceSnapshot ReadServicesByProcess()
     {
-        var manager = NativeMethods.OpenSCManager(null, null, NativeMethods.ScManagerEnumerateService);
-        if (manager == IntPtr.Zero || manager == new IntPtr(-1))
-        {
-            return ServiceSnapshot.Unavailable;
-        }
-
-        try
-        {
-            uint bytesNeeded = 0;
-            uint servicesReturned = 0;
-            uint resumeHandle = 0;
-            _ = NativeMethods.EnumServicesStatusEx(
-                manager,
-                NativeMethods.ScEnumProcessInfo,
-                NativeMethods.ServiceWin32,
-                NativeMethods.ServiceStateAll,
-                IntPtr.Zero,
-                0,
-                out bytesNeeded,
-                out servicesReturned,
-                ref resumeHandle,
-                null);
-
-            var error = Marshal.GetLastWin32Error();
-            if (bytesNeeded == 0 || error != ErrorMoreData)
-            {
-                return ServiceSnapshot.Unavailable;
-            }
-
-            var buffer = Marshal.AllocHGlobal((int)bytesNeeded);
-            try
-            {
-                resumeHandle = 0;
-                if (!NativeMethods.EnumServicesStatusEx(
-                    manager,
-                    NativeMethods.ScEnumProcessInfo,
-                    NativeMethods.ServiceWin32,
-                    NativeMethods.ServiceStateAll,
-                    buffer,
-                    bytesNeeded,
-                    out _,
-                    out servicesReturned,
-                    ref resumeHandle,
-                    null))
-                {
-                    return ServiceSnapshot.Unavailable;
-                }
-
-                var serviceMap = BuildServiceMap(buffer, servicesReturned);
-                return new ServiceSnapshot(
-                    true,
-                    serviceMap.ServicesByProcess,
-                    serviceMap.UnavailableProcessIds);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
-        }
-        catch (Exception ex) when (ex is Win32Exception or OutOfMemoryException or ArgumentException)
-        {
-            return ServiceSnapshot.Unavailable;
-        }
-        finally
-        {
-            NativeMethods.CloseServiceHandle(manager);
-        }
+        var facts = new WindowsServiceReader().Read(WindowsServiceScope.Win32);
+        if (!facts.Available) return ServiceSnapshot.Unavailable;
+        var serviceMap = BuildServiceMap(facts.Services);
+        return new ServiceSnapshot(true, serviceMap.ServicesByProcess, serviceMap.UnavailableProcessIds);
     }
-
     private static ServiceProcessMap BuildServiceMap(
-        IntPtr buffer,
-        uint servicesReturned)
+        IReadOnlyList<WindowsServiceRecord> entries)
     {
         var result = new Dictionary<int, List<ServiceIdentity>>();
-        var entrySize = Marshal.SizeOf<EnumServiceStatusProcess>();
-        for (var index = 0; index < servicesReturned; index++)
+        foreach (var entry in entries)
         {
-            var entryPointer = IntPtr.Add(buffer, index * entrySize);
-            var entry = Marshal.PtrToStructure<EnumServiceStatusProcess>(entryPointer);
-            var processId = (int)entry.ServiceStatusProcess.ProcessId;
+            var processId = entry.ProcessId <= int.MaxValue ? (int)entry.ProcessId : 0;
             if (processId <= 0 || string.IsNullOrWhiteSpace(entry.ServiceName))
             {
                 continue;
@@ -247,3 +177,4 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
                 new HashSet<int>());
     }
 }
+

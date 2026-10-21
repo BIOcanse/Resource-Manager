@@ -1,6 +1,6 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
-using ResourceManager.App.Domain.FrameTiming;
 using ResourceManager.App.Infrastructure.Persistence;
 
 namespace ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;

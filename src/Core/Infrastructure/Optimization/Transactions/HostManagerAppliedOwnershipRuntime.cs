@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -8,13 +9,17 @@ namespace ResourceManager.App.Infrastructure.Optimization.Transactions;
 
 internal sealed class HostManagerAppliedOwnershipRuntime(
     HostManagerAppliedOwnershipDeploymentRuntime deploymentRuntime,
-    HostManagerAuthorityRetirementManager retirements) : IAsyncDisposable
+    HostManagerAuthorityRetirementManager retirements,
+    Func<ulong, IComputeScratch> scratchFactory) : IAsyncDisposable
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private HostManagerAppliedOwnershipRuntimePlan? appliedPlan;
     private NativeAppliedOwnershipOwner? owner;
     private string? ledgerPath;
     private bool disposed;
+    private bool closing;
+    private readonly Func<ulong, IComputeScratch> createScratch = scratchFactory
+        ?? throw new ArgumentNullException(nameof(scratchFactory));
 
     internal int PendingRetiredOwnerCount
         => retirements.PendingCount(HostManagerAuthorityKind.AppliedOwnership);
@@ -177,17 +182,17 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             {
                 return;
             }
-            disposed = true;
+            closing = true;
             if (owner is not null)
             {
                 await owner.DisposeAsync();
                 owner = null;
             }
+            disposed = true;
         }
         finally
         {
             gate.Release();
-            gate.Dispose();
         }
     }
 
@@ -434,7 +439,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
         return failure;
     }
 
-    private static async Task<NativeAppliedOwnershipOwner> OpenOwnerAsync(
+    private async Task<NativeAppliedOwnershipOwner> OpenOwnerAsync(
         string path,
         HostManagerAppliedOwnershipRuntimePlan plan,
         CancellationToken cancellationToken)
@@ -470,6 +475,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             new NativeAppliedOwnershipSessionFactory(),
             create,
             open,
+            createScratch,
             cancellationToken);
     }
 
@@ -533,7 +539,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
 
     private void ThrowIfDisposed()
     {
-        if (disposed)
+        if (disposed || closing)
         {
             throw new ObjectDisposedException(nameof(HostManagerAppliedOwnershipRuntime));
         }

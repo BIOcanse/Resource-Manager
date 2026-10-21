@@ -46,6 +46,7 @@ internal static class HeIl
         BackendPipelineNotReady = "צינור הבקשות של השירות המקומי אינו מוכן.",
         NoProcessToTerminate = "אין תהליך לסיום.",
         TerminateRequestCompleted = "הבקשה לסיום התהליך הושלמה.",
+        TerminateResultFormat = "הסתיימו {0} / {1} תהליכים.",
 
         WebViewInitializationFailed = "אתחול הממשק המוטמע נכשל. פתח את תיקיית האבחון לפרטים.",
         FrontendIdentityVerificationFailed = "אימות הזהות של משאבי הממשק נכשל. פתח את תיקיית האבחון לפרטים.",

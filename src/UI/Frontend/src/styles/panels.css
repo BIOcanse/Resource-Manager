@@ -2,8 +2,7 @@
 .resource-breakdown-panel,
 .resource-table-panel,
 .controlled-panel,
-.management-surface,
-.migration-panel {
+.management-surface {
   margin-top: 16px;
   background: var(--surface);
   border: 1px solid var(--hairline);
@@ -12,8 +11,7 @@
   padding: 14px 16px;
 }
 
-#componentsPage .management-surface,
-#migrationWorkbenchPage .migration-panel {
+#componentsPage .management-surface {
   margin-top: 0;
   border: 0;
   border-radius: 0;

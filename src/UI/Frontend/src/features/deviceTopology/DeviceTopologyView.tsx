@@ -49,6 +49,7 @@ import {
   userDetailItem,
   userDetailSection
 } from "../../presentation/userDetails";
+import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
 import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
 import { DeviceSpecializedSummary } from "./components/DeviceSpecializedSummary";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
@@ -585,6 +586,9 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       >
         <Show when={selectedNode()?.specializedDevice}>
           {(model) => <DeviceSpecializedDetails model={model()} />}
+        </Show>
+        <Show when={selectedPort()?.display}>
+          {(display) => <DisplayEdidDetails display={display()} />}
         </Show>
       </UserDetailsDialog>
     </section>

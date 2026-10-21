@@ -2,63 +2,90 @@ using System.Diagnostics;
 using System.Security.Principal;
 using Microsoft.Win32;
 using ResourceManager.Shared.ServiceHosting;
+using ResourceManager.Shared.Localization;
+using ResourceManager.Shared.Packages;
+using ResourceManager.Updater;
 
 namespace ResourceManager.Launcher;
 
 internal static class Program
 {
+    private static readonly string[] AllowedArguments = ["--restart", "--background-startup", "--service-action"];
     [STAThread]
     private static int Main(string[] args)
     {
         var serviceOnly = args.Contains("--service-action", StringComparer.OrdinalIgnoreCase);
+        var resultIndex = Array.IndexOf(args, "--service-result");
+        var resultPipe = resultIndex >= 0 && resultIndex + 1 < args.Length ? args[resultIndex + 1] : null;
+        var text = ToolText.For(AppLanguage.System);
         try
         {
             var restart = args.Contains("--restart", StringComparer.OrdinalIgnoreCase);
             var background = args.Contains("--background-startup", StringComparer.OrdinalIgnoreCase);
-            if (args.Any(arg => arg is not ("--restart" or "--background-startup" or "--service-action")))
-                throw new ArgumentException("Unknown launcher argument.");
             using var identity = WindowsIdentity.GetCurrent();
             var admin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
             using var registry = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-            var installation = DesktopInstallation.Read(registry);
+            using var registration = registry.OpenSubKey(@"Software\ResourceManager");
+            text = ToolText.FromInstallRoot(registration?.GetValue("InstallRoot") as string);
+            var ordinaryArguments = resultIndex < 0 ? args : args.Where((_, index) => index != resultIndex && index != resultIndex + 1).ToArray();
+            if ((resultIndex >= 0 && (!serviceOnly || resultPipe is null))
+                || ordinaryArguments.Any(arg => !AllowedArguments.Contains(arg, StringComparer.OrdinalIgnoreCase)))
+                throw new ArgumentException(text.LauncherInvalidArguments);
+            if (!serviceOnly && registration?.GetValue("InstallRoot") is string root
+                && UpdateManagerCommand.GetPendingRecoveryDescriptions(root).Count > 0)
+            {
+                if (MessageBox.Show(text.LaunchRecovery, "Resource Manager", MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes)
+                    _ = Process.Start(new ProcessStartInfo(UpdateManagerPaths.InstalledExecutable(root)) { UseShellExecute = true });
+                return 1;
+            }
+            var installation = DesktopInstallation.Read(registry, text);
             var state = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName);
             if (state is not null) WindowsServiceRegistration.RequireExpectedBinary(state, installation.Backend);
             if (serviceOnly)
             {
-                if (!admin) throw new UnauthorizedAccessException("Service registration requires administrator permission.");
+                if (!admin) throw new UnauthorizedAccessException(text.LauncherServicePermission);
                 WindowsServiceRegistration.StartExisting(WindowsServiceRegistration.ProductServiceName,
                     installation.Backend, restart);
+                RequireRunningSystemService(installation.Backend, text);
+                if (resultPipe is not null) ServiceActionResult.Write(resultPipe, "");
                 return 0;
             }
-            if (admin)
-                throw new InvalidOperationException("Open the launcher normally, not with Run as administrator. Only its service action is elevated.");
-            if (state is null || !state.Running || restart)
-            {
-                var start = new ProcessStartInfo(installation.Launcher)
+            LauncherWorkflow.Start(admin, restart, installation.Backend,
+                () => WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName),
+                () => WindowsServiceRegistration.StartExisting(WindowsServiceRegistration.ProductServiceName, installation.Backend, restart),
+                () => ServiceActionResult.RunElevatedAsync(installation.Launcher, restart, text).GetAwaiter().GetResult(),
+                () =>
                 {
-                    UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden,
-                    WorkingDirectory = Path.GetDirectoryName(installation.Launcher)!
-                };
-                start.ArgumentList.Add("--service-action");
-                if (restart) start.ArgumentList.Add("--restart");
-                using var child = Process.Start(start) ?? throw new InvalidOperationException("Service action did not start.");
-                if (!child.WaitForExit(100_000)) throw new TimeoutException("Service action did not finish.");
-                if (child.ExitCode != 0) throw new InvalidOperationException($"Service action failed (exit {child.ExitCode}).");
-            }
-            using var frontend = Process.Start(new ProcessStartInfo(installation.NativeUi)
-            {
-                UseShellExecute = true,
-                Arguments = background ? "--background-startup" : "--show-existing",
-                WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
-            }) ?? throw new InvalidOperationException("The frontend did not start.");
+                    using var frontend = Process.Start(new ProcessStartInfo(installation.NativeUi)
+                    {
+                        UseShellExecute = true,
+                        Arguments = background ? "--background-startup" : "--show-existing",
+                        WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
+                    }) ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
+                }, text.LauncherServiceStartFailed);
             return 0;
         }
         catch (Exception exception)
         {
             Trace.WriteLine(exception);
-            if (serviceOnly) Console.Error.WriteLine(exception.Message);
-            else MessageBox.Show(exception.Message, "Resource Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (serviceOnly && resultPipe is not null)
+            {
+                try { ServiceActionResult.Write(resultPipe, exception.Message); }
+                catch (Exception reportFailure) { Trace.WriteLine(reportFailure); }
+            }
+            else if (serviceOnly) Console.Error.WriteLine(exception.Message);
+            else MessageBox.Show(text.Format(text.LauncherFailedFormat, exception.Message),
+                "Resource Manager", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
+    }
+
+    private static void RequireRunningSystemService(string backend, ToolText text)
+    {
+        var state = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName)
+            ?? throw new InvalidOperationException(text.LauncherServiceStartFailed);
+        WindowsServiceRegistration.RequireExpectedBinary(state, backend);
+        if (!state.Running) throw new InvalidOperationException(text.LauncherServiceStartFailed);
     }
 }

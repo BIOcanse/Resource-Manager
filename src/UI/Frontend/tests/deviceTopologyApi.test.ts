@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { getDeviceTopologyState } from "../src/features/deviceTopology/deviceTopologyApi.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
@@ -34,6 +35,11 @@ try {
   assert.equal(observedUrl, "/api/device-topology/state");
   assert.equal(value.stateRevision, 1);
 
+  const edidWire = JSON.parse(readFileSync(new URL("./fixtures/displayEdid.json", import.meta.url), "utf8"));
+  globalThis.fetch = (async () => new Response(JSON.stringify(edidWire), { status: 200 })) as typeof fetch;
+  const edid = (await getDeviceTopologyState(client)).snapshot!.ports[0].display!;
+  assert.equal(edid.currentRefreshRateDenominator, 1001); assert.equal(edid.modeCapabilityDeclared!.modes.length, 7);
+  assert.equal(edid.edidRawDeclaredBase64, edidWire.snapshot.ports[0].display.edidRawDeclaredBase64);
   globalThis.fetch = (async () => new Response(JSON.stringify({
     schemaVersion: "1.0.0",
     state: "warming"

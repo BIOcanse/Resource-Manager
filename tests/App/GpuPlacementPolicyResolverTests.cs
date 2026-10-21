@@ -15,7 +15,7 @@ public sealed class GpuPlacementPolicyResolverTests
         Assert.Equal(GpuPlacementPolicyModes.Auto, policy.EnabledMode);
         Assert.Equal(GpuPlacementSchedulingModes.Precise, policy.SchedulingMode);
         Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, policy.StartupTargetGpu);
-        Assert.Equal(GpuPlacementTargets.AutoIdleGpu, policy.TargetGpu);
+        Assert.Null(typeof(GpuPlacementSoftwarePolicy).GetProperty("TargetGpu"));
         Assert.Equal(GpuPlacementRuntimeSchedulingModes.Precise, policy.RuntimeSchedulingMode);
         Assert.True(policy.RuntimeHotSwitchEnabled == true);
         Assert.Contains(GpuPlacementProviderIds.D3dDeviceCreateShim, policy.AllowedProviders);
@@ -85,7 +85,7 @@ public sealed class GpuPlacementPolicyResolverTests
             "software-a",
             Process("helper", "C:\\Apps\\SoftwareA\\helper.exe"));
 
-        Assert.Equal(GpuPlacementTargets.SystemDefaultGpu, policy.TargetGpu);
+        Assert.Null(typeof(GpuPlacementProcessPolicy).GetProperty("TargetGpu"));
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class GpuPlacementPolicyResolverTests
         {
             Inherit = false,
             EnabledMode = GpuPlacementPolicyModes.Inherit,
-            TargetGpu = GpuPlacementTargets.IntegratedGpu
+            BaseScoreOverride = 42
         };
         var resolver = new GpuPlacementPolicyResolver(Document([softwarePolicy], [processPolicy]));
 
@@ -174,7 +174,7 @@ public sealed class GpuPlacementPolicyResolverTests
             "renderer", "C:\\Apps\\SoftwareA\\renderer.exe");
 
         Assert.Equal(GpuPlacementPolicyModes.Auto, resolved.EnabledMode);
-        Assert.Equal(GpuPlacementTargets.IntegratedGpu, resolved.TargetGpu);
+        Assert.Equal(softwarePolicy.StartupTargetGpu, resolved.StartupTargetGpu);
         Assert.True(resolved.AcceptsExternalRuntimeGpuScheduling());
 
         var disabled = new GpuPlacementPolicyResolver(Document(

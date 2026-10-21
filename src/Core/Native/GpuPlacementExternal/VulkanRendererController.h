@@ -210,8 +210,9 @@ static int runQt(int argc,wchar_t** argv) {
     for(auto& p:attached){for(auto& t:p.second.threads)CloseHandle(t.second.handle);CloseHandle(p.second.handle);}
     BOOL debug=TRUE;const bool absent=process.h&&live(process.h)&&CheckRemoteDebuggerPresent(process.h,&debug)&&!debug;
     const bool passed=error.empty()&&clean&&absent;
+    if (!clean && cleanupOk) printf("{\"kind\":\"cleanupRecovered\",\"cleanupPassed\":true,\"rootRestored\":%s}\n", absent ? "true" : "false");
     printf("{\"kind\":\"vulkanObservation\",\"sourceLuid\":%llu,\"luid\":%llu,\"window\":%llu,\"instance\":%llu,\"targetPresents\":%u,\"targetPresentationVerified\":%s}\n",sourceLuid,requestedTarget,admittedWindow,source.instance,presentations,triggered&&sourceLuid&&sourceLuid!=requestedTarget&&presentations>=30?"true":"false");
-    printf("{\"kind\":\"summary\",\"passed\":%s,\"cleanupPassed\":%s,\"debuggerAbsent\":%s,\"recoveryRequested\":%s,\"targetPresents\":%u,\"enumerations\":%u,\"error\":%s}\n",passed?"true":"false",clean&&cleanupOk?"true":"false",absent?"true":"false",triggered?"true":"false",presentations,enumerations,quote(error).c_str());
+    printf("{\"kind\":\"summary\",\"passed\":%s,\"cleanupPassed\":%s,\"debuggerAbsent\":%s,\"recoveryRequested\":%s,\"targetPresents\":%u,\"enumerations\":%u,\"error\":%s}\n",passed?"true":"false",cleanupOk?"true":"false",absent?"true":"false",triggered?"true":"false",presentations,enumerations,quote(error).c_str());
     return passed?0:1;
 }
 }

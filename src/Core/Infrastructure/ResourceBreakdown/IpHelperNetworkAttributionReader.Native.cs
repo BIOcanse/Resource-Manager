@@ -44,7 +44,7 @@ public sealed partial class IpHelperNetworkAttributionReader
     private static extern int GetPerTcpConnectionEStats(
         ref MibTcpRow row,
         int estatsType,
-        IntPtr rw,
+        out TcpEstatsDataRwV0 rw,
         uint rwVersion,
         uint rwSize,
         IntPtr ros,
@@ -57,7 +57,7 @@ public sealed partial class IpHelperNetworkAttributionReader
     private delegate int ExtendedTableReader(IntPtr table, ref int size);
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly struct MibTcpRow(
+    internal readonly struct MibTcpRow(
         uint state,
         uint localAddr,
         uint localPort,
@@ -116,13 +116,13 @@ public sealed partial class IpHelperNetworkAttributionReader
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct TcpEstatsDataRwV0
+    internal struct TcpEstatsDataRwV0
     {
         public byte EnableCollection;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct TcpEstatsDataRodV0
+    internal struct TcpEstatsDataRodV0
     {
         public ulong DataBytesOut;
         public ulong DataSegsOut;

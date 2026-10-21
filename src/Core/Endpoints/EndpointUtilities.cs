@@ -5,7 +5,6 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -18,7 +17,6 @@ using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -157,11 +155,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         return query.TryGetValue(queryKey, out var ids)
             ? ids.SelectMany(static value => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [])
-                .Where(static metricId => DashboardSettingsDefaults.IsResourceBarMetricSupported(metricId))
+                .Where(IsResourceSampleMetricSupported)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray()
             : fallbackMetricIds ?? [];
     }
+
+    private static bool IsResourceSampleMetricSupported(string metricId)
+        => DashboardSettingsDefaults.IsResourceBarMetricSupported(metricId)
+            || ProcessMetricFieldRegistry.Find(metricId) is not null;
 
     static ResourceTableRequest ParseResourceTableRequest(
         HttpRequest request,

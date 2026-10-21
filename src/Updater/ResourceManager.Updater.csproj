@@ -16,5 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
+    <InternalsVisibleTo Include="Install" />
   </ItemGroup>
 </Project>

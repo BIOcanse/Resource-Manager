@@ -91,7 +91,7 @@ public sealed class GpuTelemetryLocalProbe(
 
         return new GpuTelemetryAdapterSnapshot(
             adapter.Index,
-            NativePdhAdapterIdentity.Pack(adapter.Luid),
+            WindowsGpuAdapterIdentity.Pack(adapter.Luid),
             adapter.Name,
             FormatVendorId(adapter.VendorId),
             GpuSpecializedTelemetry.GetArchitectureName(architecture),

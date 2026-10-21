@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -37,6 +38,7 @@ internal interface IHostManagerSmartCoordinatorTransitionProbe
 {
     void Reach(HostManagerSmartCoordinatorTransitionPoint point);
     void ObserveShutdown(HostManagerSmartCoordinatorShutdownPoint point);
+    void ObserveNativeInputs(ReadOnlySpan<NativeSmartCoordinatorInputRow> inputs) { }
 }
 
 public sealed partial class HostManagerSmartCoordinator
@@ -107,39 +109,24 @@ public sealed partial class HostManagerSmartCoordinator
 
     public override void Dispose()
     {
-        Exception? failure = null;
-        try
-        {
-            BeginShutdown().GetAwaiter().GetResult();
-        }
-        catch (Exception exception)
-        {
-            failure = exception;
-        }
-
+        // A blocked normal close keeps the original owner and base resources valid.
+        BeginShutdown().GetAwaiter().GetResult();
         if (Interlocked.Exchange(ref baseDisposeStarted, 1) == 0)
         {
-            try
-            {
-                base.Dispose();
-            }
-            catch (Exception exception)
-            {
-                failure = CombineFailures(failure, exception);
-            }
+            base.Dispose();
         }
-
-        Rethrow(failure);
     }
 
     private Task BeginShutdown()
     {
         lock (lifecycleSync)
         {
-            if (shutdownTask is not null)
+            if (shutdownTask is not null && !shutdownTask.IsFaulted && !shutdownTask.IsCanceled)
             {
                 return shutdownTask;
             }
+            // Only a new explicit close retries a completed failed attempt.
+            // Concurrent callers still share the original in-progress task.
 
             Volatile.Write(
                 ref lifecycleState,
@@ -203,8 +190,10 @@ public sealed partial class HostManagerSmartCoordinator
             catch (Exception exception) { failure = CombineFailures(failure, exception); }
             try { await CloseOwnedGpuRemoteCallsAsync().ConfigureAwait(false); }
             catch (Exception exception) { failure = CombineFailures(failure, exception); }
+            await RestoreTemporaryEffectsOnShutdownAsync().ConfigureAwait(false);
             failure = CombineFailures(failure, DisposeOwnedResourcesCore());
-            ObserveShutdownPoint(HostManagerSmartCoordinatorShutdownPoint.OwnedResourcesDisposed);
+            if (failure is null)
+                ObserveShutdownPoint(HostManagerSmartCoordinatorShutdownPoint.OwnedResourcesDisposed);
         }
         catch (Exception exception)
         {
@@ -212,10 +201,13 @@ public sealed partial class HostManagerSmartCoordinator
         }
         finally
         {
-            Volatile.Write(ref transitionProbe, null);
-            Volatile.Write(
-                ref lifecycleState,
-                (int)HostManagerSmartCoordinatorLifecycleState.Closed);
+            if (failure is null)
+            {
+                Volatile.Write(ref transitionProbe, null);
+                Volatile.Write(
+                    ref lifecycleState,
+                    (int)HostManagerSmartCoordinatorLifecycleState.Closed);
+            }
             if (gateAcquired)
             {
                 gate.Release();
@@ -225,16 +217,54 @@ public sealed partial class HostManagerSmartCoordinator
         Rethrow(failure);
     }
 
+    private async Task RestoreTemporaryEffectsOnShutdownAsync()
+    {
+        // The worker and admitted requests have joined and this method owns the gate.
+        // Restore through the same receipts and transaction journal as Normal mode.
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            var validation = processEffectValidationScopeAuthorityOwner.Capture();
+            var effects = HostManagerCycleEffectAdmission.CreateForValidation(
+                runtimePlanProvider.Current.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled, validation);
+            if (effects.IsScoreOnly) return;
+            const uint maximumActions = 4096;
+            effects.InitializeBudgets(maximumActions, maximumActions);
+            var recovery = await RecoverNativeTransactionsAsync(effects, limit.Token);
+            if (recovery.IsBlocked || !nativeActionTransactions.TryAcquireExecutionAdmission(out var admission) || admission is null)
+            {
+                logger.LogWarning("Temporary scheduling restoration remains pending at shutdown.");
+                return;
+            }
+            await using var owner = admission;
+            var restored = await RestoreOwnedEffectsForNormalModeAsync(effects, validation, admission,
+                maximumActions, limit.Token, gpuControlAvailable: !runningGpuPlacementActions.HasUnreleasedExternalControl,
+                forShutdown: true);
+            if (!restored) logger.LogWarning("Some temporary scheduling receipts remain for the next restoration attempt.");
+        }
+        catch (Exception exception)
+        {
+            // Do not erase failed ownership or hold service shutdown open indefinitely.
+            logger.LogWarning(exception, "Temporary scheduling restoration did not complete; persisted receipts are retained.");
+        }
+    }
+
     private Exception? DisposeOwnedResourcesCore()
     {
         Exception? failure = null;
         DisposeOwnedResource(ref memoryModeWorkspace, ref failure);
         DisposeOwnedResource(ref computeScoringWorkspace, ref failure);
+        DisposeOwnedResource(ref pendingNativeWorkspaceClose, ref failure);
         DisposeOwnedResource(ref nativeWorkspace, ref failure);
         DisposeOwnedResource(ref placementCoordinatorSession, ref failure);
-        placementCoordinatorWorkspace = null;
-        appliedNativeRuntimePlan = null;
-        appliedPlacementCoordinatorPlan = null;
+        if (placementCoordinatorSession is null)
+        {
+            placementCoordinatorWorkspace = null;
+            appliedPlacementCoordinatorPlan = null;
+        }
+        if (memoryModeWorkspace is null && computeScoringWorkspace is null
+            && nativeWorkspace is null && pendingNativeWorkspaceClose is null)
+            appliedNativeRuntimePlan = null;
         return failure;
     }
 
@@ -242,7 +272,6 @@ public sealed partial class HostManagerSmartCoordinator
         where T : class, IDisposable
     {
         var current = resource;
-        resource = null;
         if (current is null)
         {
             return;
@@ -251,6 +280,7 @@ public sealed partial class HostManagerSmartCoordinator
         try
         {
             current.Dispose();
+            resource = null;
         }
         catch (Exception exception)
         {

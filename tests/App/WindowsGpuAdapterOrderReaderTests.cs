@@ -5,6 +5,21 @@ namespace ResourceManager.App.Tests;
 
 public sealed class WindowsGpuAdapterOrderReaderTests
 {
+    [Theory]
+    [InlineData("Intel(R) Arc(TM) Graphics", 128, true)]
+    [InlineData("Intel(R) Arc(TM) 140T GPU", 2048, true)]
+    [InlineData("Intel Arc 140V GPU", 128, true)]
+    [InlineData("Intel(R) Arc(TM) A770 Graphics", 16384, false)]
+    [InlineData("Intel(R) Arc(TM) B580 Graphics", 12288, false)]
+    [InlineData("Intel Arc Pro B50", 16384, false)]
+    public void ArcIntegratedAndDiscreteModelsKeepTheirHardwareRole(string name, ulong memoryMib, bool integrated)
+    {
+        Assert.Equal(integrated,
+            ResourceManager.App.Domain.Optimization.GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(name));
+        Assert.Equal(integrated ? WindowsGpuAdapterKind.Integrated : WindowsGpuAdapterKind.Dedicated,
+            WindowsGpuAdapterOrderReader.ClassifyAdapter(name, new WindowsGpuHardwareId(0x8086, 1, 0), memoryMib * 1024 * 1024));
+    }
+
     [Fact]
     public void ApplyPublicAdapterOrder_UsesTaskManagerKmtOrdinalAndLuid()
     {
@@ -76,13 +91,13 @@ public sealed class WindowsGpuAdapterOrderReaderTests
         };
 
         Assert.Equal(
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [first, second]),
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(reordered));
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(reordered));
         Assert.NotEqual(
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [first, second]),
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [first, second with
                 {
                     Luid = new AdapterLuid

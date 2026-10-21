@@ -61,6 +61,16 @@ public sealed class WindowsExternalGpuPlacementRuntime(
         return eligible.Length == 1 && !HasFailedAttempt(evidenceRoot, eligible[0].Root) ? eligible[0] : null;
     }
 
+    public async Task RecoverAsync(CancellationToken cancellationToken)
+    {
+        await ExternalGpuControllerRecovery.RecoverAsync(evidenceRoot, [executable, rendererExecutable],
+            TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
+        Task? completion;
+        lock (gate) completion = activeCompletion;
+        if (completion is not null) await completion.WaitAsync(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+        if (HasUnreleasedControl) throw new InvalidOperationException("External GPU cleanup still owns a controller; recovery evidence has been retained.");
+    }
+
     internal IReadOnlyList<WindowsGpuRendererConfirmation.AdapterClient> ConfirmRenderer(GpuPlacementProcessInstance process)
         => WindowsGpuRendererConfirmation.Read(process, observations.ReadAdapterKeys());
 
@@ -150,7 +160,7 @@ public sealed class WindowsExternalGpuPlacementRuntime(
         var events = new ControllerEvents(expected.GpuProcess.ExecutablePath, expected.Renderer);
         Task completion;
         ExternalResidentSample? before;
-        Process process;
+        WindowsExternalGpuControllerProcess controllerProcess;
         lock (gate)
         {
             if (HasUnreleasedControl || HasFailedAttempt(evidenceRoot, expected.Root)
@@ -160,12 +170,6 @@ public sealed class WindowsExternalGpuPlacementRuntime(
             if (before is null || before.Adapters.Count == 0)
                 return new([], "No current resident-memory snapshot for this GPU process.", RunningGpuPlacementActionStatuses.Skipped);
             Directory.CreateDirectory(directory);
-            var start = new ProcessStartInfo(controllerImage)
-            {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true,
-                WorkingDirectory = directory
-            };
             var arguments = qt ? new[] {
                 expected.GpuProcess.ProcessId.ToString(CultureInfo.InvariantCulture),
                 expected.GpuProcess.ProcessStartKey.ToString(CultureInfo.InvariantCulture),
@@ -173,9 +177,9 @@ public sealed class WindowsExternalGpuPlacementRuntime(
                 plan.Request.TargetAdapterKey.ToString(CultureInfo.InvariantCulture),
                 workDeadline.ToString(CultureInfo.InvariantCulture), expected.Renderer == ExternalGpuRenderer.QtQuickVulkan ? "qtquick-vulkan" : "qtquick-d3d12" }
                 : ChromiumControllerArguments(expected, stop, Path.Combine(directory,"ready"), plan.Request.TargetAdapterKey, workDeadline);
-            foreach (var value in arguments) start.ArgumentList.Add(value);
-            process = Process.Start(start) ?? throw new InvalidOperationException("External GPU controller did not start.");
-            completion = CompleteAsync(process, events, directory, cancel);
+            controllerProcess = WindowsExternalGpuControllerProcess.Start(expected.Root, controllerImage, arguments, directory);
+            var process = controllerProcess.Process;
+            completion = CompleteAsync(controllerProcess, events, directory, cancel);
             activeCompletion = completion;
             try
             {
@@ -183,7 +187,6 @@ public sealed class WindowsExternalGpuPlacementRuntime(
                     checked((ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc()), process.ProcessName, controllerImage);
                 WriteNew(Path.Combine(directory, "controller.json"), JsonSerializer.Serialize(controller));
                 WriteNew(Path.Combine(directory, "request.json"), JsonSerializer.Serialize(new { plan.Request, expected, before, controlBuildId = ControlBuildId }));
-                WriteNew(qt ? Path.Combine(directory, "controller.authorize") : stop + ".authorize", string.Empty);
             }
             catch
             {
@@ -197,6 +200,9 @@ public sealed class WindowsExternalGpuPlacementRuntime(
         var triggerSent = false;
         try
         {
+            await controllerProcess.Ready.WaitAsync(TimeSpan.FromMilliseconds(Math.Max(1, (long)workDeadline - (long)Now)),
+                cancellationToken).ConfigureAwait(false);
+            WriteNew(qt ? Path.Combine(directory, "controller.authorize") : stop + ".authorize", string.Empty);
             while (!completion.IsCompleted && Now < workDeadline && !events.RecoveryRequired)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -275,8 +281,9 @@ public sealed class WindowsExternalGpuPlacementRuntime(
         return result;
     }
 
-    private async Task CompleteAsync(Process process, ControllerEvents events, string directory, string cancel)
+    private async Task CompleteAsync(WindowsExternalGpuControllerProcess controller, ControllerEvents events, string directory, string cancel)
     {
+        var process = controller.Process;
         try
         {
             void Failed(Exception error)
@@ -285,15 +292,17 @@ public sealed class WindowsExternalGpuPlacementRuntime(
                 logger.LogError(error, "External GPU controller evidence failed at {Directory}; draining continues.", directory);
                 RequestStop(cancel);
             }
-            var output = PumpAsync(process.StandardOutput, Path.Combine(directory, "stdout.jsonl"), events.Accept, Failed);
-            var errors = PumpAsync(process.StandardError, Path.Combine(directory, "stderr.log"), line =>
+            try { await controller.Ready.ConfigureAwait(false); }
+            catch (Exception error) { Failed(error); await process.WaitForExitAsync().ConfigureAwait(false); return; }
+            var output = PumpAsync(controller.StandardOutput, Path.Combine(directory, "stdout.jsonl"), events.Accept, Failed);
+            var errors = PumpAsync(controller.StandardError, Path.Combine(directory, "stderr.log"), line =>
             {
                 if (!string.IsNullOrWhiteSpace(line)) Failed(new InvalidOperationException(line));
             }, Failed);
             await Task.WhenAll(output, errors, process.WaitForExitAsync()).ConfigureAwait(false);
             events.ExitCode = process.ExitCode;
         }
-        finally { process.Dispose(); }
+        finally { controller.Dispose(); }
     }
 
     private static Task PumpAsync(TextReader reader, string path, Action<string> accept, Action<Exception> failed)
@@ -368,6 +377,10 @@ public sealed class WindowsExternalGpuPlacementRuntime(
                         else Replacement = identity;
                         break;
                     case "recoveryRequired": RecoveryRequired = true; Error = root.GetProperty("error").GetString(); break;
+                    case "cleanupRecovered":
+                        if (root.GetProperty("cleanupPassed").GetBoolean() && root.GetProperty("rootRestored").GetBoolean())
+                            RecoveryRequired = false;
+                        break;
                     case "enum" when renderer == ExternalGpuRenderer.ChromiumAngle:
                         if (Replacement?.ProcessId == root.GetProperty("pid").GetInt32()
                             && root.GetProperty("slot").GetInt32() is 0 or 1 or 3)
@@ -394,8 +407,11 @@ public sealed class WindowsExternalGpuPlacementRuntime(
                         break;
                     case "summary":
                         if (Summary is not null) { Error = "Duplicate controller summary."; RecoveryRequired = true; }
-                        else Summary = new(root.GetProperty("passed").GetBoolean(), root.GetProperty("cleanupPassed").GetBoolean(),
-                            root.GetProperty(renderer != ExternalGpuRenderer.ChromiumAngle ? "debuggerAbsent" : "rootRestored").GetBoolean());
+                        else
+                        {
+                            Summary = new(root.GetProperty("passed").GetBoolean(), root.GetProperty("cleanupPassed").GetBoolean(),
+                                root.GetProperty(renderer != ExternalGpuRenderer.ChromiumAngle ? "debuggerAbsent" : "rootRestored").GetBoolean());
+                        }
                         break;
                 }
             }

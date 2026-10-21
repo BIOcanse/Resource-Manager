@@ -1,3 +1,5 @@
+using System.Security.Principal;
+
 namespace ResourceManager.NativeUi;
 
 internal static class NativeUiPaths
@@ -7,16 +9,21 @@ internal static class NativeUiPaths
     public static string PackageRoot => PackageRootPath.Value;
 
     public static string WebViewUserDataFolder =>
-        Path.Combine(PackageRoot, "Config", "WebView2");
+        Path.Combine(WebViewUserRoot, "Profile");
+
+    public static string WebViewUserRoot => Path.Combine(PackageRoot, "Config", "WebView2", CurrentUserSid);
+
+    private static string CurrentUserSid
+    {
+        get { using var identity = WindowsIdentity.GetCurrent(); return identity.User?.Value
+            ?? throw new InvalidOperationException("The interactive user has no Windows SID."); }
+    }
 
     public static string AppSettingsPath =>
         Path.Combine(PackageRoot, "Config", "app-settings.json");
 
-    public static string LoopbackApiTokenPath =>
-        Path.Combine(PackageRoot, "Config", "Runtime", "loopback-api-token");
-
     public static string WebViewStartupFailurePath =>
-        Path.Combine(PackageRoot, "Config", "Diagnostics", "NativeUiStartup", "webview-failure.json");
+        Path.Combine(PackageRoot, "Config", "Diagnostics", "NativeUiStartup", CurrentUserSid, "webview-failure.json");
 
     public static string DiagnosticsFolder =>
         Path.Combine(PackageRoot, "Config", "Diagnostics");

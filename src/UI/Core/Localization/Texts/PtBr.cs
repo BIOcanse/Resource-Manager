@@ -46,6 +46,7 @@ internal static class PtBr
         BackendPipelineNotReady = "O pipeline de solicitações do serviço local não está pronto.",
         NoProcessToTerminate = "Não há nenhum processo para encerrar.",
         TerminateRequestCompleted = "A solicitação de encerramento do processo foi concluída.",
+        TerminateResultFormat = "Foram encerrados {0} / {1} processos.",
 
         WebViewInitializationFailed = "Falha ao inicializar a interface incorporada. Abra a pasta de diagnósticos para ver os detalhes.",
         FrontendIdentityVerificationFailed = "Falha na verificação de identidade dos recursos de front-end. Abra a pasta de diagnósticos para ver os detalhes.",

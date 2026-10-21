@@ -6,6 +6,10 @@ namespace ResourceManager.App.Infrastructure.Windows;
 internal static partial class NativeMethods
 {
     [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 
     [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -51,6 +55,12 @@ internal static partial class NativeMethods
     internal static extern bool TerminateProcess(
         IntPtr process,
         uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsProcessCritical(
+        IntPtr process,
+        [MarshalAs(UnmanagedType.Bool)] out bool critical);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern IntPtr OpenThread(

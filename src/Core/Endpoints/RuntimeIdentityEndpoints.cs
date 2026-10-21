@@ -13,8 +13,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static IEndpointRouteBuilder MapRuntimeIdentityEndpoints(
         this IEndpointRouteBuilder app)
     {
+        app.MapPost(InteractiveDesktopObservation.EndpointPath, (
+            InteractiveDesktopObservation observation,
+            ResourceManager.App.Infrastructure.ResourceBreakdown.InteractiveDesktopObservationStore desktops) =>
+            desktops.Publish(observation) ? Results.Ok() : Results.BadRequest(new { error = "invalid-desktop-observation" }))
+            .WithMetadata(new RequestSizeLimitAttribute(InteractiveDesktopObservation.MaximumRequestBytes));
         app.MapGet(LoopbackSessionProofContract.EndpointPath, (
             string? challenge,
+            HttpContext context,
             [FromServices] LoopbackApiAccessToken accessToken) =>
         {
             if (!LoopbackSessionProofContract.IsValidChallenge(challenge))
@@ -25,12 +31,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 });
             }
 
+            var token = context.Request.Headers[LoopbackApiAccessToken.HeaderName].FirstOrDefault();
+            if (!accessToken.Validate(context, token)) return Results.Unauthorized();
             return Results.Ok(new LoopbackSessionProofResponse(
                 LoopbackSessionProofContract.ProductId,
                 LoopbackSessionProofContract.ProtocolVersion,
                 challenge!,
                 LoopbackSessionProofContract.ComputeProof(
-                    accessToken.Token,
+                    token!,
                     challenge!)));
         }).AllowAnonymous();
 

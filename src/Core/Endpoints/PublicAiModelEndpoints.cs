@@ -2,6 +2,7 @@ using System.Text.Json;
 using ResourceManager.App.Application.PublicServices.AiGateway;
 using ResourceManager.App.Application.PublicServices.AiModels;
 using ResourceManager.App.Domain.PublicServices.AiModels;
+using ResourceManager.App.Domain.PublicServices.AiGateway;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -77,10 +78,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapMethods(route, [method], async (
             HttpContext context,
+            IAiGatewayCredentialService credentials,
             IAiGatewayLocalModelPolicy localModelPolicy,
             ILocalAiModelService modelService,
             CancellationToken cancellationToken) =>
         {
+            var profile = route.Contains("/anthropic/", StringComparison.Ordinal)
+                ? AiGatewayCompatibilityProfiles.Anthropic : AiGatewayCompatibilityProfiles.OpenAi;
+            var key = ReadAiGatewayKey(context.Request, profile);
+            if (!await credentials.ValidateAsync(profile, key, cancellationToken))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "ai-gateway-key-required" }, cancellationToken);
+                return;
+            }
             await ForwardAiGatewayAsync(
                 context,
                 providerPath,
@@ -89,6 +100,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 modelService,
                 cancellationToken);
         }).AllowAnonymous();
+    }
+
+    internal static string? ReadAiGatewayKey(HttpRequest request, string profile)
+    {
+        var name = profile == AiGatewayCompatibilityProfiles.Anthropic ? "x-api-key" : "Authorization";
+        if (!request.Headers.TryGetValue(name, out var values) || values.Count != 1) return null;
+        var value = values[0]?.Trim();
+        if (profile == AiGatewayCompatibilityProfiles.Anthropic) return value;
+        return value?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true
+            ? value[7..].Trim() : null;
     }
 
     private static async Task ForwardAiGatewayAsync(

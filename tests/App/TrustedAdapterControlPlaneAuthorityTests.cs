@@ -91,7 +91,7 @@ public sealed class TrustedAdapterControlPlaneAuthorityTests
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         var loaded = StrictHostManagerProfileLoader.LoadBytes(
-            buffer.ToArray(),
+            StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray()),
             "test/default.json");
         var hostManager = new HostManagerPlanCompiler().Compile(
             loaded,

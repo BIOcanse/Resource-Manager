@@ -58,7 +58,7 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     [InlineData(-1)]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void UnknownCapacityIsNotInventedAsOneButExplicitTargetRemainsAvailable(double score)
+    public void UnknownCapacityIsNotInventedAndStartupPreferenceCannotOverrideRuntime(double score)
     {
         var hardware = CreateHardware();
         hardware = hardware with { GpuInventory = hardware.GpuInventory with
@@ -71,9 +71,9 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
             [process], CreateCapacity(), true, new(95, 80));
         Assert.Equal(22UL, Assert.Single(automatic.Gpu).TargetAdapterKey);
         var explicitPlan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), hardware, scores,
-            [process with { Policy = process.Policy with { TargetGpu = GpuPlacementTargets.IntegratedGpu } }],
+            [process with { Policy = process.Policy with { StartupTargetGpu = GpuPlacementTargets.IntegratedGpu } }],
             CreateCapacity(), true, new(95, 80));
-        Assert.Equal(11UL, Assert.Single(explicitPlan.Gpu).TargetAdapterKey);
+        Assert.Equal(automatic.Gpu.Select(p => p.TargetAdapterKey), explicitPlan.Gpu.Select(p => p.TargetAdapterKey));
     }
 
     [Fact]
@@ -101,9 +101,9 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     }
 
     [Fact]
-    public void ExplicitGpuClassRetainsActualAdapterForAlreadyPlacedSuppression()
+    public void StartupPreferenceDoesNotOverrideActualAdapterForAlreadyPlacedSuppression()
     {
-        var process = CreateProcess("integrated", 20, null, 20, AutoPolicy() with { TargetGpu = GpuPlacementTargets.IntegratedGpu }) with
+        var process = CreateProcess("integrated", 20, null, 20, AutoPolicy() with { StartupTargetGpu = GpuPlacementTargets.IntegratedGpu }) with
         { ObservedGpuUsagePercent = new Dictionary<ulong, double> { [11] = 5 } };
         var plan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
             [process], CreateCapacity(), true, new(95, 80));
@@ -453,8 +453,14 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
                     hardware.GpuInventory.Adapters[1] with { AdapterKey = secondKey }]
             }
         };
-        var policy = AutoPolicy() with { TargetGpu = GpuPlacementTargets.HighPerformanceGpu };
-        var processes = new[] { CreateProcess("first", 10, null, 100, policy), CreateProcess("second", 20, null, 50, policy) };
+        var policy = AutoPolicy() with { StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu };
+        var processes = new[] { CreateProcess("first", 10, null, 100, policy), CreateProcess("second", 20, null, 50, policy) }
+            .Select(process => process with
+            {
+                ObservedGpuUsagePercent = new Dictionary<ulong, double> { [secondKey] = 1 },
+                ObservedDedicatedMemoryBytes = new Dictionary<ulong, double> { [secondKey] = 1 },
+                CanonicalGpuScores = new Dictionary<ulong, double> { [secondKey] = process.CanonicalGpuScores[22] }
+            }).ToArray();
         var plan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), hardware, CreateHardwareScores(), processes, CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 85));
         Assert.Equal(new[] { secondKey, secondKey }, plan.Gpu.Select(p => p.TargetAdapterKey));
         Assert.All(plan.Gpu, p => Assert.False(p.PreferIntegratedGpu));
@@ -532,9 +538,9 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     [Theory]
     [InlineData(GpuPlacementTargets.SystemDefaultGpu)]
     [InlineData("GPU1")]
-    public void UnsupportedExactRuntimeGpuTargetIsNotInventedAsWindowsPreference(string targetGpu)
+    public void StartupTargetDoesNotChangeRuntimeGpuPlan(string targetGpu)
     {
-        var policy = AutoPolicy() with { TargetGpu = targetGpu };
+        var policy = AutoPolicy() with { StartupTargetGpu = targetGpu };
 
         var plan = HostManagerAutomaticPlacementPlanner.Plan(
             CreateTwoCcdTopology(),
@@ -543,7 +549,10 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
             [CreateProcess("game", 10, null, 80, policy)],
             CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 85));
 
-        Assert.Empty(plan.Gpu);
+        var baseline = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), CreateHardware(),
+            CreateHardwareScores(), [plan.Gpu.Single().Process with { Policy = AutoPolicy() }],
+            CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 85));
+        Assert.Equal(baseline.Gpu.Select(p => p.TargetAdapterKey), plan.Gpu.Select(p => p.TargetAdapterKey));
     }
 
     private static HostManagerAutomaticPlacementProcess CreateProcess(
@@ -576,7 +585,6 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
             GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementTargets.AutoIdleGpu,
             GpuPlacementRuntimeSchedulingModes.Precise,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             true,

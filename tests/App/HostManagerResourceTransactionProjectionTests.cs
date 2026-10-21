@@ -70,7 +70,7 @@ public sealed class HostManagerResourceTransactionProjectionTests
         HostManagerTransactionJournalRuntime? reopened = null;
         try
         {
-            journal = await HostManagerTransactionJournalRuntime.OpenAsync(
+            journal = await JournalRuntimeTestStorage.OpenAsync(
                 root,
                 hostPlan.HostRecreate.TransactionJournal,
                 hostPlan.HotPublish.TransactionJournal,
@@ -170,7 +170,7 @@ public sealed class HostManagerResourceTransactionProjectionTests
             await journal.DisposeAsync();
             journal = null;
 
-            reopened = await HostManagerTransactionJournalRuntime.OpenAsync(
+            reopened = await JournalRuntimeTestStorage.OpenAsync(
                 root,
                 hostPlan.HostRecreate.TransactionJournal,
                 hostPlan.HotPublish.TransactionJournal,

@@ -173,19 +173,18 @@ internal sealed class NativeTransactionJournalFileStore
 
     public async Task PersistAsync(
         NativeTransactionJournalSession session,
-        NativeTransactionJournalWorkspace workspace,
+        Memory<byte> image,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(workspace);
 
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var status = session.Encode(workspace.Image, out var written);
+            var status = session.Encode(image.Span, out var written);
             if (status != NativeTransactionJournalStatus.Ok ||
                 written < NativeTransactionJournalAbi.ImageHeaderSize ||
-                written > (ulong)workspace.Image.Length)
+                written > (ulong)image.Length)
             {
                 throw new InvalidOperationException(
                     $"Native transaction journal encode failed with {status} and length {written}.");
@@ -217,7 +216,7 @@ internal sealed class NativeTransactionJournalFileStore
                     }))
                 {
                     await stream.WriteAsync(
-                        workspace.Image.AsMemory(0, checked((int)written)),
+                        image[..checked((int)written)],
                         cancellationToken);
                     await stream.FlushAsync(cancellationToken);
                     stream.Flush(flushToDisk: true);
@@ -227,7 +226,7 @@ internal sealed class NativeTransactionJournalFileStore
                 try
                 {
                     transition = rootManifest.BeginCanonicalTransition(
-                        workspace.Image.AsSpan(0, checked((int)written)));
+                        image.Span[..checked((int)written)]);
                     await commitHook.BeforeCanonicalImageCommitAsync(cancellationToken);
                 }
                 catch (Exception exception)
@@ -242,7 +241,7 @@ internal sealed class NativeTransactionJournalFileStore
                     await committer.CommitAsync(
                         temporaryPath,
                         journalPath,
-                        workspace.Image.AsMemory(0, checked((int)written)),
+                        image[..checked((int)written)],
                         cancellationToken);
                 }
                 catch (NativeTransactionJournalCommitException)

@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 namespace ResourceManager.Shared.Localization;
 
-/// <summary>Static copy for the independent installation and update interfaces.</summary>
+/// <summary>Static copy for the independent installation, launch and update interfaces.</summary>
 public sealed record ToolText
 {
     private static readonly ConcurrentDictionary<string, ToolText> Cache = new(StringComparer.Ordinal);
@@ -15,10 +15,15 @@ public sealed record ToolText
     public required string InstallLocationFormat { get; init; }
     public required string InstallActions { get; init; }
     public required string InstallFiles { get; init; }
+    public required string InstallUserDirectories { get; init; }
     public required string InstallRegistry { get; init; }
     public required string InstallService { get; init; }
     public required string InstallManager { get; init; }
     public required string InstallShortcuts { get; init; }
+    public required string ReinstallPreviousFormat { get; init; }
+    public required string ReinstallStop { get; init; }
+    public required string ReinstallIdentity { get; init; }
+    public required string ReinstallData { get; init; }
     public required string InstallConsent { get; init; }
     public required string InstallCompletedFormat { get; init; }
     public required string UserUnknown { get; init; }
@@ -67,6 +72,40 @@ public sealed record ToolText
     public required string LegacyPlanFormat { get; init; }
     public required string RegistrationFailedFormat { get; init; }
     public required string SelfUpdateFailedFormat { get; init; }
+    public required string ManagerPayloadInvalid { get; init; }
+    public required string ManagerSourceInvalid { get; init; }
+    public required string ManagerHelperStartFailed { get; init; }
+    public required string ManagerCopyInvalid { get; init; }
+    public required string ManagerSelfUpdated { get; init; }
+    public required string ManagerExitTimeout { get; init; }
+    public required string ManagerSelfUpdatedBackupFormat { get; init; }
+
+    public required string LauncherFailedFormat { get; init; }
+    public required string LauncherInvalidArguments { get; init; }
+    public required string LauncherServicePermission { get; init; }
+    public required string LauncherElevated { get; init; }
+    public required string LauncherServiceStartFailed { get; init; }
+    public required string LauncherServiceTimeout { get; init; }
+    public required string LauncherServiceExitFormat { get; init; }
+    public required string LauncherUiStartFailed { get; init; }
+    public required string LauncherRegistrationInvalid { get; init; }
+    public required string LauncherProgramMissing { get; init; }
+    public required string LauncherValueMissingFormat { get; init; }
+    public required string UninstallerTitle { get; init; }
+    public required string UninstallActionsFormat { get; init; }
+    public required string UninstallKeepData { get; init; }
+    public required string UninstallKeepAction { get; init; }
+    public required string UninstallDeleteAction { get; init; }
+    public required string UninstallDeleteWarning { get; init; }
+    public required string UninstallHelperFailed { get; init; }
+    public required string UninstallFailed { get; init; }
+    public required string UninstallCompleted { get; init; }
+    public required string UninstallArchiveCompletedFormat { get; init; }
+    public required string ImportUserData { get; init; }
+    public required string ImportUserDataActions { get; init; }
+    public required string ImportUserDataCompleted { get; init; }
+    public required string LaunchRecovery { get; init; }
+    public required string UpdateCleanupFailedFormat { get; init; }
 
     public string Format(string template, params object[] values) =>
         string.Format(CultureInfo.GetCultureInfo(Language), template, values);

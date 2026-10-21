@@ -46,6 +46,7 @@ internal static class ViVn
         BackendPipelineNotReady = "Đường ống yêu cầu của dịch vụ cục bộ chưa sẵn sàng.",
         NoProcessToTerminate = "Không có tiến trình nào để kết thúc.",
         TerminateRequestCompleted = "Yêu cầu kết thúc tiến trình đã hoàn tất.",
+        TerminateResultFormat = "Đã kết thúc {0} / {1} tiến trình.",
 
         WebViewInitializationFailed = "Không thể khởi tạo giao diện nhúng. Hãy mở thư mục chẩn đoán để xem chi tiết.",
         FrontendIdentityVerificationFailed = "Việc xác minh danh tính tài nguyên giao diện đã thất bại. Hãy mở thư mục chẩn đoán để xem chi tiết.",

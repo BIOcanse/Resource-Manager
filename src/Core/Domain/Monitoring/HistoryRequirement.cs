@@ -1,3 +1,1 @@
-namespace ResourceManager.App.Domain.Monitoring;
-
-public readonly record struct HistoryRequirement(string DataItem, int RetainedRounds);
+// Original history contract/implementation is supplied by ReadWriteCore.

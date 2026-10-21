@@ -65,21 +65,13 @@ public sealed record SoftwareOperationRequest(
     string Id,
     bool ConfirmOperation);
 
+public sealed record SoftwareOperationCaller(string WindowsSid, uint WindowsSessionId);
+
 public sealed record SoftwareOperationResult(
     string Id,
     string State,
     string Message,
     ResourceManager.App.Domain.Operations.FileChangeReport? FileChanges = null);
-
-public sealed record InstalledSoftwareEntry(
-    string Id,
-    string Name,
-    string? Version,
-    string? Publisher,
-    string? InstallLocation,
-    IReadOnlyList<string> RootPaths,
-    string? UninstallString,
-    string RegistryPath);
 
 public sealed record ManualSoftwareRecord(
     string Id,

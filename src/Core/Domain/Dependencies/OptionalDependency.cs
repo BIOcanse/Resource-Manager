@@ -49,7 +49,9 @@ public sealed record DependencyPayloadSource(
     /// <summary>发布里的归档名。下载地址和已验证安装器一样是拼出来的，不用调 API。</summary>
     string VerifiedAssetName,
     /// <summary>从归档里取哪几个文件，放进该组件的 Dependencies 目录。</summary>
-    IReadOnlyList<string> FileNames);
+    IReadOnlyList<string> FileNames,
+    /// <summary>辅助程序必须保留完整发布目录；FileNames 是完成检查所需的入口文件。</summary>
+    bool IncludeArchiveContents = false);
 
 /// <summary>用户在版本对话框里选的是哪一个。</summary>
 public static class DependencyVersionChoices

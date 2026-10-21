@@ -5,17 +5,17 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class IpHelperNetworkAttributionReader
 {
-    private static IReadOnlyList<NetworkEndpoint> ReadEndpoints()
+    private static NetworkEndpointSnapshot ReadEndpoints()
     {
         var endpoints = new List<NetworkEndpoint>();
-        endpoints.AddRange(ReadTcp4Endpoints());
+        endpoints.AddRange(ReadTcp4Endpoints(out var tcp4Complete));
         endpoints.AddRange(ReadTcp6Endpoints());
         endpoints.AddRange(ReadUdp4Endpoints());
         endpoints.AddRange(ReadUdp6Endpoints());
-        return endpoints;
+        return new(endpoints, tcp4Complete);
     }
 
-    private static IReadOnlyList<NetworkEndpoint> ReadTcp4Endpoints()
+    private static IReadOnlyList<NetworkEndpoint> ReadTcp4Endpoints(out bool complete)
     {
         return ReadExtendedTable(
             (IntPtr buffer, ref int size) => GetExtendedTcpTable(buffer, ref size, true, AfInet, TcpTableOwnerPidAll, 0),
@@ -41,7 +41,7 @@ public sealed partial class IpHelperNetworkAttributionReader
                 }
 
                 return rows;
-            });
+            }, out complete);
     }
 
     private static IReadOnlyList<NetworkEndpoint> ReadTcp6Endpoints()
@@ -69,7 +69,7 @@ public sealed partial class IpHelperNetworkAttributionReader
                 }
 
                 return rows;
-            });
+            }, out _);
     }
 
     private static IReadOnlyList<NetworkEndpoint> ReadUdp4Endpoints()
@@ -94,7 +94,7 @@ public sealed partial class IpHelperNetworkAttributionReader
                 }
 
                 return rows;
-            });
+            }, out _);
     }
 
     private static IReadOnlyList<NetworkEndpoint> ReadUdp6Endpoints()
@@ -119,13 +119,15 @@ public sealed partial class IpHelperNetworkAttributionReader
                 }
 
                 return rows;
-            });
+            }, out _);
     }
 
     private static IReadOnlyList<NetworkEndpoint> ReadExtendedTable(
         ExtendedTableReader reader,
-        Func<IntPtr, IReadOnlyList<NetworkEndpoint>> parse)
+        Func<IntPtr, IReadOnlyList<NetworkEndpoint>> parse,
+        out bool complete)
     {
+        complete = false;
         var size = 0;
         var result = reader(IntPtr.Zero, ref size);
         if (result != ErrorInsufficientBuffer || size <= 0)
@@ -137,7 +139,10 @@ public sealed partial class IpHelperNetworkAttributionReader
         try
         {
             result = reader(buffer, ref size);
-            return result == ErrorSuccess ? parse(buffer) : [];
+            if (result != ErrorSuccess) return [];
+            var endpoints = parse(buffer);
+            complete = true;
+            return endpoints;
         }
         finally
         {

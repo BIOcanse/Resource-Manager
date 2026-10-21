@@ -41,7 +41,7 @@ public sealed class HostManagerSmartCoordinatorConfigurationProjectionTests
         Assert.Equal(plan.HotPublish.Level1MaximumCpuScoreScale, configuration.Level1MaximumCpuScoreScale);
         Assert.Equal(plan.HotPublish.Level2MaximumCpuScoreScale, configuration.Level2MaximumCpuScoreScale);
         Assert.Equal(plan.HotPublish.Level3MaximumCpuScoreScale, configuration.Level3MaximumCpuScoreScale);
-        Assert.Equal(plan.HotPublish.LowTierLevel4MaximumCpuScoreScale, configuration.LowTierLevel4MaximumCpuScoreScale);
+        Assert.Equal(0, configuration.LowTierLevel4MaximumCpuScoreScale);
         Assert.Equal(0, configuration.ReservedProcessPolicy0);
         Assert.Equal(plan.HotPublish.BaseScoreTiers.HighMinimumBaseScore, configuration.HighTierMinimumBaseScore);
         Assert.Equal(plan.HotPublish.BaseScoreTiers.MiddleMinimumBaseScore, configuration.MiddleTierMinimumBaseScore);

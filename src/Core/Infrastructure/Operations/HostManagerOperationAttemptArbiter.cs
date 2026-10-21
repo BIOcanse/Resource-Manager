@@ -127,7 +127,18 @@ internal sealed class HostManagerOperationAttemptArbiter : IDisposable
 
         internal void RequestCancel() => cancellation.Cancel();
 
-        internal void RequestStop() => cancellation.Cancel();
+        internal void RequestStop()
+        {
+            try
+            {
+                cancellation.Cancel();
+            }
+            catch (ObjectDisposedException) when (completion.Task.IsCompleted)
+            {
+                // Complete removes a settled attempt before disposing its CTS.
+                // A RequestStopAll snapshot may still contain that old control.
+            }
+        }
 
         internal void Complete() => completion.TrySetResult();
 

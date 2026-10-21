@@ -110,8 +110,8 @@ export default createSettingsLocale("es-ES", {
         "description": "Permitir seleccionar una GPU concreta para cada programa."
       }
     },
-    "automaticMemoryCleanupTitle": "Umbral de limpieza automática",
-    "automaticMemoryCleanupDescription": "Iniciar la limpieza en segundo plano cuando quedan pocos recursos y no se puede continuar un traslado seguro.",
+    "automaticMemoryCleanupTitle": "Umbrales de limpieza de emergencia",
+    "automaticMemoryCleanupDescription": "La limpieza en segundo plano sigue los niveles de presión sobre los recursos. Estos umbrales determinan cuándo la poca memoria física o capacidad de compromiso restante activa la limpieza de emergencia.",
     "physicalMemoryAutomaticCleanupLabel": "Memoria física libre %",
     "virtualMemoryAutomaticCleanupLabel": "Margen de memoria comprometida %",
     "memoryOptimizationTargetTitle": "Objetivo de optimización de memoria",

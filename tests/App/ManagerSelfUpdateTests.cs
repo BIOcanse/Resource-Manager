@@ -1,0 +1,170 @@
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
+using ResourceManager.Shared.Packages;
+using ResourceManager.Shared.Localization;
+using ResourceManager.Updater;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed class ManagerSelfUpdateTests
+{
+    [Fact]
+    public async Task CommittedCopyIsLaunchedEvenIfUserPackageChangesAfterSwitch()
+    {
+        using var fixture = new Fixture();
+        var package = ReleasePackageLayout.Verify(fixture.Download);
+        await PackageSwitchTransaction.ApplyAsync(new UpdatePlan(package, fixture.Installed, "0.2.0", false),
+            new Runtime(), CancellationToken.None);
+        File.WriteAllText(UpdateManagerPaths.PackagedExecutable(fixture.Download), "tampered-user-file");
+        File.WriteAllText(Path.Combine(fixture.Installed, "Config", "app-settings.json"), "user-settings");
+
+        ProcessStartInfo? launched = null;
+        Assert.True(ManagerSelfUpdate.Schedule(package, fixture.Installed, fixture.OldManager, start =>
+        {
+            launched = start;
+            Assert.Equal("fixture:Internal/UpdateManager/ResourceManager.UpdateManager.exe", File.ReadAllText(start.FileName));
+            Assert.Throws<IOException>(() => File.WriteAllText(start.FileName, "replace-between-check-and-launch"));
+            Assert.Throws<IOException>(() => File.Delete(start.FileName));
+        }));
+        Assert.NotNull(launched);
+        Assert.Equal(UpdateManagerPaths.PackagedExecutable(fixture.Installed), launched.FileName);
+        Assert.Equal(Path.GetDirectoryName(launched.FileName), launched.WorkingDirectory);
+        Assert.False(launched.UseShellExecute);
+        Assert.Equal(new[] { "--replace-manager", fixture.Installed, Environment.ProcessId.ToString() }, launched.ArgumentList);
+        // The lock belongs to this operation and is released after dispatch.
+        File.WriteAllText(launched.FileName, "writable-after-dispatch");
+    }
+
+    [Theory]
+    [InlineData("content")]
+    [InlineData("missing")]
+    [InlineData("version")]
+    [InlineData("duplicate")]
+    [InlineData("undeclared")]
+    public void InvalidCommittedPayloadCannotDispatchAProcess(string failure)
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        var source = UpdateManagerPaths.PackagedExecutable(fixture.Installed);
+        switch (failure)
+        {
+            case "content": File.WriteAllText(source, "corrupt"); break;
+            case "missing": File.Delete(source); break;
+            case "version": fixture.WriteInstalledManifest("0.4.0"); break;
+            case "duplicate": fixture.WriteInstalledManifest("0.3.0", copies: 2); break;
+            case "undeclared": fixture.WriteInstalledManifest("0.3.0", copies: 0); break;
+        }
+        var launched = false;
+        Action dispatch = () => ManagerSelfUpdate.Schedule(
+            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+            _ => launched = true);
+        if (failure == "missing") Assert.Throws<FileNotFoundException>(dispatch);
+        else Assert.Throws<InvalidDataException>(dispatch);
+        Assert.False(launched);
+        // Failed validation also closes its stream.
+        File.WriteAllText(source, "after-failed-validation");
+    }
+
+    [Fact]
+    public void MatchingInstalledManagerDoesNotStartAHelper()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        File.Copy(UpdateManagerPaths.PackagedExecutable(fixture.Installed), fixture.OldManager, overwrite: true);
+        Assert.False(ManagerSelfUpdate.Schedule(ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"),
+            fixture.Installed, fixture.OldManager, _ => throw new Xunit.Sdk.XunitException("Unexpected launch")));
+    }
+
+    [Fact]
+    public void LaunchFailureReleasesVerifiedPayload()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        Assert.Throws<InvalidOperationException>(() => ManagerSelfUpdate.Schedule(
+            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+            _ => throw new InvalidOperationException("injected dispatch failure")));
+        File.Delete(UpdateManagerPaths.PackagedExecutable(fixture.Installed));
+    }
+
+    [Fact]
+    public void PayloadValidationUsesEveryInstalledLanguagePreference()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        fixture.WriteInstalledManifest("0.4.0");
+        var english = ToolText.For("en-US");
+        foreach (var language in AppLanguage.SupportedIds)
+        {
+            File.WriteAllText(Path.Combine(fixture.Installed, "Config", "app-settings.json"),
+                JsonSerializer.Serialize(new { appearance = new { language } }));
+            var text = ToolText.For(language);
+            var error = Assert.Throws<InvalidDataException>(() => ManagerSelfUpdate.Schedule(
+                ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+                _ => throw new Xunit.Sdk.XunitException("Invalid payload was dispatched")));
+            Assert.Equal(text.ManagerPayloadInvalid, error.Message);
+            Assert.Contains("BACKUP-TOKEN", text.Format(text.ManagerSelfUpdatedBackupFormat, "BACKUP-TOKEN"));
+            if (language != "en-US")
+            {
+                Assert.NotEqual(english.ManagerPayloadInvalid, error.Message);
+                Assert.NotEqual(english.ManagerSelfUpdated, text.ManagerSelfUpdated);
+            }
+        }
+        Assert.Contains("載荷", ToolText.For("zh-TW").ManagerPayloadInvalid);
+        Assert.DoesNotContain("载荷", ToolText.For("zh-TW").ManagerPayloadInvalid);
+    }
+
+    private sealed class Fixture : IDisposable
+    {
+        private readonly string root = Path.Combine(Path.GetTempPath(), "rm-manager-test-" + Guid.NewGuid().ToString("N"));
+        public string Download => Path.Combine(root, "download");
+        public string Installed => Path.Combine(root, "ResourceManager");
+        public string OldManager => UpdateManagerPaths.InstalledExecutable(Installed);
+        public Fixture()
+        {
+            Directory.CreateDirectory(Path.Combine(Download, "Config"));
+            Directory.CreateDirectory(Path.Combine(Installed, "Config"));
+            Directory.CreateDirectory(Path.GetDirectoryName(OldManager)!);
+            File.WriteAllText(OldManager, "old-manager");
+            var paths = new[] { "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
+                "Bin/ResourceManager/wwwroot/index.html", "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
+                "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe", "Internal/UpdateManager/ResourceManager.UpdateManager.exe" };
+            var files = paths.Select(path =>
+            {
+                var full = Path.Combine(Download, path.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+                File.WriteAllText(full, "fixture:" + path);
+                return Entry(path, full);
+            }).ToArray();
+            File.WriteAllText(Path.Combine(Download, "release-manifest.json"),
+                JsonSerializer.Serialize(new { version = "0.3.0", sourceCommit = "fixture", files }));
+        }
+        public void CopyPayloadToInstalled()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UpdateManagerPaths.PackagedExecutable(Installed))!);
+            File.Copy(UpdateManagerPaths.PackagedExecutable(Download), UpdateManagerPaths.PackagedExecutable(Installed));
+            WriteInstalledManifest("0.3.0");
+        }
+        public void WriteInstalledManifest(string version, int copies = 1)
+        {
+            var entry = Entry("Internal/UpdateManager/ResourceManager.UpdateManager.exe", UpdateManagerPaths.PackagedExecutable(Installed));
+            File.WriteAllText(Path.Combine(Installed, "release-manifest.json"), JsonSerializer.Serialize(new
+                { version, files = Enumerable.Repeat(entry, copies).ToArray() }));
+        }
+        private static object Entry(string path, string full) => new { path, length = new FileInfo(full).Length,
+            sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(full))) };
+        public void Dispose()
+        {
+            OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(root);
+            Directory.Delete(root, recursive: true);
+        }
+    }
+    private sealed class Runtime : IUpdateRuntime
+    {
+        public Task WaitForNativeUiExitAsync(string installRoot, CancellationToken cancellationToken) => Task.CompletedTask;
+        public void StopService(string installRoot) { }
+        public void StartService(string installRoot) { }
+        public Task WaitForHealthAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public void WriteInstalledVersion(string installRoot, string version) { }
+    }
+}

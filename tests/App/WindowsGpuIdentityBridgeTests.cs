@@ -56,7 +56,7 @@ public sealed class WindowsGpuIdentityBridgeTests
 
         Assert.Equal(
             0xFEDC_BA98_1234_5678UL,
-            NativePdhAdapterIdentity.Pack(luid));
+            WindowsGpuAdapterIdentity.Pack(luid));
     }
 
     [Theory]
@@ -132,11 +132,11 @@ public sealed class WindowsGpuIdentityBridgeTests
             "NVIDIA GeForce RTX 5060 Laptop GPU",
             [firstIdentity, secondIdentity]);
         var baseline =
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint([adapter]);
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint([adapter]);
 
         Assert.Equal(
             baseline,
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [adapter with
                 {
                     PhysicalIdentities =
@@ -144,7 +144,7 @@ public sealed class WindowsGpuIdentityBridgeTests
                 }]));
         Assert.Equal(
             baseline,
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [adapter with
                 {
                     PhysicalIdentities =
@@ -158,7 +158,7 @@ public sealed class WindowsGpuIdentityBridgeTests
                 }]));
         Assert.NotEqual(
             baseline,
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [adapter with
                 {
                     PhysicalIdentities =
@@ -173,7 +173,7 @@ public sealed class WindowsGpuIdentityBridgeTests
                 }]));
         Assert.NotEqual(
             baseline,
-            NativePdhAdapterIdentity.ComputeTopologyFingerprint(
+            WindowsGpuAdapterIdentity.ComputeTopologyFingerprint(
                 [adapter with
                 {
                     PhysicalIdentities =
@@ -191,9 +191,7 @@ public sealed class WindowsGpuIdentityBridgeTests
     public void AdapterInventorySourceContainsNoFuzzyIdentityFallback()
     {
         var path = Path.Combine(
-            FindAppRoot(),
-            "Infrastructure",
-            "Monitoring",
+            FindAppRoot(), "..", "ReadWriteCore", "Windows", "Gpu",
             "WindowsGpuAdapterOrderReader.cs");
         var source = File.ReadAllText(path);
 

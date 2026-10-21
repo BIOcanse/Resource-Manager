@@ -1,3 +1,5 @@
+using ResourceManager.App.Infrastructure.Adaptation;
+
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal enum NativeAppliedOwnershipOwnerState
@@ -21,12 +23,13 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
     private NativeAppliedOwnershipOwner(
         NativeAppliedOwnershipFileStore fileStore,
         NativeAppliedOwnershipPathLease pathLease,
-        INativeAppliedOwnershipSession session)
+        INativeAppliedOwnershipSession session,
+        Func<ulong, IComputeScratch> createScratch)
     {
         this.fileStore = fileStore;
         this.pathLease = pathLease;
         this.session = session;
-        workspace = new NativeAppliedOwnershipWorkspace(session.Capacity);
+        workspace = new NativeAppliedOwnershipWorkspace(session.Capacity, createScratch);
     }
 
     public NativeAppliedOwnershipOwnerState State
@@ -41,10 +44,12 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         INativeAppliedOwnershipSessionFactory sessionFactory,
         NativeAppliedOwnershipCreateConfiguration createConfiguration,
         NativeAppliedOwnershipOpenConfiguration openConfiguration,
+        Func<ulong, IComputeScratch> createScratch,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fileStore);
         ArgumentNullException.ThrowIfNull(sessionFactory);
+        ArgumentNullException.ThrowIfNull(createScratch);
         ValidateCompatibleConfigurations(in createConfiguration, in openConfiguration);
 
         var pathLease = fileStore.AcquireOwnerLease();
@@ -71,29 +76,19 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
                         $"Native applied ownership open failed with {opened.Status}.");
             }
 
-            NativeAppliedOwnershipOwner owner;
             try
             {
-                owner = new NativeAppliedOwnershipOwner(fileStore, pathLease, session);
+                if (requiresInitialPersistence)
+                {
+                    // This startup image is used only once; it has no reusable resource identity.
+                    var initialImage = new byte[checked((int)session.Capacity.MaximumImageBytes)];
+                    await fileStore.PersistAsync(session, initialImage, CancellationToken.None);
+                }
+                return new NativeAppliedOwnershipOwner(fileStore, pathLease, session, createScratch);
             }
             catch
             {
                 session.Dispose();
-                throw;
-            }
-            if (!requiresInitialPersistence)
-            {
-                return owner;
-            }
-
-            try
-            {
-                await fileStore.PersistAsync(session, owner.workspace, CancellationToken.None);
-                return owner;
-            }
-            catch
-            {
-                await owner.DisposeAsync();
                 throw;
             }
         }
@@ -178,19 +173,10 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         try
         {
             EnsureReady();
-            var header = default(NativeAppliedOwnershipSnapshotHeader);
-            workspace.Records.AsSpan().Clear();
-            var status = session.GetSnapshot(ref header, workspace.Records);
-            if (status != NativeAppliedOwnershipStatus.Ok ||
-                header.EntryCount > workspace.Records.Length)
-            {
-                throw new InvalidOperationException(
-                    $"Native applied ownership snapshot failed with {status}.");
-            }
-
-            var records = new NativeAppliedOwnershipRecord[header.EntryCount];
-            Array.Copy(workspace.Records, records, records.Length);
-            return new NativeAppliedOwnershipSnapshot(header, records);
+            using var operation = workspace.Acquire();
+            var snapshot = operation.ReadSnapshot(session);
+            operation.Complete();
+            return snapshot;
         }
         finally
         {
@@ -203,11 +189,11 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         while (true)
         {
             var current = State;
-            if (current is NativeAppliedOwnershipOwnerState.Disposing or
-                NativeAppliedOwnershipOwnerState.Disposed)
+            if (current == NativeAppliedOwnershipOwnerState.Disposed)
             {
                 return;
             }
+            if (current == NativeAppliedOwnershipOwnerState.Disposing) break;
 
             if (Interlocked.CompareExchange(
                     ref state,
@@ -221,15 +207,11 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         await gate.WaitAsync(CancellationToken.None);
         try
         {
-            try
-            {
-                session.Dispose();
-            }
-            finally
-            {
-                pathLease.Dispose();
-                Volatile.Write(ref state, (int)NativeAppliedOwnershipOwnerState.Disposed);
-            }
+            if (State == NativeAppliedOwnershipOwnerState.Disposed) return;
+            workspace.Dispose();
+            session.Dispose();
+            pathLease.Dispose();
+            Volatile.Write(ref state, (int)NativeAppliedOwnershipOwnerState.Disposed);
         }
         finally
         {
@@ -247,13 +229,15 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            using var operation = workspace.Acquire();
             var status = mutation(session, in input);
             if (status != NativeAppliedOwnershipStatus.Ok)
             {
                 return status;
             }
 
-            await PersistOrFaultAsync();
+            await PersistOrFaultAsync(operation.Image);
+            operation.Complete();
             return NativeAppliedOwnershipStatus.Ok;
         }
         finally
@@ -262,11 +246,11 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         }
     }
 
-    private async Task PersistOrFaultAsync()
+    private async Task PersistOrFaultAsync(Memory<byte> image)
     {
         try
         {
-            await fileStore.PersistAsync(session, workspace, CancellationToken.None);
+            await fileStore.PersistAsync(session, image, CancellationToken.None);
         }
         catch (Exception exception)
         {

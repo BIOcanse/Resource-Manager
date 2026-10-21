@@ -22,12 +22,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     public async Task OriginalGpuWindowLoopSubmitsOnlyTheExecutedPrefix(bool expireWindowWork)
     {
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current, 1,
-            DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 789,
-            [new(0, "Intel UHD Graphics", 0x8086, 1, 0, new AdapterLuid { LowPart = 123 }, false, 0, WindowsGpuAdapterKind.Integrated),
-             new(1, "NVIDIA GeForce RTX 4090", 0x10de, 2, 0, new AdapterLuid { LowPart = 456 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)]);
+            DateTimeOffset.UtcNow.UtcTicks, 3, 0, 0, 789,
+            [new(0, "NVIDIA GeForce RTX 3060", 0x10de, 1, 0, new AdapterLuid { LowPart = 123 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated),
+             new(1, "NVIDIA GeForce RTX 4090", 0x10de, 2, 0, new AdapterLuid { LowPart = 456 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated),
+             new(2, "NVIDIA GeForce RTX 3080", 0x10de, 3, 0, new AdapterLuid { LowPart = 789 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)]);
         var observations = new[] { "software:gpu-loop-first", "software:gpu-loop-tail" }.Select((softwareId, index) =>
             CreateNativeGpuCycleFacts(new(42412 + index, 133900000000000001,
-                $"gpu-loop-{index}", $@"C:\fixture\gpu-loop-{index}.exe"), softwareId, inventory, 1)).ToArray();
+                $"gpu-loop-{index}", $@"C:\fixture\gpu-loop-{index}.exe"), softwareId, inventory, 0, includeDedicatedMemory: true)).ToArray();
         var facts = observations[0] with
         {
             EnumeratedCount = 2,
@@ -44,7 +45,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             automaticPlacementTopology: topology, runningGpuActions: actions,
             processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
                 new(pid, DateTimeOffset.FromFileTime(133900000000000001))));
-        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 456));
+        fixture.MetricSampler.SetSnapshot(CreateNativeGpuCycleHardware(inventory, 123, includeDedicatedMemory: true));
         var enabled = fixture.RuntimePlan with
         {
             Version = fixture.RuntimePlan.Version + 1,
@@ -112,9 +113,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             AbiVersion = NativePlacementCoordinatorAbi.Version,
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementSnapshotHeader>()
         };
-        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.GetSnapshot(ref header, workspace.States));
+        var snapshotStates = new NativePlacementState[session.Capacity.SnapshotStateCapacity];
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.GetSnapshot(ref header, snapshotStates));
         Assert.Equal(2U, header.ActiveStateCount);
-        var states = workspace.States.Take(2).ToArray();
+        var states = snapshotStates.Take(2).ToArray();
         for (var index = 0; index < 2; index++)
         {
             var action = planned[index];

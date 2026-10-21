@@ -248,7 +248,7 @@ public sealed class BackendFrontendWireAcceptanceTests
 
     private static async Task<JsonElement> DecodeAsync(string kind, object payload)
     {
-        var repositoryRoot = FindRepositoryRoot();
+        var repositoryRoot = TestRepositoryPaths.FindRoot();
         var clientRoot = Path.Combine(
             repositoryRoot,
             "src",
@@ -287,19 +287,4 @@ public sealed class BackendFrontendWireAcceptanceTests
         return document.RootElement.Clone();
     }
 
-    private static string FindRepositoryRoot()
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null)
-        {
-            if (File.Exists(Path.Combine(current.FullName, "src", "Core", "ResourceManager.App.csproj")))
-            {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("Resource Manager repository root was not found.");
-    }
 }

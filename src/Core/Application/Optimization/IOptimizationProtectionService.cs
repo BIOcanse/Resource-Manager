@@ -28,4 +28,7 @@ public interface IOptimizationProtectionService
     Task<bool> IsTargetProtectedAsync(
         OptimizationReportTarget target,
         CancellationToken cancellationToken);
+
+    Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled,
+        CancellationToken cancellationToken);
 }

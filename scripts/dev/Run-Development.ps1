@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet("Start", "Restart", "Stop")]
     [string]$Action = "Start",
     [switch]$SkipBuild,
@@ -30,9 +30,7 @@ $GpuLaunchBroker = Join-Path $GpuLaunchBrokerRoot "bin\win-x64\ResourceManager.G
 $BackendExe = Join-Path $AppRoot "bin\$Configuration\net10.0-windows\ResourceManager.exe"
 $NativeUiExe = Join-Path $Root "src\UI\Core\bin\$Configuration\net10.0-windows\ResourceManager.NativeUi.exe"
 $KnownProcessNames = @("ResourceManager.NativeUi", "ResourceManager")
-$ApiHealthUrl = "http://127.0.0.1:9321/api/local-system/status"
-$ApiAccessTokenPath = Join-Path $SoftwareRoot 'Config\Runtime\loopback-api-token'
-$ApiAccessTokenHeaderName = "X-Resource-Manager-Token"
+$ApiHealthUrl = "http://127.0.0.1:9321/api/runtime/identity"
 $ApiPort = 9321
 $StartupTimeout = [TimeSpan]::FromSeconds(20)
 $LogPath = Join-Path $SoftwareRoot 'Logs\development.log'
@@ -164,22 +162,22 @@ function Get-ResourceManagerProcesses {
         Where-Object { $_.IsOwnedPath -and $_.CreationFileTimeUtc -gt 0 }
 }
 
-function Test-ResourceManagerApi {
-    if (-not (Test-Path -LiteralPath $ApiAccessTokenPath -PathType Leaf)) {
-        return $false
+function Test-ResourceManagerApi([System.Diagnostics.Process]$ExpectedBackend = $null) {
+    if ($null -eq $ExpectedBackend) {
+        $backends = @(Get-ResourceManagerProcesses | Where-Object { $_.Path -eq $BackendExe })
+        if ($backends.Count -ne 1) { return $false }
+        $ExpectedBackend = $backends[0].Process
     }
-
-    $token = $null
     try {
-        $token = [System.IO.File]::ReadAllText($ApiAccessTokenPath).Trim()
+        $ExpectedBackend.Refresh()
+        if ($ExpectedBackend.HasExited) { return $false }
+        $expectedTicks = $ExpectedBackend.StartTime.ToUniversalTime().Ticks
+        $listeners = @(Get-NetTCPConnection -LocalPort $ApiPort -State Listen -ErrorAction Stop |
+            Where-Object { $_.LocalAddress -eq '127.0.0.1' -and $_.OwningProcess -eq $ExpectedBackend.Id })
+        if ($listeners.Count -ne 1) { return $false }
     }
-    catch {
-        return $false
-    }
-
-    if ([string]::IsNullOrWhiteSpace($token)) {
-        return $false
-    }
+    catch { return $false }
+    $challenge = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
 
     $handler = $null
     $client = $null
@@ -195,12 +193,7 @@ function Test-ResourceManagerApi {
         $client.Timeout = [TimeSpan]::FromSeconds(2)
         $request = [System.Net.Http.HttpRequestMessage]::new(
             [System.Net.Http.HttpMethod]::Get,
-            $ApiHealthUrl)
-        if (-not $request.Headers.TryAddWithoutValidation(
-            $ApiAccessTokenHeaderName,
-            $token)) {
-            return $false
-        }
+            "$ApiHealthUrl`?challenge=$challenge")
 
         $sendTask = $client.SendAsync(
             $request,
@@ -217,7 +210,15 @@ function Test-ResourceManagerApi {
         }
 
         $response = $sendTask.Result
-        return $response.StatusCode -eq [System.Net.HttpStatusCode]::OK
+        if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) { return $false }
+        $bodyTask = $response.Content.ReadAsStringAsync()
+        if (-not $bodyTask.Wait([TimeSpan]::FromSeconds(2))) { return $false }
+        if ($bodyTask.Result.Length -gt 16384) { return $false }
+        $identity = $bodyTask.Result | ConvertFrom-Json
+        return $identity.productId -eq 'ResourceManager.Backend' -and $identity.protocolVersion -eq 1 -and
+            $identity.challenge -eq $challenge -and $identity.instanceId -ne 0 -and
+            $identity.processId -eq $ExpectedBackend.Id -and $identity.processStartUtcTicks -eq $expectedTicks -and
+            $identity.executablePath -eq $BackendExe
     }
     catch {
         return $false
@@ -274,7 +275,7 @@ function Wait-DevelopmentBackendReady(
         if ($BackendProcess.HasExited) {
             throw "调试后端启动后已退出，退出码 $($BackendProcess.ExitCode)。"
         }
-        if (Test-ResourceManagerApi) {
+        if (Test-ResourceManagerApi -ExpectedBackend $BackendProcess) {
             Write-Step "调试后端 API 已就绪。"
             return
         }

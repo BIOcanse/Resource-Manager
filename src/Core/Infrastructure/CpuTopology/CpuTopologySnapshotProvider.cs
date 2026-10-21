@@ -1,12 +1,15 @@
+using ResourceManager.ReadWrite.Windows.Cpu.Snapshots;
 using System.Runtime.CompilerServices;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
-public sealed class CpuTopologySnapshotProvider(
+public sealed partial class CpuTopologySnapshotProvider(
     ICpuTopologySampler sampler,
     HostManagerSamplingSubscriptionOwner samplingOwner,
     ILogger<CpuTopologySnapshotProvider> logger) : BackgroundService, ICpuTopologyReader
@@ -14,127 +17,115 @@ public sealed class CpuTopologySnapshotProvider(
     internal const int SamplingRoleId = 7;
     internal const string SnapshotItemId = "cpu.topology";
     private readonly object publicationGate = new();
+    private readonly object resourceDisposeGate = new();
     private readonly SemaphoreSlim demandSignal = new(0, 1);
-    private readonly CurrentValuePublicationSignal publicationSignal = new();
-    private readonly NativeItemSamplingSubscriptionTracker<TopologyRequest> subscriptions = new(
-        samplingOwner,
-        SamplingRoleId,
-        static request => request.SourceKey,
-        static _ => [SnapshotItemId],
-        static (items, _) => items.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)
-            ? new TopologyRequest("provider")
-            : null,
-        coalesceItemsIntoLatestCapture: true);
-    private CpuTopologySnapshot? current;
+    private readonly CpuTopologyCaptureOwner captureOwner = new(
+        () =>
+        {
+            var snapshot = sampler.CaptureSnapshot();
+            return new(snapshot, snapshot.OsTopologyInformation, snapshot.CapturedAt);
+        }, sampler.ResetUsageBaseline, error => logger.LogWarning(error, "CPU topology sampling failed."));
+    private readonly NativeItemSamplingSubscriptionTracker<TopologyRequest> subscriptions = CreateSubscriptions(samplingOwner, null);
     private long nextLeaseId;
     private bool stopped;
+    private int ownedResourcesDisposed;
 
-    public CpuTopologySnapshot? GetSnapshot() => Volatile.Read(ref current);
+    private static NativeItemSamplingSubscriptionTracker<TopologyRequest> CreateSubscriptions(
+        HostManagerSamplingSubscriptionOwner owner,
+        Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch)
+        => new(owner, SamplingRoleId, static request => request.SourceKey, static _ => [SnapshotItemId],
+            static (items, _) => items.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)
+                ? new TopologyRequest("provider") : null,
+            coalesceItemsIntoLatestCapture: true, createOutputScratch);
+
+    internal CpuTopologySnapshotProvider(
+        ICpuTopologySampler sampler,
+        HostManagerSamplingSubscriptionOwner samplingOwner,
+        ILogger<CpuTopologySnapshotProvider> logger,
+        ResourceManagerLedgerOwner ledgerOwner)
+        : this(sampler, samplingOwner, logger)
+    {
+        ArgumentNullException.ThrowIfNull(ledgerOwner);
+        subscriptions = CreateSubscriptions(samplingOwner,
+            (length, alignment) => SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment));
+    }
+
+    public CpuTopologySnapshot? GetSnapshot() => captureOwner.ReadState().Snapshot;
+
+    public DeviceInformationSnapshot GetInformationSnapshot() => captureOwner.ReadInformation();
 
     public async IAsyncEnumerable<CpuTopologySnapshot?> SubscribeAsync(
         string subscriptionId,
         TimeSpan interval,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        await foreach (var state in SubscribePublishedAsync(subscriptionId, interval, cancellationToken))
+            yield return state.Snapshot;
+    }
+
+    public async IAsyncEnumerable<DeviceInformationSnapshot> SubscribeInformationAsync(
+        string subscriptionId,
+        TimeSpan interval,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var state in SubscribePublishedAsync(subscriptionId, interval, cancellationToken))
+            yield return state.InformationFields;
+    }
+
+    private async IAsyncEnumerable<CpuTopologyPublishedState> SubscribePublishedAsync(
+        string subscriptionId,
+        TimeSpan interval,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(subscriptionId);
         cancellationToken.ThrowIfCancellationRequested();
-        using var publication = publicationSignal.Subscribe();
-        var sourceKey = $"lease:{Interlocked.Increment(ref nextLeaseId)}:{subscriptionId.Trim()}";
-        lock (publicationGate)
+        using var publication = captureOwner.SubscribePublications();
+        using var lease = AcquireInformationSubscription(subscriptionId, interval, cancellationToken);
+        while (!cancellationToken.IsCancellationRequested)
         {
-            if (stopped)
-            {
-                throw new InvalidOperationException("The CPU topology provider has stopped.");
-            }
-            subscriptions.TrackPersistent(
-                new TopologyRequest(sourceKey), DateTimeOffset.UtcNow, interval);
-        }
-        SignalDemand();
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await publication.WaitAsync(cancellationToken);
-                yield return GetSnapshot();
-            }
-        }
-        finally
-        {
-            lock (publicationGate)
-            {
-                if (!stopped)
-                {
-                    subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
-                    SignalDemand();
-                }
-            }
+            await publication.WaitAsync(cancellationToken);
+            yield return captureOwner.ReadState();
         }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        var worker = new NativeSamplingSubscriptionWorker<TopologyRequest, SamplingOwnerToken>(
+            subscriptions, demandSignal,
+            _ =>
+            {
+                // Canceled enumerators may remain paused at their last value without removing their lease yet.
+                if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
+                    ResetUsageBaselineIfIdle();
+            },
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
+            TimeSpan.Zero);
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
+            await worker.RunAsync(async (plan, token) =>
             {
-                var plan = subscriptions.CreatePlan(DateTimeOffset.UtcNow);
-                if (!plan.IsActive)
-                {
-                    await demandSignal.WaitAsync(stoppingToken);
-                    continue;
-                }
+                return await CaptureAndPublishAsync(plan.OwnerToken, requireDemand: true,
+                    cancellationToken: token, captureCommitted: sourceQuerySucceeded =>
+                    {
+                        IReadOnlySet<string> queried = sourceQuerySucceeded
+                            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SnapshotItemId }
+                            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        pendingFieldCollection = fieldDeliveries.CaptureCompleted<TopologyRequest>(
+                            plan.Triggers, queried, committed: true);
+                    });
+            }, stoppingToken, planCreated: plan =>
+            {
+                pendingFieldCollection = null;
                 if (plan.Request is null)
-                {
-                    await demandSignal.WaitAsync(plan.Delay, stoppingToken);
-                    continue;
-                }
-
-                var settled = false;
-                try
-                {
-                    CpuTopologySnapshot? value;
-                    var failed = false;
-                    try
-                    {
-                        value = sampler.CaptureSnapshot();
-                    }
-                    catch (Exception exception)
-                    {
-                        value = null;
-                        failed = true;
-                        logger.LogWarning(exception, "CPU topology sampling failed.");
-                    }
-
-                    var published = false;
-                    lock (publicationGate)
-                    {
-                        if (!stopped && !stoppingToken.IsCancellationRequested)
-                        {
-                            published = plan.OwnerToken.TryPublish(() =>
-                            {
-                                Volatile.Write(ref current, value);
-                                publicationSignal.Publish();
-                            });
-                        }
-                    }
-
-                    var completedAt = DateTimeOffset.UtcNow;
-                    settled = true;
-                    var completion = !published
-                        ? subscriptions.MarkSkipped(plan.Request, completedAt)
-                        : failed
-                            ? subscriptions.MarkFailed(plan.Request, completedAt)
-                            : subscriptions.MarkSampled(plan.Request, completedAt);
-                    await demandSignal.WaitAsync(completion.Delay, stoppingToken);
-                }
-                finally
-                {
-                    if (!settled)
-                    {
-                        subscriptions.MarkSkipped(plan.Request, DateTimeOffset.UtcNow);
-                    }
-                }
-            }
+                    fieldDeliveries.Deliver<TopologyRequest>(plan.Triggers, null, freshOnly: false);
+            }, collectionCompleted: (plan, completion) =>
+            {
+                var result = pendingFieldCollection;
+                pendingFieldCollection = null;
+                if (completion == SubscriptionSampleCompletion.Canceled) return;
+                fieldDeliveries.Deliver<TopologyRequest>(plan.Triggers, result,
+                    freshOnly: plan.Request is null ? true : null);
+            });
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -146,6 +137,8 @@ public sealed class CpuTopologySnapshotProvider(
                 stopped = true;
                 subscriptions.Clear(DateTimeOffset.UtcNow);
             }
+            fieldDeliveries.RetireAll();
+            await captureOwner.DrainAndResetUsageBaselineAsync();
         }
     }
 
@@ -159,6 +152,7 @@ public sealed class CpuTopologySnapshotProvider(
                 subscriptions.Clear(DateTimeOffset.UtcNow);
             }
         }
+        fieldDeliveries.RetireAll();
         return base.StopAsync(cancellationToken);
     }
 
@@ -172,10 +166,31 @@ public sealed class CpuTopologySnapshotProvider(
                 subscriptions.Clear(DateTimeOffset.UtcNow);
             }
         }
-        base.Dispose();
-        if (ExecuteTask is null || ExecuteTask.IsCompleted)
+        fieldDeliveries.RetireAll();
+        try
         {
+            base.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (ExecuteTask?.IsCompleted == true)
+        {
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "CPU topology sampling worker failed while draining for disposal.");
+        }
+        lock (publicationGate)
+        {
+            if (ExecuteTask is null || ExecuteTask.IsCompleted)
+                subscriptions.Clear(DateTimeOffset.UtcNow);
+        }
+        lock (resourceDisposeGate)
+        {
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+            subscriptions.CloseOutputScratch();
             demandSignal.Dispose();
+            captureOwner.Dispose();
+            base.Dispose();
+            Volatile.Write(ref ownedResourcesDisposed, 1);
         }
     }
 
@@ -188,7 +203,13 @@ public sealed class CpuTopologySnapshotProvider(
         catch (SemaphoreFullException)
         {
         }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
-    private sealed record TopologyRequest(string SourceKey);
+    private sealed record TopologyRequest(string SourceKey, CancellationToken CancellationToken = default);
+
 }
+
+

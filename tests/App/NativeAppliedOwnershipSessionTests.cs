@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -45,7 +46,7 @@ public sealed class NativeAppliedOwnershipSessionTests
     }
 
     [Fact]
-    public void WorkspaceAllocatesOnlyConfiguredFixedBuffers()
+    public void WorkspaceUsesOneRegionForConfiguredRecordsAndImage()
     {
         var capacity = new NativeAppliedOwnershipCapacity
         {
@@ -58,10 +59,12 @@ public sealed class NativeAppliedOwnershipSessionTests
             ResidentBytes = 8192
         };
 
-        var workspace = new NativeAppliedOwnershipWorkspace(in capacity);
+        using var workspace = new NativeAppliedOwnershipWorkspace(in capacity, NativeAppliedOwnershipTestStorage.Create);
+        using var operation = workspace.Acquire();
 
-        Assert.Equal(7, workspace.Records.Length);
-        Assert.Equal(4096, workspace.Image.Length);
+        Assert.Equal(7UL * NativeAppliedOwnershipAbi.RecordSize + 4096UL, workspace.Length);
+        Assert.Equal(4096, operation.Image.Length);
+        operation.Complete();
     }
 
     [Fact]
@@ -76,6 +79,48 @@ public sealed class NativeAppliedOwnershipSessionTests
         };
 
         Assert.Throws<InvalidOperationException>(
-            () => new NativeAppliedOwnershipWorkspace(in capacity));
+            () => new NativeAppliedOwnershipWorkspace(in capacity, NativeAppliedOwnershipTestStorage.Create));
+    }
+}
+
+internal static class NativeAppliedOwnershipTestStorage
+{
+    internal static IComputeScratch Create(ulong length) => new OrdinaryScratch(length);
+
+    private sealed class OrdinaryScratch(ulong length) : IComputeScratch
+    {
+        private byte[]? bytes = new byte[checked((int)length)];
+        private int active;
+        public ulong Length => length;
+        public ComputeScratchLease Acquire()
+        {
+            ObjectDisposedException.ThrowIf(bytes is null, this);
+            active++;
+            return new Lease(this, bytes);
+        }
+        public void Dispose()
+        {
+            if (active != 0) throw new InvalidOperationException("Fixture storage is still in use.");
+            bytes = null;
+        }
+        private sealed class Lease(OrdinaryScratch owner, byte[] bytes) : ComputeScratchLease
+        {
+            private bool disposed;
+            internal override ulong Length => (ulong)bytes.Length;
+            internal override ulong AllocationNumber => 0;
+            internal override bool IsLoading => false;
+            internal override Memory<byte> GetMemoryChunk(ulong offset, int count)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                return bytes.AsMemory(checked((int)offset), count);
+            }
+            internal override void Complete() => ObjectDisposedException.ThrowIf(disposed, this);
+            public override void Dispose()
+            {
+                if (disposed) return;
+                disposed = true;
+                owner.active--;
+            }
+        }
     }
 }

@@ -1,5 +1,5 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.Diagnostics;
-using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Metrics;

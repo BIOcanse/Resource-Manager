@@ -43,7 +43,8 @@ internal sealed class WindowsCpuIdentityReader(ILogger? logger = null)
         {
             using var searcher = new ManagementObjectSearcher(
                 "SELECT ProcessorId, SerialNumber, UniqueId FROM Win32_Processor");
-            foreach (var row in searcher.Get().Cast<ManagementObject>())
+            using var collection = searcher.Get();
+            foreach (var row in collection.Cast<ManagementObject>())
             {
                 using (row)
                 {

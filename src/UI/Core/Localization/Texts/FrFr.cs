@@ -46,6 +46,7 @@ internal static class FrFr
         BackendPipelineNotReady = "Le pipeline de requêtes du service local n'est pas prêt.",
         NoProcessToTerminate = "Aucun processus à arrêter.",
         TerminateRequestCompleted = "La demande d'arrêt du processus est terminée.",
+        TerminateResultFormat = "{0} / {1} processus arrêtés.",
 
         WebViewInitializationFailed = "Échec de l'initialisation de l'interface intégrée. Ouvrez le dossier de diagnostics pour plus de détails.",
         FrontendIdentityVerificationFailed = "Échec de la vérification d'identité des ressources front-end. Ouvrez le dossier de diagnostics pour plus de détails.",

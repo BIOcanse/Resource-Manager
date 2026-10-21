@@ -41,7 +41,7 @@ public static class OptionalDependencyCatalog
             InstallDirectoryName: "PawnIO",
             RequiresExternalTermsAcknowledgement: true,
             RequiresElevation: true,
-            InstalledProbeRelativePaths: [],
+            InstalledProbeRelativePaths: ["PawnIOLib.dll"],
             InstallNote: "安装官方签名 PawnIO 驱动；AMD SMU Provider 后续通过 PawnIO 设备和 RyzenSMU 模块读取 PM table。该驱动必须显式安装和验证，不随基础包静默启用。",
             ReleaseSource: new GitHubReleaseSource(
                 Owner: "namazso",
@@ -70,7 +70,7 @@ public static class OptionalDependencyCatalog
             InstallDirectoryName: "PawnIO",
             RequiresExternalTermsAcknowledgement: true,
             RequiresElevation: true,
-            InstalledProbeRelativePaths: [],
+            InstalledProbeRelativePaths: ["PawnIOLib.dll"],
             InstallNote: "显式安装官方签名 PawnIO 驱动后，点击验证获取 IntelMSR 模块；用于 Intel PL1/PL2、时间窗和 OC 邮箱电压偏移。固件锁定和签名模块未开放的寄存器不会被绕过。与 AMD 通道共享系统驱动，模块按组件独立管理。",
             ReleaseSource: new GitHubReleaseSource(
                 Owner: "namazso", Repository: "PawnIO.Setup", VerifiedTag: "2.2.0",
@@ -86,8 +86,8 @@ public static class OptionalDependencyCatalog
             SourcePageUrl: "https://github.com/BIOcanse/Fan-Control-Core",
             DownloadUrl: null,
             ExternalTermsUrl: null,
-            InstallerFileName: null,
-            InstallerFilePatterns: [],
+            InstallerFileName: "FanControlCore-win-x64.zip",
+            InstallerFilePatterns: ["FanControlCore-win-x64.zip"],
             InstallDirectoryName: "FanControlCore",
             RequiresExternalTermsAcknowledgement: false,
             RequiresElevation: false,
@@ -99,22 +99,15 @@ public static class OptionalDependencyCatalog
             InstallNote: "机身风扇的读取与控制经过它。"
                 + "它是独立程序，由主程序随开随关；"
                 + "退出时会把风扇交还固件自动控制。",
-            ReleaseSource: null,
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "BIOcanse", Repository: "Fan-Control-Core", VerifiedTag: "v0.1.0",
+                VerifiedAssetName: "FanControlCore-win-x64.zip", AssetPatterns: ["FanControlCore-win-x64.zip"]),
             PayloadSource: new DependencyPayloadSource(
                 Owner: "BIOcanse",
                 Repository: "Fan-Control-Core",
                 VerifiedTag: "v0.1.0",
                 VerifiedAssetName: "FanControlCore-win-x64.zip",
-                FileNames:
-                [
-                    "FanControlCore.exe",
-                    "FanControlCore.dll",
-                    "FanControlCore.deps.json",
-                    "FanControlCore.runtimeconfig.json",
-                    "System.CodeDom.dll",
-                    "System.Management.dll",
-                    "LICENSE"
-                ])),
+                FileNames: ["FanControlCore.exe", "LICENSE"], IncludeArchiveContents: true)),
         new OptionalDependencyDefinition(
             Id: "hardware-bridge",
             Name: "硬件写入辅助进程",
@@ -123,8 +116,8 @@ public static class OptionalDependencyCatalog
             SourcePageUrl: "https://github.com/BIOcanse/Resource-Manager-HardwareBridge",
             DownloadUrl: null,
             ExternalTermsUrl: null,
-            InstallerFileName: null,
-            InstallerFilePatterns: [],
+            InstallerFileName: "ResourceManager.HardwareBridge-win-x64.zip",
+            InstallerFilePatterns: ["ResourceManager.HardwareBridge-win-x64.zip"],
             InstallDirectoryName: "HardwareBridge",
             RequiresExternalTermsAcknowledgement: false,
             RequiresElevation: false,
@@ -134,27 +127,15 @@ public static class OptionalDependencyCatalog
             // 顺带的好处是隔离 —— 碰内核的代码崩了不拖累主程序。
             InstallNote: "处理器功耗上限和电压（Curve Optimizer）的写入都经过它。"
                 + "它是独立程序，按 GPL-3.0 发布，由主程序随开随关。",
-            ReleaseSource: null,
+            ReleaseSource: new GitHubReleaseSource(
+                Owner: "BIOcanse", Repository: "Resource-Manager-HardwareBridge", VerifiedTag: "v0.1.0",
+                VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip", AssetPatterns: ["ResourceManager.HardwareBridge-win-x64.zip"]),
             PayloadSource: new DependencyPayloadSource(
                 Owner: "BIOcanse",
                 Repository: "Resource-Manager-HardwareBridge",
                 VerifiedTag: "v0.1.0",
                 VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip",
-                FileNames:
-                [
-                    "ResourceManager.HardwareBridge.exe",
-                    "ResourceManager.HardwareBridge.dll",
-                    "ResourceManager.HardwareBridge.deps.json",
-                    "ResourceManager.HardwareBridge.runtimeconfig.json",
-                    "ZenStates-Core.dll",
-                    "inpoutx64.dll",
-                    "System.CodeDom.dll",
-                    "System.Management.dll",
-                    "System.Diagnostics.EventLog.dll",
-                    "System.Diagnostics.EventLog.Messages.dll",
-                    "System.ServiceProcess.ServiceController.dll",
-                    "LICENSE"
-                ])),
+                FileNames: ["ResourceManager.HardwareBridge.exe", "LICENSE"], IncludeArchiveContents: true)),
         new OptionalDependencyDefinition(
             Id: "msi-afterburner",
             Name: "MSI Afterburner",

@@ -48,7 +48,7 @@ test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     const second_executable_offset = first_root_offset + first_root.len;
     const second_root_offset = second_executable_offset + second_executable.len;
     var rows = [_]protocol.PersistedPathInput{
-        persistedRow(10, 100, 1_000, 1_001, 1, 101, 201, 500, 0, first_executable.len, first_root_offset, first_root.len, 0),
+        persistedRow(10, 100, 1_000, 1_001, 1, 101, 201, 5_000, 0, first_executable.len, first_root_offset, first_root.len, 0),
         persistedRow(
             10,
             100,
@@ -73,6 +73,12 @@ test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     try std.testing.expectEqual(@as(u32, 0), snapshot.output.dirty_path_count);
     try std.testing.expectEqual(@as(u32, 2), snapshot.registrations[0].active_path_count);
     try std.testing.expectEqual(@as(u32, 1), snapshot.registrations[0].confirmed_root_count);
+    const imported_first_path = findPathSnapshot(
+        snapshot.paths[0..@intCast(snapshot.output.path_count)],
+        rows[0].path_handle,
+    );
+    try std.testing.expect(imported_first_path != null);
+    try std.testing.expectEqual(@as(i64, 5_000), imported_first_path.?.first_observed_utc_ms);
 
     rows[1].path_handle = rows[0].path_handle;
     input.import_generation = 2;

@@ -259,18 +259,14 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
                       onChange={(value) => selectLogicRefreshPreset(key, value)}
                     />
                   </label>
-                  <label class="settings-number-field">
-                    <span>{props.text.performance.refreshCadenceCustomLabel}</span>
-                    <input
-                      type="number"
-                      min="500"
-                      max="300000"
-                      step="100"
-                      value={setting().customValue}
-                      aria-label={`${itemText().label} ${props.text.performance.refreshCadenceCustomLabel}`}
-                      onInput={(event) => updateLogicRefreshCustomValue(key, Number(event.currentTarget.value))}
-                    />
-                  </label>
+                  <NumberField
+                    label={`${itemText().label} ${props.text.performance.refreshCadenceCustomLabel}`}
+                    value={setting().customValue}
+                    min={500}
+                    max={300000}
+                    step={100}
+                    onChange={(value) => updateLogicRefreshCustomValue(key, value)}
+                  />
                 </div>
               );
             }}

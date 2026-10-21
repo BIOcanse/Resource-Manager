@@ -9,7 +9,7 @@
 #define RM_ADLX_ERROR_INIT_FAILED -2
 #define RM_ADLX_ERROR_NO_SYSTEM -3
 #define RM_ADLX_ERROR_NO_PERF -4
-#define RM_ADLX_BRIDGE_ABI_VERSION 2
+#define RM_ADLX_BRIDGE_ABI_VERSION 5
 
 #define ADLX_OK 0
 #define ADLX_ALREADY_ENABLED 1
@@ -20,6 +20,7 @@
 #define ADLX_SDK_FULL_VERSION ((((uint64_t)1) << 48) | (((uint64_t)5) << 32) | (((uint64_t)0) << 16) | ((uint64_t)124))
 
 #define RM_ADLX_METRIC_USAGE 1
+#define RM_ADLX_METRIC_TIMESTAMP 4096
 #define RM_ADLX_METRIC_CLOCK 2
 #define RM_ADLX_METRIC_VRAM_CLOCK 4
 #define RM_ADLX_METRIC_TEMPERATURE 8
@@ -30,6 +31,7 @@
 #define RM_ADLX_METRIC_FAN 256
 #define RM_ADLX_METRIC_BOARD_POWER 512
 #define RM_ADLX_METRIC_INTAKE_TEMPERATURE 1024
+#define RM_ADLX_METRIC_MEMORY_TEMPERATURE 2048
 
 typedef int32_t ADLX_RESULT;
 typedef int32_t adlx_int;
@@ -166,6 +168,8 @@ typedef struct IADLXGPUMetricsSupportVtbl
     ADLX_RESULT (__stdcall *GetGPUVRAMRange)(IADLXGPUMetricsSupport* self, adlx_int* minValue, adlx_int* maxValue);
     ADLX_RESULT (__stdcall *GetGPUVoltageRange)(IADLXGPUMetricsSupport* self, adlx_int* minValue, adlx_int* maxValue);
     ADLX_RESULT (__stdcall *GetGPUTotalBoardPowerRange)(IADLXGPUMetricsSupport* self, adlx_int* minValue, adlx_int* maxValue);
+    ADLX_RESULT (__stdcall *GetGPUIntakeTemperatureRange)(IADLXGPUMetricsSupport* self, adlx_int* minValue, adlx_int* maxValue);
+    ADLX_RESULT (__stdcall *IsSupportedGPUIntakeTemperature)(IADLXGPUMetricsSupport* self, adlx_bool* supported);
 } IADLXGPUMetricsSupportVtbl;
 
 struct IADLXGPUMetricsSupport { const IADLXGPUMetricsSupportVtbl* pVtbl; };
@@ -190,6 +194,21 @@ typedef struct IADLXGPUMetricsVtbl
 } IADLXGPUMetricsVtbl;
 
 struct IADLXGPUMetrics { const IADLXGPUMetricsVtbl* pVtbl; };
+
+/* ADLX IPerformanceMonitoring2.h: extension follows the complete base vtable. */
+typedef struct IADLXGPUMetricsSupport1 IADLXGPUMetricsSupport1;
+typedef struct IADLXGPUMetricsSupport1Vtbl {
+    IADLXGPUMetricsSupportVtbl base;
+    ADLX_RESULT (__stdcall *IsSupportedGPUMemoryTemperature)(IADLXGPUMetricsSupport1* self, adlx_bool* supported);
+} IADLXGPUMetricsSupport1Vtbl;
+struct IADLXGPUMetricsSupport1 { const IADLXGPUMetricsSupport1Vtbl* pVtbl; };
+
+typedef struct IADLXGPUMetrics1 IADLXGPUMetrics1;
+typedef struct IADLXGPUMetrics1Vtbl {
+    IADLXGPUMetricsVtbl base;
+    ADLX_RESULT (__stdcall *GPUMemoryTemperature)(IADLXGPUMetrics1* self, adlx_double* value);
+} IADLXGPUMetrics1Vtbl;
+struct IADLXGPUMetrics1 { const IADLXGPUMetrics1Vtbl* pVtbl; };
 
 typedef struct ResourceManagerAdlxGpuMetrics
 {
@@ -216,9 +235,23 @@ typedef struct ResourceManagerAdlxGpuMetrics
     int32_t vramUsedMb;
     double hotspotTemperatureCelsius;
     double boardPowerWatts;
-    int32_t fanSpeedPercent;
+    int32_t fanSpeedRpm;
     double intakeTemperatureCelsius;
+    double memoryTemperatureCelsius;
+    int32_t identityValid;
+    int64_t sampleTimestampMilliseconds;
 } ResourceManagerAdlxGpuMetrics;
+
+typedef struct ResourceManagerAdlxGpuSelection {
+    int32_t uniqueId;
+    char pnpString[512];
+    int32_t requestedFlags;
+} ResourceManagerAdlxGpuSelection;
+
+__declspec(dllexport) uint32_t ResourceManagerAdlxGetGpuSelectionSize(void)
+{
+    return (uint32_t)sizeof(ResourceManagerAdlxGpuSelection);
+}
 
 __declspec(dllexport) uint32_t ResourceManagerAdlxGetAbiVersion(void)
 {
@@ -379,12 +412,20 @@ static void set_available(ResourceManagerAdlxGpuMetrics* output, int flag)
     output->availableFlags |= flag;
 }
 
-__declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
+static int gpu_system_loaded(int init)
+{
+    return (init == RM_ADLX_OK || init == RM_ADLX_ERROR_NO_PERF || init == RM_ADLX_ERROR_NO_SYSTEM)
+        && gSystem && gSystem->pVtbl && gSystem->pVtbl->GetGPUs;
+}
+
+static int read_gpu_metrics(
     ResourceManagerAdlxGpuMetrics* outputs,
     int capacity,
     int requestedFlags,
     char* message,
-    int messageCapacity)
+    int messageCapacity,
+    const ResourceManagerAdlxGpuSelection* selections,
+    int selectionCount)
 {
     if (!outputs || capacity <= 0)
     {
@@ -394,7 +435,7 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
 
     AcquireSRWLockExclusive(&gLock);
     int init = load_adlx(message, messageCapacity);
-    if (init != RM_ADLX_OK)
+    if (init != RM_ADLX_OK && !(!selections && requestedFlags == 0 && gpu_system_loaded(init)))
     {
         ReleaseSRWLockExclusive(&gLock);
         return init;
@@ -412,6 +453,11 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
     }
 
     adlx_uint size = gpuList->pVtbl->Size(gpuList);
+    if (!selections && size > (adlx_uint)capacity) {
+        gpuList->pVtbl->Release(gpuList);
+        ReleaseSRWLockExclusive(&gLock);
+        return 0; /* No successful truncated identity inventory. */
+    }
     debug_trace("returned GPUList Size");
     int written = 0;
     for (adlx_uint index = 0; index < size && written < capacity; index++)
@@ -437,11 +483,33 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
             copy_text(output->vendorId, sizeof(output->vendorId), text);
         if (ADLX_SUCCEEDED(gpu->pVtbl->DeviceId(gpu, &text)))
             copy_text(output->deviceId, sizeof(output->deviceId), text);
-        if (ADLX_SUCCEEDED(gpu->pVtbl->PNPString(gpu, &text)))
+        int pnpValid = ADLX_SUCCEEDED(gpu->pVtbl->PNPString(gpu, &text))
+            && text && text[0] && strlen(text) < sizeof(output->pnpString);
+        if (pnpValid)
             copy_text(output->pnpString, sizeof(output->pnpString), text);
         gpu->pVtbl->Type(gpu, &output->gpuType);
-        gpu->pVtbl->UniqueId(gpu, &output->uniqueId);
-        gpu->pVtbl->TotalVRAM(gpu, &output->totalVramMb);
+        output->identityValid = pnpValid && ADLX_SUCCEEDED(gpu->pVtbl->UniqueId(gpu, &output->uniqueId));
+
+        int flags = requestedFlags;
+        if (selections) {
+            flags = 0;
+            int matches = 0;
+            if (output->identityValid) for (int selected = 0; selected < selectionCount; selected++) {
+                if (output->uniqueId == selections[selected].uniqueId
+                    && strcmp(output->pnpString, selections[selected].pnpString) == 0) {
+                    flags = selections[selected].requestedFlags;
+                    matches++;
+                }
+            }
+            if (matches != 1 || flags == 0) { gpu->pVtbl->Release(gpu); continue; }
+        }
+        if (flags == 0) { written++; gpu->pVtbl->Release(gpu); continue; }
+
+        if ((flags & RM_ADLX_METRIC_VRAM) && gpu->pVtbl->TotalVRAM) {
+            adlx_uint totalVramMb = 0;
+            if (ADLX_SUCCEEDED(gpu->pVtbl->TotalVRAM(gpu, &totalVramMb)))
+                output->totalVramMb = totalVramMb;
+        }
 
         IADLXGPUMetricsSupport* support = NULL;
         debug_trace("calling GetSupportedGPUMetrics");
@@ -449,44 +517,56 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
         debug_trace("returned GetSupportedGPUMetrics");
         if (!ADLX_SUCCEEDED(result) || !support)
         {
+            if (support) support->pVtbl->Release(support);
             gpu->pVtbl->Release(gpu);
             continue;
         }
 
         IADLXGPUMetrics* metrics = NULL;
         debug_trace("calling GetCurrentGPUMetrics");
-        if (requestedFlags != 0)
-            gPerfServices->pVtbl->GetCurrentGPUMetrics(gPerfServices, gpu, &metrics);
+        result = gPerfServices->pVtbl->GetCurrentGPUMetrics(gPerfServices, gpu, &metrics);
+        if (!ADLX_SUCCEEDED(result) && metrics) {
+            metrics->pVtbl->Release(metrics);
+            metrics = NULL;
+        }
         debug_trace("returned GetCurrentGPUMetrics");
 
         adlx_bool supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_USAGE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUUsage(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_TIMESTAMP) && metrics
+            && ADLX_SUCCEEDED(metrics->pVtbl->TimeStamp(metrics, &output->sampleTimestampMilliseconds))) {
+            set_supported(output, RM_ADLX_METRIC_TIMESTAMP, 1);
+            if (output->sampleTimestampMilliseconds >= 0) set_available(output, RM_ADLX_METRIC_TIMESTAMP);
+        }
+        if ((flags & RM_ADLX_METRIC_USAGE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUUsage(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_USAGE, supported);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUUsage(metrics, &output->usagePercent)))
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUUsage(metrics, &output->usagePercent))
+                && output->usagePercent >= 0 && output->usagePercent <= 100)
                 set_available(output, RM_ADLX_METRIC_USAGE);
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_CLOCK) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUClockSpeed(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_CLOCK) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUClockSpeed(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_CLOCK, supported);
             output->maxGraphicsClockMhz = get_range_max(support->pVtbl->GetGPUClockSpeedRange, support);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUClockSpeed(metrics, &output->graphicsClockMhz)))
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUClockSpeed(metrics, &output->graphicsClockMhz))
+                && output->graphicsClockMhz >= 0)
                 set_available(output, RM_ADLX_METRIC_CLOCK);
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_VRAM_CLOCK) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVRAMClockSpeed(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_VRAM_CLOCK) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVRAMClockSpeed(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_VRAM_CLOCK, supported);
             output->maxMemoryClockMhz = get_range_max(support->pVtbl->GetGPUVRAMClockSpeedRange, support);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVRAMClockSpeed(metrics, &output->memoryClockMhz)))
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVRAMClockSpeed(metrics, &output->memoryClockMhz))
+                && output->memoryClockMhz >= 0)
                 set_available(output, RM_ADLX_METRIC_VRAM_CLOCK);
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_TEMPERATURE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUTemperature(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_TEMPERATURE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUTemperature(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_TEMPERATURE, supported);
             if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUTemperature(metrics, &output->temperatureCelsius)))
@@ -494,18 +574,40 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_HOTSPOT_TEMPERATURE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUHotspotTemperature(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_HOTSPOT_TEMPERATURE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUHotspotTemperature(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_HOTSPOT_TEMPERATURE, supported);
             if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUHotspotTemperature(metrics, &output->hotspotTemperatureCelsius)))
                 set_available(output, RM_ADLX_METRIC_HOTSPOT_TEMPERATURE);
         }
 
-        if ((requestedFlags & RM_ADLX_METRIC_INTAKE_TEMPERATURE) && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUIntakeTemperature(metrics, &output->intakeTemperatureCelsius)))
+        if ((flags & RM_ADLX_METRIC_INTAKE_TEMPERATURE) && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUIntakeTemperature(metrics, &output->intakeTemperatureCelsius)))
             set_available(output, RM_ADLX_METRIC_INTAKE_TEMPERATURE);
 
+        if (flags & RM_ADLX_METRIC_MEMORY_TEMPERATURE)
+        {
+            IADLXGPUMetricsSupport1* memorySupport = NULL;
+            IADLXGPUMetrics1* memoryMetrics = NULL;
+            if (ADLX_SUCCEEDED(support->pVtbl->QueryInterface(support, L"IADLXGPUMetricsSupport1", (void**)&memorySupport))
+                && memorySupport)
+            {
+                supported = 0;
+                if (ADLX_SUCCEEDED(memorySupport->pVtbl->IsSupportedGPUMemoryTemperature(memorySupport, &supported)))
+                {
+                    set_supported(output, RM_ADLX_METRIC_MEMORY_TEMPERATURE, supported);
+                    if (supported && metrics
+                        && ADLX_SUCCEEDED(metrics->pVtbl->QueryInterface(metrics, L"IADLXGPUMetrics1", (void**)&memoryMetrics))
+                        && memoryMetrics
+                        && ADLX_SUCCEEDED(memoryMetrics->pVtbl->GPUMemoryTemperature(memoryMetrics, &output->memoryTemperatureCelsius)))
+                        set_available(output, RM_ADLX_METRIC_MEMORY_TEMPERATURE);
+                }
+            }
+            if (memoryMetrics) memoryMetrics->pVtbl->base.Release((IADLXGPUMetrics*)memoryMetrics);
+            if (memorySupport) memorySupport->pVtbl->base.Release((IADLXGPUMetricsSupport*)memorySupport);
+        }
+
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_POWER) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUPower(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_POWER) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUPower(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_POWER, supported);
             if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUPower(metrics, &output->powerWatts)))
@@ -513,7 +615,7 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_BOARD_POWER) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUTotalBoardPower(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_BOARD_POWER) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUTotalBoardPower(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_BOARD_POWER, supported);
             if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUTotalBoardPower(metrics, &output->boardPowerWatts)))
@@ -521,26 +623,30 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_FAN) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUFanSpeed(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_FAN) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUFanSpeed(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_FAN, supported);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUFanSpeed(metrics, &output->fanSpeedPercent)))
+            /* GPUFanSpeed returns RPM, never PWM percentage. */
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUFanSpeed(metrics, &output->fanSpeedRpm))
+                && output->fanSpeedRpm >= 0)
                 set_available(output, RM_ADLX_METRIC_FAN);
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_VOLTAGE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVoltage(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_VOLTAGE) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVoltage(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_VOLTAGE, supported);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVoltage(metrics, &output->voltageMillivolts)))
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVoltage(metrics, &output->voltageMillivolts))
+                && output->voltageMillivolts >= 0)
                 set_available(output, RM_ADLX_METRIC_VOLTAGE);
         }
 
         supported = 0;
-        if ((requestedFlags & RM_ADLX_METRIC_VRAM) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVRAM(support, &supported)))
+        if ((flags & RM_ADLX_METRIC_VRAM) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUVRAM(support, &supported)))
         {
             set_supported(output, RM_ADLX_METRIC_VRAM, supported);
-            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVRAM(metrics, &output->vramUsedMb)))
+            if (supported && metrics && ADLX_SUCCEEDED(metrics->pVtbl->GPUVRAM(metrics, &output->vramUsedMb))
+                && output->vramUsedMb >= 0)
                 set_available(output, RM_ADLX_METRIC_VRAM);
         }
 
@@ -557,4 +663,28 @@ __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
     return written;
 }
 
+__declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(
+    ResourceManagerAdlxGpuMetrics* outputs, int capacity, int requestedFlags,
+    char* message, int messageCapacity)
+{
+    return read_gpu_metrics(outputs, capacity, requestedFlags, message, messageCapacity, NULL, 0);
+}
+
+__declspec(dllexport) int ResourceManagerAdlxReadSelectedGpuMetrics(
+    ResourceManagerAdlxGpuMetrics* outputs, int capacity,
+    const ResourceManagerAdlxGpuSelection* selections, int selectionCount,
+    char* message, int messageCapacity)
+{
+    if (!selections || selectionCount <= 0 || selectionCount > capacity) return 0;
+    for (int index = 0; index < selectionCount; index++) {
+        if (!selections[index].pnpString[0]
+            || !memchr(selections[index].pnpString, 0, sizeof(selections[index].pnpString))
+            || selections[index].requestedFlags <= 0 || (selections[index].requestedFlags & ~8191)) return 0;
+        for (int prior = 0; prior < index; prior++)
+            if (selections[prior].uniqueId == selections[index].uniqueId) return 0;
+    }
+    return read_gpu_metrics(outputs, capacity, 0, message, messageCapacity, selections, selectionCount);
+}
+
+#include "ResourceManagerAdlxDeclarations.inc"
 #include "ResourceManagerAdlxTuning.inc"

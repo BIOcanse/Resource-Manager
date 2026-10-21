@@ -44,6 +44,7 @@ public sealed partial class MainWindow : Window
         VersionRulesText.Text = text.VersionRules;
         UpdateButton.Content = text.Update;
         RepairButton.Content = text.Repair;
+        ImportDataButton.Content = text.ImportUserData;
     }
 
     private void RefreshInstallation()
@@ -78,6 +79,7 @@ public sealed partial class MainWindow : Window
         var enabled = !busy && installRoot is not null && !string.IsNullOrWhiteSpace(PackagePath.Text);
         UpdateButton.IsEnabled = enabled;
         RepairButton.IsEnabled = enabled;
+        ImportDataButton.IsEnabled = !busy && installRoot is not null;
     }
 
     private void PackagePath_TextChanged(object sender, TextChangedEventArgs args)
@@ -97,6 +99,21 @@ public sealed partial class MainWindow : Window
 
     private async void Repair_Click(object sender, RoutedEventArgs args)
         => await RunPackageActionAsync(repair: true);
+
+    private async void ImportData_Click(object sender, RoutedEventArgs args)
+    {
+        if (installRoot is null || busy) return;
+        var picker = new FileOpenPicker();
+        picker.FileTypeFilter.Add(".zip");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var archive = await picker.PickSingleFileAsync();
+        if (archive is null || !await ConfirmAsync(text.ImportUserData, text.ImportUserDataActions)) return;
+        var target = installRoot;
+        SetBusy(true);
+        try { ShowResult(await RunCommandAsync(["--import-user-data", archive.Path, target]), InfoBarSeverity.Success); }
+        catch (Exception exception) { ShowResult(exception.Message, InfoBarSeverity.Error); }
+        finally { SetBusy(false); RefreshInstallation(); }
+    }
 
     private async Task RunPackageActionAsync(bool repair)
     {
@@ -195,9 +212,16 @@ public sealed partial class MainWindow : Window
             WorkingDirectory = Path.GetDirectoryName(executable)!
         };
         foreach (var argument in args) start.ArgumentList.Add(argument);
+        var startedAt = DateTimeOffset.UtcNow;
         using var child = Process.Start(start)
             ?? throw new InvalidOperationException(text.ManagerChildFailed);
         await child.WaitForExitAsync();
+        var receipt = UpdateManagerCommand.ReadResult(args, startedAt);
+        if (receipt is not null)
+        {
+            if (!receipt.Success) throw new InvalidOperationException(receipt.Message);
+            return receipt.Message;
+        }
         if (child.ExitCode != 0)
             throw new InvalidOperationException(text.OperationFailed);
         return text.OperationSucceeded;

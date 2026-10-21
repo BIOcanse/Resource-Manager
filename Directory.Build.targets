@@ -1,0 +1,26 @@
+<Project>
+  <!-- Composite R2R recompiles the framework together with a single-file app.
+       Publish each assembly separately within the existing bounded build. -->
+  <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true' and '$(PublishSingleFile)' == 'true'">
+    <PublishReadyToRunComposite Condition="'$(PublishReadyToRunComposite)' == ''">false</PublishReadyToRunComposite>
+    <PublishReadyToRunCrossgen2ExtraArgs Condition="'$(PublishReadyToRunCrossgen2ExtraArgs)' == ''">--parallelism:1</PublishReadyToRunCrossgen2ExtraArgs>
+  </PropertyGroup>
+  <!-- TraceEvent 3.2.4 admits these same COM assemblies through both runtime
+       assets and None-copy items. Crossgen2 rejects their duplicate R2R inputs.
+       Keep runtime assets and ordinary output copies; suppress only the two
+       exact redundant package-to-root publish copies in every project. -->
+  <Target Name="AvoidDuplicateTraceEventInteropPublishCopies"
+          BeforeTargets="AssignTargetPaths"
+          Condition="'$(PublishReadyToRun)' == 'true' and '$(NuGetPackageRoot)' != ''">
+    <PropertyGroup>
+      <_TraceEventDia2Path>$([System.IO.Path]::GetFullPath('$(NuGetPackageRoot)\microsoft.diagnostics.tracing.traceevent\3.2.4\lib\netstandard2.0\Dia2Lib.dll'))</_TraceEventDia2Path>
+      <_TraceEventReloggerPath>$([System.IO.Path]::GetFullPath('$(NuGetPackageRoot)\microsoft.diagnostics.tracing.traceevent\3.2.4\lib\netstandard2.0\TraceReloggerLib.dll'))</_TraceEventReloggerPath>
+    </PropertyGroup>
+    <ItemGroup>
+      <None Update="@(None)"
+            Condition="('%(None.FullPath)' == '$(_TraceEventDia2Path)' and '%(None.Link)' == 'Dia2Lib.dll') or ('%(None.FullPath)' == '$(_TraceEventReloggerPath)' and '%(None.Link)' == 'TraceReloggerLib.dll')">
+        <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+      </None>
+    </ItemGroup>
+  </Target>
+</Project>

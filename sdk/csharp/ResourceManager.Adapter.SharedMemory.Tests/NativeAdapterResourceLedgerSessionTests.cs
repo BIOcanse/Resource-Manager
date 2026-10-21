@@ -4,6 +4,23 @@ namespace ResourceManager.Adapter.SharedMemory.Tests;
 
 public sealed class NativeAdapterResourceLedgerSessionTests
 {
+    [Theory]
+    [InlineData(0.5d, 5000d)]
+    [InlineData(uint.MaxValue + 1d, 5000d)]
+    [InlineData(30000d, uint.MaxValue + 1d)]
+    public void ConstructorRejectsUnrepresentableDurationsBeforeAcquiringNativeState(
+        double maximumSnapshotAgeMilliseconds,
+        double maximumFutureSkewMilliseconds)
+    {
+        var configuration = CreateConfiguration(1) with
+        {
+            MaximumSnapshotAge = TimeSpan.FromMilliseconds(maximumSnapshotAgeMilliseconds),
+            MaximumFutureClockSkew = TimeSpan.FromMilliseconds(maximumFutureSkewMilliseconds)
+        };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new NativeAdapterResourceLedgerSession(configuration));
+    }
+
     [Fact]
     public void ExplicitDemandAndTouchActivity_ProjectOnlyNativeAcceptedState()
     {
@@ -117,7 +134,10 @@ public sealed class NativeAdapterResourceLedgerSessionTests
     }
 
     private static NativeAdapterResourceLedgerSession CreateSession(int capacity)
-        => new(new NativeAdapterResourceLedgerConfiguration(
+        => new(CreateConfiguration(capacity));
+
+    private static NativeAdapterResourceLedgerConfiguration CreateConfiguration(int capacity)
+        => new(
             Generation: 1,
             Capacity: capacity,
             MaximumSnapshotAge: TimeSpan.FromSeconds(30),
@@ -125,7 +145,7 @@ public sealed class NativeAdapterResourceLedgerSessionTests
             ActivitySettlementInterval: TimeSpan.FromSeconds(5),
             ActivityIncrement: 64,
             ActivityDecayNumerator: 3,
-            ActivityDecayDenominator: 4));
+            ActivityDecayDenominator: 4);
 
     private static AdapterResourceSnapshot CreateSnapshot(
         long sequence,

@@ -3,7 +3,6 @@ import { BrowserRuntimePage } from "../browserRuntimes/BrowserRuntimePage";
 import { sharedBrowserRuntimeComponentId } from "../browserRuntimes/browserRuntimeTypes";
 import { ComponentAcquisitionDialog } from "./components/ComponentAcquisitionDialog";
 import { ManagementPage, managementActionKey } from "./components/ManagementPage";
-import { MigrationPanel } from "./components/MigrationPanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
@@ -13,7 +12,6 @@ import {
   isManagementInventorySubpage
 } from "./managementNavigation";
 import type { ManagementStore } from "../../stores/managementStore";
-import type { MigrationWorkbenchStore } from "../../stores/migrationStore";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
 import type { ManagedComponent, SoftwareRecord } from "../../types";
 import {
@@ -26,7 +24,6 @@ const browserRuntimeDemandId = "management.browser-runtime";
 
 interface ManagementWorkspaceProps {
   management: ManagementStore;
-  migration: MigrationWorkbenchStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
   onOpenSoftwareDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onManagementSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
@@ -34,7 +31,6 @@ interface ManagementWorkspaceProps {
 
 export function ManagementWorkspace(props: ManagementWorkspaceProps) {
   const management = props.management;
-  const migration = props.migration;
   const activeInventoryKind = () => {
     const subpage = management.activeSubpage();
     return isManagementInventorySubpage(subpage) ? subpage : null;
@@ -50,71 +46,6 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
     <Show
       when={activeInventoryKind()}
       fallback={(
-        <Show
-          when={management.activeSubpage() === browserRuntimeManagementSubpageId}
-          fallback={(
-            <section
-              id="migrationWorkbenchPage"
-              class="page active-page"
-              aria-label={uiText.workspace.migrationWorkbench}
-            >
-                <ObservationStateNotice
-                  state={migration.rootsObservation()}
-                  label={uiText.workspace.migrationRoots}
-                  onRetry={() => void migration.refreshRoots()}
-                />
-                <ObservationStateNotice
-                  state={migration.recordsObservation()}
-                  label={uiText.workspace.migrationRecords}
-                  onRetry={() => void migration.refreshRecords()}
-                />
-                <ObservationStateNotice
-                  state={migration.sessionsObservation()}
-                  label={uiText.workspace.discoverySessions}
-                  onRetry={() => void migration.refreshSessions()}
-                />
-                <MigrationPanel
-                  status={migration.status()}
-                  softwareName={migration.softwareName()}
-                  kind={migration.kind()}
-                  targetCategory={migration.targetCategory()}
-                  sourcePaths={migration.sourcePaths()}
-                  discoveryProgramRootPaths={migration.discoveryProgramRootPaths()}
-                  discoveryProcessNames={migration.discoveryProcessNames()}
-                  allowMediumRisk={migration.allowMediumRisk()}
-                  roots={migration.roots()}
-                  plan={migration.plan()}
-                  records={migration.records()}
-                  sessions={migration.sessions()}
-                  candidates={migration.candidates()}
-                  activeSessionId={migration.activeSessionId()}
-                  workbenchAvailable={migration.workbenchAvailable()}
-                  operationActionsAvailable={migration.operationActionsAvailable()}
-                  previewInProgress={migration.previewInProgress()}
-                  candidateLookupInProgress={migration.candidateLookupInProgress()}
-                  executeInProgress={migration.executeInProgress()}
-                  discoveryStartInProgress={migration.discoveryStartInProgress()}
-                  discoveryStopInProgress={migration.discoveryStopInProgress()}
-                  isRestoreInProgress={migration.isRestoreInProgress}
-                  setSoftwareName={migration.setSoftwareName}
-                  setKind={migration.setKind}
-                  setTargetCategory={migration.setTargetCategory}
-                  setSourcePaths={migration.setSourcePaths}
-                  setDiscoveryProgramRootPaths={migration.setDiscoveryProgramRootPaths}
-                  setDiscoveryProcessNames={migration.setDiscoveryProcessNames}
-                  setAllowMediumRisk={migration.setAllowMediumRisk}
-                  onPreview={migration.preview}
-                  onExecute={migration.execute}
-                  onFindCandidates={migration.findCandidates}
-                  onStartDiscovery={migration.startSession}
-                  onStopDiscovery={migration.stopSession}
-                  onUseCandidate={migration.useCandidate}
-                  onMigrateCandidate={migration.migrateCandidate}
-                  onRestore={migration.restore}
-                />
-            </section>
-          )}
-        >
           <section
             {...frontendVisibilitySurface(
               "visible.management.browser-runtime.surface",
@@ -144,7 +75,6 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
               />
             </ObservationStateBoundary>
           </section>
-        </Show>
       )}
     >
       {(activeKind) => (
@@ -163,6 +93,7 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
             onAddManualSoftware={management.openManualSoftwareModal}
             onRefresh={() => void management.refreshState(true)}
             onInstallComponent={(component) => void management.installComponent(component)}
+            onVerifyComponent={(component) => void management.verifyComponent(component)}
             onUninstallSoftware={(softwareRecord, actionKey) => void management.uninstallSoftware(softwareRecord, actionKey)}
             onOpenDetail={props.onOpenSoftwareDetail}
             onSoftwareContextMenu={props.onManagementSoftwareContextMenu}

@@ -19,8 +19,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 "--no-native-ui",
                 StringComparison.OrdinalIgnoreCase)))
         {
-            services.AddSingleton<IInteractiveUserSessionBroker,
-                WindowsInteractiveUserSessionBroker>();
             services.AddHostedService<NativeUiLaunchHostedService>();
         }
 
@@ -29,6 +27,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
     private static IServiceCollection AddResourceManagerSystem(this IServiceCollection services)
     {
+        services.AddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
         services.AddSingleton<ILocalPathOpener, WindowsExplorerPathOpener>();
         services.AddSingleton<ISystemProcessActionService, WindowsSystemProcessActionService>();
         services.AddSingleton<ILocalSystemStatusProvider, WindowsLocalSystemStatusProvider>();

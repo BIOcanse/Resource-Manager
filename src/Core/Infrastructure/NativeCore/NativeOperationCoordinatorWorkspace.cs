@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -19,9 +20,9 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     private CompiledHostManagerOperationCoordinatorPlan plan;
     private readonly NativeOperationHandle128 sessionInstanceId;
     private readonly NativeOperationHandle128 clockInstanceId;
-    private readonly NativeOperationOutput[] operationBuffer;
-    private readonly NativeOperationActionOutput[] actionBuffer;
-    private readonly NativeOperationOutput[] persistenceBuffer;
+    private readonly NativeOperationScratchLayout layout;
+    private readonly IComputeScratch scratch;
+    private bool retiring;
     private ulong nextSubmitEpoch;
     private ulong nextRequestEpoch;
     private ulong nextFeedbackEpoch;
@@ -33,9 +34,11 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     internal NativeOperationCoordinatorWorkspace(
         CompiledHostManagerOperationCoordinatorPlan plan,
         NativeOperationHandle128 sessionInstanceId,
-        NativeOperationHandle128 clockInstanceId)
+        NativeOperationHandle128 clockInstanceId,
+        Func<ulong, IComputeScratch> createScratch)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(createScratch);
         if (!plan.IsPublished)
         {
             throw new ArgumentException(
@@ -51,13 +54,27 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         this.plan = plan;
         this.sessionInstanceId = sessionInstanceId;
         this.clockInstanceId = clockInstanceId;
+        var capacity = plan.Recreate.Capacity;
+        layout = new(capacity.MaximumReadCount, capacity.MaximumActionCount,
+            capacity.MaximumOperationCount);
         var configuration = CreateConfiguration(plan, sessionInstanceId, clockInstanceId);
         session = new NativeOperationCoordinatorSession(in configuration);
-        var capacity = plan.Recreate.Capacity;
-        operationBuffer = new NativeOperationOutput[checked((int)capacity.MaximumReadCount)];
-        actionBuffer = new NativeOperationActionOutput[checked((int)capacity.MaximumActionCount)];
-        persistenceBuffer =
-            new NativeOperationOutput[checked((int)capacity.MaximumOperationCount)];
+        IComputeScratch? created = null;
+        try
+        {
+            created = createScratch(layout.Length)
+                ?? throw new InvalidOperationException("The operation scratch factory returned no resource.");
+            if (created.Length != layout.Length)
+                throw new InvalidOperationException("The operation scratch factory returned the wrong layout length.");
+            scratch = created;
+        }
+        catch (Exception error)
+        {
+            try { created?.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(error, cleanup); }
+            finally { session.Dispose(); }
+            throw;
+        }
     }
 
     internal NativeOperationHandle128 SessionInstanceId => sessionInstanceId;
@@ -119,6 +136,9 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         ulong observedMonotonicMilliseconds)
     {
         ThrowIfDisposed();
+        using var lease = scratch.Acquire(); // Before Plan can change native state.
+        using var view = new ComputeScratchView(lease);
+        var actionBuffer = view.Column<NativeOperationActionOutput>(layout.Actions, layout.ActionCapacity);
         var input = new NativeOperationPlanInput
         {
             AbiVersion = NativeOperationCoordinatorAbi.Version,
@@ -135,19 +155,21 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         var count = checked((int)output.ActionCount);
         if (count == 0)
         {
+            lease.Complete();
             return new NativeOperationPlanBatch(output, []);
         }
 
         var read = CreateReadInput(output.StateRevision, output.PlanEpoch);
         RequireOk(
-            session.ReadActions(in read, actionBuffer.AsSpan(0, count)),
+            session.ReadActions(in read, actionBuffer[..count]),
             "read actions");
         var actions = new NativeOperationActionOutput[count];
-        actionBuffer.AsSpan(0, count).CopyTo(actions);
+        actionBuffer[..count].CopyTo(actions);
         for (var index = 0; index < actions.Length; index++)
         {
             ValidateAction(in actions[index], in output);
         }
+        lease.Complete();
         return new NativeOperationPlanBatch(output, actions);
     }
 
@@ -207,6 +229,9 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     internal NativeOperationCanonicalImage ExportCanonicalNativeImageLocked()
     {
         ThrowIfDisposed();
+        using var lease = scratch.Acquire();
+        using var view = new ComputeScratchView(lease);
+        var persistenceBuffer = view.Column<NativeOperationOutput>(layout.Persistence, layout.PersistenceCapacity);
         var input = new NativeOperationPersistenceInput
         {
             AbiVersion = NativeOperationCoordinatorAbi.Version,
@@ -220,8 +245,9 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             "export persistence");
         ValidatePersistenceHeader(in header, input.OperationEpoch);
         var records = new NativeOperationOutput[checked((int)header.OperationCount)];
-        persistenceBuffer.AsSpan(0, records.Length).CopyTo(records);
+        persistenceBuffer[..records.Length].CopyTo(records);
         ValidateRecords(records, header);
+        lease.Complete();
         return new NativeOperationCanonicalImage(header, records);
     }
 
@@ -269,13 +295,17 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         {
             return [];
         }
+        using var lease = scratch.Acquire();
+        using var view = new ComputeScratchView(lease);
+        var operationBuffer = view.Column<NativeOperationOutput>(layout.Operations, layout.OperationCapacity);
         var read = CreateReadInput(snapshot.StateRevision, 0);
         RequireOk(
-            session.ReadOperations(in read, operationBuffer.AsSpan(0, count)),
+            session.ReadOperations(in read, operationBuffer[..count]),
             "read operations");
         var operations = new NativeOperationOutput[count];
-        operationBuffer.AsSpan(0, count).CopyTo(operations);
+        operationBuffer[..count].CopyTo(operations);
         ValidateRecords(operations, persistenceHeader: null);
+        lease.Complete();
         return operations;
     }
 
@@ -287,8 +317,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || output.StructSize != SizeOf<NativeOperationSnapshotOutput>()
             || output.ConfigurationGeneration != ConfigurationGeneration
             || output.StateRevision == 0
-            || output.OperationCount > operationBuffer.Length
-            || output.ActionCount > actionBuffer.Length
+            || output.OperationCount > layout.OperationCapacity
+            || output.ActionCount > layout.ActionCapacity
             || output.ActiveOperationCount > output.OperationCount
             || output.RunningOperationCount > output.ActiveOperationCount
             || output.TerminalOperationCount > output.OperationCount
@@ -327,8 +357,10 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         {
             return;
         }
-        disposed = true;
+        retiring = true;
+        scratch.Dispose(); // InUse/failure retains this session and exact handle for retry.
         session.Dispose();
+        disposed = true;
     }
 
     internal static NativeOperationHandle128 CreateRandomHandle()
@@ -409,7 +441,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || header.ClockInstanceId != clockInstanceId
             || header.OperationEpoch != expectedOperationEpoch
             || header.StateRevision == 0
-            || header.OperationCount > persistenceBuffer.Length
+            || header.OperationCount > layout.PersistenceCapacity
             || header.RecordSize != SizeOf<NativeOperationOutput>()
             || header.NextActionId == 0
             || header.Flags != 0
@@ -434,7 +466,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || header.OperationEpoch == 0
             || header.StateRevision == 0
             || header.OperationCount != records.Count
-            || header.OperationCount > persistenceBuffer.Length
+            || header.OperationCount > layout.PersistenceCapacity
             || header.RecordSize != SizeOf<NativeOperationOutput>()
             || header.NextActionId == 0
             || header.Flags != 0
@@ -535,7 +567,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     }
 
     private void ThrowIfDisposed()
-        => ObjectDisposedException.ThrowIf(disposed, this);
+        => ObjectDisposedException.ThrowIf(disposed || retiring, this);
 
     private static unsafe bool ReservedZero(in NativeOperationSubmitOutput value)
     {

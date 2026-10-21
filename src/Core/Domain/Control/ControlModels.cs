@@ -338,6 +338,13 @@ public sealed record ControlObject(
     /// </summary>
     int? AdapterIndex = null)
 {
+    /// <summary>当前监控适配器的 Windows LUID；只供执行层核对，不持久化为配置身份。</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public ulong? AdapterKey { get; init; }
+    /// <summary>Passive PNP from the exact discovered control binding, never a parsed model/ordinal.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? ExpectedPhysicalPnp { get; init; }
+
     /// <summary>这个对象现在一项都控不了。界面据此整体标灰。</summary>
     public bool IsControllable => Capabilities.Any(static capability => capability.Supported);
 }
@@ -346,3 +353,4 @@ public sealed record ControlObject(
 public sealed record ControlObjectCatalog(
     IReadOnlyList<ControlObject> Objects,
     DateTimeOffset ReadAt);
+

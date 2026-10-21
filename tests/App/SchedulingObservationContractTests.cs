@@ -244,36 +244,11 @@ public sealed class SchedulingObservationContractTests
     [Fact]
     public void CompositeMemoryUsage_DerivesPercentWithoutSubscribingToPercentMetric()
     {
-        const ulong usedHandle = 1;
-        const ulong totalHandle = 2;
-        var metricIds = new Dictionary<ulong, string>
-        {
-            [usedHandle] = "memory.usage",
-            [totalHandle] = "memory.total"
-        }.ToImmutableDictionary();
-        var catalog = new NativeMetricSnapshotCatalogProjection(
-            ImmutableArray<NativeMetricSnapshotSourcePolicyInput>.Empty,
-            ImmutableArray<NativeMetricSnapshotMetricDefinitionInput>.Empty,
-            metricIds,
-            metricIds.ToImmutableDictionary(
-                static pair => pair.Value,
-                static pair => pair.Key,
-                StringComparer.OrdinalIgnoreCase),
-            new Dictionary<ulong, string>
-            {
-                [11] = "memory-used",
-                [22] = "memory-total"
-            }.ToImmutableDictionary(),
-            new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["memory-used"] = 11,
-                ["memory-total"] = 22
-            }.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase),
-            ImmutableDictionary<ulong, NativeMetricSnapshotRuleCatalogBinding>.Empty,
-            ImmutableDictionary<ulong, NativeMetricSnapshotGpuScopeBinding>.Empty,
-            NativeMetricSnapshotCatalogHandleMap.Empty,
-            1,
-            "memory-composite-test");
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
+            compiled, [], [], [], NativeMetricSnapshotCatalogHandleMap.Empty);
+        var usedHandle = catalog.LegacyMetricHandles["memory.usage"];
+        var totalHandle = catalog.LegacyMetricHandles["memory.total"];
         var frame = new NativeMetricSnapshotCommittedFrame(
             new NativeMetricSnapshotSnapshotHeader
             {
@@ -286,18 +261,18 @@ public sealed class SchedulingObservationContractTests
             [
                 CurrentMetric(
                     usedHandle,
-                    sourceHandle: 11,
+                    sourceHandle: catalog.MetricBindings[usedHandle].SourceHandle,
                     sourceGeneration: 101,
                     observedAtMilliseconds: 1_000,
-                    valueBits: 8UL * 1024 * 1024 * 1024,
-                    NativeMetricSnapshotValueKind.Unsigned64),
+                    valueBits: BitConverter.DoubleToUInt64Bits(8d * 1024 * 1024 * 1024),
+                    NativeMetricSnapshotValueKind.Float64),
                 CurrentMetric(
                     totalHandle,
-                    sourceHandle: 22,
-                    sourceGeneration: 202,
+                    sourceHandle: catalog.MetricBindings[totalHandle].SourceHandle,
+                    sourceGeneration: 101,
                     observedAtMilliseconds: 1_000,
-                    valueBits: 32UL * 1024 * 1024 * 1024,
-                    NativeMetricSnapshotValueKind.Unsigned64)
+                    valueBits: BitConverter.DoubleToUInt64Bits(32d * 1024 * 1024 * 1024),
+                    NativeMetricSnapshotValueKind.Float64)
             ],
             ImmutableArray<NativeMetricSnapshotGpuInventoryOutput>.Empty,
             ImmutableArray<NativeMetricSnapshotRuleStateOutput>.Empty,

@@ -15,14 +15,15 @@ public sealed partial class IpHelperNetworkAttributionReader
         receiveBytesPerSecond = 0;
         sendBytesPerSecond = 0;
 
-        if (tcpRow.State != TcpStateEstablished || !TryEnableTcpDataStats(ref tcpRow))
+        if (tcpRow.State != TcpStateEstablished || !tcpDataStats.Read(tcpRow, out var enabled, out var data))
         {
             return false;
         }
-
-        if (!TryGetTcpDataStats(ref tcpRow, out var data))
+        if (!enabled)
         {
-            return false;
+            if (!tcpDataStats.SetEnabled(tcpRow, true)) return false;
+            enabledTcpStats[key] = tcpRow;
+            if (!tcpDataStats.Read(tcpRow, out enabled, out data) || !enabled) return false;
         }
 
         var current = new TcpByteCounter(data.DataBytesIn, data.DataBytesOut, now);
@@ -46,31 +47,47 @@ public sealed partial class IpHelperNetworkAttributionReader
         return true;
     }
 
-    private static bool TryEnableTcpDataStats(ref MibTcpRow row)
+    private void ReleaseTcpStats()
     {
-        var config = new TcpEstatsDataRwV0 { EnableCollection = 1 };
-        return SetPerTcpConnectionEStats(
-            ref row,
-            TcpConnectionEstatsData,
-            ref config,
-            0,
-            (uint)Marshal.SizeOf<TcpEstatsDataRwV0>(),
-            0) == ErrorSuccess;
+        foreach (var (key, row) in enabledTcpStats.ToArray())
+        {
+            if (!tcpDataStats.Read(row, out var enabled, out _) || !enabled || tcpDataStats.SetEnabled(row, false))
+                enabledTcpStats.Remove(key);
+        }
     }
 
-    private static bool TryGetTcpDataStats(ref MibTcpRow row, out TcpEstatsDataRodV0 data)
+    public void Dispose()
     {
-        return GetPerTcpConnectionEStats(
-            ref row,
-            TcpConnectionEstatsData,
-            IntPtr.Zero,
-            0,
-            0,
-            IntPtr.Zero,
-            0,
-            0,
-            out data,
-            0,
-            (uint)Marshal.SizeOf<TcpEstatsDataRodV0>()) == ErrorSuccess;
+        lock (gate)
+        {
+            ReleaseTcpStats();
+            previousTcpBytes.Clear();
+            disposed = true;
+        }
+    }
+
+    internal interface ITcpDataStats
+    {
+        bool Read(MibTcpRow row, out bool enabled, out TcpEstatsDataRodV0 data);
+        bool SetEnabled(MibTcpRow row, bool enabled);
+    }
+
+    private sealed class NativeTcpDataStats : ITcpDataStats
+    {
+        public bool Read(MibTcpRow row, out bool enabled, out TcpEstatsDataRodV0 data)
+        {
+            var result = GetPerTcpConnectionEStats(ref row, TcpConnectionEstatsData, out var config, 0,
+                (uint)Marshal.SizeOf<TcpEstatsDataRwV0>(), IntPtr.Zero, 0, 0, out data, 0,
+                (uint)Marshal.SizeOf<TcpEstatsDataRodV0>());
+            enabled = result == ErrorSuccess && config.EnableCollection != 0;
+            if (!enabled) data = default;
+            return result == ErrorSuccess;
+        }
+        public bool SetEnabled(MibTcpRow row, bool enabled)
+        {
+            var config = new TcpEstatsDataRwV0 { EnableCollection = enabled ? (byte)1 : (byte)0 };
+            return SetPerTcpConnectionEStats(ref row, TcpConnectionEstatsData, ref config, 0,
+                (uint)Marshal.SizeOf<TcpEstatsDataRwV0>(), 0) == ErrorSuccess;
+        }
     }
 }

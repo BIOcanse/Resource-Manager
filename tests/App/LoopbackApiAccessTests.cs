@@ -17,6 +17,7 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.PublicServices.AiGateway;
+using ResourceManager.App.Application.PublicServices;
 using ResourceManager.App.Application.PublicServices.AiModels;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -24,6 +25,9 @@ using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 using ResourceManager.App.Domain.PublicServices.AiModels;
+using ResourceManager.App.Domain.PublicServices;
+using ResourceManager.App.Domain.PublicServices.AiGateway;
+using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
@@ -31,10 +35,12 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.PublicServices.AiGateway;
+using ResourceManager.App.Application.Indexing;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class LoopbackApiAccessTests
+public sealed partial class LoopbackApiAccessTests
 {
     private const string Scope = "/api/optimization/smart/validation/process-effect-scope";
 
@@ -174,17 +180,76 @@ public sealed class LoopbackApiAccessTests
     [InlineData("POST", "/api/public/v1/ai/compat/openai/v1/embeddings", "/v1/embeddings")]
     [InlineData("POST", "/api/public/v1/ai/compat/openai/v1/responses", "/v1/responses")]
     [InlineData("POST", "/api/public/v1/ai/compat/anthropic/v1/messages", "/v1/messages")]
-    public async Task OpenAiCompatibility_HasNoSeparateApiKeyGate(string method, string path, string providerPath)
+    public async Task AiCompatibilityRequiresActiveKeyForItsProtocol(string method, string path, string providerPath)
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Administrator.ThrowIfCalled = true;
-        using var request = new HttpRequestMessage(new HttpMethod(method), path);
-        if (method == "POST")
-            request.Content = JsonContent.Create(new { model = "test-model" });
+        var profile = path.Contains("/anthropic/", StringComparison.Ordinal)
+            ? AiGatewayCompatibilityProfiles.Anthropic : AiGatewayCompatibilityProfiles.OpenAi;
+        var key = await fixture.Credentials.CreateAsync(new("HTTP client", profile), CancellationToken.None);
+        using var missing = await fixture.Client.SendAsync(CreateAiRequest(method, path, profile, null));
+        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
+        using var wrong = await fixture.Client.SendAsync(CreateAiRequest(method, path, profile, "invalid"));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        var other = await fixture.Credentials.CreateAsync(new("Other protocol", profile == "openai" ? "anthropic" : "openai"), CancellationToken.None);
+        using var mismatched = await fixture.Client.SendAsync(CreateAiRequest(method, path, profile, other.ApiKey));
+        Assert.Equal(HttpStatusCode.Unauthorized, mismatched.StatusCode);
+        Assert.Equal(0, fixture.Models.ForwardCalls);
+        using var request = CreateAiRequest(method, path, profile, key.ApiKey);
         using var response = await fixture.Client.SendAsync(request);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(providerPath, await response.Content.ReadAsStringAsync());
+        Assert.True(await fixture.Credentials.RevokeAsync(key.Credential.Id, CancellationToken.None));
+        using var revoked = await fixture.Client.SendAsync(CreateAiRequest(method, path, profile, key.ApiKey));
+        Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        Assert.Equal(1, fixture.Models.ForwardCalls);
+        Assert.Equal(5, fixture.PublicAccess.Evaluations);
+        Assert.Equal(5, fixture.PublicAccess.Completions);
         Assert.Equal(0, fixture.Administrator.Calls);
+    }
+
+    [Theory]
+    [InlineData(503, "service-disabled")]
+    [InlineData(403, "loopback-only")]
+    [InlineData(429, "rate-limited")]
+    public async Task PublicAccessRejectionDoesNotEnterAiHandler(int status, string reason)
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var key = await fixture.Credentials.CreateAsync(new("client", "openai"), CancellationToken.None);
+        fixture.PublicAccess.Rejection = new(false, status, reason, 0);
+        using var response = await fixture.Client.SendAsync(CreateAiRequest("POST",
+            "/api/public/v1/ai/compat/openai/v1/chat/completions", "openai", key.ApiKey));
+        Assert.Equal(status, (int)response.StatusCode);
+        Assert.Contains(reason, await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, fixture.Models.ForwardCalls);
+        Assert.Equal(1, fixture.PublicAccess.Evaluations);
+        Assert.Equal(0, fixture.PublicAccess.Completions);
+    }
+
+    [Fact]
+    public async Task PublicRequestCompletesAfterInvalidBodyAndProviderFailure()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var key = await fixture.Credentials.CreateAsync(new("client", "openai"), CancellationToken.None);
+        const string path = "/api/public/v1/ai/compat/openai/v1/chat/completions";
+        using var invalid = CreateAiRequest("POST", path, "openai", key.ApiKey);
+        invalid.Content = new StringContent("invalid JSON");
+        using var rejected = await fixture.Client.SendAsync(invalid);
+        Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        fixture.Models.FailForward = true;
+        using var failure = await fixture.Client.SendAsync(CreateAiRequest("POST", path, "openai", key.ApiKey));
+        Assert.Equal(HttpStatusCode.BadGateway, failure.StatusCode);
+        Assert.Equal(2, fixture.PublicAccess.Completions);
+    }
+
+    private static HttpRequestMessage CreateAiRequest(string method, string path, string profile, string? key)
+    {
+        var request = new HttpRequestMessage(new HttpMethod(method), path);
+        if (key is not null)
+            request.Headers.Add(profile == "anthropic" ? "x-api-key" : "Authorization",
+                profile == "anthropic" ? key : "Bearer " + key);
+        if (method == "POST") request.Content = JsonContent.Create(new { model = "test-model" });
+        return request;
     }
 
     [Fact]
@@ -230,7 +295,7 @@ public sealed class LoopbackApiAccessTests
     }
 
     [Fact]
-    public async Task OpenReadsAndModeSwitch_DoNotInspectCallerIdentity()
+    public async Task OpenReadsDoNotInspectIdentityButModeChangesRequireIt()
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Administrator.ThrowIfCalled = true;
@@ -239,10 +304,26 @@ public sealed class LoopbackApiAccessTests
         Assert.Equal(HttpStatusCode.OK, capabilities.StatusCode);
         using var status = await fixture.Client.GetAsync("/api/optimization/smart/status");
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Equal(0, fixture.Administrator.Calls);
+        fixture.Administrator.ThrowIfCalled = false;
         using var mode = await fixture.Client.PostAsJsonAsync(
-            "/api/optimization/smart/mode", new { mode = "normal" });
-        Assert.Equal(HttpStatusCode.OK, mode.StatusCode);
-        Assert.Equal("normal", fixture.Effects.Mode);
+            "/api/optimization/smart/mode", new { mode = "smart" });
+        Assert.Equal(HttpStatusCode.Unauthorized, mode.StatusCode);
+        Assert.NotEqual("smart", fixture.Effects.Mode);
+    }
+
+    [Theory]
+    [InlineData("Origin", "https://untrusted.example")]
+    [InlineData("Origin", "null")]
+    [InlineData("Host", "untrusted.example")]
+    public async Task BrowserRequestsCannotBypassHostOrOriginBoundary(string header, string value)
+    {
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/optimization/smart/run-once");
+        request.Headers.TryAddWithoutValidation(header, value);
+        using var response = await fixture.Client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, fixture.Administrator.Calls);
     }
 
@@ -257,6 +338,10 @@ public sealed class LoopbackApiAccessTests
     [InlineData("GET", "/api/debug/metrics/capture")]
     [InlineData("GET", "/api/debug/history/requirements")]
     [InlineData("GET", "/api/debug/freedom-points")]
+    [InlineData("GET", "/api/index/files/search?query=private")]
+    [InlineData("GET", "/api/index/software/test")]
+    [InlineData("GET", "/api/public/v1/index/files/search?query=private")]
+    [InlineData("GET", "/api/public/v1/index/software/test")]
     public async Task AuthenticatedRoutes_RejectOrdinaryAndForgedCallers(string method, string path)
     {
         await using var fixture = await Fixture.StartAsync();
@@ -276,8 +361,7 @@ public sealed class LoopbackApiAccessTests
     [Theory]
     [InlineData("frontend")]
     [InlineData("administrator")]
-    [InlineData("debug")]
-    public async Task AuthenticatedRoutes_AcceptEitherIdentityOrDebug(string admission)
+    public async Task AuthenticatedRoutesAcceptFrontendOrAdministrator(string admission)
     {
         await using var fixture = await Fixture.StartAsync();
         if (admission == "frontend")
@@ -307,28 +391,26 @@ public sealed class LoopbackApiAccessTests
     }
 
     [Fact]
-    public async Task DebugSwitch_TakesEffectOnTheNextHttpRequest()
+    public async Task DebugSwitchDoesNotBypassAuthentication()
     {
         await using var fixture = await Fixture.StartAsync();
-        using var before = await fixture.Client.GetAsync(Scope);
-        Assert.Equal(HttpStatusCode.Unauthorized, before.StatusCode);
         fixture.Runtime.SetDebug(true);
+        using var anonymous = await fixture.Client.GetAsync(Scope);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
         fixture.Administrator.ThrowIfCalled = true;
-        using var during = await fixture.Client.GetAsync(Scope);
-        Assert.Equal(HttpStatusCode.OK, during.StatusCode);
-        fixture.Runtime.SetDebug(false);
-        fixture.Administrator.ThrowIfCalled = false;
-        using var after = await fixture.Client.GetAsync(Scope);
-        Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
+        using var authorized = await fixture.Client.GetAsync(Scope);
+        Assert.Equal(HttpStatusCode.OK, authorized.StatusCode);
         Assert.Equal(1, fixture.Effects.ValidationCalls);
-        Assert.Equal(2, fixture.Administrator.Calls);
+        Assert.Equal(1, fixture.Administrator.Calls);
     }
 
     [Fact]
-    public async Task DebugBypass_DoesNotTurnInvalidPayloadsIntoSuccessfulOperations()
+    public async Task AuthenticatedDiagnosticsStillRejectInvalidPayloads()
     {
         await using var fixture = await Fixture.StartAsync();
         fixture.Runtime.SetDebug(true);
+        fixture.Client.DefaultRequestHeaders.Add(LoopbackApiAccessToken.HeaderName, fixture.Token);
         fixture.Administrator.ThrowIfCalled = true;
         using var response = await fixture.Client.PostAsJsonAsync(
             Scope + "/close", new { scopeId = "not-a-guid" });
@@ -343,8 +425,15 @@ public sealed class LoopbackApiAccessTests
     [InlineData("GET", "/api/settings/app", true)]
     [InlineData("GET", "/api/settings/dashboard", true)]
     [InlineData("POST", "/api/subscriptions/stream", true)]
-    [InlineData("POST", "/api/optimization/smart/mode", true)]
+    [InlineData("POST", "/api/optimization/smart/mode", false)]
+    [InlineData("POST", "/api/optimization/smart/run-once", false)]
+    [InlineData("GET", "/api/debug/amd-smu", false)]
+    [InlineData("GET", "/api/debug/gpu-control", false)]
     [InlineData("GET", "/api/public/v1/resources", true)]
+    [InlineData("GET", "/api/index/files/search", false)]
+    [InlineData("GET", "/api/index/software/{softwareId}", false)]
+    [InlineData("GET", "/api/public/v1/index/files/search", false)]
+    [InlineData("GET", "/api/public/v1/index/software/{softwareId}", false)]
     [InlineData("POST", "/api/public/v1/ai/compat/openai/v1/chat/completions", true)]
     [InlineData("GET", "/api/debug/metrics/capture", false)]
     [InlineData("GET", "/api/debug/history/requirements", false)]
@@ -376,11 +465,18 @@ public sealed class LoopbackApiAccessTests
         public AdministratorReader Administrator { get; } = new();
         public EffectRecorder Effects { get; } = new();
         public Sampler Sampler { get; } = new();
+        public PublicAccessPolicy PublicAccess { get; } = new();
+        public AiGatewayCredentialService Credentials { get; } = new(new CredentialStore());
+        public AiModelService Models { get; } = new();
+        public LoopbackApiAccessToken Tokens { get; private set; } = new(_ => true, (_, _) => true);
         public int HttpRequests;
         public Exception? LastRequestError;
-        public string Token => App.Services.GetRequiredService<LoopbackApiAccessToken>().Token;
+        private string? token;
+        public string Token => token ??= Tokens.Issue(new TrustedAdapterCallerIdentity(
+            1, 1, 7, 1, "test-sid", 1, 1, 1, false, Path.GetFullPath("fixture.exe"), default, 1));
 
-        public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null)
+        public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null, ISoftwareFileIndex? fileIndex = null,
+            bool actualSessionCredentials = false)
         {
             Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT")));
             var fixture = new Fixture();
@@ -391,12 +487,15 @@ public sealed class LoopbackApiAccessTests
                 {
                     ContentRootPath = fixture.root, EnvironmentName = Environments.Production
                 });
+                if (actualSessionCredentials) fixture.Tokens = new LoopbackApiAccessToken(builder.Environment);
                 builder.Logging.ClearProviders();
                 builder.WebHost.UseUrls("http://127.0.0.1:0");
                 builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.Full);
                 builder.Services.RemoveAll<IHostedService>();
                 var pipeline = LoopbackApiPipelineConfigurator.Compile(processIsAdministrator: true);
                 pipeline.ConfigureServices(builder.Services);
+                builder.Services.RemoveAll<IHostedService>();
+                builder.Services.AddSingleton(fixture.Tokens);
                 builder.Services.AddSingleton<IRuntimePlanProvider>(fixture.Runtime);
                 builder.Services.AddSingleton(provider =>
                 {
@@ -406,18 +505,23 @@ public sealed class LoopbackApiAccessTests
                     return new HostManagerNativeActionTransactionRuntime(
                         provider.GetRequiredService<HostManagerTransactionJournalDeploymentRuntime>(),
                         new HostManagerAppliedOwnershipRuntime(
-                            provider.GetRequiredService<HostManagerAppliedOwnershipDeploymentRuntime>(), retirements),
-                        retirements);
+                            provider.GetRequiredService<HostManagerAppliedOwnershipDeploymentRuntime>(), retirements,
+                            provider.GetRequiredService<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfLocalResourceManager>().CreateScratch),
+                        retirements, provider.GetRequiredService<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfLocalResourceManager>().CreateScratch);
                 });
                 builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(fixture.Administrator);
                 builder.Services.AddSingleton<IHostManagerSmartCoordinator>(fixture.Effects);
                 builder.Services.AddSingleton<IHostManagerProcessEffectValidationScopeControl>(fixture.Effects);
                 builder.Services.AddSingleton<IHostManagerMemoryCleanupValidationEvidenceControl>(fixture.Effects);
                 builder.Services.AddSingleton<IMetricSampler>(fixture.Sampler);
-                builder.Services.AddSingleton<ILocalAiModelService, AiModelService>();
+                builder.Services.AddSingleton<ILocalAiModelService>(fixture.Models);
                 builder.Services.AddSingleton<IAiGatewayLocalModelPolicy, AiModelPolicy>();
+                builder.Services.AddSingleton<IAiGatewayCredentialService>(fixture.Credentials);
+                builder.Services.AddSingleton<ILocalPublicServiceAccessPolicy>(fixture.PublicAccess);
                 if (topology is not null)
                     builder.Services.AddSingleton(topology);
+                if (fileIndex is not null)
+                    builder.Services.AddSingleton(fileIndex);
                 fixture.App = builder.Build();
                 fixture.App.Use(async (context, next) =>
                 {
@@ -454,10 +558,12 @@ public sealed class LoopbackApiAccessTests
             // Only this fixture's temporary token directory is removed.
             if (Directory.Exists(root))
             {
-                foreach (var path in Directory.EnumerateFiles(Path.Combine(root, "Config", "Runtime")))
-                    File.Delete(path);
-                Directory.Delete(Path.Combine(root, "Config", "Runtime"));
-                Directory.Delete(Path.Combine(root, "Config"));
+                if (Directory.Exists(Path.Combine(root, "Config", "Runtime")))
+                {
+                    foreach (var path in Directory.EnumerateFiles(Path.Combine(root, "Config", "Runtime"))) File.Delete(path);
+                    Directory.Delete(Path.Combine(root, "Config", "Runtime"));
+                }
+                if (Directory.Exists(Path.Combine(root, "Config"))) Directory.Delete(Path.Combine(root, "Config"));
                 Directory.Delete(root);
             }
         }
@@ -550,11 +656,49 @@ public sealed class LoopbackApiAccessTests
 
     private sealed class AiModelService : ILocalAiModelService
     {
+        public int ForwardCalls { get; private set; }
+        public bool FailForward { get; set; }
         public Task<AiModelRuntimeStatus> GetStatusAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<AiModelDescriptor>> ListModelsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AiModelLoadResult> LoadAsync(AiModelLoadRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AiModelUnloadResult> UnloadAsync(AiModelUnloadRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task ForwardAsync(HttpContext context, string relativePath, CancellationToken cancellationToken)
-            => context.Response.WriteAsync(relativePath, cancellationToken);
+        {
+            ForwardCalls++;
+            if (FailForward) throw new HttpRequestException("Simulated provider failure.");
+            return context.Response.WriteAsync(relativePath, cancellationToken);
+        }
+    }
+
+    private sealed class CredentialStore : IAiGatewayCredentialStore
+    {
+        private readonly List<StoredAiGatewayCredential> values = [];
+        public Task<IReadOnlyList<StoredAiGatewayCredential>> LoadAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<StoredAiGatewayCredential>>(values.ToArray());
+        public Task AddAsync(StoredAiGatewayCredential credential, CancellationToken cancellationToken)
+        { values.Add(credential); return Task.CompletedTask; }
+        public Task<bool> DeleteAsync(string credentialId, CancellationToken cancellationToken)
+            => Task.FromResult(values.RemoveAll(item => item.Id == credentialId) > 0);
+    }
+
+    private sealed class PublicAccessPolicy : ILocalPublicServiceAccessPolicy
+    {
+        private readonly HashSet<ulong> pending = [];
+        public int Evaluations { get; private set; }
+        public int Completions { get; private set; }
+        public LocalPublicServiceAccessDecision? Rejection { get; set; }
+        public Task<LocalPublicServiceAccessDecision> EvaluateAsync(HttpContext context, CancellationToken cancellationToken)
+        {
+            var handle = checked((ulong)++Evaluations);
+            if (Rejection is not null) return Task.FromResult(Rejection);
+            Assert.True(pending.Add(handle));
+            return Task.FromResult(new LocalPublicServiceAccessDecision(true, 200, "allowed", handle));
+        }
+        public ValueTask CompleteAsync(ulong completionHandle, CancellationToken cancellationToken)
+        {
+            Assert.True(pending.Remove(completionHandle));
+            Completions++;
+            return ValueTask.CompletedTask;
+        }
     }
 }

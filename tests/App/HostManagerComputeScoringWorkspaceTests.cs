@@ -14,7 +14,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10);
         facts = facts with { Processes = facts.Processes.Select(p => p with
@@ -32,7 +32,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var first = workspace.Score(
             1,
@@ -65,7 +65,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration(cpuBaselineRatio: 0.5);
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
 
         var result = workspace.Score(
@@ -93,7 +93,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var idleInventory = CreateInventory();
         var saturatedInventory = idleInventory with
         {
@@ -130,7 +130,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, firstMemoryPercent: 10);
         var firstCapacity = new HostManagerWelfareCapacityInput(0.5, 0.5, 0.5, 0.5, 2);
@@ -172,10 +172,10 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             firstConfiguration.CpuBaselineRatio);
         using var firstWorkspace = new HostManagerComputeScoringWorkspace(
             in firstConfiguration,
-            cpuScoring);
+            cpuScoring, CreateScratchFixture);
         using var secondWorkspace = new HostManagerComputeScoringWorkspace(
             in secondConfiguration,
-            cpuScoring);
+            cpuScoring, CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, firstMemoryPercent: 10);
         var capacity = new HostManagerWelfareCapacityInput(0.5, 0.5, 0.5, 0.5, 2);
@@ -205,7 +205,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             in configuration,
             HostManagerTestPlanFactory.CreateCpuScoring(
                 HostManagerTestPlanFactory.CreateCpuTopology(1),
-                configuration.CpuBaselineRatio));
+                configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, firstMemoryPercent: 10);
         var firstCapacity = new HostManagerWelfareCapacityInput(
@@ -232,8 +232,8 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var secondConfig = firstConfig;
         secondConfig.WelfareUtilizationBaselinePercent = 100;
         var plan = HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1));
-        using var firstWorkspace = new HostManagerComputeScoringWorkspace(in firstConfig, plan);
-        using var secondWorkspace = new HostManagerComputeScoringWorkspace(in secondConfig, plan);
+        using var firstWorkspace = new HostManagerComputeScoringWorkspace(in firstConfig, plan, CreateScratchFixture);
+        using var secondWorkspace = new HostManagerComputeScoringWorkspace(in secondConfig, plan, CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10);
         var capacity = new HostManagerWelfareCapacityInput(0, 0, 0, 0, 2);
@@ -252,7 +252,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10) with
         {
@@ -310,7 +310,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var source = CreateFacts(inventory, firstMemoryPercent: 10);
         var attributionGeneration = checked(source.Generation + 11);
@@ -395,7 +395,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var full = CreateFacts(inventory, firstMemoryPercent: 10);
         var sparse = full with
@@ -446,7 +446,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var full = CreateFacts(inventory, firstMemoryPercent: 10);
         var cpuOnly = full with
@@ -478,7 +478,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1), configuration.CpuBaselineRatio), CreateScratchFixture);
         var inventory = CreateInventory();
         var fullFacts = CreateFacts(inventory, firstMemoryPercent: 10);
         var full = workspace.Score(1, fullFacts, inventory, CreateRuntimeFacts(), CreateCpuResidency());

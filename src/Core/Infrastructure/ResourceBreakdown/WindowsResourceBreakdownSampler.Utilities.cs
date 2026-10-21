@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
@@ -106,7 +106,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (result.Count > 0)
         {
             result.Add(SamplingDatasetIds.ProcessInventory);
-            result.Add(SamplingDatasetIds.ProcessAttribution);
+            if (request.SchedulingMetricMask != SchedulingProcessMetricMask.None
+                || request.MetricIds.Any(IsSupportedBarMetric))
+                result.Add(SamplingDatasetIds.ProcessAttribution);
         }
         return result;
     }
@@ -128,7 +130,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         ResourceBreakdownSampleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return request.MetricIds.Any(IsSupportedMetric)
+        return request.MetricIds.Any(IsSupportedBarMetric)
             || request.PublicationDatasetIds.Contains(
                 SamplingDatasetIds.ProcessAttribution,
                 StringComparer.OrdinalIgnoreCase);
@@ -157,12 +159,23 @@ public sealed partial class WindowsResourceBreakdownSampler
             result.Add(ResourceBreakdownMetricIds.NetworkRawReceive);
             result.Add(ResourceBreakdownMetricIds.NetworkRawSend);
         }
+        if (dueDatasets.Contains(SamplingDatasetIds.ProcessObservedNetworkTraffic))
+            result.UnionWith(ProcessMetricFieldRegistry.Definitions.Where(static field => field.DatasetId == SamplingDatasetIds.ProcessObservedNetworkTraffic)
+                .Select(static field => field.Name));
+        if (dueDatasets.Contains(SamplingDatasetIds.ProcessObservedPhysicalDiskIo))
+            result.UnionWith(ProcessMetricFieldRegistry.Definitions.Where(static field => field.DatasetId == SamplingDatasetIds.ProcessObservedPhysicalDiskIo)
+                .Select(static field => field.Name));
+        if (dueDatasets.Contains(ResourceManager.ReadWrite.ProcessFields.ProcessMetricDatasetIds.GpuResidency))
+            result.Add(ResourceManager.ReadWrite.ProcessFields.WindowsPdhProcessGpuFields.FieldName);
         return result
             .Order(MonitoringMetricIdPriorityComparer.Instance)
             .ToArray();
     }
 
     private static bool IsSupportedMetric(string metricId)
+        => ProcessMetricFieldRegistry.Find(metricId) is not null || IsSupportedBarMetric(metricId);
+
+    private static bool IsSupportedBarMetric(string metricId)
     {
         return metricId.Equals("cpu.usage", StringComparison.OrdinalIgnoreCase)
             || metricId.Equals("memory.usage", StringComparison.OrdinalIgnoreCase)
@@ -223,7 +236,7 @@ public sealed partial class WindowsResourceBreakdownSampler
 
     private static IReadOnlyList<string> ExpandHardwareMetricIds(IReadOnlyList<string> metricIds)
     {
-        var expanded = metricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var expanded = metricIds.Where(IsSupportedBarMetric).ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (metricIds.Any(IsNetworkMetric))
         {
             expanded.Add("network.total.receiveBytesPerSec");
@@ -264,8 +277,9 @@ public sealed partial class WindowsResourceBreakdownSampler
     }
 
     private static NetworkAttributionReadRequest CreateNetworkAttributionRequest(
-        HardwareMetricSnapshot snapshot,
-        IReadOnlyList<ProcessResourceSample> processSamples)
+        HardwareMetricSnapshot? snapshot,
+        IReadOnlyList<ProcessResourceSample> processSamples,
+        NetworkAttributionReadMode mode = NetworkAttributionReadMode.Legacy)
     {
         var processNames =
             new Dictionary<int, string>(processSamples.Count);
@@ -281,9 +295,9 @@ public sealed partial class WindowsResourceBreakdownSampler
         }
 
         return new NetworkAttributionReadRequest(
-            snapshot.Items.GetValueOrDefault("network.total.receiveBytesPerSec")?.NumericValue ?? 0,
-            snapshot.Items.GetValueOrDefault("network.total.sendBytesPerSec")?.NumericValue ?? 0,
-            processNames);
+            snapshot?.Items.GetValueOrDefault("network.total.receiveBytesPerSec")?.NumericValue ?? 0,
+            snapshot?.Items.GetValueOrDefault("network.total.sendBytesPerSec")?.NumericValue ?? 0,
+            processNames) { Mode = mode };
     }
 
     private static bool IsGpuMetric(string metricId)
@@ -371,14 +385,23 @@ public sealed partial class WindowsResourceBreakdownSampler
         string? WindowApplicationUserModelId,
         string? WindowTitle,
         string? UserName,
-        string? Architecture);
+        string? Architecture,
+        long PrivateWorkingSetBytes = 0,
+        bool HasPrivateWorkingSetBytes = false)
+    {
+        internal ProcessBasicMetricObservation BasicMetrics { get; init; } = ProcessBasicMetricObservation.Unavailable;
+    }
 
     private readonly record struct ProcessSampleBatch(
         SamplingObservationStatus Status,
         uint EnumeratedCount,
         uint ExcludedCount,
         uint SkippedCount,
-        IReadOnlyList<ProcessResourceSample> Samples);
+        IReadOnlyList<ProcessResourceSample> Samples)
+    {
+        internal DateTimeOffset CapturedAt { get; init; }
+        internal TimeSpan? CpuInterval { get; init; }
+    }
 
     internal readonly record struct SchedulingProcessSampleAccounting(
         SamplingObservationStatus Status,
@@ -420,3 +443,4 @@ public sealed partial class WindowsResourceBreakdownSampler
         return string.IsNullOrWhiteSpace(clean) ? null : clean;
     }
 }
+

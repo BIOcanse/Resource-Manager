@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -7,21 +8,15 @@ namespace ResourceManager.App.Infrastructure.Optimization.Transactions;
 
 internal sealed partial class HostManagerTransactionJournalRuntime
 {
-    public static async Task<HostManagerTransactionJournalRuntime> OpenAsync(
+    internal static HostManagerTransactionJournalRuntime Create(
         string hostManagerDataRoot,
         CompiledHostManagerTransactionJournalRecreatePlan recreatePlan,
         CompiledHostManagerTransactionJournalHotPublishPlan hotPublishPlan,
-        CancellationToken cancellationToken)
+        Func<ulong, IComputeScratch> createScratch)
     {
-        var configuration = CreateConfiguration(
-            hostManagerDataRoot,
-            recreatePlan,
-            hotPublishPlan);
-        var runtime = new HostManagerTransactionJournalRuntime(
-            configuration,
-            hotPublishPlan);
-        await runtime.InitializeAsync(cancellationToken);
-        return runtime;
+        ArgumentNullException.ThrowIfNull(createScratch);
+        var configuration = CreateConfiguration(hostManagerDataRoot, recreatePlan, hotPublishPlan);
+        return new HostManagerTransactionJournalRuntime(configuration, hotPublishPlan, createScratch);
     }
 
     private static HostManagerTransactionJournalRuntimeConfiguration CreateConfiguration(

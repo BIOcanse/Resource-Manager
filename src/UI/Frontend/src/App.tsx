@@ -17,7 +17,6 @@ import { TaskCenterDialog } from "./ui/task-center/TaskCenterDialog";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
 import { publishCommittedDocumentTheme } from "./presentation/documentTheme";
 import { createManagementStore } from "./stores/managementStore";
-import { createMigrationStore } from "./stores/migrationStore";
 import { createMonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
@@ -98,18 +97,9 @@ export default function App() {
     reportSource: frontendRuntime.sources.optimizationReports,
     requestClient: frontendRuntime.requestClient
   });
-  const migration = createMigrationStore({
-    confirmDialog,
-    showToast,
-    refreshSoftware: management.refreshSoftware,
-    enabled: runtimeCapabilities.runtimeEffectsEnabled,
-    operations: frontendRuntime.operationRegistry,
-    tasks: frontendRuntime.taskRegistry
-  });
   onCleanup(() => {
     unsubscribeTaskCenter();
     optimization.dispose();
-    migration.dispose();
     management.dispose();
   });
   function selectManagementSubpage(subpage: ManagementSubpageId) {
@@ -120,7 +110,6 @@ export default function App() {
   const softwareActions = useSoftwareActions({
     management,
     monitor,
-    migration,
     setActivePage,
     openManagementSubpage: selectManagementSubpage,
     confirmDialog,
@@ -186,11 +175,6 @@ export default function App() {
       refreshState: management.refreshState,
       refreshBrowserRuntimes: management.refreshBrowserRuntimes
     },
-    migration: {
-      refreshRoots: migration.refreshRoots,
-      refreshRecords: migration.refreshRecords,
-      refreshSessions: migration.refreshSessions
-    },
     optimization: {
       refreshReports: optimization.refreshReports,
       refreshHostManagerStatus: optimization.refreshHostManagerStatus
@@ -214,9 +198,8 @@ export default function App() {
       setActivePage("monitor");
     }
     const subpage = management.activeSubpage();
-    const softwareSubpage = !["Dependency", "Support", "BrowserRuntime", "Migration"].includes(subpage);
-    if ((subpage === "Migration" && !runtimeCapabilities.runtimeEffectsEnabled())
-      || (softwareSubpage && !runtimeCapabilities.mutablePersistenceEnabled())) {
+    const softwareSubpage = !["Dependency", "Support", "BrowserRuntime"].includes(subpage);
+    if (softwareSubpage && !runtimeCapabilities.mutablePersistenceEnabled()) {
       management.setActiveSubpage("Dependency");
     }
   });
@@ -324,7 +307,6 @@ export default function App() {
           activePage={activePage}
           monitor={monitor}
           management={management}
-          migration={migration}
           optimization={optimization}
           settings={settings}
           runtimeCapabilities={runtimeCapabilities}
@@ -357,7 +339,6 @@ export default function App() {
       <SoftwareDetailModal
         detail={softwareActions.softwareDetail()}
         notice={softwareActions.softwareDetailNotice()}
-        migrationRecords={softwareActions.softwareDetailMigrationRecords()}
         actionInProgress={softwareActions.softwareDetailActionInProgress()}
         gpuPlacementEnabled={runtimeCapabilities.gpuPlacementEnabled()}
         preciseGpuPlacementEnabled={preciseGpuPlacementEnabled() && runtimeCapabilities.gpuPlacementEnabled()}
@@ -366,10 +347,6 @@ export default function App() {
         gpuPlacementSettings={softwareActions.gpuPlacementSettings()}
         gpuPlacementLoading={softwareActions.gpuPlacementLoading()}
         onClose={softwareActions.closeSoftwareDetail}
-        onMigrateData={() => void softwareActions.migrateSoftwareDataFromDetail()}
-        onMigrateRoot={() => void softwareActions.migrateSoftwareRootFromDetail()}
-        onRestoreRecord={(record) => void softwareActions.restoreSoftwareDetailMigrationRecord(record)}
-        onRestoreAll={() => void softwareActions.restoreAllSoftwareDetailMigrations()}
         onOpenPath={(path) => void softwareActions.openLocalPath(path)}
         onConfirmPortableRoot={() => void softwareActions.confirmPortableRootFromDetail()}
         onSaveGpuPlacementSoftwarePolicy={(policy) => softwareActions.saveGpuPlacementSoftwarePolicyFromDetail(policy)}

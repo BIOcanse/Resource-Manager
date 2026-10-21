@@ -25,28 +25,35 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/public/v1/index/files/search", async (
             string query,
             int? limit,
+            HttpContext context,
             ISoftwareFileIndex fileIndex,
             CancellationToken cancellationToken) =>
         {
+            if (!ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.TryOpenCallerToken(context, out var token)) return Results.StatusCode(403);
+            using var callerToken = token;
             if (string.IsNullOrWhiteSpace(query))
             {
                 return Results.BadRequest(new { error = "query-required" });
             }
 
-            return Results.Ok(await fileIndex.SearchAsync(
+            return Results.Ok(ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.FilterSearch(callerToken, await fileIndex.SearchAsync(
                 query,
                 Math.Clamp(limit ?? 50, 1, 200),
-                cancellationToken));
-        }).AllowAnonymous();
+                cancellationToken)));
+        });
 
         app.MapGet("/api/public/v1/index/software/{softwareId}", async (
             string softwareId,
+            HttpContext context,
             ISoftwareFileIndex fileIndex,
             CancellationToken cancellationToken) =>
         {
-            var snapshot = await fileIndex.GetSnapshotAsync(softwareId, cancellationToken);
+            if (!ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.TryOpenCallerToken(context, out var token)) return Results.StatusCode(403);
+            using var callerToken = token;
+            var snapshot = await fileIndex.GetSnapshotAsync(softwareId, cancellationToken,
+                ResourceManager.App.Infrastructure.Indexing.WindowsFileIndexCallerAccess.CreatePathFilter(callerToken));
             return snapshot is null ? Results.NotFound() : Results.Ok(snapshot);
-        }).AllowAnonymous();
+        });
 
         return app;
     }

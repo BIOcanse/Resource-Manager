@@ -507,11 +507,12 @@ pub fn updateResource(
     }
     try validateTableBindings(view, resource.table_slot_index, &view.tables[resource.table_slot_index]);
     try ensureSnapshotAdvance(view.header);
+    const next_row_revision = try increment(resource.row_revision);
     resource.size_bytes = spec.size_bytes;
     resource.recovery_cost_coefficient = spec.recovery_cost_coefficient;
     resource.recoverability = spec.recoverability;
     resource.access_loss_impact = spec.access_loss_impact;
-    resource.row_revision = try increment(resource.row_revision);
+    resource.row_revision = next_row_revision;
     advanceSnapshotAssumeAvailable(view.header);
 }
 
@@ -563,10 +564,12 @@ pub fn beginUse(view: layout.View, handle: protocol.ResourceHandle) !protocol.Us
         return error.ResourceBusy;
     }
     try ensureSnapshotAdvance(view.header);
-    resource.use_generation = try increment(resource.use_generation);
+    const next_use_generation = try increment(resource.use_generation);
+    // Both generation and activity exhaustion reject before changing the row.
+    try activity.touch(resource, view.header, 1);
+    resource.use_generation = next_use_generation;
     resource.active_lease_generation = resource.use_generation;
     resource.protected_use = 1;
-    try activity.touch(resource, view.header, 1);
     advanceSnapshotAssumeAvailable(view.header);
     return .{ .resource = handle, .lease_generation = resource.active_lease_generation };
 }
@@ -1134,6 +1137,7 @@ fn validateCounts(view: layout.View) !void {
     var table_count: u32 = 0;
     var reserved_resource_capacity: u64 = 0;
     var resource_count: u32 = 0;
+    var listed_resource_count: u32 = 0;
     var ledger_cell_count: u32 = 0;
     var partition_count: u32 = 0;
     var capability_count: u32 = 0;
@@ -1182,6 +1186,15 @@ fn validateCounts(view: layout.View) !void {
                 slot.active_partition_operation_generation !=
                     view.header.active_operation_generation))
         {
+            return error.InvalidState;
+        }
+        // Bound all table-chain visits before walking this table, including corrupt input.
+        reserved_resource_capacity = std.math.add(
+            u64,
+            reserved_resource_capacity,
+            slot.capacity,
+        ) catch return error.InvalidState;
+        if (reserved_resource_capacity > view.header.config.resource_capacity) {
             return error.InvalidState;
         }
         var table_cell_count: u32 = 0;
@@ -1237,6 +1250,7 @@ fn validateCounts(view: layout.View) !void {
             return error.InvalidState;
         }
         var listed_count: u32 = 0;
+        var listed_pending_count: u32 = 0;
         var listed_index = slot.first_resource_slot;
         var previous_index = layout.no_slot;
         while (listed_index != layout.no_slot) {
@@ -1252,17 +1266,17 @@ fn validateCounts(view: layout.View) !void {
             previous_index = listed_index;
             listed_index = resource.next_table_resource;
             listed_count += 1;
+            if (resource.pending_slot_index != layout.no_slot) listed_pending_count += 1;
         }
-        if (listed_count != slot.occupied_count) return error.InvalidState;
-        reserved_resource_capacity = std.math.add(
-            u64,
-            reserved_resource_capacity,
-            slot.capacity,
-        ) catch return error.InvalidState;
+        if (listed_count != slot.occupied_count or
+            listed_pending_count != slot.active_pending_count)
+        {
+            return error.InvalidState;
+        }
+        // Owner and predecessor checks make these chains disjoint and non-repeating.
+        // Equality with the independent fixed-region count below proves coverage.
+        listed_resource_count += listed_count;
         table_count += 1;
-    }
-    if (reserved_resource_capacity > view.header.config.resource_capacity) {
-        return error.InvalidState;
     }
     for (view.resources, 0..) |*slot, resource_index| {
         if (slot.flags & ~layout.occupied_flag != 0 or slot.reserved0 != 0 or slot.reserved1 != 0 or
@@ -1272,7 +1286,7 @@ fn validateCounts(view: layout.View) !void {
         }
         if (!isOccupied(slot)) continue;
         if (slot.generation == 0 or slot.row_revision == 0 or slot.activity_revision == 0 or
-            slot.use_generation == 0 or protocol.isZeroId(slot.resource_uid) or
+            slot.use_generation == 0 or
             slot.table_slot_index >= view.tables.len or
             slot.ledger_cell_index >= view.ledger_cells.len or
             !isOccupied(&view.tables[slot.table_slot_index]) or
@@ -1458,7 +1472,6 @@ fn validateCounts(view: layout.View) !void {
         }
         capability_count += 1;
     }
-    var started_pending_count: u32 = 0;
     var uncertain_pending_count: u32 = 0;
     for (view.pending) |*slot| {
         if (slot.flags & ~layout.occupied_flag != 0 or !allZero(slot.reserved0[0..])) {
@@ -1474,6 +1487,7 @@ fn validateCounts(view: layout.View) !void {
         }
         const resource = &view.resources[slot.intent.resource.resource_slot_index];
         if (!isOccupied(resource) or
+            slot.intent.resource.table_slot_index != resource.table_slot_index or
             resource.pending_slot_index !=
                 @as(u32, @intCast((@intFromPtr(slot) - @intFromPtr(view.pending.ptr)) /
                     @sizeOf(layout.PendingSlot))) or
@@ -1484,11 +1498,11 @@ fn validateCounts(view: layout.View) !void {
         if (!operation_sequence.intentBelongsToCurrent(view, slot.intent)) {
             return error.InvalidState;
         }
-        if (slot.state == .effect_started) started_pending_count += 1;
         if (slot.state == .effect_uncertain) uncertain_pending_count += 1;
         pending_count += 1;
     }
     if (table_count != view.header.table_count or resource_count != view.header.resource_count or
+        listed_resource_count != resource_count or
         ledger_cell_count != view.header.ledger_cell_count or
         partition_count != view.header.partition_count or
         capability_count != view.header.capability_count or pending_count != view.header.pending_count)
@@ -1501,29 +1515,9 @@ fn validateCounts(view: layout.View) !void {
         return error.InvalidState;
     }
     if (view.header.active_operation_phase == .recovery_required and
-        started_pending_count + uncertain_pending_count == 0)
+        pending_count == 0)
     {
         return error.InvalidState;
-    }
-    for (view.tables, 0..) |*table, table_index| {
-        if (!isOccupied(table)) continue;
-        var resources_for_table: u32 = 0;
-        var pending_for_table: u32 = 0;
-        for (view.resources) |*resource| {
-            if (isOccupied(resource) and resource.table_slot_index == table_index) {
-                resources_for_table += 1;
-            }
-        }
-        for (view.pending) |*pending| {
-            if (isOccupied(pending) and pending.intent.resource.table_slot_index == table_index) {
-                pending_for_table += 1;
-            }
-        }
-        if (resources_for_table != table.occupied_count or
-            pending_for_table != table.active_pending_count)
-        {
-            return error.InvalidState;
-        }
     }
     var tombstone_count: u32 = 0;
     for (view.uid_buckets) |*bucket| {

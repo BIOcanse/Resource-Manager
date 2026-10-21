@@ -1,0 +1,22 @@
+{
+  "x86": {
+    "pointerSize": 4,
+    "pageFileSize": 20,
+    "totalOffset": 8,
+    "usedOffset": 12,
+    "peakOffset": 16,
+    "systemInfoSize": 36,
+    "pageSizeOffset": 4,
+    "frameHex": "140000000000000015CD5B0739300000A05B0000"
+  },
+  "x64": {
+    "pointerSize": 8,
+    "pageFileSize": 32,
+    "totalOffset": 8,
+    "usedOffset": 16,
+    "peakOffset": 24,
+    "systemInfoSize": 48,
+    "pageSizeOffset": 4,
+    "frameHex": "200000000000000015CD5B07000000003930000000000000A05B000000000000"
+  }
+}

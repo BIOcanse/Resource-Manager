@@ -46,6 +46,7 @@ internal static class FiFi
         BackendPipelineNotReady = "Paikallisen palvelun pyyntöputki ei ole valmis.",
         NoProcessToTerminate = "Lopetettavaa prosessia ei ole.",
         TerminateRequestCompleted = "Prosessin lopetuspyyntö on valmis.",
+        TerminateResultFormat = "{0} / {1} prosessia lopetettiin.",
 
         WebViewInitializationFailed = "Upotetun käyttöliittymän alustaminen epäonnistui. Katso lisätiedot diagnostiikkakansiosta.",
         FrontendIdentityVerificationFailed = "Käyttöliittymäresurssien identiteetin tarkistus epäonnistui. Katso lisätiedot diagnostiikkakansiosta.",

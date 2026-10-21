@@ -1,3 +1,7 @@
+using System.Collections.Concurrent;
+using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.ReadWrite.Native;
+using ResourceManager.ReadWrite.Windows.Metrics.Topology;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -20,6 +24,10 @@ public sealed class HostManagerMetricSnapshotOwner :
     private readonly ILogger<HostManagerMetricSnapshotOwner> logger;
     private readonly TaskCompletionSource ready =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly Func<ulong, uint, INativeMetricSnapshotScratch> createScratch;
+    // Actual holders remain owned until their final close succeeds, including
+    // failures arriving later from already-retired external leases.
+    private readonly ConcurrentDictionary<WorkspaceHolder, byte> workspaces = new();
     private WorkspaceHolder? current;
     private CompiledHostManagerMetricSnapshotPlan? appliedPlan;
     private ulong workspaceIdentitySequence;
@@ -31,8 +39,25 @@ public sealed class HostManagerMetricSnapshotOwner :
         HostManagerMetricSnapshotRuntime deployment,
         HostManagerMetricSnapshotCatalogTopologySource topologySource,
         IHostEnvironment environment,
-        ILogger<HostManagerMetricSnapshotOwner> logger)
+        ILogger<HostManagerMetricSnapshotOwner> logger,
+        ResourceManagerLedgerOwner ledgerOwner)
+        : this(planProvider, deployment, topologySource, environment, logger,
+            (bytes, alignment) => MetricSnapshotScratch.Create(
+                (ledgerOwner ?? throw new ArgumentNullException(nameof(ledgerOwner))).CreateScratch,
+                bytes, alignment))
     {
+        ArgumentNullException.ThrowIfNull(ledgerOwner);
+    }
+
+    internal HostManagerMetricSnapshotOwner(
+        RuntimePlanProvider planProvider,
+        HostManagerMetricSnapshotRuntime deployment,
+        HostManagerMetricSnapshotCatalogTopologySource topologySource,
+        IHostEnvironment environment,
+        ILogger<HostManagerMetricSnapshotOwner> logger,
+        Func<ulong, uint, INativeMetricSnapshotScratch> createScratch)
+    {
+        this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.topologySource = topologySource;
@@ -80,6 +105,20 @@ public sealed class HostManagerMetricSnapshotOwner :
         return Task.CompletedTask;
     }
 
+    internal bool TryAcquire(out WorkspaceLease? lease)
+    {
+        ThrowIfDisposed();
+        gate.EnterReadLock();
+        try
+        {
+            if (current is null) { lease = null; return false; }
+            current.AddReference();
+            lease = new WorkspaceLease(current);
+            return true;
+        }
+        finally { gate.ExitReadLock(); }
+    }
+
     internal WorkspaceLease Acquire()
     {
         ThrowIfDisposed();
@@ -125,19 +164,20 @@ public sealed class HostManagerMetricSnapshotOwner :
         }
     }
 
-    internal void RefreshTopologyIfRequested()
+    internal NativeMetricSnapshotCatalogTopologySnapshot? RefreshTopologyIfRequested()
     {
         if (!topologyRefresh.HasPending)
         {
-            return;
+            return null;
         }
 
         lock (reconfigurationGate)
         {
+            RetryWorkspaceCloses();
             var requestedTicket = topologyRefresh.CaptureRequested();
             if (!topologyRefresh.IsPending(requestedTicket))
             {
-                return;
+                return null;
             }
 
             WorkspaceHolder? observed;
@@ -154,13 +194,30 @@ public sealed class HostManagerMetricSnapshotOwner :
             }
             if (observed is null || plan is null)
             {
-                return;
+                return null;
             }
 
             WorkspaceHolder? replacement = null;
+            NativeMetricSnapshotCatalogTopologySnapshot? topology = null;
             try
             {
-                replacement = CreateWorkspace(plan);
+                topology = topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
+                RequireGpuTopology(topology);
+                var priorCatalog = observed.Workspace.ReadCatalog();
+                var availableTopology = RetainUnavailableOptionalIdentities(topology, priorCatalog);
+                var desiredCatalog = ProjectCatalog(plan, availableTopology, priorCatalog.HandleMap);
+                if (CanRetainCatalog(priorCatalog, desiredCatalog))
+                {
+                    observed.UpdateTopology(topology);
+                    topologyRefresh.Confirm(requestedTicket);
+                    return topology;
+                }
+                // CreateWorkspace consumes the original capture references even if creation fails.
+                topology = topology with { IgclFanDirectoryReference = null, NpuEngineDirectoryReference = null };
+                replacement = CreateWorkspace(plan, availableTopology);
                 gate.EnterWriteLock();
                 try
                 {
@@ -193,13 +250,41 @@ public sealed class HostManagerMetricSnapshotOwner :
             catch (Exception ex)
             {
                 replacement?.Retire();
+                topology = (topology ?? observed.ReadTopology()) with
+                {
+                    GpuStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    StorageStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    FanStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NvmlFanStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IgclFanStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NotebookOemFanStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    BatteryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NpuEngineStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NpuMemoryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NetworkInterfaceStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    NumaStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IntelCpuCoreStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IntelCpuPackageStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IntelCpuLogicalProcessorStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IntelCpuDieStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    IntelPlatformStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable
+                };
+                if (ReferenceEquals(current, observed)) observed.UpdateTopology(topology);
                 logger.LogWarning(
                     ex,
-                    "The exact GPU topology changed, but the metric-snapshot catalog could not be rebuilt.");
+                    "The device topology could not be refreshed; the prior metric-snapshot catalog remains declared.");
             }
+            finally { try { topology?.IgclFanDirectoryReference?.Dispose(); } finally { topology?.NpuEngineDirectoryReference?.Dispose(); } }
+            return topology;
         }
     }
 
+    internal static NativeMetricSnapshotCatalogTopologySnapshot RetainUnavailableOptionalIdentities(
+        NativeMetricSnapshotCatalogTopologySnapshot topology, NativeMetricSnapshotCatalogProjection prior)
+        => ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsMetricCatalogTopologyPublication.RetainUnavailableOptionalIdentities(topology, prior);
+
+    internal static bool CanRetainCatalog(NativeMetricSnapshotCatalogProjection prior, NativeMetricSnapshotCatalogProjection desired)
+        => ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsMetricCatalogTopologyPublication.CanRetainCatalog(prior, desired);
     internal T Execute<T>(Func<NativeMetricSnapshotWorkspace, T> operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
@@ -213,6 +298,7 @@ public sealed class HostManagerMetricSnapshotOwner :
         {
             if (disposed)
             {
+                RetryWorkspaceCloses();
                 return;
             }
             if (started)
@@ -237,9 +323,28 @@ public sealed class HostManagerMetricSnapshotOwner :
             {
                 gate.ExitWriteLock();
             }
-            previous?.ReleaseOwnerReference();
-            gate.Dispose();
+            var failures = new List<Exception>();
+            try { previous?.ReleaseOwnerReference(); }
+            catch (Exception exception) { failures.Add(exception); }
+            try { RetryWorkspaceCloses(previous); }
+            catch (Exception exception) { failures.Add(exception); }
+            finally { gate.Dispose(); }
+            if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+            if (failures.Count > 1) throw new AggregateException(failures);
         }
+    }
+
+    private void RetryWorkspaceCloses(WorkspaceHolder? skip = null)
+    {
+        var failures = new List<Exception>();
+        foreach (var holder in workspaces.Keys)
+        {
+            if (ReferenceEquals(holder, skip)) continue;
+            try { holder.CloseIfUnused(); }
+            catch (Exception exception) { failures.Add(exception); }
+        }
+        if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures.Count > 1) throw new AggregateException(failures);
     }
 
     private void OnPublished(CompiledRuntimePlan plan)
@@ -250,6 +355,13 @@ public sealed class HostManagerMetricSnapshotOwner :
         var desired = hostPlan.MetricSnapshot;
         lock (reconfigurationGate)
         {
+            try { RetryWorkspaceCloses(); }
+            catch (Exception exception)
+            {
+                if (throwOnFailure) throw;
+                logger.LogError(exception, "A retired metric-snapshot workspace is still closing; replacement is blocked.");
+                return;
+            }
             var initial = current is null;
             var canApplyHot = !initial && deployment.CanApplyHot(hostPlan);
             gate.EnterReadLock();
@@ -399,29 +511,26 @@ public sealed class HostManagerMetricSnapshotOwner :
     }
 
     private WorkspaceHolder CreateWorkspace(
-        CompiledHostManagerMetricSnapshotPlan plan)
+        CompiledHostManagerMetricSnapshotPlan plan,
+        NativeMetricSnapshotCatalogTopologySnapshot? topology = null)
     {
         NativeMetricSnapshotWorkspace? workspace = null;
+        WorkspaceHolder? holder = null;
         try
         {
-            workspace = new NativeMetricSnapshotWorkspace(
+            RetryWorkspaceCloses();
+            workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
                 plan,
                 ResolvePersistencePath(
-                    plan.Recreate.PersistenceRelativePath));
-            var topology = topologySource.Capture();
-            if (topology.GpuStatus
-                    != NativeMetricSnapshotCatalogTopologyStatus.Complete
-                || topology.Generation == 0)
-            {
-                throw new InvalidOperationException(
-                    "The required exact GPU topology is unavailable.");
-            }
-            var catalog = NativeMetricSnapshotCatalogProjection.Create(
-                plan,
-                topology.GpuAdapters,
-                topology.StorageSensors,
-                topology.SystemFans,
-                workspace.CreateCatalogHandleMap());
+                    plan.Recreate.PersistenceRelativePath), createScratch);
+            topology ??= topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
+            RequireGpuTopology(topology);
+            if (current is { } active)
+                topology = RetainUnavailableOptionalIdentities(topology, active.Workspace.ReadCatalog());
+            var catalog = ProjectCatalog(plan, topology, workspace.CreateCatalogHandleMap());
             var now = DateTimeOffset.UtcNow;
             var catalogHeader = workspace.ReplaceCatalog(
                 catalog,
@@ -433,17 +542,43 @@ public sealed class HostManagerMetricSnapshotOwner :
                 throw new InvalidOperationException(
                     "The native metric-snapshot catalog does not match the compiled manifest projection.");
             }
-            var holder = new WorkspaceHolder(
+            holder = new WorkspaceHolder(
                 NextWorkspaceIdentity(),
-                workspace);
+                workspace,
+                topology,
+                closedHolder => workspaces.TryRemove(closedHolder, out _));
+            workspaces.TryAdd(holder, 0);
             workspace = null;
+            topology = null; // The registered holder now owns every Native and directory close obligation.
+            holder.RetainDirectories();
+            holder.ReleaseInitialReferences();
             return holder;
         }
-        finally
+        catch (Exception failure)
         {
-            workspace?.Dispose();
+            var failures = new List<Exception> { failure };
+            try { holder?.Retire(); }
+            catch (Exception exception) { failures.Add(exception); }
+            try { workspace?.Dispose(); }
+            catch (Exception exception) { failures.Add(exception); }
+            try { topology?.IgclFanDirectoryReference?.Dispose(); }
+            catch (Exception exception) { failures.Add(exception); }
+            try { topology?.NpuEngineDirectoryReference?.Dispose(); }
+            catch (Exception exception) { failures.Add(exception); }
+            if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+            throw new AggregateException(failures);
         }
     }
+
+    private static void RequireGpuTopology(NativeMetricSnapshotCatalogTopologySnapshot topology)
+        => ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsMetricCatalogTopologyPublication.RequireGpuTopology(topology);
+
+    private static NativeMetricSnapshotCatalogProjection ProjectCatalog(
+        CompiledHostManagerMetricSnapshotPlan plan,
+        NativeMetricSnapshotCatalogTopologySnapshot topology,
+        NativeMetricSnapshotCatalogHandleMap handleMap)
+        => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, topology.GpuAdapters,
+            topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor, topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory);
 
     private string ResolvePersistencePath(string relativePath)
     {
@@ -503,6 +638,9 @@ public sealed class HostManagerMetricSnapshotOwner :
 
         internal ulong WorkspaceIdentity { get; }
 
+        internal NativeMetricSnapshotCatalogTopologySnapshot Topology
+            => (Volatile.Read(ref holder) ?? throw new ObjectDisposedException(nameof(WorkspaceLease))).ReadTopology();
+
         internal bool TryPublish<T>(
             Func<NativeMetricSnapshotWorkspace, T> publication,
             out T result)
@@ -520,19 +658,66 @@ public sealed class HostManagerMetricSnapshotOwner :
             => Interlocked.Exchange(ref holder, null)?.Release();
     }
 
-    internal sealed class WorkspaceHolder(
-        ulong identity,
-        NativeMetricSnapshotWorkspace workspace)
+    internal sealed class WorkspaceHolder
     {
         private readonly object publicationGate = new();
         private int referenceCount = 1;
         private int retired;
+        private NativeMetricSnapshotCatalogTopologySnapshot topology;
+        private IDisposable? intelFanDirectoryLease;
+        private IDisposable? npuEngineDirectoryLease;
+        private IDisposable? initialIntelDirectoryReference;
+        private IDisposable? initialNpuDirectoryReference;
+        private readonly Action<WorkspaceHolder>? onClosed;
+        private bool closed;
+        private Exception? closeFailure;
+        internal Exception? CloseFailure => Volatile.Read(ref closeFailure);
 
-        internal NativeMetricSnapshotWorkspace Workspace { get; } = workspace;
+        internal WorkspaceHolder(
+            ulong identity,
+            NativeMetricSnapshotWorkspace workspace,
+            NativeMetricSnapshotCatalogTopologySnapshot initialTopology,
+            Action<WorkspaceHolder>? onClosed = null)
+        {
+            if (identity == 0) throw new ArgumentOutOfRangeException(nameof(identity));
+            ArgumentNullException.ThrowIfNull(workspace);
+            ArgumentNullException.ThrowIfNull(initialTopology);
+            Identity = identity;
+            Workspace = workspace;
+            topology = initialTopology;
+            this.onClosed = onClosed;
+            initialIntelDirectoryReference = initialTopology.IgclFanDirectoryReference;
+            initialNpuDirectoryReference = initialTopology.NpuEngineDirectoryReference;
+        }
 
-        internal ulong Identity { get; } = identity != 0
-            ? identity
-            : throw new ArgumentOutOfRangeException(nameof(identity));
+        // Called once, after registry ownership is established. Partial acquisition
+        // failure remains represented by this same holder's non-null fields.
+        internal void RetainDirectories()
+        {
+            intelFanDirectoryLease = WindowsIntelFanTopology.RetainDirectory(topology.SystemFans);
+            npuEngineDirectoryLease = topology.NpuEngineDirectory?.AcquireLease();
+        }
+
+        internal void ReleaseInitialReferences()
+        {
+            lock (publicationGate)
+            {
+                var failures = new List<Exception>();
+                try { initialIntelDirectoryReference?.Dispose(); initialIntelDirectoryReference = null; }
+                catch (Exception exception) { failures.Add(exception); }
+                try { initialNpuDirectoryReference?.Dispose(); initialNpuDirectoryReference = null; }
+                catch (Exception exception) { failures.Add(exception); }
+                if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+                if (failures.Count > 1) throw new AggregateException(failures);
+            }
+        }
+
+        internal NativeMetricSnapshotCatalogTopologySnapshot ReadTopology() => Volatile.Read(ref topology);
+        internal void UpdateTopology(NativeMetricSnapshotCatalogTopologySnapshot observed) => Volatile.Write(ref topology, observed);
+
+        internal NativeMetricSnapshotWorkspace Workspace { get; }
+
+        internal ulong Identity { get; }
 
         internal void AddReference()
         {
@@ -579,9 +764,39 @@ public sealed class HostManagerMetricSnapshotOwner :
 
         internal void Release()
         {
-            if (Interlocked.Decrement(ref referenceCount) == 0)
+            // A lease releases its reference exactly once. The original owner
+            // already retains this holder, so a close failure transfers no count.
+            if (Interlocked.Decrement(ref referenceCount) == 0) CloseIfUnused();
+        }
+
+        internal void CloseIfUnused()
+        {
+            lock (publicationGate)
             {
-                Workspace.Dispose();
+                if (closed || Volatile.Read(ref referenceCount) != 0) return;
+                try
+                {
+                    // Keep directory loans too if Native/endUse is still closing.
+                    Workspace.Dispose();
+                    var failures = new List<Exception>();
+                    try { ReleaseInitialReferences(); }
+                    catch (Exception exception) { failures.Add(exception); }
+                    try { intelFanDirectoryLease?.Dispose(); intelFanDirectoryLease = null; }
+                    catch (Exception exception) { failures.Add(exception); }
+                    try { npuEngineDirectoryLease?.Dispose(); npuEngineDirectoryLease = null; }
+                    catch (Exception exception) { failures.Add(exception); }
+                    if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+                    if (failures.Count > 1) throw new AggregateException(failures);
+                    closed = true;
+                    Volatile.Write(ref closeFailure, null);
+                    onClosed?.Invoke(this);
+                }
+                catch (Exception exception)
+                {
+                    // Keep the first real close failure until this holder closes.
+                    Interlocked.CompareExchange(ref closeFailure, exception, null);
+                    throw;
+                }
             }
         }
     }
@@ -648,3 +863,4 @@ public sealed class HostManagerMetricSnapshotOwner :
         }
     }
 }
+

@@ -99,6 +99,9 @@ public static class BackendMessageCodes
 
         /// <summary>压缩包形式的组件已解压到安装目录。参数：无。</summary>
         public const byte ComponentFilesExtracted = 23;
+
+        /// <summary>无法取得组件声明的运行文件；检查网络后可重试验证。参数：无。</summary>
+        public const byte RuntimeFilesUnavailable = 24;
     }
 
     public static class Software
@@ -124,10 +127,10 @@ public static class BackendMessageCodes
         /// <summary>手动分类/补录项不直接代表卸载器。参数：无。</summary>
         public const byte ManualClassificationNoUninstall = 7;
 
-        /// <summary>受控软件卸载策略需要独立记录，当前只支持数据迁移恢复。参数：无。</summary>
+        /// <summary>受控软件需要独立的卸载策略，当前没有可用的卸载入口。参数：无。</summary>
         public const byte ControlledNoUninstall = 8;
 
-        /// <summary>资源管理器自身不能从这里卸载或迁移。参数：无。</summary>
+        /// <summary>资源管理器自身请使用 UninstallResourceManager.exe 卸载。参数：无。</summary>
         public const byte SelfNoUninstall = 9;
 
         /// <summary>适配软件需要先在注册/manifest 里声明卸载策略。参数：无。</summary>

@@ -1,4 +1,4 @@
-import type { ManagedComponent, MigrationRoots, SoftwareRecord } from "./types";
+import type { ManagedComponent, SoftwareRecord } from "./types";
 import { getHostMessageTransport } from "./host/hostMessageTransport.ts";
 import { uiText } from "./text.ts";
 
@@ -156,27 +156,6 @@ export function isSameOrUnderPath(path: string, root: string) {
 
 export function normalizePathForCompare(path: string) {
   return textOrEmpty(path).replaceAll("/", "\\").replace(/[\\]+$/g, "").toLowerCase();
-}
-
-export function getRootMigrationPaths(paths: string[], roots: MigrationRoots | null) {
-  return uniqueTextValues(paths)
-    .filter(pathLooksUsable)
-    .filter((path) => !isManagedResourceManagerPath(path, roots));
-}
-
-export function isManagedResourceManagerPath(path: string, roots: MigrationRoots | null) {
-  if (!roots) {
-    return false;
-  }
-
-  const managedRoots = [
-    roots.userDataRoot,
-    roots.miscRoot,
-    roots.dependencyRoot,
-    roots.managedSoftwareRoot
-  ].filter(Boolean) as string[];
-
-  return managedRoots.some((root) => isSameOrUnderPath(path, root));
 }
 
 export function formatCapabilityFlags(flags: Array<[unknown, string]>) {

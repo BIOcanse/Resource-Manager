@@ -4,15 +4,7 @@ const process_scores = @import("process_scores.zig");
 const aggregation = @import("software_aggregation.zig");
 const cpu_weights = @import("cpu_weights.zig");
 
-const ProcessWork = struct {
-    row: protocol.ProcessInput,
-    cpu_score: f64,
-};
-
-const GpuWork = struct {
-    row: protocol.GpuInput,
-    gpu_score: f64,
-};
+const scratch = @import("scratch.zig");
 
 pub const Session = struct {
     allocator: std.mem.Allocator,
@@ -24,12 +16,6 @@ pub const Session = struct {
     last_gpu_source_generation: u64,
     last_gpu_topology_generation: u64,
     last_gpu_topology_fingerprint: u64,
-    processes: []ProcessWork,
-    gpus: []GpuWork,
-    process_identity_order: []u32,
-    process_aggregate_order: []u32,
-    gpu_identity_order: []u32,
-    gpu_aggregate_order: []u32,
 
     pub fn create(config: *const protocol.Config, raw_cpu_weights: []const f64) !*Session {
         if (!protocol.validateConfig(config)) return error.InvalidConfiguration;
@@ -38,20 +24,6 @@ pub const Session = struct {
         errdefer allocator.free(shares);
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
-        const process_count: usize = @intCast(config.maximum_process_count);
-        const gpu_count: usize = @intCast(config.maximum_gpu_row_count);
-        const processes = try allocator.alloc(ProcessWork, process_count);
-        errdefer allocator.free(processes);
-        const gpus = try allocator.alloc(GpuWork, gpu_count);
-        errdefer allocator.free(gpus);
-        const process_identity_order = try allocator.alloc(u32, process_count);
-        errdefer allocator.free(process_identity_order);
-        const process_aggregate_order = try allocator.alloc(u32, process_count);
-        errdefer allocator.free(process_aggregate_order);
-        const gpu_identity_order = try allocator.alloc(u32, gpu_count);
-        errdefer allocator.free(gpu_identity_order);
-        const gpu_aggregate_order = try allocator.alloc(u32, gpu_count);
-        errdefer allocator.free(gpu_aggregate_order);
         self.* = .{
             .allocator = allocator,
             .config = config.*,
@@ -61,24 +33,12 @@ pub const Session = struct {
             .last_gpu_source_generation = 0,
             .last_gpu_topology_generation = 0,
             .last_gpu_topology_fingerprint = 0,
-            .processes = processes,
-            .gpus = gpus,
-            .process_identity_order = process_identity_order,
-            .process_aggregate_order = process_aggregate_order,
-            .gpu_identity_order = gpu_identity_order,
-            .gpu_aggregate_order = gpu_aggregate_order,
         };
         return self;
     }
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
-        allocator.free(self.gpu_aggregate_order);
-        allocator.free(self.gpu_identity_order);
-        allocator.free(self.process_aggregate_order);
-        allocator.free(self.process_identity_order);
-        allocator.free(self.gpus);
-        allocator.free(self.processes);
         allocator.free(self.cpu_capacity_shares);
         allocator.destroy(self);
     }
@@ -138,7 +98,10 @@ pub const Session = struct {
             .process_capacity = self.config.maximum_process_count,
             .gpu_capacity = self.config.maximum_gpu_row_count,
             .output_capacity = self.config.maximum_output_count,
-            .reserved = .{ 0, 0, 0, 0 },
+            .scratch_byte_count = scratch.Layout.init(&self.config).byte_count,
+            .scratch_alignment = scratch.alignment,
+            .reserved0 = 0,
+            .reserved = .{ 0, 0 },
         };
     }
 };
@@ -152,6 +115,8 @@ pub fn score(
     gpu_capacity: u32,
     output_pointer: ?[*]protocol.ScoreOutput,
     output_capacity: u32,
+    scratch_pointer: ?*anyopaque,
+    scratch_length: u64,
     snapshot: *protocol.Snapshot,
 ) protocol.Status {
     lock(&session.mutex);
@@ -215,6 +180,14 @@ pub fn score(
     const welfare = process_scores.calculateWelfare(&session.config, envelope) catch
         return .invalid_facts;
 
+    if (scratch_length < scratch.Layout.init(&session.config).byte_count) return .buffer_too_small;
+    const work = scratch.View.init(&session.config, scratch_pointer, scratch_length) orelse return .invalid_argument;
+    if (!scratch.disjoint(scratch_pointer.?, scratch_length, process_pointer, envelope.process_count, protocol.ProcessInput) or
+        !scratch.disjoint(scratch_pointer.?, scratch_length, gpu_pointer, envelope.gpu_row_count, protocol.GpuInput) or
+        !scratch.disjoint(scratch_pointer.?, scratch_length, output_pointer, envelope.output_capacity, protocol.ScoreOutput) or
+        !scratch.disjoint(scratch_pointer.?, scratch_length, @as(?*const protocol.GenerationEnvelope, envelope), 1, protocol.GenerationEnvelope) or
+        !scratch.disjoint(scratch_pointer.?, scratch_length, @as(?*protocol.Snapshot, snapshot), 1, protocol.Snapshot)) return .invalid_argument;
+
     var local_eligible_process_count: u32 = 0;
     for (process_rows, 0..) |row, index| {
         const status = validateProcess(session, envelope, &row, cpu_complete, gpu_complete);
@@ -227,19 +200,19 @@ pub fn score(
             0,
         ) catch
             return .invalid_facts else 0;
-        session.processes[index] = .{ .row = row, .cpu_score = score_value };
-        session.process_identity_order[index] = @intCast(index);
-        session.process_aggregate_order[index] = @intCast(index);
+        work.processes[index] = .{ .row = row, .cpu_score = score_value };
+        work.process_identity_order[index] = @intCast(index);
+        work.process_aggregate_order[index] = @intCast(index);
     }
-    std.sort.heap(u32, session.process_identity_order[0..process_count], session, processIdentityBefore);
-    std.sort.heap(u32, session.process_aggregate_order[0..process_count], session, processAggregateBefore);
-    if (hasDuplicateProcessIdentity(session, process_count)) return .conflicting_facts;
+    std.sort.heap(u32, work.process_identity_order[0..process_count], &work, processIdentityBefore);
+    std.sort.heap(u32, work.process_aggregate_order[0..process_count], &work, processAggregateBefore);
+    if (hasDuplicateProcessIdentity(&work, process_count)) return .conflicting_facts;
     if (local_eligible_process_count > welfare.eligible_process_count) return .invalid_facts;
 
     for (gpu_rows, 0..) |row, index| {
-        const process_index = findProcess(session, process_count, row.process_id, row.process_start_key) orelse
+        const process_index = findProcess(&work, process_count, row.process_id, row.process_start_key) orelse
             return .conflicting_facts;
-        const process = &session.processes[process_index].row;
+        const process = &work.processes[process_index].row;
         const status = validateGpu(envelope, process, &row, gpu_complete);
         if (status != .ok) return status;
         const score_value = if (gpu_complete) process_scores.gpu(
@@ -249,14 +222,14 @@ pub fn score(
             welfare.share,
         ) catch
             return .invalid_facts else 0;
-        session.gpus[index] = .{ .row = row, .gpu_score = score_value };
-        session.gpu_identity_order[index] = @intCast(index);
-        session.gpu_aggregate_order[index] = @intCast(index);
+        work.gpus[index] = .{ .row = row, .gpu_score = score_value };
+        work.gpu_identity_order[index] = @intCast(index);
+        work.gpu_aggregate_order[index] = @intCast(index);
     }
-    std.sort.heap(u32, session.gpu_identity_order[0..gpu_count], session, gpuIdentityBefore);
-    std.sort.heap(u32, session.gpu_aggregate_order[0..gpu_count], session, gpuAggregateBefore);
-    if (hasDuplicateGpuIdentity(session, gpu_count)) return .conflicting_facts;
-    if (gpu_complete and !validateSparseGpuRows(session, envelope, process_count, gpu_count))
+    std.sort.heap(u32, work.gpu_identity_order[0..gpu_count], &work, gpuIdentityBefore);
+    std.sort.heap(u32, work.gpu_aggregate_order[0..gpu_count], &work, gpuAggregateBefore);
+    if (hasDuplicateGpuIdentity(&work, gpu_count)) return .conflicting_facts;
+    if (gpu_complete and !validateSparseGpuRows(&work, envelope, process_count, gpu_count))
         return .conflicting_facts;
 
     const outputs = output_pointer.?[0..@intCast(envelope.output_capacity)];
@@ -268,16 +241,16 @@ pub fn score(
     var software_gpu_count: u32 = 0;
     var software_memory_count: u32 = 0;
     if (cpu_complete) {
-        if (!emitProcessCpu(session, envelope, outputs, &output_count, &process_cpu_count, welfare.cpu_bonus) or
-            !emitSoftwareCpu(session, envelope, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus, .software_cpu))
+        if (!emitProcessCpu(&work, envelope, outputs, &output_count, &process_cpu_count, welfare.cpu_bonus) or
+            !emitSoftwareCpu(&work, envelope, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus, .software_cpu))
             return .buffer_too_small;
     }
     if (gpu_complete) {
-        if (!emitProcessGpu(session, envelope, outputs, &output_count, &process_gpu_count) or
-            !emitSoftwareGpu(session, envelope, outputs, &output_count, &software_gpu_count))
+        if (!emitProcessGpu(&work, envelope, outputs, &output_count, &process_gpu_count) or
+            !emitSoftwareGpu(&work, envelope, outputs, &output_count, &software_gpu_count))
             return .buffer_too_small;
     }
-    if (cpu_complete and !emitSoftwareCpu(session, envelope, outputs, &output_count,
+    if (cpu_complete and !emitSoftwareCpu(&work, envelope, outputs, &output_count,
         &software_memory_count, welfare.memory_bonus, .software_memory))
         return .buffer_too_small;
 
@@ -393,22 +366,22 @@ fn validateGpu(
     return .ok;
 }
 
-fn hasDuplicateProcessIdentity(session: *const Session, count: usize) bool {
+fn hasDuplicateProcessIdentity(workspace: *const scratch.View, count: usize) bool {
     var index: usize = 1;
     while (index < count) : (index += 1) {
-        const left = session.processes[session.process_identity_order[index - 1]].row;
-        const right = session.processes[session.process_identity_order[index]].row;
+        const left = workspace.processes[workspace.process_identity_order[index - 1]].row;
+        const right = workspace.processes[workspace.process_identity_order[index]].row;
         if (left.process_id == right.process_id and left.process_start_key == right.process_start_key)
             return true;
     }
     return false;
 }
 
-fn hasDuplicateGpuIdentity(session: *const Session, count: usize) bool {
+fn hasDuplicateGpuIdentity(workspace: *const scratch.View, count: usize) bool {
     var index: usize = 1;
     while (index < count) : (index += 1) {
-        const left = session.gpus[session.gpu_identity_order[index - 1]].row;
-        const right = session.gpus[session.gpu_identity_order[index]].row;
+        const left = workspace.gpus[workspace.gpu_identity_order[index - 1]].row;
+        const right = workspace.gpus[workspace.gpu_identity_order[index]].row;
         if (left.process_id == right.process_id and left.process_start_key == right.process_start_key and
             left.adapter_key == right.adapter_key) return true;
     }
@@ -416,7 +389,7 @@ fn hasDuplicateGpuIdentity(session: *const Session, count: usize) bool {
 }
 
 fn validateSparseGpuRows(
-    session: *const Session,
+    workspace: *const scratch.View,
     envelope: *const protocol.GenerationEnvelope,
     process_count: usize,
     gpu_count: usize,
@@ -427,12 +400,12 @@ fn validateSparseGpuRows(
     if (process_count == 0) return gpu_count == 0;
     if (envelope.gpu_adapter_count == 0 or gpu_count < process_count) return false;
     var gpu_cursor: usize = 0;
-    for (session.process_identity_order[0..process_count]) |process_index| {
-        const process = session.processes[process_index].row;
+    for (workspace.process_identity_order[0..process_count]) |process_index| {
+        const process = workspace.processes[process_index].row;
         var adapter_count: u32 = 0;
         var previous_adapter_key: u64 = 0;
         while (gpu_cursor < gpu_count) {
-            const gpu = session.gpus[session.gpu_identity_order[gpu_cursor]].row;
+            const gpu = workspace.gpus[workspace.gpu_identity_order[gpu_cursor]].row;
             if (gpu.process_id != process.process_id or gpu.process_start_key != process.process_start_key) break;
             if (gpu.adapter_key <= previous_adapter_key) return false;
             previous_adapter_key = gpu.adapter_key;
@@ -444,13 +417,13 @@ fn validateSparseGpuRows(
     return gpu_cursor == gpu_count;
 }
 
-fn findProcess(session: *const Session, count: usize, process_id: u32, start_key: u64) ?usize {
+fn findProcess(workspace: *const scratch.View, count: usize, process_id: u32, start_key: u64) ?usize {
     var low: usize = 0;
     var high = count;
     while (low < high) {
         const middle = low + (high - low) / 2;
-        const slot = session.process_identity_order[middle];
-        const row = session.processes[slot].row;
+        const slot = workspace.process_identity_order[middle];
+        const row = workspace.processes[slot].row;
         if (row.process_id < process_id or
             (row.process_id == process_id and row.process_start_key < start_key))
         {
@@ -460,22 +433,22 @@ fn findProcess(session: *const Session, count: usize, process_id: u32, start_key
         }
     }
     if (low >= count) return null;
-    const slot = session.process_identity_order[low];
-    const row = session.processes[slot].row;
+    const slot = workspace.process_identity_order[low];
+    const row = workspace.processes[slot].row;
     return if (row.process_id == process_id and row.process_start_key == start_key) slot else null;
 }
 
 fn emitProcessCpu(
-    session: *const Session,
+    workspace: *const scratch.View,
     envelope: *const protocol.GenerationEnvelope,
     outputs: []protocol.ScoreOutput,
     cursor: *usize,
     count: *u32,
     welfare_bonus: f64,
 ) bool {
-    for (session.process_identity_order[0..@intCast(envelope.process_count)]) |slot| {
+    for (workspace.process_identity_order[0..@intCast(envelope.process_count)]) |slot| {
         if (cursor.* >= outputs.len) return false;
-        const work = session.processes[slot];
+        const work = workspace.processes[slot];
         const score_value = process_scores.addWelfare(work.cpu_score, work.row.runtime_state, welfare_bonus) catch return false;
         outputs[cursor.*] = processOutput(envelope, &work.row, 0, score_value, .process_cpu);
         cursor.* += 1;
@@ -485,24 +458,24 @@ fn emitProcessCpu(
 }
 
 fn emitProcessGpu(
-    session: *const Session,
+    workspace: *const scratch.View,
     envelope: *const protocol.GenerationEnvelope,
     outputs: []protocol.ScoreOutput,
     cursor: *usize,
     count: *u32,
 ) bool {
-    for (session.gpu_identity_order[0..@intCast(envelope.gpu_row_count)]) |slot| {
+    for (workspace.gpu_identity_order[0..@intCast(envelope.gpu_row_count)]) |slot| {
         if (cursor.* >= outputs.len) return false;
-        const work = session.gpus[slot];
+        const work = workspace.gpus[slot];
         const process_index = findProcess(
-            session,
+            workspace,
             @intCast(envelope.process_count),
             work.row.process_id,
             work.row.process_start_key,
         ) orelse return false;
         outputs[cursor.*] = processOutput(
             envelope,
-            &session.processes[process_index].row,
+            &workspace.processes[process_index].row,
             work.row.adapter_key,
             work.gpu_score,
             .process_gpu,
@@ -514,7 +487,7 @@ fn emitProcessGpu(
 }
 
 fn emitSoftwareCpu(
-    session: *const Session,
+    workspace: *const scratch.View,
     envelope: *const protocol.GenerationEnvelope,
     outputs: []protocol.ScoreOutput,
     cursor: *usize,
@@ -523,14 +496,14 @@ fn emitSoftwareCpu(
     kind: protocol.OutputKind,
 ) bool {
     var index: usize = 0;
-    const order = session.process_aggregate_order[0..@intCast(envelope.process_count)];
+    const order = workspace.process_aggregate_order[0..@intCast(envelope.process_count)];
     while (index < order.len) {
-        const software_key = session.processes[order[index]].row.software_key;
+        const software_key = workspace.processes[order[index]].row.software_key;
         var sum = aggregation.DeterministicSum{};
         var members: u32 = 0;
         var running = false;
-        while (index < order.len and session.processes[order[index]].row.software_key == software_key) : (index += 1) {
-            const work = session.processes[order[index]];
+        while (index < order.len and workspace.processes[order[index]].row.software_key == software_key) : (index += 1) {
+            const work = workspace.processes[order[index]];
             if (!sum.add(work.cpu_score)) return false;
             running = running or work.row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running);
             members += 1;
@@ -552,22 +525,22 @@ fn emitSoftwareCpu(
 }
 
 fn emitSoftwareGpu(
-    session: *const Session,
+    workspace: *const scratch.View,
     envelope: *const protocol.GenerationEnvelope,
     outputs: []protocol.ScoreOutput,
     cursor: *usize,
     count: *u32,
 ) bool {
     var index: usize = 0;
-    const order = session.gpu_aggregate_order[0..@intCast(envelope.gpu_row_count)];
+    const order = workspace.gpu_aggregate_order[0..@intCast(envelope.gpu_row_count)];
     while (index < order.len) {
-        const first = session.gpus[order[index]].row;
+        const first = workspace.gpus[order[index]].row;
         var sum = aggregation.DeterministicSum{};
         var members: u32 = 0;
         while (index < order.len) : (index += 1) {
-            const row = session.gpus[order[index]].row;
+            const row = workspace.gpus[order[index]].row;
             if (row.adapter_key != first.adapter_key or row.software_key != first.software_key) break;
-            if (!sum.add(session.gpus[order[index]].gpu_score)) return false;
+            if (!sum.add(workspace.gpus[order[index]].gpu_score)) return false;
             members += 1;
         }
         if (cursor.* >= outputs.len) return false;
@@ -646,35 +619,35 @@ fn softwareOutput(
     };
 }
 
-fn processIdentityBefore(session: *const Session, left_slot: u32, right_slot: u32) bool {
-    const left = session.processes[left_slot].row;
-    const right = session.processes[right_slot].row;
+fn processIdentityBefore(workspace: *const scratch.View, left_slot: u32, right_slot: u32) bool {
+    const left = workspace.processes[left_slot].row;
+    const right = workspace.processes[right_slot].row;
     if (left.process_id != right.process_id) return left.process_id < right.process_id;
     if (left.process_start_key != right.process_start_key) return left.process_start_key < right.process_start_key;
     if (left.target_key != right.target_key) return left.target_key < right.target_key;
     return left.software_key < right.software_key;
 }
 
-fn processAggregateBefore(session: *const Session, left_slot: u32, right_slot: u32) bool {
-    const left = session.processes[left_slot].row;
-    const right = session.processes[right_slot].row;
+fn processAggregateBefore(workspace: *const scratch.View, left_slot: u32, right_slot: u32) bool {
+    const left = workspace.processes[left_slot].row;
+    const right = workspace.processes[right_slot].row;
     if (left.software_key != right.software_key) return left.software_key < right.software_key;
     if (left.process_id != right.process_id) return left.process_id < right.process_id;
     if (left.process_start_key != right.process_start_key) return left.process_start_key < right.process_start_key;
     return left.target_key < right.target_key;
 }
 
-fn gpuIdentityBefore(session: *const Session, left_slot: u32, right_slot: u32) bool {
-    const left = session.gpus[left_slot].row;
-    const right = session.gpus[right_slot].row;
+fn gpuIdentityBefore(workspace: *const scratch.View, left_slot: u32, right_slot: u32) bool {
+    const left = workspace.gpus[left_slot].row;
+    const right = workspace.gpus[right_slot].row;
     if (left.process_id != right.process_id) return left.process_id < right.process_id;
     if (left.process_start_key != right.process_start_key) return left.process_start_key < right.process_start_key;
     return left.adapter_key < right.adapter_key;
 }
 
-fn gpuAggregateBefore(session: *const Session, left_slot: u32, right_slot: u32) bool {
-    const left = session.gpus[left_slot].row;
-    const right = session.gpus[right_slot].row;
+fn gpuAggregateBefore(workspace: *const scratch.View, left_slot: u32, right_slot: u32) bool {
+    const left = workspace.gpus[left_slot].row;
+    const right = workspace.gpus[right_slot].row;
     if (left.adapter_key != right.adapter_key) return left.adapter_key < right.adapter_key;
     if (left.software_key != right.software_key) return left.software_key < right.software_key;
     if (left.process_id != right.process_id) return left.process_id < right.process_id;

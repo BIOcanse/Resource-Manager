@@ -26,10 +26,8 @@ public sealed class JsonControlDesiredStateStore : IControlDesiredStateStore
         ILogger<JsonControlDesiredStateStore>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        statePath = Path.Combine(
+        statePath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "UserData",
-            "Control",
             "desired-state.json");
         this.logger = logger;
     }

@@ -1,12 +1,50 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog } from "./displayEdidDialogProbe.js";
 import usabilityProbe from "./usabilityProbe.js";
 
 export default async function localizationJourney(page, baseUrl) {
   const failures = [];
+  const typeXChecks = [];
   page.on("pageerror", error => failures.push(String(error)));
-  page.on("console", message => { if (message.type() === "error") failures.push(message.text()); });
+  page.on("console", message => {
+    const expectedFailure = failProtectionSave && message.location().url.includes("/api/optimization/protection/software/");
+    if (message.type() === "error" && !expectedFailure) failures.push(message.text());
+  });
+  const scenario = await fetch(`${baseUrl}/__test/scenario`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runtimeEffectOwners: true })
+  });
+  if (!scenario.ok) throw new Error("Unable to enable the mock runtime controls");
+  let verificationFails = false;
+  let verificationRequests = 0;
+  await page.route("**/api/components", route => route.fulfill({ json: [{
+    definition: { id: "fan-control-core", name: "FanControlCore", managementRole: "Dependency", capabilities: [] },
+    installed: false, canInstall: true, canVerify: true, providers: [], message: { domain: 1, code: 9, args: [] }
+  }] }));
+  await page.route("**/api/components/fan-control-core/verify", async route => {
+    if (route.request().method() !== "POST") throw new Error("Verification must use the existing POST endpoint");
+    verificationRequests++;
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await route.fulfill({ json: {
+      state: verificationFails ? "runtimeFilesUnavailable" : "Installed",
+      message: { domain: 1, code: verificationFails ? 24 : 13, args: [] }
+    } });
+  });
+  let protectedSoftware = null;
+  let failProtectionSave = false;
+  await page.route("**/api/optimization/protection", route => route.fulfill({ json: protectedSoftware ? [{
+    softwareId: protectedSoftware, targetKey: `software:${protectedSoftware}`, protectionLevel: 2
+  }] : [] }));
+  await page.route("**/api/optimization/protection/software/*", async route => {
+    if (route.request().method() !== "PUT") throw new Error("Protection must use PUT");
+    const enabled = route.request().postDataJSON().enabled;
+    if (failProtectionSave) { await route.fulfill({ status: 503, body: "fixture" }); return; }
+    protectedSoftware = enabled ? decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1)) : null;
+    await route.fulfill({ json: { softwareId: protectedSoftware } });
+  });
+  await page.route("**/api/targeted-recordings", route => route.fulfill({ json: [] }));
   let stage = "idle";
   const history = [
     { choice: "latest", version: "0.3.9", channel: "preview", selectable: true },
@@ -41,11 +79,70 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
 
+    const scenarioResponse = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "ready" }) });
+    if (!scenarioResponse.ok) throw new Error(option.id + ": EDID fixture unavailable");
+    await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
+    const topology = page.locator(".device-topology-panel"); await topology.waitFor();
+    await topology.locator(".device-port-item").first().click();
+    await checkRecordedDisplayDialog(page, app);
+    for (const variant of ["type3", "type3Inactive", "type3Unknown", "type3"]) {
+      const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: variant }) });
+      if (!response.ok) throw new Error(option.id + ": TypeIII fixture unavailable");
+      await checkType3DisplayDialog(page, app, variant);
+    }
+    const typeXResponse = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "typex" }) });
+    if (!typeXResponse.ok) throw new Error(option.id + ": TypeX real wire input unavailable");
+    typeXChecks.push({ language: option.id, ...await checkTypeXDisplayDialog(page, app) });
+    const original = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "ready" }) });
+    if (!original.ok) throw new Error(option.id + ": original EDID fixture unavailable");
+    await checkRecordedDisplayDialog(page, app);
     await page.getByRole("navigation").getByRole("button", { name: app.page.control, exact: true }).click();
     await page.locator(".control-group h3").filter({ hasText: app.control.kind.gpu }).waitFor();
     await page.locator(".control-readings dt").filter({ hasText: app.control.presentation.labels["gpu.temperature-limit"] }).waitFor();
     await page.locator(".control-capability-actual").filter({ hasText: app.control.presentation.toggleOff }).first().waitFor();
     await page.getByRole("radio", { name: app.control.ownership.app, exact: true }).waitFor();
+
+    await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
+    await page.getByRole("button", { name: `${app.managementRole.Dependency} 1`, exact: true }).click();
+    const verify = page.getByRole("button", { name: app.management.verify, exact: true });
+    const beforeRequests = verificationRequests;
+    verificationFails = false;
+    await verify.click();
+    if (!await verify.isDisabled()) throw new Error(`${option.id}: verification allows duplicate clicks while pending`);
+    await page.getByText(app.backendMessage.dependency.componentFilesUnverified, { exact: true }).waitFor();
+    await verify.waitFor({ state: "visible" });
+    await page.waitForFunction(() => !document.querySelector('.component-actions button:disabled'));
+    verificationFails = true;
+    await verify.click();
+    await page.getByText(app.backendMessage.dependency.runtimeFilesUnavailable, { exact: true }).waitFor();
+    if (verificationRequests !== beforeRequests + 2) throw new Error(`${option.id}: wrong verification request count`);
+    await page.getByRole("navigation", { name: app.management.categoryNav })
+      .getByRole("button", { name: new RegExp(app.softwareKind.Other) }).click();
+    const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
+    await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
+    const details = page.getByRole("dialog", { name: "示例软件" });
+    await details.getByRole("heading", { name: app.softwareDetail.protection.title, exact: true }).waitFor();
+    await details.getByText(app.softwareDetail.protection.hint, { exact: true }).waitFor();
+    const protection = details.getByRole("checkbox", { name: app.softwareDetail.protection.enabled, exact: true });
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    await protection.check();
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    if (!await protection.isChecked()) throw new Error(`${option.id}: protection not enabled`);
+    await details.locator('button.icon-button').first().click();
+    await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    if (!await protection.isChecked()) throw new Error(`${option.id}: protection did not reload`);
+    await protection.uncheck();
+    await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
+    if (await protection.isChecked()) throw new Error(`${option.id}: protection not removed`);
+    failProtectionSave = true;
+    // A failed save immediately reverts the switch. check() itself requires
+    // the final state to stay checked, so click and assert the actual error result.
+    await protection.click();
+    await details.getByRole("alert").getByText(app.softwareDetail.protection.failed, { exact: true }).waitFor();
+    if (await protection.isChecked()) throw new Error(`${option.id}: failed save changed displayed protection`);
+    failProtectionSave = false;
+    await details.locator('button.icon-button').first().click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
     stage = "idle";
@@ -80,6 +177,8 @@ export default async function localizationJourney(page, baseUrl) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+    translatedComponentVerificationSuccessAndFailure: true,
+    translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };
 }

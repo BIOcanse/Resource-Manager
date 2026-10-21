@@ -674,7 +674,7 @@ function VirtualResourceTable(props: {
                 <button
                   class="resource-table-sort-button"
                   type="button"
-                  title={resourceMetricBasis(column().id)}
+                  title={resourceMetricBasis(column().id, "table")}
                   disabled={!column().sortable}
                   onClick={() => updateSort(column())}
                 >
@@ -903,7 +903,8 @@ function createSoftwareContextTargetFromRow(
   // 否则标题会是空的。
   const displayName = rowName(row);
   return {
-    name: row.kind === "process" ? row.softwareName ?? row.name : displayName,
+    kind: row.kind === "process" ? "process" : "software",
+    name: row.kind === "process" ? row.name : displayName,
     softwareId: row.softwareId,
     softwareName: row.softwareName ?? (row.kind === "software" ? displayName : undefined),
     processIds,
@@ -1129,7 +1130,7 @@ function ResourceTableCell(props: {
         : value()
           ? `${resourceTableColumnLabel(props.column.id)}: ${resourceTableCellText(value(), props.column.id)}`
           : resourceTableColumnLabel(props.column.id))
-        + (resourceMetricBasis(props.column.id) ? `\n${resourceMetricBasis(props.column.id)}` : "")}
+        + (resourceMetricBasis(props.column.id, "table") ? `\n${resourceMetricBasis(props.column.id, "table")}` : "")}
     >
       {resourceTableCellText(value(), props.column.id)}
     </div>

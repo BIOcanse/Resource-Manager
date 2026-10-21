@@ -76,8 +76,8 @@ public sealed partial class WindowsResourceBreakdownSampler
          * 超了就按比例收到总和，不足就照旧留给残差 —— **只收缩，不放大**：
          * 放大等于把没测到的那部分硬摊给认得出的进程，那是编数字。
          *
-         * 只对百分比这类列生效。字节类（分项是进程私有字节、总和是系统已用字节）
-         * 本来就不是同一口径，"部分大于整体"在那里另有解释，不该一起收缩。
+         * 只对百分比这类列生效。字节类保留实际私有驻留或私有提交读数，
+         * 不用比例修正不同采样时间之间的差异；共享和系统用量由残差表达。
          */
         if (!isBytes && !isBytesPerSecond && attributionTotalValue is null)
         {

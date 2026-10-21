@@ -46,6 +46,7 @@ internal static class NlNl
         BackendPipelineNotReady = "De aanvraagpijplijn van de lokale service is niet gereed.",
         NoProcessToTerminate = "Er is geen proces om te beëindigen.",
         TerminateRequestCompleted = "De aanvraag om het proces te beëindigen is voltooid.",
+        TerminateResultFormat = "{0} / {1} processen beëindigd.",
 
         WebViewInitializationFailed = "De ingesloten interface kan niet worden geïnitialiseerd. Open de diagnosemap voor details.",
         FrontendIdentityVerificationFailed = "De identiteitsverificatie van de frontendbestanden is mislukt. Open de diagnosemap voor details.",

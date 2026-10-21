@@ -46,6 +46,7 @@ internal static class EsEs
         BackendPipelineNotReady = "La canalización de solicitudes del servicio local no está lista.",
         NoProcessToTerminate = "No hay ningún proceso que finalizar.",
         TerminateRequestCompleted = "La solicitud de finalización del proceso se ha completado.",
+        TerminateResultFormat = "Se terminaron {0} / {1} procesos.",
 
         WebViewInitializationFailed = "No se pudo inicializar la interfaz incrustada. Abra la carpeta de diagnósticos para ver los detalles.",
         FrontendIdentityVerificationFailed = "Error al verificar la identidad de los recursos del front-end. Abra la carpeta de diagnósticos para ver los detalles.",

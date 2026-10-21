@@ -1,4 +1,5 @@
 import type {
+  BackendMessage,
   AiGatewayCompatibilityProfile,
   AiGatewayCredentialCreatedView,
   AiGatewayCredentialView,
@@ -48,6 +49,7 @@ import {
 import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
 import { uiText } from "./text.ts";
+import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
 
 export async function getJson<T>(
   url: string,
@@ -218,11 +220,15 @@ export async function openProperties(path: string) {
 }
 
 export async function terminateProcesses(targets: SystemProcessIdentity[]) {
-  return postJson<SystemProcessOperationResult>("/api/system/processes/terminate", { targets }, uiText.apiError.terminateFailed);
+  return withProcessActionElevation("terminate", targets,
+    () => postJson<SystemProcessOperationResult>("/api/system/processes/terminate", { targets }, uiText.apiError.terminateFailed),
+    uiText.apiError.terminateFailed);
 }
 
 export async function createProcessDumps(targets: SystemProcessIdentity[]) {
-  return postJson<SystemProcessOperationResult>("/api/system/processes/dump", { targets }, uiText.apiError.dumpFailed);
+  return withProcessActionElevation("dump", targets,
+    () => postJson<SystemProcessOperationResult>("/api/system/processes/dump", { targets }, uiText.apiError.dumpFailed),
+    uiText.apiError.dumpFailed);
 }
 
 export async function getResourceBreakdown(
@@ -292,6 +298,12 @@ export async function getResourceTable(
 
 export async function getComponents() {
   return getJson<ManagedComponent[]>("/api/components");
+}
+
+export async function verifyComponent(id: string) {
+  return postJson<{ state: string; message: BackendMessage }>(
+    `/api/components/${encodeURIComponent(id)}/verify`, {}, uiText.stores.actionFailed, false,
+    { timeoutMs: 120_000 }); // The explicit verification can fetch a component archive.
 }
 
 export async function getSoftware(refresh = false) {

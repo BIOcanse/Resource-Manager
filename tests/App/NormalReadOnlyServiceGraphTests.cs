@@ -182,12 +182,12 @@ public sealed class NormalReadOnlyServiceGraphTests
                 var records = await host.Services
                     .GetRequiredService<ISoftwareRegistryView>()
                     .GetSoftwareAsync(CancellationToken.None);
-                var catalog = await host.Services
+                using var catalog = await host.Services
                     .GetRequiredService<IRuntimeProcessAttributionCatalogProvider>()
-                    .GetCatalogAsync(CancellationToken.None);
+                    .AcquireCatalogAsync(CancellationToken.None);
 
                 Assert.NotEmpty(records);
-                Assert.True(catalog.Generation >= 1);
+                Assert.True(catalog.Catalog.Generation >= 1);
                 Assert.Equal(before, EnumerateRelativePaths(packageRoot));
             }
             finally

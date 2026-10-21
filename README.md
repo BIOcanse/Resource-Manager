@@ -55,14 +55,12 @@ This page lists most of the software on your computer. If an application was not
 From here you can quickly:
 
 - 📍 See where an application lives
-- 📦 Migrate supported application data in one click (move it off `C:` to the drive the application is on, easing pressure on the system drive)
 - ⚙️ Configure optimization settings
 
 ![Per-application scheduling policy](docs/screenshots/en/09-app-policy.png)
 
-Every application can carry its own scheduling policy: its base score, how far the manager is allowed to adjust it, how the GPU is chosen at launch and at runtime, and whether an application's own GPU choice should be respected.
+Each application can configure its base score, permitted adjustments, startup GPU preference and Level 2 protection. Runtime GPU placement is calculated after the process enters scheduling; it is not a saved target. Startup preferences do not override that calculation.
 
-![Migration workbench](docs/screenshots/en/10-migration.png)
 
 ---
 
@@ -233,12 +231,14 @@ The release package includes the required .NET runtime. It uses your system's We
 
 1. Download the latest Windows x64 release archive.
 2. Extract the **complete folder** to a temporary location.
-3. Run `Install.exe`, review its list of installation actions, and approve. It installs the main program and a separate update manager outside the main program directory, then registers the service, system paths, and Start menu shortcuts. Existing installations are left untouched.
+3. Run `Install.exe`, review its list of installation actions, and approve. It installs the main program and an independent update manager in `Internal/Management` inside the main program root, then registers the service, system paths, and Start menu shortcuts. If an owned previous installation is detected, the confirmation lists stopping it, removing its startup and system registration, copying user data, and registering the new installation. The previous program and original data are preserved.
 4. Find **Resource Manager** in the Start menu or run the installed `Start.exe` to start the service and desktop interface. You can pin the Start menu entry to the taskbar.
 5. For updates, interrupted update recovery, or main program repair, open **Resource Manager 更新管理** from the Start menu. Manual update and repair require a complete extracted release folder. The manager shows its actions before requesting administrator permission.
 Service management requests administrator permission; the interface runs as a standard user.
 
-`Install.exe` only performs a first installation, and `Start.exe` only starts the product. The separate update manager handles upgrades and same-version repair. The automatic update switch currently saves a preference; automatic installation awaits release signing and real-machine upgrade validation.
+`Install.exe` only installs or reinstalls, and `Start.exe` only starts the product. Reinstallation copies `Config`, `UserData`, and `Misc` into a new root; an occupied default root uses a versioned directory. Previous maintenance files remain in the old root; legacy external entry files are preserved under `Internal` there. The independent update manager still provides updates in the existing directory and same-version repair. The automatic update switch currently saves a preference; automatic installation awaits release signing and real-machine upgrade validation.
+
+Use `UninstallResourceManager.exe` to uninstall. Keeping user data leaves only one importable ZIP in the old installation folder and opens that folder in File Explorer. The independent update manager can import the ZIP. If you reinstall into that folder, the retained ZIP is saved under `UserData/Archives` until you choose to import it.
 
 ---
 

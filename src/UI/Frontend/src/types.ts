@@ -658,7 +658,6 @@ export interface GpuPlacementSoftwarePolicy {
   allowedProviders: string[];
   schedulingMode: GpuPlacementSchedulingMode;
   startupTargetGpu: GpuPlacementTarget;
-  targetGpu: GpuPlacementTarget;
   runtimeSchedulingMode: GpuPlacementRuntimeSchedulingMode;
   explicitSelectionMode: GpuPlacementExplicitSelectionMode;
   runtimeHotSwitchEnabled?: boolean | null;
@@ -693,7 +692,6 @@ export interface GpuPlacementProcessPolicy {
   enabledMode: GpuPlacementPolicyMode;
   maxRisk: GpuPlacementRiskLevel;
   allowedProviders: string[];
-  targetGpu: GpuPlacementTarget;
   explicitSelectionMode: GpuPlacementExplicitSelectionMode;
   baseScoreOverride?: number | null;
   updatedAt?: string;
@@ -912,6 +910,14 @@ export interface DeviceTopologyPort {
 }
 
 export interface DeviceTopologyDisplayConnection {
+  currentWidth?: number | null;
+  currentHeight?: number | null;
+  currentRefreshRateNumerator?: number | null;
+  currentRefreshRateDenominator?: number | null;
+  currentBitsPerColorChannel?: number | null;
+  edidRawDeclaredBase64?: string | null;
+  modeCapabilityDeclared?: DisplayEdidCapability | null;
+
   /** 机型接口档案给的接口名；没有档案时为 null。 */
   connectorTechnology: string | null;
   /** Windows 输出技术 id，措辞由前端出。 */
@@ -943,6 +949,53 @@ export interface DeviceTopologyDisplayConnection {
   colorCapabilitySource?: string | null;
   colorSpace?: string | null;
 }
+
+export interface DisplayEdidRate { numerator: number; denominator: number; }
+export interface DisplayEdidReference { blockIndex: number; byteOffset: number; rawDescriptor: number[]; bitIndex: number | null; }
+export interface DisplayEdidTiming {
+  pixelClockHz: number; horizontalActive: number; horizontalBlanking: number;
+  horizontalSyncOffset: number; horizontalSyncWidth: number; verticalActive: number;
+  verticalBlanking: number; verticalSyncOffset: number; verticalSyncWidth: number;
+  flags: number; positiveHorizontalSync: boolean | null; positiveVerticalSync: boolean | null;
+  frameRate: DisplayEdidRate; fieldRate: DisplayEdidRate | null;
+}
+export interface DisplayEdidCvtParameters {
+  reducedBlankingVersion: number; stereoCode: number;
+  alternativeRefresh1000Over1001Supported: boolean | null;
+  horizontalBlankingBase160Pixels: boolean | null; earlyVsyncRequired: boolean | null;
+  deltaHorizontalBlankingCode: number | null; additionalVerticalBlankingCode: number | null;
+  alternativeMinimumVerticalBlanking: boolean | null;
+}
+export interface DisplayEdidAspectRatio { code: number; horizontal: number | null; vertical: number | null }
+export interface DisplayEdidMode extends DisplayEdidReference {
+  encoding: string; revision: number; code: number | null; width: number | null; height: number | null;
+  aspectRatioDeclared?: DisplayEdidAspectRatio | null;
+  horizontalPixelRepetition: number | null; interlaced: boolean | null; nominalVerticalRateHz: number | null;
+  native: boolean | null; preferred: boolean | null; yCbCr420Only: boolean | null;
+  yCbCr420Encoding: boolean | null; yCbCr420Supported: boolean | null;
+  yCbCr420CapabilityMap: DisplayEdidReference | null; containerFlags: number | null;
+  containerRevision: number | null; dscPassThrough: boolean | null; formula: string | null;
+  reducedBlanking: boolean | null; timing: DisplayEdidTiming | null; cvtParameters: DisplayEdidCvtParameters | null;
+}
+export interface DisplayEdidRange extends Omit<DisplayEdidReference, "bitIndex"> {
+  encoding: string; revision: number; formula: string; minimumVerticalRateHz: number; maximumVerticalRateHz: number;
+  minimumHorizontalFrequencyHz: number; maximumHorizontalFrequencyHz: number; maximumPixelClockHz: number | null;
+  secondaryGtf: { startHorizontalFrequencyHz: number; cTimesTwo: number; m: number; k: number; jTimesTwo: number } | null;
+  cvt: { version: number; maximumActivePixelsPerLine: number | null; supportedAspectRatiosMask: number;
+    preferredAspectRatioCode: number; standardBlanking: boolean; reducedBlanking: boolean;
+    scalingMask: number; preferredVerticalRateHz: number | null } | null;
+}
+export interface DisplayEdidSelection extends Omit<DisplayEdidReference, "bitIndex"> {
+  encoding: string; revision: number; flags: number | null;
+  references: { byteOffset: number; shortVideoReference: number; targetEncoding: string;
+    code: number | null; target: DisplayEdidReference | null }[];
+  imageSize: { widthCode: number; heightCode: number; unitMicrometers: number } | null;
+}
+export interface DisplayEdidCapability {
+  modes: DisplayEdidMode[]; ranges: DisplayEdidRange[]; edidRevision: number; baseFeatures: number;
+  ctaFlags: number | null; selectionDeclarations: DisplayEdidSelection[] | null;
+}
+
 
 export interface DeviceTopologyNetworkConnection {
   interfaceName?: string | null;
@@ -1372,124 +1425,6 @@ export interface FileChangeReport {
   truncated?: boolean;
 }
 
-export type MigrationKind = "Data" | "Root";
-export type MigrationTargetCategory = "UserData" | "Misc";
-
-export interface MigrationRoots {
-  userDataRoot?: string;
-  miscRoot?: string;
-  dependencyRoot?: string;
-  managedSoftwareRoot?: string;
-}
-
-export interface MigrationPlanItem {
-  id: string;
-  sourcePath: string;
-  destinationPath: string;
-  backupPath: string;
-  exists: boolean;
-  isDirectory: boolean;
-  sizeBytes?: number | null;
-  risk: string;
-  classification: string;
-  canExecute: boolean;
-  message: string;
-}
-
-export interface MigrationPlan {
-  softwareName: string;
-  targetCategory: MigrationTargetCategory | string;
-  migrationKind: MigrationKind | string;
-  targetRoot: string;
-  canExecute: boolean;
-  summary: string;
-  items: MigrationPlanItem[];
-}
-
-export interface MigrationActionResult {
-  sourcePath: string;
-  destinationPath: string;
-  backupPath: string;
-  state: string;
-  message: string;
-}
-
-export interface MigrationExecuteResult {
-  plan: MigrationPlan;
-  results: MigrationActionResult[];
-}
-
-export interface SoftwareDataMigrationRecord {
-  id: string;
-  softwareName?: string;
-  targetCategory?: string;
-  migrationKind?: string;
-  sourcePath?: string;
-  destinationPath?: string;
-  backupPath?: string;
-  state?: string;
-  createdAt?: string;
-  restoredAt?: string | null;
-}
-
-export interface SoftwareDataRestoreResult {
-  record: SoftwareDataMigrationRecord;
-  state: string;
-  message: string;
-}
-
-export interface SoftwareRootResolutionSource {
-  sourceType: string;
-  sourceId: string;
-  displayName: string;
-  rootPath: string;
-  matchReason: string;
-}
-
-export interface MigrationDiscoveryEvidence {
-  provider: string;
-  eventType: string;
-  path: string;
-  processId: number;
-  processName: string;
-  observedAt: string;
-  sizeBytes?: number | null;
-}
-
-export interface MigrationCandidate {
-  path: string;
-  rootPath?: string;
-  evidence?: string;
-  recommendedTargetCategory?: MigrationTargetCategory | string;
-  recommendedMigrationKind?: MigrationKind | string;
-  confidence?: number;
-  observedWriteCount?: number;
-  lastObservedAt?: string;
-  message?: string;
-  provider?: string;
-  evidenceItems?: MigrationDiscoveryEvidence[];
-  processNames?: string[];
-  directory?: string;
-  name?: string;
-}
-
-export interface DiscoverySession {
-  id: string;
-  softwareName: string;
-  processNames: string[];
-  programRootPaths: string[];
-  programRootSources?: SoftwareRootResolutionSource[];
-  state: string;
-  startedAt?: string;
-  stoppedAt?: string | null;
-  observedWriteCount: number;
-  candidates: MigrationCandidate[];
-  message?: string;
-  provider?: string;
-  providerState?: string;
-  providerMessage?: string;
-}
-
 export interface SoftwareDetailModel {
   type: "component" | "software";
   id: string;
@@ -1498,15 +1433,12 @@ export interface SoftwareDetailModel {
   displayKind: string;
   state: string;
   message: string;
-  dataSearchName: string;
   rootPaths: string[];
   suggestedRootPaths: string[];
   executablePaths: string[];
   requiresRootPathConfirmation: boolean;
   identityConfirmed: boolean;
   issues: SoftwareIssueTag[];
-  rootMigrationPaths: string[];
-  rootMigrationDisabledReason: string;
   baseRows: DetailRow[];
   softwareIdentityId: string;
   metadataRows: DetailRow[];
@@ -1837,83 +1769,6 @@ export interface OptimizationLevel3RestoreResult {
   record: OptimizationLevel3Record;
 }
 
-export interface OptimizationLevel4ActionPreview {
-  id: string;
-  kind: string;
-  processId: number;
-  processName: string;
-  executablePath?: string | null;
-  processStartedAt?: string | null;
-  threadCount: number;
-  currentValue: string;
-  proposedValue: string;
-  willChange: boolean;
-  enabled: boolean;
-  disabledReason?: string | null;
-  details: string[];
-}
-
-export interface OptimizationLevel4Preview {
-  reportId: string;
-  capturedAt: string;
-  eligible: boolean;
-  summary: string;
-  disabledReason?: string | null;
-  target: OptimizationReportTarget;
-  actions: OptimizationLevel4ActionPreview[];
-}
-
-export interface ProcessThreadSuspendRecord {
-  threadId: number;
-  previousSuspendCount: number;
-  suspendedAt: string;
-  message?: string | null;
-}
-
-export interface OptimizationLevel4AppliedAction {
-  id: string;
-  kind: string;
-  processId: number;
-  processName: string;
-  executablePath?: string | null;
-  processStartedAt?: string | null;
-  threads: ProcessThreadSuspendRecord[];
-  workingSetTrimAttempted: boolean;
-  workingSetTrimSucceeded: boolean;
-  workingSetTrimMessage?: string | null;
-  appliedAt: string;
-  restoredAt?: string | null;
-  state: string;
-  message?: string | null;
-}
-
-export interface OptimizationLevel4Record {
-  id: string;
-  reportId: string;
-  targetKey: string;
-  displayName: string;
-  createdAt: string;
-  updatedAt: string;
-  state: string;
-  actions: OptimizationLevel4AppliedAction[];
-}
-
-export interface OptimizationLevel4ApplyResult {
-  reportId: string;
-  state: string;
-  message: string;
-  preview: OptimizationLevel4Preview;
-  record?: OptimizationLevel4Record | null;
-}
-
-export interface OptimizationLevel4RestoreResult {
-  recordId: string;
-  state: string;
-  message: string;
-  restoredCount: number;
-  skippedCount: number;
-  record: OptimizationLevel4Record;
-}
 
 export interface OptimizationA1ActionPreview {
   id: string;

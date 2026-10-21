@@ -69,6 +69,7 @@ public sealed partial class HostManagerSmartCoordinator(
         new(timeProvider);
     private readonly HostManagerDurableTimeSource durableTimeSource = new(timeProvider);
     private NativeSmartCoordinatorWorkspace? nativeWorkspace;
+    private NativeSmartCoordinatorWorkspace? pendingNativeWorkspaceClose;
     private HostManagerComputeScoringWorkspace? computeScoringWorkspace;
     private HostManagerMemoryModeWorkspace? memoryModeWorkspace;
     private string? lastSchedulingAuthorityFailure;
@@ -152,6 +153,8 @@ public sealed partial class HostManagerSmartCoordinator(
         try
         {
             RequireOperationAdmission();
+            if (normalizedMode == AppOptimizationModes.Normal)
+                await runningGpuPlacementActions.RecoverExternalControlAsync(cancellationToken);
             var loaded = await settingsStore.LoadAsync(cancellationToken);
             var current = loaded.Settings;
             var next = current with
@@ -256,6 +259,8 @@ public sealed partial class HostManagerSmartCoordinator(
         try
         {
             RequireOperationAdmission();
+            // This explicit user restore also asks surviving external owners to finish cleanup, never to retry migration.
+            await runningGpuPlacementActions.RecoverExternalControlAsync(cancellationToken);
             var loaded = await settingsStore.LoadAsync(cancellationToken);
             var current = loaded.Settings;
             if (!string.Equals(
@@ -420,6 +425,12 @@ public sealed partial class HostManagerSmartCoordinator(
                     {
                         schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
                     }
+                }
+                catch (Exception error) when (!stoppingToken.IsCancellationRequested)
+                {
+                    schedulerRunning = false;
+                    logger.LogError(error, "调度周期失败；保留已有事务记录，下一周期重新核对恢复状态。");
+                    schedulingWakeDeadline.PublishScheduled(samplingInterval);
                 }
                 finally
                 {

@@ -14,6 +14,30 @@ public sealed class DeviceTopologySemanticComparer
         var normalized = snapshot with
         {
             CapturedAt = DateTimeOffset.UnixEpoch,
+            DriverInformation = snapshot.DriverInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            NpuInformation = snapshot.NpuInformation?.Select(static row => row with {
+                LocationPathsDeclared = row.LocationPathsDeclared?.Order(StringComparer.Ordinal).ToArray()
+            }).OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            FirmwareDeclarations = snapshot.FirmwareDeclarations is null ? null : snapshot.FirmwareDeclarations with {
+                Slots = snapshot.FirmwareDeclarations.Slots.OrderBy(static slot => slot.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+                ProcessorSockets = snapshot.FirmwareDeclarations.ProcessorSockets.OrderBy(static socket => socket.DeviceIdentity, StringComparer.Ordinal).ToArray()
+            },
+            Batteries = snapshot.Batteries?.OrderBy(static battery => battery.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            StorageInformation = snapshot.StorageInformation?.OrderBy(static storage => storage.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            PageFileInformation = snapshot.PageFileInformation?.OrderBy(static file => file.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            DiskLayoutInformation = snapshot.DiskLayoutInformation?.Select(static disk => disk with {
+                Layout = disk.Layout is null ? null : disk.Layout with { Partitions = disk.Layout.Partitions.OrderBy(static partition => partition.Number).ToArray() }
+            }).OrderBy(static disk => disk.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            GpuInformation = snapshot.GpuInformation?.OrderBy(static gpu => gpu.PnpInstanceId, StringComparer.Ordinal).ToArray(),
+            NvidiaGpuInformation = snapshot.NvidiaGpuInformation?.OrderBy(static gpu => gpu.PnpInstanceId, StringComparer.Ordinal).ToArray(),
+            AmdGpuInformation = snapshot.AmdGpuInformation?.OrderBy(static gpu => gpu.PnpInstanceId, StringComparer.Ordinal).ToArray(),
+            HidInformation = snapshot.HidInformation?.OrderBy(static hid => hid.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            NetworkInterfaceInformation = snapshot.NetworkInterfaceInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            VolumeSpaceInformation = snapshot.VolumeSpaceInformation?.Select(static volume => volume with {
+                MountPaths = volume.MountPaths?.Order(StringComparer.Ordinal).ToArray(),
+                DiskExtents = volume.DiskExtents?.OrderBy(static extent => extent.DiskNumberReported)
+                    .ThenBy(static extent => extent.StartingOffsetBytes).ThenBy(static extent => extent.ExtentLengthBytes).ToArray()
+            }).OrderBy(static volume => volume.DeviceIdentity, StringComparer.Ordinal).ToArray(),
             Ports = snapshot.Ports
                 .Select(NormalizePort)
                 .OrderBy(static port => port.Id, StringComparer.OrdinalIgnoreCase)
@@ -112,3 +136,4 @@ public sealed class DeviceTopologySemanticComparer
             .ToArray();
     }
 }
+

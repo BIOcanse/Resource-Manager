@@ -20,10 +20,8 @@ public sealed class JsonControlNoticeAcknowledgement : IControlNoticeAcknowledge
         ILogger<JsonControlNoticeAcknowledgement>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        markerPath = Path.Combine(
+        markerPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "UserData",
-            "Control",
             "notice-acknowledged.txt");
         this.logger = logger;
     }

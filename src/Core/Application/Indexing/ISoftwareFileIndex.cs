@@ -6,7 +6,8 @@ public interface ISoftwareFileIndex
 {
     Task<SoftwareFileIndexSnapshot?> GetSnapshotAsync(
         string softwareId,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        Func<string, string?, bool>? canReadPath = null);
 
     Task<IReadOnlyList<SoftwareFileSearchResult>> SearchAsync(
         string query,

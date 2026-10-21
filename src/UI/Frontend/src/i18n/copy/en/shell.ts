@@ -195,7 +195,9 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     rescan: "Scan again",
     cancel: "Cancel scan",
     scanning: "Scanning",
+    scanFailed: "The scan did not complete. See Task Center for details.",
     volumeColumnLabel: "Drive",
+    rootSelectorLabel: "Scanned root",
     noVolumes: "No scannable drive was found.",
     notReady: "Not ready",
     freeOfTotal: (free: string, total: string) => `${free} free of ${total}`,
@@ -224,7 +226,7 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     collapseSetup: "Hide options",
     expandSetup: "Scan options",
     scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} files · ${folders} folders`,
+      `${size} · this root · ${files} files · ${folders} folders across this scan`,
     fileCount: (count: number) => `${count} files`,
     omitted: (count: number) =>
       `${count} more tiles are too small or off-screen right now. Zoom in to see them.`,

@@ -1,4 +1,4 @@
-using ResourceManager.App.Domain.FrameTiming;
+using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
@@ -85,6 +85,26 @@ public sealed class PresentFrameLedgerTests
 
         Assert.Empty(ledger.Read(Start + 10 * TenMs, TimeSpan.FromSeconds(5)));
         Assert.Equal(1, reads);
+    }
+
+    [Fact]
+    public void OnePresentExposesItsExactTimestampWithoutInventingAnInterval()
+    {
+        const long processBirth = 987654321;
+        const ulong swapChain = 0xCAFE;
+        var ledger = new PresentFrameLedger(_ => processBirth);
+        var presentAt = Start + TenMs;
+        ledger.Present(51, FramePresentSource.Dxgi, swapChain, presentAt);
+        ledger.Present(51, FramePresentSource.Dxgi, swapChain, presentAt + TenMs * 2);
+
+        var lastPresent = Assert.Single(ledger.ReadLastPresents(presentAt + TenMs, TimeSpan.FromSeconds(1)));
+
+        Assert.Equal(51, lastPresent.ProcessId);
+        Assert.Equal(processBirth, lastPresent.ProcessStartKey);
+        Assert.Equal(FramePresentSource.Dxgi, lastPresent.Source);
+        Assert.Equal(swapChain, lastPresent.SwapChain);
+        Assert.Equal(new DateTimeOffset(presentAt, TimeSpan.Zero), lastPresent.LastPresentAt);
+        Assert.Empty(ledger.Read(presentAt + TenMs, TimeSpan.FromSeconds(1)));
     }
 
     [Fact]

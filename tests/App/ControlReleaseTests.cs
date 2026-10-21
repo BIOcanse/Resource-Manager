@@ -7,6 +7,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ControlReleaseTests
 {
     [Theory]
+    [InlineData("software")]
+    [InlineData("firmware")]
+    public async Task ReleasePreservesTheRemovedCurveExecution(string execution)
+    {
+        var setting = new ControlSetting("owned", Curve: [new(60, 35), new(95, 100)], CurveExecution: execution);
+        var writer = new Writer();
+        var store = new Store(new([new("a", [setting])]));
+        var plane = new ControlPlane(store, new ControlWriteLayer(new Catalog(ControlValueKinds.Curve), [writer], new Access()));
+        await plane.ApplyDesiredStateAsync(ControlDesiredState.Empty, default);
+        Assert.Equal(setting, Assert.Single(writer.PreviousSettings));
+    }
+
+    [Theory]
     [InlineData(ControlValueKinds.Toggle)]
     [InlineData(ControlValueKinds.Curve)]
     public async Task RemovingLastNonNumericSettingReleasesExactlyTheOwnedCapability(string kind)
@@ -154,11 +167,13 @@ public sealed class ControlReleaseTests
         public bool Throws;
         public List<string> Released = [];
         public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability) => ControlWriteAvailability.Yes();
+        public List<ControlSetting?> PreviousSettings = [];
         public Task<ControlApplyOutcome> WriteAsync(ControlObject target, ControlCapability capability, ControlSetting setting, CancellationToken token)
             => Task.FromResult(new ControlApplyOutcome(target.Id, capability.Id, ControlApplyStatuses.Applied, null));
-        public Task<bool> RestoreAsync(ControlObject target, ControlCapability capability, IReadOnlySet<string> retained, CancellationToken token)
+        public Task<bool> RestoreAsync(ControlObject target, ControlCapability capability, IReadOnlySet<string> retained, CancellationToken token, ControlSetting? previousSetting = null)
         {
             Released.Add(capability.Id);
+            PreviousSettings.Add(previousSetting);
             if (Throws) throw new IOException("release failed");
             return Task.FromResult(!Refuse);
         }

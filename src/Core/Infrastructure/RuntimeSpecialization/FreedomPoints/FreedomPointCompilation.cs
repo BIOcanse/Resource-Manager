@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Text.Json;
+using FreedomPoint;
 using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
@@ -7,17 +8,17 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
 internal sealed class FreedomPointCompilation
 {
     private readonly CompiledFreedomPointTree declarations;
-    private readonly JsonElement profile;
-    private readonly JsonElement cpuConfiguration;
+    private readonly FreedomPointSdkAdapter sdk;
+    internal ResolvedFacts Facts { get; }
     private readonly Dictionary<string, CompiledFreedomPoint> points;
     private readonly Dictionary<string, HashSet<string>> consumers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, JsonElement> values = new(StringComparer.Ordinal);
 
-    internal FreedomPointCompilation(CompiledFreedomPointTree declarations, JsonElement profile, JsonElement cpuConfiguration)
+    internal FreedomPointCompilation(FreedomPointSdkAdapter sdk, JsonElement profile, JsonElement cpuConfiguration)
     {
-        this.declarations = declarations;
-        this.profile = profile;
-        this.cpuConfiguration = cpuConfiguration;
+        this.sdk = sdk;
+        declarations = sdk.Declarations;
+        Facts = sdk.Resolve(profile, cpuConfiguration);
         points = declarations.EnumeratePoints().ToDictionary(static point => point.Address, StringComparer.Ordinal);
     }
 
@@ -31,8 +32,7 @@ internal sealed class FreedomPointCompilation
         {
             throw new InvalidDataException($"Freedom point '{address}' does not declare consumer '{consumer}'.");
         }
-        var value = ResolveValue(point);
-        FreedomPointRegistry.ValidateValue(value, point.ValueType, address);
+        var value = sdk.ValueAsJson(Facts.Require(point.Path));
         T result;
         try
         {
@@ -82,7 +82,12 @@ internal sealed class FreedomPointCompilation
                 Children = item.Table.Children.Select(child => tables[child]).ToImmutableArray()
             });
         }
-        return declarations with { Children = declarations.Children.Select(root => tables[root]).ToImmutableArray() };
+        return declarations with
+        {
+            Children = declarations.Children.Select(root => tables[root]).ToImmutableArray(),
+            SdkRegistry = sdk.Registry,
+            SdkFacts = Facts
+        };
     }
 
     private CompiledFreedomPointFamily PublishFamily(CompiledFreedomPointFamily family)
@@ -93,17 +98,4 @@ internal sealed class FreedomPointCompilation
             ? point with { Value = values[point.Address] }
             : point).ToImmutableArray();
 
-    private JsonElement ResolveValue(CompiledFreedomPoint point)
-    {
-        if (point.ValueSource == "registry") return point.Value!.Value;
-        var current = point.ValueSource == "cpu_configuration" ? cpuConfiguration : profile;
-        foreach (var name in point.SourcePath!.Split('/').Skip(1))
-        {
-            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(name, out current))
-            {
-                throw new InvalidDataException($"Freedom point '{point.Address}' source '{point.SourcePath}' is missing.");
-            }
-        }
-        return current;
-    }
 }

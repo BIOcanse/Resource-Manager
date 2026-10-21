@@ -1,6 +1,7 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
+const scratch = @import("scratch.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 const MetricSelectionSummary = struct {
@@ -22,6 +23,7 @@ pub fn plan(
     output: *protocol.PlanOutput,
     source_plans: []protocol.SourcePlanOutput,
     metric_plans: []protocol.MetricPlanOutput,
+    scratch_bytes: []u8,
 ) ResultCode {
     state.lock(&session.mutex);
     defer state.unlock(&session.mutex);
@@ -49,8 +51,31 @@ pub fn plan(
     if (metric_validation != .ok) return metric_validation;
     const next_revision = session.nextRevision() orelse return .unavailable;
 
+    const scratch_status = session.scratch_layout.validate(scratch_bytes);
+    if (scratch_status != .ok) return scratch_status;
+    // Output slices are cleared in full, so their capacities are actual write extents.
+    const ranges = [_]scratch.Range{
+        scratch.Range.init(scratch_bytes.ptr, session.scratch_layout.byte_count) orelse return .invalid_argument,
+        scratch.Range.init(input, @sizeOf(protocol.PlanInput)) orelse return .invalid_argument,
+        scratch.Range.slice(protocol.PlanMetricInput, requested_metrics) orelse return .invalid_argument,
+        scratch.Range.slice(protocol.SourceModeInput, source_modes) orelse return .invalid_argument,
+        scratch.Range.init(output, @sizeOf(protocol.PlanOutput)) orelse return .invalid_argument,
+        scratch.Range.slice(protocol.SourcePlanOutput, source_plans) orelse return .invalid_argument,
+        scratch.Range.slice(protocol.MetricPlanOutput, metric_plans) orelse return .invalid_argument,
+    };
+    if (!scratch.disjoint(&ranges)) return .invalid_argument;
+    const handles = session.scratch_layout.column(u64, scratch_bytes, session.scratch_layout.plan_handles, session.config.maximum_plan_metric_count);
     stageSourceModes(session, input.plan_epoch, source_modes);
-    const metric_summary = selectMetricRules(session, input.plan_epoch, requested_metrics);
+    // A due-only request does not cancel slower active subscriptions. Only explicit
+    // source modes invalidate the baseline here; demand cancellation is separate.
+    for (session.active.rules[0..session.active.rule_count]) |*rule| {
+        if (!protocol.isCounterMetric(rule.definition.metric_kind)) continue;
+        const mode = session.source_modes[session.active.findSource(rule.definition.source_handle).?];
+        if (!mode.present or mode.input.zone_mode == @intFromEnum(protocol.ZoneMode.freeze) or
+            mode.input.availability != @intFromEnum(protocol.SourceAvailability.available) or
+            mode.input.capability_generation != rule.capability_generation) rule.counter_baseline = .{};
+    }
+    const metric_summary = selectMetricRules(session, input.plan_epoch, requested_metrics, handles);
     const inventory_summary = selectInventorySource(session, input);
 
     @memset(source_plans, std.mem.zeroes(protocol.SourcePlanOutput));
@@ -61,7 +86,7 @@ pub fn plan(
         inventory_summary.source_index,
         source_plans,
     );
-    writeMetricPlans(session, input.plan_epoch, requested_metrics, metric_plans);
+    writeMetricPlans(session, input.plan_epoch, requested_metrics, metric_plans, handles);
 
     session.last_operation_epoch = input.operation_epoch;
     session.last_plan_epoch = input.plan_epoch;
@@ -160,9 +185,10 @@ fn selectMetricRules(
     session: *state.Session,
     plan_epoch: u64,
     requested_metrics: []const protocol.PlanMetricInput,
+    handles: []u64,
 ) MetricSelectionSummary {
     session.planned_rule_count = @intCast(requested_metrics.len);
-    @memset(session.planned_rule_handles, 0);
+    @memset(handles, 0);
     @memset(session.planned_rule_flags, false);
     var summary = MetricSelectionSummary{
         .selected_source_count = 0,
@@ -172,7 +198,7 @@ fn selectMetricRules(
         const metric_index = session.active.findMetric(requested.metric_handle).?;
         const metric = session.active.metrics[metric_index];
         const selected_rule_handle = selectMetricRule(session, plan_epoch, &metric);
-        session.planned_rule_handles[ordinal] = selected_rule_handle;
+        handles[ordinal] = selected_rule_handle;
         if (selected_rule_handle == 0) {
             summary.unavailable_metric_count += 1;
         } else {
@@ -306,12 +332,13 @@ fn writeMetricPlans(
     plan_epoch: u64,
     requested_metrics: []const protocol.PlanMetricInput,
     metric_plans: []protocol.MetricPlanOutput,
+    handles: []const u64,
 ) void {
     for (requested_metrics, 0..) |requested, ordinal| {
         const metric_index = session.active.findMetric(requested.metric_handle).?;
         const metric = session.active.metrics[metric_index];
         const definition = session.active.rules[metric.first_rule_index].definition;
-        const selected_rule_handle = session.planned_rule_handles[ordinal];
+        const selected_rule_handle = handles[ordinal];
         var selected_source_handle: u64 = 0;
         var selected_rule = definition;
         if (selected_rule_handle != 0) {

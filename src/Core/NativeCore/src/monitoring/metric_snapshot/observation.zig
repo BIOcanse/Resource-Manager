@@ -2,10 +2,11 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const catalog = @import("catalog.zig");
 const state = @import("state.zig");
+const scratch = @import("scratch.zig");
 const inventory = @import("inventory.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
-pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader) ResultCode {
+pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader, scratch_bytes: []u8) ResultCode {
     state.lock(&session.mutex);
     defer state.unlock(&session.mutex);
     if (!validHeader(session, header)) return .abi_mismatch;
@@ -50,6 +51,16 @@ pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader) 
     }
     if (!validCompletionShape(header)) return .invalid_argument;
     const next_revision = session.nextRevision() orelse return .unavailable;
+    const layout = session.scratch_layout;
+    const scratch_status = layout.validate(scratch_bytes);
+    if (scratch_status != .ok) return scratch_status;
+    const region = scratch.Range.init(scratch_bytes.ptr, layout.byte_count) orelse return .invalid_argument;
+    const input = scratch.Range.init(header, @sizeOf(protocol.CompletionHeader)) orelse return .invalid_argument;
+    if (scratch.Range.overlaps(region, input)) return .invalid_argument;
+    session.requested_rule_indices = layout.column(u32, scratch_bytes, layout.requested, session.config.maximum_requested_count);
+    session.requested_rule_flags = layout.column(bool, scratch_bytes, layout.requested_flags, session.config.maximum_rule_count);
+    session.observation_slot_by_rule = layout.column(u32, scratch_bytes, layout.observation_slots, session.config.maximum_rule_count);
+    session.observations = layout.column(protocol.ObservationInput, scratch_bytes, layout.observations, session.config.maximum_observation_count);
     session.clearCompletion();
     session.completion = header.*;
     session.phase = .completion_open;
@@ -317,6 +328,11 @@ fn stageFinalizedSource(
             session.completion.capability_generation,
         );
     }
+    if ((reset_reason_mask & protocol.SourceResetReason.incarnation_changed) != 0) {
+        for (session.staging.rules[0..session.staging.rule_count]) |*rule| {
+            if (rule.definition.source_handle == session.completion.source_handle) rule.counter_baseline = .{};
+        }
+    }
     applyRequestedRules(&session.staging, session, next_source_generation);
     inventory.prepareFinalized(session, next_source_generation);
     const source = &session.staging.sources[source_index];
@@ -392,6 +408,7 @@ fn commitFinalizedSource(
         .ready;
     session.source_modes[source_index].completion_committed = true;
     session.clearCompletion();
+    session.detachCompletion();
 }
 
 pub fn abort(session: *state.Session, input: *const protocol.AbortInput) ResultCode {
@@ -404,6 +421,7 @@ pub fn abort(session: *state.Session, input: *const protocol.AbortInput) ResultC
     session.state_revision = next_revision;
     session.phase = if (session.committed_generation == 0) .catalog_ready else .ready;
     session.clearCompletion();
+    session.detachCompletion();
     return .ok;
 }
 
@@ -539,7 +557,7 @@ fn validateObservation(
     observation: *const protocol.ObservationInput,
 ) ?u32 {
     if (observation.struct_size != @sizeOf(protocol.ObservationInput) or
-        observation.flags != 0 or observation.rule_handle == 0 or
+        (observation.flags & ~protocol.ObservationFlags.known) != 0 or observation.rule_handle == 0 or
         observation.metric_handle == 0 or observation.source_handle == 0 or
         observation.scope_handle == 0 or observation.reserved_u32 != 0 or
         observation.source_handle != session.completion.source_handle or
@@ -576,25 +594,33 @@ fn validateObservation(
     {
         return null;
     }
+    const counter_pair = definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_ratio);
+    const timed_counter = protocol.isTimedCounterMetric(definition.metric_kind);
+    const floating_pair = protocol.isFloatingCounterMetric(definition.metric_kind);
+    const flags: u32 = if (counter_pair) protocol.ObservationFlags.counter_pair else if (timed_counter) protocol.ObservationFlags.timed_counter else if (floating_pair) protocol.ObservationFlags.floating_counter_pair else 0;
+    if (observation.flags != flags) return null;
     const current = observation.status == @intFromEnum(protocol.ObservationStatus.current);
     if (current) {
         if ((observation.valid_mask & protocol.ObservationValid.value) == 0 or
-            !protocol.validValue(
-                definition.value_kind,
-                definition.flags,
-                definition.minimum_value_bits,
-                definition.maximum_value_bits,
-                observation.value_bits,
-            ))
+            !(if (counter_pair or timed_counter or floating_pair) observation.byte_count == 0 and observation.payload_reserved == 0 and
+                observation.sample_duration_milliseconds == 0 and std.mem.allEqual(u8, &observation.value_bytes, 0) and
+                (if (timed_counter) observation.counter_ticks_per_second > 0 else observation.counter_ticks_per_second == 0) and
+                (!floating_pair or (validFloatingCounter(observation.value_bits) and validFloatingCounter(observation.value_high_bits))) else protocol.validPayload(definition, observation.*)))
         {
             return null;
         }
     } else if ((observation.valid_mask & protocol.ObservationValid.value) != 0 or
-        observation.value_bits != 0 or observation.sample_duration_milliseconds != 0)
+        observation.value_bits != 0 or !protocol.emptyPayload(observation.*) or
+        observation.sample_duration_milliseconds != 0)
     {
         return null;
     }
     return rule_index;
+}
+
+fn validFloatingCounter(bits: u64) bool {
+    const value: f64 = @bitCast(bits);
+    return std.math.isFinite(value) and value >= 0;
 }
 
 fn validateCpuCounter(
@@ -737,9 +763,16 @@ fn applyRequestedRules(
         const observation = session.observations[slot];
         const status: protocol.ObservationStatus = @enumFromInt(observation.status);
         if (status == .current) {
+            if (protocol.isCounterMetric(rule.definition.metric_kind)) {
+                applyCounterPair(rule, &observation, source_generation, session.completion.capability_generation);
+                continue;
+            }
             rule.source_generation = source_generation;
             rule.observed_at_milliseconds = observation.observed_at_milliseconds;
             rule.value_bits = observation.value_bits;
+            rule.value_high_bits = observation.value_high_bits;
+            rule.byte_count = observation.byte_count;
+            rule.value_bytes = observation.value_bytes;
             rule.capability_mask = observation.capability_mask;
             rule.quality = observation.quality;
             rule.sample_duration_milliseconds = observation.sample_duration_milliseconds;
@@ -838,11 +871,59 @@ fn clearCpuBaseline(source: *catalog.SourceRecord) void {
     source.cpu_counter_contract_version = 0;
 }
 
+// Only the committed rule owns the prior pair. First/invalid intervals publish empty;
+// their current pair becomes the next baseline. No baseline is persisted to disk.
+fn applyCounterPair(rule: *catalog.RuleRecord, observation: *const protocol.ObservationInput, source_generation: u64, capability_generation: u64) void {
+    const prior = rule.counter_baseline;
+    const same_capability = rule.capability_generation == capability_generation;
+    applyMissing(rule, .unavailable, capability_generation);
+    rule.counter_baseline = .{ .valid = true, .primary = observation.value_bits, .reference = observation.value_high_bits, .ticks_per_second = observation.counter_ticks_per_second, .observed_at_milliseconds = observation.observed_at_milliseconds };
+    const timed = protocol.isTimedCounterMetric(rule.definition.metric_kind);
+    if (!prior.valid or !same_capability or (!timed and observation.observed_at_milliseconds <= prior.observed_at_milliseconds)) return;
+    var duration: u64 = undefined;
+    var ratio: f64 = undefined;
+    if (protocol.isFloatingCounterMetric(rule.definition.metric_kind)) {
+        const primary: f64 = @bitCast(observation.value_bits);
+        const reference: f64 = @bitCast(observation.value_high_bits);
+        const prior_primary: f64 = @bitCast(prior.primary);
+        const prior_reference: f64 = @bitCast(prior.reference);
+        if (primary < prior_primary or reference <= prior_reference) return;
+        const delta_reference = reference - prior_reference;
+        const milliseconds = delta_reference * 1000.0;
+        if (!std.math.isFinite(milliseconds) or milliseconds < 1.0 or milliseconds >= 0x1p64) return;
+        duration = @intFromFloat(milliseconds);
+        ratio = (primary - prior_primary) / delta_reference;
+        if (rule.definition.metric_kind == @intFromEnum(protocol.MetricKind.floating_counter_percentage)) ratio *= 100.0;
+    } else {
+        if (observation.value_bits < prior.primary or observation.value_high_bits <= prior.reference) return;
+        if (timed and observation.counter_ticks_per_second != prior.ticks_per_second) return;
+        const delta_reference = observation.value_high_bits - prior.reference;
+        const milliseconds: u128 = if (timed) @as(u128, delta_reference) * 1000 / observation.counter_ticks_per_second else observation.observed_at_milliseconds - prior.observed_at_milliseconds;
+        if (milliseconds == 0 or milliseconds > std.math.maxInt(u64)) return;
+        duration = @intCast(milliseconds);
+        ratio = @as(f64, @floatFromInt(observation.value_bits - prior.primary)) *
+            (if (timed) @as(f64, @floatFromInt(observation.counter_ticks_per_second)) else 1.0) /
+            @as(f64, @floatFromInt(delta_reference));
+    }
+    if (rule.definition.metric_kind == @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage)) ratio /= 10_000.0;
+    const bits: u64 = @bitCast(ratio);
+    if (!protocol.validValue(rule.definition.value_kind, rule.definition.flags, rule.definition.minimum_value_bits, rule.definition.maximum_value_bits, bits)) return;
+    rule.source_generation = source_generation;
+    rule.observed_at_milliseconds = observation.observed_at_milliseconds;
+    rule.value_bits = bits;
+    rule.capability_mask = observation.capability_mask;
+    rule.quality = observation.quality;
+    rule.sample_duration_milliseconds = @intCast(duration);
+    rule.status = .current;
+    rule.has_last_good = true;
+}
+
 fn applyMissing(
     rule: *catalog.RuleRecord,
     missing_status: protocol.MetricStatus,
     capability_generation: u64,
 ) void {
+    rule.counter_baseline = .{};
     rule.capability_generation = capability_generation;
     rule.unsupported_until_capability_generation =
         if (missing_status == .unsupported) capability_generation else 0;
@@ -854,6 +935,9 @@ fn applyMissing(
     }
     rule.source_generation = 0;
     rule.value_bits = 0;
+    rule.value_high_bits = 0;
+    rule.byte_count = 0;
+    rule.value_bytes = @splat(0);
     rule.capability_mask = 0;
     rule.quality = 0;
     rule.sample_duration_milliseconds = 0;
@@ -874,6 +958,10 @@ fn outputFromRule(rule: *const catalog.RuleRecord) protocol.MetricOutput {
         .source_generation = rule.source_generation,
         .observed_at_milliseconds = if (has_value) rule.observed_at_milliseconds else 0,
         .value_bits = rule.value_bits,
+        .value_high_bits = rule.value_high_bits,
+        .byte_count = rule.byte_count,
+        .payload_reserved = 0,
+        .value_bytes = rule.value_bytes,
         .capability_mask = rule.capability_mask,
         .metric_kind = definition.metric_kind,
         .scope_kind = definition.scope_kind,
@@ -891,6 +979,8 @@ fn outputFromRule(rule: *const catalog.RuleRecord) protocol.MetricOutput {
         output.source_handle,
         output.scope_handle,
         output.value_bits,
+        output.value_high_bits,
+        output.byte_count,
         output.capability_mask,
         output.metric_kind,
         output.scope_kind,
@@ -898,10 +988,10 @@ fn outputFromRule(rule: *const catalog.RuleRecord) protocol.MetricOutput {
         output.status,
         output.quality,
     };
-    const value = std.hash.Wyhash.hash(
-        0x726d_6d65_7472_6f75,
-        std.mem.asBytes(&semantic_fields),
-    );
+    var hash = std.hash.Wyhash.init(0x726d_6d65_7472_6f75);
+    hash.update(std.mem.asBytes(&semantic_fields));
+    hash.update(&output.value_bytes);
+    const value = hash.final();
     output.semantic_fingerprint = if (value == 0) 1 else value;
     return output;
 }
@@ -937,4 +1027,88 @@ test "completion shape rejects overflowing supplied and inventory counts" {
     inventory_input.overflow_count = 1;
     inventory_input.expected_gpu_inventory_count = 0;
     try std.testing.expect(!validCompletionShape(&inventory_input));
+}
+
+test "timed microsecond ratio preserves integer deltas zero and values above 100" {
+    const Case = struct { before: u64, after: u64, expected: f64 };
+    const high = @as(u64, 1) << 60;
+    const cases = [_]Case{
+        .{ .before = high, .after = high + 1, .expected = 0.0001 },
+        .{ .before = high, .after = high, .expected = 0 },
+        .{ .before = high, .after = high + 500_000, .expected = 50 },
+        .{ .before = high, .after = high + 1_250_000, .expected = 125 },
+        .{ .before = high, .after = high + 2_000_000, .expected = 200 },
+        .{ .before = std.math.maxInt(u64) - 1, .after = std.math.maxInt(u64), .expected = 0.0001 },
+    };
+    for (cases) |item| {
+        var rule: catalog.RuleRecord = .{};
+        rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage);
+        rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
+        rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
+        rule.definition.flags = protocol.MetricFlags.nonnegative;
+        rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
+        rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
+        rule.capability_generation = 1;
+        var sample = std.mem.zeroes(protocol.ObservationInput);
+        sample.value_bits = item.before;
+        sample.value_high_bits = 100;
+        sample.counter_ticks_per_second = 1_000_000;
+        sample.observed_at_milliseconds = 10_000;
+        applyCounterPair(&rule, &sample, 1, 1);
+        try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+        sample.value_bits = item.after;
+        sample.value_high_bits += 1_000_000;
+        // The mathematical denominator is QPC, not this wall-clock metadata.
+        sample.observed_at_milliseconds = 9_000;
+        applyCounterPair(&rule, &sample, 2, 1);
+        try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+        try std.testing.expectApproxEqAbs(item.expected, @as(f64, @bitCast(rule.value_bits)), 1e-10);
+        try std.testing.expectEqual(@as(u64, 1000), rule.sample_duration_milliseconds);
+    }
+}
+
+test "timed microsecond invalid intervals rewarm and missing discards the baseline" {
+    const Case = struct { counter: u64, ticks: u64, frequency: u64 };
+    const cases = [_]Case{
+        .{ .counter = 99, .ticks = 2000, .frequency = 1000 },
+        .{ .counter = 101, .ticks = 1000, .frequency = 1000 },
+        .{ .counter = 101, .ticks = 999, .frequency = 1000 },
+        .{ .counter = 101, .ticks = 2000, .frequency = 2000 },
+        .{ .counter = 0, .ticks = 2000, .frequency = 1000 },
+    };
+    for (cases) |item| {
+        var rule: catalog.RuleRecord = .{};
+        rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage);
+        rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
+        rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
+        rule.definition.flags = protocol.MetricFlags.nonnegative;
+        rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
+        rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
+        rule.capability_generation = 1;
+        var sample = std.mem.zeroes(protocol.ObservationInput);
+        sample.value_bits = 100;
+        sample.value_high_bits = 1000;
+        sample.counter_ticks_per_second = 1000;
+        sample.observed_at_milliseconds = 100;
+        applyCounterPair(&rule, &sample, 1, 1);
+        sample.value_bits = item.counter;
+        sample.value_high_bits = item.ticks;
+        sample.counter_ticks_per_second = item.frequency;
+        sample.observed_at_milliseconds = 200;
+        applyCounterPair(&rule, &sample, 2, 1);
+        try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+        try std.testing.expectEqual(item.counter, rule.counter_baseline.primary);
+        sample.value_bits += 500_000;
+        sample.value_high_bits += item.frequency;
+        sample.observed_at_milliseconds = 300;
+        applyCounterPair(&rule, &sample, 3, 1);
+        try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+        try std.testing.expectEqual(@as(f64, 50), @as(f64, @bitCast(rule.value_bits)));
+        applyMissing(&rule, .unavailable, 1);
+        try std.testing.expect(!rule.counter_baseline.valid);
+        sample.value_bits += 500_000;
+        sample.value_high_bits += item.frequency;
+        applyCounterPair(&rule, &sample, 4, 1);
+        try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+    }
 }

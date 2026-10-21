@@ -187,10 +187,13 @@ pub fn begin(
     view: View,
     token: *const types.ReservationToken,
     action_gate_epoch: u64,
+    now_monotonic_timestamp: u64,
 ) types.PlanError!void {
+    if (now_monotonic_timestamp == 0) return error.InvalidRequest;
     const slot = try resolveSlot(view, token);
     if (slot.pending.state != @intFromEnum(types.PendingState.reserved) or
-        slot.flags & journal_bound_flag == 0)
+        slot.flags & journal_bound_flag == 0 or
+        slot.pending.deadline_timestamp <= now_monotonic_timestamp)
     {
         return error.StaleReservation;
     }
@@ -466,7 +469,16 @@ test "reservation state preserves active work past its transport deadline" {
     var token = std.mem.zeroes(types.ReservationToken);
     try reserve(view, &request, &selection, &token);
     try bindJournal(view, &token, 91, 92);
-    try begin(view, &token, 0);
+    try std.testing.expectError(error.StaleReservation, begin(view, &token, 0, 110));
+    try std.testing.expectError(error.StaleReservation, begin(view, &token, 0, 111));
+    try std.testing.expectError(error.InvalidRequest, begin(view, &token, 0, 0));
+    _ = try validateReservedSelection(view, &token, &selection);
+    try cancel(view, &token);
+    request.now_monotonic_timestamp = 112;
+    request.deadline_timestamp = 120;
+    try reserve(view, &request, &selection, &token);
+    try bindJournal(view, &token, 93, 94);
+    try begin(view, &token, 0, 119);
     var pending: [capacity]types.PendingActionInput = undefined;
     try std.testing.expectEqual(@as(usize, 1), try snapshot(view, 999, pending[0..]));
     try complete(view, &token);

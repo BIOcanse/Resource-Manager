@@ -3,16 +3,17 @@ const protocol = @import("protocol.zig");
 
 test "sampling subscription ABI sizes and offsets are fixed" {
     try std.testing.expectEqual(@as(usize, 112), @sizeOf(protocol.Config));
-    try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.Capacity));
+    try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 32), @sizeOf(protocol.ItemReference));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.TrackInput));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.RemoveInput));
     try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.ControlInput));
-    try std.testing.expectEqual(@as(usize, 120), @sizeOf(protocol.PlanHeader));
+    try std.testing.expectEqual(@as(usize, 128), @sizeOf(protocol.PlanHeader));
+    try std.testing.expectEqual(@as(usize, 48), @sizeOf(protocol.TriggerOutput));
     try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.DueItemOutput));
     try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.SourceViewOutput));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(protocol.ExpiredSourceOutput));
-    try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.CompletionInput));
+    try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.CompletionInput));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.CompletionOutput));
     try std.testing.expectEqual(@as(usize, 112), @sizeOf(protocol.SnapshotHeader));
     try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.ItemStateOutput));
@@ -25,11 +26,17 @@ test "sampling subscription ABI sizes and offsets are fixed" {
     try std.testing.expectEqual(@as(usize, 108), @offsetOf(protocol.Config, "reserved_u32_1"));
     try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.TrackInput, "source_handle"));
     try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.TrackInput, "valid_mask"));
+    try std.testing.expectEqual(@as(usize, 28), @offsetOf(protocol.Capacity, "trigger_capacity"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.PlanHeader, "due_item_capacity"));
     try std.testing.expectEqual(@as(usize, 80), @offsetOf(protocol.PlanHeader, "next_wake_milliseconds"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(protocol.PlanHeader, "request_flags"));
+    try std.testing.expectEqual(@as(usize, 112), @offsetOf(protocol.PlanHeader, "trigger_capacity"));
+    try std.testing.expectEqual(@as(usize, 120), @offsetOf(protocol.PlanHeader, "reserved"));
+    try std.testing.expectEqual(@as(usize, 24), @offsetOf(protocol.TriggerOutput, "scheduled_due_milliseconds"));
     try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.DueItemOutput, "scheduled_due_milliseconds"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.CompletionInput, "valid_mask"));
+    try std.testing.expectEqual(@as(usize, 60), @offsetOf(protocol.CompletionInput, "trigger_count"));
+    try std.testing.expectEqual(@as(usize, 64), @offsetOf(protocol.CompletionInput, "status"));
     try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.SnapshotHeader, "active_source_count"));
     try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.ItemStateOutput, "scheduled_due_milliseconds"));
 }

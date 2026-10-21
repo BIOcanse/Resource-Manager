@@ -1,3 +1,4 @@
+import { decodeDisplayEdidCapability, decodeEdidUInt32, optionalEdidValue } from "./displayEdidDecoder.ts";
 import {
   requireArray,
   requireBackendMessage,
@@ -179,7 +180,14 @@ function decodeDisplayConnection(
     colorCapabilitySource: nullableString(
       record.colorCapabilitySource,
       `${path}.colorCapabilitySource`),
-    colorSpace: nullableString(record.colorSpace, `${path}.colorSpace`)
+    colorSpace: nullableString(record.colorSpace, `${path}.colorSpace`),
+    currentWidth: optionalEdidValue(record.currentWidth, `${path}.currentWidth`, decodeEdidUInt32),
+    currentHeight: optionalEdidValue(record.currentHeight, `${path}.currentHeight`, decodeEdidUInt32),
+    currentRefreshRateNumerator: optionalEdidValue(record.currentRefreshRateNumerator, `${path}.currentRefreshRateNumerator`, decodeEdidUInt32),
+    currentRefreshRateDenominator: optionalEdidValue(record.currentRefreshRateDenominator, `${path}.currentRefreshRateDenominator`, decodeEdidUInt32),
+    currentBitsPerColorChannel: optionalEdidValue(record.currentBitsPerColorChannel, `${path}.currentBitsPerColorChannel`, decodeEdidUInt32),
+    edidRawDeclaredBase64: optionalEdidValue(record.edidRawDeclaredBase64, `${path}.edidRawDeclaredBase64`, requireString),
+    modeCapabilityDeclared: optionalEdidValue(record.modeCapabilityDeclared, `${path}.modeCapabilityDeclared`, decodeDisplayEdidCapability)
   };
 }
 

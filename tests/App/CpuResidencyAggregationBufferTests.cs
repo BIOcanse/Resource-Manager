@@ -281,6 +281,103 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
+    public void EventLossDiscardsIdentityAndRejectsOldInventoryWithoutReusingInstanceIds()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        StartProcess(buffer, 0, 100, 1000, "Old", 10, uniqueProcessKey: 11);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 1000, 0, 100, 10, 0, 0);
+        var old = Assert.Single(buffer.Snapshot([0]).Records);
+        var inventory = buffer.CaptureInventorySeed();
+        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+
+        buffer.ResetAfterEventLoss();
+
+        Assert.False(buffer.Snapshot([0]).IsComplete);
+        Assert.Null(inventory.SeedProcess(999, 9999, "Stale"));
+        process.SeedThread(77);
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentThreadCount);
+
+        var replacement = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(
+            buffer.CaptureInventorySeed().SeedProcess(100, 2000, "New"));
+        replacement.SeedThread(10);
+        Switch(buffer, 1000, 0, 0, 0, 100, 10);
+        Switch(buffer, 2000, 0, 100, 10, 0, 0);
+        var recovered = buffer.Snapshot([0]);
+        Assert.True(recovered.IsComplete);
+        var current = Assert.Single(recovered.Records);
+        Assert.Equal(2000L, current.ProcessStartKey);
+        Assert.Equal(1000, current.ExecutionTimeQpc);
+        Assert.NotEqual(old.ProcessInstanceId, current.ProcessInstanceId);
+        Assert.NotEqual(old.ThreadInstanceId, current.ThreadInstanceId);
+    }
+
+    [Fact]
+    public void InventoryThreadCannotAttachToAReusedPid()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        var inventory = buffer.CaptureInventorySeed();
+        var old = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+        old.SeedThread(10);
+        StartProcess(buffer, 0, 100, 2000, "New", 20, uniqueProcessKey: 22);
+
+        old.SeedThread(30);
+        Assert.Null(inventory.SeedProcess(100, 1000, "Stale"));
+        Switch(buffer, 0, 0, 0, 0, 100, 30);
+        Switch(buffer, 1000, 0, 100, 30, 0, 0);
+        Assert.Empty(buffer.Snapshot([0]).Records);
+        Assert.Equal(1, buffer.GetDiagnostics().CurrentThreadCount);
+
+        Switch(buffer, 1000, 0, 0, 0, 100, 20);
+        Switch(buffer, 2000, 0, 100, 20, 0, 0);
+        var row = Assert.Single(buffer.Snapshot([0]).Records);
+        Assert.Equal(20, row.ThreadId);
+        Assert.Equal(2000L, row.ProcessStartKey);
+        Assert.Equal("New", row.ProcessName);
+    }
+
+    [Fact]
+    public void ContinuityResetPreservesAValidInventorySeed()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(
+            buffer.CaptureInventorySeed().SeedProcess(100, 1000, "Current"));
+        buffer.ResetContinuity();
+        process.SeedThread(10);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 1000, 0, 100, 10, 0, 0);
+
+        Assert.Equal(1000, Assert.Single(buffer.Snapshot([0]).Records).ExecutionTimeQpc);
+    }
+
+    [Fact]
+    public void ClearingTheBufferRevokesAllCapturedInventoryWriters()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        var inventory = buffer.CaptureInventorySeed();
+        var process = Assert.IsType<CpuResidencyAggregationBuffer.SeededProcess>(inventory.SeedProcess(100, 1000, "Old"));
+        buffer.Clear();
+        Assert.Null(inventory.SeedProcess(100, 2000, "Stale"));
+        process.SeedThread(10);
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentThreadCount);
+    }
+
+    [Fact]
+    public void EventLossKeepsTheQpcFloorAgainstDelayedOldLifecycleEvents()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000);
+        StartProcess(buffer, 1000, 100, 1000, "Old", 10, uniqueProcessKey: 11);
+        buffer.ResetAfterEventLoss();
+        StartProcess(buffer, 999, 100, 1000, "Delayed", 10, uniqueProcessKey: 11);
+
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentProcessCount);
+        Assert.Equal(0, buffer.GetDiagnostics().CurrentThreadCount);
+        Assert.False(buffer.Snapshot([0]).IsComplete);
+    }
+
+    [Fact]
     public void PidReuseProducesDistinctProcessInstances()
     {
         var buffer = CreateBuffer(windowMilliseconds: 5000);
@@ -575,52 +672,84 @@ public sealed class CpuResidencyAggregationBufferTests
         StartProcess(buffer, 0, 100, 1000, "A", 10, uniqueProcessKey: 11);
         StartProcess(buffer, 0, 200, 2000, "B", 20, uniqueProcessKey: 22);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
-        var start = new ManualResetEventSlim();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var windowReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var snapshotReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var completeSnapshotCount = 0;
 
-        var writer = Task.Run(() =>
+        var writer = Task.Run(async () =>
         {
-            start.Wait();
-            var oldProcessId = 100;
-            var oldThreadId = 10;
-            for (var qpc = 1; qpc <= switchCount; qpc++)
+            try
             {
-                var newProcessId = oldProcessId == 100 ? 200 : 100;
-                var newThreadId = oldThreadId == 10 ? 20 : 10;
-                Switch(
-                    buffer,
-                    qpc,
-                    0,
-                    oldProcessId,
-                    oldThreadId,
-                    newProcessId,
-                    newThreadId);
-                oldProcessId = newProcessId;
-                oldThreadId = newThreadId;
-            }
-        });
-        var settler = Task.Run(() =>
-        {
-            start.Wait();
-            while (!writer.IsCompleted)
-            {
-                var snapshot = buffer.Snapshot([0]);
-                if (!snapshot.IsComplete)
+                var oldProcessId = 100;
+                var oldThreadId = 10;
+                for (var qpc = 1; qpc <= switchCount; qpc++)
                 {
-                    continue;
+                    stop.Token.ThrowIfCancellationRequested();
+                    var newProcessId = oldProcessId == 100 ? 200 : 100;
+                    var newThreadId = oldThreadId == 10 ? 20 : 10;
+                    Switch(
+                        buffer,
+                        qpc,
+                        0,
+                        oldProcessId,
+                        oldThreadId,
+                        newProcessId,
+                        newThreadId);
+                    oldProcessId = newProcessId;
+                    oldThreadId = newThreadId;
+                    if (qpc == 1000)
+                    {
+                        windowReady.SetResult();
+                        await snapshotReady.Task.WaitAsync(stop.Token);
+                    }
                 }
+            }
+            catch
+            {
+                stop.Cancel();
+                throw;
+            }
+        });
+        var settler = Task.Run(async () =>
+        {
+            try
+            {
+                await windowReady.Task.WaitAsync(stop.Token);
+                while (!writer.IsCompleted)
+                {
+                    stop.Token.ThrowIfCancellationRequested();
+                    var snapshot = buffer.Snapshot([0]);
+                    if (!snapshot.IsComplete)
+                    {
+                        continue;
+                    }
 
-                Assert.InRange(
-                    snapshot.Records.Sum(static row => row.ExecutionTimeQpc),
-                    0,
-                    1000);
-                Interlocked.Increment(ref completeSnapshotCount);
+                    Assert.InRange(
+                        snapshot.Records.Sum(static row => row.ExecutionTimeQpc),
+                        0,
+                        1000);
+                    Interlocked.Increment(ref completeSnapshotCount);
+                    snapshotReady.TrySetResult();
+                }
+            }
+            catch
+            {
+                stop.Cancel();
+                throw;
             }
         });
 
-        start.Set();
-        await writer.WaitAsync(TimeSpan.FromSeconds(10));
-        await settler.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            await writer.WaitAsync(TimeSpan.FromSeconds(10));
+            await settler.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            stop.Cancel();
+            await Task.WhenAll(writer, settler).WaitAsync(TimeSpan.FromSeconds(10));
+        }
 
         Assert.True(Volatile.Read(ref completeSnapshotCount) > 0);
         var final = buffer.Snapshot([0]);

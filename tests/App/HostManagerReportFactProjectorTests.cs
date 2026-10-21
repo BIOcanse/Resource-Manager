@@ -98,7 +98,8 @@ public sealed class HostManagerReportFactProjectorTests
                 capturedAt,
                 available: true,
                 sourceGeneration: 12,
-                eventsLost: 1));
+                eventsLost: 1,
+                providerState: "Unavailable"));
 
         var cpu = Assert.Single(
             sources,
@@ -111,6 +112,20 @@ public sealed class HostManagerReportFactProjectorTests
             source => source.ProviderGeneration == 12);
         Assert.Equal(NativeReportSourceStatus.Unavailable, interrupts.Status);
         Assert.Empty(interrupts.Facts);
+    }
+
+    [Fact]
+    public void CompleteRecoveredInterruptWindowAcceptsHistoricalCumulativeLoss()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;
+        var capturedAt = DateTimeOffset.UtcNow;
+        var sources = HostManagerReportFactProjector.Project(plan,
+            CreateHardware(capturedAt, CpuMetricObservationStatus.Warming, sourceGeneration: 11),
+            CreateInterrupts(capturedAt, available: true, sourceGeneration: 12, eventsLost: 4));
+
+        var interrupts = Assert.Single(sources, source => source.ProviderGeneration == 12);
+        Assert.Equal(NativeReportSourceStatus.Complete, interrupts.Status);
+        Assert.Equal(3, interrupts.Facts.Count);
     }
 
     [Fact]
@@ -264,7 +279,8 @@ public sealed class HostManagerReportFactProjectorTests
         bool available,
         long sourceGeneration,
         int eventsLost = 0,
-        TimeSpan? window = null)
+        TimeSpan? window = null,
+        string providerState = "Running")
     {
         return new SystemInterruptSnapshot(
             capturedAt,
@@ -283,7 +299,7 @@ public sealed class HostManagerReportFactProjectorTests
             [],
             new SystemInterruptProviderState(
                 "etw-system-interrupts",
-                "Running",
+                providerState,
                 "test",
                 eventsLost));
     }

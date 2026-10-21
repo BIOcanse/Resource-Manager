@@ -15,12 +15,19 @@ internal sealed class SoftwareOperationEffectExecutor(
         CancellationToken cancellationToken)
     {
         _ = progress;
-        var (id, confirm) =
-            HostManagerOperationRequestCodec.DecodeBooleanRequest(ticket.Request.Payload);
         try
         {
+            SoftwareOperationRequest request;
+            SoftwareOperationCaller? caller = null;
+            if (ticket.Request.SchemaId == HostManagerOperationRequestSchemas.UserSoftwareUninstall)
+                (request, caller) = HostManagerOperationRequestCodec.DecodeUserSoftwareUninstall(ticket.Request.Payload);
+            else
+            {
+                var (id, confirm) = HostManagerOperationRequestCodec.DecodeBooleanRequest(ticket.Request.Payload);
+                request = new(id, confirm);
+            }
             var result = await softwareOperationManager.UninstallAsync(
-                new SoftwareOperationRequest(id, confirm),
+                request, caller,
                 cancellationToken).ConfigureAwait(false);
             return new(HostManagerOperationEffectOutcome.Succeeded, result.Message);
         }

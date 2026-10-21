@@ -24,7 +24,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 1 - usage / 100;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
 
         Assert.Equal(expectedRatio, snapshot.CpuWelfareMultiplier, 10);
@@ -68,7 +68,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 1 - memoryUsage / 100;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
 
         var emitted = outputs[..checked((int)snapshot.OutputCount)];
@@ -92,7 +92,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.CpuFreeRatio = 0.65;
         envelope.MemoryFreeRatio = 0.65;
         var snapshot = default(NativeComputeScoringSnapshot);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
         Assert.Equal(89, outputs[0].Score, 10);
 
@@ -101,7 +101,7 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(NativeComputeScoringStatus.Ok, session.Reconfigure(in configuration, [1]));
         envelope.SchedulingGeneration = 2;
         envelope.ConfigurationGeneration = 2;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
         Assert.Equal(80, outputs[0].Score, 10);
     }
@@ -118,7 +118,7 @@ public sealed partial class NativeComputeScoringSessionTests
         envelope.MemoryFreeRatio = 1;
         var snapshot = default(NativeComputeScoringSnapshot);
 
-        Assert.Equal(NativeComputeScoringStatus.NoData, session.Score(in envelope, [process],
+        Assert.Equal(NativeComputeScoringStatus.NoData, session.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
         Assert.Equal(0U, snapshot.OutputCount);
         Assert.Equal(0U, snapshot.SoftwareMemoryOutputCount);

@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Windows.Processes;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -75,26 +76,8 @@ internal static class ChromiumGpuProcessIdentity
     }
 
     private static string CommandLine(Process process)
-    {
-        _ = NtQueryBuffer(process.Handle, 60, IntPtr.Zero, 0, out var length);
-        if (length < Marshal.SizeOf<UnicodeString>() || length > ushort.MaxValue)
-            throw new InvalidOperationException("Invalid process command line length.");
-        var buffer = Marshal.AllocHGlobal(length);
-        try
-        {
-            if (NtQueryBuffer(process.Handle, 60, buffer, length, out _) < 0)
-                throw new InvalidOperationException("Cannot read process command line.");
-            var value = Marshal.PtrToStructure<UnicodeString>(buffer);
-            var offset = value.Buffer.ToInt64() - buffer.ToInt64();
-            if (offset < 0 || offset + value.Length > length || value.Length % 2 != 0)
-                throw new InvalidOperationException("Invalid process command line bounds.");
-            return Marshal.PtrToStringUni(value.Buffer, value.Length / 2) ?? string.Empty;
-        }
-        finally { Marshal.FreeHGlobal(buffer); }
-    }
+        => WindowsProcessCommandLineQuery.Read(process.Handle);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct UnicodeString { public ushort Length, MaximumLength; public IntPtr Buffer; }
     [StructLayout(LayoutKind.Sequential)]
     private struct BasicInformation { public IntPtr Exit, Peb, Affinity, Priority, Id, ParentId; }
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -103,8 +86,6 @@ internal static class ChromiumGpuProcessIdentity
     private static extern IntPtr LocalFree(IntPtr pointer);
     [DllImport("ntdll.dll")]
     private static extern int NtQueryInformationProcess(IntPtr process, int kind, ref BasicInformation information, int length, out int returned);
-    [DllImport("ntdll.dll", EntryPoint = "NtQueryInformationProcess")]
-    private static extern int NtQueryBuffer(IntPtr process, int kind, IntPtr information, int length, out int returned);
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CheckRemoteDebuggerPresent(IntPtr process, [MarshalAs(UnmanagedType.Bool)] out bool present);

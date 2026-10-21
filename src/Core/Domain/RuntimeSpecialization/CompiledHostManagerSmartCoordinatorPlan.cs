@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 
+using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
+
 namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
 public sealed record CompiledHostManagerSmartCoordinatorBuildPlan(
@@ -137,13 +139,19 @@ public sealed record CompiledHostManagerSmartCoordinatorHotPublishPlan(
     int NormalIntervalMilliseconds,
     int EventIntervalMilliseconds,
     int EventBoostMilliseconds,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GameStartGraceMs)]
     int GameStartGraceMilliseconds,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.RequiredConsecutiveDecisions)]
     int RequiredConsecutiveDecisions,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.FailureRetryMs)]
     int FailureRetryMilliseconds,
     int ReservationTimeoutMilliseconds,
     int MaximumActionsPerRealtimeTick,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SoftwareWelfare)]
     double WelfareUtilizationBaselinePercent,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.StateMultipliers)]
     ImmutableArray<double> ProcessStateMultipliers,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.BaseScoreTiers)]
     CompiledHostManagerBaseScoreTierPlan BaseScoreTiers,
     double A1MinimumCpuScore,
     double DefaultMinimumCpuScoreScale,

@@ -46,8 +46,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         facts = facts with { Processes = rows, InventoryProcesses = rows, AttributionProcesses = rows,
             EnumeratedCount = (uint)rows.Length, EmittedCount = (uint)rows.Length, ExcludedCount = 0, SkippedCount = 0 };
         var logs = new ReplayLogger();
+        using var selfLedgerOwner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
         using var self = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfLocalResourceManager(
-            new ResourceManagerSelfTypedResourceActionTests.RecordingPolicyWriter(), new ResourceManager.App.Infrastructure.DiskUsage.DiskUsageTreeStore());
+            new ResourceManagerSelfTypedResourceActionTests.RecordingPolicyWriter(), new ResourceManager.App.Infrastructure.DiskUsage.DiskUsageTreeStore(), selfLedgerOwner);
         var topology = CreateAutomaticPlacementTopology();
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
@@ -62,7 +63,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var row = Assert.Single(rows);
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(row.SoftwareId, "Owned renderer") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, TargetGpu = GpuPlacementTargets.AutoIdleGpu,
+            EnabledMode = GpuPlacementPolicyModes.Auto,
             RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         });
@@ -216,8 +217,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "Actual source pressure is below the unchanged overflow thresholds; no move requested.");
             }
             var topology = CreateAutomaticPlacementTopology();
+            using var selfLedgerOwner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
             using var self = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerSelfLocalResourceManager(
-                new ResourceManagerSelfTypedResourceActionTests.RecordingPolicyWriter(), new ResourceManager.App.Infrastructure.DiskUsage.DiskUsageTreeStore());
+                new ResourceManagerSelfTypedResourceActionTests.RecordingPolicyWriter(), new ResourceManager.App.Infrastructure.DiskUsage.DiskUsageTreeStore(), selfLedgerOwner);
             using var ledger = new JsonHostManagerRollbackStateStore(Path.Combine(root, "automatic-ledger.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
             await ledger.ReserveNativeHostSessionIncarnationAsync(default);
             var scoped = new OwnedRendererFacts(processes, identity, root);
@@ -240,13 +242,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     catch (ArgumentException) { return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(0, "Owned child exited."); }
                 },
                 runningGpuActionsFactory: (path, plans) => actions = new(
-                    new ExternalOnlyRunningGpuPlacementActionService(plans, external), identity, ledger, root));
+                    new ExternalOnlyRunningGpuPlacementActionService(plans, external,
+                        host.Services.GetRequiredService<IGpuPlacementProcessHistoryStore>()), identity, ledger, root));
             var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy(ownedFact.SoftwareId, "Owned renderer") with
             {
                 EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
-                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-                TargetGpu = automaticOverflow ? GpuPlacementTargets.AutoIdleGpu : GpuPlacementTargets.IntegratedGpu
+                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             };
             var enabled = fixture.RuntimePlan with { Version = fixture.RuntimePlan.Version + 1,
                 GpuPlacement = new(true, new Dictionary<string, ResolvedGpuPlacementPolicy>
@@ -257,8 +259,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 policy.PreferredRuntimeSwitchMethod), bound.Token);
             File.WriteAllText(Path.Combine(root, "preparation-before-cycle.json"), JsonSerializer.Serialize(preparation));
             Assert.NotNull(preparation.Plan?.External);
+            var confirmedPlan = preparation.Plan!.External!;
             Assert.Equal(input.GetProperty("rootPid").GetInt32(), preparation.Plan.External.Root.ProcessId);
             Assert.Equal(ulong.Parse(input.GetProperty("rootFileTime").GetString()!), preparation.Plan.External.Root.ProcessStartKey);
+            Assert.Equal(confirmedPlan.Root.ExecutablePath, confirmedPlan.GpuProcess.ExecutablePath, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(confirmedPlan.Root.ProcessName, confirmedPlan.GpuProcess.ProcessName, StringComparer.OrdinalIgnoreCase);
+            var startupHistory = await host.Services.GetRequiredService<IGpuPlacementProcessHistoryStore>()
+                .GetSoftwareHistoryAsync(ownedFact.SoftwareId, "Owned renderer", bound.Token);
+            var savedApi = Assert.Single(startupHistory.Processes, process => StringComparer.OrdinalIgnoreCase.Equals(
+                process.ExecutablePath, confirmedPlan.GpuProcess.ExecutablePath));
+            Assert.Equal<GpuGraphicsApi?>(
+                ExternalOnlyRunningGpuPlacementActionService.ConfirmedGraphicsApi(confirmedPlan.Renderer), savedApi.GraphicsApi);
+            Assert.Contains("actual-api-observation", savedApi.EvidenceSources);
             _ = await fixture.RunRealtimeCycleAsync();
             File.WriteAllText(Path.Combine(root, "authority.json"), JsonSerializer.Serialize(fixture.Coordinator.SchedulingAuthority));
             Assert.Equal(1, actions!.ApplyCount);

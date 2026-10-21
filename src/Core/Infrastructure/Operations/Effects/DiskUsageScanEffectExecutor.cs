@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.Operations.Effects;
 /// </summary>
 internal sealed class DiskUsageScanEffectExecutor(
     IDiskUsageScanner scanner,
-    IDiskUsageTreeStore store) : IHostManagerOperationEffectExecutor
+    IOwnedDiskUsageTreeStore store) : IHostManagerOperationEffectExecutor
 {
     public string Kind => HostManagerOperationKinds.DiskUsageScan;
 
@@ -17,16 +17,18 @@ internal sealed class DiskUsageScanEffectExecutor(
         IHostManagerOperationProgressSink progress,
         CancellationToken cancellationToken)
     {
-        var request = HostManagerOperationRequestCodec.DecodeDiskUsageScan(
+        var decoded = HostManagerOperationRequestCodec.DecodeDiskUsageScan(
             ticket.Request.Payload);
         var sink = new ProgressBridge(ticket, progress, cancellationToken);
         try
         {
             var result = await scanner
-                .ScanAsync(request, sink, cancellationToken)
+                .ScanAsync(decoded.Request, sink, cancellationToken)
                 .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             // 扫完才整棵替换：读取端不会看到扫到一半的树。
-            store.Replace(result);
+            if (decoded.Owner is { } owner) store.Replace(result, owner, cancellationToken);
+            else store.Replace(result, cancellationToken);
             // 这一层不带文本：结果的措辞由前端按扫描概况自己出。
             return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);
         }

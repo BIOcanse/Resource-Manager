@@ -1,3 +1,5 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { checkRecordedDisplayDialog } from "./displayEdidDialogProbe.js";
 export default async function themeConsistencyJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const failures = [];
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
@@ -29,7 +31,8 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
     settingsGetDelayMs: 0,
     settingsPatchDelayMs: 0,
     settingsRevision: "theme-r1",
-    settingsTheme: "light"
+    settingsTheme: "light",
+    displayEdid: "ready"
   });
 
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
@@ -39,8 +42,18 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
   await page.reload({ waitUntil: "domcontentloaded" });
   await openAppearanceSettings(page);
 
+  const edidThemes = [];
+  const checkEdid = async () => {
+    const app = await loadAppCopy("zh-CN");
+    await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
+    const topology = page.locator(".device-topology-panel"); await topology.waitFor();
+    await topology.locator(".device-port-item").first().click();
+    edidThemes.push({ theme: await page.locator("html").getAttribute("data-theme"), ...await checkRecordedDisplayDialog(page, app) });
+    await openAppearanceSettings(page);
+  };
   const snapshots = [];
   snapshots.push(await assertThemeIsConsistent(page, "light", assert));
+  await checkEdid();
 
   for (const transition of [
     { label: "深色", theme: "dark" },
@@ -54,6 +67,7 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
       transition.theme,
       { timeout: 5000 });
     snapshots.push(await assertThemeIsConsistent(page, transition.theme, assert));
+    await checkEdid();
   }
 
   await page.evaluate(() => localStorage.setItem(
@@ -62,9 +76,11 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
   await page.reload({ waitUntil: "domcontentloaded" });
   await openAppearanceSettings(page);
   snapshots.push(await assertThemeIsConsistent(page, "light", assert));
+  await checkEdid();
 
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
   return {
+    edidThemes,
     modes: snapshots.map((snapshot) => snapshot.theme),
     stalePrebootConverged: snapshots[0].theme === "light"
       && snapshots.at(-1)?.theme === "light",

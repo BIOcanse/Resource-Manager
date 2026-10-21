@@ -123,7 +123,6 @@ public sealed partial class HostManagerSmartCoordinator
                 processEffectValidationScopeAuthorityOwner.Capture(), HostManagerCycleEffectKind.NativeActionTransaction)
             && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement)
             && WantsGpuShim(process)
-            && GpuPlacementTargets.Normalize(process.Policy.TargetGpu) == GpuPlacementTargets.Normalize(planned.Process.Policy.TargetGpu)
             && GpuPlacementRuntimeSwitchMethods.Normalize(process.Policy.PreferredRuntimeSwitchMethod)
                 == GpuPlacementRuntimeSwitchMethods.Normalize(planned.Process.Policy.PreferredRuntimeSwitchMethod);
     }

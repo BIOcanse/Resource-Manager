@@ -56,7 +56,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return null;
+            }
             var batch = workspace!.PlanAndReadActionsLocked(
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
@@ -206,14 +209,12 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         HostManagerOperationActionTicket ticket,
         CancellationToken ownerStopping)
     {
-        if (!await MarkActionStartedAsync(ticket, ownerStopping)
-                .ConfigureAwait(false))
+        var control = await MarkActionStartedAsync(ticket, ownerStopping)
+            .ConfigureAwait(false);
+        if (control is null)
         {
             return;
         }
-        var control = attemptArbiter.Register(
-            ticket.Action.OperationId,
-            ticket.Action.AttemptToken);
         HostManagerOperationEffectCompletion completion;
         try
         {
@@ -286,7 +287,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return;
+            }
             evidence = receipts.FindLatest(
                     ticket.Action.OperationId,
                     ticket.Action.AttemptToken,
@@ -339,14 +343,18 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             .ConfigureAwait(false);
     }
 
-    private async Task<bool> MarkActionStartedAsync(
-        HostManagerOperationActionTicket ticket,
-        CancellationToken ownerStopping)
+    private async Task<HostManagerOperationAttemptArbiter.AttemptControl?>
+        MarkActionStartedAsync(
+            HostManagerOperationActionTicket ticket,
+            CancellationToken ownerStopping)
     {
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return null;
+            }
             var candidateReceipts = receipts.Clone();
             var current = candidateReceipts.Require(ticket.ReceiptId);
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -372,13 +380,15 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             };
             if (!workspace!.ApplyActionFeedbackLocked(ref input))
             {
-                return false;
+                return null;
             }
             CommitCurrentLocked(
                 "effect-started-publication",
                 payloads.Clone(),
                 candidateReceipts);
-            return true;
+            return attemptArbiter.Register(
+                ticket.Action.OperationId,
+                ticket.Action.AttemptToken);
         }
         finally
         {
@@ -394,7 +404,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return;
+            }
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -536,7 +549,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(ownerStopping).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return;
+            }
             var candidatePayloads = payloads.Clone();
             var candidateReceipts = receipts.Clone();
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -652,7 +668,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 .ConfigureAwait(false);
             try
             {
-                if (!persistenceFaulted)
+                if (!retiring && !disposed && !persistenceFaulted)
                 {
                     LatchPersistenceFaultLocked(error, stage);
                 }
@@ -709,9 +725,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             HostManagerOperationKinds.DependencyDownload => 3,
             HostManagerOperationKinds.DependencyLaunchInstaller => 4,
             HostManagerOperationKinds.SoftwareUninstall => 5,
-            HostManagerOperationKinds.MigrationExecute => 6,
-            HostManagerOperationKinds.MigrationRestore => 7,
-            HostManagerOperationKinds.DiscoveryStart => 8,
             HostManagerOperationKinds.DiskUsageScan => 9,
             _ => throw new InvalidDataException(
                 "The operation effect kind is unknown.")

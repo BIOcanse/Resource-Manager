@@ -82,7 +82,6 @@ assert.match(registrationSource, /onCleanup/);
 
 for (const relativePath of [
   "features/management/components/ManagementPage.tsx",
-  "features/management/components/MigrationPanel.tsx",
   "features/optimization/OptimizationPage.tsx",
   "features/details/CpuTopologyDiagram.tsx",
   "features/deviceTopology/DeviceTopologyView.tsx",

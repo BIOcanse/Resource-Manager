@@ -1,80 +1,26 @@
-using System.Runtime.InteropServices;
 using Microsoft.Win32;
+using ResourceManager.ReadWrite.Vendors.Mechrevo;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Paths;
-
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 namespace ResourceManager.App.Infrastructure.Monitoring;
-
-internal sealed class MechrevoUwAcpiSensorReader
+internal sealed class MechrevoUwAcpiSensorReader : IDisposable
 {
-    private const int CpuFanRpmHighAddress = 1124;
-    private const int CpuFanRpmLowAddress = 1125;
-    private const int GpuFanRpmHighAddress = 1132;
-    private const int GpuFanRpmLowAddress = 1131;
-    private const int CpuFanDutyAddress = 1883;
-    private const int GpuFanDutyAddress = 1884;
-    private const string ProviderName = "Mechrevo UWACPI";
-    private readonly object gate = new();
-    private RuntimeState? runtimeState;
-
-    public MechrevoUwAcpiSensorSnapshot Read()
-    {
-        var runtime = EnsureRuntime();
-        if (runtime.Reader is null)
+    private readonly MechrevoUwAcpiMetricResource resource;
+    public MechrevoUwAcpiSensorReader() : this(ResolveOfficialDllPath, static path => new MechrevoUwAcpiReader(path)) { }
+    internal MechrevoUwAcpiSensorReader(Func<string?> resolveLibraryPath, Func<string, MechrevoUwAcpiReader> createReader)
+        => resource = new(resolveLibraryPath, createReader, Describe, "未检测到机械革命/同方官方 UWACPI 运行库。");
+    internal void ReleaseSession() => resource.ReleaseSession();
+    public MechrevoUwAcpiSensorSnapshot Read() => resource.Read();
+    public void Dispose() => resource.Dispose();
+    private static string Describe(MechrevoUwAcpiReadResult result, string libraryPath)
+        => result.Status switch
         {
-            return new MechrevoUwAcpiSensorSnapshot(
-                new HardwareSensorProviderState(ProviderName, runtime.State, runtime.Message),
-                null,
-                null,
-                null);
-        }
-
-        try
-        {
-            var cpuFanRpm = ReadRpm(runtime.Reader, CpuFanRpmHighAddress, CpuFanRpmLowAddress);
-            var gpuFanRpm = ReadRpm(runtime.Reader, GpuFanRpmHighAddress, GpuFanRpmLowAddress);
-            var cpuFanPercent = ReadDutyPercent(runtime.Reader, CpuFanDutyAddress);
-            var gpuFanPercent = ReadDutyPercent(runtime.Reader, GpuFanDutyAddress);
-            var hasValue = cpuFanRpm is not null
-                || gpuFanRpm is not null
-                || cpuFanPercent is not null
-                || gpuFanPercent is not null;
-            var providerState = hasValue
-                ? new HardwareSensorProviderState(
-                    ProviderName,
-                    "Active",
-                    $"从官方 UWACPI ReadEC 只读接口读取风扇；DLL：{runtime.DllPath}")
-                : new HardwareSensorProviderState(
-                    ProviderName,
-                    "Unavailable",
-                    "UWACPI ReadEC 可调用，但未返回可用风扇读数。");
-
-            var gpuSensor = gpuFanRpm is null && gpuFanPercent is null
-                ? null
-                : new PlatformGpuSensor(
-                    0,
-                    "NVIDIA AMD dGPU fan",
-                    "Mechrevo UWACPI / dGPU fan / official ACPI EC read-only provider",
-                    null,
-                    null,
-                    gpuFanRpm,
-                    gpuFanPercent,
-                    null,
-                    null);
-
-            return new MechrevoUwAcpiSensorSnapshot(providerState, cpuFanRpm, cpuFanPercent, gpuSensor);
-        }
-        catch (Exception ex) when (ex is BadImageFormatException or DllNotFoundException or EntryPointNotFoundException or SEHException or AccessViolationException)
-        {
-            return new MechrevoUwAcpiSensorSnapshot(
-                new HardwareSensorProviderState(ProviderName, "Unavailable", $"UWACPI ReadEC 读取失败：{ex.Message}"),
-                null,
-                null,
-                null);
-        }
-    }
-
-    public static HardwareSensorDependencyRuntimeStatus ProbeRuntime()
+            MechrevoUwAcpiReadStatus.Active => $"从官方 UWACPI ReadEC 只读接口读取风扇；DLL：{libraryPath}",
+            MechrevoUwAcpiReadStatus.LibraryUnavailable => $"无法加载 UWACPI ReadEC 导出：{libraryPath}",
+            MechrevoUwAcpiReadStatus.ReadFailed => $"UWACPI ReadEC 读取失败：{result.Error}",
+            _ => "UWACPI ReadEC 可调用，但未返回可用风扇读数。"
+        };    public static HardwareSensorDependencyRuntimeStatus ProbeRuntime()
     {
         var dllPath = ResolveOfficialDllPath();
         var driver = FindService("UWACPIDriver");
@@ -89,7 +35,7 @@ internal sealed class MechrevoUwAcpiSensorReader
                 bridge ?? driver);
         }
 
-        if (!TryCreateReader(dllPath, out var handle, out _))
+        if (!MechrevoUwAcpiReader.ProbeLibrary(dllPath))
         {
             return new HardwareSensorDependencyRuntimeStatus(
                 true,
@@ -99,7 +45,6 @@ internal sealed class MechrevoUwAcpiSensorReader
                 dllPath);
         }
 
-        NativeLibrary.Free(handle);
         return new HardwareSensorDependencyRuntimeStatus(
             true,
             driver is not null,
@@ -108,107 +53,6 @@ internal sealed class MechrevoUwAcpiSensorReader
                 ? $"检测到 UWACPIDriver 和 ReadEC 导出；GCUBridge：{bridge ?? "未检测到"}。"
                 : "检测到 ReadEC 导出，但未检测到 UWACPIDriver 服务。",
             dllPath);
-    }
-
-    private RuntimeState EnsureRuntime()
-    {
-        lock (gate)
-        {
-            if (runtimeState is not null)
-            {
-                return runtimeState;
-            }
-
-            var dllPath = ResolveOfficialDllPath();
-            if (dllPath is null)
-            {
-                runtimeState = RuntimeState.Unavailable("Missing", "未检测到机械革命/同方官方 UWACPI 运行库。");
-                return runtimeState;
-            }
-
-            if (!TryCreateReader(dllPath, out var handle, out var reader))
-            {
-                runtimeState = RuntimeState.Unavailable("Unavailable", $"无法加载 UWACPI ReadEC 导出：{dllPath}");
-                return runtimeState;
-            }
-
-            runtimeState = new RuntimeState(handle, reader, dllPath, "RuntimeAvailable", "UWACPI ReadEC 可用。");
-            return runtimeState;
-        }
-    }
-
-    private static bool TryCreateReader(string dllPath, out IntPtr handle, out ReadEcDelegate? reader)
-    {
-        handle = IntPtr.Zero;
-        reader = null;
-        try
-        {
-            if (!NativeLibrary.TryLoad(dllPath, out handle))
-            {
-                return false;
-            }
-
-            if (!NativeLibrary.TryGetExport(handle, "ReadEC", out var export))
-            {
-                NativeLibrary.Free(handle);
-                handle = IntPtr.Zero;
-                return false;
-            }
-
-            reader = Marshal.GetDelegateForFunctionPointer<ReadEcDelegate>(export);
-            return true;
-        }
-        catch (Exception ex) when (ex is BadImageFormatException or DllNotFoundException or EntryPointNotFoundException)
-        {
-            if (handle != IntPtr.Zero)
-            {
-                NativeLibrary.Free(handle);
-            }
-
-            handle = IntPtr.Zero;
-            reader = null;
-            return false;
-        }
-    }
-
-    private static double? ReadRpm(ReadEcDelegate reader, int highAddress, int lowAddress)
-    {
-        var high = ReadByte(reader, highAddress);
-        var low = ReadByte(reader, lowAddress);
-        if (high is null || low is null)
-        {
-            return null;
-        }
-
-        var rpm = (high.Value << 8) | low.Value;
-        return rpm is >= 0 and < 20000 ? rpm : null;
-    }
-
-    private static double? ReadDutyPercent(ReadEcDelegate reader, int address)
-    {
-        var raw = ReadByte(reader, address);
-        if (raw is null)
-        {
-            return null;
-        }
-
-        if (raw.Value <= 100)
-        {
-            return raw.Value;
-        }
-
-        if (raw.Value <= 200)
-        {
-            return raw.Value / 2d;
-        }
-
-        return null;
-    }
-
-    private static int? ReadByte(ReadEcDelegate reader, int address)
-    {
-        var value = reader(address);
-        return value is >= 0 and <= 255 ? value : null;
     }
 
     private static string? ResolveOfficialDllPath()
@@ -314,25 +158,6 @@ internal sealed class MechrevoUwAcpiSensorReader
         return exeIndex >= 0 ? expanded[..(exeIndex + 4)] : expanded.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
     }
 
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate int ReadEcDelegate(int address);
-
-    private sealed record RuntimeState(
-        IntPtr Handle,
-        ReadEcDelegate? Reader,
-        string? DllPath,
-        string State,
-        string Message)
-    {
-        public static RuntimeState Unavailable(string state, string message)
-        {
-            return new RuntimeState(IntPtr.Zero, null, null, state, message);
-        }
-    }
 }
 
-internal sealed record MechrevoUwAcpiSensorSnapshot(
-    HardwareSensorProviderState ProviderState,
-    double? CpuFanSpeedRpm,
-    double? CpuFanSpeedPercent,
-    PlatformGpuSensor? GpuFanSensor);
+

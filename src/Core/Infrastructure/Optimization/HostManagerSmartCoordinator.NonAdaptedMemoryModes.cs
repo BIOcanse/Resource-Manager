@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -14,7 +15,8 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerComputeScoringCycleResult compute,
         HostManagerMemoryModeDesiredSnapshot memoryModes,
         HostManagerSample sample,
-        HostManagerMemoryModePolicy policy)
+        HostManagerMemoryModePolicy policy,
+        IReadOnlyDictionary<string, int> protectionLevels)
     {
         var members = compute.Cpu!.Scores
             .Where(static score => score.Kind == NativeComputeScoringOutputKind.ProcessCpu)
@@ -42,11 +44,16 @@ public sealed partial class HostManagerSmartCoordinator
                 continue;
             }
 
+            var protectionLevel = protectionLevels.GetValueOrDefault(
+                target.TargetId,
+                protectionLevels.GetValueOrDefault(target.SoftwareId));
+            // Omission also restores an already-owned priority through the existing projection-gap transaction.
             capabilities.Add(new(
                 processId,
                 processStartKey,
                 target.SoftwareId,
-                target.CanApplyAutomaticPolicy,
+                target.CanApplyAutomaticPolicy
+                    && protectionLevel < OptimizationProtectionLevels.Level2NoOptimization,
                 target.CanApplyAdaptedPolicy));
         }
 

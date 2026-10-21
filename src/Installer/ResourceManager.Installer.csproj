@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shared\ResourceManager.Shared.csproj" />
+    <ProjectReference Include="..\Updater\ResourceManager.Updater.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Resource Manager-APP.Tests" />

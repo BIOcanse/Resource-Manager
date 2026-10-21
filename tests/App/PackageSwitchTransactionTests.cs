@@ -45,7 +45,7 @@ public sealed class PackageSwitchTransactionTests
             Directory.Move(installed, moved);
             Assert.True(File.Exists(Path.Combine(moved, "UserData", "Database", "resource-manager.db")));
         }
-        finally { Directory.Delete(sandbox, recursive: true); }
+        finally { OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(sandbox); Directory.Delete(sandbox, recursive: true); }
     }
 
     [Theory]
@@ -71,12 +71,30 @@ public sealed class PackageSwitchTransactionTests
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
                 PropagationFlags.None, AccessControlType.Allow));
             configDirectory.SetAccessControl(configSecurity);
+            PackageUserDirectoryAccess.Prepare(installed);
+            using var cacheToken = PackageUserDirectoryTokenTests.CreateUserToken();
+            var cacheProfile = Path.Combine(installed, "Config", "WebView2", user.Value, "Profile");
+            WindowsIdentity.RunImpersonated(cacheToken, () =>
+            {
+                Directory.CreateDirectory(cacheProfile);
+                File.WriteAllText(Path.Combine(cacheProfile, "cache"), "old-private-cache");
+            });
             File.WriteAllText(Path.Combine(installed, "UserData", "Database", "resource-manager.db"), "old-database");
             File.WriteAllText(Path.Combine(installed, "release-manifest.json"), "old-manifest");
+            var legacyControl = Path.Combine(installed, "Bin", "ResourceManager", "UserData", "Control");
+            Directory.CreateDirectory(legacyControl);
+            File.WriteAllText(Path.Combine(legacyControl, "cpu-power-baseline.txt"), "45");
+            File.WriteAllText(Path.Combine(legacyControl, "desired-state.json"), "owned-control-state");
             var verified = ReleasePackageLayout.Verify(package);
             var runtime = new FakeUpdateRuntime(failHealth);
             var plan = new UpdatePlan(verified, installed, "0.2.0", ServiceWasRunning: true);
 
+            var managerDirectory = UpdateManagerPaths.InstalledDirectory(installed);
+            Directory.CreateDirectory(managerDirectory);
+            var managerPath = UpdateManagerPaths.InstalledExecutable(installed);
+            File.WriteAllText(managerPath, "stable-manager");
+            using var managerLock = new FileStream(managerPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var operationLock = PackageOperationLock.Acquire(installed);
             if (failHealth)
                 await Assert.ThrowsAsync<InvalidOperationException>(() =>
                     PackageSwitchTransaction.ApplyAsync(plan, runtime, CancellationToken.None));
@@ -84,11 +102,22 @@ public sealed class PackageSwitchTransactionTests
                 await PackageSwitchTransaction.ApplyAsync(plan, runtime, CancellationToken.None);
 
             Assert.Equal("old-settings", File.ReadAllText(Path.Combine(installed, "Config", "app-settings.json")));
+            WindowsIdentity.RunImpersonated(cacheToken, () =>
+            {
+                Assert.Equal("old-private-cache", File.ReadAllText(Path.Combine(cacheProfile, "cache")));
+                File.WriteAllText(Path.Combine(cacheProfile, "cache"), "cache-still-writable");
+            });
+            if (!failHealth)
+                Assert.Contains(new DirectoryInfo(cacheProfile).GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier))
+                    .Cast<FileSystemAccessRule>(), rule => !rule.IsInherited && rule.IdentityReference.Equals(user)
+                        && (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify);
             Assert.Equal("old-database", File.ReadAllText(Path.Combine(installed, "UserData", "Database", "resource-manager.db")));
             var installedManifest = File.ReadAllText(Path.Combine(installed, "release-manifest.json"));
             if (failHealth) Assert.Equal("old-manifest", installedManifest);
             else
             {
+                Assert.Equal("45", File.ReadAllText(Path.Combine(installed, "UserData", "Control", "cpu-power-baseline.txt")));
+                Assert.Equal("owned-control-state", File.ReadAllText(Path.Combine(installed, "UserData", "Control", "desired-state.json")));
                 using var document = JsonDocument.Parse(installedManifest);
                 Assert.Equal("0.3.0", document.RootElement.GetProperty("version").GetString());
                 var copied = new DirectoryInfo(Path.Combine(installed, "Config"))
@@ -97,12 +126,14 @@ public sealed class PackageSwitchTransactionTests
                     .Cast<FileSystemAccessRule>(), rule => rule.IdentityReference == user
                     && (rule.FileSystemRights & FileSystemRights.Modify) == FileSystemRights.Modify);
             }
+            Assert.Equal("stable-manager", File.ReadAllText(managerPath));
+            Assert.True(File.Exists(Path.Combine(managerDirectory, "operation.lock")));
             Assert.Equal(failHealth ? 2 : 1, runtime.StartCount);
             Assert.Equal(failHealth ? 2 : 1, runtime.StopCount);
             Assert.Equal(failHealth ? 0 : 1, runtime.WrittenVersions.Count);
             if (!failHealth) Assert.Equal("0.3.0", runtime.WrittenVersions.Single());
         }
-        finally { Directory.Delete(sandbox, recursive: true); }
+        finally { OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(sandbox); Directory.Delete(sandbox, recursive: true); }
     }
 
     [Theory]
@@ -142,7 +173,7 @@ public sealed class PackageSwitchTransactionTests
             if (nextWasPromoted)
                 Assert.True(File.Exists(Path.Combine(workspace, "failed", "Config", "app-settings.json")));
         }
-        finally { Directory.Delete(sandbox, recursive: true); }
+        finally { OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(sandbox); Directory.Delete(sandbox, recursive: true); }
     }
 
     [Fact]
@@ -168,15 +199,15 @@ public sealed class PackageSwitchTransactionTests
             Assert.Equal(1, runtime.StartCount);
             Assert.Empty(PackageSwitchTransaction.ListPending(installed));
         }
-        finally { Directory.Delete(sandbox, recursive: true); }
+        finally { OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(sandbox); Directory.Delete(sandbox, recursive: true); }
     }
 
-    private static void CreatePackage(string root, string version)
+    internal static void CreatePackage(string root, string version)
     {
         Directory.CreateDirectory(Path.Combine(root, "Config"));
         var paths = new[]
         {
-            "Install.exe", "Start.exe", "Bin/ResourceManager/ResourceManager.exe",
+            "Install.exe", "Start.exe", "UninstallResourceManager.exe", "Bin/ResourceManager/ResourceManager.exe",
             "Bin/ResourceManager/wwwroot/index.html",
             "Bin/ResourceManagerNativeUi/ResourceManager.NativeUi.exe",
             "Bin/ResourceManagerLauncher/ResourceManager.Launcher.exe",

@@ -18,8 +18,15 @@ internal sealed class FreedomPointRegistry
     };
 
     private readonly CompiledFreedomPointTree declarations;
+    internal FreedomPointSdkAdapter Sdk { get; }
+    internal CompiledFreedomPointTree Declarations => declarations;
 
-    private FreedomPointRegistry(CompiledFreedomPointTree declarations) => this.declarations = declarations;
+    private FreedomPointRegistry(CompiledFreedomPointTree declarations,
+        Func<CompiledFreedomPoint, ImmutableArray<global::FreedomPoint.GenerationTarget>>? generationTargets)
+    {
+        Sdk = new(declarations, generationTargets);
+        this.declarations = Sdk.Declarations;
+    }
 
     public static FreedomPointRegistry LoadEmbedded()
     {
@@ -30,7 +37,8 @@ internal sealed class FreedomPointRegistry
         return Parse(bytes.ToArray());
     }
 
-    public static FreedomPointRegistry Parse(ReadOnlySpan<byte> bytes)
+    public static FreedomPointRegistry Parse(ReadOnlySpan<byte> bytes,
+        Func<CompiledFreedomPoint, ImmutableArray<global::FreedomPoint.GenerationTarget>>? generationTargets = null)
     {
         try
         {
@@ -71,7 +79,7 @@ internal sealed class FreedomPointRegistry
 
             return new FreedomPointRegistry(new CompiledFreedomPointTree(
                 document.Namespace, Convert.ToHexString(SHA256.HashData(bytes)),
-                document.Children.Select(child => tables[child]).ToImmutableArray()));
+                document.Children.Select(child => tables[child]).ToImmutableArray()), generationTargets);
         }
         catch (JsonException exception)
         {
@@ -82,7 +90,7 @@ internal sealed class FreedomPointRegistry
     public FreedomPointCompilation BeginCompilation(
         HostManagerConfigurationProfile profile,
         CompiledCpuScoringPlan? cpuScoring = null)
-        => new(declarations, JsonSerializer.SerializeToElement(profile, JsonOptions),
+        => new(Sdk, JsonSerializer.SerializeToElement(profile, JsonOptions),
             cpuScoring is null ? default : JsonSerializer.SerializeToElement(new
             {
                 baseline_ratio = cpuScoring.BaselineRatio,

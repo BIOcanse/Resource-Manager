@@ -2,7 +2,7 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class NativeTransactionJournalOwnerTests
+public sealed partial class NativeTransactionJournalOwnerTests
 {
     private const uint AbiV5 = 0x0005_0000U;
     private const ulong ResidentBudget = 16UL * 1024 * 1024;
@@ -31,6 +31,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 fileStore,
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 var snapshot = await created.ReadSnapshotAsync(CancellationToken.None);
@@ -46,6 +47,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var reopenedSnapshot = await reopened.ReadSnapshotAsync(CancellationToken.None);
 
@@ -78,6 +80,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 using var callerCancellation = new CancellationTokenSource();
@@ -99,6 +102,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var persisted = await reopened.GetAsync(identity, CancellationToken.None);
             var snapshot = await reopened.ReadSnapshotAsync(CancellationToken.None);
@@ -132,6 +136,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 var first = CreatePrepare(CreateIdentity(111), 1, 1_000);
@@ -166,6 +171,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var persisted = await reopened.ReadSnapshotAsync(CancellationToken.None);
             Assert.Equal(2UL, persisted.Header.JournalRevision);
@@ -196,6 +202,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             Assert.Equal(
                 NativeTransactionJournalStatus.Ok,
@@ -248,6 +255,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             await using var journalLock = new FileStream(
                 journalPath,
@@ -314,6 +322,7 @@ public sealed class NativeTransactionJournalOwnerTests
                     manifestCommitter),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 priorImage = await File.ReadAllBytesAsync(journalPath);
@@ -347,6 +356,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var snapshot = await reopened.ReadSnapshotAsync(CancellationToken.None);
 
@@ -385,6 +395,7 @@ public sealed class NativeTransactionJournalOwnerTests
                     manifestCommitter),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 var expectedFailure = new IOException(
@@ -419,6 +430,7 @@ public sealed class NativeTransactionJournalOwnerTests
                     new NativeTransactionJournalFileStore(journalPath),
                     createConfiguration,
                     openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                     CancellationToken.None);
                 var persisted = await reopened.GetAsync(
                     identity,
@@ -455,6 +467,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 Assert.Equal(
@@ -469,6 +482,7 @@ public sealed class NativeTransactionJournalOwnerTests
                         new NativeTransactionJournalFileStore(journalPath),
                         createConfiguration,
                         openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                         rejectionDeadline.Token));
                 Assert.False(rejectionDeadline.IsCancellationRequested);
             }
@@ -477,6 +491,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var persisted = await reopened.GetAsync(identity, CancellationToken.None);
             var snapshot = await reopened.ReadSnapshotAsync(CancellationToken.None);
@@ -512,6 +527,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath, commitHook),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None))
             {
                 Assert.Equal(
@@ -543,6 +559,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             var persisted = await reopened.GetAsync(identity, CancellationToken.None);
             var snapshot = await reopened.ReadSnapshotAsync(CancellationToken.None);
@@ -577,6 +594,7 @@ public sealed class NativeTransactionJournalOwnerTests
                 new NativeTransactionJournalFileStore(journalPath, commitHook),
                 createConfiguration,
                 openConfiguration,
+            NativeAppliedOwnershipTestStorage.Create,
                 CancellationToken.None);
             Assert.Equal(
                 NativeTransactionJournalStatus.Ok,
