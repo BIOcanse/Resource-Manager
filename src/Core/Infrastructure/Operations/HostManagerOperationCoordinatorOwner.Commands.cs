@@ -172,7 +172,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            RequireMutableLocked();
+            if (!TryRequireMutableLocked())
+            {
+                return;
+            }
             var operation = workspace!.ReadCommittedProjectionLocked()
                 .SingleOrDefault(record =>
                     record.OperationId == ticket.Action.OperationId);

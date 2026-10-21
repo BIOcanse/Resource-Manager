@@ -21,6 +21,7 @@
 **/.idea/
 **/.claude/
 /.local/
+/sdk/freedom-point/restored-packages/
 **/.env
 **/.env.*
 *.user

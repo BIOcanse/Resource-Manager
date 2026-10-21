@@ -84,7 +84,12 @@ public sealed record AdapterResourceMarkerProbeResult(
     string State,
     DateTimeOffset CheckedAt,
     int? StatusCode,
-    string Message);
+    string Message)
+{
+    // Process proof is generated in the service, not restored from HTTP or a historical response.
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool OwnershipVerified { get; init; }
+}
 
 public sealed record AdapterSoftwareRegistration(
     string Id,
@@ -101,4 +106,5 @@ public sealed record AdapterSoftwareRegistration(
     string State,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    AdapterSoftwareSchedulingCapabilities? SchedulingCapabilities = null);
+    AdapterSoftwareSchedulingCapabilities? SchedulingCapabilities = null,
+    bool OwnershipVerified = false);

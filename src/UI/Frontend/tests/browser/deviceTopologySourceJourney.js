@@ -1,3 +1,5 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
@@ -6,14 +8,15 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   page.on("pageerror", (error) => pageErrors.push(String(error)));
 
   await page.setViewportSize({ width: 800, height: 500 });
-  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await setScenario(page, {
-    capabilities: "ready",
-    settings: "ready",
-    deviceTopologyDelayMs: 0
+  // Configure the isolated server before the only document/owner is created.
+  // Reloading an already mounted app mixes two owners' stream retirement into telemetry.
+  const initialScenario = await fetch(`${baseUrl}/__test/scenario`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ capabilities: "ready", settings: "ready", deviceTopologyDelayMs: 0 })
   });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await resetTelemetry(page);
+  assert(initialScenario.ok, `Unable to configure initial topology scenario: ${initialScenario.status}`);
+  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 
   const pageNavigation = page.getByRole("navigation", { name: "页面切换" });
   const topology = page.locator(".device-topology-panel");
@@ -87,6 +90,59 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   assert(selectedDetails?.includes(longTransport),
     `Keyboard selection did not expose the full device description: ${selectedDetails}`);
 
+  const app = await loadAppCopy("zh-CN");
+  const beforeEdid = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { displayEdid: "ready" });
+  await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeEdid);
+  const edidDetails = await checkRecordedDisplayDialog(page, app);
+  for (const variant of ["inactive", "unknown", "empty", "emptyRaw", "legacy"]) {
+    const count = (await readTelemetry(page, subscriptionPath)).publications;
+    await setScenario(page, { displayEdid: variant });
+    await waitForTelemetry(page, subscriptionPath, value => value.publications > count);
+    await checkDisplayVariant(page, app, variant);
+  }
+  await setScenario(page, { displayEdid: "identity" });
+  const interfaceRoots = topology.locator(".device-port-item:not(.nested)");
+  await page.waitForFunction(() => document.querySelectorAll(".device-topology-panel .device-port-item:not(.nested)").length === 2);
+  const selectRootAndVerifyIdentity = async (root, deviceId) => {
+    await root.click();
+    assert(await root.getAttribute("aria-pressed") === "true", "The intended interface root was not selected");
+    // Existing roots have no identity row; their attached-device details expose the same port's DeviceId.
+    const attached = root.locator("xpath=following-sibling::button[1]");
+    assert((await attached.getAttribute("class"))?.split(" ").includes("nested")
+      && (await attached.getAttribute("class"))?.split(" ").includes("device-node"),
+    "The selected interface does not have its expected attached display");
+    await attached.click();
+    await topology.locator(".device-details-button").click();
+    const identityDialog = page.locator(".user-details-modal:visible");
+    await identityDialog.getByText(deviceId, { exact: true }).waitFor();
+    await page.keyboard.press("Escape"); await identityDialog.waitFor({ state: "hidden" });
+    await root.click();
+    assert(await root.getAttribute("aria-pressed") === "true", "Identity verification did not return to its interface root");
+  };
+  await selectRootAndVerifyIdentity(interfaceRoots.nth(1), String.raw`DISPLAY\FIXTURE_HDMI_2`);
+  await checkDisplayVariant(page, app, "unknown");
+  await selectRootAndVerifyIdentity(interfaceRoots.first(), String.raw`DISPLAY\FIXTURE_HDMI_1`);
+  await checkRecordedDisplayDialog(page, app);
+  const beforeRecovery = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { displayEdid: "ready" });
+  await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeRecovery);
+  await checkRecordedDisplayDialog(page, app);
+  const type3Details = [];
+  for (const variant of ["type3", "type3Inactive", "type3Unknown", "type3"]) {
+    const count = (await readTelemetry(page, subscriptionPath)).publications;
+    await setScenario(page, { displayEdid: variant });
+    await waitForTelemetry(page, subscriptionPath, value => value.publications > count);
+    type3Details.push(await checkType3DisplayDialog(page, app, variant));
+  }
+  const beforeTypeX = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { displayEdid: "typex" });
+  await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeTypeX);
+  const typeXDetails = await checkTypeXDisplayDialog(page, app);
+  const beforeOriginal = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { displayEdid: "ready" });
+  await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeOriginal);
+  await checkRecordedDisplayDialog(page, app);
   const active = await waitForTelemetry(page, subscriptionPath, (value) => value.publications >= 2);
   assert(active.started === 1
     && active.logicalStarted === 1
@@ -122,6 +178,9 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
 
   return {
     dom,
+    edidDetails,
+    type3Details,
+    typeXDetails,
     longTextPresentation,
     firstActivation,
     firstChannel,

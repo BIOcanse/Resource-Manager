@@ -126,7 +126,6 @@ public sealed class OptimizationBaseScorePolicyResolverTests
             GpuPlacementPolicyModes.Inherit,
             GpuPlacementRiskLevels.Low,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementTargets.AutoIdleGpu,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             baseScoreOverride,
             DateTimeOffset.UnixEpoch);

@@ -27,10 +27,8 @@ const directCopySources = [
   "../src/features/details/CpuTopologyDiagram.tsx",
   "../src/features/management/components/ManagementPage.tsx",
   "../src/features/monitor/MetricModal.tsx",
-  "../src/features/management/components/MigrationPanel.tsx",
   "../src/components/SoftwareDetailModal.tsx",
   "../src/stores/managementStore.ts",
-  "../src/stores/migrationStore.ts",
   "../src/utils.ts"
 ].map(readSource).join("\n");
 

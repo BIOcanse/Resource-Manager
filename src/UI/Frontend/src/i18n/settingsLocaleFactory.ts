@@ -51,8 +51,8 @@ const zhCnSettingsCopy: SettingsCopy = {
       basic: { label: "关闭", description: "仅使用 Windows 支持的显卡偏好。" },
       precise: { label: "开启", description: "允许为软件精确选择目标显卡。" }
     },
-    automaticMemoryCleanupTitle: "自动清理阈值",
-    automaticMemoryCleanupDescription: "剩余低于这个值就启动后台清理。",
+    automaticMemoryCleanupTitle: "紧急清理阈值",
+    automaticMemoryCleanupDescription: "后台清理按资源压力分档；这里设定物理内存或提交额度剩余低于多少时进入紧急清理。",
     physicalMemoryAutomaticCleanupLabel: "物理内存剩余 %",
     virtualMemoryAutomaticCleanupLabel: "提交额度剩余 %",
     memoryOptimizationTargetTitle: "内存优化目标",
@@ -349,8 +349,8 @@ const enSettingsCopy: SettingsCopy = {
       basic: { label: "Off", description: "Use only GPU preferences supported by Windows." },
       precise: { label: "On", description: "Allow an exact target GPU to be selected for software." }
     },
-    automaticMemoryCleanupTitle: "Automatic Cleanup Threshold",
-    automaticMemoryCleanupDescription: "Start background cleanup when resources are low and a safe move cannot continue.",
+    automaticMemoryCleanupTitle: "Emergency cleanup thresholds",
+    automaticMemoryCleanupDescription: "Background cleanup follows resource pressure levels. These thresholds set when low remaining physical memory or commit capacity triggers emergency cleanup.",
     physicalMemoryAutomaticCleanupLabel: "Physical memory free %",
     virtualMemoryAutomaticCleanupLabel: "Commit headroom %",
     memoryOptimizationTargetTitle: "Memory Optimization Target",

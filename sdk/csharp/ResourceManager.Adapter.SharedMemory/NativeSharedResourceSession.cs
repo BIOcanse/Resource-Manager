@@ -62,9 +62,9 @@ public sealed unsafe class NativeSharedResourceSession : IDisposable
         try
         {
             var mutex = SharedMemoryMutex.CreateNew(mutexName);
+            IntPtr handle = IntPtr.Zero;
             try
             {
-                IntPtr handle = IntPtr.Zero;
                 ThrowIfFailure(
                     "create",
                     NativeSharedResourceMethods.rm_shared_ledger_create(
@@ -105,7 +105,12 @@ public sealed unsafe class NativeSharedResourceSession : IDisposable
             }
             catch
             {
-                mutex.Dispose();
+                try
+                {
+                    if (handle != IntPtr.Zero)
+                        NativeSharedResourceMethods.rm_shared_ledger_destroy(handle);
+                }
+                finally { mutex.Dispose(); }
                 throw;
             }
         }
@@ -136,9 +141,9 @@ public sealed unsafe class NativeSharedResourceSession : IDisposable
         try
         {
             var mutex = SharedMemoryMutex.OpenExisting(descriptor.MutexName);
+            IntPtr handle = IntPtr.Zero;
             try
             {
-                IntPtr handle = IntPtr.Zero;
                 ThrowIfFailure(
                     "open",
                     NativeSharedResourceMethods.rm_shared_ledger_open(
@@ -163,7 +168,12 @@ public sealed unsafe class NativeSharedResourceSession : IDisposable
             }
             catch
             {
-                mutex.Dispose();
+                try
+                {
+                    if (handle != IntPtr.Zero)
+                        NativeSharedResourceMethods.rm_shared_ledger_destroy(handle);
+                }
+                finally { mutex.Dispose(); }
                 throw;
             }
         }
@@ -695,13 +705,16 @@ public sealed unsafe class NativeSharedResourceSession : IDisposable
     public void Dispose()
     {
         var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
-        if (handle != IntPtr.Zero)
+        try
         {
-            NativeSharedResourceMethods.rm_shared_ledger_destroy(handle);
+            if (handle != IntPtr.Zero)
+                NativeSharedResourceMethods.rm_shared_ledger_destroy(handle);
         }
-
-        _mutex.Dispose();
-        _region.Dispose();
+        finally
+        {
+            try { _mutex.Dispose(); }
+            finally { _region.Dispose(); }
+        }
     }
 
     private IntPtr RequireHandle()

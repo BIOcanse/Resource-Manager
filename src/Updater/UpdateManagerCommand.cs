@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 using ResourceManager.Shared.Packages;
 using ResourceManager.Shared.Localization;
+using ResourceManager.Shared.ServiceHosting;
 
 namespace ResourceManager.Updater;
 
@@ -41,7 +42,7 @@ public static class UpdateManagerCommand
         if (args.Length == 3 && args[0] == "--replace-manager"
             && int.TryParse(args[2], out var oldProcessId))
             return await ManagerSelfUpdate.ReplaceAsync(executablePath, args[1],
-                oldProcessId, cancellationToken);
+                oldProcessId, cancellationToken, text);
         if (args.Length == 2 && args[0] == "--verify-package")
         {
             var package = ReleasePackageLayout.Verify(args[1]);
@@ -62,18 +63,34 @@ public static class UpdateManagerCommand
         if (args.Length == 2 && args[0] == "--recover")
         {
             var target = UpdatePlan.RequireRegisteredTarget(args[1]);
-            RequireExternalManager(executablePath, target, text);
+            RequireInstalledManager(executablePath, target, text);
             using var operationLock = AcquireOperationLock(target, text);
             var recovered = await PackageSwitchTransaction.RecoverPendingAsync(target,
                 new WindowsUpdateRuntime(), cancellationToken);
             return recovered.Count == 0 ? text.NoRecovery : text.Format(text.RecoveredCountFormat, recovered.Count);
+        }
+        if (args.Length == 3 && args[0] == "--import-user-data")
+        {
+            var target = UpdatePlan.RequireRegisteredTarget(args[2]);
+            RequireInstalledManager(executablePath, target, text);
+            using var operationLock = AcquireOperationLock(target, text);
+            if (PackageSwitchTransaction.ListPending(target).Count > 0) throw new InvalidOperationException(text.PendingTransaction);
+            UserDataArchive.Verify(args[1]);
+            var runtime = new WindowsUpdateRuntime();
+            var service = WindowsServiceRegistration.Read(WindowsServiceRegistration.ProductServiceName)
+                ?? throw new InvalidOperationException(text.LauncherServiceStartFailed);
+            await runtime.WaitForNativeUiExitAsync(target, cancellationToken);
+            runtime.StopService(target);
+            try { UserDataArchive.Import(target, args[1], staged => UpdatePlan.CheckCompatibility(target, staged)); }
+            finally { if (service.Running) runtime.StartService(target); }
+            return text.ImportUserDataCompleted;
         }
         if (args.Length != 3 || args[0] is not ("--plan-only" or "--apply" or "--repair"))
             throw new ArgumentException(text.InvalidCommand);
         var operation = args[0] == "--repair" ? UpdateOperation.Repair : UpdateOperation.Update;
         var plan = UpdatePlan.Create(args[1], args[2], operation);
         if (args[0] == "--plan-only") return text.Format(text.PreflightFormat, plan.Package.Version);
-        RequireExternalManager(executablePath, plan.InstallRoot, text);
+        RequireInstalledManager(executablePath, plan.InstallRoot, text);
         using var updateLock = AcquireOperationLock(plan.InstallRoot, text);
         var pending = PackageSwitchTransaction.ListPending(plan.InstallRoot);
         if (pending.Count > 0)
@@ -87,6 +104,7 @@ public static class UpdateManagerCommand
         {
             var desktopResult = LegacyInstallationAdoption.FinishDesktopRegistration(plan.InstallRoot);
             if (desktopResult != "桌面登记无需旧版收尾。") result += " " + desktopResult;
+            DesktopEntryRegistration.Refresh(plan.InstallRoot);
         }
         catch (Exception exception)
         {
@@ -94,23 +112,33 @@ public static class UpdateManagerCommand
         }
         try
         {
-            if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, executablePath))
+            if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, executablePath, text))
                 result += " " + text.SelfReplaceNotice;
         }
         catch (Exception exception)
         {
             result += " " + text.Format(text.SelfUpdateFailedFormat, exception.Message);
         }
+        try
+        {
+            PackageSwitchTransaction.RetainLatestBackup(plan.InstallRoot, workspace);
+            ProductUpdateDownload.RemoveCompleted(plan.Package.Root, plan.InstallRoot, plan.Package.Version);
+        }
+        catch (Exception exception)
+        {
+            result += " " + text.Format(text.UpdateCleanupFailedFormat, exception.Message);
+        }
         return result;
     }
 
     public static void WriteResult(string[] args, bool success, string message)
     {
-        if (args.Length == 3 && args[0] is "--apply" or "--repair" or "--adopt-and-apply" or "--resume-legacy")
+        if ((args.Length == 3 && args[0] is "--apply" or "--repair" or "--adopt-and-apply" or "--resume-legacy" or "--import-user-data")
+            || (args.Length == 2 && args[0] == "--recover"))
         {
             try
             {
-                var target = UpdatePlan.RequireRegisteredTarget(args[2]);
+                var target = UpdatePlan.RequireRegisteredTarget(args[^1]);
                 var managerDirectory = UpdateManagerPaths.InstalledDirectory(target);
                 ReleasePackageLayout.RejectReparse(managerDirectory);
                 var resultName = args[0] is "--adopt-and-apply" or "--resume-legacy"
@@ -119,7 +147,7 @@ public static class UpdateManagerCommand
                 if (File.Exists(resultPath)) ReleasePackageLayout.RejectReparse(resultPath);
                 var tempPath = resultPath + ".writing";
                 File.WriteAllText(tempPath,
-                    JsonSerializer.Serialize(new { success, message, finishedAt = DateTimeOffset.UtcNow }));
+                    JsonSerializer.Serialize(new OperationResult(success, message, DateTimeOffset.UtcNow, args)));
                 File.Move(tempPath, resultPath, overwrite: true);
             }
             catch (IOException) { }
@@ -146,7 +174,23 @@ public static class UpdateManagerCommand
         catch (InvalidOperationException) { }
     }
 
-    private static void RequireExternalManager(string executablePath, string installRoot, ToolText text)
+    public sealed record OperationResult(bool Success, string Message, DateTimeOffset FinishedAt, string[] Arguments);
+
+    public static OperationResult? ReadResult(string[] args, DateTimeOffset startedAt)
+    {
+        var target = UpdatePlan.RequireRegisteredTarget(args[^1]);
+        var name = args[0] is "--adopt-and-apply" or "--resume-legacy" ? "last-legacy-result.json" : "last-operation-result.json";
+        var path = Path.Combine(UpdateManagerPaths.InstalledDirectory(target), name);
+        if (!File.Exists(path)) return null;
+        ReleasePackageLayout.RejectReparse(path);
+        if (new FileInfo(path).Length > 1_048_576) throw new InvalidDataException("Invalid update result.");
+        var result = JsonSerializer.Deserialize<OperationResult>(File.ReadAllText(path));
+        return result is not null && result.FinishedAt >= startedAt
+            && result.Arguments is not null && result.Arguments.SequenceEqual(args, StringComparer.Ordinal)
+            ? result : null;
+    }
+
+    private static void RequireInstalledManager(string executablePath, string installRoot, ToolText text)
     {
         var expected = UpdateManagerPaths.InstalledExecutable(installRoot);
         if (!Path.GetFullPath(executablePath).Equals(expected, StringComparison.OrdinalIgnoreCase))
@@ -158,9 +202,7 @@ public static class UpdateManagerCommand
 
     internal static FileStream AcquireOperationLock(string installRoot, ToolText? text = null)
     {
-        var path = Path.Combine(UpdateManagerPaths.InstalledDirectory(installRoot), "operation.lock");
-        if (File.Exists(path)) ReleasePackageLayout.RejectReparse(path);
-        try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        try { return PackageOperationLock.Acquire(installRoot); }
         catch (IOException exception)
         {
             throw new InvalidOperationException((text ?? ToolText.FromInstallRoot(installRoot)).BusyOperation, exception);

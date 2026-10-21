@@ -38,8 +38,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
             app.MapOperationEndpoints();
-            app.MapMigrationEndpoints();
-        }
+            }
         if (startupCapabilities.Allows(StartupCapability.OptimizationRuntime))
         {
             app.MapOptimizationEndpoints(loopbackApiPipelineMode);

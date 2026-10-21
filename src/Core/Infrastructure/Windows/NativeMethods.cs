@@ -5,11 +5,6 @@ internal static partial class NativeMethods
     internal const int ErrorSuccess = 0;
     internal const int ErrorInsufficientBuffer = 122;
     internal const int ProcessorInformation = 11;
-    internal const int SystemProcessorPerformanceInformation = 8;
-    internal const int RelationProcessorCore = 0;
-    internal const int RelationCache = 2;
-    internal const int RelationProcessorDie = 5;
-    internal const int CpuSetInformation = 0;
     internal const int AppmodelErrorNoPackage = 15700;
     internal const ushort VariantTypeBStr = 8;
     internal const ushort VariantTypeLpwStr = 31;

@@ -6,136 +6,92 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDisposable
 {
-    private static readonly TimeSpan CatalogRetryInterval = TimeSpan.FromSeconds(5);
-    private readonly SemaphoreSlim changedWake = new(0, 1);
-    private readonly IMetricSampler sampler;
+    internal static readonly TimeSpan CatalogSubscriptionInterval = TimeSpan.FromSeconds(5);
+    private readonly IMetricSnapshotPushSource source;
     private readonly DashboardMonitoringCatalogState catalogState;
     private readonly IRuntimeSpecializationCoordinator runtimeSpecialization;
     private readonly ILogger<DashboardMonitoringPlanSynchronizer> logger;
     private CancellationTokenSource? workerCancellation;
     private Task? worker;
-    private bool started;
-    private volatile bool initialCatalogReconciled;
+    private int pendingCatalogChange;
+    private bool initialCatalogReconciled;
 
     public DashboardMonitoringPlanSynchronizer(
-        IMetricSampler sampler,
+        IMetricSnapshotPushSource source,
         DashboardMonitoringCatalogState catalogState,
         IRuntimeSpecializationCoordinator runtimeSpecialization,
         ILogger<DashboardMonitoringPlanSynchronizer> logger)
     {
-        this.sampler = sampler;
+        this.source = source;
         this.catalogState = catalogState;
         this.runtimeSpecialization = runtimeSpecialization;
         this.logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        if (started)
-        {
-            return;
-        }
-
-        started = true;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (worker is { IsCompleted: false }) return Task.CompletedTask;
+        catalogState.Changed -= OnCatalogChanged;
+        workerCancellation?.Dispose();
+        initialCatalogReconciled = false;
+        pendingCatalogChange = 1;
         catalogState.Changed += OnCatalogChanged;
-        try
-        {
-            var snapshot = await sampler.GetSnapshotAsync(
-                MetricSampleRequest.CatalogProbe,
-                cancellationToken);
-            catalogState.PublishCatalogProbe(snapshot);
-            DrainWake();
-            await runtimeSpecialization.RebuildAsync(
-                "monitoring-catalog-ready",
-                cancellationToken);
-            initialCatalogReconciled = true;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            catalogState.Changed -= OnCatalogChanged;
-            started = false;
-            throw;
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                exception,
-                "The initial dashboard monitoring catalog could not be reconciled; GPU monitoring entries remain inactive until a catalog snapshot succeeds.");
-        }
-
         workerCancellation = new CancellationTokenSource();
-        worker = Task.Run(
-            () => RunAsync(workerCancellation.Token),
-            CancellationToken.None);
+        worker = Task.Run(() => RunAsync(workerCancellation.Token), CancellationToken.None);
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         catalogState.Changed -= OnCatalogChanged;
-        started = false;
         var cancellation = workerCancellation;
         var running = worker;
-        if (cancellation is null || running is null)
-        {
-            return;
-        }
-
+        if (cancellation is null || running is null) return;
         cancellation.Cancel();
-        TryWake();
-        try
-        {
-            await running.WaitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-        }
+        await running.WaitAsync(cancellationToken);
+        cancellation.Dispose();
+        workerCancellation = null;
+        worker = null;
     }
 
     public void Dispose()
     {
         catalogState.Changed -= OnCatalogChanged;
         workerCancellation?.Cancel();
+        worker?.GetAwaiter().GetResult();
         workerCancellation?.Dispose();
-        changedWake.Dispose();
     }
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (!initialCatalogReconciled)
-            {
-                try
-                {
-                    if (catalogState.Current is null)
-                    {
-                        var snapshot = await sampler.GetSnapshotAsync(
-                            MetricSampleRequest.CatalogProbe, cancellationToken);
-                        catalogState.PublishCatalogProbe(snapshot);
-                    }
-                    DrainWake();
-                    await runtimeSpecialization.RebuildAsync(
-                        "monitoring-catalog-ready", cancellationToken);
-                    initialCatalogReconciled = true;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    logger.LogWarning(exception, "The initial dashboard monitoring catalog will be retried.");
-                    await Task.Delay(CatalogRetryInterval, cancellationToken);
-                    continue;
-                }
-            }
-            await changedWake.WaitAsync(cancellationToken);
-            DrainWake();
             try
             {
-                await runtimeSpecialization.RebuildAsync(
-                    "monitoring-catalog-changed",
-                    cancellationToken);
+                await foreach (var snapshot in source.SubscribeAsync("dashboard-monitoring-catalog",
+                    MetricSampleRequest.CatalogProbe, CatalogSubscriptionInterval, cancellationToken))
+                {
+                    if (snapshot.CatalogGeneration == 0) continue;
+                    var changed = Interlocked.Exchange(ref pendingCatalogChange, 0) != 0;
+                    if (initialCatalogReconciled && !changed) continue;
+                    try
+                    {
+                        await runtimeSpecialization.RebuildAsync(initialCatalogReconciled
+                            ? "monitoring-catalog-changed" : "monitoring-catalog-ready", cancellationToken);
+                        initialCatalogReconciled = true;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception exception)
+                    {
+                        Interlocked.Exchange(ref pendingCatalogChange, 1);
+                        logger.LogWarning(exception, "The dashboard monitoring plan will retry on the next catalog publication.");
+                    }
+                }
+                logger.LogWarning("The monitoring catalog subscription ended; it will be reacquired.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -143,31 +99,18 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
             }
             catch (Exception exception)
             {
-                logger.LogWarning(
-                    exception,
-                    "The dashboard monitoring plan could not be reconciled with the current metric catalog.");
+                logger.LogWarning(exception, "The monitoring catalog subscription failed; it will be reacquired.");
+            }
+            try
+            {
+                await Task.Delay(CatalogSubscriptionInterval, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
             }
         }
     }
 
-    private void OnCatalogChanged() => TryWake();
-
-    private void TryWake()
-    {
-        try
-        {
-            changedWake.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-            // One pending wake represents every catalog change not yet compiled.
-        }
-    }
-
-    private void DrainWake()
-    {
-        while (changedWake.Wait(0))
-        {
-        }
-    }
+    private void OnCatalogChanged() => Interlocked.Exchange(ref pendingCatalogChange, 1);
 }

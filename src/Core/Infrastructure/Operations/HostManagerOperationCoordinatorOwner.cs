@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Collections.Frozen;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -17,7 +18,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     IHostManagerOperationCommandService,
     IHostManagerOperationQueryService,
     IHostManagerOperationProgressSink,
-    IDisposable
+    IDisposable,
+    IAsyncDisposable
 {
     private readonly SemaphoreSlim mutationGate = new(1, 1);
     private readonly SemaphoreSlim plannerWake = new(0, 1);
@@ -29,6 +31,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private readonly string hostManagerDataRoot;
     private readonly ILogger<HostManagerOperationCoordinatorOwner> logger;
     private NativeOperationCoordinatorWorkspace? workspace;
+    private NativeOperationCoordinatorWorkspace? pendingWorkspaceClose;
+    private readonly Func<ulong, IComputeScratch> createScratch;
     private HostManagerOperationCanonicalStore? store;
     private HostManagerOperationPayloadCatalog payloads = new();
     private HostManagerOperationEffectReceiptTable receipts = new();
@@ -49,6 +53,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private int pendingQuiescentRecreate;
     private string? lastPlanApplicationError;
     private bool started;
+    private bool retiring;
     private bool disposed;
 
     public HostManagerOperationCoordinatorOwner(
@@ -56,8 +61,22 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
         HostManagerOperationCoordinatorRuntime deployment,
         HostManagerOperationEffectRouter effectRouter,
         IHostEnvironment environment,
-        ILogger<HostManagerOperationCoordinatorOwner> logger)
+        ILogger<HostManagerOperationCoordinatorOwner> logger,
+        ResourceManagerSelfLocalResourceManager selfLocalResources)
+        : this(planProvider, deployment, effectRouter, environment, logger,
+            (selfLocalResources ?? throw new ArgumentNullException(nameof(selfLocalResources))).CreateScratch)
     {
+    }
+
+    internal HostManagerOperationCoordinatorOwner(
+        RuntimePlanProvider planProvider,
+        HostManagerOperationCoordinatorRuntime deployment,
+        HostManagerOperationEffectRouter effectRouter,
+        IHostEnvironment environment,
+        ILogger<HostManagerOperationCoordinatorOwner> logger,
+        Func<ulong, IComputeScratch> createScratch)
+    {
+        this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.effectRouter = effectRouter;
@@ -66,114 +85,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
             "UserData",
             "HostManager"));
-    }
-
-    public async Task StartAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (started)
-        {
-            throw new InvalidOperationException(
-                "The operation coordinator owner is already started.");
-        }
-
-        planProvider.Published += OnPublished;
-        try
-        {
-            await ApplyPlanAsync(
-                    planProvider.Current.HostManager.RequirePublished(),
-                    throwOnFailure: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            var plan = appliedPlan
-                ?? throw new InvalidOperationException(
-                    "The operation coordinator plan was not applied.");
-            actionChannel = Channel.CreateBounded<HostManagerOperationActionTicket>(
-                new BoundedChannelOptions(
-                    checked((int)plan.Recreate.Capacity.MaximumActionCount))
-                {
-                    FullMode = BoundedChannelFullMode.Wait,
-                    SingleWriter = true,
-                    SingleReader = false,
-                    AllowSynchronousContinuations = false
-            });
-            workerCancellation = new CancellationTokenSource();
-            var firstPlannerCycle = new TaskCompletionSource(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            plannerWorker = Task.Run(
-                () => RunPlannerLoopAsync(
-                    workerCancellation.Token,
-                    firstPlannerCycle),
-                CancellationToken.None);
-            var workerCount = checked((int)Math.Max(
-                1U,
-                checked(
-                    plan.HotPublish.MaximumGlobalRunningCount
-                    + plan.HotPublish.MaximumCancelActionsPerPlan
-                    + plan.HotPublish.MaximumRecoverActionsPerPlan)));
-            actionWorkers = Enumerable.Range(0, workerCount)
-                .Select(_ => Task.Run(
-                    () => RunActionWorkerAsync(workerCancellation.Token),
-                    CancellationToken.None))
-                .ToArray();
-            started = true;
-            SignalPlanner();
-            await firstPlannerCycle.Task.WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            if (started || workerCancellation is not null)
-            {
-                await StopAsync(CancellationToken.None).ConfigureAwait(false);
-            }
-            else
-            {
-                planProvider.Published -= OnPublished;
-                await DisposeRuntimeAsync().ConfigureAwait(false);
-            }
-            throw;
-        }
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        if (!started && workerCancellation is null)
-        {
-            return;
-        }
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
-        var cancellation = workerCancellation;
-        attemptArbiter.RequestStopAll();
-        cancellation?.Cancel();
-        actionChannel?.Writer.TryComplete();
-        SignalPlanner();
-        var workers = actionWorkers
-            .Append(plannerWorker)
-            .Where(static worker => worker is not null)
-            .Cast<Task>()
-            .ToArray();
-        if (workers.Length != 0)
-        {
-            await Task.WhenAll(workers).WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            ready = false;
-            PublishHealthOnlyLocked();
-        }
-        finally
-        {
-            mutationGate.Release();
-        }
-        await DisposeRuntimeAsync().ConfigureAwait(false);
     }
 
     public HostManagerOperationSnapshot? Get(string operationId)
@@ -219,31 +130,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     internal string? LastPlanApplicationError
         => Volatile.Read(ref lastPlanApplicationError);
 
-    public void Dispose()
-    {
-        if (disposed)
-        {
-            return;
-        }
-        disposed = true;
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
-        workerCancellation?.Cancel();
-        actionChannel?.Writer.TryComplete();
-        attemptArbiter.Dispose();
-        workspace?.Dispose();
-        workspace = null;
-        store?.Dispose();
-        store = null;
-        workerCancellation?.Dispose();
-        workerCancellation = null;
-        plannerWake.Dispose();
-        mutationGate.Dispose();
-    }
-
     private void OnPublished(CompiledRuntimePlan _publishedPlan)
     {
         _ = ApplyPublishedPlanAsync();
@@ -283,21 +169,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
                 throwOnFailure: false,
                 cancellationToken)
             .ConfigureAwait(false);
-    }
-
-    private async Task DisposeRuntimeAsync()
-    {
-        attemptArbiter.Dispose();
-        workspace?.Dispose();
-        workspace = null;
-        store?.Dispose();
-        store = null;
-        workerCancellation?.Dispose();
-        workerCancellation = null;
-        actionChannel = null;
-        plannerWorker = null;
-        actionWorkers = [];
-        await Task.CompletedTask.ConfigureAwait(false);
     }
 
     private void PublishLocked(NativeOperationCanonicalImage image)
@@ -561,7 +432,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
 
     private void RequireMutableLocked()
     {
-        ThrowIfDisposed();
+        ThrowIfRetiringLocked();
         if (!ready || workspace is null || store is null || appliedPlan is null)
         {
             throw new InvalidOperationException(
@@ -572,6 +443,26 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             throw new InvalidOperationException(
                 "The operation coordinator owner is permanently faulted; restart is required.");
         }
+    }
+
+    private void ThrowIfRetiringLocked()
+    {
+        ThrowIfDisposed();
+        if (retiring)
+        {
+            throw new InvalidOperationException(
+                "The operation coordinator owner is retiring.");
+        }
+    }
+
+    private bool TryRequireMutableLocked()
+    {
+        if (retiring || disposed)
+        {
+            return false;
+        }
+        RequireMutableLocked();
+        return true;
     }
 
     private sealed record CommittedState(

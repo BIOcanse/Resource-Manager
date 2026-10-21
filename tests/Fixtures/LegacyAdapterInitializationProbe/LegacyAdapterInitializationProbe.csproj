@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../sdk/csharp/ResourceManager.Adapter.SharedMemory/ResourceManager.Adapter.SharedMemory.csproj"
+                      AdditionalProperties="SkipAdapterNativeBuild=true;AdapterNativeOutput=$(AdapterNativeOutput)" />
+  </ItemGroup>
+  <Target Name="RequireExplicitLegacyAdapterCandidate" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(AdapterNativeOutput)' == ''"
+           Text="Set AdapterNativeOutput to the exact rebuilt legacy Adapter DLL in the registered validation batch." />
+    <Error Condition="'$(AdapterNativeOutput)' != '' and !Exists('$(AdapterNativeOutput)')"
+           Text="The explicit AdapterNativeOutput candidate does not exist: $(AdapterNativeOutput)" />
+    <Error Condition="'$(SkipAdapterNativeBuild)' != 'true'"
+           Text="Set SkipAdapterNativeBuild=true. This probe consumes the separately rebuilt DLL without rebuilding native source." />
+  </Target>
+</Project>

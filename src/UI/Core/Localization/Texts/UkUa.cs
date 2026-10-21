@@ -46,6 +46,7 @@ internal static class UkUa
         BackendPipelineNotReady = "Конвеєр запитів локальної служби не готовий.",
         NoProcessToTerminate = "Немає процесів для завершення.",
         TerminateRequestCompleted = "Запит на завершення процесу виконано.",
+        TerminateResultFormat = "Завершено процесів: {0} / {1}.",
 
         WebViewInitializationFailed = "Не вдалося ініціалізувати вбудований інтерфейс. Подробиці можна переглянути в папці діагностики.",
         FrontendIdentityVerificationFailed = "Не вдалося перевірити ідентичність ресурсів інтерфейсу. Подробиці можна переглянути в папці діагностики.",

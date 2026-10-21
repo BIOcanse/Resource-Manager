@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -20,9 +21,10 @@ public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZ
     }
 }
 
-public sealed class NotebookOemFanMonitoringZone : MonitoringSourceZone
+public sealed class NotebookOemFanMonitoringZone : MonitoringSourceZone, IDisposable
 {
-    private readonly NotebookOemFanSensorReader reader = new();
+    private readonly object gate = new();
+    private readonly NotebookOemFanSensorReader reader;
     private readonly Func<CompiledFirmwareProviderPlan> getFirmwareProviderPlan;
 
     public NotebookOemFanMonitoringZone()
@@ -35,24 +37,55 @@ public sealed class NotebookOemFanMonitoringZone : MonitoringSourceZone
     {
         ArgumentNullException.ThrowIfNull(runtimePlanProvider);
         getFirmwareProviderPlan = () => runtimePlanProvider.Current.Monitoring.FirmwareProviders;
+        reader = new NotebookOemFanSensorReader();
     }
 
     internal NotebookOemFanMonitoringZone(CompiledFirmwareProviderPlan firmwareProviderPlan)
+        : this(() => firmwareProviderPlan, new NotebookOemFanSensorReader()) { }
+
+    internal NotebookOemFanMonitoringZone(Func<CompiledFirmwareProviderPlan> getFirmwareProviderPlan,
+        NotebookOemFanSensorReader reader)
         : base(MonitoringSourceZoneIds.NotebookOemFan)
     {
-        getFirmwareProviderPlan = () => firmwareProviderPlan;
+        this.getFirmwareProviderPlan = getFirmwareProviderPlan ?? throw new ArgumentNullException(nameof(getFirmwareProviderPlan));
+        this.reader = reader ?? throw new ArgumentNullException(nameof(reader));
     }
 
     internal NotebookOemFanSensorSnapshot ReadSensors()
     {
-        return CanRead ? reader.Read(getFirmwareProviderPlan()) : NotebookOemFanSensorReader.Frozen();
+        lock (gate)
+            return CanRead ? reader.Read(getFirmwareProviderPlan()) : NotebookOemFanSensorReader.Frozen();
+    }
+
+    internal void SynchronizeDemand(bool hasDemand)
+    {
+        lock (gate)
+        {
+            if (!hasDemand || !CanRead
+                || getFirmwareProviderPlan().NotebookOemFanProvider != NotebookOemFanProviderKind.MechrevoUwAcpi)
+                reader.ReleaseSession();
+        }
+    }
+
+    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
+    {
+        lock (gate)
+        {
+            base.ApplyMode(mode);
+            if (mode == ResourceManagerComputeZoneMode.Freeze) reader.ReleaseSession();
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (gate) reader.Dispose();
     }
 }
 
-public sealed class IpHelperNetworkMonitoringZone : MonitoringSourceZone
+public sealed partial class IpHelperNetworkMonitoringZone : MonitoringSourceZone
 {
     public IpHelperNetworkMonitoringZone()
-        : base(MonitoringSourceZoneIds.IpHelperNetwork)
+        : this(new ResourceManager.ReadWrite.Windows.Devices.WindowsNetworkInterfaceCounterApi())
     {
     }
 }

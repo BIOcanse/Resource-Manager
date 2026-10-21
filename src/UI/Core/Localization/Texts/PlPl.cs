@@ -46,6 +46,7 @@ internal static class PlPl
         BackendPipelineNotReady = "Potok żądań usługi lokalnej nie jest gotowy.",
         NoProcessToTerminate = "Nie ma procesu do zakończenia.",
         TerminateRequestCompleted = "Żądanie zakończenia procesu zostało wykonane.",
+        TerminateResultFormat = "Zakończono {0} / {1} procesów.",
 
         WebViewInitializationFailed = "Nie można zainicjować osadzonego interfejsu. Szczegóły znajdziesz w folderze diagnostyki.",
         FrontendIdentityVerificationFailed = "Weryfikacja tożsamości zasobów frontonu nie powiodła się. Szczegóły znajdziesz w folderze diagnostyki.",

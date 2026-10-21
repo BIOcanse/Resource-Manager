@@ -49,7 +49,48 @@ public static class AdapterRegistrationValidator
             return endpointValidation;
         }
 
-        return ValidateSchedulingCapabilities(request.SchedulingCapabilities);
+        if (request.ProgramRootPaths.Count > 64 || request.Processes?.Count > 256)
+            return "Adapter registration contains too many roots or processes.";
+        return ValidateProgramPaths(request) ?? ValidateSchedulingCapabilities(request.SchedulingCapabilities);
+    }
+
+    private static string? ValidateProgramPaths(AdapterSoftwareRegistrationRequest request)
+    {
+        try
+        {
+            var roots = request.ProgramRootPaths.Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => Environment.ExpandEnvironmentVariables(path.Trim().Trim('"'))).ToArray();
+            if (roots.Any(path => !Path.IsPathFullyQualified(path)))
+                return "Program root paths must be absolute paths.";
+            roots = roots.Select(Path.GetFullPath).ToArray();
+            var windowsRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var sharedRoots = new[] { windowsRoot,
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86) };
+            if (roots.Any(root => root.TrimEnd('\\', '/').Equals(Path.GetPathRoot(root)?.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(windowsRoot) && IsWithinRoot(root, windowsRoot))
+                || sharedRoots.Any(shared => !string.IsNullOrWhiteSpace(shared) && root.TrimEnd('\\', '/').Equals(shared.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase))))
+                return "Program roots cannot be drive roots or shared system directories.";
+            foreach (var process in request.Processes ?? [])
+            {
+                if (process.ProcessId is <= 0) return "Declared process IDs must be positive.";
+                if (string.IsNullOrWhiteSpace(process.ExecutablePath)) continue;
+                var executable = Environment.ExpandEnvironmentVariables(process.ExecutablePath.Trim().Trim('"'));
+                if (!Path.IsPathFullyQualified(executable) || !roots.Any(root => IsWithinRoot(Path.GetFullPath(executable), root)))
+                    return "Declared executable paths must be within a program root.";
+            }
+            return null;
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or PathTooLongException)
+        { return "Program or executable paths are invalid."; }
+    }
+
+    private static bool IsWithinRoot(string path, string root)
+    {
+        var relative = Path.GetRelativePath(root, path);
+        return !Path.IsPathRooted(relative) && relative != ".."
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            && !relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     public static string? ValidateResourceMarkerEndpoint(AdapterResourceMarkerEndpoint endpoint)
@@ -73,6 +114,9 @@ public static class AdapterRegistrationValidator
         {
             return "resourceMarkerEndpoint.address must point to loopback.";
         }
+
+        if (uri.UserInfo.Length != 0 || uri.Fragment.Length != 0)
+            return "resourceMarkerEndpoint.address cannot contain credentials or a fragment.";
 
         return null;
     }

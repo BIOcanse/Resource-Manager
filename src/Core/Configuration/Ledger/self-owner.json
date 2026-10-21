@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "indexBucketCount": 64,
+  "tables": [
+    {
+      "capacity": 8,
+      "partitionCapacity": 0,
+      "reservedStart": 0,
+      "reservedCount": 0,
+      "attributes": {
+        "recoverability": "recoverable",
+        "recoveryCostCoefficient": 6,
+        "accessLossImpact": "observable_now"
+      }
+    },
+    {
+      "capacity": 28,
+      "partitionCapacity": 0,
+      "reservedStart": 0,
+      "reservedCount": 0,
+      "attributes": {
+        "recoverability": "recoverable",
+        "recoveryCostCoefficient": 1,
+        "accessLossImpact": "unobservable_now"
+      }
+    }
+  ],
+  "fixedResources": []
+}

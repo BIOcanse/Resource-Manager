@@ -217,15 +217,9 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             ? GpuPlacementRuntimeSchedulingModes.Ordinary
             : GpuPlacementRuntimeSchedulingModes.Normalize(policy.RuntimeSchedulingMode);
         var startupTargetGpu = GpuPlacementTargets.Normalize(policy.StartupTargetGpu);
-        var targetGpu = GpuPlacementTargets.Normalize(policy.TargetGpu);
         if (schedulingMode.Equals(GpuPlacementSchedulingModes.Ordinary, StringComparison.OrdinalIgnoreCase))
         {
             startupTargetGpu = GpuPlacementTargets.NormalizeSystemTarget(startupTargetGpu);
-            targetGpu = GpuPlacementTargets.NormalizeSystemTarget(targetGpu);
-        }
-        else if (runtimeSchedulingMode.Equals(GpuPlacementRuntimeSchedulingModes.Ordinary, StringComparison.OrdinalIgnoreCase))
-        {
-            targetGpu = GpuPlacementTargets.NormalizeSystemTarget(targetGpu);
         }
         var cpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode);
 
@@ -237,7 +231,6 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             NormalizeProviderIds(policy.AllowedProviders),
             schedulingMode,
             startupTargetGpu,
-            targetGpu,
             runtimeSchedulingMode,
             GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
             policy.RuntimeHotSwitchEnabled,
@@ -266,7 +259,7 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
                 throw new InvalidOperationException("GPU 调度进程策略不能为空。");
             }
 
-            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, GpuPlacementProviderIds.Defaults, GpuPlacementTargets.SystemDefaultGpu, GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.MinValue);
+            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, GpuPlacementProviderIds.Defaults, GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.MinValue);
         }
 
         var softwareId = throwOnInvalid
@@ -285,7 +278,6 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             GpuPlacementPolicyModes.Normalize(policy.EnabledMode, GpuPlacementPolicyModes.Inherit),
             GpuPlacementRiskLevels.Normalize(policy.MaxRisk),
             NormalizeProviderIds(policy.AllowedProviders),
-            GpuPlacementTargets.Normalize(policy.TargetGpu),
             GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
             policy.Inherit ? null : NormalizeBaseScoreOverride(policy.BaseScoreOverride),
             updatedAt,
@@ -340,7 +332,6 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
         {
             SchedulingMode = GpuPlacementSchedulingModes.Normalize(policy.SchedulingMode),
             StartupTargetGpu = GpuPlacementTargets.Normalize(policy.StartupTargetGpu),
-            TargetGpu = GpuPlacementTargets.Normalize(policy.TargetGpu),
             RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Normalize(policy.RuntimeSchedulingMode),
             RuntimeHotSwitchEnabled = policy.RuntimeHotSwitchEnabled
                 ?? GpuPlacementPolicyDefaults.ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),

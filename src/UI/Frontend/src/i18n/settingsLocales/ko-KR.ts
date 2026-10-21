@@ -110,8 +110,8 @@ export default createSettingsLocale("ko-KR", {
         "description": "소프트웨어에 사용할 GPU를 정확히 선택할 수 있도록 합니다."
       }
     },
-    "automaticMemoryCleanupTitle": "자동 정리 임계값",
-    "automaticMemoryCleanupDescription": "리소스가 부족하고 안전한 이동을 계속할 수 없을 때 백그라운드 정리를 시작합니다.",
+    "automaticMemoryCleanupTitle": "긴급 정리 임계값",
+    "automaticMemoryCleanupDescription": "백그라운드 정리는 리소스 부하에 따라 단계별로 수행됩니다. 실제 메모리 또는 커밋 용량의 잔여량이 이 값보다 낮아지면 긴급 정리를 수행합니다.",
     "physicalMemoryAutomaticCleanupLabel": "물리 메모리 여유 %",
     "virtualMemoryAutomaticCleanupLabel": "커밋 여유 %",
     "memoryOptimizationTargetTitle": "메모리 최적화 목표",

@@ -6,11 +6,17 @@ using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
+using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.ReadWrite.Windows.Devices;
+using ResourceManager.ReadWrite.Windows.Devices.Hid;
+using ResourceManager.ReadWrite.Windows.Devices.Npu;
+using ResourceManager.ReadWrite.Windows.Devices.Topology;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
-public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
+public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
 {
+    private static readonly WindowsDeviceTopologyWmiFactsReader TopologyWmiFacts = new(TimeSpan.FromSeconds(2));
     private static readonly Regex ExplicitUsbGigabitRate = new(
         @"(?<![\d.])(?<rate>80|40|20|10|5)\s*Gbps\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
@@ -21,13 +27,36 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
     private readonly DeviceIdCatalog deviceIdCatalog;
     private readonly HostManagerDisplayCoordinatorOwner displayCoordinator;
+    private readonly WindowsBatteryMonitoringZone batteryZone;
+    private readonly WindowsStorageSensorsMonitoringZone storageZone;
+    private readonly NvidiaNvmlMonitoringZone nvidiaZone;
+    private readonly AmdAdlxMonitoringZone amdZone;
+    private readonly WindowsGpuAdapterOrderMonitoringZone gpuInventoryZone;
+    private readonly WindowsHidInformationReader hidReader = new();
+    private readonly WindowsNpuInformationReader npuReader = new();
+    private readonly WindowsNetworkInterfaceInformationReader networkInterfaceReader = new();
+    private readonly WindowsNetworkEndpointInformationReader networkEndpointReader = new();
+    private readonly WindowsSecurityInformationReader securityReader = new();
+    private readonly WindowsVolumeSpaceInformationReader volumeSpaceReader = new();
+    private readonly WindowsDiskLayoutInformationReader diskLayoutReader = new();
+    private readonly WindowsPageFileInformationReader pageFileReader = new();
 
     public WindowsDeviceTopologyReader(
         DeviceIdCatalog deviceIdCatalog,
-        HostManagerDisplayCoordinatorOwner displayCoordinator)
+        HostManagerDisplayCoordinatorOwner displayCoordinator,
+        WindowsBatteryMonitoringZone batteryZone,
+        WindowsStorageSensorsMonitoringZone storageZone,
+        NvidiaNvmlMonitoringZone nvidiaZone,
+        WindowsGpuAdapterOrderMonitoringZone gpuInventoryZone,
+        AmdAdlxMonitoringZone amdZone)
     {
         this.deviceIdCatalog = deviceIdCatalog;
         this.displayCoordinator = displayCoordinator;
+        this.batteryZone = batteryZone;
+        this.storageZone = storageZone;
+        this.nvidiaZone = nvidiaZone;
+        this.gpuInventoryZone = gpuInventoryZone;
+        this.amdZone = amdZone;
     }
 
     public DeviceTopologySnapshot ReadSnapshot()
@@ -38,9 +67,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             Note(BackendMessageCodes.DeviceTopology.EnumerationOnly)
         };
         var system = ReadSystemIdentity(notes);
-        var pnp = DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Name, Caption, Description, Manufacturer, Service, Status, PNPClass, PNPDeviceID, DeviceID, ClassGuid, HardwareID, CompatibleID FROM Win32_PnPEntity");
+        var pnp = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.PnpEntities);
 
         if (pnp.Error is not null)
         {
@@ -185,11 +212,63 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             throw new DeviceTopologyIncompleteSourcesException(diagnostics);
         }
 
+        var firmware = SmbiosFirmwareInformationReader.Read();
+        var gpu = ReadGpuDeclarations(nvidiaZone, gpuInventoryZone, amdZone);
         return new DeviceTopologySnapshot(
             DateTimeOffset.Now,
             system,
             ports,
-            notes);
+            notes)
+        {
+            MemoryModules = firmware?.Modules ?? [],
+            FirmwareDeclarations = firmware?.Declarations,
+            Batteries = ReadBatteryDeclarations(batteryZone),
+            StorageInformation = storageZone.ReadInformationDeclarations(),
+            NvidiaGpuInformation = gpu.Nvidia,
+            AmdGpuInformation = gpu.Amd,
+            GpuInformation = gpu.Windows,
+            NpuInformation = ReadNpuDeclarations(nativeDevices, npuReader.Read),
+            HidInformation = hidReader.Read(),
+            NetworkInterfaceInformation = networkInterfaceReader.Read(),
+            NetworkEndpointInformation = networkEndpointReader.Read(),
+            SecurityInformation = securityReader.Read(),
+            VolumeSpaceInformation = volumeSpaceReader.Read(),
+            DiskLayoutInformation = diskLayoutReader.Read(),
+            DriverInformation = nativeDevices.Devices.Values.Select(static device => device.DriverInformation).OfType<ResourceManager.ReadWrite.Windows.Devices.Models.DeviceTopologyDriverInformation>().OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
+            PageFileInformation = pageFileReader.Read()
+        };
+    }
+
+    internal static IReadOnlyList<ResourceManager.ReadWrite.Windows.Devices.Models.DeviceTopologyNpuInformation>? ReadNpuDeclarations(
+        DeviceTopologyNativeSnapshot native,
+        Func<DeviceTopologyNativeSnapshot, IReadOnlyList<ResourceManager.ReadWrite.Windows.Devices.Models.DeviceTopologyNpuInformation>?> read)
+    {
+        if (native.Error is not null) return null;
+        try { return read(native); }
+        catch (Exception) { return null; }
+    }
+
+    internal static (IReadOnlyList<DeviceTopologyGpuInformation>? Windows, IReadOnlyList<DeviceTopologyNvidiaGpuInformation>? Nvidia,
+        IReadOnlyList<DeviceTopologyAmdGpuInformation>? Amd)
+        ReadGpuDeclarations(NvidiaNvmlMonitoringZone zone, WindowsGpuAdapterOrderMonitoringZone inventory, AmdAdlxMonitoringZone? amd = null)
+    {
+        WindowsGpuAdapterInventoryRead read;
+        try { read = inventory.ReadInventory(requested: true); }
+        catch (Exception) { return (null, null, null); }
+        var windows = WindowsGpuInformationProjection.Create(read);
+        IReadOnlyList<DeviceTopologyNvidiaGpuInformation>? nvidia;
+        IReadOnlyList<DeviceTopologyAmdGpuInformation>? amdDeclarations;
+        try { nvidia = zone.ReadDeclarations(read); } catch (Exception) { nvidia = null; }
+        try { amdDeclarations = amd?.ReadDeclarations(read); } catch (Exception) { amdDeclarations = null; }
+        return (windows, nvidia, amdDeclarations);
+    }
+
+    internal static IReadOnlyList<DeviceTopologyBattery>? ReadBatteryDeclarations(WindowsBatteryMonitoringZone zone)
+    {
+        var read = zone.ReadDeclarations();
+        return read.Status != NativeMetricSnapshotCatalogTopologyStatus.Complete ? null : read.Identities
+            .Select(static identity => new DeviceTopologyBattery(identity.ExactIdentityKey,
+                identity.Manufacturer, identity.SerialNumber, identity.Information.Chemistry)).ToArray();
     }
 
     internal static IReadOnlyList<DeviceTopologyPort> ResolveDuplicateDeviceIds(
@@ -224,29 +303,27 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
     internal static DeviceTopologySystemIdentity ReadSystemIdentity(ICollection<BackendMessage> notes)
     {
-        var bios = FirstRow(DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Manufacturer, SMBIOSBIOSVersion, Version FROM Win32_BIOS"));
-        var computer = FirstRow(DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Manufacturer, Model, SystemFamily, SystemSKUNumber FROM Win32_ComputerSystem"));
-        var baseBoard = FirstRow(DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Manufacturer, Product FROM Win32_BaseBoard"));
+        var bios = FirstRow(TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.Bios));
+        var computer = FirstRow(TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.ComputerSystem));
+        var baseBoard = FirstRow(TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.BaseBoard));
 
-        var manufacturer = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "Manufacturer"))
-            ?? Clean(DeviceTopologyWmiUtilities.ReadString(bios, "Manufacturer"))
-            ?? "Unknown manufacturer";
-        var model = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "Model"))
-            ?? Clean(DeviceTopologyWmiUtilities.ReadString(baseBoard, "Product"))
-            ?? "Unknown model";
+        return CreateSystemIdentity(bios, computer, baseBoard, notes);
+    }
+
+    internal static DeviceTopologySystemIdentity CreateSystemIdentity(
+        IReadOnlyDictionary<string, object?>? bios,
+        IReadOnlyDictionary<string, object?>? computer,
+        IReadOnlyDictionary<string, object?>? baseBoard,
+        ICollection<BackendMessage> notes)
+    {
+        var manufacturer = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "Manufacturer")) ?? string.Empty;
+        var model = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "Model")) ?? string.Empty;
         var family = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "SystemFamily"));
         var sku = Clean(DeviceTopologyWmiUtilities.ReadString(computer, "SystemSKUNumber"));
         var logo = ResolveLogoText(manufacturer, model, family, sku);
         var brand = ResolveBrandDisplayName(manufacturer, model, family, logo);
 
-        if (manufacturer.Equals("Unknown manufacturer", StringComparison.OrdinalIgnoreCase)
-            || model.Equals("Unknown model", StringComparison.OrdinalIgnoreCase))
+        if (manufacturer.Length == 0 || model.Length == 0)
         {
             notes.Add(Note(BackendMessageCodes.DeviceTopology.IncompleteBrandModel));
         }
@@ -259,12 +336,14 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             Clean(DeviceTopologyWmiUtilities.ReadString(bios, "SMBIOSBIOSVersion")
                 ?? DeviceTopologyWmiUtilities.ReadString(bios, "Version")),
             Clean(DeviceTopologyWmiUtilities.ReadString(baseBoard, "Manufacturer")),
-            Clean(DeviceTopologyWmiUtilities.ReadString(baseBoard, "Product")));
+            Clean(DeviceTopologyWmiUtilities.ReadString(baseBoard, "Product")),
+            Clean(DeviceTopologyWmiUtilities.ReadString(bios, "Manufacturer")),
+            Clean(DeviceTopologyWmiUtilities.ReadString(baseBoard, "SerialNumber")));
     }
 
     private static Dictionary<string, object?>? FirstRow(DeviceTopologyWmiQueryResult result)
     {
-        return result.Rows.Count > 0 ? result.Rows[0] : null;
+        return result.Rows.Count == 1 ? result.Rows[0] : null;
     }
 
     private static UsbTopologyIndex ReadUsbTopologyIndex(
@@ -283,9 +362,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             AddUsbDevice(devices, deviceId, displayName, "PnP Device", Clean(DeviceTopologyWmiUtilities.ReadString(row, "PNPClass")));
         }
 
-        var controllers = DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Name, Caption, Description, Manufacturer, DeviceID, PNPDeviceID, Status FROM Win32_USBController");
+        var controllers = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbControllers);
         if (controllers.Error is not null)
         {
             AddRequiredSourceFailure(
@@ -310,9 +387,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 "USB");
         }
 
-        var hubs = DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Name, Caption, Description, DeviceID, PNPDeviceID, Status FROM Win32_USBHub");
+        var hubs = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbHubs);
         if (hubs.Error is not null)
         {
             AddRequiredSourceFailure(
@@ -337,9 +412,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 "USB");
         }
 
-        var associations = DeviceTopologyWmiUtilities.QueryObjects(
-            @"root\CIMV2",
-            "SELECT Antecedent, Dependent FROM Win32_USBControllerDevice");
+        var associations = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbAssociations);
         if (associations.Error is not null)
         {
             AddRequiredSourceFailure(
@@ -507,7 +580,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var nativeParent = native?.ParentDeviceId is null ? null : FindNativeDevice(nativeDevices, native.ParentDeviceId);
         var nativePath = ResolveNativePath(deviceId, displayName, nativeDevices);
         var hasUsbPort = usbPort is not null;
-        var usbConnection = CreateUsbConnection(usbPort);
+        var usbConnection = CreateUsbConnection(usbPort, publishActualParentPort: true);
         var hid = DeviceTopologySpecializedCapabilityProjector.CreateHid(
             usbPort,
             usbConnection?.Endpoints ?? []);
@@ -523,6 +596,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             storageDevices,
             deviceId,
             nativeDevices);
+        var pciResources = WindowsPciResourceInformationReader.ReadForDevice(deviceId, native);
 
         return new DeviceTopologyPort(
             CreateStableId(deviceId),
@@ -572,7 +646,11 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             Hid: hid,
             Camera: camera,
             SmartDevice: smartDevice,
-            Storage: storage);
+            Storage: storage,
+            PciIdentification: Pci.PciDeviceIdentificationReader.ReadForDevice(deviceId, native),
+            PciResourceRanges: pciResources.Ranges,
+            PciInterrupts: pciResources.Interrupts,
+            PciDmaChannels: pciResources.DmaChannels);
     }
 
     private DeviceTopologyPort CreateUsbConnectorCandidate(DeviceTopologyUsbConnectorGroup group)
@@ -594,7 +672,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                     ? BackendMessageCodes.DeviceTopology.NameConnectedDeviceOnConnector
                     : BackendMessageCodes.DeviceTopology.NameIdleConnector,
                 connectorName);
-        var usbConnection = CreateUsbConnection(port);
+        var usbConnection = CreateUsbConnection(port, publishActualParentPort: false);
         var hid = DeviceTopologySpecializedCapabilityProjector.CreateHid(
             port,
             usbConnection?.Endpoints ?? []);
@@ -649,7 +727,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             HardwareKindCode: Note(BackendMessageCodes.DeviceTopology.KindPhysicalConnector, connectorName));
     }
 
-    private static DeviceTopologyPort CreateDisplayPathCandidate(DeviceTopologyResolvedDisplayPath resolved)
+    internal static DeviceTopologyPort CreateDisplayPathCandidate(DeviceTopologyResolvedDisplayPath resolved)
     {
         var path = resolved.Path;
         var profile = resolved.Profile;
@@ -736,7 +814,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 advancedColor?.WideColorEnforced,
                 path.SdrWhiteLevelNits,
                 edid?.HdrFormats,
-                edid?.DisplayTechnology,
+                DescribeEdidDisplayTechnology(edid),
                 edid?.PanelTechnology,
                 edid?.Version,
                 edid?.ProductName,
@@ -748,7 +826,23 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 MaximumLuminanceNits: path.Dxgi?.MaximumLuminanceNits,
                 MaximumFullFrameLuminanceNits: path.Dxgi?.MaximumFullFrameLuminanceNits,
                 ColorCapabilitySource: BuildDisplayColorCapabilitySource(advancedColor, edid, path.Dxgi),
-                ColorSpace: path.Dxgi?.ColorSpace),
+                ColorSpace: path.Dxgi?.ColorSpace,
+                CurrentWidth: path.Width,
+                CurrentHeight: path.Height,
+                CurrentRefreshRateNumerator: path.RefreshRateNumerator,
+                CurrentRefreshRateDenominator: path.RefreshRateDenominator,
+                CurrentBitsPerColorChannel: advancedColor?.BitsPerColorChannel,
+                ClockwiseRotationDegrees: path.ClockwiseRotationDegrees,
+                HdrSupportedReported: advancedColor?.ActiveColorModeReported is not null ? advancedColor.HighDynamicRangeSupported : null,
+                HdrUserEnabledActual: advancedColor?.ActiveColorModeReported is not null ? advancedColor.HighDynamicRangeUserEnabled : null,
+                HdrActiveActual: advancedColor?.ActiveColorModeReported is 0 or 1 or 2 ? advancedColor.HighDynamicRangeActive : null,
+                ColorModeActual: advancedColor?.ActiveColorModeReported,
+                EdidRawDeclaredBase64: path.EdidObservationComplete ? path.EdidRawDeclaredBase64 : null,
+                ChromaticityDeclared: path.EdidObservationComplete ? edid?.ChromaticityDeclared : null,
+                HdrLuminanceDeclared: path.EdidObservationComplete ? edid?.HdrLuminanceDeclared : null)
+            {
+                ModeCapabilityDeclared = path.EdidObservationComplete ? edid?.ModeCapability : null
+            },
             null,
             null,
             null,
@@ -775,7 +869,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return sources.Count == 0 ? null : string.Join(" + ", sources);
     }
 
-    private static DeviceTopologyNetworkConnection? CreateNetworkConnection(DeviceTopologyNetworkAdapter? adapter)
+    internal static DeviceTopologyNetworkConnection? CreateNetworkConnection(DeviceTopologyNetworkAdapter? adapter)
     {
         if (adapter is null)
         {
@@ -790,7 +884,10 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             adapter.PermanentAddress,
             adapter.ActiveMtuBytes,
             adapter.HardwareInterface,
-            adapter.ConnectorPresent);
+            adapter.ConnectorPresent,
+            adapter.TransmitLinkSpeedBitsPerSecond,
+            adapter.ReceiveLinkSpeedBitsPerSecond,
+            adapter.MediaConnectState);
     }
 
     /// <summary>收发速率不同时前端会分行显示两者，这里只给较高的那个；都没有则返回 null。</summary>
@@ -841,7 +938,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return $"{value} bps";
     }
 
-    private static DeviceTopologyUsbConnection? CreateUsbConnection(DeviceTopologyUsbPort? port)
+    internal static DeviceTopologyUsbConnection? CreateUsbConnection(DeviceTopologyUsbPort? port, bool publishActualParentPort)
     {
         if (port is null)
         {
@@ -852,7 +949,7 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             port.HubDevicePath,
             port.PortNumber,
             port.DeviceConnected,
-            port.ConnectionStatus,
+            DescribeUsbConnectionStatus(port.ConnectionStatus),
             port.NegotiatedSpeed,
             port.DeviceAddress,
             FormatUsbId(port.VendorId),
@@ -882,7 +979,12 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
             port.Descriptor.SerialNumber,
             port.Descriptor.InterfaceProtocols,
             port.DownstreamHubDevicePath,
-            DeviceTopologySpecializedCapabilityProjector.CreateUsbEndpoints(port));
+            DeviceTopologySpecializedCapabilityProjector.CreateUsbEndpoints(port),
+            publishActualParentPort && WindowsUsbHubIoctlReader.IsAttachedPort(port)
+                ? DeviceTopologyUsbConnectorGrouper.CreatePortIdentity(port.HubDevicePath, port.PortNumber)
+                : null,
+            port.NegotiatedLinkSpeedMegabitsPerSecond,
+            port.DeclaredMaximumLinkSpeedMegabitsPerSecond);
     }
 
     internal static string RefineUsbConnectorKind(
@@ -944,12 +1046,14 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         return nativeDevices.TryGetValue(NormalizeDeviceId(deviceId), out var device) ? device : null;
     }
 
-    private static DeviceTopologyUsbPort? FindUsbPort(
+    internal static DeviceTopologyUsbPort? FindUsbPort(
         DeviceTopologyNativeDevice? native,
         IReadOnlyDictionary<string, DeviceTopologyUsbPort> usbPortsByDriverKey)
     {
         var driverKey = WindowsUsbHubIoctlReader.NormalizeDriverKey(native?.DriverKey);
         return driverKey.Length > 0 && usbPortsByDriverKey.TryGetValue(driverKey, out var port)
+            && WindowsUsbHubIoctlReader.IsAttachedPort(port)
+            && StringComparer.OrdinalIgnoreCase.Equals(driverKey, WindowsUsbHubIoctlReader.NormalizeDriverKey(port.DriverKeyName))
             ? port
             : null;
     }
@@ -1645,3 +1749,4 @@ public sealed class WindowsDeviceTopologyReader : IDeviceTopologyReader
         BackendMessage TopologyPath,
         bool HasUsbRelationship);
 }
+

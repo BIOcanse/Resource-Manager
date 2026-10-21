@@ -82,7 +82,7 @@ public sealed class StartupCapabilityEndpointMapTests
         Assert.Contains("GET /api/operations", routes);
         Assert.DoesNotContain("GET /api/operations/subscribe", routes);
         Assert.Contains("POST /api/subscriptions/stream", routes);
-        Assert.Contains("POST /api/migrations/execute", routes);
+        Assert.DoesNotContain(routes, static route => route.Contains(" /api/migrations/", StringComparison.Ordinal));
         Assert.Contains("PUT /api/gpu-placement/process-policy", routes);
         Assert.Contains("GET /api/software", routes);
         Assert.Contains("GET /api/software/metadata/{softwareIdentityId}", routes);

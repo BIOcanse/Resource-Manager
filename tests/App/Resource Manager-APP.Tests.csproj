@@ -1,13 +1,41 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>Resource_Manager_APP.Tests</RootNamespace>
     <AssemblyName>Resource Manager-APP.Tests</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <GpuLaunchTargetProbePath Condition="'$(GpuLaunchTargetProbePath)' == ''">$(MSBuildProjectDirectory)\..\..\src\Core\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe</GpuLaunchTargetProbePath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="ResourceManager.Subscription.Native" />
+    <Using Include="ResourceManager.Subscription" />
+    <Using Include="ResourceManager.ReadWrite.Publications" />
+    <Using Include="ResourceManager.ReadWrite.Native" />
+    <Using Include="ResourceManager.ReadWrite.Native.Pdh" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Pdh" />
+    <Using Include="ResourceManager.ReadWrite.Helpers" />
+    <Using Include="ResourceManager.ReadWrite.Information" />
+    <Using Include="ResourceManager.ReadWrite.ProcessFields" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Processes" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Battery" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Display" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Gpu" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Nvidia" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Intel" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Intel.Msr" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Amd" />
+    <Using Include="ResourceManager.ReadWrite.Vendors.Amd.Smu" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Usb" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Devices.Models" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Cpu" />
+    <Using Include="ResourceManager.ReadWrite.Windows.Cpu.Models" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
@@ -18,10 +46,37 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Fixtures\Memory\windows-sdk-pagefile.json" />
     <Using Include="Xunit" />
+    <EmbeddedResource Include="Fixtures\Hid\windows-sdk-layout.json" />
+    <EmbeddedResource Include="Fixtures\Network\windows-sdk-tables*.json" />
+    <EmbeddedResource Include="Fixtures\Network\windows-sdk-routes*.json" />
+    <EmbeddedResource Include="Fixtures\Network\windows-sdk-endpoints*.json" />
+    <EmbeddedResource Include="Fixtures\Security\windows-sdk-security.json" />
+    <EmbeddedResource Include="Fixtures\Security\windows-sdk-security-products.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-volume-space.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-volume-extents.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-disk-layout.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-disk-alignment.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-disk-identity.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-pci-resources.json" />
+    <EmbeddedResource Include="Fixtures\Storage\windows-sdk-pci-resource-details.json" />
+    <EmbeddedResource Include="Fixtures\Memory\windows-sdk-process-basic.json" />
+    <EmbeddedResource Include="Fixtures\Display\windows-sdk-display-rotation.json" />
+    <EmbeddedResource Include="Fixtures\Display\windows-sdk-display-hdr.json" />
+    <EmbeddedResource Include="Fixtures\Usb\windows-sdk-usb-parent-port.json" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../Fixtures/DisplayIdNonModeCtaFixture.cs" Link="DisplayIdNonModeCtaFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdDynamicRangeFixture.cs" Link="DisplayIdDynamicRangeFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdCtaSvdFixture.cs" Link="DisplayIdCtaSvdFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdCtaColourFixture.cs" Link="DisplayIdCtaColourFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdCtaHdmiFixture.cs" Link="DisplayIdCtaHdmiFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdCtaHdmiExpectation.cs" Link="DisplayIdCtaHdmiExpectation.cs" />
+    <Compile Include="../Fixtures/DisplayIdFormulaFixture.cs" Link="DisplayIdFormulaFixture.cs" />
+    <Compile Include="../Fixtures/DisplayIdFormulaExpectation.cs" Link="DisplayIdFormulaExpectation.cs" />
+    <Compile Include="../Fixtures/DisplayIdCtaColourExpectation.cs" Link="DisplayIdCtaColourExpectation.cs" />
     <ProjectReference Include="..\..\src\Core\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />
@@ -31,7 +86,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\src\Core\Native\GpuLaunchBroker\bin\win-x64\ResourceManager.GpuLaunchTargetProbe.exe"
+    <None Include="$(GpuLaunchTargetProbePath)"
           Link="GpuLaunchBrokerProbe\ResourceManager.GpuLaunchTargetProbe.exe"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

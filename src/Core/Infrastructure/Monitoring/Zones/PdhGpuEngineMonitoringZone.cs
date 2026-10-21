@@ -7,12 +7,12 @@ public sealed class PdhGpuEngineMonitoringZone : MonitoringSourceZone
     private readonly PdhGpuEngineUsageReader reader;
 
     public PdhGpuEngineMonitoringZone()
-        : this(ResourceManager.App.Infrastructure.NativeCore.UnavailableNativePdhSnapshotSource.Instance)
+        : this(UnavailableNativePdhSnapshotSource.Instance)
     {
     }
 
     internal PdhGpuEngineMonitoringZone(
-        ResourceManager.App.Infrastructure.NativeCore.INativePdhSnapshotSource snapshotSource)
+        ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource snapshotSource)
         : base(MonitoringSourceZoneIds.PdhGpuEngine)
     {
         reader = new PdhGpuEngineUsageReader(snapshotSource);

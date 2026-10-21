@@ -22,7 +22,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(8);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
-    private RuntimeProcessAttributionCatalog? current;
+    private CatalogHolder? current;
     private IReadOnlyList<SoftwareRecord>? cachedSoftware;
     private DateTimeOffset cachedSoftwareAt;
     private long softwareSnapshotGeneration;
@@ -30,15 +30,18 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     public long SoftwareSnapshotGeneration => Volatile.Read(ref softwareSnapshotGeneration);
 
-    public async Task<RuntimeProcessAttributionCatalog> GetCatalogAsync(CancellationToken cancellationToken)
+    public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken)
     {
         var software = await GetSoftwareAsync(cancellationToken);
         var adapted = await adapterRegistry.GetAllAsync(cancellationToken);
         var controlled = controlledRegistry.GetAll();
+        CatalogHolder? retired = null;
+        RuntimeProcessAttributionCatalogLease result;
         lock (lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var previous = current;
+            cancellationToken.ThrowIfCancellationRequested();
+            var previous = current?.Catalog;
             var next = RuntimeProcessAttributionCatalog.CreateOrReuse(
                 previous,
                 software,
@@ -50,12 +53,39 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 systemProcessClassifier,
                 softwareIdentityCatalog,
                 softwareIdentityOwner);
-            if (!ReferenceEquals(previous, next))
+            if (cancellationToken.IsCancellationRequested)
             {
-                current = next;
+                if (!ReferenceEquals(previous, next)) next.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
             }
-
-            return next;
+            if (ReferenceEquals(previous, next))
+                result = current!.Acquire();
+            else
+            {
+                CatalogHolder holder;
+                try
+                {
+                    holder = new CatalogHolder(next);
+                    result = holder.Acquire();
+                }
+                catch
+                {
+                    next.Dispose();
+                    throw;
+                }
+                retired = current;
+                current = holder;
+            }
+        }
+        try
+        {
+            retired?.Retire();
+            return result;
+        }
+        catch
+        {
+            result.Dispose();
+            throw;
         }
     }
 
@@ -80,7 +110,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     public void Dispose()
     {
-        RuntimeProcessAttributionCatalog? retired;
+        CatalogHolder? retired;
         lock (lifecycleGate)
         {
             if (disposed)
@@ -91,7 +121,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
             retired = current;
             current = null;
         }
-        retired?.Dispose();
+        retired?.Retire();
     }
 
     private async Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
@@ -142,5 +172,33 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
         software = [];
         return false;
+    }
+
+    // Acquire is only called under lifecycleGate while this is the current holder.
+    // Releases never acquire lifecycleGate; Native disposal occurs after retirement
+    // and the last reader, outside the provider's publication lock.
+    private sealed class CatalogHolder(RuntimeProcessAttributionCatalog catalog)
+    {
+        private int references = 1;
+        private int retired;
+        internal RuntimeProcessAttributionCatalog Catalog { get; } = catalog;
+
+        internal RuntimeProcessAttributionCatalogLease Acquire()
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref retired) != 0, this);
+            var lease = new RuntimeProcessAttributionCatalogLease(Catalog, Release);
+            Interlocked.Increment(ref references);
+            return lease;
+        }
+
+        internal void Retire()
+        {
+            if (Interlocked.Exchange(ref retired, 1) == 0) Release();
+        }
+
+        private void Release()
+        {
+            if (Interlocked.Decrement(ref references) == 0) Catalog.Dispose();
+        }
     }
 }

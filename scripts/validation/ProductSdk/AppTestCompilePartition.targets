@@ -1,0 +1,49 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\FreedomPointCompilerCapture.targets" />
+  <Target Name="SelectExplicitAppTestCompilePartition" BeforeTargets="_GenerateCompileDependencyCache;CoreCompile"
+          Condition="'$(RMAppTestPartitionProject)' != '' and '$(MSBuildProjectFullPath)' == '$(RMAppTestPartitionProject)'">
+    <Error Condition="'$(RMAppTestPartitionSources)' == '' or !Exists('$(RMAppTestPartitionSources)') or '$(RMAppTestPartitionEvidence)' == ''"
+           Text="An explicit test partition requires its validated source list and evidence directory." />
+    <MakeDir Directories="$(RMAppTestPartitionEvidence)" />
+    <PropertyGroup>
+      <_RMAppPartitionGeneratedRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'))</_RMAppPartitionGeneratedRoot>
+      <_RMAppPartitionTestProgram Condition="'$(GeneratedProgramFile)' != ''">$([MSBuild]::NormalizePath('$(GeneratedProgramFile)'))</_RMAppPartitionTestProgram>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RMAppPartitionOriginal Include="@(Compile)" />
+      <_RMAppPartitionGenerated Include="@(_RMAppPartitionOriginal)"
+          Condition="'%(_RMAppPartitionOriginal.AutoGen)' == 'true' or '%(_RMAppPartitionOriginal.DesignTime)' == 'true' or ('$(GeneratedProgramFile)' != '' and '%(_RMAppPartitionOriginal.FullPath)' == '$(_RMAppPartitionTestProgram)') or $([System.String]::Copy('%(_RMAppPartitionOriginal.FullPath)').StartsWith('$(_RMAppPartitionGeneratedRoot)', System.StringComparison.OrdinalIgnoreCase))" />
+    </ItemGroup>
+    <ReadLinesFromFile File="$(RMAppTestPartitionSources)">
+      <Output TaskParameter="Lines" ItemName="_RMAppPartitionRequested" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RMAppPartitionUnknown Include="@(_RMAppPartitionRequested)" />
+      <_RMAppPartitionUnknown Remove="@(_RMAppPartitionOriginal)" MatchOnMetadata="FullPath" MatchOnMetadataOptions="PathLike" />
+      <_RMAppPartitionKeep Include="@(_RMAppPartitionRequested);@(_RMAppPartitionGenerated)" />
+      <_RMAppPartitionRemoved Include="@(_RMAppPartitionOriginal)" />
+      <_RMAppPartitionRemoved Remove="@(_RMAppPartitionKeep)" MatchOnMetadata="FullPath" MatchOnMetadataOptions="PathLike" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/original-compile.txt" Lines="@(_RMAppPartitionOriginal->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/generated-compile.txt" Lines="@(_RMAppPartitionGenerated->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <Error Condition="'@(_RMAppPartitionUnknown)' != ''" Text="Partition requests files outside the actual original Compile set: @(_RMAppPartitionUnknown)" />
+    <ItemGroup>
+      <Compile Remove="@(_RMAppPartitionRemoved)" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/removed-compile.txt" Lines="@(_RMAppPartitionRemoved->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+  </Target>
+  <Target Name="CaptureExplicitAppTestCompilePartition" BeforeTargets="CoreCompile"
+          DependsOnTargets="SelectExplicitAppTestCompilePartition"
+          Condition="'$(RMAppTestPartitionProject)' != '' and '$(MSBuildProjectFullPath)' == '$(RMAppTestPartitionProject)'">
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/selected-compile.txt" Lines="@(Compile->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/embedded-resources.txt" Lines="@(EmbeddedResource->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/analyzers.txt" Lines="@(Analyzer->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/additional-files.txt" Lines="@(AdditionalFiles->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/references.txt" Lines="@(ReferencePath->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/project-references.txt" Lines="@(ProjectReference->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/target-path.txt" Lines="$(TargetPath)" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMAppTestPartitionEvidence)/properties.txt"
+        Lines="MSBuildProjectFullPath=$(MSBuildProjectFullPath);AssemblyName=$(AssemblyName);Nullable=$(Nullable);LangVersion=$(LangVersion);RunAnalyzers=$(RunAnalyzers);RunAnalyzersDuringBuild=$(RunAnalyzersDuringBuild);BuildProjectReferences=$(BuildProjectReferences);EmitCompilerGeneratedFiles=$(EmitCompilerGeneratedFiles);CompilerGeneratedFilesOutputPath=$(CompilerGeneratedFilesOutputPath)"
+        Overwrite="true" Encoding="UTF-8" />
+  </Target>
+</Project>

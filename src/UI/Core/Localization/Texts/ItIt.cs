@@ -46,6 +46,7 @@ internal static class ItIt
         BackendPipelineNotReady = "La pipeline delle richieste del servizio locale non è pronta.",
         NoProcessToTerminate = "Non ci sono processi da terminare.",
         TerminateRequestCompleted = "La richiesta di terminazione del processo è stata completata.",
+        TerminateResultFormat = "Terminati {0} / {1} processi.",
 
         WebViewInitializationFailed = "Inizializzazione dell'interfaccia incorporata non riuscita. Apri la cartella di diagnostica per i dettagli.",
         FrontendIdentityVerificationFailed = "Verifica dell'identità delle risorse front-end non riuscita. Apri la cartella di diagnostica per i dettagli.",

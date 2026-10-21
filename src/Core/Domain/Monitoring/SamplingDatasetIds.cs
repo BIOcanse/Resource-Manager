@@ -5,10 +5,15 @@ namespace ResourceManager.App.Domain.Monitoring;
 
 public static class SamplingDatasetIds
 {
-    public const string SystemGpuInventory = "system.gpu.inventory";
-    public const string SystemCpuUsage = "cpu.usage";
-    public const string SystemMemoryUsage = "memory.usage";
-    public const string SystemVirtualMemoryUsage = "virtualMemory.usage";
+    public const string SystemMetricCatalog = MetricDatasetIds.SystemMetricCatalog;
+    public const string StorageInventory = MetricDatasetIds.StorageInventory;
+    public const string FanInventory = MetricDatasetIds.FanInventory;
+    public const string BatteryInventory = MetricDatasetIds.BatteryInventory;
+    public const string NumaInventory = MetricDatasetIds.NumaInventory;
+    public const string SystemGpuInventory = MetricDatasetIds.SystemGpuInventory;
+    public const string SystemCpuUsage = MetricDatasetIds.SystemCpuUsage;
+    public const string SystemMemoryUsage = MetricDatasetIds.SystemMemoryUsage;
+    public const string SystemVirtualMemoryUsage = MetricDatasetIds.SystemVirtualMemoryUsage;
 
     public const string ProcessInventory = "process.inventory";
     public const string ProcessAttribution = "process.attribution";
@@ -19,29 +24,25 @@ public static class SamplingDatasetIds
     public const string ProcessDiskThroughput = "process.disk.throughput";
     public const string ProcessNetworkThroughput = "process.network.throughput";
     public const string ProcessRawNetworkThroughput = "process.network.raw-throughput";
+    public const string ProcessObservedNetworkTraffic = ProcessMetricDatasetIds.ObservedNetworkTraffic;
+    public const string ProcessObservedPhysicalDiskIo = ProcessMetricDatasetIds.ObservedPhysicalDiskIo;
+    public const string ProcessBasicMetrics = ProcessMetricDatasetIds.BasicMetrics;
     public const string ProcessGpuUsage = "process.gpu.usage";
     public const string ProcessGpuVram = "process.gpu.vram";
 
-    public static IReadOnlySet<string> ResolveAllSystemDatasets(
-        IEnumerable<string> availableMetricIds)
-    {
-        ArgumentNullException.ThrowIfNull(availableMetricIds);
-        var result = availableMetricIds
-            .Select(ForSystemMetric)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (result.Any(IsGpuMetric))
-        {
-            result.Add(SystemGpuInventory);
-        }
-        return result;
-    }
+    public static IReadOnlySet<string> ResolveAllSystemDatasets(IEnumerable<string> availableMetricIds)
+        => MetricDatasetIds.ResolveAllSystemDatasets(availableMetricIds);
 
     public static string ForSystemMetric(string metricId)
-        => Normalize(metricId);
+        => MetricDatasetIds.ForSystemMetric(metricId);
 
     public static string ForProcessMetric(string metricId)
     {
         var normalized = Normalize(metricId);
+        if (ProcessMetricFieldRegistry.Find(normalized) is { } field)
+        {
+            return field.DatasetId;
+        }
         if (normalized.Equals(ResourceBreakdownMetricIds.CpuUsage, StringComparison.OrdinalIgnoreCase))
         {
             return ProcessCpuUsage;
@@ -142,73 +143,13 @@ public static class SamplingDatasetIds
     public static bool IsSystemMetricInDataset(
         string metricId,
         IReadOnlySet<string> datasetIds)
-        => datasetIds.Contains(ForSystemMetric(metricId));
+        => MetricDatasetIds.IsSystemMetricInDataset(metricId, datasetIds);
 
-    public static IReadOnlySet<string> ResolveSystemDatasets(
-        MetricSampleRequest request,
-        IEnumerable<string> availableDatasetIds)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(availableDatasetIds);
-        var available = availableDatasetIds.ToHashSet(
-            StringComparer.OrdinalIgnoreCase);
-        if (request.IsAll || request.IsCatalogProbe)
-        {
-            return available;
-        }
+    public static IReadOnlySet<string> ResolveSystemDatasets(MetricSampleRequest request, IEnumerable<string> availableDatasetIds)
+        => MetricDatasetIds.ResolveSystemDatasets(request, availableDatasetIds);
 
-        return ResolveExplicitSystemDatasets(request, available);
-    }
-
-    public static IReadOnlySet<string> ResolveFailedSystemDatasets(
-        MetricSampleRequest request,
-        IEnumerable<string> trackedDatasetIds)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(trackedDatasetIds);
-        var tracked = trackedDatasetIds.ToHashSet(
-            StringComparer.OrdinalIgnoreCase);
-        if (request.IsAll || request.IsCatalogProbe)
-        {
-            return tracked;
-        }
-
-        return ResolveExplicitSystemDatasets(request, tracked);
-    }
-
-    private static IReadOnlySet<string> ResolveExplicitSystemDatasets(
-        MetricSampleRequest request,
-        IReadOnlySet<string> availableDatasetIds)
-    {
-        var result = request.Ids
-            .Select(ForSystemMetric)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (request.IncludesAllGpuCoreMetrics)
-        {
-            result.UnionWith(availableDatasetIds.Where(IsGpuCoreMetric));
-        }
-        if (result.Any(IsGpuMetric)
-            || request.IncludesPrefix("gpu."))
-        {
-            result.Add(SystemGpuInventory);
-        }
-        return result;
-    }
-
-    private static bool IsGpuMetric(string datasetId)
-        => datasetId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsGpuCoreMetric(string datasetId)
-    {
-        if (!TryParseGpuMetric(datasetId, out _, out var metricName))
-        {
-            return false;
-        }
-
-        return metricName.Equals("usage", StringComparison.OrdinalIgnoreCase)
-            || metricName.Equals("vram", StringComparison.OrdinalIgnoreCase)
-            || metricName.Equals("vramPercent", StringComparison.OrdinalIgnoreCase);
-    }
+    public static IReadOnlySet<string> ResolveFailedSystemDatasets(MetricSampleRequest request, IEnumerable<string> trackedDatasetIds)
+        => MetricDatasetIds.ResolveFailedSystemDatasets(request, trackedDatasetIds);
 
     private static string Normalize(string metricId)
     {
@@ -239,3 +180,4 @@ public static class SamplingDatasetIds
         return metricName.Length != 0;
     }
 }
+

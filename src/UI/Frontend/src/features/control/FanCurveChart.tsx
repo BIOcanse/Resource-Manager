@@ -6,8 +6,7 @@ import { curveStops, percentAt } from "./fanCurve.ts";
  * 风扇曲线图：温度对转速，点直接落在曲线上，上下拖。
  *
  * 交互沿用这类工具的通行做法（Afterburner / FanControl）：横轴温度、纵轴转速，
- * 曲线上每 5 度一个控制点。点的温度固定，只能上下动 ——
- * 所以每次调整都落在同一组温度上，可预期、可对比，也不会拖出密度不可控的点。
+ * 保留输入曲线的温度点。点的温度固定，只能上下动，新曲线使用默认十点。
  * 相邻点直线连接，与执行端一致。
  *
  * 改动只改本地，什么时候写下去由外面的「应用」决定。
@@ -21,14 +20,7 @@ const padding = { left: 10, right: 5, top: 5, bottom: 8 };
 const plotWidth = viewWidth - padding.left - padding.right;
 const plotHeight = viewHeight - padding.top - padding.bottom;
 
-const firstStop = 0;
-const lastStop = 100;
 const ticks = Array.from({ length: 11 }, (_, index) => index * 10);
-
-function xOf(temperature: number): number {
-  const ratio = (temperature - firstStop) / (lastStop - firstStop);
-  return padding.left + (ratio * plotWidth);
-}
 
 function yOf(percent: number): number {
   return padding.top + ((1 - (percent / 100)) * plotHeight);
@@ -36,25 +28,45 @@ function yOf(percent: number): number {
 
 export function FanCurveChart(props: {
   stops: readonly number[];
+  temperatures?: readonly number[];
   disabled?: boolean;
   onChange: (stops: number[]) => void;
 }) {
   let surface: SVGSVGElement | undefined;
   const [dragging, setDragging] = createSignal(-1);
   let pointerId: number | null = null;
+  const temperatures = () => props.temperatures ?? curveStops;
+  const temperatureRange = createMemo(() => temperatures().reduce(
+    (range, temperature) => ({
+      minimum: Math.min(range.minimum, temperature),
+      maximum: Math.max(range.maximum, temperature)
+    }), { minimum: 0, maximum: 100 }));
+  const temperatureTicks = createMemo(() => {
+    const range = temperatureRange();
+    return ticks.map(percent => Number((range.minimum
+      + (percent / 100) * (range.maximum - range.minimum)).toFixed(1)));
+  });
+
+  function xOf(temperature: number): number {
+    const range = temperatureRange();
+    const ratio = (temperature - range.minimum) / (range.maximum - range.minimum);
+    return padding.left + (ratio * plotWidth);
+  }
 
   const path = createMemo(() => {
-    const points = curveStops.map((stop, index) => ({
+    const points = temperatures().map((stop, index) => ({
       temperatureCelsius: stop,
       percent: props.stops[index] ?? 0
     }));
-    const samples: string[] = [];
-    for (let temperature = firstStop; temperature <= lastStop; temperature += 1) {
-      samples.push(
-        `${samples.length === 0 ? "M" : "L"}`
-        + `${xOf(temperature).toFixed(2)},${yOf(percentAt(points, temperature)).toFixed(2)}`);
-    }
-    return samples.join(" ");
+    const range = temperatureRange();
+    // The curve is piecewise linear. Draw its actual points and the endpoint
+    // plateaus instead of sampling only the former fixed temperature range.
+    return [
+      { temperatureCelsius: range.minimum, percent: percentAt(points, range.minimum) },
+      ...points,
+      { temperatureCelsius: range.maximum, percent: percentAt(points, range.maximum) }
+    ].map((point, index) => `${index === 0 ? "M" : "L"}`
+      + `${xOf(point.temperatureCelsius).toFixed(2)},${yOf(point.percent).toFixed(2)}`).join(" ");
   });
 
   /** Includes borders, scaling, and any SVG letterboxing. */
@@ -66,7 +78,7 @@ export function FanCurveChart(props: {
   function nearestStop(x: number): number {
     let best = 0;
     let bestDistance = Number.POSITIVE_INFINITY;
-    curveStops.forEach((temperature, index) => {
+    temperatures().forEach((temperature, index) => {
       const distance = Math.abs(xOf(temperature) - x);
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -79,7 +91,7 @@ export function FanCurveChart(props: {
   function write(index: number, y: number) {
     const ratio = 1 - ((y - padding.top) / plotHeight);
     const percent = Math.round(Math.min(100, Math.max(0, ratio * 100)));
-    const next = curveStops.map((_, at) => props.stops[at] ?? 0);
+    const next = temperatures().map((_, at) => props.stops[at] ?? 0);
     next[index] = percent;
     props.onChange(next);
   }
@@ -142,7 +154,7 @@ export function FanCurveChart(props: {
         )}
       </For>
 
-      <For each={ticks}>
+      <For each={temperatureTicks()}>
         {(temperature) => (
           <>
             <line class="fan-curve-grid" x1={xOf(temperature)} x2={xOf(temperature)}
@@ -155,7 +167,7 @@ export function FanCurveChart(props: {
 
       <path class="fan-curve-line" d={path()} />
 
-      <For each={curveStops}>
+      <For each={temperatures()}>
         {(temperature, index) => {
           const percent = () => props.stops[index()] ?? 0;
           return (
@@ -177,7 +189,7 @@ export function FanCurveChart(props: {
                 }
                 // 键盘也能调。按住 Shift 走大步。
                 const step = event.shiftKey ? 10 : 1;
-                const next = curveStops.map((_, at) => props.stops[at] ?? 0);
+                const next = temperatures().map((_, at) => props.stops[at] ?? 0);
                 if (event.key === "Home" || event.key === "End") {
                   event.preventDefault();
                   next[index()] = event.key === "Home" ? 0 : 100;

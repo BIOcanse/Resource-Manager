@@ -69,7 +69,6 @@ public sealed class LoopbackApiAuthenticationPolicyTests
             [
                 typeof(RequestDelegate),
                 typeof(LoopbackApiAccessToken),
-                typeof(IRuntimePlanProvider),
                 typeof(ILoopbackApiAdministratorReader)
             ],
             constructor.GetParameters().Select(parameter => parameter.ParameterType));

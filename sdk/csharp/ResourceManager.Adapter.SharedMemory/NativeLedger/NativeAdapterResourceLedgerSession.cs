@@ -44,6 +44,7 @@ public sealed unsafe class NativeAdapterResourceLedgerSession : IDisposable
     public NativeAdapterResourceLedgerSession(NativeAdapterResourceLedgerConfiguration configuration)
     {
         ValidateConfiguration(configuration);
+        var native = ToNativeConfiguration(configuration);
         EnsureNativeContract();
         ThrowIfFailed(
             NativeAdapterResourceLedgerInterop.rm_private_resource_ledger_state_required_size(
@@ -67,7 +68,6 @@ public sealed unsafe class NativeAdapterResourceLedgerSession : IDisposable
 
         try
         {
-            var native = ToNativeConfiguration(configuration);
             ThrowIfFailed(
                 NativeAdapterResourceLedgerInterop.rm_private_resource_ledger_state_initialize(
                     stateBuffer,
@@ -77,7 +77,9 @@ public sealed unsafe class NativeAdapterResourceLedgerSession : IDisposable
         }
         catch
         {
-            NativeMemory.AlignedFree(stateBuffer);
+            var failedBuffer = stateBuffer;
+            stateBuffer = null;
+            NativeMemory.AlignedFree(failedBuffer);
             throw;
         }
     }
@@ -262,7 +264,13 @@ public sealed unsafe class NativeAdapterResourceLedgerSession : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    ~NativeAdapterResourceLedgerSession() => DisposeCore();
+    ~NativeAdapterResourceLedgerSession()
+    {
+        if (stateBuffer is not null)
+        {
+            DisposeCore();
+        }
+    }
 
     private NativeAdapterResourceLedgerSnapshot ReadSnapshot(
         string applicationId,

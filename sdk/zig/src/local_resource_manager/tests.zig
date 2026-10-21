@@ -247,6 +247,153 @@ test "capacity policy rejects equal or inverted adjacent thresholds" {
     }
 }
 
+test "opaque zero resource UID survives open use update release and slot reuse" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(4));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    const table = try state.registerTable(view, tableSpec(7010, 1, 2));
+    _ = try state.registerCapability(view, table, capabilitySpec(7010, 7010, protocol.effect_releases_ledger_slot, true));
+    var spec = resourceSpec(0, 100, 1, 0, .unobservable_now, std.mem.zeroes(protocol.CapabilityBinding), std.mem.zeroes(protocol.CapabilityBinding));
+    const resource = try state.registerResource(view, table, spec);
+    _ = try state.open(buffer);
+    const before_duplicate = try allocator.dupe(u8, buffer);
+    defer allocator.free(before_duplicate);
+    // ABI10's create-row primitive still prevents two rows sharing one index key.
+    try std.testing.expectError(error.DuplicateResource, state.registerResource(view, table, spec));
+    try std.testing.expectEqualSlices(u8, before_duplicate, buffer);
+    const lease = try state.beginUse(view, resource);
+    try state.endUse(view, lease);
+    spec.size_bytes = 200;
+    try state.updateResource(view, resource, spec);
+    try std.testing.expectEqual(@as(u64, 200), (try state.readResource(view, resource)).size_bytes);
+    _ = try state.open(buffer);
+    try beginFreshOperation(view, .cleanup);
+    var intents: [1]protocol.Intent = undefined;
+    const summary = try mode_cleanup.plan(view, .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.ModePlanInput),
+        .table = table,
+        .maximum_intents = 1,
+        .mode = .release_all,
+        .reserved0 = .{ 0, 0, 0 },
+    }, &intents);
+    try std.testing.expectEqual(@as(u32, 1), summary.intent_count);
+    try std.testing.expect(protocol.sameId(spec.resource_uid, intents[0].resource.resource_uid));
+    const execution = try executor.beginIntent(view, intents[0]);
+    _ = try executor.markEffectStarted(view, execution);
+    _ = try executor.commitEffect(view, execution, appliedSlotRelease());
+    try std.testing.expectError(error.StaleResource, state.readResource(view, resource));
+    _ = try state.open(buffer);
+    try beginFreshOperation(view, .maintenance);
+    const replacement = try state.registerResource(view, table, spec);
+    try std.testing.expectEqual(resource.resource_slot_index, replacement.resource_slot_index);
+    try std.testing.expect(resource.resource_slot_generation != replacement.resource_slot_generation);
+    _ = try state.open(buffer);
+}
+
+test "ABI10 update rejects leased pending and exhausted writes without changing facts" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(4));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    const table = try state.registerTable(view, tableSpec(7011, 1, 2));
+    _ = try state.registerCapability(view, table, capabilitySpec(7011, 7011, protocol.effect_releases_ledger_slot, true));
+    var spec = resourceSpec(7011, 100, 1, 0, .unobservable_now, std.mem.zeroes(protocol.CapabilityBinding), std.mem.zeroes(protocol.CapabilityBinding));
+    const resource = try state.registerResource(view, table, spec);
+    const lease = try state.beginUse(view, resource);
+    spec.size_bytes = 200;
+    spec.recovery_cost_coefficient = 2;
+    const leased_before = try allocator.dupe(u8, buffer);
+    defer allocator.free(leased_before);
+    try std.testing.expectError(error.ResourceBusy, state.updateResource(view, resource, spec));
+    try std.testing.expectEqualSlices(u8, leased_before, buffer);
+    const snapshot = try state.readResource(view, resource);
+    try std.testing.expectEqual(@as(u64, 100), snapshot.size_bytes);
+    try std.testing.expectEqual(@as(u32, 1), snapshot.recovery_cost_coefficient);
+    try std.testing.expectEqual(@as(u8, 1), snapshot.protected_use);
+    try std.testing.expectEqual(lease.lease_generation, view.resources[resource.resource_slot_index].active_lease_generation);
+    _ = try state.open(buffer);
+    try std.testing.expectError(error.ResourceBusy, state.unregisterResource(view, resource));
+    try state.endUse(view, lease);
+    try state.updateResource(view, resource, spec);
+
+    const row = &view.resources[resource.resource_slot_index];
+    const previous_revision = row.row_revision;
+    row.row_revision = std.math.maxInt(u64);
+    const before = try allocator.dupe(u8, buffer);
+    defer allocator.free(before);
+    spec.size_bytes = 300;
+    spec.recovery_cost_coefficient = 3;
+    try std.testing.expectError(error.GenerationExhausted, state.updateResource(view, resource, spec));
+    try std.testing.expectEqualSlices(u8, before, buffer);
+    row.row_revision = previous_revision;
+
+    try std.testing.expectEqual(@as(u64, 200), (try state.readResource(view, resource)).size_bytes);
+    try std.testing.expectEqual(@as(u8, 0), (try state.readResource(view, resource)).protected_use);
+    _ = try state.open(buffer);
+    try beginFreshOperation(view, .cleanup);
+    var intents: [1]protocol.Intent = undefined;
+    const summary = try mode_cleanup.plan(view, .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.ModePlanInput),
+        .table = table,
+        .maximum_intents = 1,
+        .mode = .release_all,
+        .reserved0 = .{ 0, 0, 0 },
+    }, &intents);
+    try std.testing.expectEqual(@as(u32, 1), summary.intent_count);
+    const execution = try executor.beginIntent(view, intents[0]);
+    const reserved = try allocator.dupe(u8, buffer);
+    defer allocator.free(reserved);
+    try std.testing.expectError(error.ResourceBusy, state.updateResource(view, resource, spec));
+    try std.testing.expectEqualSlices(u8, reserved, buffer);
+    _ = try executor.markEffectStarted(view, execution);
+    const started = try allocator.dupe(u8, buffer);
+    defer allocator.free(started);
+    try std.testing.expectError(error.ResourceBusy, state.updateResource(view, resource, spec));
+    try std.testing.expectEqualSlices(u8, started, buffer);
+    _ = try executor.commitEffect(view, execution, appliedSlotRelease());
+    try std.testing.expectError(error.StaleResource, state.readResource(view, resource));
+    _ = try state.open(buffer);
+}
+
+test "lease generation and activity exhaustion do not partially acquire or change activity" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(4));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    const table = try state.registerTable(view, tableSpec(7014, 1, 2));
+    _ = try state.registerCapability(view, table, capabilitySpec(7014, 7014, protocol.effect_releases_ledger_slot, true));
+    const resource = try state.registerResource(view, table, resourceSpec(7014, 100, 1, 0, .unobservable_now, std.mem.zeroes(protocol.CapabilityBinding), std.mem.zeroes(protocol.CapabilityBinding)));
+    const row = &view.resources[resource.resource_slot_index];
+    const generation = row.use_generation;
+    const revision = row.activity_revision;
+    for (0..2) |case| {
+        if (case == 0) row.use_generation = std.math.maxInt(u64) else row.activity_revision = std.math.maxInt(u64);
+        const before = try allocator.dupe(u8, buffer);
+        defer allocator.free(before);
+        try std.testing.expectError(error.GenerationExhausted, state.beginUse(view, resource));
+        try std.testing.expectEqualSlices(u8, before, buffer);
+        row.use_generation = generation;
+        row.activity_revision = revision;
+    }
+    const lease = try state.beginUse(view, resource);
+    try state.advanceActivityEpoch(view, 19);
+    const active_generation = row.use_generation;
+    row.use_generation = std.math.maxInt(u64);
+    const before_end = try allocator.dupe(u8, buffer);
+    defer allocator.free(before_end);
+    try std.testing.expectError(error.GenerationExhausted, state.endUse(view, lease));
+    try std.testing.expectEqualSlices(u8, before_end, buffer);
+    try std.testing.expectEqual(@as(u64, 1), row.last_activity_epoch);
+    try std.testing.expectEqual(@as(u8, 1), row.protected_use);
+    row.use_generation = active_generation;
+    try state.endUse(view, lease);
+    try std.testing.expectEqual(@as(u64, 1), row.last_activity_epoch);
+    try std.testing.expectEqual(@as(u64, 1), row.activity_value);
+}
+
 test "operation sequence rejects duplicate begin and stale owner tokens atomically" {
     const allocator = std.testing.allocator;
     const buffer = try allocateIdleManager(allocator, config(2));
@@ -546,6 +693,88 @@ test "started unknown effect keeps the original operation in recovery" {
     const maintenance = try operation_sequence.begin(view, .maintenance);
     try state.touchResource(view, resource, 1);
     try operation_sequence.finish(view, maintenance);
+}
+
+test "ABI reopens reserved-only recovery to cancel remaining work in the same operation" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(2));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    var tables: [2]protocol.TableHandle = undefined;
+    for (&tables, 0..) |*table, index| {
+        table.* = try state.registerTable(view, tableSpec(7003 + index, 1, 1));
+        try registerPartitionReleaseCapability(view, table.*);
+        _ = try state.registerResource(view, table.*, resourceSpec(
+            1,
+            1,
+            1,
+            0,
+            .unobservable_now,
+            std.mem.zeroes(protocol.CapabilityBinding),
+            std.mem.zeroes(protocol.CapabilityBinding),
+        ));
+    }
+    try beginFreshOperation(view, .cleanup);
+    const operation = operation_sequence.currentToken(view);
+    var executions: [2]protocol.ExecutionToken = undefined;
+    for (tables, 0..) |table, index| {
+        var intents: [1]protocol.Intent = undefined;
+        const summary = try mode_cleanup.plan(view, .{
+            .abi_version = protocol.abi_version,
+            .struct_size = @sizeOf(protocol.ModePlanInput),
+            .table = table,
+            .maximum_intents = 1,
+            .mode = .release_all,
+            .reserved0 = .{ 0, 0, 0 },
+        }, &intents);
+        try std.testing.expectEqual(@as(u32, 1), summary.intent_count);
+        executions[index] = try executor.beginIntent(view, intents[0]);
+    }
+    const started = executions[0];
+    const reserved = executions[1];
+    _ = try executor.markEffectStarted(view, started);
+    _ = try executor.markEffectUncertain(view, started);
+    var output: protocol.CommitReceipt = undefined;
+    const no_effect = protocol.TypedEffect{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.TypedEffect),
+        .size_bytes_after = 0,
+        .released_bytes = 0,
+        .outcome = .no_effect,
+        .changes = 0,
+        .reserved0 = .{ 0, 0, 0, 0, 0, 0 },
+    };
+    try std.testing.expectEqual(@intFromEnum(protocol.ResultCode.ok), abi.rm_local_resource_manager_commit_effect(
+        buffer.ptr,
+        buffer.len,
+        &operation,
+        &started,
+        &no_effect,
+        &output,
+    ));
+    // The other reservation keeps recovery active until it is explicitly aborted.
+    const recovered = try state.open(buffer);
+    const current = operation_sequence.read(recovered);
+    try std.testing.expectEqual(protocol.OperationPhase.recovery_required, current.phase);
+    try std.testing.expectEqual(@as(u32, 1), current.reserved_execution_count);
+    try std.testing.expectEqual(@as(u32, 0), current.started_execution_count);
+    try std.testing.expectEqual(@as(u32, 0), current.uncertain_execution_count);
+    try std.testing.expectError(error.RecoveryRequired, operation_sequence.begin(recovered, .maintenance));
+    try std.testing.expectError(error.RecoveryRequired, executor.markEffectStarted(recovered, reserved));
+    try std.testing.expectEqual(@intFromEnum(protocol.ResultCode.ok), abi.rm_local_resource_manager_abort_intent(
+        buffer.ptr,
+        buffer.len,
+        &operation,
+        &reserved,
+        &output,
+    ));
+    _ = try state.open(buffer);
+    try std.testing.expectEqual(protocol.OperationPhase.settling, operation_sequence.read(view).phase);
+    view.header.active_operation_phase = .recovery_required;
+    try expectInvalidOpenUnchanged(buffer);
+    view.header.active_operation_phase = .settling;
+    try std.testing.expectEqual(@intFromEnum(protocol.ResultCode.ok), abi.rm_local_resource_manager_finish_operation(buffer.ptr, buffer.len, &operation));
+    _ = try state.open(buffer);
 }
 
 fn planStamp(
@@ -1069,6 +1298,169 @@ test "open rejects a corrupted aggregate table capacity reservation" {
     view.tables[second.slot_index].capacity = 6;
 
     try std.testing.expectError(error.InvalidState, state.open(buffer));
+}
+
+fn expectInvalidOpenUnchanged(buffer: []align(8) u8) !void {
+    const before = try std.testing.allocator.dupe(u8, buffer);
+    defer std.testing.allocator.free(before);
+    if (state.open(buffer)) |_| {
+        return error.TestExpectedInvalidState;
+    } else |err| {
+        try std.testing.expect(err == error.InvalidState);
+    }
+    try std.testing.expectEqualSlices(u8, before, buffer);
+    var output = std.mem.zeroes(protocol.OperationToken);
+    output.operation_id = 12345;
+    const output_before = output;
+    try std.testing.expectEqual(
+        @intFromEnum(protocol.ResultCode.invalid_state),
+        abi.rm_local_resource_manager_begin_operation(buffer.ptr, buffer.len, 1, &output),
+    );
+    try std.testing.expectEqualDeep(output_before, output);
+    try std.testing.expectEqualSlices(u8, before, buffer);
+}
+
+test "full open validates sparse multi-table counts without changing bytes" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(16));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    const first = try state.registerTable(view, tableSpec(321, 1, 4));
+    const second = try state.registerTable(view, tableSpec(322, 1, 2));
+    _ = try state.registerTable(view, tableSpec(323, 1, 2));
+    for ([_]protocol.TableHandle{ first, second }, 0..) |table, table_index| {
+        try registerPartitionReleaseCapability(view, table);
+        var ordinal: u32 = 0;
+        while (ordinal < 2 - table_index) : (ordinal += 1) {
+            _ = try state.registerResource(view, table, resourceSpec(
+                1 + ordinal,
+                1,
+                1,
+                0,
+                .unobservable_now,
+                std.mem.zeroes(protocol.CapabilityBinding),
+                std.mem.zeroes(protocol.CapabilityBinding),
+            ));
+        }
+    }
+    const before = try allocator.dupe(u8, buffer);
+    defer allocator.free(before);
+    _ = try state.open(buffer);
+    try std.testing.expectEqualSlices(u8, before, buffer);
+
+    view.tables[first.slot_index].occupied_count -= 1;
+    try expectInvalidOpenUnchanged(buffer);
+    view.tables[first.slot_index].occupied_count += 1;
+    view.tables[second.slot_index].active_pending_count = 1;
+    try expectInvalidOpenUnchanged(buffer);
+    view.tables[second.slot_index].active_pending_count = 0;
+    view.header.resource_count -= 1;
+    try expectInvalidOpenUnchanged(buffer);
+    view.header.resource_count += 1;
+    _ = try state.open(buffer);
+    try std.testing.expectEqualSlices(u8, before, buffer);
+}
+
+test "full open rejects disconnected reciprocal resource cycles" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, partitionConfig(4, 4));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    const table = try state.registerTable(view, partitionTableSpec(324, 1, 3, 0, 3));
+    try registerPartitionReleaseCapability(view, table);
+    const shell = try createEmptyPartition(view, table, null, 3);
+    var resources: [3]protocol.ResourceHandle = undefined;
+    for (&resources, 0..) |*resource, ordinal| {
+        resource.* = try partition.registerResourceAt(view, shell, @intCast(ordinal), resourceSpec(
+            1 + ordinal,
+            1,
+            1,
+            0,
+            .unobservable_now,
+            std.mem.zeroes(protocol.CapabilityBinding),
+            std.mem.zeroes(protocol.CapabilityBinding),
+        ));
+    }
+    _ = try state.open(buffer);
+    const first = &view.resources[resources[0].resource_slot_index];
+    const second = &view.resources[resources[1].resource_slot_index];
+    const head = &view.resources[resources[2].resource_slot_index];
+    // The orphan cycle satisfies each member's reciprocal links and cell owner.
+    head.next_table_resource = layout.no_slot;
+    first.previous_table_resource = resources[1].resource_slot_index;
+    first.next_table_resource = resources[1].resource_slot_index;
+    second.previous_table_resource = resources[0].resource_slot_index;
+    second.next_table_resource = resources[0].resource_slot_index;
+    view.tables[table.slot_index].occupied_count = 1;
+    try expectInvalidOpenUnchanged(buffer);
+
+    head.next_table_resource = resources[2].resource_slot_index;
+    try expectInvalidOpenUnchanged(buffer);
+}
+
+test "full open validates pending table ownership even when swapped counts balance" {
+    const allocator = std.testing.allocator;
+    const buffer = try allocateManager(allocator, config(8));
+    defer allocator.free(buffer);
+    const view = try state.open(buffer);
+    var tables: [2]protocol.TableHandle = undefined;
+    for (&tables, 0..) |*table, index| {
+        table.* = try state.registerTable(view, tableSpec(330 + index, 1, 2));
+        try registerPartitionReleaseCapability(view, table.*);
+        _ = try state.registerResource(view, table.*, resourceSpec(
+            1,
+            1,
+            1,
+            0,
+            .unobservable_now,
+            std.mem.zeroes(protocol.CapabilityBinding),
+            std.mem.zeroes(protocol.CapabilityBinding),
+        ));
+    }
+    try beginFreshOperation(view, .cleanup);
+    var executions: [2]protocol.ExecutionToken = undefined;
+    for (tables, 0..) |table, index| {
+        var intents: [1]protocol.Intent = undefined;
+        const summary = try mode_cleanup.plan(view, .{
+            .abi_version = protocol.abi_version,
+            .struct_size = @sizeOf(protocol.ModePlanInput),
+            .table = table,
+            .maximum_intents = 1,
+            .mode = .release_all,
+            .reserved0 = .{ 0, 0, 0 },
+        }, &intents);
+        try std.testing.expectEqual(@as(u32, 1), summary.intent_count);
+        executions[index] = try executor.beginIntent(view, intents[0]);
+    }
+    _ = try executor.markEffectStarted(view, executions[1]);
+    _ = try state.open(buffer);
+    const first = &view.pending[executions[0].pending_slot_index];
+    const second = &view.pending[executions[1].pending_slot_index];
+    first.intent.resource.table_slot_index = tables[1].slot_index;
+    second.intent.resource.table_slot_index = tables[0].slot_index;
+    try expectInvalidOpenUnchanged(buffer);
+    first.intent.resource.table_slot_index = tables[0].slot_index;
+    second.intent.resource.table_slot_index = tables[1].slot_index;
+
+    view.tables[tables[0].slot_index].active_pending_count = 0;
+    try expectInvalidOpenUnchanged(buffer);
+    view.tables[tables[0].slot_index].active_pending_count = 1;
+    const resource = &view.resources[executions[0].resource.resource_slot_index];
+    resource.pending_slot_index = @intCast(view.pending.len);
+    try expectInvalidOpenUnchanged(buffer);
+    resource.pending_slot_index = executions[0].pending_slot_index;
+    _ = try state.open(buffer);
+    _ = try executor.abortIntent(view, executions[0]);
+    _ = try executor.commitEffect(view, executions[1], .{
+        .abi_version = protocol.abi_version,
+        .struct_size = @sizeOf(protocol.TypedEffect),
+        .size_bytes_after = 0,
+        .released_bytes = 0,
+        .outcome = .no_effect,
+        .changes = 0,
+        .reserved0 = .{ 0, 0, 0, 0, 0, 0 },
+    });
+    _ = try state.open(buffer);
 }
 
 test "capacity ranking handles 4096 reverse ordered candidates with fixed memory" {

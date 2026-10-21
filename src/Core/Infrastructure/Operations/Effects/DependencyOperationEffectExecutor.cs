@@ -1,5 +1,6 @@
 ﻿using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
 
@@ -16,8 +17,16 @@ internal sealed class DependencyOperationEffectExecutor(
         IHostManagerOperationProgressSink progress,
         CancellationToken cancellationToken)
     {
-        var (id, acknowledge, versionChoice) =
-            HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
+        SoftwareOperationCaller? caller = null;
+        string id;
+        bool acknowledge;
+        string? versionChoice;
+        if (launchInstaller && ticket.Request.SchemaId == HostManagerOperationRequestSchemas.UserDependencyInstaller)
+            (id, acknowledge, versionChoice, caller) =
+                HostManagerOperationRequestCodec.DecodeUserAcquisitionRequest(ticket.Request.Payload);
+        else
+            (id, acknowledge, versionChoice) =
+                HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
         try
         {
             if (launchInstaller)
@@ -26,7 +35,8 @@ internal sealed class DependencyOperationEffectExecutor(
                     id,
                     acknowledge,
                     versionChoice,
-                    cancellationToken).ConfigureAwait(false);
+                    cancellationToken,
+                    caller).ConfigureAwait(false);
                 // 这一层的完成消息还没迁到消息码（操作日志是二进制持久化的，见 M5）。
                 // 暂时不带文本：前端会用自己的本地化「操作完成」，不会漏出中文。
                 return new(HostManagerOperationEffectOutcome.Succeeded, string.Empty);

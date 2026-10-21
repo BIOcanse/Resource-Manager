@@ -17,7 +17,7 @@ public sealed class RuntimeProcessAttributionCatalogTests
     [Fact]
     public void CreateOrReuse_ReusesCatalogAndPipelineForEquivalentSourceVersions()
     {
-        var first = CreateCatalog(
+        using var first = CreateCatalog(
             null,
             [CreateSoftware("software:one", "Software One", [@"D:\Apps\One"])],
             [],
@@ -36,22 +36,26 @@ public sealed class RuntimeProcessAttributionCatalogTests
     [Fact]
     public void CreateOrReuse_AdvancesGenerationForEveryAttributionSourceVersion()
     {
-        var empty = CreateCatalog(null, [], [], []);
-        var softwareChanged = CreateCatalog(
+        using var empty = CreateCatalog(null, [], [], []);
+        using var softwareChanged = CreateCatalog(
             empty,
             [CreateSoftware("software:one", "Software One", [@"D:\Apps\One"])],
             [],
             []);
-        var adaptedChanged = CreateCatalog(
+        if (!ReferenceEquals(empty, softwareChanged)) empty.Dispose();
+        using var adaptedChanged = CreateCatalog(
             softwareChanged,
             [CreateSoftware("software:one", "Software One", [@"D:\Apps\One"])],
             [CreateAdapter("adapter:one", "Adapter One", [@"D:\Apps\Adapter"])],
             []);
-        var controlledChanged = CreateCatalog(
+        if (!ReferenceEquals(softwareChanged, adaptedChanged)) softwareChanged.Dispose();
+        using var controlledChanged = CreateCatalog(
             adaptedChanged,
             [CreateSoftware("software:one", "Software One", [@"D:\Apps\One"])],
             [CreateAdapter("adapter:one", "Adapter One", [@"D:\Apps\Adapter"])],
             [CreateControlled(Guid.Parse("10000000-0000-0000-0000-000000000001"), [@"D:\Apps\Controlled"])]);
+
+        if (!ReferenceEquals(adaptedChanged, controlledChanged)) adaptedChanged.Dispose();
 
         Assert.Equal(1, empty.Generation);
         Assert.Equal(2, softwareChanged.Generation);
@@ -70,7 +74,7 @@ public sealed class RuntimeProcessAttributionCatalogTests
         var adapterProcesses = new List<AdapterProcessDeclaration>();
         var controlledRoots = new List<string> { @"D:\Apps\Controlled" };
         var controlledProcesses = new List<ControlledProcessDeclaration>();
-        var catalog = CreateCatalog(
+        using var catalog = CreateCatalog(
             null,
             [CreateSoftware("software:known", "Known Software", softwareRoots)],
             [CreateAdapter("adapter:known", "Known Adapter", adapterRoots, adapterProcesses)],
@@ -107,7 +111,7 @@ public sealed class RuntimeProcessAttributionCatalogTests
     [Fact]
     public void CreateOrReuse_SharedRootsRemainAmbiguousWithoutInvalidatingNativeCatalog()
     {
-        var catalog = CreateCatalog(
+        using var catalog = CreateCatalog(
             null,
             [
                 CreateSoftware("software:one", "Software One", [@"D:\Apps\Shared"]),
@@ -128,7 +132,7 @@ public sealed class RuntimeProcessAttributionCatalogTests
     public void ControlledGenericExecutableKeepsPathAttributionWithoutNameAttribution(string name)
     {
         var id = Guid.Parse("10000000-0000-0000-0000-000000000003");
-        var catalog = CreateCatalog(null, [], [],
+        using var catalog = CreateCatalog(null, [], [],
             [CreateControlled(id, [], [new ControlledProcessDeclaration(name, null, $@"D:\Apps\OwnedRuntime\{name}.exe")])]);
 
         Assert.Equal($"controlled-registration:{id}", catalog.Pipeline.Match(

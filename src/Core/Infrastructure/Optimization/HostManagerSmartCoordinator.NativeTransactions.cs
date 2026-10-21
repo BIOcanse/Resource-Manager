@@ -88,7 +88,7 @@ public sealed partial class HostManagerSmartCoordinator
                 result.Feedback,
                 action,
                 cycleStartedAt.ToUnixTimeMilliseconds());
-            workspace.FeedbackRows[checked((int)feedbackCount++)] = result.Feedback;
+            workspace.SetFeedback(feedbackCount++, result.Feedback);
             if (result.Feedback.Status == NativeSmartCoordinatorFeedbackStatus.Succeeded)
             {
                 successfulFeedbackCount++;

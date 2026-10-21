@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.RuntimeSpecialization;
@@ -54,52 +56,73 @@ public sealed class DashboardMonitoringCatalogStateTests
     }
 
     [Fact]
-    public async Task Synchronizer_AwaitsInitialRebuildAndRebuildsOnLaterCatalogChange()
+    public async Task SynchronizerConsumesCatalogueDemandWithoutReadingOrCapturing()
     {
         var state = new DashboardMonitoringCatalogState();
-        var sampler = new PublishingMetricSampler(
-            state,
-            CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage"));
+        var source = new CatalogueSource(state);
         var coordinator = new RecordingRuntimeSpecializationCoordinator();
-        using var synchronizer = new DashboardMonitoringPlanSynchronizer(
-            sampler,
-            state,
-            coordinator,
-            NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
-
+        using var synchronizer = new DashboardMonitoringPlanSynchronizer(source, state,
+            coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
         await synchronizer.StartAsync(CancellationToken.None);
-
+        Assert.True((await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2))).IsCatalogProbe);
+        Assert.Empty(coordinator.Reasons);
+        var first = CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage");
+        source.Publish(first);
+        await source.Processed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
         Assert.Equal(["monitoring-catalog-ready"], coordinator.Reasons);
-        state.PublishCatalogProbe(CreateSnapshot(2, "gpu-dedicated", "gpu.0.usage", "gpu.0.vram"));
-        var changedReason = await coordinator.CatalogChanged.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal("monitoring-catalog-changed", changedReason);
-
+        source.Publish(first with { CapturedAt = first.CapturedAt.AddSeconds(1) });
+        await source.Processed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Single(coordinator.Reasons);
+        source.Publish(CreateSnapshot(2, "gpu-dedicated", "gpu.0.usage", "gpu.0.vram"));
+        await coordinator.CatalogChanged.Task.WaitAsync(TimeSpan.FromSeconds(2));
         await synchronizer.StopAsync(CancellationToken.None);
+        Assert.Equal(0, source.ActiveSubscriptions);
+        await synchronizer.StartAsync(CancellationToken.None);
+        await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, source.ActiveSubscriptions);
+        await synchronizer.StopAsync(CancellationToken.None);
+        Assert.Equal(0, source.ActiveSubscriptions);
     }
 
     [Fact]
-    public async Task FailedInitialProbeRetainsLogicalRequestAndRetriesInBackend()
+    public async Task SynchronizerReacquiresAfterSubscriptionFailureAndReleasesDemandOnStop()
+    {
+        var state = new DashboardMonitoringCatalogState();
+        var source = new CatalogueSource(state) { FailSubscriptionOnce = true };
+        var coordinator = new RecordingRuntimeSpecializationCoordinator();
+        using var synchronizer = new DashboardMonitoringPlanSynchronizer(source, state,
+            coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
+        await synchronizer.StartAsync(CancellationToken.None);
+        await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, source.ActiveSubscriptions);
+        await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(8));
+        source.Publish(CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage"));
+        await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await synchronizer.StopAsync(CancellationToken.None);
+        Assert.Equal(0, source.ActiveSubscriptions);
+    }
+
+    [Fact]
+    public async Task FailedInitialRebuildRetriesOnNextUnchangedCataloguePublication()
     {
         var state = new DashboardMonitoringCatalogState();
         var request = MetricSampleRequest.ForIds(["gpu.0.usage"]);
         Assert.False(state.SelectSubscribable(request).IsEmpty);
-        var sampler = new FailOnceMetricSampler(CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage"));
-        var coordinator = new RecordingRuntimeSpecializationCoordinator();
-        using var synchronizer = new DashboardMonitoringPlanSynchronizer(
-            sampler, state, coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
-
+        var source = new CatalogueSource(state);
+        var coordinator = new RecordingRuntimeSpecializationCoordinator { FailOnce = true };
+        using var synchronizer = new DashboardMonitoringPlanSynchronizer(source, state,
+            coordinator, NullLogger<DashboardMonitoringPlanSynchronizer>.Instance);
         await synchronizer.StartAsync(CancellationToken.None);
-        try
-        {
-            await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(2, sampler.Attempts);
-            Assert.NotNull(state.Current);
-            Assert.False(state.SelectSubscribable(request).IsEmpty);
-        }
-        finally
-        {
-            await synchronizer.StopAsync(CancellationToken.None);
-        }
+        await source.Started.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        var first = CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage");
+        source.Publish(first);
+        await source.Processed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(coordinator.CatalogReady.Task.IsCompleted);
+        source.Publish(first with { CapturedAt = first.CapturedAt.AddSeconds(1) });
+        await coordinator.CatalogReady.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(["monitoring-catalog-ready", "monitoring-catalog-ready"], coordinator.Reasons);
+        await synchronizer.StopAsync(CancellationToken.None);
+        Assert.Equal(0, source.ActiveSubscriptions);
     }
 
     private static HardwareMetricSnapshot CreateSnapshot(
@@ -183,46 +206,39 @@ public sealed class DashboardMonitoringCatalogStateTests
         };
     }
 
-    private sealed class PublishingMetricSampler(
-        DashboardMonitoringCatalogState state,
-        HardwareMetricSnapshot snapshot) : IMetricSampler
+    private sealed class CatalogueSource(DashboardMonitoringCatalogState state) : IMetricSnapshotPushSource
     {
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken) =>
-            GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
-
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(
-            MetricSampleRequest request,
-            CancellationToken cancellationToken)
+        private readonly Channel<HardwareMetricSnapshot> updates = Channel.CreateUnbounded<HardwareMetricSnapshot>();
+        public Channel<MetricSampleRequest> Started { get; } = Channel.CreateUnbounded<MetricSampleRequest>();
+        public Channel<bool> Processed { get; } = Channel.CreateUnbounded<bool>();
+        public int ActiveSubscriptions { get; private set; }
+        public bool FailSubscriptionOnce { get; set; }
+        public void Publish(HardwareMetricSnapshot snapshot)
         {
             state.PublishCatalogProbe(snapshot);
-            return Task.FromResult(snapshot);
+            Assert.True(updates.Writer.TryWrite(snapshot));
         }
-
-        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(
-            MetricSampleRequest request,
-            CancellationToken cancellationToken) =>
-            GetSnapshotAsync(request, cancellationToken);
-    }
-
-    private sealed class FailOnceMetricSampler(HardwareMetricSnapshot snapshot) : IMetricSampler
-    {
-        public int Attempts { get; private set; }
-
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken) =>
-            GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
-
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(
-            MetricSampleRequest request, CancellationToken cancellationToken)
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string id, MetricSampleRequest request,
+            TimeSpan interval, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            Assert.True(request.IsCatalogProbe);
-            if (++Attempts == 1) throw new IOException("Transient catalog probe failure.");
-            return Task.FromResult(snapshot);
+            Assert.Equal(DashboardMonitoringPlanSynchronizer.CatalogSubscriptionInterval, interval);
+            ActiveSubscriptions++;
+            Started.Writer.TryWrite(request);
+            try
+            {
+                if (FailSubscriptionOnce)
+                {
+                    FailSubscriptionOnce = false;
+                    throw new IOException("Transient subscription acquisition failure.");
+                }
+                await foreach (var snapshot in updates.Reader.ReadAllAsync(cancellationToken))
+                {
+                    yield return snapshot;
+                    Processed.Writer.TryWrite(true);
+                }
+            }
+            finally { ActiveSubscriptions--; }
         }
-
-        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(
-            MetricSampleRequest request, CancellationToken cancellationToken) =>
-            GetSnapshotAsync(request, cancellationToken);
     }
 
     private sealed class RecordingRuntimeSpecializationCoordinator
@@ -231,6 +247,7 @@ public sealed class DashboardMonitoringCatalogStateTests
         public Task<ResourceManager.App.Domain.CpuTopology.CpuBaselineRatioUpdateResult> ApplyCpuBaselineRatioAsync(
             double? overrideRatio, CancellationToken cancellationToken) => throw new NotSupportedException();
 
+        public bool FailOnce { get; set; }
         private readonly List<string> reasons = [];
 
         public IReadOnlyList<string> Reasons
@@ -256,6 +273,11 @@ public sealed class DashboardMonitoringCatalogStateTests
             lock (reasons)
             {
                 reasons.Add(reason);
+            }
+            if (FailOnce)
+            {
+                FailOnce = false;
+                throw new IOException("Transient plan rebuild failure.");
             }
             if (reason == "monitoring-catalog-changed")
             {

@@ -804,7 +804,7 @@ public sealed class SharedMemoryPublicResourceBrokerTests
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        return buffer.ToArray();
+        return StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray());
     }
 
 }

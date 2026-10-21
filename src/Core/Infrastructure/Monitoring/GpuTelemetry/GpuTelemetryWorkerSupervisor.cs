@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry;
 
@@ -12,16 +13,14 @@ public sealed class GpuTelemetryWorkerSupervisor(
     HostManagerSamplingSubscriptionOwner subscriptionOwner,
     ILogger<GpuTelemetryWorkerSupervisor> logger) : IGpuTelemetryWorkerClient, IGpuTelemetryPushSource, IHostedService, IDisposable
 {
+    private readonly Func<GpuTelemetryWorkerRequest, CancellationToken, Task<GpuTelemetryWorkerSnapshot>> capture =
+        (request, token) => localProbe.CaptureAsync(request, token);
     private readonly object gate = new();
+    private readonly object resourceDisposeGate = new();
     private readonly SemaphoreSlim demandSignal = new(0, 1);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
-    private readonly NativeItemSamplingSubscriptionTracker<GpuTelemetryWorkerRequest> subscriptions = new(
-        subscriptionOwner,
-        roleId: 4,
-        CreateRequestKey,
-        static request => request.CounterIds,
-        CreateWorkerRequest,
-        coalesceItemsIntoLatestCapture: false);
+    private readonly NativeItemSamplingSubscriptionTracker<GpuTelemetryWorkerRequest> subscriptions =
+        CreateSubscriptions(subscriptionOwner, null);
     private readonly SamplingPublicationSignal publicationSignal = new();
     private long sequence;
     private long nextSubscriptionLeaseId;
@@ -29,6 +28,44 @@ public sealed class GpuTelemetryWorkerSupervisor(
     private Task? samplingTask;
     private GpuTelemetryWorkerSnapshot latest = GpuTelemetryWorkerSnapshot.Unavailable("GPU telemetry worker is not configured.");
     private int disposed;
+    private int ownedResourcesDisposed;
+
+    private static NativeItemSamplingSubscriptionTracker<GpuTelemetryWorkerRequest> CreateSubscriptions(
+        HostManagerSamplingSubscriptionOwner owner,
+        Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch)
+        => new(owner, roleId: 4, CreateRequestKey, static request => request.CounterIds,
+            CreateWorkerRequest, coalesceItemsIntoLatestCapture: false, createOutputScratch);
+
+    internal GpuTelemetryWorkerSupervisor(
+        GpuTelemetryLocalProbe localProbe,
+        HostManagerSamplingSubscriptionOwner subscriptionOwner,
+        ILogger<GpuTelemetryWorkerSupervisor> logger,
+        ResourceManagerLedgerOwner ledgerOwner)
+        : this(localProbe, subscriptionOwner, logger)
+    {
+        ArgumentNullException.ThrowIfNull(ledgerOwner);
+        subscriptions = CreateSubscriptions(subscriptionOwner,
+            (length, alignment) => SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment));
+    }
+
+    internal GpuTelemetryWorkerSupervisor(HostManagerSamplingSubscriptionOwner subscriptionOwner,
+        ILogger<GpuTelemetryWorkerSupervisor> logger,
+        Func<GpuTelemetryWorkerRequest, CancellationToken, Task<GpuTelemetryWorkerSnapshot>> capture)
+        : this(null!, subscriptionOwner, logger)
+    {
+        this.capture = capture ?? throw new ArgumentNullException(nameof(capture));
+    }
+
+    internal GpuTelemetryWorkerSupervisor(
+        HostManagerSamplingSubscriptionOwner subscriptionOwner,
+        ILogger<GpuTelemetryWorkerSupervisor> logger,
+        Func<GpuTelemetryWorkerRequest, CancellationToken, Task<GpuTelemetryWorkerSnapshot>> capture,
+        Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch> createOutputScratch)
+        : this(subscriptionOwner, logger, capture)
+    {
+        ArgumentNullException.ThrowIfNull(createOutputScratch);
+        subscriptions = CreateSubscriptions(subscriptionOwner, createOutputScratch);
+    }
 
     public GpuTelemetryWorkerSnapshot GetLatestSnapshot()
     {
@@ -52,7 +89,11 @@ public sealed class GpuTelemetryWorkerSupervisor(
         }
         var sourceKey = $"push:{Interlocked.Increment(ref nextSubscriptionLeaseId)}:{subscriptionId.Trim()}";
         using var publication = publicationSignal.Subscribe(request.CounterIds);
-        subscriptions.TrackPersistent(sourceKey, request, DateTimeOffset.UtcNow, interval);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            subscriptions.TrackPersistent(sourceKey, request, DateTimeOffset.UtcNow, interval);
+        }
         SignalDemand();
         try
         {
@@ -66,27 +107,44 @@ public sealed class GpuTelemetryWorkerSupervisor(
         }
         finally
         {
-            subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+            lock (gate)
+            {
+                if (Volatile.Read(ref ownedResourcesDisposed) == 0)
+                    subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+            }
             SignalDemand();
         }
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        samplingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        samplingTask = Task.Run(() => RunSamplingLoopAsync(samplingCts.Token), CancellationToken.None);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            if (samplingTask is { IsCompleted: false }) return Task.CompletedTask;
+            samplingCts?.Dispose();
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            samplingCts = cts;
+            samplingTask = Task.Run(() => RunSamplingLoopAsync(cts.Token), CancellationToken.None);
+        }
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var task = samplingTask;
+        Task? task;
+        lock (gate)
+        {
+            task = samplingTask;
+            if (task is not null)
+                samplingCts?.Cancel();
+        }
         if (task is null)
         {
             return;
         }
 
-        samplingCts?.Cancel();
         SignalDemand();
         try
         {
@@ -97,83 +155,24 @@ public sealed class GpuTelemetryWorkerSupervisor(
         }
     }
 
-    private async Task RunSamplingLoopAsync(CancellationToken cancellationToken)
+    private Task RunSamplingLoopAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        var worker = new NativeSamplingSubscriptionWorker<GpuTelemetryWorkerRequest, SamplingOwnerToken>(
+            subscriptions, demandSignal, static _ => { },
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
+            TimeSpan.Zero);
+        return worker.RunAsync(async (plan, token) =>
         {
-            var plan = subscriptions.CreatePlan(DateTimeOffset.UtcNow);
-            if (!plan.IsActive)
+            var outcome = await RefreshCacheAsync(plan.Request!, plan.OwnerToken, token);
+            return outcome switch
             {
-                await WaitForDemandAsync(cancellationToken);
-                continue;
-            }
-
-            if (plan.Request is null)
-            {
-                await WaitForDemandOrDelayAsync(plan.Delay, cancellationToken);
-                continue;
-            }
-
-            var outcome = await RefreshCacheAsync(
-                plan.Request,
-                plan.OwnerToken,
-                cancellationToken);
-
-            NativeItemSamplingSubscriptionCompletion completion;
-            if (outcome == RefreshOutcome.Published)
-            {
-                completion = subscriptions.MarkSampled(
-                    plan.Request,
-                    DateTimeOffset.UtcNow);
-            }
-            else if (outcome == RefreshOutcome.Failed)
-            {
-                completion = subscriptions.MarkFailed(
-                    plan.Request,
-                    DateTimeOffset.UtcNow);
-            }
-            else
-            {
-                completion = subscriptions.MarkSkipped(
-                    plan.Request,
-                    DateTimeOffset.UtcNow);
-            }
-            if (outcome == RefreshOutcome.Canceled)
-            {
-                return;
-            }
-            await WaitForDemandOrDelayAsync(completion.Delay, cancellationToken);
-        }
-    }
-
-    private async Task WaitForDemandAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await demandSignal.WaitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task WaitForDemandOrDelayAsync(
-        TimeSpan delay,
-        CancellationToken cancellationToken)
-    {
-        if (delay < TimeSpan.Zero)
-        {
-            throw new InvalidOperationException(
-                "Native GPU telemetry sampling returned a past next-wake time.");
-        }
-
-        try
-        {
-            await demandSignal.WaitAsync(delay, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+                RefreshOutcome.Published => SubscriptionSampleCompletion.Sampled,
+                RefreshOutcome.Failed => SubscriptionSampleCompletion.Failed,
+                RefreshOutcome.Canceled => SubscriptionSampleCompletion.Canceled,
+                RefreshOutcome.SkippedBusy or RefreshOutcome.OwnerRevoked => SubscriptionSampleCompletion.Skipped,
+                _ => throw new InvalidOperationException("GPU telemetry sampling returned an unknown completion.")
+            };
+        }, cancellationToken);
     }
 
     private async Task<RefreshOutcome> RefreshCacheAsync(
@@ -213,7 +212,7 @@ public sealed class GpuTelemetryWorkerSupervisor(
     {
         try
         {
-            var snapshot = await localProbe.CaptureAsync(request, cancellationToken);
+            var snapshot = await capture(request, cancellationToken);
             var published = ownerToken.TryPublish(() =>
             {
                 var committed = snapshot with
@@ -407,30 +406,48 @@ public sealed class GpuTelemetryWorkerSupervisor(
         catch (SemaphoreFullException)
         {
         }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-        {
-            return;
-        }
-
-        var cts = Interlocked.Exchange(ref samplingCts, null);
-        try
-        {
-            cts?.Cancel();
-        }
-        finally
-        {
-            cts?.Dispose();
-        }
-
-        demandSignal.Dispose();
-        refreshGate.Dispose();
+        Interlocked.Exchange(ref disposed, 1);
+        Task? task;
+        CancellationTokenSource? cts;
         lock (gate)
         {
-            latest = GpuTelemetryWorkerSnapshot.Unavailable("GPU telemetry worker supervisor was disposed.");
+            task = samplingTask;
+            cts = samplingCts;
+            cts?.Cancel();
+        }
+        SignalDemand();
+        try
+        {
+            task?.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (task?.IsCompleted == true)
+        {
+        }
+        catch (Exception error)
+        {
+            logger.LogError(error, "GPU telemetry worker failed while draining for disposal.");
+        }
+        lock (resourceDisposeGate)
+        {
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+            subscriptions.CloseOutputScratch();
+            lock (gate)
+            {
+                samplingTask = null;
+                samplingCts = null;
+                latest = GpuTelemetryWorkerSnapshot.Unavailable("GPU telemetry worker supervisor was disposed.");
+                demandSignal.Dispose();
+                refreshGate.Dispose();
+                cts?.Dispose();
+                Volatile.Write(ref ownedResourcesDisposed, 1);
+            }
         }
     }
 }

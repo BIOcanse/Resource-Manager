@@ -43,3 +43,5 @@ public sealed record ProtectedOptimizationTarget(
 
 public sealed record OptimizationProtectionLevelRequest(
     int ProtectionLevel);
+
+public sealed record SoftwareProtectionRequest(bool Enabled);

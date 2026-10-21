@@ -24,6 +24,8 @@ public sealed record CompiledRuntimePlan(
 
     public CpuTopologySnapshot? CpuPlacementTopology { get; init; }
 
+    internal global::FreedomPoint.ConfigurationChange? FreedomPointPreview { get; init; }
+
     public static CompiledRuntimePlan Default { get; } = new(
         0,
         DateTimeOffset.MinValue,

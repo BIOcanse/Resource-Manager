@@ -1,0 +1,66 @@
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed partial class NumaMemoryInformationCollectorTests
+{
+    [Fact]
+    public async Task RealWorkerReadsOnlySubscribedNodeAndGetRemainsCacheOnly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"numa-worker-{Guid.NewGuid():N}");
+        using var slots = new HostManagerSamplingSubscriptionTestFixture();
+        using var owner = new HostManagerMetricSnapshotOwner(slots.Provider,
+            new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
+            new HostManagerMetricSnapshotCatalogTopologySource(() => Topology([new(0), new(9)])), new NumaEnvironment(root),
+            NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
+        await owner.StartAsync(CancellationToken.None);
+        var dashboard = new DashboardMonitoringCatalogState();
+        using (var lease = owner.Acquire())
+            dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
+        var reads = new List<ushort>();
+        var memory = new WindowsMemoryMonitoringZone(node => { reads.Add(node); return 9_007_199_254_740_993UL; },
+            () => throw new InvalidOperationException("NUMA-only demand must not read global memory."));
+        var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
+            id == memory.DisplayName ? memory : new MonitoringSourceZone(id)).ToArray());
+        using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
+            null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
+            dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
+        var request = MetricDeviceFields.CreateRequest(dashboard.Current!, "windows-numa-node|9", [FieldName]);
+        Assert.Single(request.Ids);
+        await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        Assert.Empty(reads);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        await sampler.StartAsync(timeout.Token);
+        try
+        {
+            await using var stream = sampler.SubscribeAsync("numa-consumer", request, TimeSpan.FromMinutes(10), timeout.Token)
+                .GetAsyncEnumerator(timeout.Token);
+            Assert.True(await stream.MoveNextAsync());
+            AssertNode(stream.Current, "windows-numa-node|9", "9007199254740993");
+            Assert.Equal(new ushort[] { 9 }, reads);
+            AssertNode(await sampler.GetSnapshotAsync(request, timeout.Token), "windows-numa-node|9", "9007199254740993");
+            sampler.ReadLatest(request);
+            Assert.Single(reads);
+        }
+        finally
+        {
+            await sampler.StopAsync(CancellationToken.None);
+            var count = reads.Count;
+            await sampler.GetSnapshotAsync(request, CancellationToken.None);
+            Assert.Equal(count, reads.Count);
+        }
+    }
+
+    private sealed class NumaEnvironment(string root) : IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Tests";
+        public string ApplicationName { get; set; } = "ResourceManager";
+        public string ContentRootPath { get; set; } = root;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+}

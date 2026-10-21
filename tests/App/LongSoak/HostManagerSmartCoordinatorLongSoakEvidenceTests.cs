@@ -99,6 +99,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     "The long-soak coordinator did not begin in Created state.");
             }
 
+            // Diagnostic scope is the existing bounded contract smoke, not formal profiles.
+            var outerLoopTrace = profile.IsFormal
+                ? null
+                : new LongSoakOuterLoopTrace(profile.MaximumCycleCount);
+            fixture.Coordinator.OuterLoopProbe = outerLoopTrace;
+
             var startedClock = CaptureLongSoakClock();
             source.Arm(startedClock, runtimeIdentity.OpportunityLedgerId);
             using var observer = new LongSoakCompactSampleObserver(
@@ -110,6 +116,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 runtimeIdentity);
             fixture.DebugLogWriter.AttachRecordObserver(observer);
             var observerAttached = true;
+            Exception? primaryFailure = null;
             IHost? host = null;
             var hostStopped = false;
             LongSoakClockReading completedClock = default;
@@ -146,6 +153,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 {
                     source.ThrowIfFaulted();
                     observer.ThrowIfFaulted();
+                    outerLoopTrace?.ThrowIfOverflow();
                     var current = CaptureLongSoakClock();
                     var activeMilliseconds =
                         (current.ActiveTime100Nanoseconds
@@ -200,6 +208,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 }
                 shutdownProbe.AssertExactOrder();
                 AssertOwnedResourcesCleared(fixture.Coordinator);
+                outerLoopTrace?.ThrowIfOverflow();
 
                 fixture.DebugLogWriter.DetachRecordObserver(observer);
                 observerAttached = false;
@@ -314,6 +323,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     uptimeAtEnd,
                     bootEstimateAtEnd);
             }
+            catch (Exception failure)
+            {
+                primaryFailure = failure;
+                throw;
+            }
             finally
             {
                 if (host is not null && !hostStopped)
@@ -339,6 +353,29 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     }
                 }
                 host?.Dispose();
+                fixture.Coordinator.OuterLoopProbe = null;
+                if (outerLoopTrace is not null)
+                {
+                    try
+                    {
+                        if (fixture.Coordinator.LifecycleState
+                            != HostManagerSmartCoordinatorLifecycleState.Closed)
+                        {
+                            throw new InvalidDataException(
+                                "The diagnostic trace requires the existing closed Host boundary.");
+                        }
+                        // Existing TRX captures this output; no extra evidence-root member.
+                        output.WriteLine("LONG_SOAK_OUTER_LOOP_DIAGNOSTIC "
+                            + outerLoopTrace.CreateReport());
+                        outerLoopTrace.ThrowIfOverflow();
+                    }
+                    catch (Exception diagnosticFailure) when (primaryFailure is not null)
+                    {
+                        // Preserve the original grid/stop failure as the test failure.
+                        output.WriteLine("Long-soak diagnostic export failed: "
+                            + diagnosticFailure);
+                    }
+                }
             }
         }
         finally
@@ -352,7 +389,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     throw new InvalidOperationException(
                         "The owned long-soak evidence root escaped the temporary directory.");
                 }
-                Directory.Delete(fullRoot, recursive: true);
+                output.WriteLine($"Long-soak raw evidence retained for validation workset cleanup: {fullRoot}");
             }
         }
     }
@@ -1371,8 +1408,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         : (clock.ActiveTime100Nanoseconds - planned) / 10_000D;
                     if (lateness > profile.MaximumOpportunityLatenessMilliseconds)
                     {
-                        throw new InvalidDataException(
-                            "The production scheduled loop exceeded its opportunity lateness bound.");
+                        var gridDueQpc = checked(started.QpcTicks + (long)(
+                            (Int128)(sequence - 1) * profile.NormalIntervalMilliseconds
+                            * Stopwatch.Frequency / 1_000));
+                        throw new InvalidDataException(FormattableString.Invariant(
+                            $"The production scheduled loop exceeded its opportunity lateness bound. sequence={sequence}; gridDueQpc={gridDueQpc}; observedQpc={clock.QpcTicks}; qpcFrequency={Stopwatch.Frequency}; plannedActive100ns={planned}; observedActive100ns={clock.ActiveTime100Nanoseconds}; latenessMs={lateness:R}; maximumLatenessMs={profile.MaximumOpportunityLatenessMilliseconds}."));
                     }
                     opportunities[sequence - 1] = new LongSoakOpportunity(
                         sequence,
@@ -1692,6 +1732,161 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
 
         public void Dispose() => process.Dispose();
+    }
+
+    private sealed class LongSoakOuterLoopTrace
+        : IHostManagerSmartCoordinatorOuterLoopProbe
+    {
+        private readonly object sync = new();
+        private readonly HostManagerSmartCoordinatorOuterLoopEvent[] events;
+        private int count;
+        private bool overflow;
+
+        internal LongSoakOuterLoopTrace(int maximumCycles)
+        {
+            // Every existing phase at most once per ordinary attempt, plus two
+            // incomplete stop/failure attempts. Unexpected extra events fail closed.
+            events = new HostManagerSmartCoordinatorOuterLoopEvent[checked(
+                (maximumCycles + 2)
+                * Enum.GetValues<HostManagerSmartCoordinatorOuterLoopPhase>().Length)];
+        }
+
+        public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
+        {
+            lock (sync)
+            {
+                if (count == events.Length)
+                {
+                    overflow = true;
+                    return;
+                }
+                events[count++] = value;
+            }
+        }
+
+        internal void ThrowIfOverflow()
+        {
+            lock (sync)
+            {
+                if (overflow)
+                {
+                    throw new InvalidDataException(
+                        "The bounded long-soak outer-loop trace overflowed.");
+                }
+            }
+        }
+
+        // Called only after the existing Host closed boundary, including failure cleanup.
+        internal string CreateReport()
+        {
+            HostManagerSmartCoordinatorOuterLoopEvent[] captured;
+            bool wasOverflowed;
+            lock (sync)
+            {
+                captured = events.Take(count).ToArray();
+                wasOverflowed = overflow;
+            }
+            var published = captured
+                .Where(static value => value.Phase
+                    == HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished
+                    && value.PublishedDeadline.HasValue)
+                .Select(static value => value.PublishedDeadline!.Value)
+                .ToDictionary(static value => value.Version);
+            var attempts = captured.GroupBy(static value => value.AttemptId)
+                .Select(group =>
+                {
+                    var values = group.ToArray();
+                    var wake = Find(values,
+                        HostManagerSmartCoordinatorOuterLoopPhase.WakeReturned);
+                    var consumed = wake?.ConsumedWake;
+                    var consumedPublicationMatches =
+                        consumed is { HasDeadline: true } consumedDeadline
+                        && published.TryGetValue(consumedDeadline.Version, out var prior)
+                        && prior == consumedDeadline;
+                    double? wakeOverrunMilliseconds = null;
+                    if (consumedPublicationMatches
+                        && wake is { } actualWake
+                        && consumed is { } deadline
+                        && actualWake.ProviderTimestamp is { } timestamp
+                        && actualWake.ProviderTimestampFrequency is > 0)
+                    {
+                        wakeOverrunMilliseconds = (timestamp - deadline.DeadlineTimestamp)
+                            * 1_000D / actualWake.ProviderTimestampFrequency.Value;
+                    }
+                    return new
+                    {
+                        group.Key,
+                        dispatchSequence = values.Max(static value => value.DispatchSequence),
+                        consumedWake = consumed,
+                        consumedPublicationMatches,
+                        wakeOverrunMilliseconds,
+                        waitMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.WaitEntered,
+                            HostManagerSmartCoordinatorOuterLoopPhase.WakeReturned),
+                        gateWaitMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateWaitStarted,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired),
+                        preCoreMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired,
+                            HostManagerSmartCoordinatorOuterLoopPhase.CoreEntered),
+                        coreToProfilerStopMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.CoreEntered,
+                            HostManagerSmartCoordinatorOuterLoopPhase.ProfilerStopped),
+                        writerAdmissionMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.WriterAdmissionStarted,
+                            HostManagerSmartCoordinatorOuterLoopPhase.WriterAdmissionCompleted),
+                        writerToPublicationMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.WriterAdmissionCompleted,
+                            HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished),
+                        publicationToGateReleasedMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.NextDeadlinePublished,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateReleased)
+                    };
+                }).ToArray();
+            var json = JsonSerializer.Serialize(new
+            {
+                schema = "rm/long-soak-outer-loop-diagnostic/v1",
+                diagnosticOnly = true,
+                profile = "contract-smoke",
+                hostClosedBeforeExport = true,
+                eventCapacity = events.Length,
+                eventCount = captured.Length,
+                overflow = wasOverflowed,
+                events = captured,
+                attempts
+            }, LongSoakCompactJsonOptions);
+            if (Encoding.UTF8.GetByteCount(json) > 1_048_576)
+            {
+                throw new InvalidDataException("The stopped diagnostic exceeds 1 MiB.");
+            }
+            return json;
+        }
+
+        private static HostManagerSmartCoordinatorOuterLoopEvent? Find(
+            HostManagerSmartCoordinatorOuterLoopEvent[] values,
+            HostManagerSmartCoordinatorOuterLoopPhase phase)
+        {
+            foreach (var value in values)
+            {
+                if (value.Phase == phase) return value;
+            }
+            return null;
+        }
+
+        private static double? Duration(
+            HostManagerSmartCoordinatorOuterLoopEvent[] values,
+            HostManagerSmartCoordinatorOuterLoopPhase from,
+            HostManagerSmartCoordinatorOuterLoopPhase to)
+        {
+            var first = Find(values, from);
+            var last = Find(values, to);
+            if (first is not { } start || last is not { } end) return null;
+            if (start.QpcFrequency <= 0 || start.QpcFrequency != end.QpcFrequency)
+            {
+                throw new InvalidDataException("The diagnostic QPC frequency changed.");
+            }
+            return (end.QpcTicks - start.QpcTicks) * 1_000D / start.QpcFrequency;
+        }
     }
 
     private sealed class LongSoakDurableMutationProbe : IDisposable

@@ -7,6 +7,13 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeDisplayCoordinatorAbiTests
 {
     [Fact]
+    public void OriginalAbiAndResourceSessionAreOwnedByTheIndependentLibrary()
+    {
+        Assert.Equal(typeof(ResourceManager.ReadWrite.ReadWriteCore).Assembly, typeof(NativeDisplayCoordinatorConfiguration).Assembly);
+        Assert.Equal(typeof(ResourceManager.ReadWrite.ReadWriteCore).Assembly, typeof(NativeDisplayCoordinatorSession).Assembly);
+    }
+
+    [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
         Assert.Equal(0x0003_0000U, NativeDisplayCoordinatorAbi.Version);

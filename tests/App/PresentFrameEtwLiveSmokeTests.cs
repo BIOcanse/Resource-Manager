@@ -1,8 +1,8 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using System.Diagnostics;
 using Microsoft.Diagnostics.Tracing.Session;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Domain.FrameTiming;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;

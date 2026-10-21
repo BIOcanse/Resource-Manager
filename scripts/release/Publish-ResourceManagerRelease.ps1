@@ -34,6 +34,7 @@ $projects = @(
     @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui' },
     @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' },
     @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer' }
+    @{ Project = (Join-Path $repo 'src\Uninstaller\ResourceManager.Uninstaller.csproj'); Directory = 'uninstaller' }
     @{ Project = (Join-Path $repo 'src\Updater\WinUI\ResourceManager.UpdateManager.csproj'); Directory = 'update-manager' }
 )
 foreach ($project in $projects) {
@@ -51,7 +52,7 @@ $startEntryOutput = Join-Path $OutputRoot 'start-entry'
 if (Test-Path -LiteralPath $startEntryOutput) { throw "Publish directory already exists: $startEntryOutput" }
 New-Item -ItemType Directory -Path $startEntryOutput | Out-Null
 & zig cc -target x86_64-windows-gnu -O2 -s -municode '-Wl,--subsystem,windows' `
-    (Join-Path $repo 'src\UI\Launcher\StartEntry.c') -o (Join-Path $startEntryOutput 'Start.exe')
+    (Join-Path $repo 'src\UI\Launcher\StartEntry.c') -lshell32 -ladvapi32 -o (Join-Path $startEntryOutput 'Start.exe')
 if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEXITCODE" }
 & (Join-Path $scriptsRoot 'validation\Test-ResourceManagerThirdPartyNotices.ps1') `
     -BackendPublishRoot (Join-Path $OutputRoot 'backend') -NativeUiPublishRoot (Join-Path $OutputRoot 'ui') `

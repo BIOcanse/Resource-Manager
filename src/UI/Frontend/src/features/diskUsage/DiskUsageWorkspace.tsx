@@ -24,6 +24,7 @@ import type {
   DiskUsageScanScope,
   DiskUsageVolume
 } from "./diskUsageTypes.ts";
+import { uiText } from "../../text.ts";
 
 /**
  * 磁盘占用页的外壳。
@@ -40,8 +41,10 @@ export function DiskUsageWorkspace() {
   const runtime = useFrontendRuntime();
   const [volumes, setVolumes] = createSignal<DiskUsageVolume[]>([]);
   const [scanning, setScanning] = createSignal(false);
+  const [scanFailed, setScanFailed] = createSignal(false);
   const [summary, setSummary] = createSignal<DiskUsageScanSummary | null>(null);
   const [layout, setLayout] = createSignal<DiskUsageLayout | null>(null);
+  const [selectedRootIndex, setSelectedRootIndex] = createSignal(0);
   const [selected, setSelected] = createSignal(-1);
   const [menu, setMenu] = createSignal<
     { node: DiskUsageNode; x: number; y: number } | null>(null);
@@ -131,17 +134,29 @@ export function DiskUsageWorkspace() {
     setResetNonce((value) => value + 1);
   }
 
-  async function refreshResult(signal?: AbortSignal, nodeId?: number) {
+  async function refreshResult(
+    signal?: AbortSignal,
+    nodeId?: number,
+    rootIndex = selectedRootIndex()
+  ) {
+    const token = ++layoutToken;
     try {
       const [nextSummary, nextLayout] = await Promise.all([
         getDiskUsageSummary(runtime.requestClient, signal),
-        getDiskUsageLayout(runtime.requestClient, nodeId, signal)
+        getDiskUsageLayout(
+          runtime.requestClient,
+          nodeId,
+          signal,
+          undefined,
+          nodeId === undefined ? rootIndex : undefined)
       ]);
+      if (token !== layoutToken) return;
       // 换了根就不能再拿旧根的视图做比较，清掉让它重新细化一次。
       shownView = null;
-      layoutToken++;
       setSummary(nextSummary);
       setLayout(nextLayout);
+      if (rootIndex !== selectedRootIndex()) setDrillStack([]);
+      setSelectedRootIndex(rootIndex);
       setSelected(-1);
     } catch {
       // 还没扫过或请求被取消：保持空态，不弹错误。
@@ -169,15 +184,20 @@ export function DiskUsageWorkspace() {
     mode: DiskUsageScanMode,
     target: string
   ) {
+    setScanFailed(false);
     setScanning(true);
     try {
       const operation = await runtime.operationRegistry.submit(
         diskUsageScanCommand({ scope, mode, target }));
-      await runtime.operationRegistry.waitForTerminal(operation.id);
+      const completed = await runtime.operationRegistry.waitForTerminal(operation.id);
+      if (completed.state !== "succeeded") {
+        setScanFailed(true);
+        return;
+      }
       setDrillStack([]);
-      await refreshResult();
+      await refreshResult(undefined, undefined, 0);
     } catch {
-      // 失败的原因已经进了任务中心，这里不再重复弹一次。
+      setScanFailed(true);
     } finally {
       setScanning(false);
     }
@@ -202,6 +222,15 @@ export function DiskUsageWorkspace() {
     void refreshResult(undefined, parent);
   }
 
+  function selectRoot(rootIndex: number) {
+    const roots = summary()?.roots;
+    if (!roots || rootIndex < 0 || rootIndex >= roots.length || rootIndex === selectedRootIndex()) {
+      return;
+    }
+    setMenu(null);
+    void refreshResult(undefined, undefined, rootIndex);
+  }
+
   return (
     <>
       <DiskUsagePage
@@ -209,10 +238,15 @@ export function DiskUsageWorkspace() {
         scanning={scanning()}
         onScan={(scope, mode, target) => void startScan(scope, mode, target)}
       >
+        <Show when={scanFailed()}>
+          <p role="alert">{uiText.diskUsage.scanFailed}</p>
+        </Show>
         <Show when={layout() && summary()}>
           <DiskUsageResultPanel
             summary={summary()!}
             layout={layout()!}
+            selectedRootIndex={selectedRootIndex()}
+            onSelectRoot={selectRoot}
             selectedNodeId={selected()}
             factsOf={factsOf}
             labelOf={labelOf}

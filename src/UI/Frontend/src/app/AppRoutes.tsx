@@ -10,7 +10,6 @@ import { OptimizationWorkspace } from "../features/optimization/OptimizationWork
 import { SettingsWorkspace } from "../features/settings/SettingsWorkspace";
 import { PageBoundary } from "../ui/patterns/PageBoundary.tsx";
 import type { ManagementStore } from "../stores/managementStore";
-import type { MigrationWorkbenchStore } from "../stores/migrationStore";
 import type { MonitorStore } from "../stores/monitorStore";
 import type { OptimizationStore } from "../stores/optimizationStore";
 import type { SettingsStore } from "../stores/settingsStore";
@@ -23,7 +22,6 @@ interface AppRoutesProps {
   activePage: Accessor<PageId>;
   monitor: MonitorStore;
   management: ManagementStore;
-  migration: MigrationWorkbenchStore;
   optimization: OptimizationStore;
   settings: SettingsStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;

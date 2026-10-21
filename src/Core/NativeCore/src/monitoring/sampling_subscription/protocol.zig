@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0003_0000;
+pub const abi_version: u32 = 0x0004_0000;
 
 pub const ConfigFlags = struct {
     pub const known: u64 = 0;
@@ -9,7 +9,11 @@ pub const ConfigFlags = struct {
 pub const SourceFlags = struct {
     pub const persistent: u32 = 1 << 0;
     pub const explicit_interval: u32 = 1 << 1;
-    pub const known: u32 = persistent | explicit_interval;
+    pub const fresh_on_trigger: u32 = 1 << 2;
+    pub const align_same_item_phase: u32 = 1 << 3;
+    pub const periodic_triggers: u32 = 1 << 4;
+    pub const trigger_modes: u32 = fresh_on_trigger | align_same_item_phase | periodic_triggers;
+    pub const known: u32 = persistent | explicit_interval | trigger_modes;
 };
 
 pub const PlanFlags = struct {
@@ -17,7 +21,8 @@ pub const PlanFlags = struct {
     pub const due_items: u64 = 1 << 1;
     pub const next_wake_valid: u64 = 1 << 2;
     pub const expired_sources: u64 = 1 << 3;
-    pub const known: u64 = active | due_items | next_wake_valid | expired_sources;
+    pub const triggers: u64 = 1 << 4;
+    pub const known: u64 = active | due_items | next_wake_valid | expired_sources | triggers;
 };
 
 pub const PlanRequestFlags = struct {
@@ -26,6 +31,11 @@ pub const PlanRequestFlags = struct {
 
 pub const DueItemFlags = struct {
     pub const known: u32 = 0;
+};
+
+pub const TriggerFlags = struct {
+    pub const fresh: u32 = 1 << 0;
+    pub const known: u32 = fresh;
 };
 
 pub const ItemStateFlags = DueItemFlags;
@@ -65,7 +75,8 @@ pub const CompletionValid = struct {
     pub const command_at: u64 = 1 << 0;
     pub const completed_at: u64 = 1 << 1;
     pub const items: u64 = 1 << 2;
-    pub const required: u64 = command_at | completed_at | items;
+    pub const triggers: u64 = 1 << 3;
+    pub const required: u64 = command_at | completed_at | items | triggers;
     pub const known: u64 = required;
 };
 
@@ -115,6 +126,7 @@ pub const Capacity = extern struct {
     due_item_capacity: u32,
     source_view_capacity: u32,
     expired_source_capacity: u32,
+    trigger_capacity: u32,
     snapshot_source_capacity: u32,
     snapshot_item_capacity: u32,
     reserved_u32: u32,
@@ -188,7 +200,19 @@ pub const PlanHeader = extern struct {
     state_revision: u64,
     flags: u64,
     request_flags: u64,
+    trigger_capacity: u32,
+    trigger_count: u32,
     reserved: u64,
+};
+
+pub const TriggerOutput = extern struct {
+    struct_size: u32,
+    flags: u32,
+    source_handle: u64,
+    item_handle: u64,
+    scheduled_due_milliseconds: u64,
+    sequence: u64,
+    plan_epoch: u64,
 };
 
 pub const DueItemOutput = extern struct {
@@ -238,6 +262,7 @@ pub const CompletionInput = extern struct {
     completed_at_milliseconds: u64,
     valid_mask: u64,
     item_count: u32,
+    trigger_count: u32,
     status: u32,
     flags: u32,
     reserved_u32: u32,
@@ -317,6 +342,8 @@ pub fn validConfig(config: *const Config) bool {
 
 pub fn validTrackHeader(input: *const TrackInput, config: *const Config) bool {
     const explicit = input.flags & SourceFlags.explicit_interval != 0;
+    const periodic = input.flags & SourceFlags.periodic_triggers != 0;
+    const trigger_modes = input.flags & (SourceFlags.fresh_on_trigger | SourceFlags.align_same_item_phase);
     const expected_valid = TrackValid.required |
         (if (explicit) TrackValid.explicit_interval else 0);
     return input.abi_version == abi_version and
@@ -330,6 +357,7 @@ pub fn validTrackHeader(input: *const TrackInput, config: *const Config) bool {
         input.item_count <= config.maximum_item_count and
         input.item_count <= config.maximum_membership_count and
         input.flags & ~SourceFlags.known == 0 and
+        (trigger_modes == 0 or periodic) and
         input.valid_mask == expected_valid and
         (if (explicit)
             input.explicit_interval_milliseconds >= config.minimum_interval_milliseconds
@@ -377,9 +405,10 @@ pub fn validPlanHeader(header: *const PlanHeader, config: *const Config) bool {
         header.valid_mask == PlanValid.required and
         header.due_item_capacity != 0 and header.source_view_capacity != 0 and
         header.expired_source_capacity != 0 and
+        header.trigger_capacity != 0 and
         header.due_item_count == 0 and header.source_view_count == 0 and
         header.expired_source_count == 0 and header.active_source_count == 0 and
-        header.active_item_count == 0 and header.next_wake_milliseconds == 0 and
+        header.trigger_count == 0 and header.active_item_count == 0 and header.next_wake_milliseconds == 0 and
         header.state_revision == 0 and header.flags == 0 and
         header.request_flags == PlanRequestFlags.known and
         header.reserved == 0;
@@ -393,10 +422,20 @@ pub fn validCompletion(input: *const CompletionInput, config: *const Config) boo
         input.command_at_milliseconds != 0 and
         input.completed_at_milliseconds != 0 and
         input.valid_mask == CompletionValid.required and
-        input.item_count != 0 and input.item_count <= config.maximum_item_count and
+        (input.item_count != 0 or input.trigger_count != 0) and
+        input.item_count <= config.maximum_item_count and
+        input.trigger_count <= config.maximum_membership_count and
         validCompletionStatus(input.status) and
         input.flags == 0 and input.reserved_u32 == 0 and
         allZero(&input.reserved);
+}
+
+pub fn validTrigger(trigger: *const TriggerOutput) bool {
+    return trigger.struct_size == @sizeOf(TriggerOutput) and
+        trigger.flags & ~TriggerFlags.known == 0 and
+        trigger.source_handle != 0 and trigger.item_handle != 0 and
+        trigger.scheduled_due_milliseconds != 0 and trigger.sequence != 0 and
+        trigger.plan_epoch != 0;
 }
 
 pub fn validEmptySnapshotHeader(header: *const SnapshotHeader) bool {
@@ -424,16 +463,17 @@ pub fn allZero(values: []const u64) bool {
 
 comptime {
     if (@sizeOf(Config) != 112) @compileError("sampling subscription Config ABI size changed");
-    if (@sizeOf(Capacity) != 64) @compileError("sampling subscription Capacity ABI size changed");
+    if (@sizeOf(Capacity) != 72) @compileError("sampling subscription Capacity ABI size changed");
     if (@sizeOf(ItemReference) != 32) @compileError("sampling subscription ItemReference ABI size changed");
     if (@sizeOf(TrackInput) != 96) @compileError("sampling subscription TrackInput ABI size changed");
     if (@sizeOf(RemoveInput) != 72) @compileError("sampling subscription RemoveInput ABI size changed");
     if (@sizeOf(ControlInput) != 64) @compileError("sampling subscription ControlInput ABI size changed");
-    if (@sizeOf(PlanHeader) != 120) @compileError("sampling subscription PlanHeader ABI size changed");
+    if (@sizeOf(PlanHeader) != 128) @compileError("sampling subscription PlanHeader ABI size changed");
+    if (@sizeOf(TriggerOutput) != 48) @compileError("sampling subscription TriggerOutput ABI size changed");
     if (@sizeOf(DueItemOutput) != 64) @compileError("sampling subscription DueItemOutput ABI size changed");
     if (@sizeOf(SourceViewOutput) != 64) @compileError("sampling subscription SourceViewOutput ABI size changed");
     if (@sizeOf(ExpiredSourceOutput) != 48) @compileError("sampling subscription ExpiredSourceOutput ABI size changed");
-    if (@sizeOf(CompletionInput) != 88) @compileError("sampling subscription CompletionInput ABI size changed");
+    if (@sizeOf(CompletionInput) != 96) @compileError("sampling subscription CompletionInput ABI size changed");
     if (@sizeOf(CompletionOutput) != 72) @compileError("sampling subscription CompletionOutput ABI size changed");
     if (@sizeOf(SnapshotHeader) != 112) @compileError("sampling subscription SnapshotHeader ABI size changed");
     if (@sizeOf(SourceStateOutput) != 64) @compileError("sampling subscription SourceStateOutput ABI size changed");

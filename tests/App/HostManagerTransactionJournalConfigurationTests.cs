@@ -38,7 +38,7 @@ public sealed class HostManagerTransactionJournalConfigurationTests
 
         Assert.True(plan.HotPublish.TransactionJournal.IsPublished);
         Assert.Equal((byte)10, (byte)HostManagerModuleKind.TransactionJournal);
-        Assert.Equal(59UL << 32, plan.HotPublish.TransactionJournal.ConfigurationGeneration);
+        Assert.Equal(66UL << 32, plan.HotPublish.TransactionJournal.ConfigurationGeneration);
         Assert.Equal(3, plan.HotPublish.TransactionJournal.MaximumRecoveryAttempts);
         Assert.Equal(5000, plan.HotPublish.TransactionJournal.RetryDelayMilliseconds);
         Assert.Equal(300000, plan.HotPublish.TransactionJournal.RecoveryDeadlineMilliseconds);
@@ -242,6 +242,6 @@ public sealed class HostManagerTransactionJournalConfigurationTests
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        return buffer.ToArray();
+        return StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray());
     }
 }

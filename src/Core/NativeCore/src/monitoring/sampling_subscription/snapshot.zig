@@ -16,6 +16,8 @@ pub fn snapshot(
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
 
+    if (!session.scratchReady()) return .invalid_argument;
+
     if (!protocol.validEmptySnapshotHeader(header)) return .abi_mismatch;
     if (source_capacity < session.config.maximum_source_count or
         item_capacity < session.config.maximum_item_count)

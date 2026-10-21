@@ -6,11 +6,62 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.Launcher;
 using ResourceManager.Shared.ServiceHosting;
+using ResourceManager.Shared.Localization;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class DesktopStartupTests
 {
+    public static IEnumerable<object[]> LauncherLanguages =>
+        AppLanguage.SupportedIds.Select(language => new object[] { language });
+
+    [Theory]
+    [MemberData(nameof(LauncherLanguages))]
+    public void InstallationFailuresUseTheSelectedLauncherLanguage(string language)
+    {
+        var text = ToolText.For(language);
+        var id = Guid.NewGuid().ToString("N");
+        var folder = Path.Combine(Path.GetTempPath(), "rm-launcher-language-" + id);
+        var keyPath = @"Software\ResourceManager.Launcher.Tests\" + id;
+        Directory.CreateDirectory(folder);
+        using var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        try
+        {
+            using var root = hive.CreateSubKey(keyPath);
+            Assert.Equal(text.NotInstalled,
+                Assert.Throws<InvalidOperationException>(() => DesktopInstallation.Read(root, text)).Message);
+            using var product = root.CreateSubKey(@"Software\ResourceManager");
+            product.SetValue("ServiceName", "other-service");
+            Assert.Equal(text.LauncherRegistrationInvalid,
+                Assert.Throws<InvalidOperationException>(() => DesktopInstallation.Read(root, text)).Message);
+            product.SetValue("ServiceName", WindowsServiceRegistration.ProductServiceName);
+            product.SetValue("InstallRoot", folder);
+            Assert.Equal(text.Format(text.LauncherValueMissingFormat, "BackendPath"),
+                Assert.Throws<InvalidOperationException>(() => DesktopInstallation.Read(root, text)).Message);
+            foreach (var name in new[] { "BackendPath", "NativeUiPath", "LauncherPath" })
+            {
+                var path = Path.Combine(folder, name + ".exe");
+                File.WriteAllText(path, "non-executable language fixture");
+                product.SetValue(name, path);
+            }
+            Assert.Equal(folder, DesktopInstallation.Read(root, text).Root);
+            var missing = Path.Combine(folder, "missing-ui.exe");
+            product.SetValue("NativeUiPath", missing);
+            var error = Assert.Throws<FileNotFoundException>(() => DesktopInstallation.Read(root, text));
+            Assert.Equal(text.LauncherProgramMissing, error.Message);
+            Assert.Equal(missing, error.FileName);
+            product.SetValue("NativeUiPath", Path.GetFullPath(Path.Combine(folder, "..", "outside-ui.exe")));
+            Assert.Equal(text.LauncherProgramMissing,
+                Assert.Throws<FileNotFoundException>(() => DesktopInstallation.Read(root, text)).Message);
+        }
+        finally
+        {
+            hive.DeleteSubKeyTree(keyPath, false);
+            foreach (var file in Directory.EnumerateFiles(folder)) File.Delete(file);
+            Directory.Delete(folder);
+        }
+    }
+
     [Fact]
     public void FailedLoginLaunchIsNotRecordedAsSuccessful()
     {

@@ -1,8 +1,10 @@
-using System.Diagnostics;
-using System.IO.Compression;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.Shared.BrowserRuntimes;
+using ResourceManager.ReadWrite.Dependencies;
+using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.Shared.Runtime;
 
 using ResourceManager.App.Domain.Messages;
 
@@ -14,14 +16,15 @@ public sealed partial class OptionalDependencyManager
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SoftwareOperationCaller? caller = null)
     {
         var definition = OptionalDependencyCatalog.Find(id)
             ?? throw new InvalidOperationException($"Unknown dependency: {id}");
 
         EnsureTerms(definition, acknowledgeExternalTerms);
 
-        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
+        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(caller?.WindowsSid, cancellationToken);
         var status = BuildStatus(definition, installedSoftware);
         if (definition.ReleaseSource is not null && status.Installed && !string.IsNullOrWhiteSpace(versionChoice))
             throw new InvalidOperationException("无法可靠识别已安装组件版本；不能判断升级方向，已停止版本选择。");
@@ -30,14 +33,37 @@ public sealed partial class OptionalDependencyManager
             throw new FileNotFoundException("托管依赖目录中没有可用安装器。", status.InstallerPath);
         }
 
-        Directory.CreateDirectory(status.InstallDirectory);
-
-        // 压缩包形式的组件（例如 LibreHardwareMonitor）没有安装器可运行：
-        // 它要的是「把文件解压到安装目录」。直接 Process.Start 一个 .zip
-        // 在 Windows 上必然失败（没有关联的应用程序）。
-        if (IsArchiveInstaller(status.InstallerPath))
+        var sharedRuntime = definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase);
+        Func<System.Diagnostics.ProcessStartInfo, bool, CancellationToken, ValueTask>? launch = null;
+        var extension = Path.GetExtension(status.InstallerPath);
+        var visibleInstaller = extension.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".msi", StringComparison.OrdinalIgnoreCase);
+        if (visibleInstaller)
         {
-            ZipFile.ExtractToDirectory(status.InstallerPath, status.InstallDirectory, overwriteFiles: true);
+            UserSessionCallerValidation.RequireActiveUser(caller, sessionBroker);
+            launch = (start, waitForExit, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (waitForExit)
+                    throw new InvalidOperationException("A visible user-session installer cannot be synchronously waited by the service.");
+                var shellRequest = new UserShellExecuteRequest(
+                    start.FileName,
+                    start.Arguments,
+                    string.IsNullOrWhiteSpace(start.Verb) ? null : start.Verb);
+                _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
+                    NativeUiLaunchHostedService.ResolveNativeUiPath(),
+                    UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
+                return ValueTask.CompletedTask;
+            };
+        }
+
+        var installed = await new DependencyPackageInstaller(launch).InstallAsync(
+            new(definition.Id, status.InstallerPath),
+            new(status.InstallDirectory, definition.RequiresElevation,
+                BuildInstallerArguments(definition, status.InstallDirectory), WaitForExit: sharedRuntime && !visibleInstaller),
+            cancellationToken);
+        if (installed.Status == "filesExtracted")
+        {
             return new OptionalDependencyLaunchResult(
                 definition.Id,
                 "filesExtracted",
@@ -47,44 +73,16 @@ public sealed partial class OptionalDependencyManager
                     BackendMessageCodes.Dependency.ComponentFilesExtracted));
         }
 
-        var startInfo = new ProcessStartInfo
+        if (sharedRuntime)
         {
-            FileName = status.InstallerPath,
-            UseShellExecute = true,
-            WorkingDirectory = status.InstallDirectory,
-            Arguments = BuildInstallerArguments(definition, status.InstallDirectory)
-        };
-
-        if (definition.RequiresElevation)
-        {
-            startInfo.Verb = "runas";
-        }
-
-        var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("安装器未能启动。");
-        if (definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase))
-        {
-            using (process)
-            {
-                await process.WaitForExitAsync(cancellationToken);
-                if (process.ExitCode != 0)
-                {
-                    throw new InvalidOperationException($"共享运行时安装器返回错误代码 {process.ExitCode}。");
-                }
-            }
-
             await WaitForSharedWebView2RuntimeAsync(cancellationToken);
-        }
-        else
-        {
-            process.Dispose();
         }
 
         return new OptionalDependencyLaunchResult(
             definition.Id,
             "installerStarted",
             status.InstallerPath,
-            definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase)
+            sharedRuntime
                 ? BackendMessage.Create(
                     BackendMessageDomains.Dependency,
                     BackendMessageCodes.Dependency.SharedRuntimeInstalled)
@@ -92,9 +90,6 @@ public sealed partial class OptionalDependencyManager
                     BackendMessageDomains.Dependency,
                     BackendMessageCodes.Dependency.InstallerLaunched));
     }
-
-    private static bool IsArchiveInstaller(string installerPath)
-        => Path.GetExtension(installerPath).Equals(".zip", StringComparison.OrdinalIgnoreCase);
 
     private static string BuildInstallerArguments(
         OptionalDependencyDefinition definition,

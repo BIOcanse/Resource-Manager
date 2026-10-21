@@ -18,7 +18,8 @@ public sealed partial class HostManagerSmartCoordinator
         CompiledCpuScoringPlan cpuScoring,
         CompiledOptimizationModePlan mode,
         HostManagerSchedulingPlanBinding planBinding,
-        HostManagerSample sample)
+        HostManagerSample sample,
+        IReadOnlyDictionary<string, int> protectionLevels)
     {
         var attemptGeneration = NextComputeScoringGeneration();
         HostManagerComputeScoringCycleResult? result;
@@ -158,7 +159,8 @@ public sealed partial class HostManagerSmartCoordinator
                 result,
                 desired,
                 sample,
-                policy);
+                policy,
+                protectionLevels);
             schedulingAuthorityOwner.PublishReady(
                 result,
                 desired,
@@ -340,8 +342,14 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var configuration = HostManagerComputeScoringConfigurationFactory.Create(plan, cpuScoring);
-        var replacement = new HostManagerComputeScoringWorkspace(in configuration, cpuScoring);
-        computeScoringWorkspace?.Dispose();
+        var replacement = new HostManagerComputeScoringWorkspace(in configuration, cpuScoring, selfLocalResourceManagerOwner.CreateScratch);
+        try { computeScoringWorkspace?.Dispose(); }
+        catch (Exception original)
+        {
+            try { replacement.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(original, cleanup); }
+            throw;
+        }
         computeScoringWorkspace = replacement;
     }
 

@@ -26,11 +26,16 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IAdapterTransportCallerAttester, WindowsNamedPipeCallerAttester>();
         services.AddSingleton<TrustedAdapterControlPlaneAuthority>();
         services.AddSingleton<ITrustedAdapterLeaseIssuer, TrustedAdapterLeaseIssuer>();
-        services.AddHttpClient<IAdapterResourceMarkerProbe, HttpAdapterResourceMarkerProbe>();
+        services.AddTransient<HttpAdapterCallbackSafetyHandler>();
+        services.AddHttpClient<IAdapterResourceMarkerProbe, HttpAdapterResourceMarkerProbe>()
+            .ConfigurePrimaryHttpMessageHandler(HttpAdapterRegistrationConnection.CreateHandler)
+            .AddHttpMessageHandler<HttpAdapterCallbackSafetyHandler>();
         services.AddSingleton<ResourceManagerSelfSchedulingControl>();
         services.AddSingleton<IResourceManagerSelfSchedulingControl>(static provider =>
             provider.GetRequiredService<ResourceManagerSelfSchedulingControl>());
-        services.AddHttpClient<IAdapterPolicyDispatcher, HttpAdapterPolicyDispatcher>();
+        services.AddHttpClient<IAdapterPolicyDispatcher, HttpAdapterPolicyDispatcher>()
+            .ConfigurePrimaryHttpMessageHandler(static () => new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false })
+            .AddHttpMessageHandler<HttpAdapterCallbackSafetyHandler>();
         services.AddSingleton<IControlledSoftwareRegistry, InMemoryControlledSoftwareRegistry>();
         return services;
     }
@@ -45,7 +50,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ISoftwareRegistryView, SoftwareRegistryView>();
         services.AddSingleton<IManualSoftwareRegistry, JsonManualSoftwareRegistry>();
         services.AddSingleton<ISoftwarePolicyProfileProvider, JsonSoftwarePolicyProfileProvider>();
-        services.AddSingleton<IInstalledSoftwareInventory, WindowsInstalledSoftwareInventory>();
+        services.AddSingleton<WindowsInstalledSoftwareInventory>();
+        services.AddSingleton<IInstalledSoftwareInventory>(static provider => provider.GetRequiredService<WindowsInstalledSoftwareInventory>());
         services.AddSingleton<IRuntimeProcessAttributionCatalogProvider, RuntimeProcessAttributionCatalogProvider>();
         services.AddSingleton<ISoftwareOperationManager, SoftwareOperationManager>();
         services.AddResourceManagerSystem();

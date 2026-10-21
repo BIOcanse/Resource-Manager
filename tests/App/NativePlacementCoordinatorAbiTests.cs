@@ -83,11 +83,12 @@ public sealed class NativePlacementCoordinatorAbiTests
             AbiVersion = NativePlacementCoordinatorAbi.Version,
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementSnapshotHeader>()
         };
-        result = session.GetSnapshot(ref header, workspace.States);
+        var snapshotStates = new NativePlacementState[session.Capacity.SnapshotStateCapacity];
+        result = session.GetSnapshot(ref header, snapshotStates);
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
         Assert.Equal(1U, header.ActiveStateCount);
-        Assert.Equal(NativePlacementSlotState.Applied, (NativePlacementSlotState)workspace.States[0].State);
-        Assert.Equal(301UL, workspace.States[0].AppliedDigest);
+        Assert.Equal(NativePlacementSlotState.Applied, (NativePlacementSlotState)snapshotStates[0].State);
+        Assert.Equal(301UL, snapshotStates[0].AppliedDigest);
     }
 
     [Theory]
@@ -143,7 +144,8 @@ public sealed class NativePlacementCoordinatorAbiTests
             AbiVersion = NativePlacementCoordinatorAbi.Version,
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementSnapshotHeader>()
         };
-        result = session.GetSnapshot(ref header, workspace.States);
+        var snapshotStates = new NativePlacementState[session.Capacity.SnapshotStateCapacity];
+        result = session.GetSnapshot(ref header, snapshotStates);
         Assert.Equal(NativePlacementCoordinatorStatus.Ok, result);
         Assert.Equal(0U, header.ActiveStateCount);
     }
@@ -179,9 +181,10 @@ public sealed class NativePlacementCoordinatorAbiTests
             AbiVersion = NativePlacementCoordinatorAbi.Version,
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementSnapshotHeader>()
         };
-        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.GetSnapshot(ref header, workspace.States));
+        var snapshotStates = new NativePlacementState[session.Capacity.SnapshotStateCapacity];
+        Assert.Equal(NativePlacementCoordinatorStatus.Ok, session.GetSnapshot(ref header, snapshotStates));
         Assert.Equal(3U, header.ActiveStateCount);
-        var states = workspace.States.AsSpan(0, 3).ToArray();
+        var states = snapshotStates.AsSpan(0, 3).ToArray();
         for (var index = 0; index < 3; index++)
         {
             var action = workspace.Actions[index];

@@ -49,7 +49,7 @@ internal static class HostManagerTestPlanFactory
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        var loaded = StrictHostManagerProfileLoader.LoadBytes(buffer.ToArray(), "test/default.json");
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray()), "test/default.json");
         return new HostManagerPlanCompiler()
             .Compile(loaded, CreateSettingsInput(), 1, CreateCpuTopology(1), CreateCpuScoring(CreateCpuTopology(1)))
             .SmartCoordinator;
@@ -69,7 +69,7 @@ internal static class HostManagerTestPlanFactory
             ?? throw new InvalidOperationException("Embedded Host Manager profile was not found.");
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        var bytes = buffer.ToArray();
+        var bytes = StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray());
         if (editProfile is not null)
         {
             var root = JsonNode.Parse(bytes)?.AsObject()

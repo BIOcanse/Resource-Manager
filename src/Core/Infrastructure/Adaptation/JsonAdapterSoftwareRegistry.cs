@@ -20,13 +20,15 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
         "Config",
         "adapted-software.json");
     private IReadOnlyList<AdapterSoftwareRegistration>? current;
+    private IReadOnlyList<AdapterSoftwareRegistration>? verifiedSnapshot;
 
     public async Task<IReadOnlyList<AdapterSoftwareRegistration>> GetAllAsync(CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
         try
         {
-            return current ??= await LoadCoreAsync(cancellationToken);
+            var records = current ??= await LoadCoreAsync(cancellationToken);
+            return verifiedSnapshot ??= records.Where(record => record.OwnershipVerified).ToArray();
         }
         finally
         {
@@ -39,6 +41,10 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
         AdapterResourceMarkerProbeResult markerProbe,
         CancellationToken cancellationToken)
     {
+        if (AdapterRegistrationValidator.Validate(request) is { } validation)
+            throw new ArgumentException(validation, nameof(request));
+        if (markerProbe.State != AdapterResourceMarkerStates.Online || !markerProbe.OwnershipVerified)
+            throw new ArgumentException("Adapter registration requires a verified resource endpoint owner.", nameof(markerProbe));
         var normalized = NormalizeRequest(request);
         await gate.WaitAsync(cancellationToken);
         try
@@ -47,10 +53,15 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
                 (current ??= await LoadCoreAsync(cancellationToken)).ToList();
             var id = BuildId(normalized);
             var now = DateTimeOffset.Now;
-            var existing = records.FirstOrDefault(record =>
+            var matches = records.Where(record =>
                 record.Id.Equals(id, StringComparison.OrdinalIgnoreCase)
                 || record.AdapterId.Equals(normalized.AdapterId, StringComparison.OrdinalIgnoreCase)
-                || record.AppId.Equals(normalized.AppId, StringComparison.OrdinalIgnoreCase));
+                || record.AppId.Equals(normalized.AppId, StringComparison.OrdinalIgnoreCase)).ToArray();
+            if (matches.Any(record => !record.Id.Equals(id, StringComparison.OrdinalIgnoreCase)
+                || !record.AdapterId.Equals(normalized.AdapterId, StringComparison.OrdinalIgnoreCase)
+                || !record.AppId.Equals(normalized.AppId, StringComparison.OrdinalIgnoreCase)))
+                throw new AdapterRegistrationConflictException();
+            var existing = matches.FirstOrDefault();
             var createdAt = existing?.CreatedAt ?? now;
             var registration = new AdapterSoftwareRegistration(
                 id,
@@ -67,14 +78,13 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
                 "registered",
                 createdAt,
                 now,
-                normalized.SchedulingCapabilities);
+                normalized.SchedulingCapabilities,
+                OwnershipVerified: true);
 
-            records.RemoveAll(record =>
-                record.Id.Equals(id, StringComparison.OrdinalIgnoreCase)
-                || record.AdapterId.Equals(normalized.AdapterId, StringComparison.OrdinalIgnoreCase)
-                || record.AppId.Equals(normalized.AppId, StringComparison.OrdinalIgnoreCase));
+            records.RemoveAll(record => record.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
             records.Add(registration);
             current = await SaveCoreAsync(records, cancellationToken);
+            verifiedSnapshot = null;
             return new AdapterRegistrationResult(registration, existing is null);
         }
         finally
@@ -94,6 +104,7 @@ public sealed class JsonAdapterSoftwareRegistry(IHostEnvironment environment) : 
             if (removed)
             {
                 current = await SaveCoreAsync(records, cancellationToken);
+                verifiedSnapshot = null;
             }
 
             return removed;

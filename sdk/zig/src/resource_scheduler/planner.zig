@@ -677,7 +677,11 @@ fn considerQueueCandidate(
     candidate.candidate_flags |= types.candidate_flag_queue_selected;
     resource_work.flags |= types.resource_scratch_action_selected;
     target_work.selected_action_count += 1;
-    addReservation(candidate.*, target_work);
+    // RAM and commit capacity are machine-wide, just like the reservations
+    // prepared at the start of this plan. Later targets must see this selection.
+    for (target_scratch[0..targets.len]) |*work| {
+        addReservation(candidate.*, work);
+    }
     return true;
 }
 

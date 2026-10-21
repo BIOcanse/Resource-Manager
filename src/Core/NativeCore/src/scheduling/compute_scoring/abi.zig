@@ -82,7 +82,7 @@ pub export fn rm_compute_scoring_software_base_mean(
         output orelse return code(.invalid_argument)));
 }
 
-pub export fn rm_compute_scoring_score(
+pub export fn rm_compute_scoring_score_with_scratch(
     handle: ?*anyopaque,
     envelope: ?*const protocol.GenerationEnvelope,
     processes: ?[*]const protocol.ProcessInput,
@@ -91,6 +91,8 @@ pub export fn rm_compute_scoring_score(
     gpu_capacity: u32,
     outputs: ?[*]protocol.ScoreOutput,
     output_capacity: u32,
+    scratch_pointer: ?*anyopaque,
+    scratch_length: u64,
     snapshot: ?*protocol.Snapshot,
 ) callconv(.c) i32 {
     const session: *session_module.Session = @ptrCast(@alignCast(
@@ -105,6 +107,8 @@ pub export fn rm_compute_scoring_score(
         gpu_capacity,
         outputs,
         output_capacity,
+        scratch_pointer,
+        scratch_length,
         snapshot orelse return code(.invalid_argument),
     ));
 }
@@ -115,6 +119,10 @@ fn code(status: protocol.Status) i32 {
 
 comptime {
     if (@sizeOf(protocol.Config) != 200) @compileError("compute scoring Config export size changed");
+    if (@offsetOf(protocol.Capacity, "scratch_byte_count") != 40 or
+        @offsetOf(protocol.Capacity, "scratch_alignment") != 48 or
+        @offsetOf(protocol.Capacity, "reserved0") != 52 or
+        @offsetOf(protocol.Capacity, "reserved") != 56) @compileError("compute scoring scratch capacity offsets changed");
     if (@sizeOf(protocol.Capacity) != 72) @compileError("compute scoring Capacity export size changed");
     if (@sizeOf(protocol.GenerationEnvelope) != 168) @compileError("compute scoring GenerationEnvelope export size changed");
     if (@sizeOf(protocol.ProcessInput) != 96) @compileError("compute scoring ProcessInput export size changed");

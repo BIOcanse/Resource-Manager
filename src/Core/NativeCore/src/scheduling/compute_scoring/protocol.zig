@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0004_0004;
+pub const abi_version: u32 = 0x0005_0000;
 pub const runtime_state_count: usize = 7;
 
 pub const Status = enum(i32) {
@@ -138,7 +138,10 @@ pub const Capacity = extern struct {
     process_capacity: u32,
     gpu_capacity: u32,
     output_capacity: u32,
-    reserved: [4]u64,
+    scratch_byte_count: u64,
+    scratch_alignment: u32,
+    reserved0: u32,
+    reserved: [2]u64,
 };
 
 pub const GenerationEnvelope = extern struct {

@@ -70,8 +70,18 @@ internal sealed class CpuTopologyProviderTestFixture : IAsyncDisposable
         private readonly BlockingCollection<object> completions = new();
         private readonly Channel<int> attempts = Channel.CreateUnbounded<int>();
         private int captureCount;
+        private int resetCount;
 
         internal int CaptureCount => Volatile.Read(ref captureCount);
+        internal int ResetCount => Volatile.Read(ref resetCount);
+        internal Func<CpuTopologySnapshot, CpuTopologySnapshot>? CaptureTransform { get; set; }
+        internal Action? UsageBaselineReset { get; set; }
+
+        public void ResetUsageBaseline()
+        {
+            Interlocked.Increment(ref resetCount);
+            UsageBaselineReset?.Invoke();
+        }
 
         public CpuTopologySnapshot CaptureSnapshot()
         {
@@ -84,7 +94,8 @@ internal sealed class CpuTopologyProviderTestFixture : IAsyncDisposable
             {
                 throw exception;
             }
-            return (CpuTopologySnapshot)result;
+            var snapshot = (CpuTopologySnapshot)result;
+            return CaptureTransform?.Invoke(snapshot) ?? snapshot;
         }
 
         public CpuTopologySnapshot CaptureTopology()

@@ -48,7 +48,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 })
                 .ToArray();
             return Results.Ok(rows);
-        }).AllowAnonymous();
+        });
 
         return app;
     }

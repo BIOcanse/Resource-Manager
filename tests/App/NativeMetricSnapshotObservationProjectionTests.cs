@@ -5,6 +5,49 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeMetricSnapshotObservationProjectionTests
 {
+    [Theory]
+    [InlineData(long.MinValue)]
+    [InlineData(long.MaxValue)]
+    [InlineData(-9007199254740993L)]
+    public void CommittedSignedAbiValuesPreserveRawIntegerPrecision(long value)
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"signed-frame-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(0, "NVIDIA fixture", "gpu-fixture", 0xA1, 1, 1, true)], [], [], workspace.CreateCatalogHandleMap());
+        var binding = catalog.MetricBindings.Values.Single(item => item.FieldCode == ResourceManager.App.Domain.Metrics.MetricFieldCode.NvmlClocksEvents);
+        var now = DateTimeOffset.UtcNow;
+        workspace.ReplaceCatalog(catalog, now);
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,
+            1, NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var plan = workspace.PlanCollection([binding.MetricHandle], modes, false, now);
+        var source = Assert.Single(plan.Sources);
+        var metric = plan.Metrics.Single(item => item.MetricHandle == binding.MetricHandle);
+        var observation = NativeMetricSnapshotObservationProjection.CreateUnsignedObservation(metric, binding,
+            new(source.SourceHandle, 1, 1), now, 1);
+        workspace.CompleteSource(plan, new(source.SourceHandle, 1, 1, now,
+            NativeMetricSnapshotSourceStatus.Complete, [observation], null, [], 0, 0), now);
+        var frame = workspace.ReadCommitted();
+        // A committed ABI frame can carry signed values. Keep the original
+        // identity/status and exercise the production projection with exact raw bits.
+        var output = frame.Metrics.Single(item => item.MetricHandle == binding.MetricHandle);
+        output.ValueKind = (uint)NativeMetricSnapshotValueKind.Signed64;
+        output.ValueBits = unchecked((ulong)value);
+        var signed = binding with { ValueKind = output.ValueKind, Field = binding.Field! with { ValueKind = "signed64", Unit = "count" } };
+        var signedFrame = frame with
+        {
+            Metrics = [.. frame.Metrics.Select(item => item.MetricHandle == binding.MetricHandle ? output : item)],
+            Catalog = frame.Catalog with
+            {
+                RuleBindings = frame.Catalog.RuleBindings.SetItem(binding.RuleHandle, signed),
+                MetricBindings = frame.Catalog.MetricBindings.SetItem(binding.MetricHandle, signed)
+            }
+        };
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(signedFrame, "CPU", "RAM", 1);
+        Assert.Equal(value.ToString(System.Globalization.CultureInfo.InvariantCulture), snapshot.Items[binding.MetricId].IntegerValue);
+    }
+
     [Fact]
     public void CurrentValueMustSatisfyTheExactCatalogRange()
     {

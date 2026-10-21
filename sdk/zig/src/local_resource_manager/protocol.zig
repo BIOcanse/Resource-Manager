@@ -336,6 +336,26 @@ pub const Intent = extern struct {
     reserved1: u32 = 0,
 };
 
+pub const CapacityCursorState = enum(u8) {
+    initial = 0,
+    active = 1,
+    completed = 2,
+};
+
+// Caller-owned continuation for the optional bounded capacity entry point.
+// No field changes the persistent ABI10 layout or owns resource facts.
+pub const CapacityPlanCursor = extern struct {
+    abi_version: u32 = abi_version,
+    struct_size: u32 = @sizeOf(CapacityPlanCursor),
+    operation: OperationToken = std.mem.zeroes(OperationToken),
+    activity_epoch: u64 = 0,
+    last_intent: Intent = std.mem.zeroes(Intent),
+    remaining_in_table: u32 = 0,
+    strategy: CapacityStrategy = .concentrated,
+    state: CapacityCursorState = .initial,
+    reserved0: [2]u8 = .{ 0, 0 },
+};
+
 pub const PlanStamp = extern struct {
     abi_version: u32,
     struct_size: u32,
@@ -570,7 +590,6 @@ pub fn validCapabilitySpec(spec: CapabilitySpec) bool {
 
 pub fn validResourceSpec(spec: ResourceSpec) bool {
     return spec.abi_version == abi_version and spec.struct_size == @sizeOf(ResourceSpec) and
-        !isZeroId(spec.resource_uid) and
         @intFromEnum(spec.recoverability) <= @intFromEnum(Recoverability.recoverable) and
         @intFromEnum(spec.access_loss_impact) <= @intFromEnum(AccessLossImpact.unobservable_now) and
         allZero(spec.reserved0[0..]);

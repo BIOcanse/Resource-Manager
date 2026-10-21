@@ -38,7 +38,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
         var (recreate, hot) = CreatePlans();
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
-            HostManagerTransactionJournalRuntime.OpenAsync(
+            JournalRuntimeTestStorage.OpenAsync(
                 "relative-data-root",
                 recreate,
                 hot,
@@ -48,25 +48,25 @@ public sealed class HostManagerTransactionJournalRuntimeTests
         try
         {
             await Assert.ThrowsAsync<ArgumentException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate with { JournalRelativePath = "../outside/journal.bin" },
                     hot,
                     CancellationToken.None));
             await Assert.ThrowsAsync<ArgumentException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate with { JournalRelativePath = "state\\journal.bin" },
                     hot,
                     CancellationToken.None));
             await Assert.ThrowsAsync<ArgumentException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate with { PayloadRelativeDirectory = Path.Combine(root, "payloads") },
                     hot,
                     CancellationToken.None));
             await Assert.ThrowsAsync<ArgumentException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate with
                     {
@@ -89,7 +89,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -153,7 +153,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -214,7 +214,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var first = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var first = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -264,7 +264,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                 await first.ShutdownAsync(CancellationToken.None));
             Assert.Single(first.LastSnapshot!.Records);
 
-            var reopened = await HostManagerTransactionJournalRuntime.OpenAsync(
+            var reopened = await JournalRuntimeTestStorage.OpenAsync(
                 root,
                 recreate,
                 hot,
@@ -358,7 +358,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var first = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var first = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -367,7 +367,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
         try
         {
             var conflict = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate,
                     hot,
@@ -378,7 +378,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                 HostManagerTransactionJournalShutdownResult.Clean,
                 await first.ShutdownAsync(CancellationToken.None));
 
-            var reopened = await HostManagerTransactionJournalRuntime.OpenAsync(
+            var reopened = await JournalRuntimeTestStorage.OpenAsync(
                 root,
                 recreate,
                 hot,
@@ -414,7 +414,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
             await File.WriteAllBytesAsync(corruptPath, new byte[256]);
 
             var corrupt = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     corruptRoot,
                     recreate,
                     hot,
@@ -426,7 +426,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                 recordCapacity: 4,
                 residentByteBudget: (ulong)ResidentByteBudget);
             var drifted = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     driftRoot,
                     recreate,
                     hot,
@@ -445,7 +445,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans(shutdownDrainTimeoutMilliseconds: 2_000);
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -484,7 +484,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans(shutdownDrainTimeoutMilliseconds: 50);
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -504,7 +504,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
             Assert.False(runtime.TryAcquireRecoveryAdmission(out _));
 
             var contender = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                HostManagerTransactionJournalRuntime.OpenAsync(
+                JournalRuntimeTestStorage.OpenAsync(
                     root,
                     recreate,
                     hot,
@@ -529,7 +529,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -579,7 +579,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
             PayloadCount = 1,
             PayloadByteBudget = 4
         };
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -643,7 +643,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -711,7 +711,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
             PayloadCount = 1,
             PayloadByteBudget = payloadLength
         };
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -763,7 +763,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -828,7 +828,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await HostManagerTransactionJournalRuntime.OpenAsync(
+        var runtime = await JournalRuntimeTestStorage.OpenAsync(
             root,
             recreate,
             hot,
@@ -1033,6 +1033,7 @@ public sealed class HostManagerTransactionJournalRuntimeTests
             new NativeTransactionJournalFileStore(path),
             create,
             open,
+            NativeAppliedOwnershipTestStorage.Create,
             CancellationToken.None);
     }
 

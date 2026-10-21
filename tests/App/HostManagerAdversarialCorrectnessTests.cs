@@ -602,9 +602,17 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             SamplingDatasetIds.SystemGpuInventory,
             "gpu.0.usage",
             "gpu.0.vram");
+        original = original with
+        {
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(original.Datasets)
+            {
+                [SamplingDatasetIds.SystemMetricCatalog] = original.Datasets[SamplingDatasetIds.SystemGpuInventory]
+                    with { DatasetId = SamplingDatasetIds.SystemMetricCatalog }
+            }
+        };
         Assert.True(state.Publish(
             original,
-            MetricSampleRequest.CatalogProbe).IsSuccessful);
+            MetricSampleRequest.ForIds(["gpu.0.usage", "gpu.0.vram"]).WithCatalog()).IsSuccessful);
 
         var replacement = CreateDatasetHardwareSnapshot(
             generation: 2,
@@ -615,6 +623,11 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             SamplingDatasetIds.SystemGpuInventory);
         replacement = replacement with
         {
+            Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(replacement.Datasets)
+            {
+                [SamplingDatasetIds.SystemMetricCatalog] = replacement.Datasets[SamplingDatasetIds.SystemGpuInventory]
+                    with { DatasetId = SamplingDatasetIds.SystemMetricCatalog }
+            },
             Gpus = replacement.Gpus
                 .Select(static gpu => gpu with
                 {
@@ -636,7 +649,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
 
         Assert.True(state.Publish(
             replacement,
-            MetricSampleRequest.CatalogProbe).IsSuccessful);
+            MetricSampleRequest.ForIds([SamplingDatasetIds.SystemGpuInventory]).WithCatalog()).IsSuccessful);
         var published = Assert.IsType<HardwareMetricSnapshot>(state.Read());
 
         Assert.Equal(

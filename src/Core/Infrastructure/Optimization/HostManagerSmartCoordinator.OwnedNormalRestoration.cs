@@ -18,15 +18,17 @@ public sealed partial class HostManagerSmartCoordinator
         uint maximumActions,
         CancellationToken cancellationToken,
         bool placementStateAvailable = true,
-        bool gpuControlAvailable = true)
+        bool gpuControlAvailable = true,
+        bool forShutdown = false)
     {
-        if (!string.Equals(
+        if (!(forShutdown && LifecycleState == HostManagerSmartCoordinatorLifecycleState.Closing)
+            && !string.Equals(
                 runtimePlanProvider.Current.OptimizationMode.Mode,
                 AppOptimizationModes.Normal,
                 StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                "Owner-only restoration is restricted to Normal optimization mode.");
+                "Owner-only restoration requires Normal mode or the admitted shutdown cleanup.");
         }
 
         ResetCpuExclusivityState();
@@ -95,7 +97,7 @@ public sealed partial class HostManagerSmartCoordinator
             foreach (var action in CreateOwnedNormalRestoreActions(ownership))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (nativePermit.NewPointOfNoReturnRemaining < 2)
+                if (nativePermit.NewPointOfNoReturnRemaining < 1)
                 {
                     return false;
                 }

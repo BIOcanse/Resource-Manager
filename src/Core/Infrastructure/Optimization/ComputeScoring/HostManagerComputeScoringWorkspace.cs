@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Collections.Immutable;
 using System.Collections.Frozen;
 using System.Globalization;
@@ -14,13 +15,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
 {
     private readonly NativeComputeScoringSession cpuSession;
     private readonly NativeComputeScoringSession gpuSession;
-    private readonly NativeComputeScoringProcessInput[] processes;
-    private readonly NativeComputeScoringGpuInput[] gpus;
     private readonly FrozenDictionary<string, uint> cpuCoreIndexes;
-    private readonly NativeComputeScoringCpuCoreInput[] cpuCoreInputs;
-    private readonly double[] weightedCpuUse;
-    private readonly NativeComputeScoringOutput[] outputs;
-    private readonly int[] adapterOrder;
+    private readonly ComputeScoringScratchLayout layout;
+    private readonly IComputeScratch scratch;
     private ImmutableArray<SoftwareBaseScore> softwareBaseScores = [];
     private double softwareBaseMean;
     private readonly ulong configurationFingerprint;
@@ -28,8 +25,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
 
     internal HostManagerComputeScoringWorkspace(
         in NativeComputeScoringConfiguration configuration,
-        CompiledCpuScoringPlan cpuScoring)
+        CompiledCpuScoringPlan cpuScoring,
+        Func<ulong, IComputeScratch> createScratch)
     {
+        ArgumentNullException.ThrowIfNull(createScratch);
         CpuScoring = cpuScoring;
         var weights = cpuScoring.CoreWeights.Cores.Select(static core => core.ReferenceWeight).ToArray();
         configurationFingerprint = ComputeConfigurationFingerprint(in configuration, weights);
@@ -45,13 +44,29 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             cpuSession.Dispose();
             throw;
         }
-        var capacity = cpuSession.Capacity;
-        processes = new NativeComputeScoringProcessInput[checked((int)capacity.ProcessCapacity)];
-        weightedCpuUse = new double[processes.Length];
-        cpuCoreInputs = new NativeComputeScoringCpuCoreInput[checked(processes.Length * weights.Length)];
-        gpus = new NativeComputeScoringGpuInput[checked((int)capacity.GpuCapacity)];
-        outputs = new NativeComputeScoringOutput[checked((int)capacity.OutputCapacity)];
-        adapterOrder = new int[Math.Max(1, checked((int)capacity.GpuCapacity))];
+        try
+        {
+            var capacity = cpuSession.Capacity;
+            var gpuCapacity = gpuSession.Capacity;
+            if (capacity.ScratchByteCount != gpuCapacity.ScratchByteCount ||
+                capacity.ScratchAlignment != gpuCapacity.ScratchAlignment)
+                throw new InvalidOperationException("CPU and GPU scoring sessions require different scratch layouts.");
+            layout = new(capacity.ProcessCapacity, capacity.GpuCapacity, capacity.OutputCapacity, weights.Length,
+                capacity.ScratchByteCount, capacity.ScratchAlignment);
+            scratch = createScratch(layout.Length)
+                ?? throw new InvalidOperationException("The compute scratch factory returned no resource.");
+            if (scratch.Length != layout.Length)
+            {
+                scratch.Dispose();
+                throw new InvalidOperationException("The compute scratch factory returned the wrong layout length.");
+            }
+        }
+        catch
+        {
+            try { cpuSession.Dispose(); }
+            finally { gpuSession.Dispose(); }
+            throw;
+        }
     }
 
     internal ulong ConfigurationGeneration =>
@@ -105,7 +120,26 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             softwareBaseScores = replacement;
         }
 
-        var cpuFacts = scoreCpu ? ProjectCpuDomain(processFacts, cpuResidency) : null;
+        using var lease = scratch.Acquire();
+        using var view = new ComputeScratchView(lease);
+        var result = ScoreCore(view, schedulingGeneration, processFacts, gpuInventory,
+            runtimeFacts, cpuResidency, welfare, scoreCpu, scoreGpu);
+        lease.Complete();
+        return result;
+    }
+
+    private HostManagerComputeScoringCycleResult? ScoreCore(
+        ComputeScratchView scratchView,
+        ulong schedulingGeneration,
+        SchedulingProcessFactSnapshot processFacts,
+        SchedulingGpuInventorySnapshot gpuInventory,
+        IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
+        CpuCoreResidencySnapshot? cpuResidency,
+        HostManagerWelfareCapacityInput welfare,
+        bool scoreCpu = true,
+        bool scoreGpu = true)
+    {
+        var cpuFacts = scoreCpu ? ProjectCpuDomain(scratchView, processFacts, cpuResidency) : null;
         var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
         if (cpuFacts is null && gpuFacts is null)
         {
@@ -129,6 +163,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var cpuResult = cpuFacts is null
             ? null
             : ScoreEnvelope(
+                scratchView,
                 cpuSession,
                 schedulingGeneration,
                 cpuFacts,
@@ -140,6 +175,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var gpuResult = gpuFacts is null
             ? null
             : ScoreEnvelope(
+                scratchView,
                 gpuSession,
                 schedulingGeneration,
                 gpuFacts,
@@ -170,6 +206,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     }
 
     private HostManagerComputeScoringCycleResult? ScoreEnvelope(
+        ComputeScratchView scratchView,
         NativeComputeScoringSession session,
         ulong schedulingGeneration,
         SchedulingProcessFactSnapshot processFacts,
@@ -179,6 +216,11 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         CpuCoreResidencySnapshot? cpuResidency,
         HostManagerWelfareCapacityInput welfare)
     {
+        var processes = scratchView.Column<NativeComputeScoringProcessInput>(layout.Processes, layout.ProcessCapacity);
+        var gpus = scratchView.Column<NativeComputeScoringGpuInput>(layout.Gpus, layout.GpuCapacity);
+        var weightedCpuUse = scratchView.Column<double>(layout.WeightedCpuUse, layout.ProcessCapacity);
+        var outputs = scratchView.Column<NativeComputeScoringOutput>(layout.Outputs, layout.OutputCapacity);
+        var adapterOrder = scratchView.Column<int>(layout.AdapterOrder, layout.AdapterCapacity);
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(gpuInventory);
@@ -225,7 +267,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             throw new InvalidDataException("The compute scoring process capacity was exceeded.");
         }
 
-        FillAdapterOrder(gpuInventory, gpuComplete);
+        FillAdapterOrder(gpuInventory, gpuComplete, adapterOrder);
         var gpuRowCount = gpuComplete
             ? processFacts.Processes.Sum(static process =>
                 process.Gpus.Count(static gpu => gpu.ValidMetricMask.HasFlag(
@@ -336,6 +378,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             }
         }
 
+        if (gpuCursor != gpuRowCount)
+            throw new InvalidDataException("The compute scoring GPU rows do not match their declared count.");
+
         var requiredOutputCapacity = Math.Max(
             1,
             checked((cpuComplete ? 3 * processCount : 0) + 2 * gpuRowCount));
@@ -399,9 +444,11 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var nativeSnapshot = default(NativeComputeScoringSnapshot);
         var status = session.Score(
             in envelope,
-            processes.AsSpan(0, processCount),
-            gpus.AsSpan(0, gpuRowCount),
-            outputs.AsSpan(0, requiredOutputCapacity),
+            processes.Slice(0, processCount),
+            gpus.Slice(0, gpuRowCount),
+            outputs.Slice(0, requiredOutputCapacity),
+            scratchView.AlignedRegion(layout.NativeScratch, layout.NativeScratchByteCount, layout.NativeScratchAlignment),
+            layout.NativeScratchByteCount,
             ref nativeSnapshot);
         if (status != NativeComputeScoringStatus.Ok)
         {
@@ -415,6 +462,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             cpuComplete,
             gpuComplete);
         return CreateResult(
+            outputs,
             nativeSnapshot,
             cpuComplete,
             gpuComplete,
@@ -422,8 +470,11 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     }
 
     private SchedulingProcessFactSnapshot? ProjectCpuDomain(
+        ComputeScratchView scratchView,
         SchedulingProcessFactSnapshot source, CpuCoreResidencySnapshot? current)
     {
+        var cpuCoreInputs = scratchView.Column<NativeComputeScoringCpuCoreInput>(layout.CoreInputs, layout.CoreInputCapacity);
+        var weightedCpuUse = scratchView.Column<double>(layout.WeightedCpuUse, layout.ProcessCapacity);
         if (current is null || !CpuScoring.CoreWeights.IsAvailable) return null;
 
         var observed = new Dictionary<HostManagerComputeProcessIdentity, CpuProcessCoreResidency>();
@@ -445,7 +496,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 || observation.PhysicalCores.Count == 0
                 || observation.PhysicalCores.Any(core => !cpuCoreIndexes.ContainsKey(core.PhysicalCoreId)))
                 continue;
-            if (selected.Count == processes.Length) throw new InvalidDataException("CPU process capacity was exceeded.");
+            if (selected.Count == layout.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
             foreach (var core in observation.PhysicalCores.OrderBy(core => cpuCoreIndexes[core.PhysicalCoreId]))
             {
                 if (cursor == cpuCoreInputs.Length) throw new InvalidDataException("CPU physical-core capacity was exceeded.");
@@ -459,8 +510,8 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             selected.Add(process);
         }
         if (selected.Count == 0) return null;
-        var status = cpuSession.CalculateWeightedCpuUse(cpuCoreInputs.AsSpan(0, cursor),
-            weightedCpuUse.AsSpan(0, selected.Count));
+        var status = cpuSession.CalculateWeightedCpuUse(cpuCoreInputs.Slice(0, cursor),
+            weightedCpuUse.Slice(0, selected.Count));
         if (status != NativeComputeScoringStatus.Ok)
             throw new InvalidDataException($"CPU physical-core projection failed with {status}.");
 
@@ -563,14 +614,16 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         {
             return;
         }
+        scratch.Dispose();
         disposed = true;
-        cpuSession.Dispose();
-        gpuSession.Dispose();
+        try { cpuSession.Dispose(); }
+        finally { gpuSession.Dispose(); }
     }
 
     private void FillAdapterOrder(
         SchedulingGpuInventorySnapshot inventory,
-        bool gpuComplete)
+        bool gpuComplete,
+        Span<int> adapterOrder)
     {
         if (!gpuComplete)
         {
@@ -715,6 +768,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     }
 
     private HostManagerComputeScoringCycleResult CreateResult(
+        ReadOnlySpan<NativeComputeScoringOutput> outputs,
         NativeComputeScoringSnapshot snapshot,
         bool cpuComplete,
         bool gpuComplete,

@@ -1,22 +1,37 @@
-using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Security;
-using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 namespace ResourceManager.App.Infrastructure.Security;
 
-public sealed class WindowsLoopbackApiAdministratorReader : ILoopbackApiAdministratorReader
+public sealed partial class WindowsLoopbackApiAdministratorReader : ILoopbackApiAdministratorReader
 {
     public bool IsAdministrator(HttpContext context)
-        => TryReadCaller(context, out _, out var administrator) && administrator;
+        => TryReadCaller(context, out var caller, out var administrator)
+            && caller != Environment.ProcessId && administrator;
 
     internal static bool TryReadCaller(HttpContext context, out int processId, out bool administrator)
     {
-        processId = 0;
-        administrator = false;
+        var found = TryReadCallerIdentity(context, out var caller);
+        processId = found ? caller.ProcessId : 0;
+        administrator = found && caller.IsAdministrator;
+        return found;
+    }
+
+    internal static bool TryReadCallerIdentity(HttpContext context, out LoopbackApiCaller caller)
+    {
+        if (!TryOpenCallerToken(context, out caller, out var token))
+            return false;
+        token.Dispose();
+        return true;
+    }
+
+    internal static bool TryOpenCallerToken(HttpContext context, out LoopbackApiCaller caller,
+        out SafeAccessTokenHandle callerToken)
+    {
+        caller = null!;
+        callerToken = SafeAccessTokenHandle.InvalidHandle;
         if (!OperatingSystem.IsWindows())
             return false;
 
@@ -31,27 +46,12 @@ public sealed class WindowsLoopbackApiAdministratorReader : ILoopbackApiAdminist
         if (owner <= 0)
             return false;
 
-        using var process = OpenProcess(0x1000, false, owner); // PROCESS_QUERY_LIMITED_INFORMATION
-        if (process.IsInvalid || !OpenProcessToken(process, 0x000A, out var token))
+        if (!TryOpenProcessIdentity(owner, out var identity, out var token,
+            () => FindOwner(clientAddress, connection.RemotePort, serverAddress, connection.LocalPort) == owner))
             return false;
-        using (token)
-        {
-            try
-            {
-                using var identity = new WindowsIdentity(token.DangerousGetHandle());
-                var member = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
-                // Keep the process handle alive and recheck the same client socket, never the server row.
-                if (FindOwner(clientAddress, connection.RemotePort, serverAddress, connection.LocalPort) != owner)
-                    return false;
-                processId = owner;
-                administrator = member;
-                return true;
-            }
-            catch (Exception exception) when (exception is Win32Exception or SecurityException or UnauthorizedAccessException)
-            {
-                return false;
-            }
-        }
+        caller = identity.Caller;
+        callerToken = token;
+        return true;
     }
 
     private static IPAddress? Normalize(IPAddress? address)
@@ -67,12 +67,13 @@ public sealed class WindowsLoopbackApiAdministratorReader : ILoopbackApiAdminist
         const int ownerPidConnections = 4;
         const int insufficientBuffer = 122;
         if (GetExtendedTcpTable(IntPtr.Zero, ref size, false, family, ownerPidConnections, 0) != insufficientBuffer
-            || size < sizeof(uint))
+            || size < sizeof(uint) || size > 64 * 1024 * 1024)
             return 0;
         var buffer = Marshal.AllocHGlobal(size);
         try
         {
-            if (GetExtendedTcpTable(buffer, ref size, false, family, ownerPidConnections, 0) != 0)
+            var capacity = size;
+            if (GetExtendedTcpTable(buffer, ref size, false, family, ownerPidConnections, 0) != 0 || size > capacity)
                 return 0;
             var count = Marshal.ReadInt32(buffer);
             var rowSize = ipv6 ? Marshal.SizeOf<Tcp6Row>() : Marshal.SizeOf<Tcp4Row>();
@@ -141,3 +142,6 @@ public sealed class WindowsLoopbackApiAdministratorReader : ILoopbackApiAdminist
         public uint RemoteScope, RemotePort, State, ProcessId;
     }
 }
+
+internal sealed record LoopbackApiCaller(int ProcessId, long ProcessCreatedUtcTicks,
+    string WindowsSid, int WindowsSessionId, bool IsAdministrator);

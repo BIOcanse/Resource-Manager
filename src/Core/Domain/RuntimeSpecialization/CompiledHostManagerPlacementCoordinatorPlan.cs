@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
+
 namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
 public sealed record CompiledHostManagerPlacementCoordinatorRecreatePlan(
@@ -36,12 +38,17 @@ public sealed record CompiledHostManagerPlacementCoordinatorRecreatePlan(
 public sealed record CompiledHostManagerPlacementCoordinatorHotPublishPlan(
     ulong ConfigurationGeneration,
     int RetryDelayMilliseconds,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.ActionTimeoutMs)]
     int ActionTimeoutMilliseconds,
     int MaximumFutureSkewMilliseconds,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GpuWindowExecutionLimits)]
     CompiledGpuWindowExecutionLimits WindowExecution,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GpuApiObservationWindowMs)]
     int ApiObservationWindowMilliseconds)
 {
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.GpuOverflowThresholds)]
     public CompiledGpuOverflowPolicy? GpuOverflow { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.AutomaticExclusivity)]
     public CompiledCpuAutomaticExclusivityPolicy? CpuAutomaticExclusivity { get; init; }
 
     public bool IsPublished => ConfigurationGeneration > 0

@@ -229,6 +229,48 @@ public sealed class SqlitePersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task PortableSoftwareRegistry_ImportsFuturePersistedObservationWithoutClamping()
+    {
+        var database = CreateDatabase();
+        await database.EnsureInitializedAsync(CancellationToken.None);
+        var root = Path.Combine(testRoot, "Portable", "ClockRollback");
+        var executable = Path.Combine(root, "ClockRollback.exe");
+        var firstObservedAt = DateTimeOffset.FromUnixTimeMilliseconds(
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).AddHours(8);
+        await InsertPortableRowAsync(
+            database,
+            "catalog:clock-rollback",
+            "clock-rollback",
+            "Clock Rollback",
+            "portable",
+            executable,
+            root,
+            firstObservedAt.UtcTicks,
+            identityConfirmed: 0,
+            rootConfirmed: 0);
+
+        using var registry = CreatePortableRegistry(database);
+        await registry.StartAsync(CancellationToken.None);
+        PortableSoftwareRegistration registration;
+        try
+        {
+            registration = Assert.Single(registry.GetSnapshot());
+        }
+        finally
+        {
+            await registry.StopAsync(CancellationToken.None);
+        }
+
+        Assert.Equal(firstObservedAt, registration.FirstObservedAt);
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        Assert.Equal(
+            firstObservedAt.UtcTicks,
+            await ScalarInt64Async(
+                connection,
+                "SELECT first_observed_utc_ticks FROM portable_software_executables;"));
+    }
+
+    [Fact]
     public async Task EnsureInitializedAsync_MigratesPortableObservationTicksToPublishedMillisecondPrecision()
     {
         var database = CreateDatabase();

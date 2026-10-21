@@ -5,7 +5,6 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Operations;
@@ -23,7 +22,6 @@ using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.SoftwareDiscovery;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -42,19 +40,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapGet("/api/software", async (
             bool? refresh,
+            HttpContext context,
             ISoftwareRegistryView softwareRegistry,
             ISoftwareIssueProjection softwareIssueProjection,
             IPortableSoftwareDiscovery portableSoftwareDiscovery,
             CancellationToken cancellationToken) =>
         {
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
             if (refresh == true)
             {
                 await portableSoftwareDiscovery.ScanRunningProcessesAsync(cancellationToken);
             }
 
             var records = refresh == true
-                ? await softwareRegistry.RefreshSoftwareAsync(cancellationToken)
-                : await softwareRegistry.GetSoftwareAsync(cancellationToken);
+                ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken)
+                : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken);
             return Results.Ok(await softwareIssueProjection.ProjectAsync(
                 records,
                 cancellationToken));
@@ -122,15 +123,26 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         app.MapPost("/api/software/uninstall", async (
             SoftwareOperationRequest request,
+            HttpContext context,
             IHostManagerOperationCommandService operationService,
             CancellationToken cancellationToken) =>
         {
+            if (!ResourceManager.App.Infrastructure.Security.WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller)
+                || caller.ProcessId == Environment.ProcessId
+                || caller.WindowsSessionId <= 0
+                || (request.Id.StartsWith("dependency:", StringComparison.OrdinalIgnoreCase) && !caller.IsAdministrator))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             try
             {
                 return Results.Ok(HostManagerOperationWireProjection.Project(
                     await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.SoftwareUninstall(request),
+                    HostManagerOperationRequestCodec.SoftwareUninstall(request,
+                        new(caller.WindowsSid, checked((uint)caller.WindowsSessionId))),
                     cancellationToken)));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             }
             catch (InvalidOperationException ex)
             {

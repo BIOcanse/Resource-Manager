@@ -28,11 +28,17 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
     group: "Target software",
   },
   softwareDetail: {
+    openPath: "Open",
+    protection: {
+      title: "Level 2 protection",
+      enabled: "Enable Level 2 protection",
+      hint: "Exclude this software from CPU, memory and GPU scheduling. Removing protection lets it participate again.",
+      failed: "Unable to read or save protection settings. Reopen software details.",
+    },
     tab: {
       overview: "Overview",
       policy: "Policy",
       processes: "Processes",
-      migration: "Migration"
     },
     option: {
       useDefault: "Use default settings",
@@ -62,18 +68,14 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       paths: "Paths and source",
       operations: "Available operations",
       gpuScheduling: "GPU scheduling",
-      migrationAndRestore: "Migration and restore",
       relatedInfo: "Related information"
     },
     rootNeedsConfirmation: "Root directory needs confirmation",
     rootNeedsConfirmationDetail: "Only the executable location is known; the software root directory is not confirmed yet.",
     chooseFolder: "Choose folder",
     ordinaryGpuMode: "Ordinary configuration mode is active, so only the system default GPU options are used.",
-    noMigrationRecord: "No migration records yet.",
     processing: "Working",
     restoreAll: "Restore everything",
-    migrateData: "Migrate data",
-    migrateWholeSoftware: "Migrate the whole software",
     close: "Close",
     operationDetailTitle: "Operation details",
     contentLabel: "Content",
@@ -94,7 +96,6 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       gpuSelectionMethod: "GPU selection method",
       startupGpu: "GPU at launch",
       runtimeSelectionMethod: "Runtime selection method",
-      runtimeTargetGpu: "Runtime target GPU",
       whenSoftwareChoseGpu: "When the software already chose a GPU",
       allowRuntimeGpuSwitch: "Allow switching GPU at runtime",
       preferKeepingTargetGpu: "Prefer keeping the target GPU",
@@ -171,18 +172,5 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       preparing: "Preparing the launch GPU setting.",
       recentLaunch: (outcome: string, time: string) => `Last launch: ${outcome} · ${time}`
     },
-    migration: {
-      sourcePath: "Original path",
-      managedPath: "Managed path",
-      restored: "Restored",
-      restore: "Restore",
-      open: "Open",
-      wholeSoftware: "Whole software",
-      data: "Data",
-      migrated: "Migrated",
-      summary: (kind: string, state: string) => `${kind} · ${state}`,
-      migratedAt: (time: string) => `Migrated ${time}`,
-      restoredAt: (time: string) => `Restored ${time}`
-    }
   }
 };

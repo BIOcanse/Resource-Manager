@@ -5,7 +5,6 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.Optimization;
@@ -20,7 +19,6 @@ using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -30,6 +28,8 @@ using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.ResourceTable;
+using ResourceManager.ReadWrite;
+using ResourceManager.ReadWrite.Information;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -37,19 +37,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapMetricsEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapMetricFieldEndpoints();
         app.MapGet("/api/metrics/catalog", (
             DashboardMonitoringCatalogState catalogState) =>
         {
-            var snapshot = catalogState.Current;
-            // 读不到的条目也要发出去。
-            //
-            // 目录里每一条都带着 Selectable、DisabledReason 和缺哪个组件，
-            // 界面也早就会把这些画成灰掉的条目加一句原因。先前这里按 Selectable 过滤，
-            // 等于把算好的原因直接扔掉 —— 用户看到的就是"根本没有这一项"，
-            // 分不清是这台机器读不到，还是这个软件压根不支持。
-            // 比如 AMD 机器上的 CPU 电压/电流/温度要装 AMD SMU 组件才读得到，
-            // 不发出来就没有任何地方告诉用户这件事。
-            return Results.Ok(snapshot is null
+            // Keep unavailable definitions so consumers can display the missing capability.
+            return Results.Ok(catalogState.Current is not { } snapshot
                 ? Array.Empty<MetricDefinition>()
                 : MetricCatalog.FromSnapshot(snapshot));
         }).AllowAnonymous();
@@ -67,9 +60,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : runtimePlanProvider.Current.Monitoring.DashboardMetricRequest;
             var snapshot = await sampler.GetSnapshotAsync(snapshotRequest, cancellationToken);
             var presentation = MetricCatalog.ApplyPresentation(snapshot);
-            return Results.Ok(MetricSnapshotWireSnapshot.From(
-                presentation,
-                snapshotRequest));
+            return Results.Ok(MetricSnapshotWireSnapshot.From(presentation, snapshotRequest));
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/gpu-specialized", (
@@ -79,12 +70,46 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             DisableResponseCache(response);
             cancellationToken.ThrowIfCancellationRequested();
-            return Results.Ok(GpuTelemetryWireSnapshot.From(
-                gpuTelemetry.GetLatestSnapshot()));
+            return Results.Ok(GpuTelemetryWireSnapshot.From(gpuTelemetry.GetLatestSnapshot()));
+        }).AllowAnonymous();
+        return app;
+    }
+
+    private static IEndpointRouteBuilder MapMetricFieldEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/metrics/fields/capabilities", ([Microsoft.AspNetCore.Mvc.FromServices] ResourceManager.ReadWrite.ReadWriteCore core)
+            => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
+
+        app.MapGet("/api/metrics/fields/catalog", (DashboardMonitoringCatalogState catalogState)
+            => catalogState.Current is { } snapshot
+                ? Results.Ok(MetricDeviceFields.Catalog(snapshot))
+                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
+
+        app.MapGet("/api/metrics/fields/snapshot", async (
+            HttpRequest request, HttpResponse response, DashboardMonitoringCatalogState catalogState,
+            IMetricSampler sampler, CancellationToken cancellationToken) =>
+        {
+            DisableResponseCache(response);
+            var device = request.Query["device"].ToString();
+            if (string.IsNullOrWhiteSpace(device)) return Results.BadRequest();
+            var fields = ParseMetricFieldNames(request.Query);
+            if (catalogState.Current is not { } catalog) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            MetricSampleRequest selection;
+            try { selection = MetricDeviceFields.CreateRequest(catalog, device, fields); }
+            catch (ArgumentException) { return Results.BadRequest(); }
+            var snapshot = await sampler.GetSnapshotAsync(selection, cancellationToken);
+            return Results.Ok(MetricDeviceFields.Read(snapshot, device, fields));
         }).AllowAnonymous();
 
         return app;
     }
+
+    internal static IReadOnlyList<FieldCapability> PublicCapabilityFields(
+        IEnumerable<FieldCapability> fields)
+        => fields.Where(static field => !string.Equals(
+            field.ReadSource,
+            DeviceInformationFieldRegistry.MftSourceId,
+            StringComparison.Ordinal)).ToArray();
 
     private static TimeSpan ParseSamplingSubscriptionInterval(
         IQueryCollection query)
@@ -97,4 +122,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         return TimeSpan.FromMilliseconds(Math.Clamp(milliseconds, 100, 60_000));
     }
+
+    private static IReadOnlySet<string> ParseMetricFieldNames(IQueryCollection query)
+        => query["fields"].SelectMany(static value => (value ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToHashSet(StringComparer.Ordinal);
 }

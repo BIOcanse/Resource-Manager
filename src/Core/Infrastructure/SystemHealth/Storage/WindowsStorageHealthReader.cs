@@ -23,7 +23,8 @@ public sealed class WindowsStorageHealthReader : IStorageHealthReader
             "SELECT * FROM MSFT_StorageReliabilityCounter");
         var reliabilityRows = reliability.Error is null ? reliability.Rows : [];
         var disks = physicalDisks.Rows
-            .Select((row, ordinal) => CreateDisk(row, reliabilityRows, ordinal))
+            .Where(static row => !string.IsNullOrWhiteSpace(DeviceTopologyWmiUtilities.ReadString(row, "DeviceId")))
+            .Select(row => CreateDisk(row, reliabilityRows))
             .OrderBy(static disk => ParseDeviceOrdinal(disk.DeviceId))
             .ToArray();
         return new StorageHealthSnapshot(
@@ -35,16 +36,15 @@ public sealed class WindowsStorageHealthReader : IStorageHealthReader
 
     private static PhysicalDiskHealthSnapshot CreateDisk(
         IReadOnlyDictionary<string, object?> row,
-        IReadOnlyList<Dictionary<string, object?>> reliabilityRows,
-        int ordinal)
+        IReadOnlyList<Dictionary<string, object?>> reliabilityRows)
     {
-        var deviceId = Clean(DeviceTopologyWmiUtilities.ReadString(row, "DeviceId")) ?? ordinal.ToString();
+        var deviceId = Clean(DeviceTopologyWmiUtilities.ReadString(row, "DeviceId"))!;
         var friendlyName = Clean(DeviceTopologyWmiUtilities.ReadString(row, "FriendlyName")) ?? $"磁盘 {deviceId}";
         var serialNumber = Clean(DeviceTopologyWmiUtilities.ReadString(row, "SerialNumber"));
         var uniqueId = Clean(DeviceTopologyWmiUtilities.ReadString(row, "UniqueId"));
         var busType = DeviceTopologyWmiUtilities.ReadUInt32(row, "BusType");
         var physicalLocation = Clean(DeviceTopologyWmiUtilities.ReadString(row, "PhysicalLocation"));
-        var reliabilityRow = FindReliabilityRow(reliabilityRows, deviceId, serialNumber, uniqueId, ordinal);
+        var reliabilityRow = FindReliabilityRow(reliabilityRows, deviceId);
         return new PhysicalDiskHealthSnapshot(
             CreateDeviceKey(uniqueId ?? serialNumber ?? $"{deviceId}|{friendlyName}"),
             deviceId,
@@ -70,19 +70,12 @@ public sealed class WindowsStorageHealthReader : IStorageHealthReader
             DeviceTopologyWmiUtilities.ReadUInt64(reliabilityRow, "FlushLatencyMax"));
     }
 
-    private static Dictionary<string, object?>? FindReliabilityRow(
+    internal static Dictionary<string, object?>? FindReliabilityRow(
         IReadOnlyList<Dictionary<string, object?>> rows,
-        string deviceId,
-        string? serialNumber,
-        string? uniqueId,
-        int ordinal)
+        string deviceId)
     {
-        return rows.FirstOrDefault(row => ValueEquals(row, "DeviceId", deviceId))
-            ?? rows.FirstOrDefault(row => ValueContains(row, "SerialNumber", serialNumber))
-            ?? rows.FirstOrDefault(row => ValueContains(row, "UniqueId", uniqueId))
-            ?? rows.FirstOrDefault(row => ValueContains(row, "InstanceName", serialNumber))
-            ?? rows.FirstOrDefault(row => ValueContains(row, "InstanceName", uniqueId))
-            ?? rows.ElementAtOrDefault(ordinal);
+        var matches = rows.Where(row => ValueEquals(row, "DeviceId", deviceId)).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
     }
 
     private static bool ValueEquals(IReadOnlyDictionary<string, object?> row, string key, string value)
@@ -91,14 +84,6 @@ public sealed class WindowsStorageHealthReader : IStorageHealthReader
             Clean(DeviceTopologyWmiUtilities.ReadString(row, key)),
             Clean(value),
             StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool ValueContains(IReadOnlyDictionary<string, object?> row, string key, string? value)
-    {
-        var candidate = Clean(DeviceTopologyWmiUtilities.ReadString(row, key));
-        return candidate is not null
-            && !string.IsNullOrWhiteSpace(value)
-            && candidate.Contains(value.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<uint> ReadUInt32Array(IReadOnlyDictionary<string, object?> row, string key)

@@ -81,6 +81,8 @@ export const zhStatusCopy = {
       nameFallback: "硬件支持组件",
       purposeFallback: "为资源管理器补充硬件信息和相关功能。",
       names: {
+          fanControlCore: "风扇控制核心",
+          hardwareBridge: "硬件写入辅助进程",
         amdSmuPawnIo: "AMD 处理器传感支持",
         amdRyzenMaster: "AMD Ryzen 监控支持",
         msiAfterburner: "MSI Afterburner",
@@ -96,6 +98,8 @@ export const zhStatusCopy = {
         intelPcm: "Intel 处理器监控支持"
       },
       purposes: {
+          fanControlCore: "读取并控制机身风扇，执行固件或软件曲线。",
+          hardwareBridge: "调整处理器功耗上限和电压，撤销时恢复保存的原值。",
         msiAfterburner: "装了 Afterburner 就顺便读它的显卡数据，不装也不影响。",
         amdRyzenSdk: "AMD 官方 SDK，读功耗、电压、电流和温度。",
         amdSmu: "直接读 SMU 数据表，比官方 SDK 多出 STAPM 和每核读数。",

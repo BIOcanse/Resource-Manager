@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -37,6 +38,7 @@ public sealed class RuntimePlanProvider(HostManagerDeploymentState hostManagerDe
                 Monitor.Wait(publicationGate);
             }
 
+            FreedomPointPlanApplication.ValidatePublication(Current, plan);
             hostManagerDeploymentState.PublishRuntimePlan(plan);
             publication =
                 hostManagerDeploymentState.CaptureRuntimePlanPublication();

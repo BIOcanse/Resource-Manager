@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.ProcessFields;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -15,6 +16,8 @@ internal enum ResourceBreakdownFailureTransition
 internal sealed class ResourceBreakdownSnapshotState
 {
     private readonly object gate;
+    private ProcessFieldCurrentState processFields;
+    internal ProcessFieldCurrentState ProcessFieldState => processFields;
     private Dictionary<string, DatasetEntry> datasets =
         new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset? lastAnyAttemptAt;
@@ -29,6 +32,7 @@ internal sealed class ResourceBreakdownSnapshotState
     public ResourceBreakdownSnapshotState(object? publicationGate = null)
     {
         gate = publicationGate ?? new object();
+        processFields = new(gate);
     }
 
     public ResourceBreakdownSnapshot? Read(DateTimeOffset now)
@@ -261,7 +265,9 @@ internal sealed class ResourceBreakdownSnapshotState
     {
         lock (gate)
         {
+            processFields.CommitPrepared(prepared.processFields);
             datasets = prepared.datasets;
+            foreach (var entry in datasets.Values) entry.BindFields(processFields);
             lastAnyAttemptAt = prepared.lastAnyAttemptAt;
             scheduleWorkspaceIncarnation = prepared.scheduleWorkspaceIncarnation;
             scheduleConfigurationGeneration = prepared.scheduleConfigurationGeneration;
@@ -277,10 +283,7 @@ internal sealed class ResourceBreakdownSnapshotState
     {
         var clone = new ResourceBreakdownSnapshotState(gate)
         {
-            datasets = datasets.ToDictionary(
-                static pair => pair.Key,
-                static pair => pair.Value.Clone(),
-                StringComparer.OrdinalIgnoreCase),
+            processFields = processFields.PrepareCopy(),
             lastAnyAttemptAt = lastAnyAttemptAt,
             scheduleWorkspaceIncarnation = scheduleWorkspaceIncarnation,
             scheduleConfigurationGeneration = scheduleConfigurationGeneration,
@@ -290,6 +293,7 @@ internal sealed class ResourceBreakdownSnapshotState
             scheduleOrigin = scheduleOrigin,
             stateRevision = stateRevision
         };
+        clone.datasets = datasets.ToDictionary(static pair => pair.Key, pair => pair.Value.Clone(clone.processFields), StringComparer.OrdinalIgnoreCase);
         return clone;
     }
 
@@ -329,6 +333,24 @@ internal sealed class ResourceBreakdownSnapshotState
         {
             var dataset = GetOrCreateDataset(requestedDataset.Key);
             dataset.LastAttemptAt = attemptedAt;
+            if (requestedDataset.All(static id => ProcessMetricFieldRegistry.Find(id) is not null))
+            {
+                var selected = requestedDataset.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var fields = sample.ProcessFields?.Select(selected);
+                if (fields is null || fields.Fields.Count != selected.Count || fields.CapturedAt is null)
+                {
+                    if (fields is not null) dataset.ProcessFields = fields;
+                    SetDatasetFailure(dataset, attemptedAt, new InvalidOperationException("The process field source is unavailable."),
+                        "resource-breakdown-dataset-observation-not-current", "资源数据集本轮观测不完整，当前数据集已置空。");
+                    continue;
+                }
+                dataset.ProcessFields = fields;
+                dataset.Coverage.Clear();
+                foreach (var field in fields.Fields)
+                    dataset.Coverage.Add(field.Name, new MetricCoverage(request.ProcessDetailLevel));
+                SetDatasetSuccess(dataset, fields.CapturedAt.Value);
+                continue;
+            }
             var requested = requestedDataset.ToArray();
             var replacement = requested
                 .Where(sampledByMetric.ContainsKey)
@@ -375,15 +397,32 @@ internal sealed class ResourceBreakdownSnapshotState
                     bar.MetricId,
                     new MetricCoverage(request.ProcessDetailLevel));
             }
-            dataset.Generation = checked(dataset.Generation + 1);
-            dataset.CapturedAt = sample.CapturedAt;
-            dataset.LastSuccessAt = sample.CapturedAt;
-            dataset.ReadyUntil = null;
-            dataset.FailureCode = null;
-            dataset.FailureMessage = null;
-            dataset.FailureSignature = null;
-            dataset.StateRevision += 1;
+            SetDatasetSuccess(dataset, sample.CapturedAt);
         }
+    }
+
+    internal long Revision { get { lock (gate) return stateRevision; } }
+
+    internal ProcessMetricFieldSnapshot[] ReadProcessFieldParts()
+    {
+        return processFields.ReadParts();
+    }
+
+    internal ProcessMetricFieldSnapshot? ReadProcessFieldPart(string datasetId)
+    {
+        return processFields.ReadPart(datasetId);
+    }
+
+    private static void SetDatasetSuccess(DatasetEntry dataset, DateTimeOffset capturedAt)
+    {
+        dataset.Generation = checked(dataset.Generation + 1);
+        dataset.CapturedAt = capturedAt;
+        dataset.LastSuccessAt = capturedAt;
+        dataset.ReadyUntil = null;
+        dataset.FailureCode = null;
+        dataset.FailureMessage = null;
+        dataset.FailureSignature = null;
+        dataset.StateRevision += 1;
     }
 
     private ResourceBreakdownSnapshot CreateSnapshot(
@@ -404,7 +443,7 @@ internal sealed class ResourceBreakdownSnapshotState
             StringComparer.OrdinalIgnoreCase);
         var selectedDatasets = requestedDatasetIds
             .Select(datasetId => datasets.GetValueOrDefault(datasetId)
-                ?? new DatasetEntry(datasetId))
+                ?? new DatasetEntry(datasetId, processFields))
             .ToArray();
         var datasetStates = selectedDatasets
             .Select(CreateDatasetState)
@@ -434,8 +473,23 @@ internal sealed class ResourceBreakdownSnapshotState
         return new ResourceBreakdownSnapshot(capturedAt, bars)
         {
             Sampling = sampling,
-            Datasets = datasetStates
+            Datasets = datasetStates,
+            ProcessFields = CreateProcessFields(selectedDatasets, requestedMetricSet)
         };
+    }
+
+    private static ProcessMetricFieldSnapshot? CreateProcessFields(DatasetEntry[] selectedDatasets,
+        IReadOnlySet<string>? requested)
+    {
+        var selected = requested ?? ProcessMetricFieldRegistry.Definitions.Select(static field => field.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var parts = selectedDatasets.Select(dataset =>
+        {
+            var names = selected.Where(name => ProcessMetricFieldRegistry.Find(name)?.DatasetId == dataset.DatasetId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return names.Count == 0 ? null : dataset.ProcessFields?.Select(names) ?? ProcessMetricFieldSnapshot.Empty(names);
+        }).OfType<ProcessMetricFieldSnapshot>().ToArray();
+        return parts.Length == 0 ? null : ProcessMetricFieldSnapshot.Merge(parts);
     }
 
     private static ResourceBreakdownDatasetSamplingState CreateDatasetState(
@@ -472,7 +526,7 @@ internal sealed class ResourceBreakdownSnapshotState
     {
         if (!datasets.TryGetValue(datasetId, out var dataset))
         {
-            dataset = new DatasetEntry(datasetId);
+            dataset = new DatasetEntry(datasetId, processFields);
             datasets.Add(datasetId, dataset);
         }
         return dataset;
@@ -495,6 +549,7 @@ internal sealed class ResourceBreakdownSnapshotState
         dataset.LastAttemptAt = attemptedAt;
         dataset.Bars.Clear();
         dataset.Coverage.Clear();
+        dataset.ProcessFields = dataset.ProcessFields?.Clear();
         dataset.CapturedAt = null;
         dataset.LastSuccessAt = null;
         dataset.ReadyUntil = null;
@@ -627,8 +682,11 @@ internal sealed class ResourceBreakdownSnapshotState
                 StringSplitOptions.RemoveEmptyEntries
                 | StringSplitOptions.TrimEntries);
 
-    private sealed class DatasetEntry(string datasetId)
+    private sealed class DatasetEntry(string datasetId, ProcessFieldCurrentState fieldState)
     {
+        private ProcessFieldCurrentState fields = fieldState;
+        internal void BindFields(ProcessFieldCurrentState current) => fields = current;
+        public ProcessMetricFieldSnapshot? ProcessFields { get => fields.ReadPart(DatasetId); set => fields.SetPart(DatasetId, value); }
         public string DatasetId { get; } = datasetId;
         public Dictionary<string, ResourceBreakdownBar> Bars { get; } =
             new(StringComparer.OrdinalIgnoreCase);
@@ -644,10 +702,11 @@ internal sealed class ResourceBreakdownSnapshotState
         public string? FailureMessage { get; set; }
         public string? FailureSignature { get; set; }
 
-        public DatasetEntry Clone()
+        public DatasetEntry Clone(ProcessFieldCurrentState targetFields)
         {
-            var clone = new DatasetEntry(DatasetId)
+            var clone = new DatasetEntry(DatasetId, targetFields)
             {
+                ProcessFields = ProcessFields,
                 Generation = Generation,
                 StateRevision = StateRevision,
                 CapturedAt = CapturedAt,

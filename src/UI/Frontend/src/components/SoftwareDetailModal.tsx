@@ -14,6 +14,7 @@ import {
   TabsTrigger
 } from "../ui/primitives/Tabs.tsx";
 import { StandardSelect } from "./StandardSelect";
+import { SoftwareProtectionControl } from "./SoftwareProtectionControl";
 import type {
   CpuCcdModel,
   CpuTopologySnapshot,
@@ -30,20 +31,17 @@ import type {
   GpuPlacementProviderCapability,
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareSettingsSnapshot,
-  SoftwareDataMigrationRecord,
   SoftwareDetailModel
 } from "../types";
 import {
-  migrationTargetCategoryLabel,
   userFacingDateTime,
   userFacingErrorMessage
 } from "../presentation/userFacingText";
 import {
+  canConfigureRuntimePlacement,
   isOrdinarySystemGpuTarget,
   isUnavailableStartupGpuTarget,
   startupTargetGpuOptionsForSoftwarePolicy,
-  targetGpuOptionsForSoftwarePolicy,
-  toOrdinarySystemGpuTarget,
   type GpuPolicySelectOption
 } from "./gpuPlacementTargetOptions";
 import type { UserDetailSection } from "../presentation/userDetails";
@@ -56,12 +54,11 @@ import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
-type DetailTabId = "overview" | "policy" | "processes" | "overlay" | "migration";
+type DetailTabId = "overview" | "policy" | "processes" | "overlay";
 
 interface SoftwareDetailModalProps {
   detail: SoftwareDetailModel | null;
   notice: DetailNotice | null;
-  migrationRecords: SoftwareDataMigrationRecord[];
   actionInProgress: boolean;
   gpuPlacementEnabled: boolean;
   preciseGpuPlacementEnabled: boolean;
@@ -70,10 +67,6 @@ interface SoftwareDetailModalProps {
   gpuPlacementSettings: GpuPlacementSoftwareSettingsSnapshot | null;
   gpuPlacementLoading: boolean;
   onClose: () => void;
-  onMigrateData: () => void;
-  onMigrateRoot: () => void;
-  onRestoreRecord: (record: SoftwareDataMigrationRecord) => void;
-  onRestoreAll: () => void;
   onOpenPath: (path: string) => void;
   onConfirmPortableRoot: () => void;
   onSaveGpuPlacementSoftwarePolicy: (policy: GpuPlacementSoftwarePolicy) => Promise<void> | void;
@@ -87,7 +80,6 @@ function detailTabLabels(): Record<DetailTabId, string> {
     policy: uiText.softwareDetail.tab.policy,
     processes: uiText.softwareDetail.tab.processes,
     overlay: uiText.performanceOverlay.tab,
-    migration: uiText.softwareDetail.tab.migration
   };
 }
 
@@ -213,7 +205,6 @@ function policyComparableKey(policy: GpuPlacementSoftwarePolicy) {
     allowedProviders: sortedPolicyValues(policy.allowedProviders),
     schedulingMode: policy.schedulingMode,
     startupTargetGpu: policy.startupTargetGpu,
-    targetGpu: policy.targetGpu,
     runtimeSchedulingMode: policy.runtimeSchedulingMode,
     explicitSelectionMode: policy.explicitSelectionMode,
     runtimeHotSwitchEnabled: policy.runtimeHotSwitchEnabled ?? null,
@@ -240,7 +231,6 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
   const [selectedProcessKey, setSelectedProcessKey] = createSignal<string | null>(null);
   const [noticeDetailsOpen, setNoticeDetailsOpen] = createSignal(false);
   const detail = () => props.detail;
-  const activeMigrationRecords = () => props.migrationRecords.filter(isActiveMigrationRecord);
   const tabs = createMemo<DetailTabId[]>(() => {
     const model = detail();
     const visibleTabs: DetailTabId[] = ["overview"];
@@ -249,9 +239,6 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
     }
     if (model?.type === "software" && props.mutablePersistenceEnabled) {
       visibleTabs.push("overlay");
-    }
-    if (props.runtimeEffectsEnabled) {
-      visibleTabs.push("migration");
     }
     return visibleTabs;
   });
@@ -368,6 +355,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
               <>
                 <TabsPanel value="overview" class="software-detail-tab-panel">
                   <SoftwareIssueDetailSection issues={model().issues} />
+                  <Show when={props.runtimeEffectsEnabled && props.mutablePersistenceEnabled && model().type === "software"}>
+                    <SoftwareProtectionControl softwareId={model().id} />
+                  </Show>
                   <DetailSection title={uiText.softwareDetail.section.basic} rows={model().baseRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.metadata} rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.paths} rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
@@ -420,20 +410,6 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   </Show>
                 </TabsPanel>
 
-                <TabsPanel value="migration" class="software-detail-tab-panel">
-                  <MigrationRecordsSection
-                    records={props.migrationRecords}
-                    actionInProgress={props.actionInProgress}
-                    onRestoreRecord={props.onRestoreRecord}
-                    onOpenPath={props.onOpenPath}
-                  />
-                  <Show when={props.migrationRecords.length === 0}>
-                    <section class="software-detail-section">
-                      <h3>{uiText.softwareDetail.section.migrationAndRestore}</h3>
-                      <p class="software-detail-empty">{uiText.softwareDetail.noMigrationRecord}</p>
-                    </section>
-                  </Show>
-                </TabsPanel>
                 <TabsPanel value="overlay" class="software-detail-tab-panel">
                   <Show when={model().type === "software"}>
                     <SoftwareOverlaySettings softwareId={model().id} active={activeTab() === "overlay"} />
@@ -446,24 +422,6 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
         </TabsRoot>
 
         <DialogActions class="detail-modal-actions">
-          <Show when={activeTab() === "migration"}>
-            <Show when={activeMigrationRecords().length > 0}>
-              <button type="button" disabled={props.actionInProgress} onClick={props.onRestoreAll}>
-                {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.restoreAll}
-              </button>
-            </Show>
-            <button class="secondary" type="button" disabled={props.actionInProgress || !detail()?.dataSearchName} onClick={props.onMigrateData}>
-              {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.migrateData}
-            </button>
-            <button
-              type="button"
-              disabled={props.actionInProgress || (detail()?.rootMigrationPaths.length ?? 0) === 0}
-              title={(detail()?.rootMigrationPaths.length ?? 0) === 0 ? detail()?.rootMigrationDisabledReason ?? "" : ""}
-              onClick={props.onMigrateRoot}
-            >
-              {props.actionInProgress ? uiText.softwareDetail.processing : uiText.softwareDetail.migrateWholeSoftware}
-            </button>
-          </Show>
           <button class="secondary" type="button" onClick={props.onClose}>{uiText.softwareDetail.close}</button>
         </DialogActions>
       </DialogRoot>
@@ -515,7 +473,7 @@ function GpuPlacementPolicySection(props: {
   const startupCapabilityAvailable = () => props.settings?.processCapabilities?.some(
     (capability) => capability.startup.state === "supported") === true;
   const runtimeCapabilityAvailable = () => props.settings?.processCapabilities?.some(
-    (capability) => capability.runtime.state === "supported") === true;
+    (capability) => canConfigureRuntimePlacement(capability.runtime.state)) === true;
   const preciseCapabilityAvailable = () => startupCapabilityAvailable() || runtimeCapabilityAvailable();
   const dirty = () => {
     const saved = savedPolicy();
@@ -638,9 +596,6 @@ function GpuPlacementPolicySection(props: {
                       startupTargetGpu: schedulingMode === "Ordinary" && !isOrdinarySystemGpuTarget(current().startupTargetGpu)
                         ? "SystemDefaultGpu"
                         : current().startupTargetGpu,
-                      targetGpu: schedulingMode === "Ordinary" && !isOrdinarySystemGpuTarget(current().targetGpu)
-                        ? "SystemDefaultGpu"
-                        : current().targetGpu
                     });
                   }}
                 />
@@ -666,26 +621,8 @@ function GpuPlacementPolicySection(props: {
                     const runtimeSchedulingMode = value as GpuPlacementRuntimeSchedulingMode;
                     updateDraft({
                       runtimeSchedulingMode,
-                      targetGpu: runtimeSchedulingMode === "Ordinary" && !isOrdinarySystemGpuTarget(current().targetGpu)
-                        ? "SystemDefaultGpu"
-                        : current().targetGpu
                     });
                   }}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.runtimeTargetGpu}
-                  value={props.preciseGpuPlacementEnabled
-                    ? current().targetGpu
-                    : toOrdinarySystemGpuTarget(current().targetGpu)}
-                  options={targetGpuOptionsForSoftwarePolicy(
-                    props.preciseGpuPlacementEnabled && runtimeCapabilityAvailable(),
-                    current().schedulingMode,
-                    current().runtimeSchedulingMode,
-                    props.preciseGpuPlacementEnabled
-                      ? current().targetGpu
-                      : toOrdinarySystemGpuTarget(current().targetGpu),
-                    exactTargets())}
-                  onChange={(value) => updateDraft({ targetGpu: value })}
                 />
                 <PolicySelect
                   label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
@@ -1121,21 +1058,6 @@ function GpuPlacementProcessSection(props: {
                         onChange={(value) => props.onUpdateProcess(process(), { maxRisk: value as GpuPlacementProcessPolicy["maxRisk"] })}
                       />
                       <PolicySelect
-                        label={uiText.softwareDetail.label.runtimeTargetGpu}
-                        value={props.preciseGpuPlacementEnabled
-                          ? policy().targetGpu
-                          : toOrdinarySystemGpuTarget(policy().targetGpu)}
-                        options={targetGpuOptionsForSoftwarePolicy(
-                          props.preciseGpuPlacementEnabled && selectedCapabilities()?.runtime.state === "supported",
-                          softwarePolicy()?.schedulingMode ?? "Precise",
-                          softwarePolicy()?.runtimeSchedulingMode ?? "Precise",
-                          props.preciseGpuPlacementEnabled
-                            ? policy().targetGpu
-                            : toOrdinarySystemGpuTarget(policy().targetGpu),
-                          props.settings?.targetInventory?.exactTargets ?? [])}
-                        onChange={(value) => props.onUpdateProcess(process(), { targetGpu: value })}
-                      />
-                      <PolicySelect
                         label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
                         value={policy().explicitSelectionMode}
                         options={explicitSelectionOptions()}
@@ -1279,81 +1201,6 @@ function PolicyNumberInput(props: {
   );
 }
 
-function MigrationRecordsSection(props: {
-  records: SoftwareDataMigrationRecord[];
-  actionInProgress: boolean;
-  onRestoreRecord: (record: SoftwareDataMigrationRecord) => void;
-  onOpenPath: (path: string) => void;
-}) {
-  return (
-    <Show when={props.records.length > 0}>
-      <section class="software-detail-section">
-        <h3>{uiText.softwareDetail.section.migrationAndRestore}</h3>
-        <div class="software-detail-migration-list">
-          <For each={props.records}>
-            {(record) => {
-              const restored = () => !isActiveMigrationRecord(record);
-              return (
-                <article class="software-detail-migration-record" classList={{ restored: restored() }}>
-                  <div class="software-detail-migration-main">
-                    <strong>{formatMigrationRecordTitle(record)}</strong>
-                    <span>{formatMigrationRecordMeta(record)}</span>
-                  </div>
-                  <div class="software-detail-migration-paths">
-                    <PathLine label={uiText.softwareDetail.migration.sourcePath} path={record.sourcePath} onOpenPath={props.onOpenPath} />
-                    <PathLine label={uiText.softwareDetail.migration.managedPath} path={record.destinationPath} onOpenPath={props.onOpenPath} />
-                  </div>
-                  <button
-                    class="secondary"
-                    type="button"
-                    disabled={props.actionInProgress || restored()}
-                    onClick={() => props.onRestoreRecord(record)}
-                  >
-                    {restored() ? uiText.softwareDetail.migration.restored : uiText.softwareDetail.migration.restore}
-                  </button>
-                </article>
-              );
-            }}
-          </For>
-        </div>
-      </section>
-    </Show>
-  );
-}
-
-function PathLine(props: { label: string; path?: string | null; onOpenPath: (path: string) => void }) {
-  const path = () => textOrEmpty(props.path);
-  return (
-    <Show when={path()}>
-      <div class="software-detail-migration-path">
-        <span>{props.label}</span>
-        <code>{path()}</code>
-        <button class="software-detail-path-button secondary" type="button" onClick={() => props.onOpenPath(path())}>
-          {uiText.softwareDetail.migration.open}
-        </button>
-      </div>
-    </Show>
-  );
-}
-
-function formatMigrationRecordTitle(record: SoftwareDataMigrationRecord) {
-  const kind = record.migrationKind === "Root" ? uiText.softwareDetail.migration.wholeSoftware : uiText.softwareDetail.migration.data;
-  const state = isActiveMigrationRecord(record) ? uiText.softwareDetail.migration.migrated : uiText.softwareDetail.migration.restored;
-  return `${kind} · ${state}`;
-}
-
-function formatMigrationRecordMeta(record: SoftwareDataMigrationRecord) {
-  return [
-    migrationTargetCategoryLabel(record.targetCategory),
-    record.createdAt ? uiText.softwareDetail.migration.migratedAt(new Date(record.createdAt).toLocaleString()) : "",
-    record.restoredAt ? uiText.softwareDetail.migration.restoredAt(new Date(record.restoredAt).toLocaleString()) : ""
-  ].filter(Boolean).join(" · ");
-}
-
-function isActiveMigrationRecord(record: SoftwareDataMigrationRecord) {
-  return textOrEmpty(record.state).toLowerCase() !== "restored";
-}
-
 function DetailSection(props: { title: string; rows: DetailRow[]; onOpenPath?: (path: string) => void }) {
   const visibleRows = () => props.rows
     .map(([label, value]) => [label, normalizeDetailValue(value)] as DetailRow)
@@ -1410,7 +1257,7 @@ function ScalarDetailValue(props: { value: ScalarDetailValueType; onOpenPath?: (
           <div class="software-detail-path">
             <code>{text()}</code>
             <button class="software-detail-path-button secondary" type="button" onClick={() => props.onOpenPath?.(text())}>
-              {uiText.softwareDetail.migration.open}
+              {uiText.softwareDetail.openPath}
             </button>
           </div>
         </Show>
@@ -1446,7 +1293,6 @@ function createDefaultProcessPolicy(
     enabledMode: "Inherit",
     maxRisk: "Low",
     allowedProviders: ["windows-graphics-preference", "vendor-profile", "dxgi-launch-shim", "d3d-device-create-shim"],
-    targetGpu: "SystemDefaultGpu",
     explicitSelectionMode: "DefaultSkip",
     baseScoreOverride: null,
     startupInterceptionEnabled: false

@@ -1,17 +1,24 @@
-using ResourceManager.App.Infrastructure.Windows;
+using static ResourceManager.ReadWrite.Windows.Cpu.WindowsCpuOsTopologyReader;
+using ResourceManager.App.Domain.CpuTopology;
+using NativeMethods = ResourceManager.ReadWrite.Windows.Cpu.WindowsCpuTopologyNativeMethods;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
 public sealed partial class WindowsCpuTopologyReader
 {
-    private IReadOnlyList<PhysicalCoreRecord> ReadPhysicalCoreRecords(ICollection<string> notes)
+    private IReadOnlyList<PhysicalCoreRecord> ReadPhysicalCoreRecords(
+        ICollection<string> notes, out IReadOnlyList<CpuOsPhysicalCore>? reportedCores)
     {
+        reportedCores = null;
         try
         {
             var records = QueryLogicalProcessorRecords(NativeMethods.RelationProcessorCore)
                 .Select((record, index) => PhysicalCoreRecord.From(record, index))
                 .Where(static record => record.LogicalProcessors.Count > 0)
                 .ToArray();
+            reportedCores = records.Select(core => new CpuOsPhysicalCore($"core:{core.Index}",
+                (byte)core.EfficiencyClass, core.SmtRelationshipReported,
+                core.LogicalProcessors.Select(static logical => logical.GlobalId).ToArray())).ToArray();
             if (records.Length > 0)
             {
                 return records;

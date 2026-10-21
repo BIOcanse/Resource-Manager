@@ -28,7 +28,7 @@ public sealed class RuntimeSpecializationPlanTests
         var explicitOff = ordinary with { SoftwareId = "explicit-off", RuntimeHotSwitchEnabled = false };
         var process = new GpuPlacementProcessPolicy("game", "renderer", "renderer.exe", @"C:\Game\renderer.exe",
             false, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low,
-            GpuPlacementProviderIds.Defaults, GpuPlacementTargets.AutoIdleGpu,
+            GpuPlacementProviderIds.Defaults,
             GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.UnixEpoch);
         var document = new GpuPlacementPolicyDocument(GpuPlacementPolicyDocumentVersions.Current,
             [game, highPerformance, ordinary, explicitOn, explicitOff], [process], DateTimeOffset.UnixEpoch);
@@ -64,7 +64,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.False(memoryOnly.ExternalAdaptedMemoryActionsEnabled);
         Assert.True(memoryOnly.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(memoryOnly.AutomaticMemoryCleanupEnabled);
-        Assert.False(memoryOnly.VramResourceActionsEnabled);
+        Assert.Equal(0, (byte)memoryOnly.Capabilities & (1 << 2));
         Assert.False(memoryOnly.SoftwareSchedulingEnabled);
         Assert.False(memoryOnly.AutomaticProcessPoliciesEnabled);
         Assert.False(memoryOnly.HardwarePlacementEnabled);
@@ -73,7 +73,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.False(smart.ExternalAdaptedMemoryActionsEnabled);
         Assert.True(smart.ResourceManagerSelfMemoryActionsEnabled);
         Assert.True(smart.AutomaticMemoryCleanupEnabled);
-        Assert.True(smart.VramResourceActionsEnabled);
+        Assert.Equal(0, (byte)smart.Capabilities & (1 << 2));
         Assert.True(smart.SoftwareSchedulingEnabled);
         Assert.True(smart.AutomaticProcessPoliciesEnabled);
         Assert.True(smart.HardwarePlacementEnabled);
@@ -106,7 +106,7 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.Equal(cpu, plan.AutomaticProcessPoliciesEnabled);
         Assert.Equal(cpu, plan.CpuPlacementEnabled);
         Assert.Equal(gpu, plan.GpuSchedulingEnabled);
-        Assert.Equal(gpu, plan.VramResourceActionsEnabled);
+        Assert.Equal(0, (byte)plan.Capabilities & (1 << 2));
         Assert.Equal(gpu, plan.GpuPlacementEnabled);
         Assert.Equal(cpu || gpu, plan.SoftwareSchedulingEnabled);
     }
@@ -159,7 +159,7 @@ public sealed class RuntimeSpecializationPlanTests
             "Software A",
             SoftwareKinds.Other) with
         {
-            TargetGpu = GpuPlacementTargets.HighPerformanceGpu,
+            StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu,
             ProcessOverrideAllowed = true
         };
         var processPolicy = new GpuPlacementProcessPolicy(
@@ -171,7 +171,6 @@ public sealed class RuntimeSpecializationPlanTests
             GpuPlacementPolicyModes.Manual,
             GpuPlacementRiskLevels.Low,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            "GPU1",
             GpuPlacementExplicitSelectionModes.AllowLow,
             BaseScoreOverride: null,
             DateTimeOffset.UnixEpoch);
@@ -189,7 +188,8 @@ public sealed class RuntimeSpecializationPlanTests
 
         var resolved = plan.Resolve("software-a", "Software A", SoftwareKinds.Other, "proc-key");
 
-        Assert.Equal("GPU1", resolved.TargetGpu);
+        Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, resolved.StartupTargetGpu);
+        Assert.Equal(GpuPlacementPolicyModes.Manual, resolved.EnabledMode);
         Assert.True(resolved.AllowsRuntimeShimExecution());
     }
 
@@ -302,7 +302,7 @@ public sealed class RuntimeSpecializationPlanTests
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         var loaded = StrictHostManagerProfileLoader.LoadBytes(
-            buffer.ToArray(),
+            StrictHostManagerProfileLoader.ExpandMetricDefaults(buffer.ToArray()),
             "test/default.json");
         return new HostManagerPlanCompiler().Compile(
             loaded,

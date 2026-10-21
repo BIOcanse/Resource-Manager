@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.ReadWrite.Windows.Devices;
 using static ResourceManager.App.Infrastructure.Monitoring.PlatformSensorWmiUtilities;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
@@ -53,11 +54,24 @@ internal sealed partial class WindowsPlatformSensorReader(
     internal StorageSensorSnapshot ReadStorageSensors()
         => storageZone.ReadSensors();
 
+    internal StorageSensorSnapshot ReadNvmeSensors(StorageSensorReadRequest request)
+        => storageZone.ReadNvmeSensors(request);
+
+    internal StorageSensorSnapshot ReadAtaSensors(AtaSmartSensorReadRequest request)
+        => storageZone.ReadAtaSensors(request);
+
+    internal Task<WindowsDiskPerformanceCaptureResult> ReadDiskPerformanceAsync(
+        IReadOnlyList<WindowsDiskPerformanceTarget> targets, CancellationToken token)
+        => storageZone.ReadDiskPerformanceAsync(targets, token);
+
     internal HardwareMonitorSensorSnapshot ReadHardwareMonitorSensors()
         => hardwareMonitorZone.ReadSensors();
 
     internal NotebookOemFanSensorSnapshot ReadNotebookOemFanSensors()
         => notebookOemFanZone.ReadSensors();
+
+    internal void SynchronizeNotebookOemFanDemand(bool hasDemand)
+        => notebookOemFanZone.SynchronizeDemand(hasDemand);
 
     private WindowsPlatformSensorSnapshot ReadUncached()
     {
@@ -87,11 +101,6 @@ internal sealed partial class WindowsPlatformSensorReader(
             gpuSensors);
     }
 }
-internal sealed record PlatformSensorReading(
-    string Name,
-    double? Value,
-    string Detail);
-
 internal sealed record WindowsPlatformSensorSnapshot(
     HardwareSensorProviderState ProviderState,
     HardwareSensorProviderState StorageProviderState,
@@ -107,36 +116,3 @@ internal sealed record WindowsPlatformSensorSnapshot(
     IReadOnlyList<DiskTemperatureSensor> Disks,
     IReadOnlyList<SystemFanSensor> SystemFans,
     IReadOnlyList<PlatformGpuSensor> GpuSensors);
-
-internal sealed record DiskTemperatureSensor(
-    int Index,
-    string Name,
-    double? TemperatureCelsius,
-    string Detail);
-
-internal sealed record SystemFanSensor(
-    int Index,
-    string Name,
-    double? SpeedRpm,
-    double? SpeedPercent,
-    string Detail);
-
-internal sealed record PlatformGpuSensor(
-    int Index,
-    string Name,
-    string Detail,
-    double? TemperatureCelsius,
-    double? PowerWatts,
-    double? FanSpeedRpm,
-    double? FanSpeedPercent,
-    double? CoreVoltageVolts,
-    double? CurrentAmps)
-{
-    public bool HasAnyValue =>
-        TemperatureCelsius is not null
-        || PowerWatts is not null
-        || FanSpeedRpm is not null
-        || FanSpeedPercent is not null
-        || CoreVoltageVolts is not null
-        || CurrentAmps is not null;
-}

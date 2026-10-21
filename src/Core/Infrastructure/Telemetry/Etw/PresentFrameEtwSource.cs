@@ -2,10 +2,9 @@ using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.Adapter;
 using ResourceManager.App.Application.Adaptation;
-using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Adaptation;
-using ResourceManager.App.Domain.FrameTiming;
+using ResourceManager.ReadWrite.Windows.Frames;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -21,13 +20,26 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
     internal static readonly Guid Direct3D9Provider = new("783ACA0A-790E-4D7F-8451-AA850511C6B9");
     internal static readonly Guid GraphicsKernelProvider = new("802EC45A-1E99-4B83-9920-87C98277BA9D");
     internal static readonly Guid KernelProcessProvider = new("22FB2CD6-0E7B-422B-A0C7-2FAD1FD0E716");
+    internal static readonly Guid Win32kProvider = new("8C416C79-D49B-4F01-A467-E56D3AA8234C");
     private const ulong RuntimeEventsKeyword = 0x2;
-    private const ulong GraphicsKernelPresentKeyword = 0x8000000;
+    private const ulong GraphicsKernelDisplayKeyword = 0x4000000008000001;
+    private const ulong Win32kDisplayKeyword = 0x8000000400001000;
     private const ulong KernelProcessKeyword = 0x10;
     private const int DxgiPresentStart = 42;
+    private const int DxgiPresentStop = 43;
     private const int DxgiMultiplaneOverlayPresentStart = 55;
+    private const int DxgiMultiplaneOverlayPresentStop = 56;
     private const int Direct3D9PresentStart = 1;
+    private const int Direct3D9PresentStop = 2;
     private const int GraphicsKernelPresent = 184;
+    private const int GraphicsKernelFlip = 168;
+    private const int GraphicsKernelFlipMultiPlaneOverlay = 252;
+    private const int GraphicsKernelQueuePacketStart = 178;
+    private const int GraphicsKernelMmioFlip = 116;
+    private const int GraphicsKernelVSyncDpc = 17;
+    private const int Win32kTokenCompositionSurfaceObject = 201;
+    private const int Win32kTokenStateChanged = 301;
+    private const uint FlipImmediate = 2;
     private const int ProcessStart = 1;
     private const int ProcessStop = 2;
     // 帧事件量小，实时缓冲很久才会写满；定时冲刷把投递延迟限制在这个间隔内（叠加层按 250–500 ms 刷新）。
@@ -92,7 +104,11 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
 
                 var complete = lastLossUtcTicks == 0 || lastLossUtcTicks < now - window.Ticks;
                 return new FrameTimingSnapshot(
-                    new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window));
+                    new DateTimeOffset(now, TimeSpan.Zero), window, complete, ledger.Read(now, window))
+                {
+                    LastPresents = ledger.ReadLastPresents(now, window),
+                    DisplayStreams = ledger.ReadDisplayStreams(now, window)
+                };
             }
         }
     }
@@ -176,11 +192,17 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
             current.EnableProvider(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
                 new TraceEventProviderOptions { EventIDsToEnable = [ProcessStart, ProcessStop] });
             current.EnableProvider(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable = [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart] });
+                new TraceEventProviderOptions { EventIDsToEnable =
+                    [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop] });
             current.EnableProvider(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable = [Direct3D9PresentStart] });
-            current.EnableProvider(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelPresentKeyword,
-                new TraceEventProviderOptions { EventIDsToEnable = [GraphicsKernelPresent] });
+                new TraceEventProviderOptions { EventIDsToEnable = [Direct3D9PresentStart, Direct3D9PresentStop] });
+            current.EnableProvider(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
+                new TraceEventProviderOptions { EventIDsToEnable =
+                    [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
+                        GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc] });
+            current.EnableProvider(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
+                new TraceEventProviderOptions { EventIDsToEnable =
+                    [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged] });
             flushTimer = new Timer(_ => Flush(current), null, FlushInterval, FlushInterval);
         }
         catch (Exception error)
@@ -239,19 +261,123 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
         }
 
         var timestamp = data.TimeStamp.ToUniversalTime().Ticks;
+#pragma warning disable CS0618 // Raw QPC ticks are required; relative milliseconds lose integer tick precision.
+        var timestampQpc = data.TimeStampQPC;
+#pragma warning restore CS0618
+        // This callback belongs to our local real-time QPC session (ClientContext=1).
+        // Recorded ledger consumers supply their recording's frequency separately.
+        var qpcFrequency = System.Diagnostics.Stopwatch.Frequency;
         if (data.ProviderGuid == DxgiProvider && id is DxgiPresentStart or DxgiMultiplaneOverlayPresentStart)
         {
-            target.Present(data.ProcessID, FramePresentSource.Dxgi, ReadPointer(data.PayloadByName("pIDXGISwapChain")), timestamp);
+            var threadId = data.ThreadID;
+            target.Present(data.ProcessID, FramePresentSource.Dxgi,
+                ReadPointer(data.PayloadByName("pIDXGISwapChain")), timestamp, threadId, timestampQpc, qpcFrequency);
+            if (id == DxgiMultiplaneOverlayPresentStart
+                || (ReadUInt32(data.PayloadByName("Flags")) & 1) != 0)
+            {
+                target.UnsupportedDisplayPath(data.ProcessID, threadId);
+            }
+        }
+        else if (data.ProviderGuid == DxgiProvider && id is DxgiPresentStop or DxgiMultiplaneOverlayPresentStop)
+        {
+            target.PresentStopped(data.ProcessID, data.ThreadID, timestamp, timestampQpc,
+                unchecked((int)ReadUInt32(data.PayloadByName("Result"))));
         }
         else if (data.ProviderGuid == Direct3D9Provider && id == Direct3D9PresentStart)
         {
-            target.Present(data.ProcessID, FramePresentSource.Direct3D9, ReadPointer(data.PayloadByName("pSwapchain")), timestamp);
+            target.Present(data.ProcessID, FramePresentSource.Direct3D9,
+                ReadPointer(data.PayloadByName("pSwapchain")), timestamp, data.ThreadID, timestampQpc, qpcFrequency);
+        }
+        else if (data.ProviderGuid == Direct3D9Provider && id == Direct3D9PresentStop)
+        {
+            target.PresentStopped(data.ProcessID, data.ThreadID, timestamp, timestampQpc,
+                unchecked((int)ReadUInt32(data.PayloadByName("Result"))));
         }
         else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelPresent)
         {
             target.Present(data.ProcessID, FramePresentSource.GraphicsKernel, 0, timestamp);
         }
+        else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelFlip)
+        {
+            target.LegacyFlip(data.ProcessID, data.ThreadID,
+                ReadBoolean(data.PayloadByName("MMIOFlip")), timestampQpc);
+        }
+        else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelFlipMultiPlaneOverlay)
+        {
+            target.UnsupportedDisplayPath(data.ProcessID, data.ThreadID,
+                ReadUInt32(data.PayloadByName("VidPnSourceId")));
+        }
+        else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelQueuePacketStart)
+        {
+            target.QueuePacketStart(data.ProcessID, data.ThreadID,
+                ReadUInt32(data.PayloadByName("SubmitSequence")),
+                ReadUInt64(data.PayloadByName("hContext")),
+                ReadUInt32(data.PayloadByName("PacketType")),
+                ReadBoolean(data.PayloadByName("bPresent")), timestampQpc);
+        }
+        else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelMmioFlip)
+        {
+            target.MmioFlip(ReadUInt32(data.PayloadByName("FlipSubmitSequence")),
+                timestamp, timestampQpc,
+                (ReadUInt32(data.PayloadByName("Flags")) & FlipImmediate) != 0);
+        }
+        else if (data.ProviderGuid == GraphicsKernelProvider && id == GraphicsKernelVSyncDpc)
+        {
+            var fenceId = ReadUInt64(data.PayloadByName("FlipFenceId"));
+            var submitSequence = (uint)(fenceId >> 32);
+            if (submitSequence != 0) target.VSyncDpc(submitSequence, timestamp, timestampQpc);
+        }
+        else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenCompositionSurfaceObject)
+        {
+            target.TrackWin32kToken(data.ProcessID, data.ThreadID,
+                ReadUInt64(data.PayloadByName("CompositionSurfaceLuid")),
+                ReadUInt64(data.PayloadByName("PresentCount")),
+                ReadUInt64(data.PayloadByName("BindId")));
+        }
+        else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenStateChanged)
+        {
+            target.Win32kTokenStateChanged(
+                ReadUInt64(data.PayloadByName("CompositionSurfaceLuid")),
+                ReadUInt32(data.PayloadByName("PresentCount")),
+                ReadUInt64(data.PayloadByName("BindId")),
+                ReadUInt32(data.PayloadByName("NewState")), timestamp, timestampQpc);
+        }
     }
+
+    private static bool ReadBoolean(object? value) => value switch
+    {
+        bool flag => flag,
+        byte flag => flag != 0,
+        sbyte flag => flag != 0,
+        ushort flag => flag != 0,
+        short flag => flag != 0,
+        uint flag => flag != 0,
+        int flag => flag != 0,
+        ulong flag => flag != 0,
+        long flag => flag != 0,
+        _ => throw new InvalidDataException("The ETW payload is not a supported Boolean value.")
+    };
+
+    private static uint ReadUInt32(object? value)
+    {
+        var wide = ReadUInt64(value);
+        return wide <= uint.MaxValue
+            ? (uint)wide
+            : throw new InvalidDataException("The ETW payload exceeds an unsigned 32-bit value.");
+    }
+
+    private static ulong ReadUInt64(object? value) => value switch
+    {
+        byte number => number,
+        sbyte number => unchecked((byte)number),
+        ushort number => number,
+        short number => unchecked((ushort)number),
+        uint number => number,
+        int number => unchecked((uint)number),
+        ulong number => number,
+        long number => unchecked((ulong)number),
+        _ => throw new InvalidDataException("The ETW payload is not an integer value.")
+    };
 
     private static ulong ReadPointer(object? value) => value switch
     {

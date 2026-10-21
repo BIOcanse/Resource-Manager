@@ -110,8 +110,8 @@ export default createSettingsLocale("ru-RU", {
         "description": "Разрешить выбор конкретного GPU для программы."
       }
     },
-    "automaticMemoryCleanupTitle": "Порог автоматической очистки",
-    "automaticMemoryCleanupDescription": "Начинать фоновую очистку при нехватке ресурсов, когда безопасное перемещение невозможно продолжить.",
+    "automaticMemoryCleanupTitle": "Пороги экстренной очистки",
+    "automaticMemoryCleanupDescription": "Фоновая очистка выполняется по уровням нагрузки на ресурсы. Эти пороги определяют, когда малый остаток физической памяти или лимита выделения запускает экстренную очистку.",
     "physicalMemoryAutomaticCleanupLabel": "Свободная физическая память %",
     "virtualMemoryAutomaticCleanupLabel": "Запас лимита выделенной памяти %",
     "memoryOptimizationTargetTitle": "Цель оптимизации памяти",

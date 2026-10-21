@@ -66,3 +66,15 @@ export function buildPerformanceRuns(
   }
   return Object.freeze(runs.map((run) => Object.freeze(run)));
 }
+
+/** One point per observation, retaining a bounded window and missing-value gaps. */
+export function appendPerformanceHistory(
+  history: readonly PerformancePoint[],
+  point: PerformancePoint,
+  capacity = 120
+): readonly PerformancePoint[] {
+  const previous = history.at(-1);
+  const duplicate = previous?.capturedAt === point.capturedAt;
+  const next = duplicate ? [...history.slice(0, -1), point] : [...history, point];
+  return next.slice(-Math.max(1, Math.floor(capacity)));
+}

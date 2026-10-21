@@ -198,7 +198,7 @@ pub const Bank = struct {
         if (!record.occupied) return;
         _ = removeIndex(self.operation_index, record.operation_id);
         if ((record.flags & protocol.OperationFlags.domain_valid) != 0) {
-            self.removeDomain(record.domain_id);
+            self.removeDomainIfOwned(record.domain_id, index);
         }
         record.* = .{};
         self.free_stack[self.free_count] = index;
@@ -226,6 +226,16 @@ pub const Bank = struct {
 
     pub fn removeDomain(self: *Bank, key: protocol.Handle128) void {
         if (removeIndex(self.domain_index, key)) self.domain_count -= 1;
+    }
+
+    pub fn removeDomainIfOwned(
+        self: *Bank,
+        key: protocol.Handle128,
+        owner_record_index: u32,
+    ) void {
+        const current_owner = self.findDomain(key) orelse return;
+        if (current_owner != owner_record_index) return;
+        self.removeDomain(key);
     }
 
     pub fn clearActions(self: *Bank) void {

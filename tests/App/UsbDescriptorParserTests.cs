@@ -118,15 +118,9 @@ public sealed class UsbDescriptorParserTests
     [Fact]
     public void UsbNodeConnectionInformationEx_UsesWindowsNativeAlignment()
     {
-        var type = typeof(WindowsDeviceTopologyReader).Assembly.GetType(
-            "ResourceManager.App.Infrastructure.DeviceTopology.WindowsUsbHubIoctlReader+UsbNodeConnectionInformationEx",
-            throwOnError: true)!;
-        var pipeType = typeof(WindowsDeviceTopologyReader).Assembly.GetType(
-            "ResourceManager.App.Infrastructure.DeviceTopology.WindowsUsbHubIoctlReader+UsbPipeInfo",
-            throwOnError: true)!;
-        var capabilityType = typeof(WindowsDeviceTopologyReader).Assembly.GetType(
-            "ResourceManager.App.Infrastructure.DeviceTopology.WindowsUsbPortCapabilityReader+UsbNodeConnectionInformationExV2",
-            throwOnError: true)!;
+        var type = typeof(WindowsUsbHubIoctlReader.UsbNodeConnectionInformationEx);
+        var pipeType = typeof(WindowsUsbHubIoctlReader).GetNestedType("UsbPipeInfo", System.Reflection.BindingFlags.NonPublic)!;
+        var capabilityType = typeof(WindowsUsbPortCapabilityReader).GetNestedType("UsbNodeConnectionInformationExV2", System.Reflection.BindingFlags.NonPublic)!;
 
         Assert.Equal(35, Marshal.SizeOf(type));
         Assert.Equal(11, Marshal.SizeOf(pipeType));

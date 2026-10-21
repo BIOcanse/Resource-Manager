@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Metrics;
 
 using ResourceManager.App.Domain.Messages;
 
@@ -88,7 +88,7 @@ public static partial class MetricCatalog
             return false;
         }
 
-        if (item.NumericValue is not null || item.Percent is not null)
+        if (item.NumericValue is not null || item.Percent is not null || item.IntegerValue is not null || item.BytesValue is not null)
         {
             return true;
         }

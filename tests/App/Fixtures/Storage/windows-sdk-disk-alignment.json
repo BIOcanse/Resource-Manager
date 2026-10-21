@@ -1,0 +1,18 @@
+{
+  "descriptorSize": 28,
+  "querySize": 12,
+  "property": 6,
+  "ioctl": 2954240,
+  "offsets": [
+    0,
+    4,
+    8,
+    12,
+    16,
+    20,
+    24
+  ],
+  "alignment": "HAAAABwAAABAAAAAEAAAAAACAAAAEAAAAAYAAA==",
+  "zero": "HAAAABwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "query": "BgAAAAAAAAAAAAAA"
+}

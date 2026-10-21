@@ -32,7 +32,9 @@ public sealed class PdhProcessGpuIdentityTests
                     DedicatedBytes = 4096
                 }
             ],
-            default));
+            default) { EngineWindows = [new ResourceManager.ReadWrite.Native.Pdh.NativePdhGpuEngineWindow
+            { AdapterLuid = adapterKey, ProcessId = 42, BeginFileTime = 150, EndFileTime = 190,
+                BeginCounter = 10, EndCounter = 20, CounterFrequency = 100 }] });
         var expected = new ProcessInstanceKey(42, 100);
         var inventory = CreateInventory(adapterKey);
 

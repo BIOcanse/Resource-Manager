@@ -1,8 +1,9 @@
-import { createEffect, createMemo, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { MetricDefinition, MetricSnapshot } from "../../types";
 import type { ObservationState } from "../../observation/observationState";
 import {
   appendPerformancePoint,
+  appendPerformanceHistory,
   buildPerformanceRuns,
   type PerformancePoint,
   type PerformanceSeries
@@ -35,9 +36,10 @@ export function ResourcePerformancePanel(props: {
     }
     return appendPerformancePoint(snapshot, series());
   });
-  const currentFrame = createMemo<PerformancePoint[]>(() => {
+  const [currentFrame, setCurrentFrame] = createSignal<readonly PerformancePoint[]>([]);
+  createEffect(() => {
     const point = latest();
-    return point ? [point] : [];
+    if (point) setCurrentFrame(appendPerformanceHistory(untrack(currentFrame), point));
   });
 
   const drawSoon = () => {
@@ -161,7 +163,7 @@ function performanceSeries(catalog: MetricDefinition[]): PerformanceSeries[] {
 function drawPerformanceCanvas(
   canvas: HTMLCanvasElement | undefined,
   series: PerformanceSeries[],
-  history: PerformancePoint[])
+  history: readonly PerformancePoint[])
 {
   if (!canvas) {
     return;
@@ -214,7 +216,7 @@ function drawChart(
   width: number,
   height: number,
   series: PerformanceSeries,
-  history: PerformancePoint[],
+  history: readonly PerformancePoint[],
   theme: PerformanceCanvasTheme)
 {
   const paddingX = 10;

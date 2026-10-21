@@ -1,14 +1,14 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0003_0000;
+pub const abi_version: u32 = 0x000A_0000;
 
-pub const catalog_contract_version: u32 = 0x0001_0000;
-pub const value_contract_version: u32 = 0x0001_0000;
-pub const observation_contract_version: u32 = 0x0001_0000;
+pub const catalog_contract_version: u32 = 0x0005_0000;
+pub const value_contract_version: u32 = 0x0003_0000;
+pub const observation_contract_version: u32 = 0x0007_0000;
 pub const inventory_contract_version: u32 = 0x0001_0000;
-pub const persistence_contract_version: u32 = 0x0002_0000;
+pub const persistence_contract_version: u32 = 0x0004_0000;
 pub const cpu_counter_contract_version: u32 = 0x0001_0000;
-pub const wire_contract_fingerprint: u64 = 0xa358_b712_195e_f519;
+pub const wire_contract_fingerprint: u64 = 0xEE439EB77DDC0C5E;
 
 pub const Phase = enum(u32) {
     empty = 1,
@@ -84,6 +84,11 @@ pub const MetricKind = enum(u32) {
     gpu_vram_total = 11,
     gpu_sensor = 12,
     custom_numeric = 13,
+    counter_ratio = 14,
+    timed_counter_rate = 15,
+    floating_counter_ratio = 16,
+    floating_counter_percentage = 17,
+    timed_microsecond_counter_percentage = 18,
 };
 
 pub const ScopeKind = enum(u32) {
@@ -97,7 +102,12 @@ pub const ValueKind = enum(u32) {
     float64 = 1,
     signed64 = 2,
     unsigned64 = 3,
+    unsigned128 = 4,
+    bytes = 5,
+    boolean = 6,
 };
+
+pub const maximum_value_bytes: usize = 512;
 
 pub const MetricFlags = struct {
     pub const percentage: u32 = 1 << 0;
@@ -141,6 +151,13 @@ pub const PlanOutputFlags = struct {
     pub const gpu_inventory_selected: u32 = 1 << 0;
     pub const gpu_inventory_unavailable: u32 = 1 << 1;
     pub const known: u32 = gpu_inventory_selected | gpu_inventory_unavailable;
+};
+
+pub const ObservationFlags = struct {
+    pub const counter_pair: u32 = 1;
+    pub const timed_counter: u32 = 2;
+    pub const floating_counter_pair: u32 = 4;
+    pub const known: u32 = counter_pair | timed_counter | floating_counter_pair;
 };
 
 pub const ObservationValid = struct {
@@ -238,7 +255,9 @@ pub const Capacity = extern struct {
     source_plan_capacity: u32,
     metric_plan_capacity: u32,
     resident_byte_count: u64,
-    reserved: [2]u64,
+    scratch_byte_count: u64,
+    scratch_alignment: u32,
+    reserved_u32: u32,
 };
 
 pub const SourcePolicyInput = extern struct {
@@ -417,6 +436,11 @@ pub const ObservationInput = extern struct {
     quality: u32,
     reserved_u32: u32,
     sample_duration_milliseconds: u64,
+    value_high_bits: u64 = 0,
+    byte_count: u32 = 0,
+    payload_reserved: u32 = 0,
+    counter_ticks_per_second: u64 = 0,
+    value_bytes: [maximum_value_bytes]u8 = @splat(0),
 };
 
 pub const CpuCounterInput = extern struct {
@@ -542,6 +566,10 @@ pub const MetricOutput = extern struct {
     reserved_u32: u32,
     semantic_fingerprint: u64,
     sample_duration_milliseconds: u64,
+    value_high_bits: u64 = 0,
+    byte_count: u32 = 0,
+    payload_reserved: u32 = 0,
+    value_bytes: [maximum_value_bytes]u8 = @splat(0),
 };
 
 pub const SourceOutput = extern struct {
@@ -607,6 +635,10 @@ pub const RuleStateOutput = extern struct {
     state_fingerprint: u64,
     capability_generation: u64,
     unsupported_until_capability_generation: u64,
+    value_high_bits: u64 = 0,
+    byte_count: u32 = 0,
+    payload_reserved: u32 = 0,
+    value_bytes: [maximum_value_bytes]u8 = @splat(0),
 };
 
 pub const SourcePersistenceOutput = extern struct {
@@ -762,6 +794,9 @@ pub fn validMetricDefinition(metric: *const MetricDefinitionInput) bool {
     {
         return false;
     }
+    if (isCounterMetric(metric.metric_kind) and
+        (metric.value_kind != @intFromEnum(ValueKind.float64) or
+            metric.retention_policy != @intFromEnum(RetentionPolicy.mark_unavailable))) return false;
     return validRange(metric.value_kind, metric.minimum_value_bits, metric.maximum_value_bits);
 }
 
@@ -787,8 +822,49 @@ pub fn validValue(kind_raw: u32, flags: u32, minimum_bits: u64, maximum_bits: u6
         .unsigned64 => {
             if (value < minimum_bits or value > maximum_bits) return false;
         },
+        .boolean => {
+            if (minimum_bits != 0 or maximum_bits != 1 or value > 1) return false;
+        },
+        .unsigned128, .bytes => return false,
     }
     return true;
+}
+
+pub fn isCounterMetric(kind: u32) bool {
+    return kind == @intFromEnum(MetricKind.counter_ratio) or isTimedCounterMetric(kind) or isFloatingCounterMetric(kind);
+}
+
+pub fn isTimedCounterMetric(kind: u32) bool {
+    return kind == @intFromEnum(MetricKind.timed_counter_rate) or kind == @intFromEnum(MetricKind.timed_microsecond_counter_percentage);
+}
+
+pub fn isFloatingCounterMetric(kind: u32) bool {
+    return kind == @intFromEnum(MetricKind.floating_counter_ratio) or kind == @intFromEnum(MetricKind.floating_counter_percentage);
+}
+
+pub fn emptyPayload(value: anytype) bool {
+    if (comptime @hasField(@TypeOf(value), "counter_ticks_per_second")) {
+        if (value.counter_ticks_per_second != 0) return false;
+    }
+    return value.value_high_bits == 0 and value.byte_count == 0 and
+        value.payload_reserved == 0 and std.mem.allEqual(u8, &value.value_bytes, 0);
+}
+
+pub fn validPayload(definition: MetricDefinitionInput, value: anytype) bool {
+    if (value.payload_reserved != 0) return false;
+    if (comptime @hasField(@TypeOf(value), "counter_ticks_per_second")) {
+        if (value.counter_ticks_per_second != 0) return false;
+    }
+    const kind: ValueKind = @enumFromInt(definition.value_kind);
+    return switch (kind) {
+        .unsigned128 => value.byte_count == 0 and std.mem.allEqual(u8, &value.value_bytes, 0),
+        .bytes => value.value_bits == 0 and value.value_high_bits == 0 and
+            value.byte_count >= definition.minimum_value_bits and
+            value.byte_count <= definition.maximum_value_bits and
+            value.byte_count <= maximum_value_bytes and
+            std.mem.allEqual(u8, value.value_bytes[value.byte_count..], 0),
+        else => emptyPayload(value) and validValue(definition.value_kind, definition.flags, definition.minimum_value_bits, definition.maximum_value_bits, value.value_bits),
+    };
 }
 
 pub fn knownEnum(comptime T: type, raw: u32) bool {
@@ -805,6 +881,11 @@ fn validRange(kind_raw: u32, minimum_bits: u64, maximum_bits: u64) bool {
         },
         .signed64 => @as(i64, @bitCast(minimum_bits)) <= @as(i64, @bitCast(maximum_bits)),
         .unsigned64 => minimum_bits <= maximum_bits,
+        .boolean => minimum_bits == 0 and maximum_bits == 1,
+        // UInt128 counters use the complete domain; the two 64-bit bounds are domain markers.
+        .unsigned128 => minimum_bits == 0 and maximum_bits == std.math.maxInt(u64),
+        // For bytes the bounds are lengths, never numeric value bits.
+        .bytes => minimum_bits > 0 and minimum_bits <= maximum_bits and maximum_bits <= maximum_value_bytes,
     };
 }
 
@@ -815,4 +896,68 @@ fn validIndexCapacity(capacity: u32, item_capacity: u32) bool {
 fn allZero(values: anytype) bool {
     for (values) |value| if (value != 0) return false;
     return true;
+}
+
+test "typed payload rejects narrowing malformed lengths and noncanonical unused bytes" {
+    var definition = std.mem.zeroes(MetricDefinitionInput);
+    definition.value_kind = @intFromEnum(ValueKind.unsigned128);
+    definition.minimum_value_bits = 0;
+    definition.maximum_value_bits = std.math.maxInt(u64);
+    var value = std.mem.zeroes(ObservationInput);
+    value.value_bits = std.math.maxInt(u64);
+    value.value_high_bits = std.math.maxInt(u64);
+    try std.testing.expect(validPayload(definition, value));
+    value.value_bytes[511] = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value = std.mem.zeroes(ObservationInput);
+    definition.value_kind = @intFromEnum(ValueKind.bytes);
+    definition.minimum_value_bits = 1;
+    definition.maximum_value_bits = maximum_value_bytes;
+    value.byte_count = 2;
+    value.value_bytes[0] = 255;
+    try std.testing.expect(validPayload(definition, value));
+    value.value_bytes[2] = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value.value_bytes[2] = 0;
+    value.byte_count = 513;
+    try std.testing.expect(!validPayload(definition, value));
+    value.byte_count = 2;
+    value.value_bits = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value = std.mem.zeroes(ObservationInput);
+    definition.value_kind = @intFromEnum(ValueKind.unsigned64);
+    definition.minimum_value_bits = 0;
+    definition.maximum_value_bits = std.math.maxInt(u64);
+    value.value_bits = 9;
+    try std.testing.expect(validPayload(definition, value));
+    value.value_high_bits = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    try std.testing.expect(!emptyPayload(value));
+}
+
+test "boolean preserves false and true and rejects narrowing and noncanonical payload" {
+    var definition = std.mem.zeroes(MetricDefinitionInput);
+    definition.value_kind = @intFromEnum(ValueKind.boolean);
+    definition.minimum_value_bits = 0;
+    definition.maximum_value_bits = 1;
+    var value = std.mem.zeroes(ObservationInput);
+    try std.testing.expect(validPayload(definition, value));
+    value.value_bits = 1;
+    try std.testing.expect(validPayload(definition, value));
+    value.value_bits = 2;
+    try std.testing.expect(!validPayload(definition, value));
+    value.value_bits = 1;
+    value.value_high_bits = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value.value_high_bits = 0;
+    value.byte_count = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value.byte_count = 0;
+    value.value_bytes[511] = 1;
+    try std.testing.expect(!validPayload(definition, value));
+    value.value_bytes[511] = 0;
+    definition.minimum_value_bits = 1;
+    try std.testing.expect(!validRange(definition.value_kind, 1, 1));
+    try std.testing.expect(!validPayload(definition, value));
+    try std.testing.expect(!validRange(definition.value_kind, 0, 2));
 }

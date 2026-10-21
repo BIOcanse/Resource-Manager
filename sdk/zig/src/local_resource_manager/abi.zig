@@ -2,6 +2,7 @@ const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const capacity_guard = @import("capacity_guard.zig");
+const capacity_batch = @import("capacity_batch.zig");
 const mode_cleanup = @import("mode_cleanup.zig");
 const intent_merge = @import("intent_merge.zig");
 const executor = @import("executor.zig");
@@ -750,6 +751,43 @@ pub export fn rm_local_resource_manager_plan_capacity_detailed(
         output,
         table_output,
     ) catch |err| return mapError(err);
+    return result(.ok);
+}
+
+pub export fn rm_local_resource_manager_capacity_plan_cursor_size() callconv(.c) u32 {
+    return @sizeOf(protocol.CapacityPlanCursor);
+}
+
+pub export fn rm_local_resource_manager_plan_capacity_bounded(
+    state_pointer: ?*anyopaque,
+    state_size: u64,
+    operation_pointer: ?*const protocol.OperationToken,
+    input_pointer: ?*const protocol.CapacityPlanInput,
+    maximum_intents: u32,
+    cursor_pointer: ?*protocol.CapacityPlanCursor,
+    scratch_pointer: ?[*]protocol.Intent,
+    scratch_capacity: u32,
+    output_pointer: ?[*]protocol.Intent,
+    output_capacity: u32,
+    summary_pointer: ?*protocol.PlanSummary,
+) callconv(.c) i32 {
+    const ranges = [_]?MemoryRange{
+        memoryRange(state_pointer, std.math.cast(usize, state_size) orelse return result(.invalid_argument), 1) catch return result(.invalid_argument),
+        memoryRange(operation_pointer, 1, @sizeOf(protocol.OperationToken)) catch return result(.invalid_argument),
+        memoryRange(input_pointer, 1, @sizeOf(protocol.CapacityPlanInput)) catch return result(.invalid_argument),
+        memoryRange(cursor_pointer, 1, @sizeOf(protocol.CapacityPlanCursor)) catch return result(.invalid_argument),
+        memoryRange(scratch_pointer, scratch_capacity, @sizeOf(protocol.Intent)) catch return result(.invalid_argument),
+        memoryRange(output_pointer, output_capacity, @sizeOf(protocol.Intent)) catch return result(.invalid_argument),
+        memoryRange(summary_pointer, 1, @sizeOf(protocol.PlanSummary)) catch return result(.invalid_argument),
+    };
+    validateDisjointMemory(&ranges) catch return result(.invalid_argument);
+    const view = openOperationState(state_pointer, state_size, operation_pointer, .cleanup) catch |err| return mapError(err);
+    const input = input_pointer orelse return result(.invalid_argument);
+    const cursor = cursor_pointer orelse return result(.invalid_argument);
+    const scratch = mutableSlice(protocol.Intent, scratch_pointer, scratch_capacity) orelse return result(.invalid_argument);
+    const output = mutableSlice(protocol.Intent, output_pointer, output_capacity) orelse return result(.invalid_argument);
+    const summary = summary_pointer orelse return result(.invalid_argument);
+    summary.* = capacity_batch.plan(view, input.*, maximum_intents, cursor, scratch, output) catch |err| return mapError(err);
     return result(.ok);
 }
 

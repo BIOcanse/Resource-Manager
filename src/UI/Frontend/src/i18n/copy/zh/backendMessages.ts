@@ -12,9 +12,9 @@ export const zhBackendMessagesCopy = {
       downloadable: "可从官方来源下载安装器。",
       manualAcquisition: "打开官方来源页，并将安装器放入 Misc 安装器缓存。",
       reusingExternalInstall: (value: string) => `检测到系统已有安装，直接复用：${value}`,
-      providerVerified: "Provider 已通过实时指标验证。",
+      providerVerified: "硬件读数已通过验证。",
       providerRuntimeUnverified: "检测到系统已安装的 Provider 运行库，但还没有通过实时读数验证。",
-      componentFilesUnverified: "组件文件已就绪，但 Provider 还没有通过实时读数验证。",
+      componentFilesUnverified: "组件文件已就绪，硬件读数尚未通过验证。",
       runtimeAvailableBridgePending: "运行库可用，但 Provider 桥接或实时读数验证尚未完成。",
       providerBridgeMissing: "Provider 桥接尚未接入，或当前硬件/驱动未返回可验证读数。",
       bundledVerified: "内置组件已通过实时指标验证。",
@@ -24,6 +24,7 @@ export const zhBackendMessagesCopy = {
       installerDownloadedVersion: (value: string) => `已下载 ${value} 的安装器到托管依赖目录。`,
       sharedRuntimeInstalled: "共享 WebView2 Runtime 已安装并通过检测。",
       installerLaunched: "安装器已可见启动。使用该 Provider 前需要完成厂商安装提示。",
+      runtimeFilesUnavailable: "无法取得所需运行文件，请检查网络后重试验证。",
       componentFilesExtracted: "组件文件已解压到安装目录。"
     },
     gpuPlacement: {
@@ -42,8 +43,8 @@ export const zhBackendMessagesCopy = {
       windowsUninstallerDescription: "启动 Windows 注册表提供的官方卸载器。",
       noUninstallUnknownRoot: "缺少卸载入口，只能跳转或手动处理，Resource Manager 不删除未知软件根目录。",
       manualClassificationNoUninstall: "手动分类/补录项不直接代表卸载器；需要从软件详情或原始软件入口处理。",
-      controlledNoUninstall: "受控软件卸载策略需要独立记录；当前只支持数据迁移恢复。",
-      selfNoUninstall: "资源管理器自身不能从这里卸载或迁移。",
+      controlledNoUninstall: "受控软件需要单独的卸载策略；当前没有可用的卸载入口。",
+      selfNoUninstall: "请使用 UninstallResourceManager.exe 卸载资源管理器，并选择是否保留用户数据。",
       adaptedNoUninstall: "适配软件需要通过注册/manifest 声明卸载策略后才能由 Resource Manager 执行。",
       legacyControlledNoUninstall: "L0 受控注册没有卸载策略。",
       portableNoUninstall: "便携软件没有卸载器；删除原文件后刷新软件列表会自动移除记录。"

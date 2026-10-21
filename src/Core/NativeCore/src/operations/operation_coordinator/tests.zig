@@ -1005,6 +1005,66 @@ test "older durable terminal set is pruned by the current hot limit on import" {
     try std.testing.expectEqual(@as(u32, 0), snapshot.terminal_operation_count);
 }
 
+test "empty persistence has no observed clock baseline until its first import" {
+    var config = testConfig();
+    var source = try state.Session.create(&config);
+    defer source.destroy();
+    var header = std.mem.zeroes(protocol.PersistenceHeader);
+    var records = zeroOperations();
+    var export_input = persistenceInput(1);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        source.exportPersistence(&export_input, &header, &records),
+    );
+    try std.testing.expectEqual(@as(u32, 0), header.operation_count);
+    try std.testing.expectEqual(@as(i64, 0), header.last_observed_utc_milliseconds);
+    try std.testing.expectEqual(@as(u64, 0), header.last_observed_monotonic_milliseconds);
+
+    var restored = try state.Session.create(&config);
+    defer restored.destroy();
+    var input = persistenceImportInput(1, 1_700_000_000_000, 100_000, config.clock_instance_id);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.importPersistence(&input, &header, records[0..0]),
+    );
+    var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
+    try std.testing.expectEqual(@as(u32, 0), snapshot.operation_count);
+    try std.testing.expectEqual(input.observed_utc_milliseconds, snapshot.last_observed_utc_milliseconds);
+    try std.testing.expectEqual(input.observed_monotonic_milliseconds, snapshot.last_observed_monotonic_milliseconds);
+    const revision = snapshot.state_revision;
+
+    export_input.operation_epoch = 2;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.exportPersistence(&export_input, &header, &records),
+    );
+    input.operation_epoch = 3;
+    input.observed_utc_milliseconds += @intCast(config.maximum_future_skew_milliseconds + 2);
+    input.observed_monotonic_milliseconds += 1;
+    try std.testing.expectEqual(
+        ResultCode.stale_frame,
+        restored.importPersistence(&input, &header, records[0..0]),
+    );
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
+    try std.testing.expectEqual(revision, snapshot.state_revision);
+    try std.testing.expectEqual(header.last_observed_utc_milliseconds, snapshot.last_observed_utc_milliseconds);
+    try std.testing.expectEqual(header.last_observed_monotonic_milliseconds, snapshot.last_observed_monotonic_milliseconds);
+
+    // Rejected skew must not consume the persistence epoch or suppress later validation.
+    input.observed_utc_milliseconds = header.last_observed_utc_milliseconds + 1;
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.importPersistence(&input, &header, records[0..0]),
+    );
+    input.operation_epoch = 4;
+    input.observed_monotonic_milliseconds = header.last_observed_monotonic_milliseconds - 1;
+    try std.testing.expectEqual(
+        ResultCode.stale_frame,
+        restored.importPersistence(&input, &header, records[0..0]),
+    );
+}
+
 test "persistence reclassifies inflight work and rejects altered payload" {
     var config = testConfig();
     var source = try state.Session.create(&config);
@@ -1434,6 +1494,113 @@ test "persistence rebases terminal deadline across a new monotonic clock instanc
     try std.testing.expectEqual(@as(u32, 1), retained.terminal_operation_count);
     const retired = try runPlan(restored, 3, 1_103, 510, 8);
     try std.testing.expectEqual(@as(u32, 0), retired.terminal_operation_count);
+}
+
+test "retiring a terminal record preserves the newer same-domain owner through persistence" {
+    var config = testConfig();
+    var source = try state.Session.create(&config);
+    defer source.destroy();
+
+    var output = std.mem.zeroes(protocol.SubmitOutput);
+    var terminal_a = submitInput(1, 9, 1, 100, 100);
+    terminal_a.terminal_retention_milliseconds = 50;
+    try std.testing.expectEqual(ResultCode.ok, source.submit(&terminal_a, &output));
+    const plan_a = try runPlan(source, 1, 101, 101, 8);
+    var actions = zeroActions();
+    try readCurrentActions(source, &plan_a, &actions);
+    var started = feedbackInput(&actions[0], 1, .started, 102, 102);
+    try std.testing.expectEqual(ResultCode.ok, source.feedback(&started));
+    var completed = completionInput(&actions[0], 1, .succeeded, 103, 103);
+    try std.testing.expectEqual(ResultCode.ok, source.complete(&completed));
+
+    output = std.mem.zeroes(protocol.SubmitOutput);
+    var active_b = submitInput(2, 9, 2, 104, 104);
+    active_b.execution_timeout_milliseconds = 1_000_000;
+    try std.testing.expectEqual(ResultCode.ok, source.submit(&active_b, &output));
+    try std.testing.expectEqual(protocol.SubmitOutputFlags.inserted, output.flags);
+    const plan_b = try runPlan(source, 2, 105, 105, 8);
+    actions = zeroActions();
+    try readCurrentActions(source, &plan_b, &actions);
+    started = feedbackInput(&actions[0], 2, .started, 106, 106);
+    try std.testing.expectEqual(ResultCode.ok, source.feedback(&started));
+
+    output = std.mem.zeroes(protocol.SubmitOutput);
+    var duplicate_before_retirement = submitInput(30, 9, 3, 107, 107);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        source.submit(&duplicate_before_retirement, &output),
+    );
+    try std.testing.expectEqual(
+        protocol.SubmitOutputFlags.active_domain_duplicate,
+        output.flags,
+    );
+    try std.testing.expect(
+        protocol.equalHandle(active_b.operation_id, output.operation_id),
+    );
+
+    const prune_plan = try runPlan(source, 3, 160, 160, 8);
+    try std.testing.expectEqual(@as(u32, 1), prune_plan.running_operation_count);
+    try std.testing.expectEqual(@as(u32, 0), prune_plan.terminal_operation_count);
+    var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try std.testing.expectEqual(ResultCode.ok, source.snapshot(&snapshot));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.operation_count);
+
+    output = std.mem.zeroes(protocol.SubmitOutput);
+    var duplicate_after_retirement = submitInput(3, 9, 4, 161, 161);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        source.submit(&duplicate_after_retirement, &output),
+    );
+    try std.testing.expectEqual(
+        protocol.SubmitOutputFlags.active_domain_duplicate,
+        output.flags,
+    );
+    try std.testing.expect(
+        protocol.equalHandle(active_b.operation_id, output.operation_id),
+    );
+
+    var header = std.mem.zeroes(protocol.PersistenceHeader);
+    var records = zeroOperations();
+    var export_input = persistenceInput(1);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        source.exportPersistence(&export_input, &header, &records),
+    );
+    try std.testing.expectEqual(@as(u32, 1), header.operation_count);
+
+    var restored = try state.Session.create(&config);
+    defer restored.destroy();
+    var import_input = persistenceImportInput(
+        1,
+        162,
+        162,
+        config.clock_instance_id,
+    );
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.importPersistence(
+            &import_input,
+            &header,
+            records[0..@intCast(header.operation_count)],
+        ),
+    );
+    snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
+    try std.testing.expectEqual(@as(u32, 1), snapshot.operation_count);
+
+    output = std.mem.zeroes(protocol.SubmitOutput);
+    var duplicate_after_import = submitInput(4, 9, 5, 163, 163);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        restored.submit(&duplicate_after_import, &output),
+    );
+    try std.testing.expectEqual(
+        protocol.SubmitOutputFlags.active_domain_duplicate,
+        output.flags,
+    );
+    try std.testing.expect(
+        protocol.equalHandle(active_b.operation_id, output.operation_id),
+    );
 }
 
 test "terminal count pruning releases domain identity for later work" {

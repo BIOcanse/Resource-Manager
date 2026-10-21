@@ -527,6 +527,7 @@ internal static unsafe class NativeResourceSchedulerInterop
         NativeResourceSchedulerReservationToken* token,
         NativeResourceSchedulerSelection* selection,
         NativeResourceSchedulerRevalidationInput* input,
+        ulong nowMonotonicTimestamp,
         NativeResourceSchedulerRevalidationOutput* output);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

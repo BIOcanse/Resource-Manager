@@ -1,12 +1,11 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.Software;
-using ResourceManager.App.Domain.FrameTiming;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Software;

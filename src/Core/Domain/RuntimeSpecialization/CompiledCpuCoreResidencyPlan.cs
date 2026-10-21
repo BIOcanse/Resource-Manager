@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 
 namespace ResourceManager.App.Domain.RuntimeSpecialization;
 
@@ -15,9 +16,12 @@ public static class CpuExecutionTimeSourceKinds
 }
 
 public sealed record CompiledCpuCoreResidencyPlan(
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.ObservationWindowMs)]
     int ObservationWindowMilliseconds,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.ExecutionTimeSource)]
     CompiledCpuExecutionTimeSourcePlan ExecutionTimeSource,
     CpuSmtAccounting SmtAccounting,
+    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SmtAccounting)]
     FrozenDictionary<int, CompiledCpuPhysicalCoreAccounting> PhysicalCoreByLogicalProcessor)
 {
     public TimeSpan ObservationWindow => TimeSpan.FromMilliseconds(ObservationWindowMilliseconds);

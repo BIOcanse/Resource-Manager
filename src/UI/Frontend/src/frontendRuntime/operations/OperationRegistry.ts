@@ -26,9 +26,7 @@ export interface OperationRegistrySnapshot {
 export type OperationInvalidationTarget =
   | "components"
   | "dependencies"
-  | "software"
-  | "migration-records"
-  | "migration-sessions";
+  | "software";
 
 export interface OperationInvalidation {
   readonly operationId: string;
@@ -351,12 +349,6 @@ function invalidationTargets(
   }
   if (kind === "software.uninstall") {
     return Object.freeze(["software"]);
-  }
-  if (kind === "migration.execute" || kind === "migration.restore") {
-    return Object.freeze(["migration-records", "migration-sessions"]);
-  }
-  if (kind === "discovery.start") {
-    return Object.freeze(["migration-sessions"]);
   }
   return Object.freeze([]);
 }

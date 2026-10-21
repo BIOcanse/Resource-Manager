@@ -1,3 +1,5 @@
+using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Domain.SystemHealth;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using System.Runtime.CompilerServices;
 
@@ -5,12 +7,18 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal sealed class NativeReportCoordinatorWorkspace : IDisposable
 {
+    private readonly IComputeScratch scratch;
+    private bool retiring;
+    private bool disposed;
+
     public NativeReportCoordinatorWorkspace(
         CompiledHostManagerReportCoordinatorPlan plan,
         ulong sessionInstanceLow,
-        ulong sessionInstanceHigh)
+        ulong sessionInstanceHigh,
+        Func<ulong, IComputeScratch> createScratch)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(createScratch);
         if (!plan.IsPublished)
         {
             throw new InvalidOperationException(
@@ -28,26 +36,46 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
             sessionInstanceLow,
             sessionInstanceHigh);
         Session = new NativeReportCoordinatorSession(in configuration);
-        var capacity = Session.Capacity;
-        Rules = CreateRules(plan);
-        ReportBuffer = new NativeReportOutput[checked((int)capacity.ReportOutputCapacity)];
-        PersistenceBuffer = new NativeReportPersistenceOperation[
-            checked((int)capacity.PersistenceOperationCapacity)];
-        FeedbackBuffer = new NativeReportPersistenceFeedback[
-            checked((int)capacity.PersistenceOperationCapacity)];
+        IComputeScratch? created = null;
+        try
+        {
+            Layout = new NativeReportScratchLayout(Session.Capacity.ReportOutputCapacity,
+                Session.Capacity.PersistenceOperationCapacity);
+            Rules = CreateRules(plan);
+            created = createScratch(Layout.Length)
+                ?? throw new InvalidOperationException("The report scratch factory returned no resource.");
+            if (created.Length != Layout.Length)
+                throw new InvalidOperationException("The report scratch factory returned the wrong layout length.");
+            scratch = created;
+        }
+        catch (Exception failure)
+        {
+            try { created?.Dispose(); }
+            catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
+            finally { Session.Dispose(); }
+            throw;
+        }
     }
 
     public NativeReportCoordinatorSession Session { get; }
-
     public NativeReportRuleInput[] Rules { get; }
+    internal NativeReportScratchLayout Layout { get; }
+    internal PendingReportPlan? PendingPlan { get; set; }
 
-    public NativeReportOutput[] ReportBuffer { get; }
+    internal ComputeScratchLease AcquireScratch()
+    {
+        ObjectDisposedException.ThrowIf(disposed || retiring, this);
+        return scratch.Acquire();
+    }
 
-    public NativeReportPersistenceOperation[] PersistenceBuffer { get; }
-
-    public NativeReportPersistenceFeedback[] FeedbackBuffer { get; }
-
-    public void Dispose() => Session.Dispose();
+    public void Dispose()
+    {
+        if (disposed) return;
+        retiring = true;
+        scratch.Dispose(); // InUse/error retains both this reference and the native session.
+        Session.Dispose();
+        disposed = true;
+    }
 
     internal static NativeReportCoordinatorConfiguration CreateConfiguration(
         CompiledHostManagerReportCoordinatorPlan plan,
@@ -141,3 +169,7 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
         return result;
     }
 }
+
+internal sealed record PendingReportPlan(
+    NativeReportPlanInput Input,
+    SystemInterruptSnapshot InterruptSnapshot);

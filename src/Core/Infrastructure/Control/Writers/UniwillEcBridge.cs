@@ -181,8 +181,10 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
                 using var searcher = new ManagementObjectSearcher(
                     Scope,
                     $"SELECT * FROM {ClassName} WHERE InstanceName = '{InstanceName.Replace(@"\", @"\\")}'");
-                foreach (var found in searcher.Get())
+                using var collection = searcher.Get();
+                foreach (var found in collection)
                 {
+                    // Ownership transfers to the device cache; only the query closes here.
                     device = (ManagementObject)found;
                     return device;
                 }
@@ -209,6 +211,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
 internal static class UniwillEcRegisters
 {
     internal const ushort BareboneId = 0x0740;
+    internal const ushort SystemId = 0x0456;
 
     /// <summary>cTGP / Dynamic Boost 的使能位。</summary>
     internal const ushort CtgpDbEnable = 0x0743;

@@ -31,11 +31,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             warm: true, processFactsSnapshot: facts, automaticMemoryCleanupEnabled: false,
             performanceLogEnabled: true, failFastEffects: true, cpuCoreReader: reader,
             cpuTopology: topology, cpuScoring: cpu);
+        var nativeInputs = new NativeSmartInputCaptureProbe();
+        fixture.Coordinator.TransitionProbe = nativeInputs;
         for (var index = 0; index < 3; index++)
         {
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
             AssertWeightedProcessScore(fixture, pid, expected: 27);
-            var cpuInput = Assert.Single(fixture.Workspace.InputRows.ToArray(),
+            var cpuInput = Assert.Single(nativeInputs.Rows,
                 row => row.ProcessId == pid && row.MetricKind == NativeSmartCoordinatorMetricKind.CpuUsagePercent);
             Assert.Equal(!removeScalarCpu, cpuInput.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Metric));
             Assert.True(cpuInput.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
@@ -73,7 +75,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             fixture.DebugLogWriter.Records.Last().Properties["details"]);
         var inputCount = Assert.IsType<uint>(details["nativeInputCount"]);
         Assert.Equal(removeScalarCpu ? 1U : 2U, inputCount);
-        Assert.All(fixture.Workspace.InputRows[..checked((int)inputCount)].ToArray(), row =>
+        Assert.Equal(inputCount, checked((uint)nativeInputs.Rows.Length));
+        Assert.All(nativeInputs.Rows, row =>
         {
             Assert.False(row.Flags.HasFlag(NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete));
             Assert.False(row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));

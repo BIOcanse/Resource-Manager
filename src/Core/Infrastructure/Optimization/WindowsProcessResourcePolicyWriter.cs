@@ -47,7 +47,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
             var startedAt = SafeRead(() => new DateTimeOffset(process.StartTime));
             var priority = SafeRead(() => process.PriorityClass.ToString()) ?? string.Empty;
             var affinity = SafeRead(() => process.ProcessorAffinity.ToInt64());
-            if (startedAt == default || string.IsNullOrWhiteSpace(priority) || affinity <= 0)
+            if (startedAt == default || string.IsNullOrWhiteSpace(priority) || affinity == 0)
             {
                 return null;
             }
@@ -414,7 +414,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
         {
             if (NativeMethods.GetProcessIdOfThread(handle) != (uint)processId
                 || !TryReadThreadCreatedAt(handle, out var createdAt)
-                || Math.Abs((createdAt - expectedCreatedAt).TotalSeconds) > 1)
+                || createdAt.ToFileTime() != expectedCreatedAt.ToFileTime())
             {
                 return new ProcessResourcePolicyWriteResult(false, "线程身份已经变化，拒绝写入 CPU Sets。");
             }

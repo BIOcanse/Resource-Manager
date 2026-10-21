@@ -1,3 +1,4 @@
+const std = @import("std");
 const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const session_module = @import("session.zig");
@@ -41,6 +42,10 @@ pub export fn rm_metric_snapshot_reconfigure(
         getSession(handle) orelse return code(.invalid_argument),
         config orelse return code(.invalid_argument),
     ));
+}
+
+pub export fn rm_metric_snapshot_synchronize_counter_demand(handle: ?*anyopaque, input: ?*const protocol.ControlInput, active_metrics: ?[*]const protocol.PlanMetricInput, active_metric_count: u32) callconv(.c) i32 {
+    return code(session_module.synchronizeCounterDemand(getSession(handle) orelse return code(.invalid_argument), input orelse return code(.invalid_argument), constSlice(protocol.PlanMetricInput, active_metrics, active_metric_count) orelse return code(.invalid_argument)));
 }
 
 pub export fn rm_metric_snapshot_reset(
@@ -109,6 +114,10 @@ pub export fn rm_metric_snapshot_calculate_catalog_fingerprint(
     return code(.ok);
 }
 
+// ABI10 caller contract: Plan input struct/count extents and full output capacity
+// extents are pairwise disjoint and disjoint from the required scratch prefix.
+// Begin header is disjoint from that prefix. During completion the caller keeps
+// the prefix exclusively borrowed, including against other calls/sessions.
 pub export fn rm_metric_snapshot_plan(
     handle: ?*anyopaque,
     input: ?*const protocol.PlanInput,
@@ -121,6 +130,8 @@ pub export fn rm_metric_snapshot_plan(
     source_plan_capacity: u32,
     metric_plans: ?[*]protocol.MetricPlanOutput,
     metric_plan_capacity: u32,
+    scratch_pointer: ?[*]u8,
+    scratch_byte_count: u64,
 ) callconv(.c) i32 {
     return code(session_module.plan(
         getSession(handle) orelse return code(.invalid_argument),
@@ -134,16 +145,20 @@ pub export fn rm_metric_snapshot_plan(
             return code(.invalid_argument),
         mutableSlice(protocol.MetricPlanOutput, metric_plans, metric_plan_capacity) orelse
             return code(.invalid_argument),
+        scratchSlice(scratch_pointer, scratch_byte_count) orelse return code(.invalid_argument),
     ));
 }
 
 pub export fn rm_metric_snapshot_begin_completion(
     handle: ?*anyopaque,
     input: ?*const protocol.CompletionHeader,
+    scratch_pointer: ?[*]u8,
+    scratch_byte_count: u64,
 ) callconv(.c) i32 {
     return code(session_module.beginCompletion(
         getSession(handle) orelse return code(.invalid_argument),
         input orelse return code(.invalid_argument),
+        scratchSlice(scratch_pointer, scratch_byte_count) orelse return code(.invalid_argument),
     ));
 }
 
@@ -315,4 +330,11 @@ fn mutableSlice(comptime T: type, pointer: ?[*]T, count: u32) ?[]T {
 
 fn code(result: ResultCode) i32 {
     return @intFromEnum(result);
+}
+
+fn scratchSlice(pointer: ?[*]u8, byte_count: u64) ?[]u8 {
+    const length = std.math.cast(usize, byte_count) orelse return null;
+    const start = pointer orelse return null;
+    _ = std.math.add(usize, @intFromPtr(start), length) catch return null;
+    return start[0..length];
 }

@@ -1,3 +1,5 @@
+using ResourceManager.ReadWrite.Vendors.Nvidia;
+using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -5,39 +7,95 @@ using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Software;
+using ResourceManager.ReadWrite.Windows.Services;
+using ResourceManager.ReadWrite.Windows.SystemInformation;
+using System.Collections.Immutable;
+using ResourceManager.ReadWrite;
+using ResourceManager.App.Infrastructure.DiskUsage;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
-public sealed class DeviceTopologySnapshotProvider(
+public sealed partial class DeviceTopologySnapshotProvider(
     IDeviceTopologyReader reader,
     IDeviceTopologySnapshotStore store,
     DeviceTopologySemanticComparer semanticComparer,
     HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
-    ILogger<DeviceTopologySnapshotProvider> logger)
+    ILogger<DeviceTopologySnapshotProvider> logger,
+    IAcpiFirmwareTableReader acpiReader,
+    WindowsInstalledSoftwareInventory? softwareInventory = null,
+    WindowsServiceInformationOwner? serviceInventory = null,
+    WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
+    NvidiaNvapiMonitoringZone? nvidiaDrsZone = null)
     : IDeviceTopologySnapshotProvider, IHostedService, IDisposable
 {
+    internal const string NvidiaDrsItemId = "deviceTopology.nvidia-drs";
     internal const string SnapshotItemId = "deviceTopology.snapshot";
+    internal const string AcpiItemId = "deviceTopology.acpi";
+    internal const string SoftwareItemId = "deviceTopology.software";
+    internal const string ServicesItemId = "deviceTopology.services";
+    internal const string OperatingSystemItemId = "deviceTopology.operating-system";
+    internal WindowsOperatingSystemInformationOwner OperatingSystemInventory { get; } = operatingSystemInventory ?? new();
+    private readonly bool ownsOperatingSystemInventory = operatingSystemInventory is null;
+    internal WindowsServiceInformationOwner ServicesInventory { get; } = serviceInventory ?? new();
+    private readonly bool ownsServicesInventory = serviceInventory is null;
+    internal WindowsInstalledSoftwareInventory? SoftwareInventory { get; } = softwareInventory;
     private readonly SemaphoreSlim demandSignal = new(0, 1);
-    private readonly SemaphoreSlim sampleGate = new(1, 1);
-    private readonly CurrentValuePublicationSignal publicationSignal = new();
-    private readonly NativeItemSamplingSubscriptionTracker<DeviceTopologySampleRequest> subscriptions = new(
-        samplingSubscriptionOwner,
-        2,
-        static request => request.SourceKey,
-        static _ => [SnapshotItemId],
-        static (itemIds, _) => itemIds.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)
-            ? new DeviceTopologySampleRequest("provider")
-            : null,
-        coalesceItemsIntoLatestCapture: true);
-    private DeviceTopologySnapshotState state = DeviceTopologySnapshotState.Warming;
-    private string? semanticHash;
+    private readonly object publicationGate = new();
+    private readonly object resourceDisposeGate = new();
+    private readonly DeviceTopologyCaptureOwner captureOwner = new(acpiReader,
+        new DeviceTopologyCapturePolicy(reader, semanticComparer.ComputeHash, DeviceTopologyInformationProjection.Create,
+            (changed, token) => store.SaveAsync(new DeviceTopologyPersistedSnapshot(
+                DeviceTopologySnapshotState.CurrentSchemaVersion, string.Empty, changed.ContentGeneration,
+                changed.SemanticHash, changed.Snapshot), token),
+            static error => error is DeviceTopologyIncompleteSourcesException incomplete
+                ? new(incomplete.Diagnostics[0].Code, incomplete.Diagnostics)
+                : new("device-topology-read-failed", []),
+            (error, code, diagnostics, changed) => {
+                if (changed) logger.LogWarning(error,
+                    "Device topology background sample failed with {FailureCode}; sources: {SourceIds}.",
+                    code, string.Join(",", diagnostics.Select(static diagnostic => diagnostic.SourceId)));
+                else logger.LogDebug("Device topology source failure remains unchanged: {FailureCode}.", code);
+            },
+            error => logger.LogWarning(error, "Unable to persist the device topology snapshot."),
+            () => logger.LogDebug("Raw SMBIOS declarations are unavailable; current values were cleared.")),
+        error => logger.LogWarning(error, "ACPI firmware enumeration failed."));
+    private readonly NativeItemSamplingSubscriptionTracker<DeviceTopologySampleRequest> subscriptions =
+        CreateSubscriptions(samplingSubscriptionOwner, null);
     private CancellationTokenSource? samplingCts;
     private Task? samplingTask;
-    private long contentGeneration;
-    private long stateRevision;
     private long nextLeaseId;
-    private string? failureFingerprint;
     private int disposed;
+    private int ownedResourcesDisposed;
+
+    private static NativeItemSamplingSubscriptionTracker<DeviceTopologySampleRequest> CreateSubscriptions(
+        HostManagerSamplingSubscriptionOwner owner,
+        Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch)
+        => new(owner, 2, static request => request.SourceKey,
+            static request => SamplingItemIds(request.Scope),
+            static (itemIds, sources) => CreateSampleRequest(itemIds, sources),
+            coalesceItemsIntoLatestCapture: false, createOutputScratch);
+
+    internal DeviceTopologySnapshotProvider(
+        IDeviceTopologyReader reader,
+        IDeviceTopologySnapshotStore store,
+        DeviceTopologySemanticComparer semanticComparer,
+        HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
+        ILogger<DeviceTopologySnapshotProvider> logger,
+        IAcpiFirmwareTableReader acpiReader,
+        ResourceManagerLedgerOwner ledgerOwner,
+        WindowsInstalledSoftwareInventory? softwareInventory = null,
+        WindowsServiceInformationOwner? serviceInventory = null,
+        WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
+        NvidiaNvapiMonitoringZone? nvidiaDrsZone = null)
+        : this(reader, store, semanticComparer, samplingSubscriptionOwner, logger, acpiReader,
+            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone)
+    {
+        ArgumentNullException.ThrowIfNull(ledgerOwner);
+        subscriptions = CreateSubscriptions(samplingSubscriptionOwner,
+            (length, alignment) => SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment));
+    }
 
     public async IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeAsync(
         string subscriptionId,
@@ -46,67 +104,57 @@ public sealed class DeviceTopologySnapshotProvider(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subscriptionId);
         cancellationToken.ThrowIfCancellationRequested();
-        using var publication = publicationSignal.Subscribe();
-        var sourceKey = $"lease:{Interlocked.Increment(ref nextLeaseId)}:{subscriptionId.Trim()}";
-        subscriptions.TrackPersistent(
-            new DeviceTopologySampleRequest(sourceKey),
-            DateTimeOffset.UtcNow,
-            interval);
-        SignalDemand();
-        try
+        using var publication = captureOwner.SubscribeTopologyPublications();
+        using var lease = AcquireInformationSubscription(subscriptionId, interval, cancellationToken: cancellationToken);
+        while (!cancellationToken.IsCancellationRequested)
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                await publication.WaitAsync(cancellationToken);
-                yield return ReadState();
-            }
-        }
-        finally
-        {
-            subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
-            SignalDemand();
+            await publication.WaitAsync(cancellationToken);
+            yield return ReadState();
         }
     }
 
     public DeviceTopologySnapshotState ReadState()
     {
-        return Volatile.Read(ref state);
+        return captureOwner.ReadState();
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         var persisted = await store.LoadAsync(cancellationToken);
         if (persisted is not null)
         {
-            semanticHash = persisted.SemanticHash;
-            contentGeneration = Math.Max(1, persisted.ContentGeneration);
-            stateRevision = 1;
-            Publish(new DeviceTopologySnapshotState(
-                DeviceTopologySnapshotState.CurrentSchemaVersion,
-                DeviceTopologySnapshotStatus.Ready,
-                persisted.Snapshot,
-                contentGeneration,
-                stateRevision,
-                DeviceTopologySnapshotSource.Persisted,
-                persisted.Snapshot.CapturedAt,
-                null,
-                null,
-                []));
+            captureOwner.InitializePersisted(persisted.Snapshot, persisted.SemanticHash, persisted.ContentGeneration);
         }
 
-        samplingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        samplingTask = Task.Run(() => RunSamplingLoopAsync(samplingCts.Token), CancellationToken.None);
+        lock (publicationGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            if (samplingTask is not null) throw new InvalidOperationException("The device sampling worker is already running or draining.");
+            samplingCts?.Dispose();
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            samplingCts = cts;
+            samplingTask = Task.Run(() => RunSamplingLoopAsync(cts.Token), CancellationToken.None);
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        var task = samplingTask;
-        if (task is null)
+        Task? task;
+        CancellationTokenSource? cts;
+        lock (publicationGate)
         {
-            return;
+            task = samplingTask;
+            cts = samplingCts;
+            cts?.Cancel();
+            fieldSubscriptionDelivery.RetireAll();
+            if (task is null)
+            {
+                subscriptions.Clear(DateTimeOffset.UtcNow);
+                return;
+            }
         }
 
-        samplingCts?.Cancel();
         SignalDemand();
         try
         {
@@ -116,34 +164,74 @@ public sealed class DeviceTopologySnapshotProvider(
         {
         }
 
-        subscriptions.Clear(DateTimeOffset.UtcNow);
-        _ = Interlocked.CompareExchange(ref samplingTask, null, task);
+        lock (publicationGate)
+        {
+            // Another concurrent StopAsync may have already retired this run and
+            // allowed StartAsync to publish its successor. Only the owner of the
+            // captured task may clear its subscriptions or cancellation source.
+            if (ReferenceEquals(samplingTask, task))
+            {
+                subscriptions.Clear(DateTimeOffset.UtcNow);
+                samplingTask = null;
+                // The cancelled CTS is also the existing stopped-admission state.
+                // StartAsync replaces/disposes it; final disposal owns its release.
+            }
+        }
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-        {
-            return;
-        }
+        Interlocked.Exchange(ref disposed, 1);
 
-        var cts = Interlocked.Exchange(ref samplingCts, null);
+        CancellationTokenSource? cts;
+        Task? task;
+        lock (publicationGate)
+        {
+            cts = samplingCts;
+            task = samplingTask;
+            cts?.Cancel();
+            fieldSubscriptionDelivery.RetireAll();
+        }
+        SignalDemand();
         try
         {
-            cts?.Cancel();
+            task?.GetAwaiter().GetResult();
         }
-        finally
+        catch (OperationCanceledException) when (task?.IsCompleted == true)
         {
+        }
+        catch (Exception error)
+        {
+            logger.LogError(error, "Device topology sampling worker failed while draining for disposal.");
+        }
+        lock (resourceDisposeGate)
+        {
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+            lock (publicationGate)
+            {
+                // The worker has completed and settled its current Plan before Clear or output close.
+                subscriptions.Clear(DateTimeOffset.UtcNow);
+            }
+            subscriptions.CloseOutputScratch();
+            DisposeCaptureResources();
+        }
+    }
+
+    private void DisposeCaptureResources()
+    {
+        if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+        lock (publicationGate)
+        {
+            var cts = samplingCts;
+            samplingCts = null;
+            samplingTask = null;
             cts?.Dispose();
         }
-
-        var task = Interlocked.Exchange(ref samplingTask, null);
-        if (task is not null)
-        {
-            subscriptions.Clear(DateTimeOffset.UtcNow);
-        }
+        captureOwner.Dispose();
+        if (ownsServicesInventory) ServicesInventory.Dispose();
+        if (ownsOperatingSystemInventory) OperatingSystemInventory.Dispose();
         demandSignal.Dispose();
-        sampleGate.Dispose();
+        Volatile.Write(ref ownedResourcesDisposed, 1);
     }
 
     internal Task<DeviceTopologySampleCompletion> SampleNowAsync(
@@ -152,216 +240,69 @@ public sealed class DeviceTopologySnapshotProvider(
         return TrySampleAsync(null, cancellationToken);
     }
 
-    private async Task RunSamplingLoopAsync(CancellationToken cancellationToken)
+    private Task RunSamplingLoopAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        FieldCollectionResult? pendingFieldResult = null;
+        var worker = new NativeSamplingSubscriptionWorker<DeviceTopologySampleRequest, SamplingOwnerToken>(
+            subscriptions, demandSignal, static _ => { },
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
+            TimeSpan.Zero);
+        return worker.RunAsync(async (plan, token) =>
         {
-            var plan = subscriptions.CreatePlan(DateTimeOffset.UtcNow);
-            if (!plan.IsActive)
+            var completion = await SampleRequestedAsync(plan.Request!.Scope, plan.OwnerToken, token,
+                plan.Request.IncludeServiceConfiguration, plan.Request.OperatingSystemFields,
+                (scope, queriedKeys) => pendingFieldResult = MergeFieldCapture(pendingFieldResult,
+                    CaptureFieldResult(plan.Triggers, scope, queriedKeys)), plan.Request.NvidiaDrsRequests);
+            return completion switch
             {
-                await WaitForDemandAsync(cancellationToken);
-                continue;
-            }
-
-            if (plan.Request is null)
-            {
-                await WaitForDemandOrDelayAsync(plan.Delay, cancellationToken);
-                continue;
-            }
-
-            var completion = await TrySampleAsync(
-                plan.OwnerToken,
-                cancellationToken);
-            var completedAt = DateTimeOffset.UtcNow;
-            var subscriptionCompletion = completion switch
-            {
-                DeviceTopologySampleCompletion.Sampled =>
-                    subscriptions.MarkSampled(plan.Request, completedAt),
-                DeviceTopologySampleCompletion.Failed =>
-                    subscriptions.MarkFailed(plan.Request, completedAt),
-                DeviceTopologySampleCompletion.SkippedBusy or
-                DeviceTopologySampleCompletion.Canceled =>
-                    subscriptions.MarkSkipped(plan.Request, completedAt),
-                _ => throw new InvalidOperationException(
-                    "Device topology sampling returned an unknown completion.")
+                DeviceTopologySampleCompletion.Sampled => SubscriptionSampleCompletion.Sampled,
+                DeviceTopologySampleCompletion.Failed => SubscriptionSampleCompletion.Failed,
+                DeviceTopologySampleCompletion.SkippedBusy => SubscriptionSampleCompletion.Skipped,
+                DeviceTopologySampleCompletion.Canceled => SubscriptionSampleCompletion.Canceled,
+                _ => throw new InvalidOperationException("Device topology sampling returned an unknown completion.")
             };
-            await WaitForDemandOrDelayAsync(
-                subscriptionCompletion.Delay,
-                cancellationToken);
-        }
-    }
-
-    private async Task<DeviceTopologySampleCompletion> TrySampleAsync(
-        SamplingOwnerToken? ownerToken,
-        CancellationToken cancellationToken)
-    {
-        try
+        }, cancellationToken, planCreated: plan =>
         {
-            if (!await sampleGate.WaitAsync(0, cancellationToken))
-            {
-                return DeviceTopologySampleCompletion.SkippedBusy;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            pendingFieldResult = null;
+            if (plan.DueItemIds.Count == 0)
+                fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+        }, collectionCompleted: (plan, completion) =>
         {
-            return DeviceTopologySampleCompletion.Canceled;
-        }
-
-        var attemptedAt = DateTimeOffset.UtcNow;
-        if (ownerToken is { IsActive: false })
-        {
-            sampleGate.Release();
-            return DeviceTopologySampleCompletion.Canceled;
-        }
-
-        try
-        {
-            var snapshot = reader.ReadSnapshot();
-            var nextHash = semanticComparer.ComputeHash(snapshot);
-            var changed = false;
-            DeviceTopologySnapshotState? nextState = null;
-            if (!TryPublish(ownerToken, () =>
-            {
-                changed = !string.Equals(semanticHash, nextHash, StringComparison.Ordinal);
-                if (changed)
-                {
-                    semanticHash = nextHash;
-                    contentGeneration = Interlocked.Increment(ref contentGeneration);
-                }
-
-                var current = ReadState();
-                var publishedSnapshot = changed || current.Snapshot is null
-                    ? snapshot
-                    : current.Snapshot;
-                nextState = current with
-                {
-                    State = DeviceTopologySnapshotStatus.Ready,
-                    Snapshot = publishedSnapshot,
-                    ContentGeneration = contentGeneration,
-                    StateRevision = Interlocked.Increment(ref stateRevision),
-                    Source = DeviceTopologySnapshotSource.Live,
-                    LastSuccessAt = snapshot.CapturedAt,
-                    LastAttemptAt = attemptedAt,
-                    FailureCode = null,
-                    AttemptDiagnostics = []
-                };
-                Publish(nextState);
-                failureFingerprint = null;
-                publicationSignal.Publish();
-            }))
-            {
-                return DeviceTopologySampleCompletion.Canceled;
-            }
-
-            if (changed)
-            {
-                try
-                {
-                    await store.SaveAsync(new DeviceTopologyPersistedSnapshot(
-                        DeviceTopologySnapshotState.CurrentSchemaVersion,
-                        string.Empty,
-                        contentGeneration,
-                        nextHash,
-                        nextState!.Snapshot!), cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Unable to persist the device topology snapshot.");
-                }
-            }
-
-            return DeviceTopologySampleCompletion.Sampled;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            return DeviceTopologySampleCompletion.Canceled;
-        }
-        catch (DeviceTopologyIncompleteSourcesException ex)
-        {
-            return PublishFailure(
-                ownerToken,
-                ex,
-                attemptedAt,
-                ex.Diagnostics[0].Code,
-                ex.Diagnostics)
-                ? DeviceTopologySampleCompletion.Failed
-                : DeviceTopologySampleCompletion.Canceled;
-        }
-        catch (Exception ex)
-        {
-            return PublishFailure(
-                ownerToken,
-                ex,
-                attemptedAt,
-                "device-topology-read-failed",
-                [])
-                ? DeviceTopologySampleCompletion.Failed
-                : DeviceTopologySampleCompletion.Canceled;
-        }
-        finally
-        {
-            sampleGate.Release();
-        }
-    }
-
-    private bool PublishFailure(
-        SamplingOwnerToken? ownerToken,
-        Exception exception,
-        DateTimeOffset attemptedAt,
-        string failureCode,
-        IReadOnlyList<DeviceTopologySourceDiagnostic> diagnostics)
-    {
-        return TryPublish(ownerToken, () =>
-        {
-            var fingerprint = $"{exception.GetType().FullName}:{exception.HResult}:{failureCode}";
-            if (!string.Equals(failureFingerprint, fingerprint, StringComparison.Ordinal))
-            {
-                logger.LogWarning(
-                    exception,
-                    "Device topology background sample failed with {FailureCode}; sources: {SourceIds}.",
-                    failureCode,
-                    string.Join(",", diagnostics.Select(static diagnostic => diagnostic.SourceId)));
-            }
-            else
-            {
-                logger.LogDebug(
-                    "Device topology source failure remains unchanged: {FailureCode}.",
-                    failureCode);
-            }
-
-            failureFingerprint = fingerprint;
-            var current = ReadState();
-            Publish(current with
-            {
-                State = DeviceTopologySnapshotStatus.Failed,
-                StateRevision = Interlocked.Increment(ref stateRevision),
-                LastAttemptAt = attemptedAt,
-                FailureCode = failureCode,
-                AttemptDiagnostics = diagnostics.ToArray()
-            });
-            publicationSignal.Publish();
+            var result = pendingFieldResult;
+            pendingFieldResult = null;
+            if (completion != SubscriptionSampleCompletion.Canceled)
+                fieldSubscriptionDelivery.Deliver(plan.Triggers, result,
+                    freshOnly: plan.DueItemIds.Count == 0 ? true : null);
         });
     }
 
-    private static bool TryPublish(SamplingOwnerToken? ownerToken, Action publish)
+    private Task<DeviceTopologySampleCompletion> TrySampleAsync(SamplingOwnerToken? ownerToken,
+        CancellationToken cancellationToken, bool requireDemand = true,
+        Action<DeviceTopologySampleScope, IReadOnlySet<string>>? collectionCommitted = null)
     {
-        if (ownerToken is null)
-        {
-            publish();
-            return true;
-        }
-
-        return ownerToken.TryPublish(publish);
+        var queried = false;
+        return captureOwner.SampleTopologyAsync(Permission(ownerToken, DeviceTopologySampleScope.Snapshot,
+            hosted: ownerToken is not null, committed: () => collectionCommitted?.Invoke(DeviceTopologySampleScope.Snapshot,
+                queried ? new HashSet<string>(StringComparer.Ordinal) { SnapshotItemId } : new HashSet<string>(StringComparer.Ordinal))),
+            cancellationToken, requireDemand, sourceQueryStarted: () => queried = true);
     }
 
-    private void Publish(DeviceTopologySnapshotState next)
+    private Task<DeviceTopologySampleCompletion> TrySampleAcpiAsync(SamplingOwnerToken? ownerToken,
+        CancellationToken cancellationToken, bool requireDemand = true,
+        Action<DeviceTopologySampleScope, IReadOnlySet<string>>? collectionCommitted = null)
     {
-        Volatile.Write(ref state, next);
+        var queried = false;
+        return captureOwner.SampleAcpiAsync(Permission(ownerToken, DeviceTopologySampleScope.Acpi,
+            hosted: ownerToken is not null, committed: () => collectionCommitted?.Invoke(DeviceTopologySampleScope.Acpi,
+                queried ? new HashSet<string>(StringComparer.Ordinal) { AcpiItemId } : new HashSet<string>(StringComparer.Ordinal))),
+            cancellationToken, requireDemand, sourceQueryStarted: () => queried = true);
     }
+
+    private DeviceTopologyCapturePermission? Permission(SamplingOwnerToken? ownerToken, DeviceTopologySampleScope scope,
+        bool hosted = false, Action? committed = null)
+        => ownerToken is null ? null : hosted
+            ? new(() => IsHostedActive(ownerToken), action => TryPublishHosted(ownerToken, action, committed), () => HasCurrentDemand(scope))
+            : new(() => ownerToken.IsActive, ownerToken.TryPublish, () => HasCurrentDemand(scope));
 
     private void SignalDemand()
     {
@@ -374,44 +315,113 @@ public sealed class DeviceTopologySnapshotProvider(
             catch (SemaphoreFullException)
             {
             }
+            catch (ObjectDisposedException) when (Volatile.Read(ref disposed) != 0)
+            {
+                // A retiring or closed worker no longer needs a wake-up.
+            }
         }
     }
 
-    private async Task WaitForDemandAsync(CancellationToken cancellationToken)
+
+
+    private static IEnumerable<string> SamplingItemIds(DeviceTopologySampleScope scope)
     {
-        try
-        {
-            await demandSignal.WaitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        if ((scope & DeviceTopologySampleScope.Snapshot) != 0) yield return SnapshotItemId;
+        if ((scope & DeviceTopologySampleScope.Acpi) != 0) yield return AcpiItemId;
+        if ((scope & DeviceTopologySampleScope.Software) != 0) yield return SoftwareItemId;
+        if ((scope & DeviceTopologySampleScope.Services) != 0) yield return ServicesItemId;
+        if ((scope & DeviceTopologySampleScope.OperatingSystem) != 0) yield return OperatingSystemItemId;
+        if ((scope & DeviceTopologySampleScope.PassiveCurrent) != 0) yield return DiskUsageTreeStore.InformationItemId;
+        if ((scope & DeviceTopologySampleScope.NvidiaDrs) != 0) yield return NvidiaDrsItemId;
     }
 
-    private async Task WaitForDemandOrDelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+    private static DeviceTopologySampleRequest? CreateSampleRequest(IReadOnlyList<string> items,
+        IReadOnlyList<ResourceManager.Subscription.NativeItemSamplingSubscriptionSourceView<DeviceTopologySampleRequest>> sources)
     {
-        if (delay < TimeSpan.Zero)
-        {
-            throw new InvalidOperationException(
-                "Native device-topology sampling returned a past next-wake time.");
-        }
-
-        try
-        {
-            await demandSignal.WaitAsync(delay, cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        var scope = DeviceTopologySampleScope.None;
+        if (items.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Snapshot;
+        if (items.Contains(AcpiItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Acpi;
+        if (items.Contains(SoftwareItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Software;
+        if (items.Contains(ServicesItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Services;
+        if (items.Contains(OperatingSystemItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.OperatingSystem;
+        if (items.Contains(DiskUsageTreeStore.InformationItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.PassiveCurrent;
+        if (items.Contains(NvidiaDrsItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.NvidiaDrs;
+        return scope == DeviceTopologySampleScope.None ? null : new("provider", scope,
+            IncludeServiceConfiguration: sources.Any(source => (source.Request.Scope & DeviceTopologySampleScope.Services) != 0
+                && source.Request.IncludeServiceConfiguration && !source.Request.CancellationToken.IsCancellationRequested),
+            OperatingSystemFields: sources.Where(source => (source.Request.Scope & DeviceTopologySampleScope.OperatingSystem) != 0
+                && !source.Request.CancellationToken.IsCancellationRequested)
+                .Aggregate(WindowsOperatingSystemInformationFields.None, static (fields, source) => fields | source.Request.OperatingSystemFields),
+            NvidiaDrsRequests: sources.Where(source => (source.Request.Scope & DeviceTopologySampleScope.NvidiaDrs) != 0
+                && !source.Request.CancellationToken.IsCancellationRequested)
+                .SelectMany(source => source.Request.NvidiaDrsRequests.IsDefault
+                    ? ImmutableArray<NvidiaDrsInformationRequest>.Empty : source.Request.NvidiaDrsRequests).ToImmutableArray());
     }
 
-    private sealed record DeviceTopologySampleRequest(string SourceKey);
+    private async Task<DeviceTopologySampleCompletion> SampleRequestedAsync(
+        DeviceTopologySampleScope scope, SamplingOwnerToken ownerToken, CancellationToken cancellationToken,
+        bool includeServiceConfiguration = false,
+        WindowsOperatingSystemInformationFields operatingSystemFields = WindowsOperatingSystemInformationFields.All,
+        Action<DeviceTopologySampleScope, IReadOnlySet<string>>? collectionCommitted = null,
+        ImmutableArray<NvidiaDrsInformationRequest> nvidiaDrsRequests = default)
+    {
+        var completion = DeviceTopologySampleCompletion.Sampled;
+        if ((scope & DeviceTopologySampleScope.Snapshot) != 0)
+            completion = await TrySampleAsync(ownerToken, cancellationToken, collectionCommitted: collectionCommitted);
+        if (completion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy)
+            return completion;
+        if ((scope & DeviceTopologySampleScope.Acpi) != 0)
+        {
+            var acpiCompletion = await TrySampleAcpiAsync(ownerToken, cancellationToken, collectionCommitted: collectionCommitted);
+            if (acpiCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy)
+                return acpiCompletion;
+            if (acpiCompletion == DeviceTopologySampleCompletion.Failed) completion = acpiCompletion;
+        }
+        if ((scope & DeviceTopologySampleScope.Software) != 0)
+        {
+            var softwareCompletion = await TrySampleSoftwareAsync(ownerToken, cancellationToken, collectionCommitted);
+            if (softwareCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy)
+                return softwareCompletion;
+            if (softwareCompletion == DeviceTopologySampleCompletion.Failed) completion = softwareCompletion;
+        }
+        if ((scope & DeviceTopologySampleScope.Services) != 0)
+        {
+            var serviceCompletion = await TrySampleServicesAsync(ownerToken, includeServiceConfiguration, cancellationToken, collectionCommitted);
+            if (serviceCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy)
+                return serviceCompletion;
+            if (serviceCompletion == DeviceTopologySampleCompletion.Failed) completion = serviceCompletion;
+        }
+        if ((scope & DeviceTopologySampleScope.OperatingSystem) != 0)
+        {
+            var osCompletion = await TrySampleOperatingSystemAsync(ownerToken, cancellationToken, operatingSystemFields, collectionCommitted);
+            if (osCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy)
+                return osCompletion;
+            if (osCompletion == DeviceTopologySampleCompletion.Failed) completion = osCompletion;
+        }
+        if ((scope & DeviceTopologySampleScope.NvidiaDrs) != 0)
+        {
+            var drsCompletion = await TrySampleNvidiaDrsAsync(ownerToken, cancellationToken, nvidiaDrsRequests, collectionCommitted);
+            if (drsCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy) return drsCompletion;
+            if (drsCompletion == DeviceTopologySampleCompletion.Failed) completion = drsCompletion;
+        }
+        return completion;
+    }
+
+    [Flags]
+    private enum DeviceTopologySampleScope : byte { None = 0, Snapshot = 1, Acpi = 2, Software = 4, Services = 8, OperatingSystem = 16, PassiveCurrent = 32, NvidiaDrs = 64 }
+
+    private bool HasCurrentDemand(DeviceTopologySampleScope scope)
+        => subscriptions.HasPersistentDemand(request =>
+            (request.Scope & scope) != 0 && !request.CancellationToken.IsCancellationRequested);
+
+    private sealed record DeviceTopologySampleRequest(
+        string SourceKey, DeviceTopologySampleScope Scope, CancellationToken CancellationToken = default,
+        bool IncludeServiceConfiguration = false,
+        WindowsOperatingSystemInformationFields OperatingSystemFields = WindowsOperatingSystemInformationFields.All,
+        ImmutableArray<NvidiaDrsInformationRequest> NvidiaDrsRequests = default);
 }
 
-internal enum DeviceTopologySampleCompletion : byte
-{
-    Sampled = 1,
-    Failed = 2,
-    SkippedBusy = 3,
-    Canceled = 4
-}
+
+
+
+

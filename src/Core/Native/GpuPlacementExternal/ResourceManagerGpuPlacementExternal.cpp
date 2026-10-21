@@ -1,7 +1,9 @@
 #include "Cleanup.h"
 #include "ChromiumArguments.h"
+#include "../GpuPlacementCommon/ControllerOutputPipes.h"
 
 int wmain(int argc,wchar_t** argv) {
+    if (!ResourceManagerGpuController::ConfigureOutput(argc, argv)) return 2;
     SetErrorMode(32771); setvbuf(stdout,nullptr,_IONBF,0);
     if(argc!=11
 #ifdef RM_EXTERNAL_FIXTURE
@@ -259,6 +261,7 @@ int wmain(int argc,wchar_t** argv) {
     bool rootRestored=rootAlive && CheckRemoteDebuggerPresent(root.h,&debugger)&&!debugger && query(root.h,31,&flags,sizeof flags,nullptr)>=0 && flags==originalFlags;
     DWORD gpuExit=STILL_ACTIVE; if(oldGpu.h) GetExitCodeProcess(oldGpu.h,&gpuExit);
     bool passed=error.empty()&&cleaned&&rootRestored;
-    printf("{\"kind\":\"summary\",\"passed\":%s,\"cleanupPassed\":%s,\"browserAlive\":%s,\"rootRestored\":%s,\"originalGpuExit\":%lu,\"observed\":%u,\"filtered\":%u,\"startupRearms\":%u,\"newGpuProcesses\":%u,\"error\":%s}\n",passed?"true":"false",cleaned?"true":"false",rootAlive?"true":"false",rootRestored?"true":"false",gpuExit,observed,filtered,startupRearms,newGpus,quote(error).c_str());
+    if (!cleaned && cleanupOk) printf("{\"kind\":\"cleanupRecovered\",\"cleanupPassed\":true,\"rootRestored\":%s}\n", rootRestored ? "true" : "false");
+    printf("{\"kind\":\"summary\",\"passed\":%s,\"cleanupPassed\":%s,\"browserAlive\":%s,\"rootRestored\":%s,\"originalGpuExit\":%lu,\"observed\":%u,\"filtered\":%u,\"startupRearms\":%u,\"newGpuProcesses\":%u,\"error\":%s}\n",passed?"true":"false",cleanupOk?"true":"false",rootAlive?"true":"false",rootRestored?"true":"false",gpuExit,observed,filtered,startupRearms,newGpus,quote(error).c_str());
     return passed?0:1;
 }

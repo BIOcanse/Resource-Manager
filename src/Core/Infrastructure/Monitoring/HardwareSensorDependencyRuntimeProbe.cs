@@ -140,7 +140,14 @@ internal static class HardwareSensorDependencyRuntimeProbe
             searcher.Options.ReturnImmediately = true;
             searcher.Options.Timeout = TimeSpan.FromSeconds(2);
             using var collection = searcher.Get();
-            return collection.Count > 0 ? new HardwareMonitorWmiState(provider, path) : null;
+            using var enumerator = collection.GetEnumerator();
+            if (!enumerator.MoveNext())
+            {
+                return null;
+            }
+
+            using var first = enumerator.Current;
+            return new HardwareMonitorWmiState(provider, path);
         }
         catch (Exception ex) when (ex is ManagementException or UnauthorizedAccessException or COMException)
         {

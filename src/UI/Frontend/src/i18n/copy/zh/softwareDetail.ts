@@ -26,11 +26,17 @@ export const zhSoftwareDetailCopy = {
     group: "目标软件",
   },
   softwareDetail: {
+    openPath: "打开",
+    protection: {
+      title: "二级保护",
+      enabled: "启用二级保护",
+      hint: "此软件不参与 CPU、内存和 GPU 调度；解除保护后可重新参与。",
+      failed: "无法读取或保存保护设置，请重新打开软件详情。",
+    },
     tab: {
       overview: "概览",
       policy: "策略",
       processes: "进程",
-      migration: "迁移"
     },
     option: {
       useDefault: "使用默认设置",
@@ -60,18 +66,14 @@ export const zhSoftwareDetailCopy = {
       paths: "路径和来源",
       operations: "操作能力",
       gpuScheduling: "GPU 调度",
-      migrationAndRestore: "迁移和恢复",
       relatedInfo: "相关信息"
     },
     rootNeedsConfirmation: "根目录需要确认",
     rootNeedsConfirmationDetail: "当前只有可执行文件位置，尚未确认软件根目录。",
     chooseFolder: "选择文件夹",
     ordinaryGpuMode: "当前为普通配置模式，仅使用系统默认 GPU 选项。",
-    noMigrationRecord: "暂无迁移记录。",
     processing: "处理中",
     restoreAll: "一键恢复",
-    migrateData: "一键迁移数据",
-    migrateWholeSoftware: "一键迁移整个软件",
     close: "关闭",
     operationDetailTitle: "操作详情",
     contentLabel: "内容",
@@ -92,7 +94,6 @@ export const zhSoftwareDetailCopy = {
       gpuSelectionMethod: "显卡选择方式",
       startupGpu: "启动时 GPU",
       runtimeSelectionMethod: "运行时选择方式",
-      runtimeTargetGpu: "运行时目标 GPU",
       whenSoftwareChoseGpu: "软件已选显卡时",
       allowRuntimeGpuSwitch: "允许运行时切换显卡",
       preferKeepingTargetGpu: "优先保留目标显卡",
@@ -168,18 +169,5 @@ export const zhSoftwareDetailCopy = {
       preparing: "正在准备启动显卡设置。",
       recentLaunch: (outcome: string, time: string) => `最近启动：${outcome} · ${time}`
     },
-    migration: {
-      sourcePath: "原路径",
-      managedPath: "托管路径",
-      restored: "已恢复",
-      restore: "恢复",
-      open: "打开",
-      wholeSoftware: "整个软件",
-      data: "数据",
-      migrated: "已迁移",
-      summary: (kind: string, state: string) => `${kind} · ${state}`,
-      migratedAt: (time: string) => `迁移于 ${time}`,
-      restoredAt: (time: string) => `恢复于 ${time}`
-    }
   }
 };

@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { systemProcessResultDetail, systemProcessResultSummary } from "../presentation/systemProcessResult";
 import type { Accessor, Setter } from "solid-js";
 import {
   confirmPortableSoftwareRoot,
@@ -13,7 +14,6 @@ import {
   searchOnline,
   terminateProcesses
 } from "../api";
-import { migrationRestoreCommand } from "../data/operations/operationCommands";
 import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry";
 import { isTerminalOperation } from "../frontendRuntime/operations/operationMerge";
 import type { SourceFamily } from
@@ -29,13 +29,13 @@ import {
   primaryPropertiesPath
 } from "../components/SoftwareContextMenu";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
+import { enrichSoftwareContextTarget as enrichContextTarget, softwareContextTargetMatchesRow } from "../components/softwareContextTarget.ts";
 import type { StandardContextMenuModel } from "../components/StandardContextMenu";
 import {
   isManagementInventorySubpage,
   type ManagementSubpageId
 } from "../features/management/managementNavigation";
 import type { ManagementStore } from "../stores/managementStore";
-import type { MigrationWorkbenchStore } from "../stores/migrationStore";
 import type { MonitorStore } from "../stores/monitorStore";
 import { managementRoleLabel, softwareDisplayKindLabel, uiText } from "../text.ts";
 import type {
@@ -48,7 +48,6 @@ import type {
   OperationSnapshot,
   OptimizationReportItem,
   PageId,
-  SoftwareDataMigrationRecord,
   SoftwareDetailModel,
   SoftwareRecord,
   SystemProcessOperationResult
@@ -56,7 +55,6 @@ import type {
 import {
   formatBoolean,
   formatCapabilityFlags,
-  getRootMigrationPaths,
   isComponentInstalled,
   normalizeName,
   pathLooksUsable,
@@ -87,7 +85,6 @@ import {
 interface UseSoftwareActionsOptions {
   monitor: MonitorStore;
   management: ManagementStore;
-  migration: MigrationWorkbenchStore;
   setActivePage: Setter<PageId>;
   openManagementSubpage: (subpage: ManagementSubpageId) => void;
   confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
@@ -104,10 +101,8 @@ interface UseSoftwareActionsOptions {
   softwareMetadataLanguage: Accessor<string>;
 }
 
-type SoftwareContextMatchTarget = Pick<SoftwareContextMenuTarget, "name"> & Partial<Pick<SoftwareContextMenuTarget, "softwareId" | "softwareName">>;
-
 export function useSoftwareActions(options: UseSoftwareActionsOptions) {
-  const { monitor, management, migration, setActivePage, openManagementSubpage, confirmDialog, showToast, showErrorToast } = options;
+  const { monitor, management, setActivePage, openManagementSubpage, confirmDialog, showToast, showErrorToast } = options;
   const [softwareDetail, setSoftwareDetail] = createSignal<SoftwareDetailModel | null>(null);
   const [softwareDetailNotice, setSoftwareDetailNotice] = createSignal<DetailNotice | null>(null);
   const [softwareDetailActionInProgress, setSoftwareDetailActionInProgress] = createSignal(false);
@@ -120,11 +115,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   const softwareMetadataBinding = new SoftwareMetadataLeaseBinding(
     options.softwareMetadataSource,
     projectSoftwareMetadataSnapshot);
-
-  const softwareDetailMigrationRecords = createMemo(() => {
-    const detail = softwareDetail();
-    return detail ? migrationRecordsForDetail(detail, migration.records()) : [];
-  });
 
   onCleanup(() => {
     if (highlightClearTimer !== undefined) {
@@ -254,7 +244,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     if (!await confirmDialog({
-      title: uiText.softwareActions.endTaskTitle(target.softwareName ?? target.name),
+      title: uiText.softwareActions.endTaskTitle(target.kind === "process" ? target.name : target.softwareName ?? target.name),
       message: uiText.softwareActions.endTaskMessage(processTargets.length),
       details: processTargets.map((item) => `PID ${item.processId}`).slice(0, 12),
       tone: "warning"
@@ -282,7 +272,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
 
     if (!await confirmDialog({
-      title: uiText.softwareActions.dumpTitle(target.softwareName ?? target.name),
+      title: uiText.softwareActions.dumpTitle(target.kind === "process" ? target.name : target.softwareName ?? target.name),
       message: uiText.softwareActions.dumpMessage(processTargets.length),
       details: processTargets.map((item) => `PID ${item.processId}`).slice(0, 12),
       tone: "warning"
@@ -368,61 +358,18 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   }
 
   function enrichSoftwareContextTarget(target: SoftwareContextMenuTarget): SoftwareContextMenuTarget {
-    const liveRows = monitor.resourceTableSnapshot()?.rows ?? [];
-    const matchingRows = liveRows.filter((row) => row.kind === "software" || row.kind === "process")
-      .filter((row) => softwareContextTargetMatchesRow(target, row));
-    const softwareRow = matchingRows.find((row) => row.kind === "software");
-    const processRows = matchingRows.filter((row) => row.kind === "process");
-    return {
-      ...target,
-      softwareId: target.softwareId ?? softwareRow?.softwareId,
-      softwareName: target.softwareName ?? softwareRow?.softwareName ?? softwareRow?.name,
-      processIds: uniqueNumbers([
-        ...(target.processIds ?? []),
-        ...(softwareRow?.processIds ?? []),
-        ...processRows.flatMap((row) => row.processIds?.length ? row.processIds : row.processId ? [row.processId] : [])
-      ]),
-      processTargets: uniqueProcessTargets([
-        ...(target.processTargets ?? []),
-        ...processRows.flatMap((row) => row.processId && row.processStartKey
-          ? [{
-              processId: row.processId,
-              processStartKey: row.processStartKey
-            }]
-          : [])
-      ]),
-      processNames: uniqueStrings([
-        ...(target.processNames ?? []),
-        ...(softwareRow?.processNames ?? []),
-        ...processRows.flatMap((row) => row.processNames?.length ? row.processNames : [row.name])
-      ]),
-      executablePaths: uniqueStrings([
-        ...(target.executablePaths ?? []),
-        ...(softwareRow?.executablePaths ?? []),
-        ...processRows.flatMap((row) => row.executablePaths ?? [])
-      ]),
-      rootPaths: uniqueStrings(target.rootPaths ?? [])
-    };
-  }
-
-  function uniqueProcessTargets(
-    values: Array<{ processId: number; processStartKey: string }>
-  ) {
-    return [...new Map(values.map((value) => [
-      `${value.processId}:${value.processStartKey}`,
-      value
-    ])).values()];
+    return enrichContextTarget(target, monitor.resourceTableSnapshot()?.rows ?? []);
   }
 
   function showSystemProcessResult(result: SystemProcessOperationResult, title: string) {
-    const failed = result.items.filter((item) => item.state === "Failed");
+    const summary = systemProcessResultSummary(result);
     showToast({
-      tone: failed.length > 0 ? "warning" : "success",
+      tone: summary.complete ? "success" : "warning",
       title,
-      message: userFacingMessage(result.message, uiText.softwareActions.processActionDone),
+      message: summary.message,
       details: uniqueStrings([
         result.directoryPath ?? "",
-        ...result.items.map((item) => item.path || item.processName || (item.processId ? uiText.softwareActions.processItem(item.processId) : ""))
+        ...result.items.map(systemProcessResultDetail)
       ]).slice(0, 10)
     });
   }
@@ -432,9 +379,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     setSoftwareDetail(model);
     setSoftwareDetailNotice(null);
     setGpuPlacementSettings(null);
-    if (options.runtimeEffectsEnabled()) {
-      void migration.refreshRecords();
-    }
     const requestId = ++softwareDetailRequestId;
     if (options.gpuPlacementEnabled() && model.type === "software" && model.id) {
       void loadGpuPlacementSettingsForDetail(model, requestId);
@@ -668,7 +612,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       : userFacingState(component.stateLabel || component.state);
     const roleLabel = managementRoleLabel(definition.managementRole);
     const rootPaths = uniqueTextValues([installRoot]).filter(pathLooksUsable);
-    const rootMigrationPaths = getRootMigrationPaths(rootPaths, migration.roots());
     return {
       type: "component",
       id: textOrEmpty(definition.id),
@@ -677,19 +620,12 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       displayKind: roleLabel,
       state,
       message: purpose,
-      dataSearchName: name,
       rootPaths,
       suggestedRootPaths: [],
       executablePaths: [],
       requiresRootPathConfirmation: false,
       identityConfirmed: true,
       issues: [],
-      rootMigrationPaths,
-      rootMigrationDisabledReason: rootMigrationPaths.length > 0
-        ? ""
-        : rootPaths.length > 0
-          ? uiText.softwareActions.directoryAlreadyTarget
-          : uiText.softwareActions.noKnownRoot,
       baseRows: [
         [uiText.softwareActions.field.name, name],
         [uiText.softwareActions.field.relation, roleLabel],
@@ -723,7 +659,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   function createInstalledSoftwareDetailModel(record: SoftwareRecord): SoftwareDetailModel {
     const name = textOrEmpty(record.name) || "--";
     const rootPaths = uniqueTextValues(record.rootPaths ?? []).filter(pathLooksUsable);
-    const rootMigrationPaths = getRootMigrationPaths(rootPaths, migration.roots());
     const operations = record.operations ?? {};
     const displayKind = softwareDisplayKindLabel(record.kind, record.displayKind);
 
@@ -735,19 +670,12 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       displayKind,
       state: userFacingState(record.state),
       message: userFacingMessage(record.message, displayKind),
-      dataSearchName: name,
       rootPaths,
       suggestedRootPaths: uniqueTextValues(record.suggestedRootPaths ?? []).filter(pathLooksUsable),
       executablePaths: uniqueTextValues(record.executablePaths ?? []).filter(pathLooksUsable),
       requiresRootPathConfirmation: record.requiresRootPathConfirmation === true,
       identityConfirmed: record.identityConfirmed !== false,
       issues: record.issues ?? [],
-      rootMigrationPaths,
-      rootMigrationDisabledReason: rootMigrationPaths.length > 0
-        ? ""
-        : rootPaths.length > 0
-          ? uiText.softwareActions.directoryAlreadyTarget
-          : uiText.softwareActions.noUsableRoot,
       baseRows: [
         [uiText.softwareActions.field.name, name],
         [uiText.softwareActions.field.type, displayKind],
@@ -829,57 +757,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
   }
 
-  async function migrateSoftwareDataFromDetail() {
-    if (!options.runtimeEffectsEnabled()) {
-      return;
-    }
-
-    const detail = softwareDetail();
-    if (!detail) {
-      return;
-    }
-
-    await runSoftwareDetailAction(uiText.softwareActions.findingMigratableContent, async () => {
-      migration.setSoftwareName(detail.dataSearchName);
-      await migration.findCandidates();
-      const candidates = migration.candidates();
-      if (!candidates.length) {
-        setSoftwareDetailNotice({ message: uiText.softwareActions.noMigratableContent, tone: "warning" });
-        return;
-      }
-
-      const first = candidates[0];
-      openManagementSubpage("Migration");
-      migration.fillDataMigration(detail.dataSearchName, [first.path ?? ""]);
-      migration.setKind(first.recommendedMigrationKind ?? "Data");
-      migration.setTargetCategory(first.recommendedTargetCategory ?? "UserData");
-      setSoftwareDetailNotice({
-        message: uiText.softwareActions.migratableContentFound,
-        tone: "success",
-        details: candidates.slice(0, 6).map((candidate) => candidate.path ?? candidate.name ?? "")
-      });
-    });
-  }
-
-  async function migrateSoftwareRootFromDetail() {
-    if (!options.runtimeEffectsEnabled()) {
-      return;
-    }
-
-    const detail = softwareDetail();
-    if (!detail || detail.rootMigrationPaths.length === 0) {
-      return;
-    }
-
-    openManagementSubpage("Migration");
-    migration.fillRootMigration(detail.name, detail.rootMigrationPaths);
-    setSoftwareDetailNotice({
-      message: uiText.softwareActions.rootMigrationPrefilled,
-      tone: "success",
-      details: detail.rootMigrationPaths
-    });
-  }
-
   async function runSoftwareDetailAction(progressMessage: string, action: () => Promise<void>) {
     if (softwareDetailActionInProgress()) {
       return;
@@ -896,80 +773,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     }
   }
 
-  async function restoreSoftwareDetailMigrationRecord(record: SoftwareDataMigrationRecord) {
-    if (!options.runtimeEffectsEnabled() || !await confirmDialog({
-      title: uiText.softwareActions.restoreMigrationTitle,
-      message: uiText.softwareActions.restoreMigrationMessage,
-      tone: "warning"
-    })) {
-      return;
-    }
-
-    await runSoftwareDetailAction(uiText.softwareActions.restoringMigrationRecord, async () => {
-      const result = await restoreMigrationRecord(record);
-      setSoftwareDetailNotice({
-        message: userFacingMessage(operationResultText(result), uiText.softwareActions.restoreDone),
-        tone: "success",
-        details: [textOrEmpty(record.sourcePath)].filter(Boolean)
-      });
-      await Promise.all([migration.refreshRecords(), management.refreshSoftware()]);
-    });
-  }
-
-  async function restoreAllSoftwareDetailMigrations() {
-    if (!options.runtimeEffectsEnabled()) {
-      return;
-    }
-
-    const records = softwareDetailMigrationRecords().filter(isActiveMigrationRecord);
-    if (records.length === 0) {
-      setSoftwareDetailNotice({ message: uiText.softwareActions.noRestorableRecord, tone: "warning" });
-      return;
-    }
-
-    if (!await confirmDialog({
-      title: uiText.softwareActions.restoreSoftwareRecordsTitle,
-      message: uiText.softwareActions.restoreSoftwareRecordsMessage(records.length),
-      tone: "warning"
-    })) {
-      return;
-    }
-
-    await runSoftwareDetailAction(uiText.softwareActions.restoringSoftwareRecords, async () => {
-      const restoredPaths: string[] = [];
-      for (const record of records) {
-        await restoreMigrationRecord(record);
-        restoredPaths.push(textOrEmpty(record.sourcePath));
-      }
-
-      setSoftwareDetailNotice({
-        message: uiText.softwareActions.restoredRecords(restoredPaths.length),
-        tone: "success",
-        details: restoredPaths.filter(Boolean)
-      });
-      await Promise.all([migration.refreshRecords(), management.refreshSoftware()]);
-    });
-  }
-
-  async function restoreMigrationRecord(record: SoftwareDataMigrationRecord) {
-    let operation = await options.operations.submit(
-      migrationRestoreCommand(record.id, true));
-    if (!isTerminalOperation(operation)) {
-      operation = await options.operations.waitForTerminal(operation.id);
-    }
-    if (operation.state !== "succeeded") {
-      throw new Error(operation.error
-        ?? (operation.state === "stateUncertain"
-          ? uiText.softwareActions.restoreUncertain
-          : uiText.softwareActions.restoreFailed));
-    }
-    return operation;
-  }
-
   return {
     softwareDetail,
     softwareDetailNotice,
-    softwareDetailMigrationRecords,
     softwareDetailActionInProgress,
     gpuPlacementSettings,
     gpuPlacementLoading,
@@ -981,10 +787,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     openManagementSoftwareContextMenu,
     openSoftwareDetail,
     closeSoftwareDetail,
-    migrateSoftwareDataFromDetail,
-    migrateSoftwareRootFromDetail,
-    restoreSoftwareDetailMigrationRecord,
-    restoreAllSoftwareDetailMigrations,
     openLocalPath,
     confirmPortableRootFromDetail,
     saveGpuPlacementSoftwarePolicyFromDetail,
@@ -995,56 +797,6 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
 function operationResultText(operation: OperationSnapshot) {
   return typeof operation.result === "string" ? operation.result : null;
-}
-
-function softwareContextTargetMatchesRow(
-  target: SoftwareContextMatchTarget,
-  row: { softwareId?: string | null; softwareName?: string | null; name: string })
-{
-  if (target.softwareId && row.softwareId && target.softwareId.toLowerCase() === row.softwareId.toLowerCase()) {
-    return true;
-  }
-
-  const targetNames = [target.softwareName, target.name].map(normalizeName).filter(Boolean);
-  if (targetNames.length === 0) {
-    return false;
-  }
-
-  const rowNames = [row.softwareName, row.name].map(normalizeName).filter(Boolean);
-  return targetNames.some((targetName) => rowNames.some((rowName) => rowName === targetName));
-}
-
-function migrationRecordsForDetail(
-  detail: SoftwareDetailModel,
-  records: SoftwareDataMigrationRecord[])
-{
-  const detailNames = new Set([
-    detail.name,
-    detail.dataSearchName,
-    detail.id
-  ].map(normalizeName).filter(Boolean));
-
-  return records
-    .filter((record) => detailNames.has(normalizeName(record.softwareName)))
-    .sort(compareMigrationRecords);
-}
-
-function compareMigrationRecords(left: SoftwareDataMigrationRecord, right: SoftwareDataMigrationRecord) {
-  const leftActive = isActiveMigrationRecord(left);
-  const rightActive = isActiveMigrationRecord(right);
-  if (leftActive !== rightActive) {
-    return leftActive ? -1 : 1;
-  }
-
-  return Date.parse(right.createdAt ?? "") - Date.parse(left.createdAt ?? "");
-}
-
-function isActiveMigrationRecord(record: SoftwareDataMigrationRecord) {
-  return textOrEmpty(record.state).toLowerCase() !== "restored";
-}
-
-function uniqueNumbers(values: number[]) {
-  return [...new Set(values.filter((value) => Number.isFinite(value) && value > 0))];
 }
 
 function uniqueStrings(values: string[]) {

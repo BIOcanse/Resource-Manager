@@ -4,37 +4,14 @@ namespace ResourceManager.App.Infrastructure.Windows;
 
 internal static partial class NativeMethods
 {
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetSystemTimes(out FileTime idleTime, out FileTime kernelTime, out FileTime userTime);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
-
     [LibraryImport("psapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetPerformanceInfo(out PerformanceInformation buffer, uint size);
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetLogicalProcessorInformationEx(
-        int relationshipType,
-        IntPtr buffer,
-        ref int returnedLength);
 
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static partial bool GetSystemCpuSetInformation(
-        IntPtr information,
-        int bufferLength,
-        out int returnedLength,
-        IntPtr process,
-        int flags);
+
+
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -85,19 +62,17 @@ internal static partial class NativeMethods
         int systemInformationLength,
         out int returnLength);
 
-    [LibraryImport("kernel32.dll", EntryPoint = "GetSystemFirmwareTable", SetLastError = true)]
-    internal static partial uint GetSystemFirmwareTableSize(
-        uint firmwareTableProvider,
-        uint firmwareTableId,
-        IntPtr firmwareTableBuffer,
-        uint bufferSize);
 
-    [LibraryImport("kernel32.dll", EntryPoint = "GetSystemFirmwareTable", SetLastError = true)]
-    internal static partial uint GetSystemFirmwareTable(
-        uint firmwareTableProvider,
-        uint firmwareTableId,
-        [Out] byte[] firmwareTableBuffer,
-        uint bufferSize);
+
+    [LibraryImport("kernel32.dll")]
+    internal static partial ushort GetActiveProcessorGroupCount();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial uint GetActiveProcessorCount(ushort processorGroup);
+
+
+
+
 
     [LibraryImport("powrprof.dll")]
     internal static partial uint CallNtPowerInformation(
@@ -139,28 +114,6 @@ internal struct PerformanceInformation
     public uint ThreadCount;
 }
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-internal struct MemoryStatusEx
-{
-    public uint Length;
-    public uint MemoryLoad;
-    public ulong TotalPhys;
-    public ulong AvailPhys;
-    public ulong TotalPageFile;
-    public ulong AvailPageFile;
-    public ulong TotalVirtual;
-    public ulong AvailVirtual;
-    public ulong AvailExtendedVirtual;
-
-    public static MemoryStatusEx Create()
-    {
-        return new MemoryStatusEx
-        {
-            Length = (uint)Marshal.SizeOf<MemoryStatusEx>()
-        };
-    }
-}
-
 [StructLayout(LayoutKind.Sequential)]
 internal struct ProcessorPowerInformation
 {
@@ -172,13 +125,3 @@ internal struct ProcessorPowerInformation
     public uint CurrentIdleState;
 }
 
-[StructLayout(LayoutKind.Sequential)]
-internal struct SystemProcessorPerformanceInformation
-{
-    public long IdleTime;
-    public long KernelTime;
-    public long UserTime;
-    public long DpcTime;
-    public long InterruptTime;
-    public uint InterruptCount;
-}

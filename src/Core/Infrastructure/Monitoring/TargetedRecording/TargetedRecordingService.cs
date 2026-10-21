@@ -1,4 +1,4 @@
-using ResourceManager.App.Application.FrameTiming;
+using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.Software;

@@ -1,0 +1,19 @@
+<Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\FreedomPointCompilerCapture.targets" />
+  <Target Name="CaptureProductCompilation" AfterTargets="CoreCompile" Condition="'$(RMProductEvidenceRoot)' != ''">
+    <MakeDir Directories="$(RMProductEvidenceRoot)" />
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).compile-inputs.txt" Lines="@(Compile->'%(FullPath)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).embedded-inputs.txt" Lines="@(EmbeddedResource->'%(FullPath)|%(LogicalName)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).reference-inputs.txt" Lines="@(ReferencePath->'%(FullPath)|%(NuGetPackageId)|%(NuGetPackageVersion)')" Overwrite="true" Encoding="UTF-8" />
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).properties.txt" Lines="ProjectAssetsFile=$(ProjectAssetsFile);TargetPath=$(TargetPath);Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained);PublishSingleFile=$(PublishSingleFile);PublishReadyToRun=$(PublishReadyToRun);PublishReadyToRunComposite=$(PublishReadyToRunComposite);PublishReadyToRunCrossgen2ExtraArgs=$(PublishReadyToRunCrossgen2ExtraArgs)" Overwrite="true" Encoding="UTF-8" />
+  </Target>
+  <Target Name="CaptureProductBundleInputs" AfterTargets="PrepareForBundle" Condition="'$(RMProductEvidenceRoot)' != ''">
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).bundle-inputs.txt" Lines="@(FilesToBundle->'%(FullPath)|%(RelativePath)')" Overwrite="true" Encoding="UTF-8" />
+  </Target>
+  <Target Name="CaptureProductPreR2RInputs" AfterTargets="_ComputeAssembliesToPostprocessOnPublish" Condition="'$(RMProductEvidenceRoot)' != ''">
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).pre-r2r-inputs.txt" Lines="@(ResolvedFileToPublish->'%(FullPath)|%(RelativePath)')" Overwrite="true" Encoding="UTF-8" />
+  </Target>
+  <Target Name="CaptureProductPublishInputs" AfterTargets="ComputeFilesToPublish" Condition="'$(RMProductEvidenceRoot)' != ''">
+    <WriteLinesToFile File="$(RMProductEvidenceRoot)/$(MSBuildProjectName).publish-inputs.txt" Lines="@(ResolvedFileToPublish->'%(FullPath)|%(RelativePath)')" Overwrite="true" Encoding="UTF-8" />
+  </Target>
+</Project>

@@ -10,13 +10,14 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace ResourceManager.App.Infrastructure.SoftwareDiscovery;
 
-public sealed class PortableSoftwareDiscoveryService(
-    IKernelEtwSessionBroker kernelEtwSessionBroker,
-    IRuntimeProcessAttributionCatalogProvider attributionCatalogProvider,
-    ISoftwareIdentityCatalog softwareIdentityCatalog,
-    IPortableSoftwareRegistry portableSoftwareRegistry,
-    ILogger<PortableSoftwareDiscoveryService> logger) : IPortableSoftwareDiscovery, IHostedService, IDisposable
+public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscovery, IHostedService, IDisposable
 {
+    private readonly IKernelEtwSessionBroker kernelEtwSessionBroker;
+    private readonly IRuntimeProcessAttributionCatalogProvider attributionCatalogProvider;
+    private readonly ISoftwareIdentityCatalog softwareIdentityCatalog;
+    private readonly IPortableSoftwareRegistry portableSoftwareRegistry;
+    private readonly ILogger<PortableSoftwareDiscoveryService> logger;
+    private readonly Func<PortableProcessCandidate[]> captureCurrentProcesses;
     private readonly WindowsPortableProcessIdentityReader identityReader = new();
     private readonly Channel<PortableProcessCandidate> processStarts = Channel.CreateBounded<PortableProcessCandidate>(
         new BoundedChannelOptions(1024)
@@ -29,46 +30,90 @@ public sealed class PortableSoftwareDiscoveryService(
     private CancellationTokenSource? workerCts;
     private Task? workerTask;
     private int disposed;
+    private KernelEtwSessionSnapshot? inventorySnapshot;
+
+    public PortableSoftwareDiscoveryService(
+        IKernelEtwSessionBroker kernelEtwSessionBroker,
+        IRuntimeProcessAttributionCatalogProvider attributionCatalogProvider,
+        ISoftwareIdentityCatalog softwareIdentityCatalog,
+        IPortableSoftwareRegistry portableSoftwareRegistry,
+        ILogger<PortableSoftwareDiscoveryService> logger)
+        : this(kernelEtwSessionBroker, attributionCatalogProvider, softwareIdentityCatalog,
+            portableSoftwareRegistry, logger, CaptureCurrentProcesses)
+    {
+    }
+
+    internal PortableSoftwareDiscoveryService(
+        IKernelEtwSessionBroker kernelEtwSessionBroker,
+        IRuntimeProcessAttributionCatalogProvider attributionCatalogProvider,
+        ISoftwareIdentityCatalog softwareIdentityCatalog,
+        IPortableSoftwareRegistry portableSoftwareRegistry,
+        ILogger<PortableSoftwareDiscoveryService> logger,
+        Func<PortableProcessCandidate[]> captureCurrentProcesses)
+    {
+        this.kernelEtwSessionBroker = kernelEtwSessionBroker;
+        this.attributionCatalogProvider = attributionCatalogProvider;
+        this.softwareIdentityCatalog = softwareIdentityCatalog;
+        this.portableSoftwareRegistry = portableSoftwareRegistry;
+        this.logger = logger;
+        this.captureCurrentProcesses = captureCurrentProcesses;
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         workerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        workerTask = Task.Run(() => RunWorkerAsync(workerCts.Token), CancellationToken.None);
-        processSubscription = kernelEtwSessionBroker.Subscribe(new KernelEtwSubscriptionRequest(
-            "portable-software-discovery",
-            KernelTraceEventParser.Keywords.Process,
-            (kernel, _) => kernel.ProcessStartGroup += data => processStarts.Writer.TryWrite(
-                new PortableProcessCandidate(
-                    data.ProcessID,
-                    data.ParentID > 0 ? data.ParentID : null,
-                    data.ProcessName,
-                    SelectEventPath(data.ImageFileName, data.KernelImageFileName)))));
-        EnqueueCurrentProcesses();
+        var workerToken = workerCts.Token;
+        try
+        {
+            processSubscription = kernelEtwSessionBroker.Subscribe(new KernelEtwSubscriptionRequest(
+                "portable-software-discovery",
+                KernelTraceEventParser.Keywords.Process,
+                (kernel, _) => kernel.ProcessStartGroup += data =>
+                {
+                    if (!kernel.IsActive || workerToken.IsCancellationRequested) return;
+                    processStarts.Writer.TryWrite(new PortableProcessCandidate(
+                        data.ProcessID,
+                        data.ParentID > 0 ? data.ParentID : null,
+                        data.ProcessName,
+                        SelectEventPath(data.ImageFileName, data.KernelImageFileName)));
+                }));
+            inventorySnapshot = kernelEtwSessionBroker.GetSnapshot();
+            EnqueueCurrentProcesses();
+            workerTask = Task.Run(() => RunWorkerAsync(workerToken), CancellationToken.None);
+        }
+        catch
+        {
+            workerCts.Cancel();
+            try { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
+            finally { workerCts.Dispose(); workerCts = null; }
+            throw;
+        }
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        processSubscription?.Dispose();
-        processSubscription = null;
         processStarts.Writer.TryComplete();
         workerCts?.Cancel();
-        if (workerTask is { } task)
+        try
         {
-            try
+            Interlocked.Exchange(ref processSubscription, null)?.Dispose();
+        }
+        finally
+        {
+            if (workerTask is { } task)
             {
-                await task.WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
+                try { await task.WaitAsync(cancellationToken); }
+                catch (OperationCanceledException) { }
             }
         }
     }
 
     public async Task ScanRunningProcessesAsync(CancellationToken cancellationToken)
     {
-        var catalog = await attributionCatalogProvider.GetCatalogAsync(cancellationToken);
-        var candidates = CaptureCurrentProcesses();
+        using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
+        var candidates = captureCurrentProcesses();
         await Parallel.ForEachAsync(
             candidates,
             new ParallelOptions
@@ -78,7 +123,7 @@ public sealed class PortableSoftwareDiscoveryService(
             },
             (candidate, _) =>
             {
-                Observe(candidate, catalog.Pipeline);
+                Observe(candidate, catalog.Catalog.Pipeline);
                 return ValueTask.CompletedTask;
             });
     }
@@ -90,7 +135,7 @@ public sealed class PortableSoftwareDiscoveryService(
             return;
         }
 
-        Interlocked.Exchange(ref processSubscription, null)?.Dispose();
+        processStarts.Writer.TryComplete();
         var cts = Interlocked.Exchange(ref workerCts, null);
         try
         {
@@ -98,7 +143,8 @@ public sealed class PortableSoftwareDiscoveryService(
         }
         finally
         {
-            cts?.Dispose();
+            try { Interlocked.Exchange(ref processSubscription, null)?.Dispose(); }
+            finally { cts?.Dispose(); }
         }
     }
 
@@ -106,16 +152,34 @@ public sealed class PortableSoftwareDiscoveryService(
     {
         try
         {
-            await foreach (var candidate in processStarts.Reader.ReadAllAsync(cancellationToken))
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            var nextCheck = timer.WaitForNextTickAsync(cancellationToken).AsTask();
+            var nextCandidate = processStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
+            while (!cancellationToken.IsCancellationRequested)
             {
-                var catalog = await attributionCatalogProvider.GetCatalogAsync(cancellationToken);
-                if (Observe(candidate, catalog.Pipeline))
+                await Task.WhenAny(nextCheck, nextCandidate);
+                if (nextCheck.IsCompleted)
+                {
+                    if (!await nextCheck) break;
+                    RefreshInventoryAfterLoss(kernelEtwSessionBroker.GetSnapshot());
+                    nextCheck = timer.WaitForNextTickAsync(cancellationToken).AsTask();
+                }
+                if (!nextCandidate.IsCompleted) continue;
+                if (!await nextCandidate) break;
+                if (!processStarts.Reader.TryRead(out var candidate))
+                {
+                    nextCandidate = processStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                    continue;
+                }
+                nextCandidate = processStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
+                using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
+                if (Observe(candidate, catalog.Catalog.Pipeline))
                 {
                     continue;
                 }
 
                 await Task.Delay(150, cancellationToken);
-                Observe(candidate, catalog.Pipeline);
+                Observe(candidate, catalog.Catalog.Pipeline);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -165,10 +229,19 @@ public sealed class PortableSoftwareDiscoveryService(
 
     private void EnqueueCurrentProcesses()
     {
-        foreach (var candidate in CaptureCurrentProcesses())
+        foreach (var candidate in captureCurrentProcesses())
         {
             processStarts.Writer.TryWrite(candidate);
         }
+    }
+
+    internal void RefreshInventoryAfterLoss(KernelEtwSessionSnapshot snapshot)
+    {
+        if (!snapshot.IsRunning || Volatile.Read(ref disposed) != 0 || workerCts?.IsCancellationRequested == true) return;
+        if (inventorySnapshot is { IsRunning: true } previous
+            && previous.Generation == snapshot.Generation && previous.EventsLost == snapshot.EventsLost) return;
+        EnqueueCurrentProcesses();
+        inventorySnapshot = snapshot;
     }
 
     private static PortableProcessCandidate[] CaptureCurrentProcesses()

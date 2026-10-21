@@ -131,7 +131,17 @@ public static class WindowsServiceRegistration
         using var service = OpenServiceW(manager, serviceName, 1 | 2 | 4);
         if (service.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         RequireExpectedBinary(Read(service), executablePath);
-        SetStartType(service, enabled);
+        SetStartType(service, enabled ? 2u : 3u);
+    }
+
+    public static void SetStartType(string serviceName, string executablePath, uint startType)
+    {
+        if (startType is not (2 or 3 or 4)) throw new ArgumentOutOfRangeException(nameof(startType));
+        using var manager = OpenManager(1);
+        using var service = OpenServiceW(manager, serviceName, 1 | 2 | 4);
+        if (service.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        RequireExpectedBinary(Read(service), executablePath);
+        SetStartType(service, startType);
     }
 
     private static ServiceHandle OpenOrCreate(ServiceHandle manager, string name, string path)
@@ -175,9 +185,8 @@ public static class WindowsServiceRegistration
         finally { Marshal.FreeHGlobal(buffer); }
     }
 
-    private static void SetStartType(ServiceHandle service, bool enabled)
+    private static void SetStartType(ServiceHandle service, uint desired)
     {
-        var desired = enabled ? 2u : 3u;
         if (Read(service).StartType == desired) return;
         Check(ChangeServiceConfigW(service, NoChange, desired, NoChange,
             null, null, IntPtr.Zero, null, null, null, null));

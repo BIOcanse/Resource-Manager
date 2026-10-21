@@ -46,6 +46,7 @@ internal static class ElGr
         BackendPipelineNotReady = "Η διοχέτευση αιτημάτων της τοπικής υπηρεσίας δεν είναι έτοιμη.",
         NoProcessToTerminate = "Δεν υπάρχει διεργασία προς τερματισμό.",
         TerminateRequestCompleted = "Το αίτημα τερματισμού της διεργασίας ολοκληρώθηκε.",
+        TerminateResultFormat = "Τερματίστηκαν {0} / {1} διεργασίες.",
 
         WebViewInitializationFailed = "Η προετοιμασία της ενσωματωμένης διεπαφής απέτυχε. Ανοίξτε τον φάκελο διαγνωστικών για λεπτομέρειες.",
         FrontendIdentityVerificationFailed = "Η επαλήθευση ταυτότητας των πόρων της διεπαφής απέτυχε. Ανοίξτε τον φάκελο διαγνωστικών για λεπτομέρειες.",

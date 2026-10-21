@@ -30,10 +30,11 @@ public sealed partial class ComponentManager
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ResourceManager.App.Domain.Software.SoftwareOperationCaller? caller = null)
     {
         EnsureOptionalDependency(id);
-        var statusBeforeInstall = await dependencyManager.GetStatusAsync(id, cancellationToken)
+        var statusBeforeInstall = await dependencyManager.GetStatusAsync(id, caller?.WindowsSid, cancellationToken)
             ?? throw new InvalidOperationException($"Unknown component: {id}");
         if (statusBeforeInstall.Installed)
         {
@@ -59,8 +60,8 @@ public sealed partial class ComponentManager
             await dependencyManager.DownloadAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
         }
 
-        var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken);
-        var status = await GetStatusAsync(id, cancellationToken);
+        var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
+        var status = await GetStatusAsync(id, caller?.WindowsSid, cancellationToken);
         return new ComponentActionResult(
             id,
             result.State,
@@ -79,7 +80,14 @@ public sealed partial class ComponentManager
         var definition = OptionalDependencyCatalog.Find(id);
         if (definition is not null)
         {
-            await payloadAcquisition.EnsureAsync(definition, cancellationToken);
+            var payload = await payloadAcquisition.EnsureAsync(definition, cancellationToken);
+            if (!payload.Satisfied)
+            {
+                return new ComponentActionResult(id, "runtimeFilesUnavailable",
+                    BackendMessage.Create(BackendMessageDomains.Dependency,
+                        BackendMessageCodes.Dependency.RuntimeFilesUnavailable),
+                    Status: await GetStatusAsync(id, cancellationToken));
+            }
         }
 
         var status = await GetStatusAsync(id, cancellationToken)
@@ -91,7 +99,10 @@ public sealed partial class ComponentManager
                 ? BackendMessage.Create(
                     BackendMessageDomains.Dependency,
                     BackendMessageCodes.Dependency.ProviderVerified)
-                : status.Message,
+                : definition?.PayloadSource is not null
+                    ? BackendMessage.Create(BackendMessageDomains.Dependency,
+                        BackendMessageCodes.Dependency.ComponentFilesUnverified)
+                    : status.Message,
             status.InstallerPath,
             null,
             status);

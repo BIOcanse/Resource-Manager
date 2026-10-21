@@ -94,8 +94,8 @@ internal static class DeviceTopologySpecializedCapabilityProjector
             .Select(static mode => new DeviceTopologyCameraMode(
                 mode.Width,
                 mode.Height,
-                Math.Round(mode.MaximumFrameRate, 2),
-                mode.PixelFormat))
+                mode.MaximumFrameRate,
+                mode.PixelFormat) { FrameIntervalsDeclared = mode.FrameIntervalsDeclared })
             .ToArray();
         return new DeviceTopologyCameraCapabilities(
             Source(BackendMessageCodes.DeviceTopology.SourceUsbVideoClassDescriptors),
@@ -145,19 +145,8 @@ internal static class DeviceTopologySpecializedCapabilityProjector
     }
 
     internal static double? CalculateServiceIntervalMicroseconds(
-        byte? negotiatedSpeedCode,
-        byte transferType,
-        byte interval)
-    {
-        if (interval == 0 || transferType is not (1 or 3))
-        {
-            return null;
-        }
-
-        return negotiatedSpeedCode is >= 2
-            ? interval <= 16 ? 125d * Math.Pow(2, interval - 1) : null
-            : interval * 1_000d;
-    }
+        byte? negotiatedSpeedCode, byte transferType, byte interval)
+        => UsbEndpointTiming.CalculateServiceIntervalMicroseconds(negotiatedSpeedCode, transferType, interval);
 
     private static string DescribeTransferType(byte transferType)
     {

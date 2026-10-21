@@ -1,4 +1,6 @@
 using ResourceManager.App.Domain.ResourceTable;
+using ResourceManager.ReadWrite.ProcessFields;
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
@@ -403,6 +405,39 @@ public sealed class HostedResourcePublicationStateTests
             localOwner,
             replacementWorkspace,
             replacementSchedule));
+    }
+
+    [Fact]
+    public void HostedIoCandidateCommitsOnlyInsideTheOriginalAcceptedPublicationAndFailureBreaksHistory()
+    {
+        const string rate = "process_all_io_read_bytes_rate_actual";
+        var state = new HostedResourcePublicationState(); var owner = state.OpenOwner();
+        var request = new ResourceBreakdownSampleRequest([rate], new Dictionary<string, string>(), ProcessSampleDetailLevel.SmartSchedulingLite);
+        var field = ProcessMetricFieldRegistry.Find(rate)!; var at = DateTimeOffset.UtcNow;
+        (HostedResourcePublicationPreparation Publication, ProcessIoRatePreparation Io) Prepare(ulong count, long tick, ulong epoch)
+        {
+            var io = new ProcessIoObservation(count, count, count, count, count, count) { Timing = new(tick, tick, 1000) };
+            ProcessFieldProjectionSample[] rows = [new(42, 100, new(null, null, io, null), 0, false)];
+            var staged = state.ProcessOwner.HostedIo.Prepare(rows); var capturedAt = at.AddSeconds(epoch);
+            var fields = WindowsProcessFieldProjection.CreateProcessBasicFields([field], rows, capturedAt, null, staged);
+            var snapshot = new ResourceBreakdownSnapshot(capturedAt, []) { ProcessFields = fields };
+            return (PrepareSample(state, owner, request, snapshot, null, capturedAt, Schedule(capturedAt, epoch)), staged);
+        }
+        var first = Prepare(100, 1000, 1);
+        Assert.True(state.TryCommit(first.Publication, () => state.ProcessOwner.HostedIo.Commit(first.Io)));
+        var rejected = Prepare(500, 2000, 2); var ran = false;
+        Assert.True(state.TryCloseOwner(owner, at.AddSeconds(2), new OperationCanceledException("recorded retirement")));
+        Assert.False(state.TryCommit(rejected.Publication, () => { ran = true; state.ProcessOwner.HostedIo.Commit(rejected.Io); }));
+        Assert.False(ran);
+        owner = state.OpenOwner(); var next = Prepare(1100, 3000, 3);
+        Assert.Equal(500, next.Io.Find(42, 100)!.ReadBytes); // an incorrectly accepted500@2000 gives600
+        Assert.True(state.TryCommit(next.Publication, () => state.ProcessOwner.HostedIo.Commit(next.Io)));
+        var failureAt = at.AddSeconds(4); var schedule = Schedule(failureAt, 4);
+        Assert.True(state.TryPrepareFailure(owner, WorkspaceToken(schedule), request, failureAt, schedule,
+            new InvalidOperationException("recorded inventory failure"), out var failure));
+        Assert.True(state.TryCommit(failure!, state.ProcessOwner.HostedIo.Clear));
+        Assert.Null(Prepare(2100, 4000, 5).Io.Find(42, 100));
+        state.ProcessOwner.Dispose();
     }
 
     private static HostedResourcePublicationPreparation PrepareSample(

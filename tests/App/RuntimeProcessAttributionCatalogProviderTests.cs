@@ -23,21 +23,22 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
 
         Assert.Equal(0, provider.SoftwareSnapshotGeneration);
 
-        var first = await provider.GetCatalogAsync(CancellationToken.None);
+        using var first = await provider.AcquireCatalogAsync(CancellationToken.None);
         registry.SetSoftware(
             [CreateSoftware("software:two", "Software Two", @"D:\Apps\Two")]);
 
-        Assert.Same(first, await provider.GetCatalogAsync(CancellationToken.None));
+        using (var reused = await provider.AcquireCatalogAsync(CancellationToken.None))
+            Assert.Same(first.Catalog, reused.Catalog);
 
         await provider.InvalidateSoftwareSnapshotAsync();
         Assert.Equal(1, provider.SoftwareSnapshotGeneration);
-        var refreshed = await provider.GetCatalogAsync(CancellationToken.None);
+        using var refreshed = await provider.AcquireCatalogAsync(CancellationToken.None);
 
-        Assert.NotSame(first, refreshed);
-        Assert.Equal(2, refreshed.Generation);
+        Assert.NotSame(first.Catalog, refreshed.Catalog);
+        Assert.Equal(2, refreshed.Catalog.Generation);
         Assert.Equal(
             "software:two",
-            refreshed.Pipeline.Match(CreateProcess(@"D:\Apps\Two\app.exe")).Id);
+            refreshed.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\Two\app.exe")).Id);
     }
 
     [Fact]
@@ -47,24 +48,46 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             [CreateSoftware("software:old", "Old Software", @"D:\Apps\Old")]);
         using var provider = CreateProvider(registry);
 
-        var initialRefresh = provider.GetCatalogAsync(CancellationToken.None);
-        await registry.ReadStarted;
-        registry.SetSoftware(
-            [CreateSoftware("software:new", "New Software", @"D:\Apps\New")]);
-        var invalidation = provider.InvalidateSoftwareSnapshotAsync();
-        registry.ReleaseRead();
+        var stage = "before-initial-refresh";
+        try
+        {
+            stage = "start-initial-refresh";
+            var initialRefresh = provider.AcquireCatalogAsync(CancellationToken.None);
+            stage = "await-initial-read-started";
+            await registry.ReadStarted;
+            registry.SetSoftware(
+                [CreateSoftware("software:new", "New Software", @"D:\Apps\New")]);
+            stage = "request-invalidation";
+            var invalidation = provider.InvalidateSoftwareSnapshotAsync();
+            stage = "release-initial-read";
+            registry.ReleaseRead();
 
-        var staleCatalog = await initialRefresh;
-        await invalidation;
-        var refreshed = await provider.GetCatalogAsync(CancellationToken.None);
+            stage = "await-initial-catalog";
+            using var staleCatalog = await initialRefresh;
+            stage = "await-invalidation";
+            await invalidation;
+            stage = "create-refreshed-catalog";
+            using var refreshed = await provider.AcquireCatalogAsync(CancellationToken.None);
 
-        Assert.Equal(
-            "software:old",
-            staleCatalog.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
-        Assert.Equal(
-            "software:new",
-            refreshed.Pipeline.Match(CreateProcess(@"D:\Apps\New\app.exe")).Id);
-        Assert.Equal(2, refreshed.Generation);
+            stage = "assert-old-catalog-match";
+            Assert.Equal(
+                "software:old",
+                staleCatalog.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
+            stage = "assert-new-catalog-match";
+            Assert.Equal(
+                "software:new",
+                refreshed.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\New\app.exe")).Id);
+            stage = "assert-refreshed-generation";
+            Assert.Equal(2, refreshed.Catalog.Generation);
+        }
+        catch (Exception error)
+        {
+            // Synchronous diagnostics preserve the original failure if a later
+            // owned-Job termination prevents xUnit from writing the final TRX.
+            Console.Error.WriteLine($"Attribution overlap failed at {stage}: {error}");
+            Console.Error.Flush();
+            throw;
+        }
     }
 
     [Fact]
@@ -74,48 +97,158 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         var second = CreateSoftware("software:two", "Two", @"D:\Apps\Two");
         var registry = new MutableSoftwareRegistryView([first, second]);
         using var provider = CreateProvider(registry);
-        var catalog = await provider.GetCatalogAsync(CancellationToken.None);
+        using var catalog = await provider.AcquireCatalogAsync(CancellationToken.None);
         var plan = new CompiledBaseScorePlan(
             new Dictionary<string, double> { [first.Id] = 80, [second.Id] = 40 },
             new Dictionary<string, double> { [first.Id + "\nprocess:test"] = 100 });
 
-        var scores = catalog.GetSoftwareBaseScores(plan);
+        var scores = catalog.Catalog.GetSoftwareBaseScores(plan);
         Assert.Equal(100, plan.ResolveBaseScore(first.Id, first.Kind, "process:test"));
         Assert.Equal(new[] { 80D, 40D }, scores.Select(static item => item.BaseScore));
         Assert.Equal(2, scores.Length);
-        Assert.Equal(scores, catalog.GetSoftwareBaseScores(plan));
+        Assert.Equal(scores, catalog.Catalog.GetSoftwareBaseScores(plan));
 
         // Process attribution and its runtime fallback never insert software into this catalog.
-        catalog.Pipeline.Match(CreateProcess(@"D:\Apps\One\app.exe"));
-        catalog.Pipeline.Match(new RuntimeProcessIdentity(101, null, "helper", @"D:\Apps\One\helper.exe", false));
-        catalog.Pipeline.Match(CreateProcess(@"D:\Unknown\new-process.exe"));
-        Assert.Equal(scores, catalog.GetSoftwareBaseScores(plan));
+        catalog.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\One\app.exe"));
+        catalog.Catalog.Pipeline.Match(new RuntimeProcessIdentity(101, null, "helper", @"D:\Apps\One\helper.exe", false));
+        catalog.Catalog.Pipeline.Match(CreateProcess(@"D:\Unknown\new-process.exe"));
+        Assert.Equal(scores, catalog.Catalog.GetSoftwareBaseScores(plan));
 
         var updated = plan with
         {
             SoftwareBaseScoresBySoftwareId = new Dictionary<string, double>
                 { [first.Id] = 20, [second.Id] = 40 }
         };
-        Assert.Equal(new[] { 20D, 40D }, catalog.GetSoftwareBaseScores(updated)
+        Assert.Equal(new[] { 20D, 40D }, catalog.Catalog.GetSoftwareBaseScores(updated)
             .Select(static item => item.BaseScore));
         Assert.Equal(new[] { 80D, 40D }, scores.Select(static item => item.BaseScore));
 
+        catalog.Dispose(); // Return the old read reference before selecting the next directory.
+
         registry.SetSoftware([second]);
         await provider.InvalidateSoftwareSnapshotAsync();
-        var reduced = await provider.GetCatalogAsync(CancellationToken.None);
-        Assert.Equal(second.Id, Assert.Single(reduced.GetSoftwareBaseScores(updated)).SoftwareId);
+        using var reduced = await provider.AcquireCatalogAsync(CancellationToken.None);
+        Assert.Equal(second.Id, Assert.Single(reduced.Catalog.GetSoftwareBaseScores(updated)).SoftwareId);
+        reduced.Dispose();
         registry.SetSoftware([]);
         await provider.InvalidateSoftwareSnapshotAsync();
-        Assert.Empty((await provider.GetCatalogAsync(CancellationToken.None)).GetSoftwareBaseScores(updated));
+        using var empty = await provider.AcquireCatalogAsync(CancellationToken.None);
+        Assert.Empty(empty.Catalog.GetSoftwareBaseScores(updated));
+    }
+
+    [Fact]
+    public async Task ConcurrentReuseAndReplacementKeepRetiredPipelineUntilLastReaderReturns()
+    {
+        var registry = new MutableSoftwareRegistryView([CreateSoftware("old", "Old", @"D:\Apps\Old")]);
+        using var provider = CreateProvider(registry);
+        using var first = await provider.AcquireCatalogAsync(default);
+        var old = first.Catalog;
+        var readers = await Task.WhenAll(Enumerable.Range(0, 4)
+            .Select(_ => Task.Run(() => provider.AcquireCatalogAsync(default))));
+        try
+        {
+            Assert.All(readers, reader => Assert.Same(old, reader.Catalog));
+            registry.SetSoftware([CreateSoftware("next", "Next", @"D:\Apps\Next")]);
+            await provider.InvalidateSoftwareSnapshotAsync();
+            using var next = await Task.Run(() => provider.AcquireCatalogAsync(default));
+            Assert.NotSame(old, next.Catalog);
+            Assert.Equal("old", old.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
+            first.Dispose();
+            foreach (var reader in readers.Take(readers.Length - 1)) reader.Dispose();
+            Assert.Equal("old", readers[^1].Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
+            readers[^1].Dispose();
+            Assert.Throws<ObjectDisposedException>(() => old.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")));
+            Assert.Throws<ObjectDisposedException>(() => first.Catalog);
+            Assert.Equal("next", next.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\Next\app.exe")).Id);
+        }
+        finally
+        {
+            foreach (var reader in readers) reader.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementWithoutReadersDisposesThePriorPipelineBeforeReturning()
+    {
+        var registry = new MutableSoftwareRegistryView([CreateSoftware("old", "Old", @"D:\Apps\Old")]);
+        using var provider = CreateProvider(registry);
+        var first = await provider.AcquireCatalogAsync(default);
+        var oldPipeline = first.Catalog.Pipeline;
+        first.Dispose();
+        registry.SetSoftware([]);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var next = await provider.AcquireCatalogAsync(default);
+        Assert.Throws<ObjectDisposedException>(() => oldPipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")));
+        Assert.Equal(2, next.Catalog.Generation);
+    }
+
+    [Fact]
+    public async Task ProviderDisposeRejectsAcquisitionButAnExistingReaderCanFinish()
+    {
+        var registry = new MutableSoftwareRegistryView([CreateSoftware("old", "Old", @"D:\Apps\Old")]);
+        using var provider = CreateProvider(registry);
+        using var reader = await provider.AcquireCatalogAsync(default);
+        var pipeline = reader.Catalog.Pipeline;
+        provider.Dispose();
+        provider.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => provider.AcquireCatalogAsync(default));
+        Assert.Equal("old", pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
+        reader.Dispose();
+        reader.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")));
+    }
+
+    [Fact]
+    public async Task FailedCatalogCreationKeepsTheOldDirectoryAndItsGeneration()
+    {
+        var original = CreateSoftware("old", "Old", @"D:\Apps\Old");
+        var registry = new MutableSoftwareRegistryView([original]);
+        using var provider = CreateProvider(registry);
+        using var reader = await provider.AcquireCatalogAsync(default);
+        var old = reader.Catalog;
+        // Duplicate real software identities fail construction, rather than failing a registry read.
+        registry.SetSoftware([original, original]);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => provider.AcquireCatalogAsync(default));
+        Assert.Equal("old", old.Pipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")).Id);
+        registry.SetSoftware([original]);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var recovered = await provider.AcquireCatalogAsync(default);
+        Assert.Same(old, recovered.Catalog);
+        Assert.Equal(1, recovered.Catalog.Generation);
+    }
+
+    [Fact]
+    public async Task CancellationAfterInputsDoesNotLeakAnUnreturnedReaderReference()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var cancelOnRead = false;
+        var registry = new MutableSoftwareRegistryView([CreateSoftware("old", "Old", @"D:\Apps\Old")]);
+        using var provider = CreateProvider(registry, new EmptyAdapterSoftwareRegistry(() =>
+        {
+            if (cancelOnRead) cancellation.Cancel();
+        }));
+        using var first = await provider.AcquireCatalogAsync(default);
+        var oldPipeline = first.Catalog.Pipeline;
+        cancelOnRead = true;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.AcquireCatalogAsync(cancellation.Token));
+        cancelOnRead = false;
+        first.Dispose();
+        registry.SetSoftware([]);
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var next = await provider.AcquireCatalogAsync(default);
+        Assert.Throws<ObjectDisposedException>(() => oldPipeline.Match(CreateProcess(@"D:\Apps\Old\app.exe")));
+        Assert.Equal(2, next.Catalog.Generation);
     }
 
     private static RuntimeProcessAttributionCatalogProvider CreateProvider(
-        ISoftwareRegistryView softwareRegistry)
+        ISoftwareRegistryView softwareRegistry,
+        IAdapterSoftwareRegistry? adapterRegistry = null)
     {
         var resolvers = new NullResolvers();
         return new RuntimeProcessAttributionCatalogProvider(
             softwareRegistry,
-            new EmptyAdapterSoftwareRegistry(),
+            adapterRegistry ?? new EmptyAdapterSoftwareRegistry(),
             new EmptyControlledSoftwareRegistry(),
             resolvers,
             resolvers,
@@ -202,11 +335,14 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             => releaseRead.TrySetResult();
     }
 
-    private sealed class EmptyAdapterSoftwareRegistry : IAdapterSoftwareRegistry
+    private sealed class EmptyAdapterSoftwareRegistry(Action? afterRead = null) : IAdapterSoftwareRegistry
     {
         public Task<IReadOnlyList<AdapterSoftwareRegistration>> GetAllAsync(
             CancellationToken cancellationToken)
-            => Task.FromResult<IReadOnlyList<AdapterSoftwareRegistration>>([]);
+        {
+            afterRead?.Invoke();
+            return Task.FromResult<IReadOnlyList<AdapterSoftwareRegistration>>([]);
+        }
 
         public Task<AdapterRegistrationResult> RegisterAsync(
             AdapterSoftwareRegistrationRequest request,

@@ -13,16 +13,29 @@ public sealed partial class HostManagerOperationCoordinatorOwner
     {
         ArgumentNullException.ThrowIfNull(hostPlan);
         var desired = hostPlan.OperationCoordinator;
-        if (!desired.IsPublished)
-        {
-            throw new InvalidOperationException(
-                "The Host Manager operation-coordinator plan is not published.");
-        }
-        ValidateRouter(desired);
-
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (retiring || disposed)
+            {
+                if (throwOnFailure)
+                {
+                    ThrowIfRetiringLocked();
+                }
+                return;
+            }
+            if (pendingWorkspaceClose is not null)
+            {
+                throw new InvalidOperationException(
+                    "An operation workspace still requires explicit closure before replacement.");
+            }
+            if (!desired.IsPublished)
+            {
+                throw new InvalidOperationException(
+                    "The Host Manager operation-coordinator plan is not published.");
+            }
+            ValidateRouter(desired);
+
             if (persistenceFaulted)
             {
                 throw new InvalidOperationException(
@@ -93,6 +106,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         var token = deployment.BeginInitialCreate(hostPlan);
         HostManagerOperationCanonicalStore? replacementStore = null;
         NativeOperationCoordinatorWorkspace? replacementWorkspace = null;
+        var settlementAttempted = false;
         try
         {
             var envelopePath =
@@ -109,7 +123,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             replacementWorkspace = new NativeOperationCoordinatorWorkspace(
                 desired,
                 sessionId,
-                clockId);
+                clockId,
+                createScratch);
             if (persisted is not null)
             {
                 replacementWorkspace.ImportCanonicalNativeImageLocked(
@@ -133,28 +148,42 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             CommitCurrentLocked("initial-recovery-publication");
             ready = true;
             PublishHealthOnlyLocked();
+            settlementAttempted = true;
             deployment.CompleteSucceeded(token);
         }
         catch (Exception error)
         {
             ready = false;
-            replacementWorkspace?.Dispose();
-            replacementStore?.Dispose();
-            workspace?.Dispose();
-            workspace = null;
-            store?.Dispose();
-            store = null;
-            appliedPlan = null;
+            Exception failure = error;
             try
             {
-                deployment.CompleteFailed(
-                    token,
-                    "operation-coordinator-initial-create-failed");
+                try
+                {
+                    if (replacementWorkspace is not null)
+                        RetireWorkspaceLocked(replacementWorkspace);
+                }
+                finally { replacementStore?.Dispose(); }
+                workspace?.Dispose();
+                workspace = null;
+                store?.Dispose();
+                store = null;
+                appliedPlan = null;
             }
-            catch (Exception settlementError)
+            catch (Exception cleanup) { failure = new AggregateException(error, cleanup); }
+            if (!settlementAttempted)
             {
-                throw new AggregateException(error, settlementError);
+                try
+                {
+                    deployment.CompleteFailed(
+                        token,
+                        "operation-coordinator-initial-create-failed");
+                }
+                catch (Exception settlementError)
+                {
+                    throw new AggregateException(failure, settlementError);
+                }
             }
+            if (!ReferenceEquals(failure, error)) throw failure;
             throw;
         }
     }
@@ -188,26 +217,36 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 desired,
                 acceptedState);
             replacement = null;
-            currentWorkspace.Dispose();
+            RetireWorkspaceLocked(currentWorkspace);
             SignalPlanner();
         }
         catch (Exception error)
         {
-            replacement?.Dispose();
-            if (canonicalCommitted)
-            {
-                LatchPersistenceFaultLocked(error, "hot-publication");
-            }
+            Exception failure = error;
             try
             {
-                deployment.CompleteFailed(
-                    token,
-                    "operation-coordinator-hot-publish-failed");
+                if (replacement is not null) RetireWorkspaceLocked(replacement);
             }
-            catch (Exception settlementError)
+            catch (Exception cleanup) { failure = new AggregateException(error, cleanup); }
+            if (canonicalCommitted)
             {
-                throw new AggregateException(error, settlementError);
+                LatchPersistenceFaultLocked(failure, "hot-publication");
             }
+            // Success settlement precedes old-workspace closure. Do not settle it twice.
+            if (!canonicalCommitted)
+            {
+                try
+                {
+                    deployment.CompleteFailed(
+                        token,
+                        "operation-coordinator-hot-publish-failed");
+                }
+                catch (Exception settlementError)
+                {
+                    throw new AggregateException(failure, settlementError);
+                }
+            }
+            if (!ReferenceEquals(failure, error)) throw failure;
             throw;
         }
     }
@@ -260,26 +299,36 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 desired,
                 acceptedState);
             replacement = null;
-            currentWorkspace.Dispose();
+            RetireWorkspaceLocked(currentWorkspace);
             SignalPlanner();
         }
         catch (Exception error)
         {
-            replacement?.Dispose();
-            if (canonicalCommitted)
-            {
-                LatchPersistenceFaultLocked(error, "host-recreate-publication");
-            }
+            Exception failure = error;
             try
             {
-                deployment.CompleteFailed(
-                    token,
-                    "operation-coordinator-host-recreate-failed");
+                if (replacement is not null) RetireWorkspaceLocked(replacement);
             }
-            catch (Exception settlementError)
+            catch (Exception cleanup) { failure = new AggregateException(error, cleanup); }
+            if (canonicalCommitted)
             {
-                throw new AggregateException(error, settlementError);
+                LatchPersistenceFaultLocked(failure, "host-recreate-publication");
             }
+            // Success settlement precedes old-workspace closure. Do not settle it twice.
+            if (!canonicalCommitted)
+            {
+                try
+                {
+                    deployment.CompleteFailed(
+                        token,
+                        "operation-coordinator-host-recreate-failed");
+                }
+                catch (Exception settlementError)
+                {
+                    throw new AggregateException(failure, settlementError);
+                }
+            }
+            if (!ReferenceEquals(failure, error)) throw failure;
             throw;
         }
     }
@@ -385,7 +434,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 DateTimeOffset.UtcNow));
     }
 
-    private static NativeOperationCoordinatorWorkspace
+    private NativeOperationCoordinatorWorkspace
         CreateReplacementWorkspaceLocked(
             NativeOperationCoordinatorWorkspace current,
             CompiledHostManagerOperationCoordinatorPlan desired)
@@ -394,7 +443,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         var replacement = new NativeOperationCoordinatorWorkspace(
             desired,
             current.SessionInstanceId,
-            current.ClockInstanceId);
+            current.ClockInstanceId,
+            createScratch);
         try
         {
             replacement.ImportCanonicalNativeImageLocked(
@@ -403,9 +453,10 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
             return replacement;
         }
-        catch
+        catch (Exception error)
         {
-            replacement.Dispose();
+            try { RetireWorkspaceLocked(replacement); }
+            catch (Exception cleanup) { throw new AggregateException(error, cleanup); }
             throw;
         }
     }
@@ -417,6 +468,15 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 != desired.Recreate.Capacity.MaximumActionCount
             || ResolveWorkerCount(current)
                 != ResolveWorkerCount(desired);
+
+    private void RetireWorkspaceLocked(NativeOperationCoordinatorWorkspace candidate)
+    {
+        if (pendingWorkspaceClose is not null)
+            throw new InvalidOperationException("An operation workspace is already awaiting closure.");
+        pendingWorkspaceClose = candidate;
+        candidate.Dispose();
+        pendingWorkspaceClose = null;
+    }
 
     private static ulong ResolveWorkerCount(
         CompiledHostManagerOperationCoordinatorPlan plan)

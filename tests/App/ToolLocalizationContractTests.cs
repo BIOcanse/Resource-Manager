@@ -58,8 +58,15 @@ public sealed class ToolLocalizationContractTests
         Directory.CreateDirectory(Path.Combine(root, "Config"));
         try
         {
-            File.WriteAllText(Path.Combine(root, "Config", "app-settings.json"), "{\"appearance\":{\"language\":\"DE_de\"}}");
-            Assert.Equal("de-DE", ToolText.FromInstallRoot(root).Language);
+            foreach (var language in AppLanguage.SupportedIds)
+            {
+                File.WriteAllText(Path.Combine(root, "Config", "app-settings.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { appearance = new { language } }));
+                var text = ToolText.FromInstallRoot(root);
+                Assert.Equal(language, text.Language);
+                Assert.Contains("DETAIL-TOKEN", text.Format(text.LauncherFailedFormat, "DETAIL-TOKEN"));
+                Assert.Contains("73", text.Format(text.LauncherServiceExitFormat, 73));
+            }
             Assert.Equal("de-DE", AppLanguage.Resolve("DE_de"));
             File.WriteAllText(Path.Combine(root, "Config", "app-settings.json"), "{invalid json");
             Assert.Equal(AppLanguage.System, AppLanguage.ReadPreference(Path.Combine(root, "Config", "app-settings.json")));

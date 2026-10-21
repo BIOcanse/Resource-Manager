@@ -3,6 +3,11 @@ import { uiText } from "../text.ts";
 
 export type GpuPolicySelectOption = readonly [string, string, boolean?];
 
+/** Unknown requires runtime validation; it does not prevent saving a user's choice. */
+export function canConfigureRuntimePlacement(state: string | null | undefined): boolean {
+  return state === "supported" || state === "unknown";
+}
+
 // 文案按当前语言求值，不能在模块顶层固化。
 function ordinarySystemTargetGpuOptions(): readonly GpuPolicySelectOption[] {
   return [
@@ -10,24 +15,6 @@ function ordinarySystemTargetGpuOptions(): readonly GpuPolicySelectOption[] {
     ["HighPerformanceGpu", uiText.gpuTarget.highPerformance],
     ["IntegratedGpu", uiText.gpuTarget.integrated]
   ] as const;
-}
-
-export function targetGpuOptionsForSoftwarePolicy(
-  preciseGpuPlacementEnabled: boolean,
-  schedulingMode: string,
-  runtimeSchedulingMode: string,
-  currentTarget: string,
-  exactTargets: readonly GpuPlacementExactTargetOption[] = []): readonly GpuPolicySelectOption[] {
-  if (preciseGpuPlacementEnabled && schedulingMode === "Precise" && runtimeSchedulingMode === "Precise") {
-    return preserveUnavailableCurrentTarget(
-      [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets), ["AutoIdleGpu", uiText.gpuTarget.autoIdle]],
-      currentTarget,
-      uiText.gpuTarget.unavailable);
-  }
-
-  return isOrdinarySystemGpuTarget(currentTarget)
-    ? ordinarySystemTargetGpuOptions()
-    : [[currentTarget, uiText.gpuTarget.needsPreciseSelection(formatGpuTarget(currentTarget)), true], ...ordinarySystemTargetGpuOptions()];
 }
 
 export function startupTargetGpuOptionsForSoftwarePolicy(

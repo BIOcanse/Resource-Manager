@@ -28,7 +28,7 @@ public sealed partial class NativeComputeScoringSessionTests
         var outputs = new NativeComputeScoringOutput[12];
         var envelope = CreateEnvelope(1, 4, 0, 0, outputs.Length, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         var snapshot = default(NativeComputeScoringSnapshot);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, processes, [], outputs, ref snapshot));
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, processes, [], outputs, ref snapshot));
         Assert.Equal(4U, snapshot.ProcessCpuOutputCount);
         for (var index = 0; index < 4; index++)
             Assert.Equal(weighted[index] / 0.5, outputs[index].Score, precision: 10);
@@ -62,7 +62,7 @@ public sealed partial class NativeComputeScoringSessionTests
         var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         envelope.ConfigurationGeneration = 2;
         var snapshot = default(NativeComputeScoringSnapshot);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope,
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope,
             [CreateProcess(1, 10, 100, 1, weighted[0])], [], outputs, ref snapshot));
         Assert.Equal(300, outputs[0].Score);
 
@@ -126,9 +126,9 @@ public sealed partial class NativeComputeScoringSessionTests
         var outputs = new NativeComputeScoringOutput[2];
         var snapshot = default(NativeComputeScoringSnapshot);
         var cpu = CreateEnvelope(1, 1, 0, 0, 2, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-        Assert.Equal(NativeComputeScoringStatus.NoData, session.Score(in cpu, [process], [], outputs, ref snapshot));
+        Assert.Equal(NativeComputeScoringStatus.NoData, session.ScoreWithScratchFixture(in cpu, [process], [], outputs, ref snapshot));
         var gpu = CreateEnvelope(1, 1, 1, 1, 2, NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in gpu, [process],
+        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in gpu, [process],
             [CreateGpu(process, 11, 1, 50)], outputs, ref snapshot));
         Assert.Equal(0U, snapshot.ProcessCpuOutputCount);
         Assert.Equal(50, outputs[0].Score);

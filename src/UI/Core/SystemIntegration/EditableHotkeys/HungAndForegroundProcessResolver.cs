@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 namespace ResourceManager.NativeUi.SystemIntegration.EditableHotkeys;
 
 internal sealed record ForceTerminateTargetSnapshot(
-    IReadOnlyList<int> ProcessIds,
+    IReadOnlyList<ForceTerminateProcessTarget> Targets,
     int? ForegroundProcessId,
     int HungProcessCount);
+
+internal sealed record ForceTerminateProcessTarget(int ProcessId, string ProcessStartKey);
 
 internal static class HungAndForegroundProcessResolver
 {
@@ -51,28 +53,31 @@ internal static class HungAndForegroundProcessResolver
             targets.Add(foregroundProcessId.Value);
         }
 
-        targets.RemoveWhere(static processId => !IsAllowedTarget(processId));
+        var identities = targets.Order().Take(64)
+            .Select(ReadAllowedTarget).OfType<ForceTerminateProcessTarget>().ToArray();
         return new ForceTerminateTargetSnapshot(
-            targets.Order().Take(64).ToArray(),
+            identities,
             foregroundProcessId,
-            hung.Count(targets.Contains));
+            identities.Count(target => hung.Contains(target.ProcessId)));
     }
 
-    private static bool IsAllowedTarget(int processId)
+    internal static ForceTerminateProcessTarget? ReadAllowedTarget(int processId)
     {
         if (processId <= 4 || processId == Environment.ProcessId)
         {
-            return false;
+            return null;
         }
 
         try
         {
             using var process = Process.GetProcessById(processId);
-            return !CriticalProcessNames.Contains(process.ProcessName);
+            return CriticalProcessNames.Contains(process.ProcessName) ? null
+                : new ForceTerminateProcessTarget(processId, process.StartTime.ToFileTimeUtc()
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 

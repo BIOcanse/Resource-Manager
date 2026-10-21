@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Collections.Immutable;
+using FreedomPoint;
+using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
@@ -7,13 +10,24 @@ namespace Resource_Manager_APP.Tests;
 
 internal static class FreedomPointTestFactory
 {
-    public static FreedomPointRegistry Load(Action<JsonObject> edit)
+    public static FreedomPointRegistry Load(Action<JsonObject> edit,
+        Func<CompiledFreedomPoint, ImmutableArray<GenerationTarget>>? generationTargets = null)
     {
         using var stream = typeof(FreedomPointRegistry).Assembly.GetManifestResourceStream(FreedomPointRegistry.ManifestResourceName)!;
         var root = JsonNode.Parse(stream)!.AsObject();
         edit(root);
-        return FreedomPointRegistry.Parse(JsonSerializer.SerializeToUtf8Bytes(root));
+        return FreedomPointRegistry.Parse(JsonSerializer.SerializeToUtf8Bytes(root), generationTargets);
     }
+
+    // Synthetic/reordered declarations compile to the fixture's own per-point value artifact.
+    public static ImmutableArray<GenerationTarget> FixtureTargets(CompiledFreedomPoint point) =>
+        [new GenerationTarget
+        {
+            Language = GenerationLanguage.HostArtifact,
+            Form = point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable,
+            Scope = typeof(CompiledFreedomPoint).FullName + "/" + point.Path,
+            Symbol = nameof(CompiledFreedomPoint.Value)
+        }];
 
     public static JsonObject Point(JsonObject root, string address)
     {

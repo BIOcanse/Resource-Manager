@@ -27,7 +27,7 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.True(fixture.Scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
 
         var retained = fixture.Scheduler.ApplyFeedback(
             token,
@@ -50,6 +50,30 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.Equal(
             ResourceSchedulerReservationDisposition.Completed,
             completed.ReservationDisposition);
+    }
+
+    [Theory]
+    [InlineData(199UL, true)]
+    [InlineData(200UL, false)]
+    [InlineData(201UL, false)]
+    public void BeginChecksCurrentTimeAndExpiredReservationsRemainCancellable(ulong now, bool allowed)
+    {
+        using var fixture = CreateFixture();
+        var plan = PlanPrivate(fixture.Scheduler, 1, 100, CreateFactBatch());
+        var selection = Assert.Single(plan.NativePlan.Selections);
+        var token = fixture.Scheduler.ReserveSelection(plan, selection, 100, 200, 41);
+        BindPrepared(fixture.Scheduler, plan, token, selection);
+
+        var result = fixture.Scheduler.RevalidateAndBeginReservation(token, selection,
+            CreatePrivateRevalidation(selection), now);
+
+        Assert.Equal(allowed, result.Allowed);
+        Assert.Equal(allowed ? ResourceSchedulerRevalidationReason.Allowed
+            : ResourceSchedulerRevalidationReason.ReservationExpired, result.Reason);
+        if (allowed) fixture.Scheduler.CompleteReservation(token);
+        else fixture.Scheduler.CancelReservation(token);
+        var next = PlanPrivate(fixture.Scheduler, 2, 202, CreateFactBatch());
+        Assert.Single(next.NativePlan.Selections);
     }
 
     [Fact]
@@ -215,7 +239,7 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.True(fixture.Scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
         Assert.False(fixture.Scheduler.ApplyFeedback(
             token,
             new ResourceSchedulerFeedbackRequest(selection.RequestId, 1, 0, true, 1),
@@ -265,7 +289,7 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.True(fixture.Scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
 
         var completed = fixture.Scheduler.ApplyFeedback(
             token,
@@ -330,7 +354,7 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.True(fixture.Scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
         fixture.Scheduler.AbandonReservation(token);
 
         var uncertain = CreatePending(
@@ -465,7 +489,7 @@ public sealed class HostResourceSchedulerLifecycleTests
         Assert.True(fixture.Scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
         Assert.Equal(
             ResourceSchedulerReservationDisposition.Retained,
             fixture.Scheduler.ApplyFeedback(

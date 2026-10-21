@@ -16,6 +16,37 @@ public sealed class OptimizationProtectionService(
 
     public int ProtectedTargetCount => Volatile.Read(ref targets).Length;
 
+    public async Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled,
+        CancellationToken cancellationToken)
+    {
+        var software = (await softwareRegistry.GetSoftwareAsync(cancellationToken)).FirstOrDefault(item =>
+            string.Equals(item.Id, softwareId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new KeyNotFoundException("Unknown software identity.");
+        await EnsureLoadedAsync(cancellationToken);
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            var key = $"software:{software.Id}";
+            var next = targets.Where(item => !string.Equals(item.SoftwareId, software.Id, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(item.TargetKey, key, StringComparison.OrdinalIgnoreCase)).ToList();
+            ProtectedOptimizationTarget? protection = null;
+            if (enabled)
+            {
+                var now = DateTimeOffset.UtcNow;
+                protection = new(CreateStableId($"protect|Software|{key}"), OptimizationReportTargetTypes.Software,
+                    key, software.Name, software.Id, software.Name, software.Kind, now,
+                    "software-detail-level2", "software-detail", now, OptimizationProtectionStates.Active,
+                    AllowsPlacementAvoidance: true, ProtectionLevel: OptimizationProtectionLevels.Level2NoOptimization);
+                next.Add(protection);
+            }
+            var ordered = next.OrderBy(item => item.ProtectedAt).ToArray();
+            await store.SaveAsync(ordered, cancellationToken);
+            Volatile.Write(ref targets, ordered);
+            return protection;
+        }
+        finally { gate.Release(); }
+    }
+
     public async Task<ProtectedOptimizationTarget?> ProtectReportAsync(
         OptimizationReportItem report,
         CancellationToken cancellationToken)

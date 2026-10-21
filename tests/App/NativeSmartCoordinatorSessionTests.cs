@@ -272,9 +272,11 @@ public sealed class NativeSmartCoordinatorSessionTests
     public void WorkspaceUsesOnlyNativeCapacityAndExplicitCounts()
     {
         var configuration = CreateConfiguration();
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
-        Assert.Equal(configuration.MaximumInputRows, (uint)workspace.InputRows.Length);
-        Assert.Equal(configuration.MaximumReservations, (uint)workspace.FeedbackRows.Length);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
+        Assert.Equal(configuration.MaximumInputRows, (uint)buffers.Inputs.Length);
+        Assert.Equal(configuration.MaximumReservations, (uint)buffers.Feedback.Length);
 
         var input = CreateEmptyCycleInput(
             configuration.Generation,
@@ -282,7 +284,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             cycleSequence: 1,
             authoritative: true);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
-        Assert.Empty(workspace.PlannedActions.ToArray());
+        Assert.Empty(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray());
         Assert.Equal(0u, workspace.Snapshot.ActionCount);
 
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
@@ -301,7 +303,9 @@ public sealed class NativeSmartCoordinatorSessionTests
     public void WorkspacePlanHotPathDoesNotAllocateManagedMemory()
     {
         var configuration = CreateConfiguration();
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
         var input = CreateEmptyCycleInput(
             configuration.Generation,
             workspace.Capacity.ActionCapacity,
@@ -356,10 +360,12 @@ public sealed class NativeSmartCoordinatorSessionTests
     public void ProcessFactsPlanFeedbackAndSnapshotRoundTripThroughNativeState()
     {
         var configuration = CreateProcessPolicyConfiguration();
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
-        workspace.InputRows[0] = process;
-        workspace.InputRows[1] = CreateMetricFact(
+        buffers.Inputs[0] = process;
+        buffers.Inputs[1] = CreateMetricFact(
             in process,
             sourceIndex: 1,
             NativeSmartCoordinatorMetricKind.CpuUsagePercent,
@@ -376,7 +382,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             input.ObservedAtMilliseconds = checked((long)sequence * 1_000);
             Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
             _ = HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace);
-            Assert.True(TryFindProcessAction(workspace.PlannedActions, process.TargetKey, out var action));
+            Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out var action));
             if (sequence < 3)
             {
                 Assert.Equal(
@@ -400,7 +406,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         Assert.Equal(0U, appliedAction.GroupMemberIndex);
         Assert.Equal(0U, appliedAction.GroupMemberCount);
 
-        workspace.FeedbackRows[0] = CreateSucceededFeedback(in appliedAction, completedAtMilliseconds: 3_100);
+        buffers.Feedback[0] = CreateSucceededFeedback(in appliedAction, completedAtMilliseconds: 3_100);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.ApplyFeedback(1));
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
         HostManagerSmartCoordinator.ValidateNativeSnapshotRows(
@@ -430,7 +436,9 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.CpuAdapter.NormalMinimumScore = 60;
         configuration.CpuAdapter.OptimizeMinimumScore = 25;
         configuration.GpuAdapter = configuration.CpuAdapter;
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
         process.SoftwareKind = NativeSmartCoordinatorSoftwareKind.Adapted;
         process.BaseScore = 60;
@@ -438,10 +446,10 @@ public sealed class NativeSmartCoordinatorSessionTests
         for (ulong sequence = 1; sequence <= 3; sequence++)
         {
             uint count = 0;
-            workspace.InputRows[checked((int)count++)] = process;
+            buffers.Inputs[checked((int)count++)] = process;
             if (cpuFirst || simultaneous || sequence > 1)
             {
-                workspace.InputRows[checked((int)count)] = CreateMetricFact(
+                buffers.Inputs[checked((int)count)] = CreateMetricFact(
                     in process, count, NativeSmartCoordinatorMetricKind.CpuUsagePercent, 100);
                 count++;
             }
@@ -450,14 +458,14 @@ public sealed class NativeSmartCoordinatorSessionTests
                 var gpu = CreateMetricFact(
                     in process, count, NativeSmartCoordinatorMetricKind.GpuUsagePercent, 2);
                 gpu.DeviceIndex = 5;
-                workspace.InputRows[checked((int)count++)] = gpu;
+                buffers.Inputs[checked((int)count++)] = gpu;
                 var vram = process;
                 vram.SourceIndex = count;
                 vram.MetricKind = NativeSmartCoordinatorMetricKind.VramUsagePercent;
                 vram.MetricValue = 1;
                 vram.DeviceIndex = 5;
                 vram.ValidMask |= NativeSmartCoordinatorInputValidity.Metric;
-                workspace.InputRows[checked((int)count++)] = vram;
+                buffers.Inputs[checked((int)count++)] = vram;
             }
             var cycle = CreateEmptyCycleInput(configuration.Generation,
                 workspace.Capacity.ActionCapacity, sequence, authoritative: sequence == 1);
@@ -468,7 +476,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             if (sequence == 3)
             {
                 Assert.Equal(1u, requiresFeedback);
-                readyAction = Assert.Single(workspace.PlannedActions.ToArray(),
+                readyAction = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
                     action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
             }
         }
@@ -496,7 +504,9 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.CpuAdapter.NormalMinimumScore = 60;
         configuration.CpuAdapter.OptimizeMinimumScore = 25;
         configuration.GpuAdapter = configuration.CpuAdapter;
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
         ulong deferredSoftware = 0;
         for (ulong sequence = 1; sequence <= 5; sequence++)
         {
@@ -511,7 +521,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                 process.SoftwareKind = NativeSmartCoordinatorSoftwareKind.Adapted;
                 process.BaseScore = 60;
                 process.SourceIndex = count;
-                workspace.InputRows[checked((int)count++)] = process;
+                buffers.Inputs[checked((int)count++)] = process;
                 var metric = CreateMetricFact(in process, count,
                     cpu ? NativeSmartCoordinatorMetricKind.CpuUsagePercent : NativeSmartCoordinatorMetricKind.GpuUsagePercent,
                     cpu ? 100 : 2);
@@ -524,7 +534,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                     metric.SoftwareScore = 0;
                     metric.ScoreMemberCount = 0;
                 }
-                workspace.InputRows[checked((int)count++)] = metric;
+                buffers.Inputs[checked((int)count++)] = metric;
                 if (!cpu)
                 {
                     var vram = process;
@@ -533,7 +543,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                     vram.MetricValue = 1;
                     vram.DeviceIndex = 5;
                     vram.ValidMask |= NativeSmartCoordinatorInputValidity.Metric;
-                    workspace.InputRows[checked((int)count++)] = vram;
+                    buffers.Inputs[checked((int)count++)] = vram;
                 }
             }
             var cycle = CreateEmptyCycleInput(configuration.Generation,
@@ -546,7 +556,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             if (sequence == 3)
             {
                 Assert.Equal(1u, feedbackCount);
-                var selected = Assert.Single(workspace.PlannedActions.ToArray(),
+                var selected = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
                     action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
                 deferredSoftware = selected.SoftwareKey == 1_001 ? 1_002u : 1_001u;
             }
@@ -558,7 +568,7 @@ public sealed class NativeSmartCoordinatorSessionTests
             if (sequence == 5)
             {
                 Assert.Equal(1u, feedbackCount);
-                var resumed = Assert.Single(workspace.PlannedActions.ToArray(),
+                var resumed = Assert.Single(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray(),
                     action => action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
                 Assert.Equal(deferredSoftware, resumed.SoftwareKey);
             }
@@ -571,11 +581,13 @@ public sealed class NativeSmartCoordinatorSessionTests
     public void ZeroActionBudgetDoesNotBecomeScoreOnly(bool explicitScoreOnly)
     {
         var configuration = CreateProcessPolicyConfiguration();
-        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration);
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
         process.BaseScore = 40;
-        workspace.InputRows[0] = process;
-        workspace.InputRows[1] = CreateMetricFact(
+        buffers.Inputs[0] = process;
+        buffers.Inputs[1] = CreateMetricFact(
             in process, 1, NativeSmartCoordinatorMetricKind.CpuUsagePercent, 1);
 
         for (ulong sequence = 1; sequence <= 4; sequence++)
@@ -596,7 +608,7 @@ public sealed class NativeSmartCoordinatorSessionTests
                 process.TargetKey, out var row));
             if (sequence <= 3)
             {
-                Assert.Empty(workspace.PlannedActions.ToArray());
+                Assert.Empty(buffers.Actions[..checked((int)workspace.PlannedActionCount)].ToArray());
                 Assert.Equal(0u, workspace.Snapshot.InflightCount);
                 Assert.Equal(explicitScoreOnly, workspace.Snapshot.Flags.HasFlag(
                     NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
@@ -760,6 +772,177 @@ public sealed class NativeSmartCoordinatorSessionTests
             GpuScoreSourceFingerprint = 0xD000_0000_0000_0000UL | cycleSequence,
             MaximumActionsThisCycle = actionCapacity
         };
+
+    [Fact]
+    public void SmartScratchLayoutUsesCheckedTypedExtentsWithoutAByteCountCap()
+    {
+        var layout = new NativeSmartScratchLayout(64, 20_000_000, 6);
+        Assert.Equal(112, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorInputRow>());
+        Assert.Equal(136, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorAction>());
+        Assert.Equal(96, System.Runtime.InteropServices.Marshal.SizeOf<NativeSmartCoordinatorFeedback>());
+        Assert.Equal(64UL * 112, layout.Actions);
+        Assert.Equal(64UL * 112 + 20_000_000UL * 136, layout.Feedback);
+        Assert.Equal(layout.Feedback + 6UL * 96, layout.Length);
+        Assert.True(layout.Length > int.MaxValue); // Layout proof only: no large allocation.
+        Assert.Throws<OverflowException>(() => new NativeSmartScratchLayout(uint.MaxValue, 1, 1));
+    }
+
+    [Fact]
+    public void RealSmartScratchReceivesNativeActionsAndKeepsPublishedSnapshotSeparate()
+    {
+        using var owner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
+        var configuration = CreateProcessPolicyConfiguration();
+        configuration.MaximumInputRows = 64;
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, owner.CreateScratch);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+        var process = CreateProcessFact();
+        using (var operation = workspace.BeginOperation())
+        {
+            using var buffers = workspace.CreateScratchView();
+            buffers.Inputs[0] = process;
+            buffers.Inputs[1] = CreateMetricFact(in process, 1,
+                NativeSmartCoordinatorMetricKind.CpuUsagePercent, 50);
+            NativeSmartCoordinatorAction action = default;
+            for (ulong sequence = 1; sequence <= 3; sequence++)
+            {
+                var input = CreateEmptyCycleInput(configuration.Generation,
+                    workspace.Capacity.ActionCapacity, sequence, sequence == 1);
+                input.InputCount = 2;
+                input.ObservedAtMilliseconds = checked((long)sequence * 1_000);
+                Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.Plan(in input));
+                Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out action));
+            }
+            Assert.True(action.Flags.HasFlag(NativeSmartCoordinatorActionFlags.RequiresFeedback));
+            var actualLease = SmartActiveLease(workspace);
+            var layout = new NativeSmartScratchLayout(workspace.Capacity.InputRowCapacity,
+                workspace.Capacity.ActionCapacity, workspace.Capacity.FeedbackCapacity);
+            var nativeOutput = System.Runtime.InteropServices.MemoryMarshal.Read<NativeSmartCoordinatorAction>(
+                actualLease.GetMemoryChunk(layout.Actions, 136).Span);
+            Assert.Equal(action.ActionId, nativeOutput.ActionId);
+            Assert.True(actualLease.AllocationNumber != 0);
+            workspace.SetFeedback(0, CreateSucceededFeedback(in action, 3_100));
+            Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.ApplyFeedback(1));
+            operation.Complete();
+        }
+        owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
+        Assert.Equal(1UL, owner.Tick().Released);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
+        Assert.Contains(workspace.CurrentSnapshotRows.ToArray(), row => row.ProcessId == process.ProcessId);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Snapshot reads do not reallocate the three columns.
+    }
+
+    [Fact]
+    public async Task SmartScratchLeaseSurvivesAwaitAndBlocksNormalClose()
+    {
+        using var owner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
+        var configuration = CreateConfiguration();
+        configuration.MaximumInputRows = 64;
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, owner.CreateScratch);
+        var operation = workspace.BeginOperation();
+        workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 47 });
+        var allocation = SmartActiveLease(workspace).AllocationNumber;
+        await Task.Yield();
+        owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
+        Assert.Equal(0UL, owner.Tick().Released);
+        Assert.Equal(47UL, workspace.GetFeedback(0).ActionId);
+        Assert.Equal(allocation, SmartActiveLease(workspace).AllocationNumber);
+        Assert.Throws<ResourceManager.Ledger.LedgerException>(workspace.Dispose);
+        Assert.Throws<ObjectDisposedException>(() => workspace.BeginOperation());
+        Assert.Equal(47UL, workspace.GetFeedback(0).ActionId); // The entered call may finish.
+        operation.Complete();
+        operation.Dispose();
+        workspace.Dispose();
+        operation.Dispose();
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SmartEndUseFailureKeepsExactLeaseUntilExplicitClose(bool throwAfterInnerReturn)
+    {
+        using var owner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
+        var configuration = CreateConfiguration();
+        configuration.MaximumInputRows = 64;
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
+            length => new SmartEndUseFault(owner.CreateScratch(length), throwAfterInnerReturn));
+        var operation = workspace.BeginOperation();
+        var lease = SmartActiveLease(workspace);
+        workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 19 });
+        operation.Complete();
+        Assert.Throws<InvalidOperationException>(operation.Dispose);
+        Assert.Same(lease, SmartActiveLease(workspace));
+        Assert.Throws<InvalidOperationException>(() => workspace.BeginOperation());
+        operation.Dispose(); // A using/finally's second Dispose is not an endUse retry.
+        Assert.Same(lease, SmartActiveLease(workspace));
+        workspace.Dispose();
+        operation.Dispose();
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+    }
+
+    [Fact]
+    public void SmartIdleRebuildRetainsUidWithANewActualAllocation()
+    {
+        using var owner = new ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner();
+        var configuration = CreateConfiguration();
+        configuration.MaximumInputRows = 64;
+        ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch? resource = null;
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
+            length => resource = owner.CreateScratch(length));
+        var uid = resource!.Uid;
+        ulong first;
+        using (var operation = workspace.BeginOperation())
+        {
+            first = SmartActiveLease(workspace).AllocationNumber;
+            workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 23 });
+            operation.Complete();
+        }
+        owner.SetMode(ResourceManager.Ledger.LedgerTableMode.Optimize);
+        Assert.Equal(1UL, owner.Tick().Released);
+        using (var operation = workspace.BeginOperation())
+        {
+            Assert.Equal(uid, resource.Uid);
+            Assert.NotEqual(first, SmartActiveLease(workspace).AllocationNumber);
+            workspace.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 29 });
+            Assert.Equal(29UL, workspace.GetFeedback(0).ActionId);
+            operation.Complete();
+        }
+    }
+
+    private static ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease SmartActiveLease(NativeSmartCoordinatorWorkspace workspace)
+        => Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease>(
+            typeof(NativeSmartCoordinatorWorkspace).GetField("activeLease",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(workspace));
+
+    // Recorded caller failures before/after the actual SDK return, using the real region throughout.
+    private sealed class SmartEndUseFault(ResourceManager.App.Infrastructure.Adaptation.IComputeScratch inner, bool after)
+        : ResourceManager.App.Infrastructure.Adaptation.IComputeScratch
+    {
+        public ulong Length => inner.Length;
+        public ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease Acquire() => new Reading(inner.Acquire(), after);
+        public void Dispose() => inner.Dispose();
+        private sealed class Reading(ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease inner, bool after)
+            : ResourceManager.App.Infrastructure.Adaptation.ComputeScratchLease
+        {
+            private bool fail = true;
+            internal override ulong Length => inner.Length;
+            internal override ulong AllocationNumber => inner.AllocationNumber;
+            internal override bool IsLoading => inner.IsLoading;
+            internal override Memory<byte> GetMemoryChunk(ulong offset, int count) => inner.GetMemoryChunk(offset, count);
+            internal override void Complete() => inner.Complete();
+            public override void Dispose()
+            {
+                if (fail)
+                {
+                    fail = false;
+                    if (after) inner.Dispose();
+                    throw new InvalidOperationException("recorded smart endUse return failure");
+                }
+                inner.Dispose();
+            }
+        }
+    }
 
     private static NativeSmartCoordinatorConfiguration CreateConfiguration()
         => new()

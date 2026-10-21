@@ -45,7 +45,8 @@ public sealed class WindowsChassisKindReader : IControlDetectionCache
         {
             using var searcher = new ManagementObjectSearcher(
                 "SELECT ChassisTypes FROM Win32_SystemEnclosure");
-            foreach (var row in searcher.Get().Cast<ManagementObject>())
+            using var collection = searcher.Get();
+            foreach (var row in collection.Cast<ManagementObject>())
             {
                 using (row)
                 {

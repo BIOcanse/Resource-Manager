@@ -110,8 +110,8 @@ export default createSettingsLocale("ja-JP", {
         "description": "ソフトウェアの使用 GPU を正確に指定できるようにします。"
       }
     },
-    "automaticMemoryCleanupTitle": "自動解放の閾値",
-    "automaticMemoryCleanupDescription": "リソースが少なく、安全な移動を続けられないときにバックグラウンドで解放を開始します。",
+    "automaticMemoryCleanupTitle": "緊急クリーンアップのしきい値",
+    "automaticMemoryCleanupDescription": "バックグラウンドのクリーンアップはリソースの負荷に応じて段階的に行われます。物理メモリまたはコミット容量の残量がこの値を下回ると、緊急クリーンアップを行います。",
     "physicalMemoryAutomaticCleanupLabel": "物理メモリ空き率 %",
     "virtualMemoryAutomaticCleanupLabel": "コミット余裕率 %",
     "memoryOptimizationTargetTitle": "メモリ最適化の目標",

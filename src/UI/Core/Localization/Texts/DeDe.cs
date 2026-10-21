@@ -46,6 +46,7 @@ internal static class DeDe
         BackendPipelineNotReady = "Die Anforderungspipeline des lokalen Diensts ist nicht bereit.",
         NoProcessToTerminate = "Es gibt keinen Prozess zum Beenden.",
         TerminateRequestCompleted = "Die Anforderung zum Beenden des Prozesses wurde abgeschlossen.",
+        TerminateResultFormat = "{0} / {1} Prozesse beendet.",
 
         WebViewInitializationFailed = "Die eingebettete Oberfläche konnte nicht initialisiert werden. Öffnen Sie den Diagnoseordner für Details.",
         FrontendIdentityVerificationFailed = "Die Identitätsprüfung der Frontend-Ressourcen ist fehlgeschlagen. Öffnen Sie den Diagnoseordner für Details.",

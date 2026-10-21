@@ -3,8 +3,7 @@ import type { ControlCurvePoint } from "./controlTypes.ts";
 /**
  * 风扇曲线：温度到转速。
  *
- * **调整点是固定的，每 5 度一个**，用户只调每个点的转速，不去拖动曲线本身。
- * 这样每次调整都落在同一组温度上，可预期、可对比、也不会拖出一堆密集又无意义的点；
+ * 调整时保留载入曲线的温度点，用户只调每个点的转速；新曲线使用每 5 度的默认十点。
  * 相邻点之间直线插值，与软件执行端一致。
  *
  * 纯函数，不碰界面也不碰硬件 —— 不管最后由 NBFC 还是显卡驱动去写，规矩是一样的。
@@ -17,11 +16,19 @@ export const maximumPercent = 100;
 /**
  * 固定的调整点。
  *
- * 保留既有十点编辑合同；固定档位固件按索引接收十个百分比。
+ * 新曲线和十档固件使用这组默认点；已载入的曲线保留它自己的断点。
  * 图表显示范围独立于这些控制点，两端之外保持端点值。
  */
 export const curveStops: readonly number[] =
   [40, 45, 50, 55, 60, 65, 70, 75, 80, 85];
+
+/** Keep a loaded curve's temperature points; only a new curve uses the ten defaults. */
+export function temperaturesFromCurve(points: readonly ControlCurvePoint[] | null | undefined): readonly number[] {
+  const temperatures = [...new Set((points ?? [])
+    .filter(point => Number.isFinite(point.temperatureCelsius) && Number.isFinite(point.percent))
+    .map(point => point.temperatureCelsius))].sort((a, b) => a - b);
+  return temperatures.length > 0 ? temperatures : curveStops;
+}
 
 function clamp(value: number, low: number, high: number) {
   return value < low ? low : value > high ? high : value;
@@ -42,7 +49,10 @@ export function defaultStops(): number[] {
  * 存的点不一定正好落在这组温度上（比如早先存的、或者别处导入的），
  * 所以按线性插值取值，而不是要求完全对齐 —— 对不齐就丢掉用户设过的东西是不能接受的。
  */
-export function stopsFromCurve(points: readonly ControlCurvePoint[] | null | undefined): number[] {
+export function stopsFromCurve(
+  points: readonly ControlCurvePoint[] | null | undefined,
+  temperatures: readonly number[] = curveStops
+): number[] {
   const curve = (points ?? [])
     .filter((point) =>
       Number.isFinite(point.temperatureCelsius) && Number.isFinite(point.percent))
@@ -53,16 +63,19 @@ export function stopsFromCurve(points: readonly ControlCurvePoint[] | null | und
     .sort((left, right) => left.temperatureCelsius - right.temperatureCelsius);
 
   if (curve.length === 0) {
-    return curveStops.map(() => 0);
+    return temperatures.map(() => 0);
   }
   // 插值出来的是小数，档位必须是整数百分比 —— 否则界面上会出现
   // 38.33333333333333 这种读数，而且用户也没法调到那个值上去。
-  return curveStops.map((temperature) => Math.round(interpolate(curve, temperature)));
+  return temperatures.map((temperature) => Math.round(interpolate(curve, temperature)));
 }
 
 /** 每个调整点的转速 → 可以存下去的曲线点。 */
-export function curveFromStops(percents: readonly number[]): ControlCurvePoint[] {
-  return curveStops.map((temperatureCelsius, index) => ({
+export function curveFromStops(
+  percents: readonly number[],
+  temperatures: readonly number[] = curveStops
+): ControlCurvePoint[] {
+  return temperatures.map((temperatureCelsius, index) => ({
     temperatureCelsius,
     percent: sanitizePercent(percents[index] ?? 0)
   }));

@@ -30,6 +30,14 @@ pub const SourceRecord = struct {
     cpu_counter_contract_version: u32 = 0,
 };
 
+pub const CounterBaseline = struct {
+    valid: bool = false,
+    primary: u64 = 0,
+    reference: u64 = 0,
+    ticks_per_second: u64 = 0,
+    observed_at_milliseconds: u64 = 0,
+};
+
 pub const RuleRecord = struct {
     active: bool = false,
     definition: protocol.MetricDefinitionInput =
@@ -37,6 +45,9 @@ pub const RuleRecord = struct {
     source_generation: u64 = 0,
     observed_at_milliseconds: u64 = 0,
     value_bits: u64 = 0,
+    value_high_bits: u64 = 0,
+    byte_count: u32 = 0,
+    value_bytes: [protocol.maximum_value_bytes]u8 = @splat(0),
     capability_mask: u64 = 0,
     quality: u32 = 0,
     sample_duration_milliseconds: u64 = 0,
@@ -44,6 +55,7 @@ pub const RuleRecord = struct {
     unsupported_until_capability_generation: u64 = 0,
     status: protocol.MetricStatus = .unavailable,
     has_last_good: bool = false,
+    counter_baseline: CounterBaseline = .{},
 };
 
 pub const MetricRecord = struct {

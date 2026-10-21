@@ -1,21 +1,15 @@
 import assert from "node:assert/strict";
 import {
   isUnavailableStartupGpuTarget,
-  startupTargetGpuOptionsForSoftwarePolicy,
-  targetGpuOptionsForSoftwarePolicy
+  startupTargetGpuOptionsForSoftwarePolicy
 } from "../src/components/gpuPlacementTargetOptions.ts";
-
-const runtimeOptions = targetGpuOptionsForSoftwarePolicy(true, "Precise", "Precise", "SystemDefaultGpu");
-assert.equal(runtimeOptions.some(([value, , disabled]) => value === "AutoIdleGpu" && disabled !== true), true);
-assert.equal(runtimeOptions.some(([value]) => /^GPU\d+$/.test(value)), false);
 
 const inventory = [
   { targetGpu: "GPU0", displayName: "GPU 0 · Integrated", available: true },
   { targetGpu: "GPU2", displayName: "GPU2（不可用）", available: false, reason: "设备已移除" }
 ] as const;
-const inventoryOptions = targetGpuOptionsForSoftwarePolicy(
+const inventoryOptions = startupTargetGpuOptionsForSoftwarePolicy(
   true,
-  "Precise",
   "Precise",
   "GPU2",
   inventory);

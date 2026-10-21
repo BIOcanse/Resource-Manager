@@ -262,13 +262,13 @@ public sealed class ExternalInvokerTests
         return new ExternalInvoker(
             new ExternalInvocationRegistry([module]),
             new StaticRuntimePlanProvider(plan),
-            new ExternalInvocationPolicy(appRuntimePlan ?? CreateAppRuntimePlan(debugEnabled: false)),
+            new ExternalInvocationPolicy(),
             auditSink,
             NullLogger<ExternalInvoker>.Instance);
     }
 
     [Fact]
-    public async Task DebugMode_SkipsAuthenticationAndClosingItRestoresTheRule()
+    public async Task DebugMode_DoesNotBypassAuthentication()
     {
         var calls = 0;
         var runtime = CreateAppRuntimePlan(debugEnabled: false);
@@ -287,13 +287,13 @@ public sealed class ExternalInvokerTests
         {
             Diagnostics = runtime.Current.Diagnostics with { DebugModeEnabled = true }
         });
-        Assert.True((await invoker.InvokeAsync(anonymous, CancellationToken.None)).Succeeded);
+        Assert.False((await invoker.InvokeAsync(anonymous, CancellationToken.None)).Succeeded);
         runtime.Publish(runtime.Current with
         {
             Diagnostics = runtime.Current.Diagnostics with { DebugModeEnabled = false }
         });
         Assert.False((await invoker.InvokeAsync(anonymous, CancellationToken.None)).Succeeded);
-        Assert.Equal(1, calls);
+        Assert.Equal(0, calls);
         Assert.Equal(3, audit.Events.Count);
     }
 

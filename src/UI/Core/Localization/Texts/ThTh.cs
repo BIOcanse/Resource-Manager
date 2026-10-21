@@ -46,6 +46,7 @@ internal static class ThTh
         BackendPipelineNotReady = "ไปป์ไลน์คำขอของบริการภายในเครื่องยังไม่พร้อม",
         NoProcessToTerminate = "ไม่มีกระบวนการที่จะสิ้นสุด",
         TerminateRequestCompleted = "คำขอสิ้นสุดกระบวนการเสร็จสมบูรณ์แล้ว",
+        TerminateResultFormat = "สิ้นสุดกระบวนการ {0} / {1} รายการแล้ว",
 
         WebViewInitializationFailed = "เริ่มต้นส่วนติดต่อผู้ใช้แบบฝังไม่สำเร็จ เปิดโฟลเดอร์การวินิจฉัยเพื่อดูรายละเอียด",
         FrontendIdentityVerificationFailed = "การตรวจสอบตัวตนของทรัพยากรส่วนหน้าล้มเหลว เปิดโฟลเดอร์การวินิจฉัยเพื่อดูรายละเอียด",

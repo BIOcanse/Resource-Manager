@@ -85,7 +85,7 @@ public sealed class NativeUiLocalizationContractTests
             {
                 var value = (string)property.GetValue(text)!;
                 Assert.Contains("{0}", value, StringComparison.Ordinal);
-                _ = string.Format(CultureInfo.InvariantCulture, value, "x");
+                _ = string.Format(CultureInfo.InvariantCulture, value, "x", "y");
             }
         }
     }

@@ -28,7 +28,9 @@ public sealed partial class OptimizationA2Service
         OptimizationReportItem report,
         CancellationToken cancellationToken)
     {
-        var affinityPlan = CpuAffinityPlanner.CreatePrimaryLogicalProcessorPlan(Environment.ProcessorCount);
+        var affinityPlan = affinityPlanProvider is null
+            ? CpuAffinityPlanner.CreatePrimaryLogicalProcessorPlan(Environment.ProcessorCount)
+            : affinityPlanProvider();
         var disabledReason = ResolveTargetDisabledReason(report);
         if (disabledReason is null
             && await protectionService.IsTargetProtectedAsync(
@@ -201,7 +203,7 @@ public sealed partial class OptimizationA2Service
     {
         var currentRaw = current.ProcessorAffinityMask.ToString(CultureInfo.InvariantCulture);
         var proposedMask = affinityPlan.AffinityMask ?? 0;
-        var willChange = affinityPlan.Available && proposedMask > 0 && current.ProcessorAffinityMask != proposedMask;
+        var willChange = affinityPlan.Available && proposedMask != 0 && current.ProcessorAffinityMask != proposedMask;
         var actionDisabledReason = disabledReason ?? affinityPlan.DisabledReason;
         if (actionDisabledReason is null && !willChange)
         {

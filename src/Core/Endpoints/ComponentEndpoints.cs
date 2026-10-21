@@ -5,7 +5,6 @@ using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.LocalSystem;
-using ResourceManager.App.Application.Migration;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Operations;
@@ -19,7 +18,6 @@ using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
-using ResourceManager.App.Domain.Migration;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -40,18 +38,24 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         StartupCapabilitySet startupCapabilities)
     {
         app.MapGet("/api/components", async (
+            HttpContext context,
             IComponentManager componentManager,
             CancellationToken cancellationToken) =>
         {
-            return Results.Ok(await componentManager.GetStatusesAsync(cancellationToken));
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+            return Results.Ok(await componentManager.GetStatusesAsync(caller.WindowsSid, cancellationToken));
         }).AllowAnonymous();
 
         app.MapGet("/api/components/{id}", async (
             string id,
+            HttpContext context,
             IComponentManager componentManager,
             CancellationToken cancellationToken) =>
         {
-            var status = await componentManager.GetStatusAsync(id, cancellationToken);
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.Json(new { code = "InteractiveUserSessionRequired" }, statusCode: StatusCodes.Status403Forbidden);
+            var status = await componentManager.GetStatusAsync(id, caller.WindowsSid, cancellationToken);
             return status is null ? Results.NotFound() : Results.Ok(status);
         }).AllowAnonymous();
 
@@ -96,14 +100,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             app.MapPost("/api/components/{id}/install", async (
             string id,
             ComponentActionRequest request,
+            HttpContext context,
             IHostManagerOperationCommandService operationService,
             CancellationToken cancellationToken) =>
         {
+            if (!TryReadInteractiveCaller(context, out var caller))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
             try
             {
                 return Results.Ok(HostManagerOperationWireProjection.Project(
                     await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.ComponentInstall(id, request),
+                    HostManagerOperationRequestCodec.ComponentInstall(id, request,
+                        caller),
                     cancellationToken)));
             }
             catch (InvalidOperationException ex)

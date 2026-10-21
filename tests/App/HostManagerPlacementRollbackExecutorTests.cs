@@ -91,6 +91,7 @@ public sealed class HostManagerPlacementRollbackExecutorTests
 
         Assert.Equal(HostManagerPlacementSettlementKind.Restored, restored.Kind);
         Assert.Equal(1, writer.AffinityWriteCount);
+        Assert.Equal(ProcessSnapshot(1, 2).StartedAt, Assert.Single(writer.BatchRequests).ExpectedStartedAt);
         Assert.Equal(HostManagerPlacementSettlementKind.InvalidReceipt, invalid.Kind);
     }
 
@@ -253,8 +254,7 @@ public sealed class HostManagerPlacementRollbackExecutorTests
 
         public ProcessResourcePolicyWriteResult TrySetProcessorAffinity(int processId, long affinityMask)
         {
-            AffinityWriteCount++;
-            return new ProcessResourcePolicyWriteResult(true, "ok");
+            throw new InvalidOperationException("Restoration must use the exact-process batch boundary.");
         }
 
         public IReadOnlyList<uint>? TryReadProcessDefaultCpuSets(int processId) => null;
@@ -287,7 +287,14 @@ public sealed class HostManagerPlacementRollbackExecutorTests
             uint controlMask,
             uint stateMask) => new(true, "ok");
 
+        public List<ProcessResourcePolicyBatchRequest> BatchRequests { get; } = [];
         public IReadOnlyList<ProcessResourcePolicyBatchWriteResult> TryApplyBatch(
-            IReadOnlyList<ProcessResourcePolicyBatchRequest> requests) => [];
+            IReadOnlyList<ProcessResourcePolicyBatchRequest> requests)
+        {
+            BatchRequests.AddRange(requests);
+            AffinityWriteCount += requests.Count(request => request.AffinityMask is not null);
+            Assert.All(requests, request => Assert.NotNull(request.ExpectedStartedAt));
+            return [];
+        }
     }
 }

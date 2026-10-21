@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createCreditGroups } from "../src/i18n/settingsCredits.ts";
 import { createSettingsLocale } from "../src/i18n/settingsLocaleFactory.ts";
 
@@ -16,10 +19,41 @@ for (const [path, item] of Object.entries(lock.packages)) {
 }
 const managed = JSON.parse(readFileSync(new URL("../src/i18n/managedDependencyAcknowledgements.json", import.meta.url), "utf8")) as Array<{ name: string; version: string; authors: string; license: string; kind: string }>;
 const actualManaged = new Set<string>();
-for (const path of ["obj/project.assets.json", "../../src/UI/Core/obj/project.assets.json", "../../src/Shared/obj/project.assets.json", "../../src/UI/Launcher/obj/project.assets.json", "../../tests/App/obj/project.assets.json",
-  "../../sdk/csharp/ResourceManager.Adapter.Abstractions/obj/project.assets.json",
-  "../../sdk/csharp/ResourceManager.Adapter.SharedMemory/obj/project.assets.json"]) {
-  const assets = JSON.parse(readFileSync(new URL(path, appRoot), "utf8"));
+const assetsMapPath = process.env.RM_MANAGED_ASSETS_MAP;
+const assetsMap = assetsMapPath === undefined ? undefined : (() => {
+  assert.ok(isAbsolute(assetsMapPath), "Explicit managed-assets map must be absolute");
+  return JSON.parse(readFileSync(assetsMapPath, "utf8")) as { schema: string; projects: Array<{ projectPath: string; assetsPath: string; sha256: string }> };
+})();
+if (assetsMap) {
+  assert.equal(assetsMap.schema, "rm/frontend-credit-assets-map/v1");
+  assert.equal(assetsMap.projects.length, 11, "The complete original eleven-project inventory is required");
+  assert.equal(new Set(assetsMap.projects.map(row => resolve(row.projectPath).toLowerCase())).size, 11);
+}
+for (const [path, project] of [
+  ["obj/project.assets.json", "ResourceManager.App.csproj"],
+  ["../../src/UI/Core/obj/project.assets.json", "../../src/UI/Core/ResourceManager.NativeUi.csproj"],
+  ["../../src/Shared/obj/project.assets.json", "../../src/Shared/ResourceManager.Shared.csproj"],
+  ["../../src/UI/Launcher/obj/project.assets.json", "../../src/UI/Launcher/ResourceManager.Launcher.csproj"],
+  ["../../tests/App/obj/project.assets.json", "../../tests/App/Resource Manager-APP.Tests.csproj"],
+  ["../../src/Installer/obj/project.assets.json", "../../src/Installer/ResourceManager.Installer.csproj"],
+  ["../../src/Updater/obj/project.assets.json", "../../src/Updater/ResourceManager.Updater.csproj"],
+  ["../../src/Updater/WinUI/obj/project.assets.json", "../../src/Updater/WinUI/ResourceManager.UpdateManager.csproj"],
+  ["../../src/Uninstaller/obj/project.assets.json", "../../src/Uninstaller/ResourceManager.Uninstaller.csproj"],
+  ["../../sdk/csharp/ResourceManager.Adapter.Abstractions/obj/project.assets.json", "../../sdk/csharp/ResourceManager.Adapter.Abstractions/ResourceManager.Adapter.Abstractions.csproj"],
+  ["../../sdk/csharp/ResourceManager.Adapter.SharedMemory/obj/project.assets.json", "../../sdk/csharp/ResourceManager.Adapter.SharedMemory/ResourceManager.Adapter.SharedMemory.csproj"]
+]) {
+  const expectedProject = fileURLToPath(new URL(project, appRoot));
+  const mapped = assetsMap?.projects.find(row => resolve(row.projectPath).toLowerCase() === resolve(expectedProject).toLowerCase());
+  if (assetsMap) assert.ok(mapped, `Missing explicit assets for ${expectedProject}`);
+  if (mapped) {
+    assert.ok(isAbsolute(mapped.projectPath) && isAbsolute(mapped.assetsPath), "Mapped project and assets must both be absolute");
+    assert.match(mapped.sha256, /^[0-9a-f]{64}$/i);
+  }
+  const assetsBytes = readFileSync(mapped?.assetsPath ?? new URL(path, appRoot));
+  if (mapped) assert.equal(createHash("sha256").update(assetsBytes).digest("hex").toUpperCase(), mapped.sha256.toUpperCase(), "Mapped actual assets hash changed");
+  const assets = JSON.parse(assetsBytes.toString("utf8"));
+  assert.ok(isAbsolute(assets.project.restore.projectPath), "Assets must identify their absolute original project");
+  assert.equal(resolve(assets.project.restore.projectPath).toLowerCase(), resolve(expectedProject).toLowerCase(), "Assets must belong to the exact original project");
   for (const [key, library] of Object.entries(assets.libraries)) {
     if ((library as { type: string }).type === "package") actualManaged.add(key.toLowerCase());
   }

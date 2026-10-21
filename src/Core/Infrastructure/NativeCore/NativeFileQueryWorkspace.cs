@@ -1,132 +1,18 @@
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using ResourceManager.App.Domain.RuntimeSpecialization;
-
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
-public interface INativeFileQueryLeaseSource
-{
-    ValueTask<NativeFileQueryLease> AcquireAsync(CancellationToken cancellationToken);
-
-    ulong NextEpoch();
-}
-
-public sealed class NativeFileQueryLease : IDisposable
-{
-    private Action<NativeFileQuerySession, bool>? release;
-    private bool reusable;
-
-    internal NativeFileQueryLease(
-        NativeFileQuerySession session,
-        Action<NativeFileQuerySession, bool> release)
-    {
-        Session = session;
-        this.release = release;
-    }
-
-    internal NativeFileQuerySession Session { get; }
-
-    internal void MarkReusable() => reusable = true;
-
-    public void Dispose()
-    {
-        Interlocked.Exchange(ref release, null)?.Invoke(Session, reusable);
-    }
-}
-
+// Product compiled-plan mapping only; one SDK pool owns sessions, epochs and reusable lease release.
 internal sealed class NativeFileQueryWorkspace : INativeFileQueryLeaseSource, IDisposable
 {
-    private readonly ConcurrentQueue<NativeFileQuerySession> available = new();
-    private readonly SemaphoreSlim signal;
-    private long nextEpoch;
-    private int disposed;
-
+    private readonly NativeFileQueryPool pool;
     internal NativeFileQueryWorkspace(CompiledHostManagerFileQueryPlan plan)
-        : this(
-            CreateConfiguration(plan),
-            plan.Recreate.QuerySessionCount,
-            checked((ulong)plan.HotPublish.TotalResidentByteBudget))
-    {
-    }
-
-    internal NativeFileQueryWorkspace(
-        in NativeFileQueryConfiguration configuration,
-        int sessionCount,
-        ulong totalResidentByteBudget)
-    {
-        if (sessionCount <= 0 || totalResidentByteBudget == 0)
-        {
-            throw new InvalidOperationException(
-                "The native file-query workspace shape is not published.");
-        }
-
-        signal = new SemaphoreSlim(0, sessionCount);
-        var sessions = new List<NativeFileQuerySession>(sessionCount);
-        try
-        {
-            ulong resident = 0;
-            for (var index = 0; index < sessionCount; index++)
-            {
-                var session = new NativeFileQuerySession(in configuration);
-                sessions.Add(session);
-                resident = checked(resident + session.Capacity.ResidentByteCount);
-            }
-            if (resident > totalResidentByteBudget)
-            {
-                throw new InvalidOperationException(
-                    "The native file-query session pool exceeds its explicit total resident budget.");
-            }
-            foreach (var session in sessions)
-            {
-                available.Enqueue(session);
-                signal.Release();
-            }
-        }
-        catch
-        {
-            foreach (var session in sessions)
-            {
-                session.Dispose();
-            }
-            signal.Dispose();
-            throw;
-        }
-    }
-
-    public async ValueTask<NativeFileQueryLease> AcquireAsync(
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (Volatile.Read(ref disposed) != 0 || !available.TryDequeue(out var session))
-        {
-            throw new ObjectDisposedException(nameof(NativeFileQueryWorkspace));
-        }
-        return new NativeFileQueryLease(session, Release);
-    }
-
-    public ulong NextEpoch()
-    {
-        var value = Interlocked.Increment(ref nextEpoch);
-        return value > 0
-            ? checked((ulong)value)
-            : throw new InvalidOperationException(
-                "The native file-query operation epoch is exhausted.");
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-        {
-            return;
-        }
-        while (available.TryDequeue(out var session))
-        {
-            session.Dispose();
-        }
-        signal.Dispose();
-    }
-
+        : this(CreateConfiguration(plan), plan.Recreate.QuerySessionCount, checked((ulong)plan.HotPublish.TotalResidentByteBudget)) { }
+    internal NativeFileQueryWorkspace(in NativeFileQueryConfiguration configuration, int sessionCount, ulong totalResidentByteBudget)
+        => pool = new(in configuration, sessionCount, totalResidentByteBudget);
+    public ValueTask<NativeFileQueryLease> AcquireAsync(CancellationToken token) => pool.AcquireAsync(token);
+    public ulong NextEpoch() => pool.NextEpoch();
+    public void Dispose() => pool.Dispose();
     internal static unsafe NativeFileQueryConfiguration CreateConfiguration(
         CompiledHostManagerFileQueryPlan plan)
     {
@@ -172,14 +58,4 @@ internal sealed class NativeFileQueryWorkspace : INativeFileQueryLeaseSource, ID
         };
     }
 
-    private void Release(NativeFileQuerySession session, bool reusable)
-    {
-        if (reusable && Volatile.Read(ref disposed) == 0)
-        {
-            available.Enqueue(session);
-            signal.Release();
-            return;
-        }
-        session.Dispose();
-    }
 }

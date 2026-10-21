@@ -25,8 +25,13 @@ public sealed partial class ComponentManager : IComponentManager
     }
 
     public async Task<IReadOnlyList<ComponentStatus>> GetStatusesAsync(CancellationToken cancellationToken)
+        => await GetStatusesAsync(windowsSid: null, cancellationToken: cancellationToken);
+
+    public async Task<IReadOnlyList<ComponentStatus>> GetStatusesAsync(
+        string? windowsSid,
+        CancellationToken cancellationToken)
     {
-        var dependencyStatuses = await dependencyManager.GetStatusesAsync(cancellationToken);
+        var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
         var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
         return ComponentCatalog.Definitions
             .Select(definition => BuildStatus(definition, dependencyStatuses, snapshot))
@@ -36,6 +41,12 @@ public sealed partial class ComponentManager : IComponentManager
     }
 
     public async Task<ComponentStatus?> GetStatusAsync(string id, CancellationToken cancellationToken)
+        => await GetStatusAsync(id, windowsSid: null, cancellationToken: cancellationToken);
+
+    public async Task<ComponentStatus?> GetStatusAsync(
+        string id,
+        string? windowsSid,
+        CancellationToken cancellationToken)
     {
         var definition = ComponentCatalog.Find(id);
         if (definition is null)
@@ -43,7 +54,7 @@ public sealed partial class ComponentManager : IComponentManager
             return null;
         }
 
-        var dependencyStatuses = await dependencyManager.GetStatusesAsync(cancellationToken);
+        var dependencyStatuses = await dependencyManager.GetStatusesAsync(windowsSid, cancellationToken);
         var snapshot = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
         return BuildStatus(definition, dependencyStatuses, snapshot);
     }

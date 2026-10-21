@@ -50,7 +50,6 @@ internal static class HostManagerInterruptReportFactProjector
         var complete = snapshot.SourceGeneration > 0
             && durationMilliseconds > 0
             && snapshot.LogicalProcessorCount > 0
-            && snapshot.ProviderState.EventsLost == 0
             && snapshot.ProviderState.State.Equals(
                 "Running",
                 StringComparison.OrdinalIgnoreCase)

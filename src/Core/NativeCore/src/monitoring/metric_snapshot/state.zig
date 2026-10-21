@@ -2,6 +2,7 @@ const std = @import("std");
 const windows = std.os.windows;
 const protocol = @import("protocol.zig");
 const catalog = @import("catalog.zig");
+const scratch = @import("scratch.zig");
 
 pub const GpuRecord = struct {
     active: bool = false,
@@ -31,12 +32,13 @@ pub const Session = struct {
     allocator: std.mem.Allocator,
     mutex: windows.SRWLOCK = windows.SRWLOCK_INIT,
     config: protocol.Config,
+    scratch_layout: scratch.Layout,
     active: catalog.Bank,
     staging: catalog.Bank,
-    requested_rule_indices: []u32,
-    requested_rule_flags: []bool,
-    observation_slot_by_rule: []u32,
-    observations: []protocol.ObservationInput,
+    requested_rule_indices: []u32 = &.{},
+    requested_rule_flags: []bool = &.{},
+    observation_slot_by_rule: []u32 = &.{},
+    observations: []protocol.ObservationInput = &.{},
     gpu_active: []GpuRecord,
     gpu_staging: []GpuRecord,
     gpu_index: []u32,
@@ -50,7 +52,7 @@ pub const Session = struct {
     gpu_identity_luid_index: []u32,
     gpu_identity_key_index: []u32,
     source_modes: []SourceModeState,
-    planned_rule_handles: []u64,
+
     planned_rule_flags: []bool,
     planned_rule_count: u32 = 0,
     completion: protocol.CompletionHeader =
@@ -82,18 +84,17 @@ pub const Session = struct {
         var allocations = AllocationSet{};
         errdefer allocations.deinit(allocator);
         try allocations.allocate(allocator, config);
-        const resident = allocations.residentByteCount();
-        if (resident > config.resident_byte_budget) return error.InvalidConfiguration;
+        const layout = scratch.Layout.init(config) catch return error.InvalidConfiguration;
+        const required = std.math.add(u64, allocations.residentByteCount(), layout.byte_count) catch
+            return error.InvalidConfiguration;
+        if (required > config.resident_byte_budget) return error.InvalidConfiguration;
 
         self.* = .{
             .allocator = allocator,
             .config = config.*,
+            .scratch_layout = layout,
             .active = allocations.takeActive(),
             .staging = allocations.takeStaging(),
-            .requested_rule_indices = allocations.takeRequested(),
-            .requested_rule_flags = allocations.takeRequestedFlags(),
-            .observation_slot_by_rule = allocations.takeObservationSlots(),
-            .observations = allocations.takeObservations(),
             .gpu_active = allocations.takeGpuActive(),
             .gpu_staging = allocations.takeGpuStaging(),
             .gpu_index = allocations.takeGpuIndex(),
@@ -107,20 +108,16 @@ pub const Session = struct {
             .gpu_identity_luid_index = allocations.takeGpuIdentityLuidIndex(),
             .gpu_identity_key_index = allocations.takeGpuIdentityKeyIndex(),
             .source_modes = allocations.takeSourceModes(),
-            .planned_rule_handles = allocations.takePlanMetricHandles(),
             .planned_rule_flags = allocations.takePlannedRuleFlags(),
         };
         return self;
     }
 
     pub fn destroy(self: *Session) void {
+        self.detachCompletion();
         const allocator = self.allocator;
         deinitBank(allocator, &self.active);
         deinitBank(allocator, &self.staging);
-        allocator.free(self.requested_rule_indices);
-        allocator.free(self.requested_rule_flags);
-        allocator.free(self.observation_slot_by_rule);
-        allocator.free(self.observations);
         allocator.free(self.gpu_active);
         allocator.free(self.gpu_staging);
         allocator.free(self.gpu_index);
@@ -134,7 +131,6 @@ pub const Session = struct {
         allocator.free(self.gpu_identity_luid_index);
         allocator.free(self.gpu_identity_key_index);
         allocator.free(self.source_modes);
-        allocator.free(self.planned_rule_handles);
         allocator.free(self.planned_rule_flags);
         allocator.destroy(self);
     }
@@ -162,7 +158,9 @@ pub const Session = struct {
             .source_plan_capacity = self.config.maximum_source_plan_count,
             .metric_plan_capacity = self.config.maximum_metric_plan_count,
             .resident_byte_count = self.residentByteCount(),
-            .reserved = .{ 0, 0 },
+            .scratch_byte_count = self.scratch_layout.byte_count,
+            .scratch_alignment = scratch.alignment,
+            .reserved_u32 = 0,
         };
     }
 
@@ -174,10 +172,6 @@ pub const Session = struct {
         total += sliceBytes(u32, self.active.source_index.len) * 2;
         total += sliceBytes(u32, self.active.rule_index.len) * 2;
         total += sliceBytes(u32, self.active.metric_index.len) * 2;
-        total += sliceBytes(u32, self.requested_rule_indices.len);
-        total += sliceBytes(bool, self.requested_rule_flags.len);
-        total += sliceBytes(u32, self.observation_slot_by_rule.len);
-        total += sliceBytes(protocol.ObservationInput, self.observations.len);
         total += sliceBytes(GpuRecord, self.gpu_active.len) * 2;
         total += sliceBytes(u32, self.gpu_index.len) * 2;
         total += sliceBytes(u32, self.gpu_luid_index.len) * 2;
@@ -187,9 +181,19 @@ pub const Session = struct {
         total += sliceBytes(u32, self.gpu_identity_luid_index.len);
         total += sliceBytes(u32, self.gpu_identity_key_index.len);
         total += sliceBytes(SourceModeState, self.source_modes.len);
-        total += sliceBytes(u64, self.planned_rule_handles.len);
         total += sliceBytes(bool, self.planned_rule_flags.len);
         return total;
+    }
+
+    pub fn requiredByteCount(self: *const Session) u64 {
+        return self.residentByteCount() + self.scratch_layout.byte_count;
+    }
+
+    pub fn detachCompletion(self: *Session) void {
+        self.requested_rule_indices = &.{};
+        self.requested_rule_flags = &.{};
+        self.observation_slot_by_rule = &.{};
+        self.observations = &.{};
     }
 
     pub fn operationAdvances(self: *const Session, epoch: u64, command_at: u64) bool {
@@ -232,7 +236,6 @@ pub const Session = struct {
     pub fn clearPlanAuthority(self: *Session) void {
         self.planned_rule_count = 0;
         @memset(self.source_modes, .{});
-        @memset(self.planned_rule_handles, 0);
         @memset(self.planned_rule_flags, false);
     }
 };
@@ -240,10 +243,6 @@ pub const Session = struct {
 const AllocationSet = struct {
     active: ?catalog.Bank = null,
     staging: ?catalog.Bank = null,
-    requested: ?[]u32 = null,
-    requested_flags: ?[]bool = null,
-    observation_slots: ?[]u32 = null,
-    observations: ?[]protocol.ObservationInput = null,
     gpu_active: ?[]GpuRecord = null,
     gpu_staging: ?[]GpuRecord = null,
     gpu_index: ?[]u32 = null,
@@ -257,7 +256,6 @@ const AllocationSet = struct {
     gpu_identity_luid_index: ?[]u32 = null,
     gpu_identity_key_index: ?[]u32 = null,
     source_modes: ?[]SourceModeState = null,
-    plan_metric_handles: ?[]u64 = null,
     planned_rule_flags: ?[]bool = null,
 
     fn allocate(
@@ -267,17 +265,6 @@ const AllocationSet = struct {
     ) !void {
         self.active = try allocateBank(allocator, config);
         self.staging = try allocateBank(allocator, config);
-        self.requested = try allocator.alloc(u32, config.maximum_requested_count);
-        @memset(self.requested.?, 0);
-        self.requested_flags = try allocator.alloc(bool, config.maximum_rule_count);
-        @memset(self.requested_flags.?, false);
-        self.observation_slots = try allocator.alloc(u32, config.maximum_rule_count);
-        @memset(self.observation_slots.?, catalog.no_index);
-        self.observations = try allocator.alloc(
-            protocol.ObservationInput,
-            config.maximum_observation_count,
-        );
-        @memset(self.observations.?, std.mem.zeroes(protocol.ObservationInput));
         self.gpu_active = try allocator.alloc(GpuRecord, config.maximum_gpu_adapter_count);
         @memset(self.gpu_active.?, .{});
         self.gpu_staging = try allocator.alloc(GpuRecord, config.maximum_gpu_adapter_count);
@@ -306,8 +293,6 @@ const AllocationSet = struct {
         @memset(self.gpu_identity_key_index.?, catalog.no_index);
         self.source_modes = try allocator.alloc(SourceModeState, config.maximum_source_count);
         @memset(self.source_modes.?, .{});
-        self.plan_metric_handles = try allocator.alloc(u64, config.maximum_plan_metric_count);
-        @memset(self.plan_metric_handles.?, 0);
         self.planned_rule_flags = try allocator.alloc(bool, config.maximum_rule_count);
         @memset(self.planned_rule_flags.?, false);
     }
@@ -316,12 +301,6 @@ const AllocationSet = struct {
         var total: u64 = @sizeOf(Session);
         if (self.active) |bank| total += bankBytes(&bank);
         if (self.staging) |bank| total += bankBytes(&bank);
-        if (self.requested) |value| total += sliceBytes(u32, value.len);
-        if (self.requested_flags) |value| total += sliceBytes(bool, value.len);
-        if (self.observation_slots) |value| total += sliceBytes(u32, value.len);
-        if (self.observations) |value| {
-            total += sliceBytes(protocol.ObservationInput, value.len);
-        }
         if (self.gpu_active) |value| total += sliceBytes(GpuRecord, value.len);
         if (self.gpu_staging) |value| total += sliceBytes(GpuRecord, value.len);
         if (self.gpu_index) |value| total += sliceBytes(u32, value.len);
@@ -335,7 +314,6 @@ const AllocationSet = struct {
         if (self.gpu_identity_luid_index) |value| total += sliceBytes(u32, value.len);
         if (self.gpu_identity_key_index) |value| total += sliceBytes(u32, value.len);
         if (self.source_modes) |value| total += sliceBytes(SourceModeState, value.len);
-        if (self.plan_metric_handles) |value| total += sliceBytes(u64, value.len);
         if (self.planned_rule_flags) |value| total += sliceBytes(bool, value.len);
         return total;
     }
@@ -343,10 +321,6 @@ const AllocationSet = struct {
     fn deinit(self: *AllocationSet, allocator: std.mem.Allocator) void {
         if (self.active) |*bank| deinitBank(allocator, bank);
         if (self.staging) |*bank| deinitBank(allocator, bank);
-        if (self.requested) |value| allocator.free(value);
-        if (self.requested_flags) |value| allocator.free(value);
-        if (self.observation_slots) |value| allocator.free(value);
-        if (self.observations) |value| allocator.free(value);
         if (self.gpu_active) |value| allocator.free(value);
         if (self.gpu_staging) |value| allocator.free(value);
         if (self.gpu_index) |value| allocator.free(value);
@@ -360,7 +334,6 @@ const AllocationSet = struct {
         if (self.gpu_identity_luid_index) |value| allocator.free(value);
         if (self.gpu_identity_key_index) |value| allocator.free(value);
         if (self.source_modes) |value| allocator.free(value);
-        if (self.plan_metric_handles) |value| allocator.free(value);
         if (self.planned_rule_flags) |value| allocator.free(value);
         self.* = .{};
     }
@@ -374,30 +347,6 @@ const AllocationSet = struct {
     fn takeStaging(self: *AllocationSet) catalog.Bank {
         const value = self.staging.?;
         self.staging = null;
-        return value;
-    }
-
-    fn takeRequested(self: *AllocationSet) []u32 {
-        const value = self.requested.?;
-        self.requested = null;
-        return value;
-    }
-
-    fn takeObservations(self: *AllocationSet) []protocol.ObservationInput {
-        const value = self.observations.?;
-        self.observations = null;
-        return value;
-    }
-
-    fn takeRequestedFlags(self: *AllocationSet) []bool {
-        const value = self.requested_flags.?;
-        self.requested_flags = null;
-        return value;
-    }
-
-    fn takeObservationSlots(self: *AllocationSet) []u32 {
-        const value = self.observation_slots.?;
-        self.observation_slots = null;
         return value;
     }
 
@@ -476,12 +425,6 @@ const AllocationSet = struct {
     fn takeSourceModes(self: *AllocationSet) []SourceModeState {
         const value = self.source_modes.?;
         self.source_modes = null;
-        return value;
-    }
-
-    fn takePlanMetricHandles(self: *AllocationSet) []u64 {
-        const value = self.plan_metric_handles.?;
-        self.plan_metric_handles = null;
         return value;
     }
 

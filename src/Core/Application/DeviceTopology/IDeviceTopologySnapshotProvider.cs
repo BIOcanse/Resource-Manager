@@ -10,4 +10,9 @@ public interface IDeviceTopologySnapshotProvider
         string subscriptionId,
         TimeSpan interval,
         CancellationToken cancellationToken);
+
+    IAsyncEnumerable<DeviceInformationSnapshot> SubscribeAcpiAsync(
+        string subscriptionId,
+        TimeSpan interval,
+        CancellationToken cancellationToken);
 }

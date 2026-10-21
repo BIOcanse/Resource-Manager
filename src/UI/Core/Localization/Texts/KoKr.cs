@@ -46,6 +46,7 @@ internal static class KoKr
         BackendPipelineNotReady = "로컬 서비스 요청 파이프라인이 준비되지 않았습니다.",
         NoProcessToTerminate = "종료할 프로세스가 없습니다.",
         TerminateRequestCompleted = "프로세스 종료 요청이 완료되었습니다.",
+        TerminateResultFormat = "{1}개 중 {0}개 프로세스를 종료했습니다.",
 
         WebViewInitializationFailed = "포함된 인터페이스를 초기화하지 못했습니다. 진단 폴더에서 자세한 내용을 확인할 수 있습니다.",
         FrontendIdentityVerificationFailed = "프런트엔드 자산 ID 확인에 실패했습니다. 진단 폴더에서 자세한 내용을 확인할 수 있습니다.",

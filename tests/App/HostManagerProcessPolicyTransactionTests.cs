@@ -898,6 +898,27 @@ public sealed class HostManagerProcessPolicyTransactionTests
         Assert.Single(writer.Requests);
     }
 
+    [Theory]
+    [InlineData(ProcessPriorityClass.Idle, HostManagerProcessGrades.Level1)]
+    [InlineData(ProcessPriorityClass.BelowNormal, HostManagerProcessGrades.Level1)]
+    [InlineData(ProcessPriorityClass.Idle, HostManagerProcessGrades.Level2)]
+    [InlineData(ProcessPriorityClass.RealTime, HostManagerProcessGrades.A1)]
+    public void AutomaticGradePreservesAlreadyStrongerPolicyAndRestoresItsBaseline(
+        ProcessPriorityClass baseline, int grade)
+    {
+        var original = CreateSnapshot(priorityClass: baseline, memoryPriority: 1, affinity: long.MinValue);
+        var writer = new RecordingPolicyWriter(original);
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var captured = transaction.Capture(42);
+        Assert.Equal(HostManagerProcessPolicyCaptureStatus.Captured, captured.Status);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied, transaction.Apply(captured.Payload, grade).Status);
+        Assert.Equal(original.PriorityClass, writer.Current!.PriorityClass);
+        Assert.Equal(original.MemoryPriority, writer.Current.MemoryPriority);
+        Assert.All(writer.Requests, request => Assert.Null(request.PriorityClass));
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.Restored, transaction.Restore(captured.Payload, grade).Status);
+        Assert.Equal(original, writer.Current);
+    }
+
     private static ProcessResourcePolicySnapshot CreateSnapshot(
         ProcessPriorityClass priorityClass = ProcessPriorityClass.AboveNormal,
         uint memoryPriority = 5,

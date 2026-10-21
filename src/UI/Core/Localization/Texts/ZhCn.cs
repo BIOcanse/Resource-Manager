@@ -46,6 +46,7 @@ internal static class ZhCn
         BackendPipelineNotReady = "本地服务请求管线尚未就绪。",
         NoProcessToTerminate = "没有可结束的进程。",
         TerminateRequestCompleted = "进程终止请求已完成。",
+        TerminateResultFormat = "已结束 {0} / {1} 个进程。",
 
         WebViewInitializationFailed = "内嵌界面初始化失败。可以打开诊断目录查看详细信息。",
         FrontendIdentityVerificationFailed = "前端资源身份验证失败。可以打开诊断目录查看详细信息。",

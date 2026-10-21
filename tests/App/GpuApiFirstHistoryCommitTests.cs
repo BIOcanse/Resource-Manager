@@ -1,6 +1,8 @@
 using System.Text.Json;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -22,12 +24,30 @@ public sealed class GpuApiFirstHistoryCommitTests
         Assert.Equal(JsonGpuPlacementProcessHistoryStore.BuildProcessKey("target", files.Target), process.ProcessKey);
         Assert.Equal(api, process.GraphicsApi);
         Assert.Equal(files.Target, process.ExecutablePath);
-        Assert.Contains("actual-api-call", process.EvidenceSources);
+        Assert.Contains("actual-api-observation", process.EvidenceSources);
         var document = JsonSerializer.Deserialize<GpuPlacementProcessHistoryDocument>(
             await File.ReadAllTextAsync(files.HistoryPath), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         Assert.Equal(GpuPlacementPolicyDocumentVersions.Current, document.Version);
         Assert.Equal(api, Assert.Single(Assert.Single(document.SoftwareHistories).Processes).GraphicsApi);
         Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(files.HistoryPath)!, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ConfirmedExternalApiHistoryContainsNoRuntimeGpuTarget()
+    {
+        using var files = new GpuGraphicsApiIdentificationTests.Fixture();
+        var store = new JsonGpuPlacementProcessHistoryStore(files);
+        var process = files.Instance();
+        var plan = new ExternalGpuPlacementPlan(process, process) { Renderer = ExternalGpuRenderer.QtQuickVulkan };
+
+        await ExternalOnlyRunningGpuPlacementActionService.RecordConfirmedRendererApiAsync(
+            store, "software", "Software", plan, default);
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(files.HistoryPath));
+        var row = document.RootElement.GetProperty("softwareHistories")[0].GetProperty("processes")[0];
+        Assert.Equal("Vulkan", row.GetProperty("graphicsApi").GetString());
+        Assert.False(row.TryGetProperty("targetAdapterKey", out _));
+        Assert.False(row.TryGetProperty("runtimeTargetGpu", out _));
     }
 
     [Fact]
@@ -53,7 +73,7 @@ public sealed class GpuApiFirstHistoryCommitTests
             .GetSoftwareHistoryAsync("software", "Software", default)).Processes);
         Assert.Equal(GpuGraphicsApi.Vulkan, after.GraphicsApi);
         Assert.Equal("arm64", after.Architecture);
-        Assert.Contains("actual-api-call", after.EvidenceSources);
+        Assert.Contains("actual-api-observation", after.EvidenceSources);
         Assert.Contains("new-metadata", after.EvidenceSources);
     }
 
@@ -82,7 +102,7 @@ public sealed class GpuApiFirstHistoryCommitTests
                 Assert.Equal(GpuGraphicsApi.D3D12, process.GraphicsApi);
                 Assert.Equal("x64", process.Architecture);
                 Assert.Contains("metadata", process.EvidenceSources);
-                Assert.Contains("actual-api-call", process.EvidenceSources);
+                Assert.Contains("actual-api-observation", process.EvidenceSources);
             });
         }
     }

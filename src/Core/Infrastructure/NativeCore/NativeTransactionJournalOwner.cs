@@ -1,3 +1,5 @@
+using ResourceManager.App.Infrastructure.Adaptation;
+
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal enum NativeTransactionJournalOwnerState
@@ -21,12 +23,13 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
     private NativeTransactionJournalOwner(
         NativeTransactionJournalFileStore fileStore,
         NativeTransactionJournalPathLease pathLease,
-        NativeTransactionJournalSession session)
+        NativeTransactionJournalSession session,
+        Func<ulong, IComputeScratch> createScratch)
     {
         this.fileStore = fileStore;
         this.pathLease = pathLease;
         this.session = session;
-        workspace = new NativeTransactionJournalWorkspace(session.Capacity);
+        workspace = new NativeTransactionJournalWorkspace(session.Capacity, createScratch);
     }
 
     public NativeTransactionJournalOwnerState State
@@ -34,13 +37,17 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
 
     public Exception? PersistenceFailure => persistenceFailure;
 
+    public NativeTransactionJournalCapacity Capacity => session.Capacity;
+
     public static async Task<NativeTransactionJournalOwner> OpenOrCreateAsync(
         NativeTransactionJournalFileStore fileStore,
         NativeTransactionJournalCreateConfiguration createConfiguration,
         NativeTransactionJournalOpenConfiguration openConfiguration,
+        Func<ulong, IComputeScratch> createScratch,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(fileStore);
+        ArgumentNullException.ThrowIfNull(createScratch);
         ValidateCompatibleConfigurations(in createConfiguration, in openConfiguration);
 
         var pathLease = fileStore.AcquireOwnerLease();
@@ -64,20 +71,19 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
                         $"Native transaction journal open failed with {opened.Status}.");
             }
 
-            var owner = new NativeTransactionJournalOwner(fileStore, pathLease, session);
-            if (!requiresInitialPersistence)
-            {
-                return owner;
-            }
-
             try
             {
-                await fileStore.PersistAsync(session, owner.workspace, CancellationToken.None);
-                return owner;
+                if (requiresInitialPersistence)
+                {
+                    // This image has one startup consumer and no reusable identity.
+                    var initialImage = new byte[checked((int)session.Capacity.MaximumImageLength)];
+                    await fileStore.PersistAsync(session, initialImage, CancellationToken.None);
+                }
+                return new NativeTransactionJournalOwner(fileStore, pathLease, session, createScratch);
             }
             catch
             {
-                await owner.DisposeAsync();
+                session.Dispose();
                 throw;
             }
         }
@@ -106,10 +112,12 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            using var operation = workspace.Acquire();
             var status = session.PrepareBatch(in batch, inputs.Span);
             if (status == NativeTransactionJournalStatus.Ok)
             {
-                await PersistOrFaultAsync();
+                await PersistOrFaultAsync(operation.Image);
+                operation.Complete();
             }
             return status;
         }
@@ -179,23 +187,10 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         try
         {
             EnsureReady();
-            var header = new NativeTransactionJournalSnapshotHeader
-            {
-                AbiVersion = NativeTransactionJournalAbi.Version,
-                StructSize = NativeTransactionJournalSession
-                    .SizeOf<NativeTransactionJournalSnapshotHeader>()
-            };
-            var status = session.GetSnapshot(ref header, workspace.Records);
-            if (status != NativeTransactionJournalStatus.Ok ||
-                header.EntryCount > workspace.Records.Length)
-            {
-                throw new InvalidOperationException(
-                    $"Native transaction journal snapshot failed with {status}.");
-            }
-
-            var records = new NativeTransactionJournalRecord[header.EntryCount];
-            Array.Copy(workspace.Records, records, records.Length);
-            return new NativeTransactionJournalSnapshot(header, records);
+            using var operation = workspace.Acquire();
+            var snapshot = operation.ReadSnapshot(session);
+            operation.Complete();
+            return snapshot;
         }
         finally
         {
@@ -208,11 +203,11 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         while (true)
         {
             var current = State;
-            if (current is NativeTransactionJournalOwnerState.Disposing or
-                NativeTransactionJournalOwnerState.Disposed)
+            if (current == NativeTransactionJournalOwnerState.Disposed)
             {
                 return;
             }
+            if (current == NativeTransactionJournalOwnerState.Disposing) break;
 
             if (Interlocked.CompareExchange(
                     ref state,
@@ -226,15 +221,11 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         await gate.WaitAsync(CancellationToken.None);
         try
         {
-            try
-            {
-                session.Dispose();
-            }
-            finally
-            {
-                pathLease.Dispose();
-                Volatile.Write(ref state, (int)NativeTransactionJournalOwnerState.Disposed);
-            }
+            if (State == NativeTransactionJournalOwnerState.Disposed) return;
+            workspace.Dispose();
+            session.Dispose();
+            pathLease.Dispose();
+            Volatile.Write(ref state, (int)NativeTransactionJournalOwnerState.Disposed);
         }
         finally
         {
@@ -252,13 +243,15 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            using var operation = workspace.Acquire();
             var status = mutation(session, in input);
             if (status != NativeTransactionJournalStatus.Ok)
             {
                 return status;
             }
 
-            await PersistOrFaultAsync();
+            await PersistOrFaultAsync(operation.Image);
+            operation.Complete();
             return NativeTransactionJournalStatus.Ok;
         }
         finally
@@ -267,11 +260,11 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         }
     }
 
-    private async Task PersistOrFaultAsync()
+    private async Task PersistOrFaultAsync(Memory<byte> image)
     {
         try
         {
-            await fileStore.PersistAsync(session, workspace, CancellationToken.None);
+            await fileStore.PersistAsync(session, image, CancellationToken.None);
         }
         catch (Exception exception)
         {

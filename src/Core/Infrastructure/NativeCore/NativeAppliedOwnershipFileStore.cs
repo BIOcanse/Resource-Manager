@@ -134,19 +134,18 @@ internal sealed class NativeAppliedOwnershipFileStore
 
     public async Task PersistAsync(
         INativeAppliedOwnershipSession session,
-        NativeAppliedOwnershipWorkspace workspace,
+        Memory<byte> image,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(workspace);
 
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var status = session.Encode(workspace.Image, out var written);
+            var status = session.Encode(image.Span, out var written);
             if (status != NativeAppliedOwnershipStatus.Ok ||
                 written < NativeAppliedOwnershipAbi.ImageHeaderSize ||
-                written > (ulong)workspace.Image.Length)
+                written > (ulong)image.Length)
             {
                 throw new InvalidOperationException(
                     $"Native applied ownership encode failed with {status} and length {written}.");
@@ -179,17 +178,17 @@ internal sealed class NativeAppliedOwnershipFileStore
                     }))
                 {
                     await stream.WriteAsync(
-                        workspace.Image.AsMemory(0, checked((int)written)),
+                        image[..checked((int)written)],
                         cancellationToken);
                     await stream.FlushAsync(cancellationToken);
                     stream.Flush(flushToDisk: true);
                 }
 
                 var transition = rootManifest.BeginCanonicalTransition(
-                    workspace.Image.AsSpan(0, checked((int)written)));
+                    image.Span[..checked((int)written)]);
                 WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, ledgerPath);
                 await VerifyCommittedImageAsync(
-                    workspace.Image.AsMemory(0, checked((int)written)),
+                    image[..checked((int)written)],
                     cancellationToken);
                 committed = true;
                 rootManifest.FinalizeCanonicalTransition(transition);

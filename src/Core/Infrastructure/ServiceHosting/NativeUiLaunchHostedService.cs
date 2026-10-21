@@ -91,7 +91,7 @@ public sealed class NativeUiLaunchHostedService(
         }
     }
 
-    private static string ResolveNativeUiPath()
+    internal static string ResolveNativeUiPath()
     {
         var candidates = ResolveNativeUiPathCandidates();
         return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
@@ -115,7 +115,9 @@ public sealed class NativeUiLaunchHostedService(
             {
                 candidates.Add(Path.Combine(
                     appRoot,
-                    "NativeUi",
+                    "..",
+                    "UI",
+                    "Core",
                     "bin",
                     configuration,
                     "net10.0-windows",

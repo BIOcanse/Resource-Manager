@@ -40,36 +40,3 @@ export function softwareUninstallCommand(
   };
 }
 
-export function migrationExecuteCommand(
-  request: unknown
-): OperationCommandDescriptor {
-  return {
-    key: "migration.execute",
-    url: "/api/migrations/execute",
-    body: request,
-    fallbackError: uiText.misc.migrationStartFailed
-  };
-}
-
-export function migrationRestoreCommand(
-  id: string,
-  confirmExecution: boolean
-): OperationCommandDescriptor {
-  return {
-    key: `migration.restore:${id}`,
-    url: "/api/migrations/restore",
-    body: { id, confirmExecution },
-    fallbackError: uiText.misc.restoreStartFailed
-  };
-}
-
-export function migrationDiscoveryStartCommand(
-  request: unknown
-): OperationCommandDescriptor {
-  return {
-    key: "discovery.start",
-    url: "/api/migrations/discovery/start",
-    body: request,
-    fallbackError: uiText.misc.discoveryStartFailed
-  };
-}

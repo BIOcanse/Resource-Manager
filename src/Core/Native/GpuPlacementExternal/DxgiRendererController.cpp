@@ -3,6 +3,7 @@
 #include "D3D12ResultObservation.h"
 #include "QtD3D12Admission.h"
 #include "VulkanRendererController.h"
+#include "../GpuPlacementCommon/ControllerOutputPipes.h"
 #include <memory>
 
 static bool returnsToQtGui(HANDLE process,DWORD pid,uint64_t stack) {
@@ -20,6 +21,7 @@ static bool returnsToQtGui(HANDLE process,DWORD pid,uint64_t stack) {
 }
 
 int wmain(int argc,wchar_t** argv) {
+    if (!ResourceManagerGpuController::ConfigureOutput(argc, argv)) return 2;
     SetErrorMode(32771); setvbuf(stdout,nullptr,_IONBF,0);
     if(argc!=8) return 2;
     if(std::wstring(argv[7])==L"qtquick-vulkan") return ExternalVulkan::runQt(argc,argv);
@@ -257,8 +259,9 @@ int wmain(int argc,wchar_t** argv) {
     for(auto& pair:attached) { for(auto& thread:pair.second.threads) CloseHandle(thread.second.handle); CloseHandle(pair.second.handle); }
     BOOL debug=TRUE; const bool absent=process.h&&live(process.h)&&CheckRemoteDebuggerPresent(process.h,&debug)&&!debug;
     const bool passed=error.empty()&&clean&&absent;
+    if (!clean && cleanupOk) printf("{\"kind\":\"cleanupRecovered\",\"cleanupPassed\":true,\"rootRestored\":%s}\n", absent ? "true" : "false");
     if(observation) observation->report();
     printf("{\"kind\":\"summary\",\"passed\":%s,\"cleanupPassed\":%s,\"debuggerAbsent\":%s,\"recoveryRequested\":%s,\"enumerations\":%u,\"migrationVerified\":false,\"error\":%s}\n",
-        passed?"true":"false",clean&&cleanupOk?"true":"false",absent?"true":"false",triggered?"true":"false",enumerations,quote(error).c_str());
+        passed?"true":"false",cleanupOk?"true":"false",absent?"true":"false",triggered?"true":"false",enumerations,quote(error).c_str());
     return passed?0:1;
 }

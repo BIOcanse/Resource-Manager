@@ -57,7 +57,9 @@ internal static unsafe class NativeSmartCoordinatorConfigurationWriter
             Level1MaximumCpuScoreScale = hotPublish.Level1MaximumCpuScoreScale,
             Level2MaximumCpuScoreScale = hotPublish.Level2MaximumCpuScoreScale,
             Level3MaximumCpuScoreScale = hotPublish.Level3MaximumCpuScoreScale,
-            LowTierLevel4MaximumCpuScoreScale = hotPublish.LowTierLevel4MaximumCpuScoreScale,
+            // The product executor rejects Level 4. Publish its disabled threshold so
+            // low-tier candidates receive the executable Level 3 policy instead.
+            LowTierLevel4MaximumCpuScoreScale = 0,
             ReservedProcessPolicy0 = 0,
             HighTierMinimumBaseScore = hotPublish.BaseScoreTiers.HighMinimumBaseScore,
             MiddleTierMinimumBaseScore = hotPublish.BaseScoreTiers.MiddleMinimumBaseScore,

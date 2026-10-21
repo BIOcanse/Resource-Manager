@@ -10,6 +10,107 @@ namespace ResourceManager.App.Tests;
 public sealed class DeviceTopologySnapshotProviderTests
 {
     [Fact]
+    public async Task SharedSmbiosFailureClearsSlotBiosDateAndDimmWhileKeepingDeclarationsThenRecovers()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with {
+            FirmwareDeclarations = SmbiosFirmwareInformationCollectorTests.Declarations(),
+            MemoryModules = [DeviceInformationTestData.Module("dimm")]
+        };
+        var failed = first with { CapturedAt = first.CapturedAt.AddSeconds(1), FirmwareDeclarations = null, MemoryModules = [] };
+        var empty = first with { CapturedAt = first.CapturedAt.AddSeconds(2), FirmwareDeclarations = SmbiosFirmwareDeclarations.Empty, MemoryModules = [] };
+        using var fixture = CreateProvider(new FakeReader(first, failed, empty, first with { CapturedAt = first.CapturedAt.AddSeconds(3) }), new FakeStore());
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal("2026-09-30", DeviceInformationTestData.Field(fixture.Provider.ReadState().InformationFields, "bios", "bios_all_release_date").Value!.Value.GetString());
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        var failure = fixture.Provider.ReadState().InformationFields;
+        Assert.Null(DeviceInformationTestData.Field(failure, "bios", "bios_all_release_date").Value);
+        Assert.All(failure.Devices.Where(d => d.ObjectType is "motherboard_slot" or "memory_dimm" or "cpu_socket").SelectMany(d => d.Fields), field => Assert.Null(field.Value));
+        Assert.NotNull(DeviceInformationTestData.Field(failure, "machine", "machine_all_manufacturer").Value);
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.DoesNotContain(fixture.Provider.ReadState().InformationFields.Devices, d => d.ObjectType is "motherboard_slot" or "memory_dimm" or "cpu_socket");
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal("SLOT", DeviceInformationTestData.Field(fixture.Provider.ReadState().InformationFields, "smbios-slot|1234", "motherboard_all_slot_designation").Value!.Value.GetString());
+        Assert.Equal("CPU0", DeviceInformationTestData.Field(fixture.Provider.ReadState().InformationFields, "smbios-cpu-socket|4567", "cpu_all_socket_designation").Value!.Value.GetString());
+    }
+
+    [Fact]
+    public void SlotOrderIsNotSemanticButDeclarationChangesAre()
+    {
+        var firmware = SmbiosFirmwareInformationCollectorTests.Declarations();
+        firmware = firmware with { Slots = [firmware.Slots[0], firmware.Slots[0] with { DeviceIdentity = "smbios-slot|2222" }] };
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with { FirmwareDeclarations = firmware };
+        var comparer = new DeviceTopologySemanticComparer();
+        Assert.Equal(comparer.ComputeHash(first), comparer.ComputeHash(first with { FirmwareDeclarations = firmware with { Slots = firmware.Slots.Reverse().ToArray() } }));
+        Assert.NotEqual(comparer.ComputeHash(first), comparer.ComputeHash(first with { FirmwareDeclarations = firmware with { BiosReleaseDate = null } }));
+    }
+
+    [Fact]
+    public async Task OptionalStorageFailureKeepsDeclarationsClearsCurrentAndRecoversAfterRemoval()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with { StorageInformation = StorageIdentifyInformationCollectorTests.Declarations() };
+        var failed = first with { CapturedAt = first.CapturedAt.AddSeconds(1), StorageInformation = null };
+        var empty = first with { CapturedAt = first.CapturedAt.AddSeconds(2), StorageInformation = [] };
+        using var fixture = CreateProvider(new FakeReader(first, failed, empty, first with { CapturedAt = first.CapturedAt.AddSeconds(3) }), new FakeStore());
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal(2, fixture.Provider.ReadState().InformationFields.Devices.Count(d => d.ObjectType == "physical_disk"));
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        var failure = fixture.Provider.ReadState();
+        Assert.Equal(DeviceTopologySnapshotStatus.Ready, failure.State);
+        Assert.All(failure.InformationFields.Devices.Where(d => d.ObjectType == "physical_disk").SelectMany(d => d.Fields), field => Assert.Null(field.Value));
+        Assert.NotNull(failure.InformationFields.Devices.Single(d => d.DeviceIdentity == "machine").Fields.First().Value);
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.DoesNotContain(fixture.Provider.ReadState().InformationFields.Devices, d => d.ObjectType == "physical_disk");
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal("NVMe Model", DeviceInformationTestData.Field(fixture.Provider.ReadState().InformationFields, "nvme", "storage_all_nvme_subsystem_model_declared").Value!.Value.GetString());
+    }
+
+    [Fact]
+    public void StorageOrderIsNotSemanticAndProtocolOrRawChangesAreSemantic()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with { StorageInformation = StorageIdentifyInformationCollectorTests.Declarations() };
+        var comparer = new DeviceTopologySemanticComparer();
+        Assert.Equal(comparer.ComputeHash(first), comparer.ComputeHash(first with { StorageInformation = first.StorageInformation!.Reverse().ToArray() }));
+        Assert.NotEqual(comparer.ComputeHash(first), comparer.ComputeHash(first with { StorageInformation = null }));
+        Assert.NotEqual(comparer.ComputeHash(first), comparer.ComputeHash(first with { StorageInformation = first.StorageInformation!.Select(d => d with { Ata = null, Nvme = null }).ToArray() }));
+    }
+
+    [Fact]
+    public async Task OptionalBatteryFailureClearsValuesKeepsIdentityAndSuccessfulEmptyRemovesIt()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with
+        { Batteries = [new("battery-a", "manufacturer", "serial", "X123")] };
+        var failed = first with { CapturedAt = first.CapturedAt.AddSeconds(1), Batteries = null };
+        var empty = first with { CapturedAt = first.CapturedAt.AddSeconds(2), Batteries = [] };
+        var restored = first with { CapturedAt = first.CapturedAt.AddSeconds(3) };
+        using var fixture = CreateProvider(new FakeReader(first, failed, empty, restored), new FakeStore());
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal("manufacturer", fixture.Provider.ReadState().InformationFields.Devices.Single(d => d.DeviceIdentity == "battery-a")
+            .Fields.Single(f => f.Definition.Name == "battery_all_manufacturer_declared").Value!.Value.GetString());
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        var failure = fixture.Provider.ReadState();
+        Assert.Equal(DeviceTopologySnapshotStatus.Ready, failure.State);
+        Assert.All(failure.InformationFields.Devices.Single(d => d.DeviceIdentity == "battery-a").Fields, f => Assert.Null(f.Value));
+        Assert.NotNull(failure.InformationFields.Devices.Single(d => d.DeviceIdentity == "machine")
+            .Fields.Single(f => f.Definition.Name == "machine_all_manufacturer").Value);
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.DoesNotContain(fixture.Provider.ReadState().InformationFields.Devices, d => d.ObjectType == "battery_device");
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        Assert.Equal("serial", fixture.Provider.ReadState().InformationFields.Devices.Single(d => d.DeviceIdentity == "battery-a")
+            .Fields.Single(f => f.Definition.Name == "battery_all_serial_declared").Value!.Value.GetString());
+    }
+
+    [Fact]
+    public void BatteryDeclarationOrderingDoesNotChangeSemanticContent()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with
+        { Batteries = [new("battery-b", "B", null, "LION"), new("battery-a", "A", null, "NiMH")] };
+        var second = first with { CapturedAt = first.CapturedAt.AddSeconds(1), Batteries = first.Batteries!.Reverse().ToArray() };
+        var comparer = new DeviceTopologySemanticComparer();
+        Assert.Equal(comparer.ComputeHash(first), comparer.ComputeHash(second));
+        Assert.NotEqual(comparer.ComputeHash(first), comparer.ComputeHash(first with { Batteries = null }));
+    }
+
+    [Fact]
     public async Task ReadStateDoesNotTrackDemandOrReadTopology()
     {
         var reader = new FakeReader(CreateSnapshot(DateTimeOffset.UtcNow));
@@ -46,6 +147,8 @@ public sealed class DeviceTopologySnapshotProviderTests
         Assert.Same(initial.Snapshot, refreshed.Snapshot);
         Assert.Equal(1, store.SaveCount);
         Assert.Equal(2, reader.ReadCount);
+        Assert.Equal(second.CapturedAt, refreshed.InformationFields.ObservedAt);
+        Assert.NotEqual(initial.InformationFields.ObservedAt, refreshed.InformationFields.ObservedAt);
     }
 
     [Fact]
@@ -67,6 +170,8 @@ public sealed class DeviceTopologySnapshotProviderTests
         Assert.Same(lastGood, failed.Snapshot);
         Assert.Equal("device-topology-read-failed", failed.FailureCode);
         Assert.Empty(failed.AttemptDiagnostics);
+        Assert.Null(failed.InformationFields.ObservedAt);
+        Assert.All(failed.InformationFields.Devices.SelectMany(device => device.Fields), field => Assert.Null(field.Value));
     }
 
     [Fact]
@@ -114,7 +219,9 @@ public sealed class DeviceTopologySnapshotProviderTests
     [Fact]
     public async Task StartLoadsPersistedSnapshotBeforeServingRequests()
     {
-        var snapshot = CreateSnapshot(DateTimeOffset.UtcNow.AddMinutes(-1));
+        var snapshot = CreateSnapshot(DateTimeOffset.UtcNow.AddMinutes(-1)) with
+        { Batteries = [new("battery-persisted", "historical manufacturer", "serial", "LION")],
+            StorageInformation = StorageIdentifyInformationCollectorTests.Declarations() };
         var semanticComparer = new DeviceTopologySemanticComparer();
         var store = new FakeStore(new DeviceTopologyPersistedSnapshot(
             DeviceTopologySnapshotState.CurrentSchemaVersion,
@@ -133,12 +240,17 @@ public sealed class DeviceTopologySnapshotProviderTests
         Assert.Equal(DeviceTopologySnapshotSource.Persisted, state.Source);
         Assert.Equal(7, state.ContentGeneration);
         Assert.Same(snapshot, state.Snapshot);
+        Assert.Null(state.InformationFields.ObservedAt);
+        Assert.NotEmpty(state.InformationFields.Devices);
+        Assert.Equal(3, state.InformationFields.Devices.Single(d => d.DeviceIdentity == "battery-persisted").Fields.Count);
+        Assert.Equal(13, state.InformationFields.Devices.Single(d => d.DeviceIdentity == "nvme").Fields.Count);
+        Assert.All(state.InformationFields.Devices.SelectMany(device => device.Fields), field => Assert.Null(field.Value));
     }
 
     [Fact]
     public async Task SubscriptionWaitsForCompletedSampleAndReleasesDemand()
     {
-        var snapshot = CreateSnapshot(DateTimeOffset.UtcNow);
+        var snapshot = CreateSnapshot(DateTimeOffset.UtcNow) with { NpuInformation = [] };
         var reader = new FakeReader(snapshot);
         using var fixture = CreateProvider(reader, new FakeStore());
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -221,6 +333,38 @@ public sealed class DeviceTopologySnapshotProviderTests
     }
 
     [Fact]
+    public async Task CancelDuringSynchronousReadAllowsCompletionAndStopsFollowingCaptures()
+    {
+        using var reader = new BlockingReader(CreateSnapshot(DateTimeOffset.UtcNow));
+        var store = new FakeStore();
+        using var fixture = CreateProvider(reader, store);
+        await fixture.Provider.StartAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var subscription = fixture.Provider.SubscribeAsync("test.cancel-in-flight", TimeSpan.FromSeconds(1), cancellation.Token)
+            .GetAsyncEnumerator();
+        try
+        {
+            var next = subscription.MoveNextAsync().AsTask();
+            Assert.True(reader.Entered.Wait(TimeSpan.FromSeconds(2)));
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => next);
+            await subscription.DisposeAsync();
+            reader.Release.Set();
+            await store.Saved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await Task.Delay(1300);
+            Assert.Equal(1, reader.ReadCount);
+            Assert.Equal(DeviceTopologySnapshotStatus.Ready, fixture.Provider.ReadState().State);
+            Assert.Equal(1, fixture.Provider.ReadState().ContentGeneration);
+            Assert.NotNull(fixture.Provider.ReadState().InformationFields.ObservedAt);
+        }
+        finally
+        {
+            reader.Release.Set();
+            await fixture.Provider.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task CanceledSampleBeforeGateEntryReturnsCanceledCompletion()
     {
         using var fixture = CreateProvider(
@@ -245,7 +389,8 @@ public sealed class DeviceTopologySnapshotProviderTests
             store,
             semanticComparer ?? new DeviceTopologySemanticComparer(),
             sampling.Owner,
-            NullLogger<DeviceTopologySnapshotProvider>.Instance);
+            NullLogger<DeviceTopologySnapshotProvider>.Instance,
+            new WindowsAcpiFirmwareTableReader());
         return new ProviderFixture(sampling, provider);
     }
 
@@ -287,11 +432,14 @@ public sealed class DeviceTopologySnapshotProviderTests
     private sealed class BlockingReader(DeviceTopologySnapshot snapshot)
         : IDeviceTopologyReader, IDisposable
     {
+        private int readCount;
+        public int ReadCount => Volatile.Read(ref readCount);
         public ManualResetEventSlim Entered { get; } = new();
         public ManualResetEventSlim Release { get; } = new();
 
         public DeviceTopologySnapshot ReadSnapshot()
         {
+            Interlocked.Increment(ref readCount);
             Entered.Set();
             if (!Release.Wait(TimeSpan.FromSeconds(5)))
             {
@@ -322,6 +470,7 @@ public sealed class DeviceTopologySnapshotProviderTests
         : IDeviceTopologySnapshotStore
     {
         public int SaveCount { get; private set; }
+        public TaskCompletionSource Saved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<DeviceTopologyPersistedSnapshot?> LoadAsync(CancellationToken cancellationToken)
         {
@@ -334,6 +483,7 @@ public sealed class DeviceTopologySnapshotProviderTests
         {
             SaveCount += 1;
             persisted = snapshot;
+            Saved.TrySetResult();
             return Task.CompletedTask;
         }
     }

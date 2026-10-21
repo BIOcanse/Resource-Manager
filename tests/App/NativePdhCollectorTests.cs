@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -80,7 +81,7 @@ public sealed class NativePdhCollectorTests
     }
 
     [Fact]
-    public void DistributedNativeCollectorTreatsLongIdleGapAsANewBaseline()
+    public void DistributedNativeCollectorDoesNotDiscardAValidFrameForALongIdleGap()
     {
         const uint baselineCollectedFlag = 1U << 2;
         var api = new NativePdhApi();
@@ -109,8 +110,12 @@ public sealed class NativePdhCollectorTests
             };
             var resumed = api.Sample(handle, ref header);
 
-            Assert.Equal(NativePdhResultCode.NoData, resumed);
-            Assert.NotEqual(0U, header.Flags & baselineCollectedFlag);
+            Assert.Contains(resumed, new[]
+            {
+                NativePdhResultCode.Ok,
+                NativePdhResultCode.NoData
+            });
+            Assert.Equal(0U, header.Flags & baselineCollectedFlag);
         }
         finally
         {
@@ -119,11 +124,11 @@ public sealed class NativePdhCollectorTests
     }
 
     [Fact]
-    public void AbiLayoutsMatchNativeVersionOne()
+    public void AbiLayoutsMatchNativePdhVersionTwo()
     {
         Assert.Equal(16, Marshal.SizeOf<NativePdhConfig>());
         Assert.Equal(48, Marshal.SizeOf<NativePdhFrameHeader>());
-        Assert.Equal(24, Marshal.SizeOf<NativePdhGpuEngineRow>());
+        Assert.Equal(32, Marshal.SizeOf<NativePdhGpuEngineRow>());
         Assert.Equal(24, Marshal.SizeOf<NativePdhGpuMemoryRow>());
         Assert.Equal(72, Marshal.SizeOf<NativePdhSystemIo>());
         Assert.Equal(56, Marshal.SizeOf<NativePdhDiagnostics>());
@@ -367,15 +372,15 @@ public sealed class NativePdhCollectorTests
     public void ReadersProjectOnePackedFrameByAdapterAndProcess()
     {
         var luid = new AdapterLuid { HighPart = 1, LowPart = 2 };
-        var packedLuid = NativePdhAdapterIdentity.Pack(luid);
+        var packedLuid = WindowsGpuAdapterIdentity.Pack(luid);
         var source = new FixedSnapshotSource(new NativePdhSnapshot(
             DateTimeOffset.UtcNow,
             7,
             3,
             [
                 new NativePdhGpuEngineRow { AdapterLuid = packedLuid, ProcessId = 42, EngineClass = NativePdhEngineClass.RayTracing, UsagePercent = 20 },
-                new NativePdhGpuEngineRow { AdapterLuid = packedLuid, ProcessId = 42, EngineClass = NativePdhEngineClass.Compute, UsagePercent = 15 },
-                new NativePdhGpuEngineRow { AdapterLuid = packedLuid, ProcessId = 84, EngineClass = NativePdhEngineClass.Other, UsagePercent = 10 }
+                new NativePdhGpuEngineRow { AdapterLuid = packedLuid, ProcessId = 42, EngineIndex = 1, EngineClass = NativePdhEngineClass.Compute, UsagePercent = 15 },
+                new NativePdhGpuEngineRow { AdapterLuid = packedLuid, ProcessId = 84, EngineIndex = 2, EngineClass = NativePdhEngineClass.Other, UsagePercent = 10 }
             ],
             [
                 new NativePdhGpuMemoryRow { AdapterLuid = packedLuid, ProcessId = 42, DedicatedBytes = 4096 }
@@ -409,14 +414,14 @@ public sealed class NativePdhCollectorTests
         var processReader = new PdhProcessGpuReader(source);
         var ioReader = new PdhSystemIoReader(source);
 
-        Assert.Equal(45, adapterReader.ReadUsageByAdapterIndex(adapters)[0]);
+        Assert.Equal(20, adapterReader.ReadUsageByAdapterIndex(adapters)[0]);
         var specialized = adapterReader.ReadSpecializedUsageByAdapterIndex(adapters)[0];
         Assert.Equal(20, specialized.RtUsagePercent);
         Assert.Equal(15, specialized.CudaUsagePercent);
         Assert.Equal(10, specialized.TotalUsagePercent);
         var processGpu = processReader.ReadBreakdownSnapshot(adapters);
         Assert.Equal(SamplingObservationStatus.Current, processGpu.Status);
-        Assert.Equal(35, processGpu.GetUsagePercentByProcess(0)[42]);
+        Assert.Equal(20, processGpu.GetUsagePercentByProcess(0)[42]);
         Assert.Equal(
             4096,
             processGpu.GetDedicatedMemoryBytesByProcess(0)[42]);
@@ -426,6 +431,171 @@ public sealed class NativePdhCollectorTests
         Assert.Equal(100, io.Disk.ReadBytesPerSecond);
         Assert.Equal(500, io.Network.SendBytesPerSecond);
         Assert.Equal(NativePdhProviderAvailability.Available, io.ProviderAvailability);
+    }
+
+    [Fact]
+    public void DiskReaderPreservesPerCounterValidityAndKeepsValidZeroDistinctFromMissing()
+    {
+        var io = ReadDiskOnly(NativePdhIoValidMask.DiskRead, diskReadBytesPerSecond: 0);
+
+        Assert.Equal(PdhDiskMetricValidity.ReadBytesPerSecond, io.Disk.ValidMask);
+        Assert.False(io.Disk.HasValue(PdhDiskMetricValidity.ActivePercent));
+        Assert.True(io.Disk.HasValue(PdhDiskMetricValidity.ReadBytesPerSecond));
+        Assert.Equal(0, io.Disk.ReadBytesPerSecond);
+        Assert.Null(WindowsHardwareMetricCapture.ReadDiskMetricValue(
+            io.Disk, MetricFieldCode.DiskActive));
+        Assert.Equal(0, WindowsHardwareMetricCapture.ReadDiskMetricValue(
+            io.Disk, MetricFieldCode.DiskReadRate));
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(-1)]
+    public void DiskReaderDoesNotMarkInvalidNumericValuesAvailable(double invalidValue)
+    {
+        var io = ReadDiskOnly(NativePdhIoValidMask.DiskRead, diskReadBytesPerSecond: invalidValue);
+
+        Assert.False(io.Disk.HasValue(PdhDiskMetricValidity.ReadBytesPerSecond));
+        Assert.Null(WindowsHardwareMetricCapture.ReadDiskMetricValue(
+            io.Disk, MetricFieldCode.DiskReadRate));
+    }
+
+    private static PdhSystemIoMetrics ReadDiskOnly(
+        NativePdhIoValidMask validMask,
+        double diskReadBytesPerSecond)
+    {
+        var snapshot = new NativePdhSnapshot(
+            DateTimeOffset.UnixEpoch,
+            1,
+            1,
+            [],
+            [],
+            new NativePdhSystemIo
+            {
+                StructSize = 72,
+                ValidMask = validMask,
+                DiskReadBytesPerSecond = diskReadBytesPerSecond
+            });
+        return new PdhSystemIoReader(new FixedSnapshotSource(snapshot))
+            .Read(new PdhSystemIoReadRequest(true, false));
+    }
+
+    [Fact]
+    public void ParallelGpuEnginesKeepAdapterProcessAndBreakdownMeasurementsDistinct()
+    {
+        var luid = new AdapterLuid { LowPart = 2, HighPart = 1 };
+        var packed = WindowsGpuAdapterIdentity.Pack(luid);
+        NativePdhGpuEngineRow Row(uint pid, uint engine, double percent, uint physical = 0)
+            => new() { AdapterLuid = packed, ProcessId = pid, EngineIndex = engine,
+                PhysicalIndex = physical, EngineClass = NativePdhEngineClass.Compute, UsagePercent = percent };
+        var source = new FixedSnapshotSource(new NativePdhSnapshot(DateTimeOffset.UtcNow, 7, 1,
+            [Row(42, 0, 40), Row(84, 0, 25), Row(42, 1, 70), Row(84, 1, 5),
+                Row(0, 1, 3), Row(84, 1, 50, physical: 1)], [], new NativePdhSystemIo()));
+        WindowsGpuAdapter[] adapters = [new(0, "GPU", 0x10de, 1, 0, luid, false,
+            8UL * 1024 * 1024 * 1024, WindowsGpuAdapterKind.Dedicated)];
+        Assert.Equal(78, new PdhGpuEngineUsageReader(source).ReadUsageByAdapterIndex(adapters)[0]);
+        Assert.Equal(70, NativePdhGpuUsage.ByProcess(source.Read(0).Snapshot!.EngineRows)[(packed, 42)]);
+        Assert.Equal(50, NativePdhGpuUsage.ByProcess(source.Read(0).Snapshot!.EngineRows)[(packed, 84)]);
+        var breakdown = new PdhProcessGpuReader(source).ReadBreakdownSnapshot(adapters);
+        Assert.Equal(78, breakdown.GetUsagePercentTotal(0));
+        Assert.Equal(70, breakdown.GetUsagePercentByProcess(0)[42]);
+        Assert.Equal(5, breakdown.GetUsagePercentByProcess(0)[84]);
+        Assert.Equal(3, breakdown.GetUsagePercentTotal(0) - breakdown.GetUsagePercentByProcess(0).Values.Sum());
+    }
+
+    [Fact]
+    public void ExactGpuEngineProjectionKeepsClassAndParallelEnginesSeparate()
+    {
+        var luid = new AdapterLuid { LowPart = 0x42, HighPart = 2 };
+        var packed = WindowsGpuAdapterIdentity.Pack(luid);
+        NativePdhGpuEngineRow Row(uint physical, uint engine, NativePdhEngineClass engineClass,
+            uint process, double percent)
+            => new()
+            {
+                AdapterLuid = packed,
+                PhysicalIndex = physical,
+                EngineIndex = engine,
+                EngineClass = engineClass,
+                ProcessId = process,
+                UsagePercent = percent
+            };
+        NativePdhGpuEngineRow[] rows =
+        [
+            Row(0, 3, NativePdhEngineClass.Compute, 10, 40),
+            Row(0, 3, NativePdhEngineClass.Compute, 20, 35),
+            Row(0, 4, NativePdhEngineClass.Compute, 10, 80),
+            Row(0, 3, NativePdhEngineClass.RayTracing, 10, 12),
+            Row(1, 3, NativePdhEngineClass.Compute, 10, 15)
+        ];
+
+        var byEngine = NativePdhGpuUsage.ByExactEngine(rows);
+        Assert.Equal(4, byEngine.Count);
+        Assert.Equal(75, byEngine[new(packed, 0, 3, NativePdhEngineClass.Compute)]);
+        Assert.Equal(80, byEngine[new(packed, 0, 4, NativePdhEngineClass.Compute)]);
+        Assert.Equal(12, byEngine[new(packed, 0, 3, NativePdhEngineClass.RayTracing)]);
+        Assert.Equal(15, byEngine[new(packed, 1, 3, NativePdhEngineClass.Compute)]);
+
+        var source = new FixedSnapshotSource(new NativePdhSnapshot(
+            DateTimeOffset.UnixEpoch,
+            11,
+            4,
+            rows,
+            [],
+            new NativePdhSystemIo()));
+        WindowsGpuAdapter[] adapters =
+        [
+            new(0, "GPU", 0x10de, 1, 0, luid, false, 8UL * 1024 * 1024 * 1024,
+                WindowsGpuAdapterKind.Dedicated)
+        ];
+
+        var read = new PdhGpuEngineUsageReader(source).ReadUsageSnapshotByAdapterIndex(adapters);
+        Assert.Equal(NativePdhProviderAvailability.Available, read.ProviderAvailability);
+        Assert.Equal(75, read.UsageByEngine[new(packed, 0, 3, NativePdhEngineClass.Compute)]);
+        Assert.Equal(12, read.UsageByEngine[new(packed, 0, 3, NativePdhEngineClass.RayTracing)]);
+    }
+
+    [Fact]
+    public void ExactGpuEngineProjectionOmitsInvalidOnlyRowsButKeepsValidZeroAndFiniteContributions()
+    {
+        const ulong packedLuid = 0x200000042UL;
+        NativePdhGpuEngineRow Row(uint engine, double usage) => new()
+        {
+            AdapterLuid = packedLuid,
+            PhysicalIndex = 0,
+            EngineIndex = engine,
+            EngineClass = NativePdhEngineClass.Compute,
+            UsagePercent = usage
+        };
+        var rows = new[]
+        {
+            Row(1, double.NaN),
+            Row(1, double.PositiveInfinity),
+            Row(2, 27.5),
+            Row(2, double.NaN),
+            Row(3, 0)
+        };
+
+        var projected = NativePdhGpuUsage.ByExactEngine(rows);
+
+        Assert.DoesNotContain(new(packedLuid, 0, 1, NativePdhEngineClass.Compute), projected.Keys);
+        Assert.Equal(27.5, projected[new(packedLuid, 0, 2, NativePdhEngineClass.Compute)]);
+        Assert.True(projected.TryGetValue(new(packedLuid, 0, 3, NativePdhEngineClass.Compute), out var validZero));
+        Assert.Equal(0, validZero);
+
+        WindowsGpuAdapter[] adapters =
+        [
+            new(0, "GPU", 0x10de, 1, 0,
+                new AdapterLuid { LowPart = 0x42, HighPart = 2 }, false,
+                8UL * 1024 * 1024 * 1024, WindowsGpuAdapterKind.Dedicated)
+        ];
+        var read = new PdhGpuEngineUsageReader(new FixedSnapshotSource(new NativePdhSnapshot(
+            DateTimeOffset.UtcNow, 12, 4, rows, [], new NativePdhSystemIo())))
+            .ReadUsageSnapshotByAdapterIndex(adapters);
+        Assert.DoesNotContain(new(packedLuid, 0, 1, NativePdhEngineClass.Compute), read.UsageByEngine.Keys);
+        Assert.Equal(27.5, read.UsageByEngine[new(packedLuid, 0, 2, NativePdhEngineClass.Compute)]);
+        Assert.True(read.UsageByEngine.TryGetValue(new(packedLuid, 0, 3, NativePdhEngineClass.Compute), out validZero));
+        Assert.Equal(0, validZero);
     }
 
     [Fact]
@@ -451,7 +621,7 @@ public sealed class NativePdhCollectorTests
             [
                 new NativePdhGpuEngineRow
                 {
-                    AdapterLuid = NativePdhAdapterIdentity.Pack(luid),
+                    AdapterLuid = WindowsGpuAdapterIdentity.Pack(luid),
                     ProcessId = 42,
                     EngineClass = NativePdhEngineClass.Other,
                     UsagePercent = 25

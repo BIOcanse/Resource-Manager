@@ -1,7 +1,8 @@
+using ResourceManager.App.Application.ProcessAttribution;
+using ResourceManager.ReadWrite.Windows.Frames;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.DiskUsage;
-using ResourceManager.App.Application.FrameTiming;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Overlay;
@@ -40,7 +41,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.AddSingleton<IPerformanceOverlaySettingsStore, JsonPerformanceOverlaySettingsStore>();
         services.AddSingleton<NativePdhCollector>(static provider =>
-            new NativePdhCollector(provider.GetRequiredService<HostManagerPdhCollectorRuntime>()));
+            new NativePdhCollector(provider.GetRequiredService<HostManagerPdhCollectorRuntime>(),
+                provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddMonitoringSourceZone<WindowsCpuMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsMemoryMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsVirtualMemoryMonitoringZone>();
@@ -62,7 +64,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddMonitoringSourceZone<NvidiaNvapiMonitoringZone>();
         services.AddMonitoringSourceZone<AmdAdlxMonitoringZone>();
         services.AddMonitoringSourceZone<AmdSmuMonitoringZone>();
+        services.AddMonitoringSourceZone<IntelMsrMonitoringZone>();
+        services.AddMonitoringSourceZone<IntelGclMonitoringZone>();
         services.AddMonitoringSourceZone<WindowsStorageSensorsMonitoringZone>();
+        services.AddMonitoringSourceZone<WindowsBatteryMonitoringZone>();
+        services.AddMonitoringSourceZone<WindowsNpuMemoryMonitoringZone>();
+        services.AddMonitoringSourceZone<WindowsNpuEngineMonitoringZone>();
         services.AddMonitoringSourceZone<HardwareMonitorWmiMonitoringZone>();
         services.AddMonitoringSourceZone<NotebookOemFanMonitoringZone>();
         services.AddMonitoringSourceZone<IpHelperNetworkMonitoringZone>();
@@ -70,7 +77,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<MonitoringSourceZoneRegistry>(static provider => new MonitoringSourceZoneRegistry(GetMonitoringSourceZones(provider)));
         services.AddSingleton<IMonitoringSourceZoneRegistry>(static provider => provider.GetRequiredService<MonitoringSourceZoneRegistry>());
         services.AddSingleton<GpuTelemetryLocalProbe>();
-        services.AddSingleton<GpuTelemetryWorkerSupervisor>();
+        services.AddSingleton<GpuTelemetryWorkerSupervisor>(static provider => new(
+            provider.GetRequiredService<GpuTelemetryLocalProbe>(),
+            provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
+            provider.GetRequiredService<ILogger<GpuTelemetryWorkerSupervisor>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IGpuTelemetryWorkerClient>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
         services.AddSingleton<IGpuTelemetryPushSource>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
         services.AddHostedServiceAlias<GpuTelemetryWorkerSupervisor>();
@@ -97,22 +108,67 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<IMonitoringSourceZoneRegistry>(),
             provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
             provider.GetRequiredService<RuntimePlanProvider>(),
-            provider.GetRequiredService<ILogger<WindowsHardwareMetricSampler>>()));
+            provider.GetRequiredService<ILogger<WindowsHardwareMetricSampler>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>(),
+            provider.GetRequiredService<WindowsBatteryMonitoringZone>(),
+            provider.GetRequiredService<IntelMsrMonitoringZone>(),
+            provider.GetRequiredService<IpHelperNetworkMonitoringZone>(),
+            provider.GetRequiredService<IntelGclMonitoringZone>(),
+            new ResourceManager.ReadWrite.Windows.Metrics.Writes.WindowsMetricControlResources
+            {
+                IntelCpuControl = provider.GetServices<IControlWriter>().OfType<IntelCpuControlWriter>().Single().Resource,
+                AmdCpuControl = provider.GetServices<IControlWriter>().OfType<AmdCpuControlWriter>().Single().Resource,
+                AmdDesktopGpuControl = provider.GetServices<IControlWriter>().OfType<AmdDesktopGpuControlWriter>().Single().Resource,
+                IntegratedGpuControl = provider.GetServices<IControlWriter>().OfType<IntegratedGpuControlWriter>().Single().Resource,
+                ControlResolveObjectId = (snapshot, family, resource, _, adapterKey) =>
+                    provider.GetRequiredService<IControlObjectCatalog>() is WindowsControlObjectCatalog originalCatalog
+                        ? Infrastructure.ReadWrite.HostReadWriteBackend.ResolveOriginalControlObjectId(
+                            originalCatalog.ReadDeclaredObjects(snapshot, resource), family, resource, adapterKey) : null,
+                ControlIsFixedChassis = () => provider.GetRequiredService<WindowsChassisKindReader>().Read()
+                    == Domain.Control.ControlChassisKinds.Fixed
+            }, provider.GetRequiredService<WindowsNpuMemoryMonitoringZone>(), provider.GetRequiredService<WindowsNpuEngineMonitoringZone>()));
         services.AddSingleton<IMetricSampler>(static provider => provider.GetRequiredService<WindowsHardwareMetricSampler>());
         services.AddSingleton<IMetricSnapshotObservationSource>(static provider => provider.GetRequiredService<WindowsHardwareMetricSampler>());
         services.AddSingleton<IMetricSnapshotPushSource>(static provider => provider.GetRequiredService<WindowsHardwareMetricSampler>());
+        services.AddSingleton<Infrastructure.ReadWrite.HostReadWriteBackend>();
+        services.AddSingleton<Infrastructure.ReadWrite.HostFieldSubscriptionBackend>();
+        services.AddSingleton<Infrastructure.ReadWrite.HostProcessFieldBackend>();
+        services.AddSingleton<Infrastructure.ReadWrite.HostPresentFrameFieldQueries>();
+        services.AddSingleton<Infrastructure.ReadWrite.HostFieldBackends>();
+        services.AddHttpClient("read-write-dependencies");
+        services.AddSingleton<ResourceManager.ReadWrite.Dependencies.IReadWriteDependencies>(provider =>
+            Infrastructure.ReadWrite.HostReadWriteDependencies.Create(
+                provider.GetRequiredService<IHttpClientFactory>().CreateClient("read-write-dependencies"),
+                provider.GetRequiredService<Application.Components.IProviderRuntimeProbe>(),
+                Infrastructure.Paths.PackagePathResolver.ResolvePackageRoot(provider.GetRequiredService<IHostEnvironment>().ContentRootPath)));
+        services.AddSingleton<ResourceManager.ReadWrite.ReadWriteCore>(provider => new(
+            provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Reads,
+            provider.GetRequiredService<ResourceManager.ReadWrite.Dependencies.IReadWriteDependencies>()));
+        services.AddSingleton<ResourceManager.Subscription.IFieldSubscriptionBackend>(provider =>
+            provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Subscriptions);
+        services.AddSingleton<ResourceManager.Subscription.FieldSubscriptionCore>();
         services.AddHostedServiceAlias<WindowsHardwareMetricSampler>();
         services.AddSingleton<DashboardMonitoringPlanSynchronizer>();
         services.AddHostedServiceAlias<DashboardMonitoringPlanSynchronizer>();
         services.AddSingleton<ICpuCorePerformanceOverrideStore, JsonCpuCorePerformanceOverrideStore>();
         services.AddSingleton<ICpuTopologySampler, WindowsCpuTopologyReader>();
-        services.AddSingleton<CpuTopologySnapshotProvider>();
+        services.AddSingleton<CpuTopologySnapshotProvider>(static provider => new(
+            provider.GetRequiredService<ICpuTopologySampler>(),
+            provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
+            provider.GetRequiredService<ILogger<CpuTopologySnapshotProvider>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ICpuTopologyReader>(static provider => provider.GetRequiredService<CpuTopologySnapshotProvider>());
         services.AddHostedServiceAlias<CpuTopologySnapshotProvider>();
 
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
-        services.AddSingleton<IDiskUsageTreeStore, DiskUsageTreeStore>();
+        services.AddSingleton<Infrastructure.Adaptation.ResourceManagerLedgerOwner>();
+        services.AddSingleton<IDiskUsageTreePayloadAllocator>(static provider =>
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>());
+        services.AddSingleton<DiskUsageTreeStore>(static provider =>
+            new DiskUsageTreeStore(provider.GetRequiredService<IDiskUsageTreePayloadAllocator>()));
+        services.AddSingleton<IDiskUsageTreeStore>(static provider => provider.GetRequiredService<DiskUsageTreeStore>());
+        services.AddSingleton<IOwnedDiskUsageTreeStore>(static provider => provider.GetRequiredService<DiskUsageTreeStore>());
         // 控制写入器。注册在这里是因为目录要问它们"这一项能不能调" ——
         // 探测本身只读（问驱动要范围），真正的写入要等调用方明确下达。
         services.AddSingleton<IControlWriter, NvidiaGpuControlWriter>();
@@ -167,13 +223,22 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddHostedServiceAlias<PortableSoftwareDiscoveryService>();
         }
 
-        services.AddSingleton<EtwCpuCoreResidencyReader>();
+        services.AddSingleton<EtwCpuCoreResidencyReader>(static provider => new(
+            provider.GetRequiredService<IKernelEtwSessionBroker>(),
+            provider.GetRequiredService<IRuntimePlanProvider>(),
+            provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
+            provider.GetRequiredService<ILogger<EtwCpuCoreResidencyReader>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ICpuCoreResidencyReader>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>();
 
-        services.AddSingleton<EtwSystemInterruptSnapshotSource>();
+        services.AddSingleton<EtwSystemInterruptSnapshotSource>(static provider => new(
+            provider.GetRequiredService<IKernelEtwSessionBroker>(),
+            provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
+            provider.GetRequiredService<ILogger<EtwSystemInterruptSnapshotSource>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ISystemInterruptSnapshotSource>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>();
@@ -205,7 +270,19 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<PdhProcessGpuReader>(static provider =>
             new PdhProcessGpuReader(provider.GetRequiredService<NativePdhCollector>()));
-        services.AddSingleton<WindowsResourceBreakdownSampler>();
+        services.AddSingleton<WindowsResourceBreakdownSampler>(static provider => new(
+            provider.GetRequiredService<IMetricSampler>(),
+            provider.GetRequiredService<IRuntimeProcessAttributionCatalogProvider>(),
+            provider.GetRequiredService<IResourceResidualBreakdownProvider>(),
+            provider.GetRequiredService<IPhysicalDiskIoAttributionReader>(),
+            provider.GetRequiredService<INetworkAttributionReader>(),
+            provider.GetRequiredService<IRuntimePlanProvider>(),
+            provider.GetRequiredService<HostManagerSamplingSubscriptionOwner>(),
+            provider.GetRequiredService<PdhProcessGpuReader>(),
+            ledgerOwner: provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>(),
+            logger: provider.GetService<ILogger<WindowsResourceBreakdownSampler>>(),
+            gpuAllocations: provider.GetService<GpuAllocationCollector>(),
+            interactiveDesktops: provider.GetService<InteractiveDesktopObservationStore>()));
         services.AddSingleton<GpuAllocationCollector>();
         services.AddSingleton<IResourceBreakdownSampler>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<IResourceBreakdownObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
@@ -239,7 +316,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<NvidiaNvapiMonitoringZone>(),
             provider.GetRequiredService<AmdAdlxMonitoringZone>(),
             provider.GetRequiredService<AmdSmuMonitoringZone>(),
+            provider.GetRequiredService<IntelMsrMonitoringZone>(),
+            provider.GetRequiredService<IntelGclMonitoringZone>(),
             provider.GetRequiredService<WindowsStorageSensorsMonitoringZone>(),
+            provider.GetRequiredService<WindowsBatteryMonitoringZone>(),
+            provider.GetRequiredService<WindowsNpuMemoryMonitoringZone>(),
+            provider.GetRequiredService<WindowsNpuEngineMonitoringZone>(),
             provider.GetRequiredService<HardwareMonitorWmiMonitoringZone>(),
             provider.GetRequiredService<NotebookOemFanMonitoringZone>(),
             provider.GetRequiredService<IpHelperNetworkMonitoringZone>(),
@@ -247,3 +329,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         ];
     }
 }
+
+
+
+

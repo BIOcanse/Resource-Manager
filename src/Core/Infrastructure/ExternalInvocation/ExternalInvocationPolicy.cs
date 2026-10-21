@@ -1,10 +1,9 @@
 using ResourceManager.App.Application.ExternalInvocation;
-using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.ExternalInvocation;
 
 namespace ResourceManager.App.Infrastructure.ExternalInvocation;
 
-public sealed class ExternalInvocationPolicy(IRuntimePlanProvider runtimePlanProvider) : IExternalInvocationPolicy
+public sealed class ExternalInvocationPolicy : IExternalInvocationPolicy
 {
     public ExternalInvocationPolicyDecision Evaluate(
         ExternalInvocationCaller caller,
@@ -14,7 +13,6 @@ public sealed class ExternalInvocationPolicy(IRuntimePlanProvider runtimePlanPro
         ArgumentNullException.ThrowIfNull(operation);
 
         return operation.AccessClass == ExternalInvocationAccessClass.Open
-            || runtimePlanProvider.Current.Diagnostics.DebugModeEnabled
             || caller.IsCorrespondingFrontend
             || caller.IsAdministrator
             ? ExternalInvocationPolicyDecision.Allow

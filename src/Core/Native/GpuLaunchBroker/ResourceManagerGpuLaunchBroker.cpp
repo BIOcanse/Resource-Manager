@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <winhttp.h>
 #include <shellapi.h>
 
 #include <algorithm>
@@ -10,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "GpuLaunchEnvironment.h"
+#include "GpuLaunchSessionClient.h"
 
 namespace
 {
@@ -17,9 +17,7 @@ constexpr wchar_t BrokerArgument[] = L"--resource-manager-ifeo";
 constexpr wchar_t CleanupArgument[] = L"--remove-all-resource-manager-ifeo";
 constexpr wchar_t OwnerValue[] = L"ResourceManager.GpuLaunchInterception.v1";
 constexpr wchar_t IfeoRoot[] = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options";
-constexpr wchar_t RecursionDepthEnvironmentVariable[] = L"RM_GPU_IFEO_DEPTH";
 constexpr DWORD ProviderReadyTimeoutMilliseconds = 5000;
-constexpr DWORD BackendPort = 9321;
 constexpr DWORD MaxProtocolBytes = 64 * 1024;
 
 struct ScopedHandle
@@ -72,7 +70,9 @@ struct StartupDecision
     std::wstring startupTargetGpu;
     std::wstring assignedPositionId;
     std::wstring targetAdapterName;
-    std::string reportToken;
+    ResourceManagerGpuLaunchSession::BackendIdentity backend;
+    std::wstring backendPath;
+    std::wstring sessionPipeName;
 };
 
 std::wstring Trim(std::wstring value)
@@ -194,18 +194,6 @@ std::wstring ResolvePackageRoot()
     return DirectoryName(ModulePath());
 }
 
-bool ReadUtf8File(const std::wstring& path, std::string& output)
-{
-    ScopedHandle file(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-    if (file.value == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER size{};
-    if (!GetFileSizeEx(file.value, &size) || size.QuadPart < 0 || size.QuadPart > MaxProtocolBytes) return false;
-    output.assign(static_cast<size_t>(size.QuadPart), '\0');
-    DWORD read = 0;
-    return output.empty() || (ReadFile(file.value, output.data(), static_cast<DWORD>(output.size()), &read, nullptr) && read == output.size());
-}
-
 std::map<std::wstring, std::wstring> ParseProtocol(const std::wstring& text)
 {
     std::map<std::wstring, std::wstring> fields;
@@ -225,70 +213,12 @@ std::map<std::wstring, std::wstring> ParseProtocol(const std::wstring& text)
     return fields;
 }
 
-bool PostStartupRequest(const std::wstring& executablePath, const std::string& token, std::wstring& response)
+bool PostStartupRequest(const std::wstring& executablePath, StartupDecision& decision, std::wstring& response)
 {
-    HINTERNET session = WinHttpOpen(L"ResourceManagerGpuLaunchBroker/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
-        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == nullptr) return false;
-    WinHttpSetTimeouts(session, 500, 500, 1000, 2000);
-    HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", static_cast<INTERNET_PORT>(BackendPort), 0);
-    if (connection == nullptr)
-    {
-        WinHttpCloseHandle(session);
-        return false;
-    }
-    HINTERNET request = WinHttpOpenRequest(connection, L"POST", L"/api/gpu-placement/startup/resolve",
-        nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
-    if (request == nullptr)
-    {
-        WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
-        return false;
-    }
-
-    const std::wstring tokenWide = Utf8ToWide(token);
-    const std::wstring headers = L"X-Resource-Manager-Token: " + tokenWide
-        + L"\r\nContent-Type: text/plain; charset=utf-8\r\nAccept: application/vnd.resource-manager.gpu-launch.v1+text\r\n";
     const std::string body = WideToUtf8(executablePath);
-    bool success = !body.empty()
-        && WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(headers.size()),
-            const_cast<char*>(body.data()), static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)
-        && WinHttpReceiveResponse(request, nullptr);
-    DWORD statusCode = 0;
-    DWORD statusSize = sizeof(statusCode);
-    success = success && WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX)
-        && statusCode == 200;
-
     std::string bytes;
-    while (success)
-    {
-        DWORD available = 0;
-        if (!WinHttpQueryDataAvailable(request, &available))
-        {
-            success = false;
-            break;
-        }
-        if (available == 0) break;
-        if (bytes.size() + available > MaxProtocolBytes)
-        {
-            success = false;
-            break;
-        }
-        const size_t offset = bytes.size();
-        bytes.resize(offset + available);
-        DWORD read = 0;
-        if (!WinHttpReadData(request, bytes.data() + offset, available, &read))
-        {
-            success = false;
-            break;
-        }
-        bytes.resize(offset + read);
-    }
-
-    WinHttpCloseHandle(request);
-    WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
+    const bool success = ResourceManagerGpuLaunchSession::Call(ResourceManagerGpuLaunchSession::ResolveOperation,
+        body, decision.backendPath, decision.sessionPipeName, decision.backend, false, bytes);
     response = success ? Utf8ToWide(bytes) : std::wstring();
     return success && !response.empty();
 }
@@ -313,7 +243,7 @@ bool PostStartupReport(
     const std::wstring& outcome,
     const std::wstring& message)
 {
-    if (decision.reportToken.empty()) return false;
+    if (!decision.backend.processId || !decision.backend.creation) return false;
 
     std::wstring protocol;
     protocol.reserve(1024);
@@ -329,39 +259,10 @@ bool PostStartupReport(
     const std::string body = WideToUtf8(protocol);
     if (body.empty() || body.size() > MaxProtocolBytes) return false;
 
-    HINTERNET session = WinHttpOpen(L"ResourceManagerGpuLaunchBroker/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
-        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (session == nullptr) return false;
-    WinHttpSetTimeouts(session, 500, 500, 1000, 1000);
-    HINTERNET connection = WinHttpConnect(session, L"127.0.0.1", static_cast<INTERNET_PORT>(BackendPort), 0);
-    if (connection == nullptr)
-    {
-        WinHttpCloseHandle(session);
-        return false;
-    }
-    HINTERNET request = WinHttpOpenRequest(connection, L"POST", L"/api/gpu-placement/startup/report",
-        nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
-    if (request == nullptr)
-    {
-        WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
-        return false;
-    }
-
-    const std::wstring headers = L"X-Resource-Manager-Token: " + Utf8ToWide(decision.reportToken)
-        + L"\r\nContent-Type: application/vnd.resource-manager.gpu-launch.v1+text; charset=utf-8\r\n";
-    bool success = WinHttpSendRequest(request, headers.c_str(), static_cast<DWORD>(headers.size()),
-            const_cast<char*>(body.data()), static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0)
-        && WinHttpReceiveResponse(request, nullptr);
-    DWORD statusCode = 0;
-    DWORD statusSize = sizeof(statusCode);
-    success = success && WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX)
-        && (statusCode == 200 || statusCode == 204);
-    WinHttpCloseHandle(request);
-    WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
-    return success;
+    std::string reply;
+    auto backend = decision.backend;
+    return ResourceManagerGpuLaunchSession::Call(ResourceManagerGpuLaunchSession::ReportOperation,
+        body, decision.backendPath, decision.sessionPipeName, backend, true, reply) && reply == "ok";
 }
 
 void ParseStartupDecision(
@@ -438,25 +339,15 @@ void ParseStartupDecision(
     if (direct3D || vulkan) decision.policyPath = FullPath(policyPath->second);
 }
 
-StartupDecision ResolveStartupDecision(const std::wstring& targetPath, const std::wstring& packageRoot)
+StartupDecision ResolveStartupDecision(const std::wstring& targetPath, const std::wstring& packageRoot,
+    const std::wstring& expectedBackend = std::wstring(), const std::wstring& pipeName = std::wstring())
 {
     StartupDecision decision;
-    std::string token;
-    if (!ReadUtf8File(Combine(packageRoot, L"Config\\Runtime\\loopback-api-token"), token))
-    {
-        decision.message = L"loopback token unavailable";
-        return decision;
-    }
-    token = WideToUtf8(Trim(Utf8ToWide(token)));
-    if (token.empty())
-    {
-        decision.message = L"loopback token empty";
-        return decision;
-    }
-    decision.reportToken = token;
+    decision.backendPath = expectedBackend.empty() ? Combine(DirectoryName(ModulePath()), L"ResourceManager.exe") : expectedBackend;
+    decision.sessionPipeName = pipeName;
 
     std::wstring response;
-    if (!PostStartupRequest(targetPath, token, response))
+    if (!PostStartupRequest(targetPath, decision, response))
     {
         decision.message = L"startup resolver unavailable";
         return decision;
@@ -873,7 +764,6 @@ int RunBroker(int argc, wchar_t** argv)
         return static_cast<int>(error64 != ERROR_SUCCESS ? error64 : error32);
     }
     if (argc < 3 || _wcsicmp(argv[1], BrokerArgument) != 0) return ERROR_INVALID_PARAMETER;
-    if (!ReadEnvironment(RecursionDepthEnvironmentVariable).empty()) return ERROR_CIRCULAR_DEPENDENCY;
 
     const std::wstring targetPath = FullPath(argv[2]);
     const std::wstring originalCommandLine = ExtractOriginalCommandLine();

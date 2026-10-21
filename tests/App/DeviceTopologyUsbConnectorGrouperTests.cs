@@ -78,11 +78,7 @@ public sealed class DeviceTopologyUsbConnectorGrouperTests
             HubDevicePath: hubPath,
             PortNumber: portNumber,
             DeviceConnected: connected,
-            ConnectionStatus: BackendMessage.Create(
-                BackendMessageDomains.DeviceTopology,
-                connected
-                    ? BackendMessageCodes.DeviceTopology.UsbConnected
-                    : BackendMessageCodes.DeviceTopology.UsbNotConnected),
+            ConnectionStatus: connected ? 1U : 0U,
             NegotiatedSpeed: connected ? "USB 2.0 High-Speed / 480Mbps" : null,
             VendorId: 0,
             ProductId: 0,

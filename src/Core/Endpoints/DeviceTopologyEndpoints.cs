@@ -14,6 +14,23 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(provider.ReadState());
         }).AllowAnonymous();
 
+        app.MapGet("/api/device-topology/fields", (
+            HttpResponse response,
+            IDeviceTopologySnapshotProvider provider) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(provider.ReadState().InformationFields);
+        }).AllowAnonymous();
+
+        app.MapGet("/api/device-topology/acpi/fields", (
+            HttpResponse response,
+            IDeviceTopologySnapshotProvider provider) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(provider.ReadState().AcpiInformationFields);
+        }).AllowAnonymous();
+
+        app.MapNvidiaDrsInformationEndpoints();
         return app;
     }
 }

@@ -200,6 +200,7 @@ public sealed class CpuBaselineRatioEndpointTests
 
     private sealed class CountingSampler : ICpuTopologySampler
     {
+        public void ResetUsageBaseline() { }
         public int TopologyCaptures { get; private set; }
         public int UsageCaptures { get; private set; }
         public bool FailTopology { get; set; }

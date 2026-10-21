@@ -1,5 +1,5 @@
+using ResourceManager.ReadWrite.Windows.Frames;
 using ResourceManager.App.Application.Metrics;
-using ResourceManager.App.Domain.FrameTiming;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.ResourceBreakdown;

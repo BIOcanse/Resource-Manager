@@ -163,29 +163,6 @@ public sealed class ResourceManagerDatabase
         return text.Length <= 2048 ? text : text[..2048];
     }
 
-    private static async Task ConfigureConnectionAsync(
-        SqliteConnection connection,
-        bool initializeJournal,
-        CancellationToken cancellationToken)
-    {
-        if (initializeJournal)
-        {
-            await using var journalCommand = connection.CreateCommand();
-            journalCommand.CommandText = "PRAGMA journal_mode=WAL;";
-            var mode = Convert.ToString(await journalCommand.ExecuteScalarAsync(cancellationToken));
-            if (!string.Equals(mode, "wal", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException($"SQLite WAL mode could not be enabled. Returned mode: {mode ?? "<null>"}.");
-            }
-        }
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA foreign_keys=ON;
-            PRAGMA synchronous=NORMAL;
-            PRAGMA busy_timeout=5000;
-            PRAGMA temp_store=MEMORY;
-            """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
-    }
+    private static Task ConfigureConnectionAsync(SqliteConnection connection, bool initializeJournal, CancellationToken cancellationToken)
+        => ResourceManager.ReadWrite.Windows.Files.Indexing.IndexedFileDatabase.ConfigureConnectionAsync(connection, initializeJournal, cancellationToken);
 }

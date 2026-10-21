@@ -9,6 +9,7 @@ import creditsJourney from "./creditsJourney.js";
 import currentValueSubscriptionJourney from "./currentValueSubscriptionJourney.js";
 import monitorCurrentValueRetentionJourney from "./monitorCurrentValueRetentionJourney.js";
 import deviceTopologySourceJourney from "./deviceTopologySourceJourney.js";
+import diskUsageFeedbackRefreshJourney from "./diskUsageFeedbackRefreshJourney.js";
 import frontendUsabilityJourney from "./frontendUsabilityJourney.js";
 import frontendVisibilityDemandJourney from "./frontendVisibilityDemandJourney.js";
 import optimizationReportsJourney from "./optimizationReportsJourney.js";
@@ -17,6 +18,10 @@ import resourceBarColorModesJourney from "./resourceBarColorModesJourney.js";
 import resourceBarProportionJourney from "./resourceBarProportionJourney.js";
 import controlReadingsJourney from "./controlReadingsJourney.js";
 import controlCardJourney from "./controlCardJourney.js";
+import controlNumberInitialJourney from "./controlNumberInitialJourney.js";
+import controlSlowRequestJourney from "./controlSlowRequestJourney.js";
+import gpuUnknownRuntimeJourney from "./gpuUnknownRuntimeJourney.js";
+import performanceHistoryJourney from "./performanceHistoryJourney.js";
 import resourceLayoutTaskJourney from "./resourceLayoutTaskJourney.js";
 import resourceTableContentStateJourney from "./resourceTableContentStateJourney.js";
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
@@ -39,9 +44,14 @@ const allJourneys = [
   ["resource-bar-proportion", resourceBarProportionJourney],
   ["control-readings", controlReadingsJourney],
   ["control-card", controlCardJourney],
+  ["control-number-initial", controlNumberInitialJourney],
+  ["control-slow-request", controlSlowRequestJourney],
+  ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
+  ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
   ["software-issues", softwareIssueJourney],
   ["device-topology-source", deviceTopologySourceJourney],
+  ["disk-usage-feedback-refresh", diskUsageFeedbackRefreshJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
   ["current-value-subscription", currentValueSubscriptionJourney],

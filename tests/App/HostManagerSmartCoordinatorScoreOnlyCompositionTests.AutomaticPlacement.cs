@@ -72,11 +72,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var request = Assert.Single(requests);
             Assert.Equal(processId, request.ProcessId);
             Assert.Equal(startedAt, request.ExpectedStartedAt);
-            Assert.Equal([1U, 2U], request.CpuSetIds);
+            var restoring = currentCpuSetIds.SequenceEqual([1U, 2U]);
+            Assert.Equal(restoring ? [1U, 2U, 3U, 4U] : [1U, 2U], request.CpuSetIds);
             Assert.Single(fixture.StateStore.Current.AppliedPlacements);
 
             currentCpuSetIds = request.CpuSetIds!.ToArray();
-            boundaryEvents.Add($"write:{string.Join(',', currentCpuSetIds)}");
+            boundaryEvents.Add($"{(restoring ? "restore" : "write")}:{string.Join(',', currentCpuSetIds)}");
             return
             [
                 new ProcessResourcePolicyBatchWriteResult(
@@ -92,9 +93,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.ProcessPolicyWriter.DefaultCpuSetWriteHandler = (actualProcessId, cpuSetIds) =>
         {
             Assert.Equal(processId, actualProcessId);
-            currentCpuSetIds = cpuSetIds.ToArray();
-            boundaryEvents.Add($"restore:{string.Join(',', currentCpuSetIds)}");
-            return new ProcessResourcePolicyWriteResult(true, "restored");
+            throw new InvalidOperationException("Restoration must use the exact-process batch boundary.");
         };
 
         _ = await fixture.RunRealtimeCycleAsync();
@@ -148,14 +147,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             (uint)NativePlacementActionDisposition.Restore,
             placementWorkspace.Actions[0].Disposition);
         Assert.NotEqual(0UL, placementWorkspace.Actions[0].DesiredDigest);
-        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(1, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
+        Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
 
         _ = await fixture.RunRealtimeCycleAsync();
 
-        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(1, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
+        Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Contains("restore:1,2,3,4", boundaryEvents);
     }
 

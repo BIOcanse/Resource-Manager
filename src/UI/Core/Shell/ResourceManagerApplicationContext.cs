@@ -15,6 +15,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
     private readonly Control uiDispatcher = new();
     private readonly NativeUiShutdownCoordinator shutdownCoordinator = new();
     private readonly PerformanceOverlayCoordinator performanceOverlay;
+    private readonly InteractiveDesktopObservationPublisher desktopObservations = new();
     private readonly TaskManagerShortcutReplacementController taskManagerShortcutReplacement;
     private readonly ForceTerminateHotkeyController forceTerminateHotkey;
     private readonly ContextMenuStrip trayMenu;
@@ -125,6 +126,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             RunDisposalAction(() => singleInstance.RequestReceived -= OnSingleInstanceRequest);
             RunDisposalAction(DisposeMainForm);
             RunDisposalAction(performanceOverlay.Dispose);
+            RunDisposalAction(desktopObservations.Dispose);
             RunDisposalAction(DisposeBackendGeneration);
             RunDisposalAction(singleInstance.Dispose);
             RunDisposalAction(taskManagerShortcutReplacement.Dispose);
@@ -296,7 +298,10 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
         var form = new MainForm(
             taskManagerShortcutReplacement.SetEnabledFromUi,
-            forceTerminateHotkey.Reload);
+            forceTerminateHotkey.Reload,
+            batch => backendReady && backendSession is { } session
+                ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
+                : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
         form.BackendRetryRequested += OnBackendRetryRequested;
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested += OnDiagnosticsRequested;
@@ -373,6 +378,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
             backendReady = true;
             SetBackendConnectionState(BackendConnectionState.Ready);
             performanceOverlay.Start(session);
+            desktopObservations.Start(session);
             if (mainForm is { IsDisposed: false } form)
             {
                 form.ShowBackendReady(session.AccessToken, projection);
@@ -469,7 +475,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         try
         {
             var targets = HungAndForegroundProcessResolver.Resolve(foregroundProcessId);
-            if (targets.ProcessIds.Count == 0)
+            if (targets.Targets.Count == 0)
             {
                 ShowForceTerminateHotkeyStatus(NativeUiText.Current.NoForegroundProcessToTerminate, ToolTipIcon.Info);
                 return;
@@ -483,12 +489,13 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
                 return;
             }
 
-            var message = await session.TerminateProcessesAsync(targets.ProcessIds, shutdown.Token);
+            var message = await session.TerminateProcessesAsync(targets.Targets, shutdown.Token);
             ShowForceTerminateHotkeyStatus(message, ToolTipIcon.Info);
         }
-        catch (OperationCanceledException)
+        catch (UacApprovalCanceledException)
         {
         }
+        catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine(ex);
@@ -588,6 +595,7 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
 
     private void DisposeBackendGeneration()
     {
+        desktopObservations.Stop();
         var lossHandler = backendLossHandler;
         var session = backendSession;
         backendLossHandler = null;

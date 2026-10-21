@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 
@@ -35,6 +36,7 @@ internal readonly record struct HostManagerTransactionJournalAdmissionIdentity(
 internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDisposable
 {
     private readonly HostManagerTransactionJournalRuntimeConfiguration configuration;
+    private readonly Func<ulong, IComputeScratch> createScratch;
     private readonly SemaphoreSlim shutdownGate = new(1, 1);
     private readonly SemaphoreSlim transactionOperationGate = new(1, 1);
     private readonly object sync = new();
@@ -54,9 +56,11 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
 
     private HostManagerTransactionJournalRuntime(
         HostManagerTransactionJournalRuntimeConfiguration configuration,
-        CompiledHostManagerTransactionJournalHotPublishPlan hotPublishPlan)
+        CompiledHostManagerTransactionJournalHotPublishPlan hotPublishPlan,
+        Func<ulong, IComputeScratch> createScratch)
     {
         this.configuration = configuration;
+        this.createScratch = createScratch;
         currentHotPublishPlan = hotPublishPlan;
     }
 
@@ -371,7 +375,9 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
 
             lock (sync)
             {
-                state = HostManagerTransactionJournalRuntimeState.Disposed;
+                state = disposeFailure is null
+                    ? HostManagerTransactionJournalRuntimeState.Disposed
+                    : HostManagerTransactionJournalRuntimeState.Faulted;
                 lastShutdownResult = result;
             }
             return result;
@@ -462,6 +468,11 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
         {
             throw new TimeoutException(
                 "Transaction-journal runtime shutdown timed out with active admissions.");
+        }
+        if (State != HostManagerTransactionJournalRuntimeState.Disposed)
+        {
+            throw new InvalidOperationException(
+                "The transaction-journal runtime still owns resources awaiting close.", Failure);
         }
     }
 
@@ -652,21 +663,22 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
         }
     }
 
-    private async Task InitializeAsync(CancellationToken cancellationToken)
+    internal async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        NativeTransactionJournalOwner? openedOwner = null;
-        NativeTransactionJournalPayloadStore? openedPayloadStore = null;
         try
         {
-            openedOwner = await NativeTransactionJournalOwner.OpenOrCreateAsync(
+            var openedOwner = await NativeTransactionJournalOwner.OpenOrCreateAsync(
                 new NativeTransactionJournalFileStore(configuration.JournalPath),
                 configuration.CreateNativeConfiguration(),
                 configuration.CreateNativeOpenConfiguration(),
+                createScratch,
                 cancellationToken);
-            openedPayloadStore = new NativeTransactionJournalPayloadStore(
+            lock (sync) { journalOwner = openedOwner; }
+            var openedPayloadStore = new NativeTransactionJournalPayloadStore(
                 configuration.PayloadDirectory,
                 configuration.PayloadCount,
                 configuration.PayloadByteBudget);
+            lock (sync) { payloadStore = openedPayloadStore; }
             var snapshot = await openedOwner.ReadSnapshotAsync(cancellationToken);
             if (snapshot.Header.Capacity != configuration.RecordCapacity)
             {
@@ -676,31 +688,30 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
 
             lock (sync)
             {
-                journalOwner = openedOwner;
-                payloadStore = openedPayloadStore;
                 StartupSnapshot = snapshot;
                 lastSnapshot = snapshot;
                 state = snapshot.Records.Count == 0
                     ? HostManagerTransactionJournalRuntimeState.ReadyForExecution
                     : HostManagerTransactionJournalRuntimeState.RecoveryRequired;
             }
-            openedOwner = null;
-            openedPayloadStore = null;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            _ = await DisposeInitializationResourcesAsync(openedOwner, openedPayloadStore);
+            var cleanupFailure = await DisposeOwnedResourcesAsync();
             lock (sync)
             {
-                state = HostManagerTransactionJournalRuntimeState.Disposed;
+                if (cleanupFailure is not null) RecordFailureLocked(cleanupFailure);
+                state = cleanupFailure is null
+                    ? HostManagerTransactionJournalRuntimeState.Disposed
+                    : HostManagerTransactionJournalRuntimeState.Faulted;
             }
+            if (cleanupFailure is not null)
+                throw new InvalidOperationException("Canceled journal initialization retains resources awaiting close.", cleanupFailure);
             throw;
         }
         catch (Exception exception)
         {
-            var cleanupFailure = await DisposeInitializationResourcesAsync(
-                openedOwner,
-                openedPayloadStore);
+            var cleanupFailure = await DisposeOwnedResourcesAsync();
             var initializationFailure = cleanupFailure is null
                 ? exception
                 : new AggregateException(exception, cleanupFailure);
@@ -710,8 +721,7 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
                 state = HostManagerTransactionJournalRuntimeState.Faulted;
             }
             throw new InvalidOperationException(
-                "The transaction-journal runtime failed to initialize.",
-                initializationFailure);
+                "The transaction-journal runtime failed to initialize.", initializationFailure);
         }
     }
 
@@ -758,76 +768,25 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
     {
         NativeTransactionJournalOwner? owner;
         NativeTransactionJournalPayloadStore? store;
-        lock (sync)
+        lock (sync) { owner = journalOwner; store = payloadStore; }
+        try
         {
-            owner = journalOwner;
-            store = payloadStore;
-            journalOwner = null;
-            payloadStore = null;
-        }
-
-        Exception? cleanupFailure = null;
-        if (owner is not null)
-        {
-            try
+            if (owner is not null)
             {
                 await owner.DisposeAsync();
+                lock (sync) { journalOwner = null; }
             }
-            catch (Exception exception)
-            {
-                cleanupFailure = exception;
-            }
-        }
-
-        if (store is not null)
-        {
-            try
+            if (store is not null)
             {
                 store.Dispose();
+                lock (sync) { payloadStore = null; }
             }
-            catch (Exception exception)
-            {
-                cleanupFailure = cleanupFailure is null
-                    ? exception
-                    : new AggregateException(cleanupFailure, exception);
-            }
+            return null;
         }
-
-        return cleanupFailure;
-    }
-
-    private static async Task<Exception?> DisposeInitializationResourcesAsync(
-        NativeTransactionJournalOwner? owner,
-        NativeTransactionJournalPayloadStore? store)
-    {
-        Exception? cleanupFailure = null;
-        if (owner is not null)
+        catch (Exception exception)
         {
-            try
-            {
-                await owner.DisposeAsync();
-            }
-            catch (Exception exception)
-            {
-                cleanupFailure = exception;
-            }
+            return exception; // Keep every not-yet-closed owner/store reachable for explicit retry.
         }
-
-        if (store is not null)
-        {
-            try
-            {
-                store.Dispose();
-            }
-            catch (Exception exception)
-            {
-                cleanupFailure = cleanupFailure is null
-                    ? exception
-                    : new AggregateException(cleanupFailure, exception);
-            }
-        }
-
-        return cleanupFailure;
     }
 
     private void ObserveJournalFaultLocked()

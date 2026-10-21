@@ -194,7 +194,9 @@ export const zhShellCopy = {
     rescan: "重新掃描",
     cancel: "取消掃描",
     scanning: "正在掃描",
+    scanFailed: "掃描未能完成。請前往任務中心查看詳細資訊。",
     volumeColumnLabel: "磁碟",
+    rootSelectorLabel: "掃描根目錄",
     noVolumes: "沒有找到可以掃描的磁碟。",
     notReady: "未就緒",
     freeOfTotal: (free: string, total: string) => `可用 ${free} / 共 ${total}`,
@@ -223,7 +225,7 @@ export const zhShellCopy = {
     collapseSetup: "收起設定",
     expandSetup: "重新設定",
     scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · ${files} 個檔案 · ${folders} 個資料夾`,
+      `${size} · 本根目錄 · 本次掃描共 ${files} 個檔案、${folders} 個資料夾`,
     fileCount: (count: number) => `${count} 個檔案`,
     omitted: (count: number) =>
       `還有 ${count} 個方格這會兒太小或者不在視野裡，放大就會出現。`,

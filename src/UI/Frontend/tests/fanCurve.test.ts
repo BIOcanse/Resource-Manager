@@ -5,7 +5,8 @@ import {
   defaultStops,
   isMonotonic,
   percentAt,
-  stopsFromCurve
+  stopsFromCurve,
+  temperaturesFromCurve
 } from "../src/features/control/fanCurve.ts";
 
 // 调整点是固定的，每 5 度一个。
@@ -89,3 +90,17 @@ assert.equal(
   "温度升了转速反而降，要能看出来");
 
 console.log("fanCurve: ok");
+
+const hotCurve = [
+  { temperatureCelsius: 0, percent: 0 },
+  { temperatureCelsius: 60, percent: 30 },
+  { temperatureCelsius: 80, percent: 50 },
+  { temperatureCelsius: 95, percent: 100 }
+];
+const temperatures = temperaturesFromCurve(hotCurve);
+assert.deepEqual(curveFromStops(stopsFromCurve(hotCurve, temperatures), temperatures), hotCurve,
+  "loading and saving must preserve the high-temperature end");
+const adjusted = stopsFromCurve(hotCurve, temperatures);
+adjusted[1] = 35;
+assert.deepEqual(curveFromStops(adjusted, temperatures).at(-1), hotCurve.at(-1),
+  "editing a lower point must retain the 95°C / 100% point");

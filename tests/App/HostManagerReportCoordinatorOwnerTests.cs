@@ -19,11 +19,93 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
+public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
 {
     private readonly string testRoot = Path.Combine(
         Path.GetTempPath(),
         $"rm-report-owner-{Guid.NewGuid():N}");
+
+    [Theory]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, true)]
+    public async Task StopAttemptsEverySubscriptionReleaseAndPreservesFailures(
+        bool failInterrupts,
+        bool failResources,
+        bool failMetrics)
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = 1,
+            HostManager = HostManagerTestPlanFactory.CreatePlan()
+        });
+        var metrics = new CachedMetricSource { ReleaseFailure = failMetrics ? new IOException("metric-release") : null };
+        var resources = new CachedResourceSource { ReleaseFailure = failResources ? new IOException("resource-release") : null };
+        var interrupts = new UnavailableInterruptSource { ReleaseFailure = failInterrupts ? new IOException("interrupt-release") : null };
+        using var owner = new HostManagerReportCoordinatorOwner(
+            provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
+            new NativeReportCoordinatorPersistenceStore(CreateDatabase()), metrics, resources, interrupts,
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await owner.StartAsync(timeout.Token);
+        try
+        {
+            var failure = await Record.ExceptionAsync(() => owner.StopAsync(timeout.Token));
+            var expected = new[] { interrupts.ReleaseFailure, resources.ReleaseFailure, metrics.ReleaseFailure }
+                .OfType<Exception>().ToArray();
+            if (expected.Length == 1)
+            {
+                Assert.Same(expected[0], failure);
+            }
+            else
+            {
+                var aggregate = Assert.IsType<AggregateException>(failure);
+                Assert.Equal(expected.Length, aggregate.InnerExceptions.Count);
+                foreach (var item in expected) Assert.Contains(item, aggregate.InnerExceptions);
+            }
+            Assert.Equal(0, interrupts.ActiveSubscriptions);
+            Assert.Equal(0, resources.ActiveSubscriptions);
+            Assert.Equal(0, metrics.ActiveSubscriptions);
+        }
+        finally
+        {
+            await owner.StopAsync(timeout.Token);
+        }
+    }
+
+    [Fact]
+    public async Task StartupAcquisitionFailureRetainsItsCauseAndStillReleasesEarlierSubscriptions()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = 1,
+            HostManager = HostManagerTestPlanFactory.CreatePlan()
+        });
+        var acquisitionFailure = new InvalidOperationException("interrupt-acquire");
+        var releaseFailure = new IOException("resource-release");
+        var metrics = new CachedMetricSource();
+        var resources = new CachedResourceSource { ReleaseFailure = releaseFailure };
+        var interrupts = new UnavailableInterruptSource { AcquisitionFailure = acquisitionFailure };
+        using var owner = new HostManagerReportCoordinatorOwner(
+            provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
+            new NativeReportCoordinatorPersistenceStore(CreateDatabase()), metrics, resources, interrupts,
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var aggregate = await Assert.ThrowsAsync<AggregateException>(() => owner.StartAsync(timeout.Token));
+        var failures = aggregate.Flatten().InnerExceptions;
+        Assert.Equal(2, failures.Count);
+        Assert.Contains(acquisitionFailure, failures);
+        Assert.Contains(releaseFailure, failures);
+        Assert.Equal(0, interrupts.ActiveSubscriptions);
+        Assert.Equal(0, resources.ActiveSubscriptions);
+        Assert.Equal(0, metrics.ActiveSubscriptions);
+    }
 
     [Fact]
     public async Task InitialSettlementPublishesThePersistedPlanWithoutReplanning()
@@ -50,7 +132,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             interrupts,
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var startupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         await owner.StartAsync(startupTimeout.Token);
@@ -111,7 +193,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             new CachedResourceSource(),
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var startup = owner.StartAsync(timeout.Token);
 
@@ -163,7 +245,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             new CachedResourceSource(),
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -269,7 +351,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var firstObservedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
 
@@ -446,7 +528,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             persistence, new CachedMetricSource(), resources, new UnavailableInterruptSource(),
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var start = DateTimeOffset.UtcNow.AddSeconds(-20);
         await owner.StartAsync(timeout.Token);
@@ -532,7 +614,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             interrupts,
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var start = DateTimeOffset.UtcNow.AddSeconds(-20);
         var sample = 0;
@@ -611,7 +693,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             persistence, new CachedMetricSource(), pausedSource, new UnavailableInterruptSource(),
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var observedAt = DateTimeOffset.UtcNow.AddSeconds(-20);
         Task<OptimizationReportOverview>? older = null;
@@ -773,6 +855,8 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
     {
         private int activeSubscriptions;
 
+        internal Exception? ReleaseFailure { get; init; }
+
         internal int ActiveSubscriptions => Volatile.Read(ref activeSubscriptions);
 
         public IDisposable AcquireSubscription(
@@ -782,7 +866,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
         {
             Interlocked.Increment(ref activeSubscriptions);
             return new CallbackLease(() =>
-                Interlocked.Decrement(ref activeSubscriptions));
+                Interlocked.Decrement(ref activeSubscriptions), ReleaseFailure);
         }
 
         public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
@@ -792,6 +876,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
     private sealed class CachedResourceSource : IResourceBreakdownObservationSource
     {
         private int activeSubscriptions;
+        internal Exception? ReleaseFailure { get; init; }
         private ResourceBreakdownSnapshot snapshot = new(
             DateTimeOffset.Parse("2026-08-26T00:00:00Z"),
             [])
@@ -814,7 +899,7 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
         {
             Interlocked.Increment(ref activeSubscriptions);
             return new CallbackLease(() =>
-                Interlocked.Decrement(ref activeSubscriptions));
+                Interlocked.Decrement(ref activeSubscriptions), ReleaseFailure);
         }
 
         public ResourceBreakdownSnapshot ReadLatest(
@@ -865,6 +950,8 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
     private sealed class UnavailableInterruptSource : ISystemInterruptSnapshotSource
     {
         private int activeSubscriptions;
+        internal Exception? AcquisitionFailure { get; init; }
+        internal Exception? ReleaseFailure { get; init; }
         private readonly SystemInterruptSnapshot snapshot = new(
             DateTimeOffset.UnixEpoch,
             false,
@@ -891,16 +978,17 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             string subscriptionId,
             TimeSpan refreshInterval)
         {
+            if (AcquisitionFailure is not null) throw AcquisitionFailure;
             Interlocked.Increment(ref activeSubscriptions);
             return new CallbackLease(() =>
-                Interlocked.Decrement(ref activeSubscriptions));
+                Interlocked.Decrement(ref activeSubscriptions), ReleaseFailure);
         }
 
         public SystemInterruptSnapshot Read()
             => snapshot;
     }
 
-    private sealed class CallbackLease(Action release) : IDisposable
+    private sealed class CallbackLease(Action release, Exception? failure = null) : IDisposable
     {
         private int disposed;
 
@@ -909,12 +997,15 @@ public sealed class HostManagerReportCoordinatorOwnerTests : IDisposable
             if (Interlocked.Exchange(ref disposed, 1) == 0)
             {
                 release();
+                if (failure is not null) throw failure;
             }
         }
     }
 
     private sealed class EmptyProtectionService : IOptimizationProtectionService
     {
+        public Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
         public int ProtectedTargetCount => 0;
 
         public Task<ProtectedOptimizationTarget?> ProtectReportAsync(

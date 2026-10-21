@@ -151,9 +151,10 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             AddCatalogSource(
                 observations,
                 NativeRuntimeAttributionSources.Adapted,
-                adaptedCatalog.Observe(process),
+                LimitAdaptedObservation(adaptedCatalog.Observe(process), process),
                 adaptedBindings
-                    .Where(binding => MatchesDirectProcessBinding(binding, process))
+                    .Where(binding => MatchesDirectProcessBinding(binding, process)
+                        && IsWithinAdaptedRoots(binding.Attribution, process))
                     .Select(static binding => binding.Attribution),
                 frame.FrameEpoch);
             AddCatalogSource(
@@ -566,10 +567,6 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         {
             var roots = registration.ProgramRootPaths
                 .Select(RequireCanonicalPath)
-                .Concat(registration.Processes
-                    .Select(static process => process.ExecutablePath)
-                    .Where(static value => !string.IsNullOrWhiteSpace(value))
-                    .Select(RequireExecutableDirectory))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
             var attribution = software.FirstOrDefault(value =>
@@ -580,6 +577,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     SoftwareKinds.Adapted,
                     SoftwareDisplayKinds.Adapted,
                     roots);
+            attribution = attribution with { RootPaths = roots };
             foreach (var process in registration.Processes)
             {
                 if (process.ProcessId is { } processId
@@ -594,8 +592,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
             definitions.Add(CreateDefinition(
                 attribution,
                 NativeSoftwareIdentitySources.Adapted,
-                registration.Processes.Select(static process =>
-                    (process.Name, process.ExecutablePath)),
+                // Adapter declarations are hints within an owned root, never independent claims.
+                [],
                 roots, prohibitedAliases));
         }
         bindings = direct;
@@ -794,6 +792,16 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
 
     private static ulong SourceEvidence(uint source)
         => 1UL << checked((int)source - 1);
+
+    internal static bool IsWithinAdaptedRoots(RuntimeSoftwareAttribution attribution, RuntimeProcessIdentity process)
+        => CanonicalPath(process.ExecutablePath) is { } path
+            && attribution.RootPaths.Any(root => IsUnder(path, CanonicalPath(root)));
+
+    private static NativeSourceCatalogObservation LimitAdaptedObservation(
+        NativeSourceCatalogObservation observation, RuntimeProcessIdentity process)
+        => observation.Conflict ? observation
+            : observation with { Candidates = observation.Candidates
+                .Where(candidate => IsWithinAdaptedRoots(candidate.Attribution, process)).ToArray() };
 
     private static bool MatchesDirectProcessBinding(
         DirectProcessBinding binding,

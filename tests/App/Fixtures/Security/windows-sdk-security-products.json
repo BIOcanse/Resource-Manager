@@ -1,0 +1,107 @@
+{
+  "pointerSize": 8,
+  "initialize": 7,
+  "count": 8,
+  "item": 9,
+  "name": 7,
+  "state": 8,
+  "signature": 9,
+  "remediation": 10,
+  "timestamp": 11,
+  "stateValues": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "signatureValues": [
+    0,
+    1
+  ],
+  "interfaceId": "722A338C-6E8E-4E72-AC27-1417FB0C81C2",
+  "classId": "17072F7B-9ABE-4A74-A261-1EB76B55107A",
+  "extendedInterfaces": {
+    "IWscProduct": {
+      "iid": "8C38232E-3A45-4A27-92B0-1A16A975F669",
+      "parent": "IDispatch",
+      "getters": [
+        {
+          "name": "get_ProductName",
+          "slot": 7
+        },
+        {
+          "name": "get_ProductState",
+          "slot": 8
+        },
+        {
+          "name": "get_SignatureStatus",
+          "slot": 9
+        },
+        {
+          "name": "get_RemediationPath",
+          "slot": 10
+        },
+        {
+          "name": "get_ProductStateTimestamp",
+          "slot": 11
+        },
+        {
+          "name": "get_ProductGuid",
+          "slot": 12
+        },
+        {
+          "name": "get_ProductIsDefault",
+          "slot": 13
+        }
+      ]
+    },
+    "IWscProduct2": {
+      "iid": "F896CA54-FE09-4403-86D4-23CB488D81D8",
+      "parent": "IWscProduct",
+      "getters": [
+        {
+          "name": "get_AntivirusScanSubstatus",
+          "slot": 14
+        },
+        {
+          "name": "get_AntivirusSettingsSubstatus",
+          "slot": 15
+        },
+        {
+          "name": "get_AntivirusProtectionUpdateSubstatus",
+          "slot": 16
+        },
+        {
+          "name": "get_FirewallDomainProfileSubstatus",
+          "slot": 17
+        },
+        {
+          "name": "get_FirewallPrivateProfileSubstatus",
+          "slot": 18
+        },
+        {
+          "name": "get_FirewallPublicProfileSubstatus",
+          "slot": 19
+        }
+      ]
+    },
+    "IWscProduct3": {
+      "iid": "55536524-D1D1-4726-8C7C-04996A1904E7",
+      "parent": "IWscProduct2",
+      "getters": [
+        {
+          "name": "get_AntivirusDaysUntilExpired",
+          "slot": 20
+        }
+      ]
+    }
+  },
+  "extensionsSource": {
+    "url": "https://raw.githubusercontent.com/microsoft/win32metadata/28f487f630b0b9233bb2aad4fd29f5a94c3cc41d/generation/WinSDK/RecompiledIdlHeaders/um/iwscapi.h",
+    "header": {
+      "path": "D:\\Code\\Resource-Manager-Development\\.local\\software-product-completion\\next-backend-source-review\\security-product-primary-iwscapi.h",
+      "length": 45029,
+      "sha256": "D3DFA9ACFFA907D1F22BD27BD02971A638F7E9FCE14AC2B379F23AC1B7E3B6AC"
+    }
+  }
+}

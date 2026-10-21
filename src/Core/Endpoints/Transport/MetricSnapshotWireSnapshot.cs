@@ -105,6 +105,9 @@ public sealed record MetricSnapshotWireSnapshot(
             {
                 DisplayValue = "-",
                 NumericValue = null,
+                IntegerValue = null,
+                BytesValue = null,
+                SampleDurationMilliseconds = null,
                 Percent = null
             };
         }

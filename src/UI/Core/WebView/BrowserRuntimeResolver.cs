@@ -61,7 +61,7 @@ internal static class BrowserRuntimeResolver
         };
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", script, "-DownloadDirectory",
-            Path.Combine(NativeUiPaths.PackageRoot, "Dependencies", "shared-webview2-runtime", "installer") })
+            Path.Combine(NativeUiPaths.WebViewUserRoot, "RuntimeInstallers") })
             start.ArgumentList.Add(argument);
 
         using var process = Process.Start(start)

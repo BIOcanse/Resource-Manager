@@ -38,14 +38,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await coordinator.SetModeAsync(request.Mode, cancellationToken));
-        }).AllowAnonymous();
+        });
 
         app.MapPost("/api/optimization/smart/run-once", async (
             IHostManagerSmartCoordinator coordinator,
             CancellationToken cancellationToken) =>
         {
             return Results.Ok(await coordinator.RunOnceAsync(cancellationToken));
-        }).AllowAnonymous();
+        });
 
         if (loopbackApiPipelineMode == LoopbackApiPipelineMode.Administrator)
         {

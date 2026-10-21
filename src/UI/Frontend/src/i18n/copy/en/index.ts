@@ -4,7 +4,6 @@ import { enDeviceAdaptersCopy } from "./deviceAdapters.ts";
 import { enDeviceDetailsCopy } from "./deviceDetails.ts";
 import { enDeviceTopologyCopy } from "./deviceTopology.ts";
 import { enHotkeysCopy } from "./hotkeys.ts";
-import { enMigrationCopy } from "./migration.ts";
 import { enMetricLabelsCopy } from "./metricLabels.ts";
 import { enMonitorCopy } from "./monitor.ts";
 import { enMonitorViewsCopy } from "./monitorViews.ts";
@@ -36,7 +35,6 @@ export const enAppCopy: AppCopy = {
   ...enDetailsCopy,
   ...enSoftwareDetailCopy,
   ...enSoftwareActionsCopy,
-  ...enMigrationCopy,
   ...enHotkeysCopy,
   ...enTaskCenterCopy,
   ...enTargetedReportCopy,

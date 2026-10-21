@@ -1,15 +1,15 @@
 const std = @import("std");
+pub const ExternalScratch = @import("pdh_scratch.zig");
+const PhysicalNetwork = @import("physical_network.zig");
 const ResultCode = @import("../common/result_codes.zig").ResultCode;
 
-pub const abi_version: u32 = 0x0001_0000;
+pub const abi_version: u32 = 0x0002_0000;
 
 const PDH_MORE_DATA: i32 = @bitCast(@as(u32, 0x8000_07d2));
 const PDH_FMT_DOUBLE: u32 = 0x0000_0200;
 const PDH_CSTATUS_VALID_DATA: u32 = 0;
 const PDH_CSTATUS_NEW_DATA: u32 = 1;
-const MAX_ARRAY_BUFFER_BYTES: u32 = 64 * 1024 * 1024;
-const DEFAULT_BASELINE_RESET_INTERVAL_MS: u32 = 5_000;
-const MIN_BASELINE_RESET_INTERVAL_MS: u32 = 1_000;
+const MAX_ARRAY_BUFFER_BYTES = ExternalScratch.maximum_request;
 
 const PdhHandle = ?*anyopaque;
 
@@ -47,6 +47,21 @@ extern "pdh" fn PdhCloseQuery(query: PdhHandle) callconv(.winapi) i32;
 extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 extern "kernel32" fn QueryPerformanceCounter(value: *i64) callconv(.winapi) i32;
 extern "kernel32" fn QueryPerformanceFrequency(value: *i64) callconv(.winapi) i32;
+
+const FileTime = extern struct { low: u32, high: u32 };
+const RawCounter = extern struct { status: u32, timestamp: FileTime, first: i64, second: i64, multi_count: u32 };
+const RawCounterItem = extern struct { name: ?[*:0]const u16, value: RawCounter };
+extern "pdh" fn PdhGetRawCounterArrayW(counter: PdhHandle, size: *u32, count: *u32, buffer: ?[*]RawCounterItem) callconv(.winapi) i32;
+extern "pdh" fn PdhGetCounterTimeBase(counter: PdhHandle, frequency: *i64) callconv(.winapi) i32;
+extern "kernel32" fn GetSystemTimeAsFileTime(value: *FileTime) callconv(.winapi) void;
+extern "kernel32" fn LocalFileTimeToFileTime(local: *const FileTime, utc: *FileTime) callconv(.winapi) i32;
+const EngineSampleKey = struct { luid: u64, pid: u32, physical: u32, engine: u32 };
+const EngineSampleTime = struct { utc: i64, counter: i64, frequency: i64, unique: bool = true };
+// Sidecar only: legacy FrameHeader/GpuEngineRow and formatted usage ABI remain unchanged.
+pub const GpuEngineWindow = extern struct {
+    adapter_luid: u64, process_id: u32, physical_index: u32, engine_index: u32, reserved: u32 = 0,
+    begin_filetime: i64, end_filetime: i64, begin_counter: i64, end_counter: i64, counter_frequency: i64,
+};
 
 const PdhFormattedCounterValue = extern struct {
     c_status: u32,
@@ -100,6 +115,8 @@ pub const GpuEngineRow = extern struct {
     adapter_luid: u64,
     process_id: u32,
     engine_class: u32,
+    physical_index: u32,
+    engine_index: u32,
     usage_percent: f64,
 };
 
@@ -152,18 +169,17 @@ const GpuCounterMetadata = struct {
     adapter_luid: u64,
     process_id: u32,
     engine_class: EngineClass,
+    physical_index: u32,
+    engine_index: u32,
 };
 
 const CounterSet = struct {
-    disk_active: PdhHandle = null,
+    disk_idle: PdhHandle = null,
     disk_read: PdhHandle = null,
     disk_write: PdhHandle = null,
     disk_queue: PdhHandle = null,
     gpu_engine: PdhHandle = null,
     gpu_memory: PdhHandle = null,
-    network_receive: PdhHandle = null,
-    network_send: PdhHandle = null,
-    network_bandwidth: PdhHandle = null,
 
     fn count(self: *const CounterSet) u32 {
         var result: u32 = 0;
@@ -181,15 +197,18 @@ const ArrayBuffer = struct {
         self.words.deinit(allocator);
     }
 
-    fn byteCapacity(self: *const ArrayBuffer) u32 {
+    fn byteCapacity(self: *const ArrayBuffer, scratch: ?*ExternalScratch.Scratch) u32 {
+        if (scratch) |external| return external.region.length;
         return @intCast(self.words.items.len * @sizeOf(u64));
     }
 
-    fn itemPointer(self: *ArrayBuffer) ?[*]PdhFormattedCounterValueItem {
+    fn bytePointer(self: *ArrayBuffer, scratch: ?*ExternalScratch.Scratch) ?[*]u8 {
+        if (scratch) |external| return external.region.address;
         return if (self.words.items.len == 0) null else @ptrCast(self.words.items.ptr);
     }
 
-    fn ensureByteCapacity(self: *ArrayBuffer, allocator: std.mem.Allocator, required_bytes: u32) !void {
+    fn ensureByteCapacity(self: *ArrayBuffer, allocator: std.mem.Allocator, required_bytes: u32, scratch: ?*ExternalScratch.Scratch) !void {
+        if (scratch) |external| return external.ensure(required_bytes);
         if (required_bytes > MAX_ARRAY_BUFFER_BYTES) return error.ArrayBufferTooLarge;
         const required_words = (@as(usize, required_bytes) + @sizeOf(u64) - 1) / @sizeOf(u64);
         if (required_words > self.words.items.len) try self.words.resize(allocator, required_words);
@@ -199,38 +218,33 @@ const ArrayBuffer = struct {
 const ArrayBuffers = struct {
     gpu_engine: ArrayBuffer = .{},
     gpu_memory: ArrayBuffer = .{},
-    network_receive: ArrayBuffer = .{},
-    network_send: ArrayBuffer = .{},
-    network_bandwidth: ArrayBuffer = .{},
 
     fn deinit(self: *ArrayBuffers, allocator: std.mem.Allocator) void {
         self.gpu_engine.deinit(allocator);
         self.gpu_memory.deinit(allocator);
-        self.network_receive.deinit(allocator);
-        self.network_send.deinit(allocator);
-        self.network_bandwidth.deinit(allocator);
     }
 };
 
 const gpu_engine_path = std.unicode.utf8ToUtf16LeStringLiteral("\\GPU Engine(*)\\Utilization Percentage");
 const gpu_memory_path = std.unicode.utf8ToUtf16LeStringLiteral("\\GPU Process Memory(*)\\Dedicated Usage");
-const disk_active_path = std.unicode.utf8ToUtf16LeStringLiteral("\\PhysicalDisk(_Total)\\% Disk Time");
+const disk_idle_path = std.unicode.utf8ToUtf16LeStringLiteral("\\PhysicalDisk(_Total)\\% Idle Time");
 const disk_read_path = std.unicode.utf8ToUtf16LeStringLiteral("\\PhysicalDisk(_Total)\\Disk Read Bytes/sec");
 const disk_write_path = std.unicode.utf8ToUtf16LeStringLiteral("\\PhysicalDisk(_Total)\\Disk Write Bytes/sec");
 const disk_queue_path = std.unicode.utf8ToUtf16LeStringLiteral("\\PhysicalDisk(_Total)\\Current Disk Queue Length");
-const network_receive_path = std.unicode.utf8ToUtf16LeStringLiteral("\\Network Interface(*)\\Bytes Received/sec");
-const network_send_path = std.unicode.utf8ToUtf16LeStringLiteral("\\Network Interface(*)\\Bytes Sent/sec");
-const network_bandwidth_path = std.unicode.utf8ToUtf16LeStringLiteral("\\Network Interface(*)\\Current Bandwidth");
 
 pub const Collector = struct {
     allocator: std.mem.Allocator,
-    baseline_reset_interval_ms: u32,
+    external_scratch: bool = false,
     query: PdhHandle = null,
     counters: CounterSet = .{},
     array_buffers: ArrayBuffers = .{},
     engine_rows: std.ArrayList(GpuEngineRow) = .empty,
     memory_rows: std.ArrayList(GpuMemoryRow) = .empty,
+    engine_windows: std.ArrayList(GpuEngineWindow) = .empty,
+    engine_sample_times: std.AutoHashMapUnmanaged(EngineSampleKey, EngineSampleTime) = .empty,
+    raw_engine_buffer: ArrayBuffer = .{},
     system_io: SystemIo = emptySystemIo(),
+    network: PhysicalNetwork.Sampler = .{},
     diagnostics: Diagnostics = emptyDiagnostics(),
     topology_generation: u32 = 0,
     sequence: u64 = 0,
@@ -240,12 +254,12 @@ pub const Collector = struct {
     last_native_status: i32 = 0,
 
     pub fn create(config: *const Config) !*Collector {
+        // Retained in the ABI/configuration shape for older profiles. A gap
+        // between valid captures is the rate window, not a reason to discard it.
+        _ = config.baseline_reset_interval_ms;
         const allocator = std.heap.page_allocator;
         const collector = try allocator.create(Collector);
-        collector.* = .{
-            .allocator = allocator,
-            .baseline_reset_interval_ms = normalizeBaselineResetInterval(config.baseline_reset_interval_ms),
-        };
+        collector.* = .{ .allocator = allocator };
         return collector;
     }
 
@@ -255,6 +269,9 @@ pub const Collector = struct {
         self.array_buffers.deinit(allocator);
         self.engine_rows.deinit(allocator);
         self.memory_rows.deinit(allocator);
+        self.engine_windows.deinit(allocator);
+        self.engine_sample_times.deinit(allocator);
+        self.raw_engine_buffer.deinit(allocator);
         allocator.destroy(self);
     }
 
@@ -263,8 +280,19 @@ pub const Collector = struct {
     }
 
     pub fn sample(self: *Collector, header: *FrameHeader) ResultCode {
+        if (self.external_scratch) return .invalid_argument;
+        return self.sampleCore(header, null);
+    }
+
+    pub fn sampleExternal(self: *Collector, header: *FrameHeader, provider: ExternalScratch.Provider) ResultCode {
+        if (!self.external_scratch or provider.supply == null) return .invalid_argument;
+        var scratch: ExternalScratch.Scratch = .{ .provider = provider };
+        return self.sampleCore(header, &scratch);
+    }
+
+    fn sampleCore(self: *Collector, header: *FrameHeader, scratch: ?*ExternalScratch.Scratch) ResultCode {
         if (self.pending_topology_refresh or self.query == null) {
-            const rebuilt = self.rebuildQuery() catch {
+            const rebuilt = self.rebuildQuery(scratch) catch {
                 self.writeHeader(header, 0);
                 return .out_of_memory;
             };
@@ -280,51 +308,48 @@ pub const Collector = struct {
         }
 
         const now_tick_ms = GetTickCount64();
-        const requires_new_baseline = self.last_collect_tick_ms != 0 and now_tick_ms -| self.last_collect_tick_ms > self.baseline_reset_interval_ms;
         const frame_started = performanceCounter();
         const collect_started = performanceCounter();
+        var collect_utc_begin: FileTime = undefined;
+        var collect_utc_end: FileTime = undefined;
+        GetSystemTimeAsFileTime(&collect_utc_begin);
         const collect_status = PdhCollectQueryData(self.query);
+        GetSystemTimeAsFileTime(&collect_utc_end);
         const collect_finished = performanceCounter();
         self.last_native_status = collect_status;
         if (collect_status != 0) {
+            self.engine_sample_times.clearRetainingCapacity();
+            self.engine_windows.clearRetainingCapacity();
             self.writeDiagnostics(frame_started, collect_started, collect_finished, collect_finished, collect_finished, 0);
             self.writeHeader(header, 0);
             return .pdh_error;
         }
 
         self.last_collect_tick_ms = now_tick_ms;
-        if (requires_new_baseline) {
-            self.resetFrameData();
-            self.writeDiagnostics(frame_started, collect_started, collect_finished, collect_finished, collect_finished, 0);
-            self.writeHeader(header, FrameFlags.baseline_collected);
-            return .no_data;
-        }
-
         self.resetFrameData();
 
+        self.readEngineWindows(collect_utc_begin, collect_utc_end, scratch) catch {
+            self.engine_windows.clearRetainingCapacity();
+            self.engine_sample_times.clearRetainingCapacity();
+        };
         const read_started = performanceCounter();
         var valid_value_count: usize = 0;
         var partial = false;
 
         self.readFixedCounters(&valid_value_count, &partial);
-        const gpu_engine_complete = self.readGpuEngineRows(&valid_value_count, &partial) catch {
+        const gpu_engine_complete = self.readGpuEngineRows(&valid_value_count, &partial, scratch) catch {
             const read_finished = performanceCounter();
             self.writeDiagnostics(frame_started, collect_started, collect_finished, read_started, read_finished, valid_value_count);
             self.writeHeader(header, FrameFlags.partial);
             return .out_of_memory;
         };
-        const gpu_memory_complete = self.readGpuMemoryRows(&valid_value_count, &partial) catch {
+        const gpu_memory_complete = self.readGpuMemoryRows(&valid_value_count, &partial, scratch) catch {
             const read_finished = performanceCounter();
             self.writeDiagnostics(frame_started, collect_started, collect_finished, read_started, read_finished, valid_value_count);
             self.writeHeader(header, FrameFlags.partial);
             return .out_of_memory;
         };
-        const network_complete = self.readNetworkCounters(&valid_value_count, &partial) catch {
-            const read_finished = performanceCounter();
-            self.writeDiagnostics(frame_started, collect_started, collect_finished, read_started, read_finished, valid_value_count);
-            self.writeHeader(header, FrameFlags.partial);
-            return .out_of_memory;
-        };
+        const network_complete = self.readNetworkCounters(now_tick_ms, &valid_value_count, &partial);
         // 磁盘这个域**只要有一项读到了就算有数**。
         //
         // 先前要求四项全齐（活动时间、读、写、队列），缺一项整个域不上报，
@@ -388,7 +413,7 @@ pub const Collector = struct {
         diagnostics.* = self.diagnostics;
     }
 
-    fn rebuildQuery(self: *Collector) !bool {
+    fn rebuildQuery(self: *Collector, scratch: ?*ExternalScratch.Scratch) !bool {
         self.pending_topology_refresh = false;
         var new_query: PdhHandle = null;
         const open_status = PdhOpenQueryW(null, 0, &new_query);
@@ -404,32 +429,35 @@ pub const Collector = struct {
         };
 
         var new_counters: CounterSet = .{};
-        addCounter(new_query, disk_active_path, &new_counters.disk_active);
+        addCounter(new_query, disk_idle_path, &new_counters.disk_idle);
         addCounter(new_query, disk_read_path, &new_counters.disk_read);
         addCounter(new_query, disk_write_path, &new_counters.disk_write);
         addCounter(new_query, disk_queue_path, &new_counters.disk_queue);
         addCounter(new_query, gpu_engine_path, &new_counters.gpu_engine);
         addCounter(new_query, gpu_memory_path, &new_counters.gpu_memory);
-        addCounter(new_query, network_receive_path, &new_counters.network_receive);
-        addCounter(new_query, network_send_path, &new_counters.network_send);
-        addCounter(new_query, network_bandwidth_path, &new_counters.network_bandwidth);
         if (new_counters.count() == 0) return false;
 
+        var baseline_begin: FileTime = undefined;
+        var baseline_end: FileTime = undefined;
+        GetSystemTimeAsFileTime(&baseline_begin);
         const baseline_status = PdhCollectQueryData(new_query);
+        GetSystemTimeAsFileTime(&baseline_end);
         self.last_native_status = baseline_status;
         if (baseline_status != 0) return false;
 
-        try prepareArrayBuffer(self.allocator, new_counters.gpu_engine, &self.array_buffers.gpu_engine);
-        try prepareArrayBuffer(self.allocator, new_counters.gpu_memory, &self.array_buffers.gpu_memory);
-        try prepareArrayBuffer(self.allocator, new_counters.network_receive, &self.array_buffers.network_receive);
-        try prepareArrayBuffer(self.allocator, new_counters.network_send, &self.array_buffers.network_send);
-        try prepareArrayBuffer(self.allocator, new_counters.network_bandwidth, &self.array_buffers.network_bandwidth);
+        try prepareArrayBuffer(self.allocator, new_counters.gpu_engine, &self.array_buffers.gpu_engine, scratch);
+        try prepareArrayBuffer(self.allocator, new_counters.gpu_memory, &self.array_buffers.gpu_memory, scratch);
 
         if (self.query != null) _ = PdhCloseQuery(self.query);
         self.query = new_query;
         self.counters = new_counters;
+        self.engine_sample_times.clearRetainingCapacity();
+        self.engine_windows.clearRetainingCapacity();
+        self.readEngineWindows(baseline_begin, baseline_end, scratch) catch { self.engine_sample_times.clearRetainingCapacity(); };
         self.topology_generation +%= 1;
         self.last_collect_tick_ms = GetTickCount64();
+        self.network.reset();
+        _ = self.network.read(self.last_collect_tick_ms);
         committed = true;
         return true;
     }
@@ -439,6 +467,9 @@ pub const Collector = struct {
         self.query = null;
         self.counters = .{};
         self.last_collect_tick_ms = 0;
+        self.engine_sample_times.clearRetainingCapacity();
+        self.engine_windows.clearRetainingCapacity();
+        self.network.reset();
     }
 
     fn resetFrameData(self: *Collector) void {
@@ -449,7 +480,7 @@ pub const Collector = struct {
 
     fn readFixedCounters(self: *Collector, valid_value_count: *usize, partial: *bool) void {
         self.readFixedCounter(
-            self.counters.disk_active,
+            self.counters.disk_idle,
             IoValidMask.disk_active,
             &self.system_io.disk_active_percent,
             true,
@@ -487,7 +518,7 @@ pub const Collector = struct {
         counter: PdhHandle,
         mask: u32,
         destination: *f64,
-        clamp_percent: bool,
+        idle_percent: bool,
         valid_value_count: *usize,
         partial: *bool,
     ) void {
@@ -499,17 +530,73 @@ pub const Collector = struct {
             partial.* = true;
             return;
         };
-        destination.* = if (clamp_percent) sanitizePercent(value) else sanitizeNonNegative(value);
+        // Disk Time includes concurrent requests and can exceed 100%; the
+        // activity field is the complement of the physical disk idle timer.
+        destination.* = if (idle_percent) diskActivityFromIdle(value) else sanitizeNonNegative(value);
         self.system_io.valid_mask |= mask;
         valid_value_count.* += 1;
     }
 
-    fn readGpuEngineRows(self: *Collector, valid_value_count: *usize, partial: *bool) !bool {
+    pub fn copyEngineWindows(self: *const Collector, expected: u64, rows: ?[*]GpuEngineWindow, capacity: u32, row_size: u32, count: *u32) ResultCode {
+        count.* = @intCast(self.engine_windows.items.len);
+        if (row_size != @sizeOf(GpuEngineWindow)) return .abi_mismatch;
+        if (expected != self.sequence) return .stale_frame;
+        if (capacity < self.engine_windows.items.len) return .buffer_too_small;
+        if (self.engine_windows.items.len > 0 and rows == null) return .invalid_argument;
+        if (rows) |destination| @memcpy(destination[0..self.engine_windows.items.len], self.engine_windows.items);
+        return .ok;
+    }
+
+    fn readEngineWindows(self: *Collector, utc_begin: FileTime, utc_end: FileTime, scratch: ?*ExternalScratch.Scratch) !void {
+        self.engine_windows.clearRetainingCapacity();
+        var next: std.AutoHashMapUnmanaged(EngineSampleKey, EngineSampleTime) = .empty;
+        errdefer next.deinit(self.allocator);
+        var frequency: i64 = 0;
+        if (PdhGetCounterTimeBase(self.counters.gpu_engine, &frequency) != 0 or frequency <= 0) {
+            self.engine_sample_times.clearRetainingCapacity(); return;
+        }
+        var size: u32 = 0;
+        var count: u32 = 0;
+        if (PdhGetRawCounterArrayW(self.counters.gpu_engine, &size, &count, null) != PDH_MORE_DATA or size == 0) {
+            self.engine_sample_times.clearRetainingCapacity(); return;
+        }
+        try self.raw_engine_buffer.ensureByteCapacity(self.allocator, size, scratch);
+        size = self.raw_engine_buffer.byteCapacity(scratch);
+        const items: [*]RawCounterItem = @ptrCast(@alignCast(self.raw_engine_buffer.bytePointer(scratch).?));
+        if (PdhGetRawCounterArrayW(self.counters.gpu_engine, &size, &count, items) != 0 or count > 262144
+            or @as(u64, count) * @sizeOf(RawCounterItem) > size) { self.engine_sample_times.clearRetainingCapacity(); return; }
+        for (items[0..count]) |item| {
+            if (item.value.status != PDH_CSTATUS_VALID_DATA and item.value.status != PDH_CSTATUS_NEW_DATA) continue;
+            const name = item.name orelse continue;
+            const metadata = parseGpuCounterMetadata(std.mem.span(name)) orelse continue;
+            const utc = confirmRawUtc(item.value.timestamp, utc_begin, utc_end) orelse continue;
+            if (item.value.second <= 0) continue;
+            const key: EngineSampleKey = .{ .luid = metadata.adapter_luid, .pid = metadata.process_id, .physical = metadata.physical_index, .engine = metadata.engine_index };
+            const entry = try next.getOrPut(self.allocator, key);
+            if (entry.found_existing) { entry.value_ptr.unique = false; continue; }
+            entry.value_ptr.* = .{ .utc = utc, .counter = item.value.second, .frequency = frequency };
+        }
+        var iterator = next.iterator();
+        while (iterator.next()) |entry| {
+            const current = entry.value_ptr.*;
+            const previous = self.engine_sample_times.get(entry.key_ptr.*) orelse continue;
+            if (!current.unique or !previous.unique or previous.frequency != current.frequency
+                or previous.utc >= current.utc or previous.counter >= current.counter) continue;
+            try self.engine_windows.append(self.allocator, .{ .adapter_luid = entry.key_ptr.luid, .process_id = entry.key_ptr.pid,
+                .physical_index = entry.key_ptr.physical, .engine_index = entry.key_ptr.engine,
+                .begin_filetime = previous.utc, .end_filetime = current.utc,
+                .begin_counter = previous.counter, .end_counter = current.counter, .counter_frequency = frequency });
+        }
+        self.engine_sample_times.deinit(self.allocator);
+        self.engine_sample_times = next;
+    }
+    fn readGpuEngineRows(self: *Collector, valid_value_count: *usize, partial: *bool, scratch: ?*ExternalScratch.Scratch) !bool {
         const items = try readCounterArray(
             self.allocator,
             self.counters.gpu_engine,
             &self.array_buffers.gpu_engine,
             &self.last_native_status,
+            scratch,
         ) orelse {
             partial.* = true;
             return false;
@@ -519,24 +606,31 @@ pub const Collector = struct {
             const value = formattedValue(item.value) orelse continue;
             const name = item.name orelse continue;
             const metadata = parseGpuCounterMetadata(std.mem.span(name)) orelse continue;
+            if (metadata.engine_index == std.math.maxInt(u32)) {
+                partial.* = true;
+                continue;
+            }
             valid_value_count.* += 1;
             const usage = sanitizeNonNegative(value);
             try self.engine_rows.append(self.allocator, .{
                 .adapter_luid = metadata.adapter_luid,
                 .process_id = metadata.process_id,
                 .engine_class = @intFromEnum(metadata.engine_class),
+                .physical_index = metadata.physical_index,
+                .engine_index = metadata.engine_index,
                 .usage_percent = usage,
             });
         }
         return true;
     }
 
-    fn readGpuMemoryRows(self: *Collector, valid_value_count: *usize, partial: *bool) !bool {
+    fn readGpuMemoryRows(self: *Collector, valid_value_count: *usize, partial: *bool, scratch: ?*ExternalScratch.Scratch) !bool {
         const items = try readCounterArray(
             self.allocator,
             self.counters.gpu_memory,
             &self.array_buffers.gpu_memory,
             &self.last_native_status,
+            scratch,
         ) orelse {
             partial.* = true;
             return false;
@@ -558,82 +652,22 @@ pub const Collector = struct {
         return true;
     }
 
-    fn readNetworkCounters(self: *Collector, valid_value_count: *usize, partial: *bool) !bool {
-        const receive_complete = try self.sumNetworkCounter(
-            self.counters.network_receive,
-            &self.array_buffers.network_receive,
-            IoValidMask.network_receive,
-            &self.system_io.network_receive_bytes_per_second,
-            valid_value_count,
-            partial,
-        );
-        const send_complete = try self.sumNetworkCounter(
-            self.counters.network_send,
-            &self.array_buffers.network_send,
-            IoValidMask.network_send,
-            &self.system_io.network_send_bytes_per_second,
-            valid_value_count,
-            partial,
-        );
-        const bandwidth_complete = try self.sumNetworkCounter(
-            self.counters.network_bandwidth,
-            &self.array_buffers.network_bandwidth,
-            IoValidMask.network_bandwidth,
-            &self.system_io.network_bandwidth_bits_per_second,
-            valid_value_count,
-            partial,
-        );
-
-        const complete = receive_complete and send_complete and bandwidth_complete;
-        if (complete) {
-            const bandwidth = self.system_io.network_bandwidth_bits_per_second;
-            const bytes_per_second = self.system_io.network_receive_bytes_per_second +
-                self.system_io.network_send_bytes_per_second;
-            self.system_io.network_utilization_percent = if (bandwidth > 0)
-                sanitizePercent(bytes_per_second * 8.0 * 100.0 / bandwidth)
-            else
-                0;
-            self.system_io.valid_mask |= IoValidMask.network_utilization;
-        }
-        return complete;
-    }
-
-    fn sumNetworkCounter(
-        self: *Collector,
-        counter: PdhHandle,
-        buffer: *ArrayBuffer,
-        mask: u32,
-        destination: *f64,
-        valid_value_count: *usize,
-        partial: *bool,
-    ) !bool {
-        const items = try readCounterArray(
-            self.allocator,
-            counter,
-            buffer,
-            &self.last_native_status,
-        ) orelse {
+    fn readNetworkCounters(self: *Collector, now_ms: u64, valid_value_count: *usize, partial: *bool) bool {
+        const rates = self.network.read(now_ms) orelse {
             partial.* = true;
             return false;
         };
-
-        var valid_items: usize = 0;
-        var complete = true;
-        for (items) |item| {
-            const value = formattedValue(item.value) orelse {
-                complete = false;
-                continue;
-            };
-            destination.* += sanitizeNonNegative(value);
-            valid_items += 1;
-        }
-        if (complete) {
-            self.system_io.valid_mask |= mask;
-        } else {
-            partial.* = true;
-        }
-        valid_value_count.* += valid_items;
-        return complete;
+        self.system_io.network_receive_bytes_per_second = rates.receive;
+        self.system_io.network_send_bytes_per_second = rates.send;
+        self.system_io.network_bandwidth_bits_per_second = rates.bandwidth;
+        self.system_io.network_utilization_percent = if (rates.bandwidth > 0)
+            sanitizePercent((rates.receive + rates.send) * 8.0 * 100.0 / rates.bandwidth)
+        else
+            0;
+        self.system_io.valid_mask |= IoValidMask.network_receive | IoValidMask.network_send |
+            IoValidMask.network_bandwidth | IoValidMask.network_utilization;
+        valid_value_count.* += 4;
+        return true;
     }
 
     fn writeHeader(self: *const Collector, header: *FrameHeader, flags: u32) void {
@@ -680,7 +714,7 @@ fn addCounter(query: PdhHandle, path: [*:0]const u16, counter: *PdhHandle) void 
     if (PdhAddEnglishCounterW(query, path, 0, counter) != 0) counter.* = null;
 }
 
-fn prepareArrayBuffer(allocator: std.mem.Allocator, counter: PdhHandle, buffer: *ArrayBuffer) !void {
+fn prepareArrayBuffer(allocator: std.mem.Allocator, counter: PdhHandle, buffer: *ArrayBuffer, scratch: ?*ExternalScratch.Scratch) !void {
     if (counter == null) return;
     var required_bytes: u32 = 0;
     var item_count: u32 = 0;
@@ -692,7 +726,7 @@ fn prepareArrayBuffer(allocator: std.mem.Allocator, counter: PdhHandle, buffer: 
         null,
     );
     if (status == PDH_MORE_DATA and required_bytes > 0) {
-        try buffer.ensureByteCapacity(allocator, required_bytes);
+        try buffer.ensureByteCapacity(allocator, required_bytes, scratch);
     }
 }
 
@@ -701,32 +735,44 @@ fn readCounterArray(
     counter: PdhHandle,
     buffer: *ArrayBuffer,
     last_native_status: *i32,
+    scratch: ?*ExternalScratch.Scratch,
+) !?[]const PdhFormattedCounterValueItem {
+    return readCounterArrayUsing(PdhGetFormattedCounterArrayW, allocator, counter, buffer, last_native_status, scratch);
+}
+
+fn readCounterArrayUsing(
+    read: *const fn (PdhHandle, u32, *u32, *u32, ?[*]PdhFormattedCounterValueItem) callconv(.winapi) i32,
+    allocator: std.mem.Allocator,
+    counter: PdhHandle,
+    buffer: *ArrayBuffer,
+    last_native_status: *i32,
+    scratch: ?*ExternalScratch.Scratch,
 ) !?[]const PdhFormattedCounterValueItem {
     if (counter == null) return null;
 
     var attempt: u8 = 0;
     while (attempt < 3) : (attempt += 1) {
-        var buffer_size = buffer.byteCapacity();
+        var buffer_size = buffer.byteCapacity(scratch);
         var item_count: u32 = 0;
-        const status = PdhGetFormattedCounterArrayW(
+        const status = read(
             counter,
             PDH_FMT_DOUBLE,
             &buffer_size,
             &item_count,
-            buffer.itemPointer(),
+            if (buffer.bytePointer(scratch)) |pointer| @ptrCast(@alignCast(pointer)) else null,
         );
         last_native_status.* = status;
         if (status == PDH_MORE_DATA) {
             if (buffer_size == 0) return null;
-            try buffer.ensureByteCapacity(allocator, buffer_size);
+            try buffer.ensureByteCapacity(allocator, buffer_size, scratch);
             continue;
         }
         if (status != 0) return null;
         if (item_count == 0) return &.{};
 
         const required_item_bytes = @as(u64, item_count) * @sizeOf(PdhFormattedCounterValueItem);
-        if (required_item_bytes > buffer.byteCapacity()) return null;
-        const items: [*]const PdhFormattedCounterValueItem = @ptrCast(buffer.words.items.ptr);
+        if (required_item_bytes > buffer.byteCapacity(scratch)) return null;
+        const items: [*]const PdhFormattedCounterValueItem = @ptrCast(@alignCast(buffer.bytePointer(scratch).?));
         return items[0..item_count];
     }
 
@@ -741,6 +787,86 @@ fn readCounterValue(counter: PdhHandle, last_native_status: *i32) ?f64 {
     return formattedValue(value);
 }
 
+fn fileTimeInteger(time: FileTime) i64 {
+    return @bitCast((@as(u64, time.high) << 32) | time.low);
+}
+test "formatted parser grows external storage on MORE_DATA and consumes names from its real address" {
+    const Fixture = struct {
+        bytes: [1024]u8 align(8) = undefined,
+        calls: usize = 0,
+        supplies: usize = 0,
+        fn supply(context: ?*anyopaque, required: u32, output: *ExternalScratch.Region) callconv(.c) i32 {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.supplies += 1;
+            output.* = .{ .address = &self.bytes, .length = required };
+            return 0;
+        }
+        fn read(counter: PdhHandle, _: u32, size: *u32, count: *u32, output: ?[*]PdhFormattedCounterValueItem) callconv(.winapi) i32 {
+            const self: *@This() = @ptrCast(@alignCast(counter.?));
+            self.calls += 1;
+            const required: u32 = if (self.calls == 1) 128 else 1024;
+            if (size.* < required) { size.* = required; return PDH_MORE_DATA; }
+            const bytes: [*]u8 = @ptrCast(output.?);
+            const name: [*:0]u16 = @ptrCast(@alignCast(bytes + 32));
+            const source = std.unicode.utf8ToUtf16LeStringLiteral("pid_42_luid_0x00000001_0x00000002_phys_0_eng_3_engtype_3D");
+            @memcpy(name[0..source.len + 1], source[0..source.len + 1]);
+            output.?[0] = .{ .name = name, .value = .{ .c_status = 0, .padding = 0, .double_value = 37.5 } };
+            count.* = 1;
+            return 0;
+        }
+    };
+    var fixture: Fixture = .{};
+    var scratch: ExternalScratch.Scratch = .{ .provider = .{ .context = &fixture, .supply = Fixture.supply } };
+    var buffer: ArrayBuffer = .{};
+    defer buffer.deinit(std.testing.allocator);
+    var status: i32 = 0;
+    const rows = (try readCounterArrayUsing(Fixture.read, std.testing.allocator, &fixture, &buffer, &status, &scratch)).?;
+    try std.testing.expectEqual(@as(usize, 3), fixture.calls);
+    try std.testing.expectEqual(@as(usize, 2), fixture.supplies);
+    try std.testing.expectEqual(@as(usize, 0), buffer.words.capacity);
+    try std.testing.expectEqual(@intFromPtr(&fixture.bytes), @intFromPtr(rows.ptr));
+    try std.testing.expectEqual(@as(f64, 37.5), formattedValue(rows[0].value).?);
+    const metadata = parseGpuCounterMetadata(std.mem.span(rows[0].name.?)).?;
+    try std.testing.expectEqual(@as(u32, 42), metadata.process_id);
+    try std.testing.expectEqual(@as(u32, 3), metadata.engine_index);
+    // A second parser uses the same call-local region without allocation.
+    _ = try readCounterArrayUsing(Fixture.read, std.testing.allocator, &fixture, &buffer, &status, &scratch);
+    try std.testing.expectEqual(@as(usize, 2), fixture.supplies);
+}
+
+test "external collector rejects ordinary sample and never frees caller storage" {
+    const config: Config = .{ .abi_version = abi_version, .struct_size = @sizeOf(Config), .baseline_reset_interval_ms = 0, .reserved = 0 };
+    const collector = try Collector.create(&config);
+    collector.external_scratch = true;
+    var header: FrameHeader = undefined;
+    try std.testing.expectEqual(ResultCode.invalid_argument, collector.sample(&header));
+    try std.testing.expectEqual(ResultCode.invalid_argument, collector.sampleExternal(&header, .{ .context = null, .supply = null }));
+    try std.testing.expectEqual(@as(usize, 0), collector.raw_engine_buffer.words.capacity);
+    try std.testing.expectEqual(@as(usize, 0), collector.array_buffers.gpu_engine.words.capacity);
+    try std.testing.expectEqual(@as(usize, 0), collector.array_buffers.gpu_memory.words.capacity);
+    collector.destroy();
+}
+
+test "optional GPU engine window sidecar preserves legacy row ABI" {
+    try std.testing.expectEqual(@as(usize, 64), @sizeOf(GpuEngineWindow));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(GpuEngineRow));
+}
+test "counter UTC confirmation never invents a reversed collection interval" {
+    const raw: FileTime = .{ .low = 150, .high = 0 };
+    try std.testing.expectEqual(@as(?i64, 150), confirmRawUtc(raw, .{ .low = 100, .high = 0 }, .{ .low = 200, .high = 0 }));
+    try std.testing.expectEqual(@as(?i64, null), confirmRawUtc(raw, .{ .low = 200, .high = 0 }, .{ .low = 100, .high = 0 }));
+}
+fn confirmRawUtc(raw: FileTime, begin: FileTime, end: FileTime) ?i64 {
+    const first = fileTimeInteger(begin);
+    const last = fileTimeInteger(end);
+    if (first <= 0 or last < first) return null;
+    const direct = fileTimeInteger(raw);
+    if (direct >= first and direct <= last) return direct;
+    var utc: FileTime = undefined;
+    if (LocalFileTimeToFileTime(&raw, &utc) == 0) return null;
+    const converted = fileTimeInteger(utc);
+    return if (converted >= first and converted <= last) converted else null;
+}
 fn formattedValue(value: PdhFormattedCounterValue) ?f64 {
     if ((value.c_status != PDH_CSTATUS_VALID_DATA and value.c_status != PDH_CSTATUS_NEW_DATA) or
         !std.math.isFinite(value.double_value)) return null;
@@ -760,6 +886,8 @@ fn parseGpuCounterMetadata(path: []const u16) ?GpuCounterMetadata {
         .adapter_luid = (@as(u64, high) << 32) | low,
         .process_id = process_id,
         .engine_class = classifyEngine(path),
+        .physical_index = parseDecimalAfter(path, "phys_") orelse 0,
+        .engine_index = parseDecimalAfter(path, "eng_") orelse std.math.maxInt(u32),
     };
 }
 
@@ -882,9 +1010,15 @@ fn sanitizePercent(value: f64) f64 {
     return std.math.clamp(sanitizeNonNegative(value), 0, 100);
 }
 
-fn normalizeBaselineResetInterval(value: u32) u32 {
-    if (value == 0) return DEFAULT_BASELINE_RESET_INTERVAL_MS;
-    return @max(value, MIN_BASELINE_RESET_INTERVAL_MS);
+fn diskActivityFromIdle(idle_percent: f64) f64 {
+    return 100 - sanitizePercent(idle_percent);
+}
+
+test "disk activity uses idle time rather than concurrent request time" {
+    try std.testing.expectEqual(@as(f64, 0), diskActivityFromIdle(100));
+    try std.testing.expectEqual(@as(f64, 100), diskActivityFromIdle(0));
+    try std.testing.expectEqual(@as(f64, 27.5), diskActivityFromIdle(72.5));
+    try std.testing.expectEqual(@as(f64, 0), diskActivityFromIdle(100.01));
 }
 
 test "GPU counter metadata is projected to numeric ABI fields" {
@@ -896,6 +1030,8 @@ test "GPU counter metadata is projected to numeric ABI fields" {
     try std.testing.expectEqual(@as(u64, 0x0000_0001_abcd_ef12), metadata.adapter_luid);
     try std.testing.expectEqual(@as(u32, 4242), metadata.process_id);
     try std.testing.expectEqual(EngineClass.compute, metadata.engine_class);
+    try std.testing.expectEqual(@as(u32, 0), metadata.physical_index);
+    try std.testing.expectEqual(@as(u32, 1), metadata.engine_index);
 }
 
 test "GPU ray tracing engine classification is case insensitive" {
@@ -910,17 +1046,13 @@ test "invalid GPU counter path is rejected" {
     try std.testing.expect(parseGpuCounterMetadata(path) == null);
 }
 
-test "wildcard query owns at most nine persistent counters" {
+test "query owns six disk and GPU counters with separate physical network sampling" {
     var counters: CounterSet = .{};
     try std.testing.expectEqual(@as(u32, 0), counters.count());
-    counters.disk_active = @ptrFromInt(1);
+    counters.disk_idle = @ptrFromInt(1);
     counters.gpu_engine = @ptrFromInt(2);
     try std.testing.expectEqual(@as(u32, 2), counters.count());
     try std.testing.expectEqual(@as(usize, 24), @sizeOf(PdhFormattedCounterValueItem));
 }
 
-test "baseline reset interval has a bounded default and minimum" {
-    try std.testing.expectEqual(@as(u32, 5_000), normalizeBaselineResetInterval(0));
-    try std.testing.expectEqual(@as(u32, 1_000), normalizeBaselineResetInterval(250));
-    try std.testing.expectEqual(@as(u32, 7_500), normalizeBaselineResetInterval(7_500));
-}
+

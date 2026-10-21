@@ -56,10 +56,13 @@ export function resourceTableColumnLabel(id: string | null | undefined): string 
   return localizedMetricLabel(normalized);
 }
 
-/** 内存值的量纲，以及设备总量与软件/进程分项的含义。 */
-export function resourceMetricBasis(id: string | null | undefined): string | undefined {
+/** 指标的量纲，以及设备总量与软件/进程分项的含义。 */
+export function resourceMetricBasis(id: string | null | undefined, surface: "bar" | "table" = "bar"): string | undefined {
+  if (id === "disk" || id === "disk.read" || id === "disk.write" || id === "disk.io") {
+    return uiText.resourceBreakdown.diskBasis;
+  }
   if (id === "memory" || id === "memory.usage" || id === "memory.percent") {
-    return uiText.resourceBreakdown.memoryBasis;
+    return surface === "table" ? uiText.resourceBreakdown.memoryTableBasis : uiText.resourceBreakdown.memoryBasis;
   }
   if (id === "virtualMemory.usage" || id === "virtualMemory.percent") {
     return uiText.resourceBreakdown.commitBasis;

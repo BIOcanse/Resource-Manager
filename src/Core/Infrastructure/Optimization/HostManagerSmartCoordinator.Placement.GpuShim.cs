@@ -65,9 +65,7 @@ public sealed partial class HostManagerSmartCoordinator
     private bool WantsGpuShim(HostManagerAutomaticPlacementProcess process)
         => !string.IsNullOrWhiteSpace(process.ExecutablePath)
             && runtimePlanProvider.Current.GpuPlacement.GlobalPreciseProviderEnabled
-            && process.Policy.AcceptsExternalRuntimeGpuScheduling()
-            && GpuPlacementTargets.Normalize(process.Policy.TargetGpu) is GpuPlacementTargets.AutoIdleGpu
-                or GpuPlacementTargets.IntegratedGpu or GpuPlacementTargets.HighPerformanceGpu;
+            && process.Policy.AcceptsExternalRuntimeGpuScheduling();
 
     private Task<HostManagerPlacementDesired?> TryCreateGpuShimPlacementDesiredAsync(
         HostManagerAutomaticGpuPlacement planned,

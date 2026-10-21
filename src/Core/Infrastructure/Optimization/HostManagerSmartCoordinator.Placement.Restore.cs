@@ -234,7 +234,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Process CPU Sets 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TrySetProcessDefaultCpuSets(processId, previousIds);
+        _ = processPolicyWriter.TryApplyBatch(
+            [new(processId, current.StartedAt, CpuSetIds: previousIds)]);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.DefaultCpuSets);
         var gate = SettleProcessReadGate(
             record,
@@ -274,7 +275,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "CPU affinity 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TrySetProcessorAffinity(processId, previousMask);
+        _ = processPolicyWriter.TryApplyBatch(
+            [new(processId, current.StartedAt, AffinityMask: previousMask)]);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.Affinity);
         var gate = SettleProcessReadGate(
             record,
@@ -329,7 +331,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Process priority 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TrySetPriorityClass(processId, previous);
+        _ = processPolicyWriter.TryApplyBatch(
+            [new(processId, initial.Value!.StartedAt, PriorityClass: previous)]);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.PriorityClass);
         gate = SettleProcessReadGate(
             record,

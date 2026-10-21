@@ -7,6 +7,8 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (ElevatedProcessActionBroker.TryExecute(args) is { } processExitCode) return processExitCode;
+        if (UserShellProcessLauncher.TryExecute(args) is { } shellExitCode) return shellExitCode;
         var options = NativeUiLaunchOptions.Parse(args);
         // 界面语言的来源是持久化设置里的 appearance.language（含 "system" 取值）；
         // 前端起来后每次切换都会通过 shell.language 消息把解析后的语言送过来。

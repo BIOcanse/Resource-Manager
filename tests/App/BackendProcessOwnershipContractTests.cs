@@ -38,7 +38,19 @@ public sealed class BackendProcessOwnershipContractTests
         Assert.Contains("CreateEnvironmentBlock", userSessionBroker, StringComparison.Ordinal);
         Assert.Contains("CreateProcessAsUserW", userSessionBroker, StringComparison.Ordinal);
         Assert.Contains(@"winsta0\default", userSessionBroker, StringComparison.Ordinal);
-        Assert.DoesNotContain("UseShellExecute", userSessionBroker, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"\bUseShellExecute\s*=\s*true\b", userSessionBroker);
+        Assert.DoesNotMatch(@"\bVerb\s*=", userSessionBroker);
+        Assert.Contains("UseShellExecute = false", userSessionBroker, StringComparison.Ordinal);
+        Assert.Contains(
+            "=> LaunchInSession(sessionId, executablePath, arguments, null);",
+            userSessionBroker,
+            StringComparison.Ordinal);
+        Assert.Matches(
+            @"if\s*\(expectedUserSid is not null\s*&&\s*TryLaunchInCurrentUserSession\(",
+            userSessionBroker);
+        Assert.Matches(
+            @"if\s*\(identity\.IsSystem\s*\|\|\s*current\.SessionId != sessionId\s*\|\|\s*identity\.User\?\.Value != expectedUserSid\)\s*return false;",
+            userSessionBroker);
 
         Assert.Contains("WindowsServiceHelpers.IsWindowsService", program, StringComparison.Ordinal);
         Assert.Contains("UseWindowsService", program, StringComparison.Ordinal);
@@ -70,14 +82,14 @@ public sealed class BackendProcessOwnershipContractTests
         Assert.Contains("StartupProfile", runner, StringComparison.Ordinal);
         Assert.Contains("Wait-DevelopmentBackendReady", runner, StringComparison.Ordinal);
         Assert.Contains("Test-LoopbackPortInUse", runner, StringComparison.Ordinal);
-        Assert.Contains("loopback-api-token", runner, StringComparison.Ordinal);
+        Assert.DoesNotContain("loopback-api-token", runner, StringComparison.Ordinal);
         Assert.Contains("$SoftwareRoot = Join-Path $Root '.local\\development-runtime'", runner, StringComparison.Ordinal);
-        Assert.Contains("$ApiAccessTokenPath = Join-Path $SoftwareRoot 'Config\\Runtime\\loopback-api-token'", runner, StringComparison.Ordinal);
         Assert.Contains("$LogPath = Join-Path $SoftwareRoot 'Logs\\development.log'", runner, StringComparison.Ordinal);
         Assert.Contains("New-Item -ItemType Directory -Path (Split-Path -Parent $LogPath) -Force", runner, StringComparison.Ordinal);
         Assert.DoesNotContain("$LogPath = Join-Path $Root \"development.log\"", runner, StringComparison.Ordinal);
         Assert.DoesNotContain("Resource Manager\\Config\\Runtime", runner, StringComparison.Ordinal);
-        Assert.Contains("X-Resource-Manager-Token", runner, StringComparison.Ordinal);
+        Assert.Contains("Get-NetTCPConnection", runner, StringComparison.Ordinal);
+        Assert.Contains("/api/runtime/identity", runner, StringComparison.Ordinal);
         Assert.Contains("System.Net.Http.HttpClient", runner, StringComparison.Ordinal);
         Assert.Contains("System.Net.HttpStatusCode]::OK", runner, StringComparison.Ordinal);
         Assert.DoesNotContain("Test-FrontendReadinessEvidence", runner, StringComparison.Ordinal);

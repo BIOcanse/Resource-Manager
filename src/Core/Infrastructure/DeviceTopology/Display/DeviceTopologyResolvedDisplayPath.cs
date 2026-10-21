@@ -1,5 +1,1 @@
-namespace ResourceManager.App.Infrastructure.DeviceTopology;
-
-internal sealed record DeviceTopologyResolvedDisplayPath(
-    DeviceTopologyDisplayPath Path,
-    DeviceTopologyOemDisplayConnectorProfile? Profile);
+// Original implementation is owned by ReadWriteCore with its compatibility namespace preserved.

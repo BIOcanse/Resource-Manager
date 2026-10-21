@@ -5,7 +5,7 @@ namespace ResourceManager.App.Domain.GpuPlacement;
 
 public static class GpuPlacementPolicyDocumentVersions
 {
-    public const string Current = "1.2.0";
+    public const string Current = "1.3.0";
 }
 
 public static class GpuPlacementPolicyModes
@@ -248,7 +248,6 @@ public sealed record GpuPlacementSoftwarePolicy(
     IReadOnlyList<string> AllowedProviders,
     string SchedulingMode,
     string StartupTargetGpu,
-    string TargetGpu,
     string RuntimeSchedulingMode,
     string ExplicitSelectionMode,
     bool? RuntimeHotSwitchEnabled,
@@ -273,7 +272,6 @@ public sealed record GpuPlacementProcessPolicy(
     string EnabledMode,
     string MaxRisk,
     IReadOnlyList<string> AllowedProviders,
-    string TargetGpu,
     string ExplicitSelectionMode,
     double? BaseScoreOverride,
     DateTimeOffset UpdatedAt,
@@ -389,7 +387,6 @@ public static class GpuPlacementPolicyDefaults
             GpuPlacementProviderIds.Defaults,
             GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementTargets.AutoIdleGpu,
             GpuPlacementRuntimeSchedulingModes.Precise,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),
@@ -420,7 +417,6 @@ public static class GpuPlacementPolicyDefaults
             GpuPlacementPolicyModes.Inherit,
             GpuPlacementRiskLevels.Low,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementTargets.SystemDefaultGpu,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             updatedAt ?? DateTimeOffset.MinValue);

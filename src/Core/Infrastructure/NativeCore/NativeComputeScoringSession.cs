@@ -97,6 +97,8 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
         ReadOnlySpan<NativeComputeScoringProcessInput> processes,
         ReadOnlySpan<NativeComputeScoringGpuInput> gpus,
         Span<NativeComputeScoringOutput> outputs,
+        IntPtr scratchPointer,
+        ulong scratchLength,
         ref NativeComputeScoringSnapshot snapshot)
     {
         lock (sync)
@@ -114,6 +116,8 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
                     checked((uint)gpus.Length),
                     outputPointer,
                     checked((uint)outputs.Length),
+                    (void*)scratchPointer,
+                    scratchLength,
                     ref snapshot);
             }
         }
@@ -198,10 +202,12 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
             result.ProcessCapacity == 0 ||
             result.GpuCapacity == 0 ||
             result.OutputCapacity == 0 ||
+            result.ScratchByteCount == 0 ||
+            result.ScratchAlignment == 0 ||
+            (result.ScratchAlignment & (result.ScratchAlignment - 1)) != 0 ||
+            result.Reserved0 != 0 ||
             result.Reserved[0] != 0 ||
-            result.Reserved[1] != 0 ||
-            result.Reserved[2] != 0 ||
-            result.Reserved[3] != 0)
+            result.Reserved[1] != 0)
         {
             throw new InvalidOperationException("Native compute scoring capacity contract mismatch.");
         }
@@ -252,7 +258,7 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
         internal static unsafe partial int SoftwareBaseMean(
             IntPtr handle, double* values, uint count, out double mean);
 
-        [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_score")]
+        [LibraryImport(LibraryName, EntryPoint = "rm_compute_scoring_score_with_scratch")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static unsafe partial int Score(
             IntPtr handle,
@@ -263,6 +269,8 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
             uint gpuCapacity,
             NativeComputeScoringOutput* outputs,
             uint outputCapacity,
+            void* scratchPointer,
+            ulong scratchLength,
             ref NativeComputeScoringSnapshot snapshot);
     }
 }

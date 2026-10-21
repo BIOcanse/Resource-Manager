@@ -99,6 +99,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None);
         var captureAttemptsBeforeScheduling = realSource.AttemptCount;
         var providerCapturesBeforeScheduling = realSource.ProviderCaptureCount;
+        var nativeInputs = new NativeSmartInputCaptureProbe();
+        fixture.Coordinator.TransitionProbe = nativeInputs;
         var status = await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var completedAtQpcTicks = Stopwatch.GetTimestamp();
         var completedAtUtc = DateTimeOffset.UtcNow;
@@ -209,11 +211,30 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 SchedulingProcessMetricMask.MemoryUsage));
         });
 
+        // The provider census remains complete above. Host scheduling deliberately
+        // admits only records whose runtime-state observation is current.
+        var schedulableProcesses = processFacts.Processes
+            .Where(static fact => fact.ValidMetricMask.HasFlag(
+                SchedulingProcessMetricMask.RuntimeState))
+            .ToArray();
+        var schedulableFacts = processFacts with
+        {
+            Processes = schedulableProcesses,
+            EmittedCount = checked((uint)schedulableProcesses.Length),
+            SkippedCount = checked(processFacts.SkippedCount
+                + (uint)(processFacts.Processes.Count - schedulableProcesses.Length))
+        };
+        Assert.Equal((ulong)processFacts.EnumeratedCount,
+            (ulong)schedulableFacts.ExcludedCount + schedulableFacts.SkippedCount
+                + schedulableFacts.EmittedCount);
+        var schedulableCpuValidCount = schedulableProcesses.Count(static fact =>
+            fact.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.CpuUsage));
+
         Assert.Same(workspaceBefore, fixture.Workspace);
         Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
         var native = fixture.Workspace.Snapshot;
         Assert.Equal(1UL, native.CycleSequence);
-        Assert.Equal(processFacts.EmittedCount, native.ProcessCount);
+        Assert.Equal(schedulableFacts.EmittedCount, native.ProcessCount);
         Assert.InRange(native.SoftwareCount, 1U, native.ProcessCount);
         Assert.Equal(
             checked(native.ProcessCount + native.SoftwareCount),
@@ -230,35 +251,35 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Null(schedulingAuthority.Compute?.Cpu);
         var sourceDigest = ComputeRunSaltedProcessIdentityDigest(
             runSalt,
-            processFacts.Processes);
+            schedulableFacts.Processes);
         var nativeDigest = AssertAndComputeRunSaltedNativeIdentityDigest(
             runSalt,
-            processFacts.Processes,
+            schedulableFacts.Processes,
             fixture.Workspace);
         Assert.Equal(sourceDigest.Leaves, nativeDigest.Leaves);
         Assert.Equal(sourceDigest.AggregateSha256, nativeDigest.AggregateSha256);
         var nativeCpuScores = AssertAndCaptureNativeCpuScores(
             runSalt,
-            processFacts,
+            schedulableFacts,
             fixture.Workspace,
             fixture.RuntimePlan.HostManager.RequirePublished()
                 .HotPublish.SmartCoordinator.ProcessStateMultipliers);
         Assert.All(nativeCpuScores, score => Assert.False(score.CpuScoreValid));
         var nativeInputProjection = AssertAndCaptureNativeInputProjection(
             runSalt,
-            processFacts,
-            fixture.Workspace);
+            schedulableFacts,
+            nativeInputs.Rows);
 
         var record = Assert.Single(fixture.DebugLogWriter.Records);
         Assert.Equal("completed", Assert.IsType<string>(record.Properties["outcome"]));
         Assert.Equal("manual", Assert.IsType<string>(record.Properties["trigger"]));
         Assert.True(Assert.IsType<bool>(record.Properties["scoreOnly"]));
         var counts = Assert.IsType<Dictionary<string, object?>>(record.Properties["counts"]);
-        Assert.Equal(processFacts.Processes.Count, Assert.IsType<int>(counts["sampleProcesses"]));
+        Assert.Equal(schedulableFacts.Processes.Count, Assert.IsType<int>(counts["sampleProcesses"]));
         Assert.Equal(0, Assert.IsType<int>(counts["scoredProcesses"]));
         var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
         Assert.Equal(
-            checked(native.ProcessCount + (uint)cpuValidIdentities.Count),
+            checked(native.ProcessCount + (uint)schedulableCpuValidCount),
             Assert.IsType<uint>(details["nativeInputCount"]));
         Assert.Equal(native.SoftwareCount, Assert.IsType<uint>(details["nativeSoftwareCount"]));
         Assert.Equal(
@@ -286,6 +307,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         if (evidence is not null)
         {
+            // The externally verified v4 receipt requires raw/native one-to-one
+            // identity. Mixed runtime validity is outside that measurement contract.
+            Assert.True(measuredIdentities.SetEquals(
+                CreateSchedulingIdentitySet(schedulableProcesses)),
+                "The legacy v4 real-provider receipt requires every raw process to have current RuntimeState; no receipt was written.");
             WriteRealProviderScoreOnlyReceipt(
                 evidence,
                 sampler!,
@@ -319,6 +345,50 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 startedAtQpcTicks,
                 completedAtQpcTicks);
         }
+    }
+
+    [Fact]
+    public async Task ScoreOnlyNativeProjectionExcludesOnlyFactsWithoutCurrentRuntimeState()
+    {
+        var facts = CreateCompleteProcessFacts(
+            (4_242, 132_537_599_910_000_000, "software:runtime-current", 100D, 35D, 25D),
+            (4_243, 132_537_599_920_000_000, "software:runtime-missing", 100D, 20D, 30D));
+        facts = facts with
+        {
+            Processes =
+            [
+                facts.Processes[0],
+                facts.Processes[1] with
+                {
+                    ValidMetricMask = facts.Processes[1].ValidMetricMask
+                        & ~SchedulingProcessMetricMask.RuntimeState
+                }
+            ]
+        };
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, processFactsSnapshot: facts, performanceLogEnabled: true,
+            policyExecutionEnabled: false);
+
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(2U, facts.EmittedCount);
+        Assert.Equal(2, facts.Processes.Count);
+        var native = fixture.Workspace.Snapshot;
+        Assert.Equal(1U, native.ProcessCount);
+        var row = Assert.Single(fixture.Workspace.CurrentSnapshotRows.ToArray(),
+            static row => row.RowKind == NativeSmartCoordinatorSnapshotRowKind.Process);
+        Assert.Equal(4_242U, row.ProcessId);
+        Assert.Equal(132_537_599_910_000_000UL, row.ProcessStartKey);
+        Assert.DoesNotContain(fixture.Workspace.CurrentSnapshotRows.ToArray(),
+            static row => row.ProcessId == 4_243);
+        var record = Assert.Single(fixture.DebugLogWriter.Records);
+        var counts = Assert.IsType<Dictionary<string, object?>>(record.Properties["counts"]);
+        Assert.Equal(1, Assert.IsType<int>(counts["sampleProcesses"]));
+        var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
+        Assert.Equal(2U, Assert.IsType<uint>(details["nativeInputCount"]));
+        Assert.Equal(0U, native.ActionCount);
+        Assert.Equal(0U, native.PendingCount);
+        fixture.AssertNoEffectCollaboratorCalls();
     }
 
     private static HashSet<RealProviderProcessIdentity> CreateSchedulingIdentitySet(
@@ -512,7 +582,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         AssertAndCaptureNativeInputProjection(
             string runSalt,
             SchedulingProcessFactSnapshot processFacts,
-            NativeSmartCoordinatorWorkspace workspace)
+            ReadOnlySpan<NativeSmartCoordinatorInputRow> inputs)
     {
         var expectedInputRowCount = checked(
             processFacts.Processes.Count +
@@ -524,7 +594,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var cursor = 0;
         foreach (var fact in processFacts.Processes)
         {
-            var identityRow = workspace.InputRows[cursor];
+            var identityRow = inputs[cursor];
             var identityLeaf = ComputeRunSaltedProcessInstanceIdentityLeaf(
                 runSalt,
                 checked((int)identityRow.ProcessId),
@@ -562,7 +632,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 continue;
             }
 
-            var metricRow = workspace.InputRows[cursor];
+            var metricRow = inputs[cursor];
             var metricIdentityLeaf = ComputeRunSaltedProcessInstanceIdentityLeaf(
                 runSalt,
                 checked((int)metricRow.ProcessId),
@@ -1265,11 +1335,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         public long SoftwareSnapshotGeneration => 0;
 
-        public Task<RuntimeProcessAttributionCatalog> GetCatalogAsync(
+        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(catalog);
+            // The enclosing fixture owns this direct-created catalog and outlives all operations.
+            return Task.FromResult(new RuntimeProcessAttributionCatalogLease(catalog, static () => { }));
         }
 
         public Task InvalidateSoftwareSnapshotAsync()

@@ -537,7 +537,7 @@ public sealed class ExternalGpuPlacementTests
         var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources),
             NullLogger<WindowsExternalGpuPlacementRuntime>.Instance);
         var service = new ExternalOnlyRunningGpuPlacementActionService(
-            new GpuGraphicsApiIdentificationTests.Plans(policy), external);
+            new GpuGraphicsApiIdentificationTests.Plans(policy), external, new UnusedHistory());
         var request = new RunningGpuPlacementActionRequest("target", "software", "Software",
             [new(123, 456, "renderer", @"C:\renderer.exe")], "automatic-placement", 69842,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover);
@@ -552,6 +552,54 @@ public sealed class ExternalGpuPlacementTests
         Assert.Equal(RunningGpuPlacementActionStatuses.Skipped, result.Status);
         Assert.Empty(result.Records);
         Assert.False(service.HasUnreleasedExternalControl);
+    }
+
+    [Theory]
+    [InlineData(ExternalGpuRenderer.ChromiumAngle, GpuGraphicsApi.D3D11)]
+    [InlineData(ExternalGpuRenderer.QtQuickD3D12, GpuGraphicsApi.D3D12)]
+    [InlineData(ExternalGpuRenderer.QtQuickVulkan, GpuGraphicsApi.Vulkan)]
+    public async Task ConfirmedRendererApiIsRecordedForTheExactSharedLaunchImage(
+        ExternalGpuRenderer renderer, GpuGraphicsApi expectedApi)
+    {
+        var root = new GpuPlacementProcessInstance(123, 456, "fixture", @"C:\fixture\app.exe");
+        var gpu = new GpuPlacementProcessInstance(124, 789, "fixture", @"C:\fixture\app.exe");
+        var external = new ExternalGpuPlacementPlan(root, gpu) { Renderer = renderer };
+        var history = new RecordingHistory();
+
+        await ExternalOnlyRunningGpuPlacementActionService.RecordConfirmedRendererApiAsync(
+            history, "software", "Software", external, default);
+
+        Assert.Equal("software", history.SoftwareId);
+        Assert.Equal("Software", history.SoftwareName);
+        Assert.Equal(gpu, history.Process);
+        Assert.Equal<GpuGraphicsApi?>(expectedApi, history.Api);
+    }
+
+    [Fact]
+    public async Task RendererApiIsNotAttachedToAParentWithADifferentExecutable()
+    {
+        var root = new GpuPlacementProcessInstance(123, 456, "launcher", @"C:\fixture\launcher.exe");
+        var gpu = new GpuPlacementProcessInstance(124, 789, "renderer", @"C:\fixture\renderer.exe");
+        var external = new ExternalGpuPlacementPlan(root, gpu) { Renderer = ExternalGpuRenderer.ChromiumAngle };
+        var history = new RecordingHistory();
+
+        await ExternalOnlyRunningGpuPlacementActionService.RecordConfirmedRendererApiAsync(
+            history, "software", "Software", external, default);
+
+        Assert.Null(history.Process);
+        Assert.Null(history.Api);
+    }
+
+    [Fact]
+    public async Task UnconfirmedRendererDoesNotWriteGraphicsApiHistory()
+    {
+        var history = new RecordingHistory();
+
+        await ExternalOnlyRunningGpuPlacementActionService.RecordConfirmedRendererApiAsync(
+            history, "software", "Software", null, default);
+
+        Assert.Null(history.Process);
+        Assert.Null(history.Api);
     }
 
     [Fact]
@@ -570,5 +618,38 @@ public sealed class ExternalGpuPlacementTests
         public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => throw new InvalidOperationException("No inventory.");
         public IDisposable AcquireSubscription(string id, MetricSampleRequest request, TimeSpan interval) => throw new InvalidOperationException("No implicit subscription.");
         public IDisposable AcquireSubscription(string id, SchedulingProcessMetricMask mask, TimeSpan interval) => throw new InvalidOperationException("No implicit subscription.");
+    }
+
+    private sealed class RecordingHistory : IGpuPlacementProcessHistoryStore
+    {
+        public string? SoftwareId { get; private set; }
+        public string? SoftwareName { get; private set; }
+        public GpuPlacementProcessInstance? Process { get; private set; }
+        public GpuGraphicsApi? Api { get; private set; }
+
+        public Task<GpuPlacementSoftwareProcessHistory> GetSoftwareHistoryAsync(string softwareId, string softwareName,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the recorded API bridge.");
+        public Task<GpuPlacementSoftwareProcessHistory> ObserveAsync(GpuPlacementProcessObservationRequest request,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the recorded API bridge.");
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, CancellationToken cancellationToken)
+        {
+            SoftwareId = softwareId;
+            SoftwareName = softwareName;
+            Process = process;
+            Api = graphicsApi;
+            return Task.FromResult(GpuPlacementSoftwareProcessHistory.Empty(softwareId, softwareName));
+        }
+    }
+
+    private sealed class UnusedHistory : IGpuPlacementProcessHistoryStore
+    {
+        public Task<GpuPlacementSoftwareProcessHistory> GetSoftwareHistoryAsync(string softwareId, string softwareName,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
+        public Task<GpuPlacementSoftwareProcessHistory> ObserveAsync(GpuPlacementProcessObservationRequest request,
+            CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
     }
 }

@@ -63,7 +63,9 @@ inline Environment ConfigureChildEnvironment(
     const std::wstring& overlayVulkanDirectory = std::wstring())
 {
     Environment child = inherited;
-    child[L"RM_GPU_IFEO_DEPTH"] = L"1";
+    // DEBUG_ONLY_THIS_PROCESS bypasses IFEO for this launch. A depth marker would
+    // be inherited by valid same-image children and prevent their own broker launch.
+    child.erase(L"RM_GPU_IFEO_DEPTH");
     child.erase(L"RM_GPU_SHIM_POLICY_FILE");
     child.erase(L"RM_GPU_SHIM_READY_EVENT");
     if (!policyPath.empty()) child[L"RM_GPU_SHIM_POLICY_FILE"] = policyPath;

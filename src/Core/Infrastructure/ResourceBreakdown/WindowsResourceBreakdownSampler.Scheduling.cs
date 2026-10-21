@@ -77,12 +77,12 @@ public sealed partial class WindowsResourceBreakdownSampler
         ProcessAttributionSnapshot attribution;
         try
         {
-            var attributionCatalog =
-                await processAttributionCatalogProvider.GetCatalogAsync(
+            using var attributionCatalog =
+                await processAttributionCatalogProvider.AcquireCatalogAsync(
                     cancellationToken);
             attribution = CreateProcessAttributionSnapshot(
                 batch.Samples,
-                attributionCatalog);
+                attributionCatalog.Catalog);
         }
         catch
         {
@@ -133,9 +133,9 @@ public sealed partial class WindowsResourceBreakdownSampler
             gpuRead = GpuAllocationSchedulingProjection.Apply(gpuRead, allocationReading, processInstances);
         var runtimeStateRead = request.RequestedMetricMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState)
-            ? WindowsProcessRuntimeStateSnapshot.Capture(processInstances)
+            ? WindowsProcessRuntimeStateSnapshot.Capture(processInstances, interactiveDesktops)
             : WindowsProcessRuntimeStateSnapshot.NotRequested;
-        var baseScorePlan = runtimePlanProvider.Current.BaseScore;
+        var baseScorePlan = attribution?.BaseScorePlan ?? runtimePlanProvider.Current.BaseScore;
         var facts = new List<SchedulingProcessFact>(batch.Samples.Count);
         var inventoryFacts = new List<SchedulingProcessFact>(batch.Samples.Count);
         var attributionFacts = new List<SchedulingProcessFact>(batch.Samples.Count);
@@ -325,7 +325,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             HasSeparateFoundationPayloads = true,
             InventoryProcesses = inventoryFacts,
             AttributionProcesses = attributionFacts,
-            SoftwareBaseScores = attribution?.Catalog.GetSoftwareBaseScores(baseScorePlan) ?? [],
+            SoftwareBaseScores = attribution?.SoftwareBaseScores ?? [],
             FoundationDatasetObservations = CreateFoundationDatasetObservations(
                 generation,
                 observedAtUtcTicks,

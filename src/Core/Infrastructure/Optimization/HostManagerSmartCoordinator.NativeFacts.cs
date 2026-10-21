@@ -52,6 +52,8 @@ public sealed partial class HostManagerSmartCoordinator
         bool cpuPlacementEnabled,
         HostManagerComputeScoringCycleResult? computeScoring)
     {
+        using var view = workspace.CreateScratchView();
+        var inputRows = view.Inputs;
         var cursor = 0;
         var sourceIndex = 0U;
         var scoreProjection = CreateNativeComputeScoreProjection(computeScoring);
@@ -184,7 +186,7 @@ public sealed partial class HostManagerSmartCoordinator
                     processGpuMetricsComplete && scoreMembershipConsistent,
                     modePlan.CpuSchedulingEnabled,
                     modePlan.GpuSchedulingEnabled);
-                Append(identity);
+                Append(inputRows, identity);
                 if (hasAdapterRecord)
                 {
                     seenAdapterOwnership.Add(softwareKey);
@@ -201,7 +203,7 @@ public sealed partial class HostManagerSmartCoordinator
                     // Historical ownership must not receive another software's current score.
                     if (scoreMembershipConsistent || rawCpuAvailable)
                     {
-                        AppendMetric(identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent,
+                        AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent,
                             rawCpuAvailable ? target.CpuUsagePercent : null, 0,
                             scoreMembershipConsistent ? cpuScore : null,
                             scoreMembershipConsistent ? softwareScore : null);
@@ -209,7 +211,7 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 else if (rawCpuAvailable)
                 {
-                    AppendMetric(identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent, target.CpuUsagePercent, 0);
+                    AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.CpuUsagePercent, target.CpuUsagePercent, 0);
                 }
                 foreach (var gpu in target.Gpus)
                 {
@@ -246,7 +248,7 @@ public sealed partial class HostManagerSmartCoordinator
                             IncrementMemberCount(
                                 observedGpuSoftwareMembers,
                                 softwareScoreKey);
-                            AppendMetric(
+                            AppendMetric(inputRows, 
                                 identity,
                                 NativeSmartCoordinatorMetricKind.GpuUsagePercent,
                                 gpu.GpuUsagePercent,
@@ -256,7 +258,7 @@ public sealed partial class HostManagerSmartCoordinator
                         }
                         else
                         {
-                            AppendMetric(
+                            AppendMetric(inputRows, 
                                 identity,
                                 NativeSmartCoordinatorMetricKind.GpuUsagePercent,
                                 gpu.GpuUsagePercent,
@@ -271,7 +273,7 @@ public sealed partial class HostManagerSmartCoordinator
                             SchedulingProcessMetricMask.GpuDedicatedMemory,
                             out var vramGpuIndex))
                     {
-                        AppendMetric(identity, NativeSmartCoordinatorMetricKind.VramUsagePercent, gpu.VramUsedPercent, vramGpuIndex);
+                        AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.VramUsagePercent, gpu.VramUsedPercent, vramGpuIndex);
                     }
                 }
             }
@@ -292,7 +294,7 @@ public sealed partial class HostManagerSmartCoordinator
             .ThenBy(static pair => pair.Key.SoftwareKey))
         {
             var record = pair.Value;
-            Append(CreateNativeStandaloneProcessRestoreFact(
+            Append(inputRows, CreateNativeStandaloneProcessRestoreFact(
                 pair.Key,
                 in record,
                 ownership.LedgerRevision,
@@ -305,7 +307,7 @@ public sealed partial class HostManagerSmartCoordinator
             .OrderBy(static pair => pair.Key))
         {
             var record = pair.Value;
-            Append(CreateNativeStandaloneAdapterFact(
+            Append(inputRows, CreateNativeStandaloneAdapterFact(
                 pair.Key,
                 in record,
                 ownership.LedgerRevision,
@@ -317,6 +319,7 @@ public sealed partial class HostManagerSmartCoordinator
             && seenMemoryProcessOwnership.Count == ownership.MemoryProcessRecords.Count
             && seenAdapterOwnership.Count == ownership.AdapterRecords.Count;
 
+        Volatile.Read(ref transitionProbe)?.ObserveNativeInputs(inputRows[..cursor]);
         return new NativeFactProjectionResult(
             checked((uint)cursor),
             fullProcessSnapshot,
@@ -326,6 +329,7 @@ public sealed partial class HostManagerSmartCoordinator
             scoreProjection.GpuSourceFingerprint);
 
         void AppendMetric(
+            Span<NativeSmartCoordinatorInputRow> outputRows,
             NativeSmartCoordinatorInputRow identity,
             NativeSmartCoordinatorMetricKind kind,
             double? value,
@@ -362,10 +366,10 @@ public sealed partial class HostManagerSmartCoordinator
                 identity.SoftwareScore = softwareScore.Score;
                 identity.ScoreMemberCount = softwareScore.MemberCount;
             }
-            Append(identity);
+            Append(outputRows, identity);
         }
 
-        void Append(NativeSmartCoordinatorInputRow row)
+        void Append(Span<NativeSmartCoordinatorInputRow> outputRows, NativeSmartCoordinatorInputRow row)
         {
             if ((uint)cursor >= workspace.Capacity.InputRowCapacity)
             {
@@ -373,7 +377,7 @@ public sealed partial class HostManagerSmartCoordinator
                     $"The Host Manager smart coordinator input capacity {workspace.Capacity.InputRowCapacity} is smaller than the projected fact count.");
             }
 
-            workspace.InputRows[cursor++] = row;
+            outputRows[cursor++] = row;
         }
     }
 

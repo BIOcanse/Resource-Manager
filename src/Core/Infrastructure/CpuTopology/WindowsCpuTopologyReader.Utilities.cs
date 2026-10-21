@@ -12,8 +12,10 @@ public sealed partial class WindowsCpuTopologyReader
         {
             using var searcher = new System.Management.ManagementObjectSearcher(
                 "select Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed, CurrentClockSpeed, L2CacheSize, L3CacheSize from Win32_Processor");
-            foreach (var item in searcher.Get())
+            using var collection = searcher.Get();
+            foreach (var item in collection)
             {
+                using var ownedItem = item;
                 var name = Convert.ToString(item["Name"])?.Trim();
                 if (string.IsNullOrWhiteSpace(name))
                 {
@@ -75,11 +77,4 @@ public sealed partial class WindowsCpuTopologyReader
             && cpuName.Contains("Ryzen", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsExpectedNativeException(Exception ex)
-    {
-        return ex is Win32Exception
-            or InvalidOperationException
-            or NotSupportedException
-            or ExternalException;
-    }
 }

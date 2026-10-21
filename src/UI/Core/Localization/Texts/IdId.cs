@@ -46,6 +46,7 @@ internal static class IdId
         BackendPipelineNotReady = "Alur permintaan layanan lokal belum siap.",
         NoProcessToTerminate = "Tidak ada proses yang perlu dihentikan.",
         TerminateRequestCompleted = "Permintaan penghentian proses telah selesai.",
+        TerminateResultFormat = "{0} / {1} proses dihentikan.",
 
         WebViewInitializationFailed = "Antarmuka tersemat gagal diinisialisasi. Buka folder diagnostik untuk melihat detailnya.",
         FrontendIdentityVerificationFailed = "Verifikasi identitas aset frontend gagal. Buka folder diagnostik untuk melihat detailnya.",

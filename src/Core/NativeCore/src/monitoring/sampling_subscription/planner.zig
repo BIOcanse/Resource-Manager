@@ -13,20 +13,26 @@ pub fn plan(
     source_capacity: u32,
     expired_pointer: ?[*]protocol.ExpiredSourceOutput,
     expired_capacity: u32,
+    trigger_pointer: ?[*]protocol.TriggerOutput,
+    trigger_capacity: u32,
 ) ResultCode {
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
 
+    if (!session.scratchReady()) return .invalid_argument;
+
     if (!protocol.validPlanHeader(header, &session.config)) return .abi_mismatch;
     if (due_capacity != header.due_item_capacity or
         source_capacity != header.source_view_capacity or
-        expired_capacity != header.expired_source_capacity)
+        expired_capacity != header.expired_source_capacity or
+        trigger_capacity != header.trigger_capacity)
     {
         return .invalid_argument;
     }
     if (due_capacity < session.config.maximum_due_item_count or
         source_capacity < session.config.maximum_source_view_count or
-        expired_capacity < session.config.maximum_expired_source_count)
+        expired_capacity < session.config.maximum_expired_source_count or
+        trigger_capacity < session.config.maximum_membership_count)
     {
         return .buffer_too_small;
     }
@@ -42,9 +48,12 @@ pub fn plan(
         return .invalid_argument;
     const expired = requireOutput(protocol.ExpiredSourceOutput, expired_pointer, expired_capacity) orelse
         return .invalid_argument;
+    const triggers = requireOutput(protocol.TriggerOutput, trigger_pointer, trigger_capacity) orelse
+        return .invalid_argument;
     @memset(due, std.mem.zeroes(protocol.DueItemOutput));
     @memset(sources, std.mem.zeroes(protocol.SourceViewOutput));
     @memset(expired, std.mem.zeroes(protocol.ExpiredSourceOutput));
+    @memset(triggers, std.mem.zeroes(protocol.TriggerOutput));
 
     var expired_count: usize = 0;
     var any_expired = false;
@@ -70,7 +79,7 @@ pub fn plan(
     if (any_expired) session.clearInactiveSourceMemberships();
 
     const active_item_count = session.rebuildItemAggregates();
-    session.alignKnownItems(header.command_at_milliseconds);
+    session.refreshItemDeadlines(header.command_at_milliseconds);
     var source_count: usize = 0;
     for (session.sources, 0..) |source, source_index| {
         if (!source.active) continue;
@@ -78,24 +87,64 @@ pub fn plan(
         source_count += 1;
     }
 
+    @memset(session.scratch_trigger_due_milliseconds, std.math.maxInt(u64));
+    for (session.memberships) |membership| {
+        if (!membership.active or
+            membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
+            membership.next_trigger_milliseconds == 0 or
+            membership.next_trigger_milliseconds > header.command_at_milliseconds)
+        {
+            continue;
+        }
+        const source = &session.sources[membership.source_index];
+        const item = &session.items[membership.item_index];
+        if (!source.active or !item.active) continue;
+        const item_index: usize = @intCast(membership.item_index);
+        session.scratch_trigger_due_milliseconds[item_index] = @min(
+            session.scratch_trigger_due_milliseconds[item_index],
+            membership.next_trigger_milliseconds,
+        );
+    }
+
     var candidate_count: usize = 0;
     for (session.items, 0..) |*item, item_index| {
         const source_count_for_item = session.scratch_source_counts[item_index];
         if (!item.active or source_count_for_item == 0) continue;
-        const interval = session.scratch_effective_intervals[item_index];
-        const due_at = alignment.dueAt(
-            item.last_sampled_milliseconds,
-            item.scheduled_due_milliseconds,
-            item.retry_at_milliseconds,
-            interval,
-            header.command_at_milliseconds,
-        );
-        if (due_at > header.command_at_milliseconds) continue;
+        const has_sampling_demand = session.scratch_sampling_counts[item_index] != 0;
+        const interval = if (has_sampling_demand)
+            session.scratch_effective_intervals[item_index]
+        else
+            0;
+        const sample_due_at = if (has_sampling_demand)
+            alignment.dueAt(
+                item.last_sampled_milliseconds,
+                item.scheduled_due_milliseconds,
+                item.retry_at_milliseconds,
+                interval,
+                header.command_at_milliseconds,
+            )
+        else
+            std.math.maxInt(u64);
+        const trigger_due_at = session.scratch_trigger_due_milliseconds[item_index];
+        const fresh_due_at = if (trigger_due_at != std.math.maxInt(u64) and hasFreshTriggerDue(
+            session,
+            @intCast(item_index),
+            trigger_due_at,
+        ))
+            trigger_due_at
+        else
+            std.math.maxInt(u64);
+        const due_at = @min(sample_due_at, fresh_due_at);
+        if (due_at == std.math.maxInt(u64) or due_at > header.command_at_milliseconds) continue;
+        const effective_interval = if (interval != 0)
+            interval
+        else
+            freshIntervalForDue(session, @intCast(item_index), fresh_due_at);
         due[candidate_count] = .{
             .struct_size = @sizeOf(protocol.DueItemOutput),
             .flags = 0,
             .item_handle = item.item_handle,
-            .effective_interval_milliseconds = interval,
+            .effective_interval_milliseconds = effective_interval,
             .last_sampled_milliseconds = item.last_sampled_milliseconds,
             .retry_at_milliseconds = item.retry_at_milliseconds,
             .plan_epoch = header.plan_epoch,
@@ -107,17 +156,56 @@ pub fn plan(
     }
 
     std.sort.pdq(protocol.DueItemOutput, due[0..candidate_count], {}, dueLessThan);
-    // Every item remains independently scheduled. Returning all items that reached
-    // the same boundary lets the provider observe them at the same physical time;
-    // publication still settles each item's own current-value slot.
+    // A fresh trigger makes its item due. The chosen trigger group is the
+    // earliest source-item boundary; later overdue periods remain for the next
+    // plan and are not collapsed into this query.
     const due_count: usize = candidate_count;
     for (due[0..due_count]) |selected| {
         const item_index = session.findItem(selected.item_handle) orelse unreachable;
         session.items[item_index].last_planned_epoch = header.plan_epoch;
     }
+
+    var trigger_count: usize = 0;
+    for (session.memberships) |*membership| {
+        if (!membership.active or
+            membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
+            membership.next_trigger_milliseconds == 0 or
+            membership.next_trigger_milliseconds > header.command_at_milliseconds)
+        {
+            continue;
+        }
+        const source = &session.sources[membership.source_index];
+        const item = &session.items[membership.item_index];
+        if (!source.active or !item.active) continue;
+        const item_index: usize = @intCast(membership.item_index);
+        if (membership.next_trigger_milliseconds != session.scratch_trigger_due_milliseconds[item_index]) {
+            continue;
+        }
+        triggers[trigger_count] = .{
+            .struct_size = @sizeOf(protocol.TriggerOutput),
+            .flags = if (membership.sampling_flags & protocol.SourceFlags.fresh_on_trigger != 0)
+                protocol.TriggerFlags.fresh
+            else
+                0,
+            .source_handle = source.source_handle,
+            .item_handle = item.item_handle,
+            .scheduled_due_milliseconds = membership.next_trigger_milliseconds,
+            .sequence = membership.trigger_sequence,
+            .plan_epoch = header.plan_epoch,
+        };
+        membership.last_planned_epoch = header.plan_epoch;
+        trigger_count += 1;
+    }
+
+    std.sort.pdq(protocol.TriggerOutput, triggers[0..trigger_count], {}, triggerLessThan);
+    std.sort.pdq(protocol.DueItemOutput, due[0..due_count], {}, dueLessThan);
     std.sort.pdq(protocol.SourceViewOutput, sources[0..source_count], {}, sourceLessThan);
     std.sort.pdq(protocol.ExpiredSourceOutput, expired[0..expired_count], {}, expiredLessThan);
 
+    @memset(session.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
+    @memcpy(session.scratch_issued_triggers[0..trigger_count], triggers[0..trigger_count]);
+    session.issued_trigger_count = @intCast(trigger_count);
+    session.issued_trigger_plan_epoch = header.plan_epoch;
     session.last_plan_epoch = header.plan_epoch;
     session.next_wake_milliseconds = session.nextWakeFromAggregates(
         header.command_at_milliseconds,
@@ -129,9 +217,11 @@ pub fn plan(
     if (due_count != 0) flags |= protocol.PlanFlags.due_items;
     if (session.next_wake_milliseconds != 0) flags |= protocol.PlanFlags.next_wake_valid;
     if (expired_count != 0) flags |= protocol.PlanFlags.expired_sources;
+    if (trigger_count != 0) flags |= protocol.PlanFlags.triggers;
     header.due_item_count = @intCast(due_count);
     header.source_view_count = @intCast(source_count);
     header.expired_source_count = @intCast(expired_count);
+    header.trigger_count = @intCast(trigger_count);
     header.active_source_count = @intCast(source_count);
     header.active_item_count = active_item_count;
     header.next_wake_milliseconds = session.next_wake_milliseconds;
@@ -163,7 +253,7 @@ fn sourceFlags(source: *const state.SourceSlot) u32 {
     var flags: u32 = 0;
     if (source.persistent) flags |= protocol.SourceFlags.persistent;
     if (source.explicit_interval) flags |= protocol.SourceFlags.explicit_interval;
-    return flags;
+    return flags | source.sampling_flags;
 }
 
 fn requireOutput(comptime T: type, pointer: ?[*]T, capacity: u32) ?[]T {
@@ -184,4 +274,38 @@ fn sourceLessThan(_: void, left: protocol.SourceViewOutput, right: protocol.Sour
 
 fn expiredLessThan(_: void, left: protocol.ExpiredSourceOutput, right: protocol.ExpiredSourceOutput) bool {
     return left.source_handle < right.source_handle;
+}
+
+fn triggerLessThan(_: void, left: protocol.TriggerOutput, right: protocol.TriggerOutput) bool {
+    if (left.scheduled_due_milliseconds != right.scheduled_due_milliseconds) {
+        return left.scheduled_due_milliseconds < right.scheduled_due_milliseconds;
+    }
+    if (left.item_handle != right.item_handle) return left.item_handle < right.item_handle;
+    if (left.source_handle != right.source_handle) return left.source_handle < right.source_handle;
+    return left.sequence < right.sequence;
+}
+
+fn hasFreshTriggerDue(session: *const state.Session, item_index: u32, due_at: u64) bool {
+    for (session.memberships) |membership| {
+        if (membership.active and membership.item_index == item_index and
+            membership.next_trigger_milliseconds == due_at and
+            membership.sampling_flags & protocol.SourceFlags.fresh_on_trigger != 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn freshIntervalForDue(session: *const state.Session, item_index: u32, due_at: u64) u64 {
+    var interval: u64 = std.math.maxInt(u64);
+    for (session.memberships) |membership| {
+        if (membership.active and membership.item_index == item_index and
+            membership.next_trigger_milliseconds == due_at and
+            membership.sampling_flags & protocol.SourceFlags.fresh_on_trigger != 0)
+        {
+            interval = @min(interval, membership.period_milliseconds);
+        }
+    }
+    return if (interval == std.math.maxInt(u64)) 0 else interval;
 }

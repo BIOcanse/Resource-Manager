@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Application.Dependencies;
 
@@ -6,7 +7,18 @@ public interface IOptionalDependencyManager
 {
     Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(
+        string? windowsSid,
+        CancellationToken cancellationToken)
+        => GetStatusesAsync(cancellationToken);
+
     Task<OptionalDependencyStatus?> GetStatusAsync(string id, CancellationToken cancellationToken);
+
+    Task<OptionalDependencyStatus?> GetStatusAsync(
+        string id,
+        string? windowsSid,
+        CancellationToken cancellationToken)
+        => GetStatusAsync(id, cancellationToken);
 
     Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken);
 
@@ -21,5 +33,6 @@ public interface IOptionalDependencyManager
         string id,
         bool acknowledgeExternalTerms,
         string? versionChoice,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        SoftwareOperationCaller? caller = null);
 }

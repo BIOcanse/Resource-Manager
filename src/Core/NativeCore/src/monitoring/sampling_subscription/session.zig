@@ -17,12 +17,14 @@ pub fn track(
     const items = (item_pointer orelse return .invalid_argument)[0..item_count];
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
+    if (!session.scratchReady()) return .invalid_argument;
     return session.track(input, items);
 }
 
 pub fn remove(session: *Session, input: *const protocol.RemoveInput) ResultCode {
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
+    if (!session.scratchReady()) return .invalid_argument;
     return session.remove(input);
 }
 
@@ -35,6 +37,8 @@ pub fn plan(
     source_capacity: u32,
     expired_pointer: ?[*]protocol.ExpiredSourceOutput,
     expired_capacity: u32,
+    trigger_pointer: ?[*]protocol.TriggerOutput,
+    trigger_capacity: u32,
 ) ResultCode {
     return planner.plan(
         session,
@@ -45,6 +49,8 @@ pub fn plan(
         source_capacity,
         expired_pointer,
         expired_capacity,
+        trigger_pointer,
+        trigger_capacity,
     );
 }
 
@@ -53,11 +59,20 @@ pub fn complete(
     input: *const protocol.CompletionInput,
     item_pointer: ?[*]const protocol.ItemReference,
     item_count: u32,
+    trigger_pointer: ?[*]const protocol.TriggerOutput,
+    trigger_count: u32,
     output: *protocol.CompletionOutput,
 ) ResultCode {
-    if (item_count == 0) return .invalid_argument;
-    const items = (item_pointer orelse return .invalid_argument)[0..item_count];
-    return completion.complete(session, input, items, output);
+    if (item_count == 0 and trigger_count == 0) return .invalid_argument;
+    const items: []const protocol.ItemReference = if (item_count == 0)
+        &.{}
+        else
+            (item_pointer orelse return .invalid_argument)[0..item_count];
+    const triggers: []const protocol.TriggerOutput = if (trigger_count == 0)
+        &.{}
+        else
+        (trigger_pointer orelse return .invalid_argument)[0..trigger_count];
+    return completion.complete(session, input, items, triggers, output);
 }
 
 pub fn snapshot(

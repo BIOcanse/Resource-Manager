@@ -9,9 +9,18 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 public sealed partial class IpHelperNetworkAttributionReader(
     IKnownNetworkProxyCatalog proxyCatalog,
     IMonitoringSourceZoneRegistry sourceZones,
-    IEtwNetworkAttributionReader etwNetworkAttributionReader) : INetworkAttributionReader, IResourceTableProviderStateSource
+    IEtwNetworkAttributionReader etwNetworkAttributionReader) : INetworkAttributionReader, IResourceTableProviderStateSource, IDisposable
 {
     private readonly object gate = new();
+    private readonly ITcpDataStats tcpDataStats = new NativeTcpDataStats();
+    private readonly Func<NetworkEndpointSnapshot> endpointReader = ReadEndpoints;
+    private readonly Dictionary<string, MibTcpRow> enabledTcpStats = new(StringComparer.OrdinalIgnoreCase);
+    private bool disposed;
+    internal IpHelperNetworkAttributionReader(IKnownNetworkProxyCatalog proxyCatalog, IMonitoringSourceZoneRegistry sourceZones,
+        IEtwNetworkAttributionReader etwNetworkAttributionReader, ITcpDataStats tcpDataStats,
+        Func<NetworkEndpointSnapshot> endpointReader)
+        : this(proxyCatalog, sourceZones, etwNetworkAttributionReader)
+    { this.tcpDataStats = tcpDataStats; this.endpointReader = endpointReader; }
     private Dictionary<string, TcpByteCounter> previousTcpBytes = new(StringComparer.OrdinalIgnoreCase);
     private NetworkAttributionProviderState lastProviderState = new(
         "ip-helper-network",
@@ -20,8 +29,36 @@ public sealed partial class IpHelperNetworkAttributionReader(
 
     public NetworkAttributionSnapshot Read(NetworkAttributionReadRequest request)
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (request.Mode == NetworkAttributionReadMode.ObservedTraffic)
+            return ReadEtwObservedTraffic();
+        if (request.Mode == NetworkAttributionReadMode.LegacyAndObservedTraffic)
+        {
+            var etw = ReadEtwObservedTraffic();
+            try { return ReadLegacy(request, etw) with { ObservedTraffic = etw.ObservedTraffic }; }
+            catch (Exception error) when (error is not ObjectDisposedException)
+            {
+                System.Diagnostics.Trace.TraceError("IP Helper network attribution failed: {0}", error);
+                lastProviderState = new("ip-helper-network", "Unavailable", "IP Helper 网络归因不可用。");
+                return new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(), lastProviderState)
+                    { ObservedTraffic = etw.ObservedTraffic };
+            }
+        }
+        return ReadLegacy(request, null);
+    }
+
+    private NetworkAttributionSnapshot ReadEtwObservedTraffic()
+        => sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
+            ? etwNetworkAttributionReader.Read(includeObservedTraffic: true)
+            : new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
+                new("etw-network-tcpip", "Frozen", "ETW 网络事件归因当前处于功能区冻结。"));
+
+    private NetworkAttributionSnapshot ReadLegacy(NetworkAttributionReadRequest request, NetworkAttributionSnapshot? observedEtw)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
         if (!sourceZones.CanRead(MonitoringSourceZoneIds.IpHelperNetwork))
         {
+            lock (gate) { ObjectDisposedException.ThrowIf(disposed, this); ReleaseTcpStats(); previousTcpBytes.Clear(); }
             lastProviderState = new NetworkAttributionProviderState(
                 "ip-helper-network",
                 "Frozen",
@@ -34,8 +71,18 @@ public sealed partial class IpHelperNetworkAttributionReader(
 
         lock (gate)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             var now = DateTimeOffset.UtcNow;
-            var endpoints = ReadEndpoints();
+            var endpointSnapshot = endpointReader();
+            var endpoints = endpointSnapshot.Endpoints;
+            // A closed connection owns no kernel statistics. Do not write its old tuple after it disappeared.
+            // A failed table read does not prove that any connection closed.
+            if (endpointSnapshot.Tcp4Complete)
+            {
+                var establishedKeys = endpoints.Where(static endpoint => endpoint.Tcp4Row is { State: TcpStateEstablished })
+                    .Select(static endpoint => endpoint.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var key in enabledTcpStats.Keys.Where(key => !establishedKeys.Contains(key)).ToArray()) enabledTcpStats.Remove(key);
+            }
             var rawProcessValues = new Dictionary<int, MutableNetworkAttribution>();
             var effectiveProcessValues = new Dictionary<int, MutableNetworkAttribution>();
             var processNames = request.ProcessNames;
@@ -83,9 +130,9 @@ public sealed partial class IpHelperNetworkAttributionReader(
             }
 
             previousTcpBytes = currentTcpBytes;
-            var etwAttribution = sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
-                ? etwNetworkAttributionReader.Read()
-                : NetworkAttributionSnapshot.NotRequested;
+            var etwAttribution = observedEtw ?? (sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
+                ? etwNetworkAttributionReader.Read(request.Mode == NetworkAttributionReadMode.LegacyAndObservedTraffic)
+                : NetworkAttributionSnapshot.NotRequested);
             var rawEtwAdded = MergeEtwAttribution(
                 rawProcessValues,
                 etwAttribution.RawProcessValues,
@@ -119,7 +166,10 @@ public sealed partial class IpHelperNetworkAttributionReader(
                 now,
                 ToSnapshotDictionary(effectiveProcessValues),
                 providerState,
-                ToSnapshotDictionary(rawProcessValues));
+                ToSnapshotDictionary(rawProcessValues))
+            {
+                ObservedTraffic = etwAttribution.ObservedTraffic
+            };
         }
     }
 

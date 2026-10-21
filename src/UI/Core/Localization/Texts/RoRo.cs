@@ -46,6 +46,7 @@ internal static class RoRo
         BackendPipelineNotReady = "Conducta de cereri a serviciului local nu este pregătită.",
         NoProcessToTerminate = "Nu există niciun proces de încheiat.",
         TerminateRequestCompleted = "Cererea de încheiere a procesului s-a finalizat.",
+        TerminateResultFormat = "Au fost încheiate {0} / {1} procese.",
 
         WebViewInitializationFailed = "Interfața încorporată nu a putut fi inițializată. Deschideți folderul de diagnosticare pentru detalii.",
         FrontendIdentityVerificationFailed = "Verificarea identității resurselor de interfață a eșuat. Deschideți folderul de diagnosticare pentru detalii.",

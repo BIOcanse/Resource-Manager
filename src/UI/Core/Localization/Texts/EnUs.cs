@@ -46,6 +46,7 @@ internal static class EnUs
         BackendPipelineNotReady = "The local service request pipeline is not ready.",
         NoProcessToTerminate = "There is no process to terminate.",
         TerminateRequestCompleted = "The process termination request completed.",
+        TerminateResultFormat = "Terminated {0} / {1} processes.",
 
         WebViewInitializationFailed = "The embedded interface failed to initialize. Open the diagnostics folder for details.",
         FrontendIdentityVerificationFailed = "Frontend asset identity verification failed. Open the diagnostics folder for details.",

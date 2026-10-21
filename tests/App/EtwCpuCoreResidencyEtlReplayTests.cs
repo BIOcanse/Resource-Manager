@@ -171,11 +171,15 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             qpcFrequency,
             observationWindowMilliseconds: ReplayWindowMilliseconds,
             maximumClosedSlices: compiledPlan.ExecutionTimeSource.MaximumClosedSlices);
-        EtwCpuCoreResidencyReader.BindKernelEventCallbacks(
-            kernel,
-            buffer,
-            static () => true,
-            static _ => null);
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        dispatcher.AttachParser(kernel);
+        dispatcher.InitializeSubscriptions(
+            [new(1, "etl-production-residency",
+                KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
+                    | KernelTraceEventParser.Keywords.ContextSwitch,
+                (callbacks, _) => EtwCpuCoreResidencyReader.BindKernelEventCallbacks(
+                    callbacks, buffer, static () => true, static _ => null))],
+            new(1, DateTimeOffset.UnixEpoch));
 
         var expectedProcessors = Enumerable.Range(0, source.NumberOfProcessors).ToArray();
         var observedProcessors = new HashSet<int>();
@@ -392,8 +396,10 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
                         Thread.Sleep(1);
                     }
                 };
-                request.Bind(
-                    parser,
+                var dispatcher = new KernelEtwSubscriptionDispatcher();
+                dispatcher.AttachParser(parser);
+                dispatcher.InitializeSubscriptions(
+                    [new(1, request.Id, request.Keywords, request.Bind)],
                     new KernelEtwSessionContext(73, DateTimeOffset.UnixEpoch));
                 processing = Task.Run(() =>
                 {
@@ -505,6 +511,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
 
     private sealed class ReplayTopologySampler(int logicalProcessorCount) : ICpuTopologySampler
     {
+        public void ResetUsageBaseline() { }
         private readonly CpuTopologySnapshot topology = CreateTopology(logicalProcessorCount);
 
         public CpuTopologySnapshot CaptureTopology() => topology;

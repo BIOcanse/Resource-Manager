@@ -8,13 +8,6 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-internal sealed record NativeMetricSnapshotPersistenceImage(
-    NativeMetricSnapshotCatalogPersistenceState Catalog,
-    NativeMetricSnapshotPersistenceHeader Header,
-    NativeMetricSnapshotSourcePersistenceOutput[] Sources,
-    NativeMetricSnapshotRuleStateOutput[] Rules,
-    NativeMetricSnapshotGpuInventoryOutput[] GpuInventory);
-
 internal sealed class NativeMetricSnapshotPersistenceStore(string path)
 {
     private const ulong Magic = 0x32504E534D4D5248;

@@ -12,8 +12,13 @@ public static class MonitoringSourceZoneIds
     public const string VendorNvidiaNvml = "collector.vendor.nvidia-nvml";
     public const string VendorNvidiaNvapi = "collector.vendor.nvidia-nvapi";
     public const string VendorAmdAdlx = "collector.vendor.amd-adlx";
+    public const string VendorIntelGcl = "collector.vendor.intel-igcl";
+    public const string VendorIntelMsr = "collector.vendor.intel-msr";
     public const string VendorAmdSmu = "collector.vendor.amd-smu";
     public const string WindowsStorageSensors = "collector.windows.storage-sensors";
+    public const string WindowsNpuEngine = "collector.windows.npu-engine";
+    public const string WindowsNpuMemory = "collector.windows.npu-memory";
+    public const string WindowsBattery = "collector.windows.battery";
     public const string HardwareMonitorWmi = "collector.hardware-monitor.wmi";
     public const string NotebookOemFan = "collector.notebook-oem-fan";
     public const string IpHelperNetwork = "collector.ip-helper.network";

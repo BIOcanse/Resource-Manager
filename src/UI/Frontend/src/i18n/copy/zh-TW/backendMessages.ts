@@ -12,9 +12,9 @@ export const zhBackendMessagesCopy = {
       downloadable: "可從官方來源下載安裝器。",
       manualAcquisition: "開啟官方來源頁，並將安裝器放入 Misc 安裝器快取。",
       reusingExternalInstall: (value: string) => `檢測到系統已有安裝，直接複用：${value}`,
-      providerVerified: "Provider 已透過實時指標驗證。",
+      providerVerified: "硬體讀數已通過驗證。",
       providerRuntimeUnverified: "檢測到系統已安裝的 Provider 執行庫，但還沒有透過實時讀數驗證。",
-      componentFilesUnverified: "元件檔案已就緒，但 Provider 還沒有透過實時讀數驗證。",
+      componentFilesUnverified: "元件檔案已就緒，硬體讀數尚未通過驗證。",
       runtimeAvailableBridgePending: "執行庫可用，但 Provider 橋接或實時讀數驗證尚未完成。",
       providerBridgeMissing: "Provider 橋接尚未接入，或當前硬體/驅動未返回可驗證讀數。",
       bundledVerified: "內建元件已透過實時指標驗證。",
@@ -24,6 +24,7 @@ export const zhBackendMessagesCopy = {
       installerDownloadedVersion: (value: string) => `已下載 ${value} 的安裝器到託管依賴目錄。`,
       sharedRuntimeInstalled: "共享 WebView2 Runtime 已安裝並透過檢測。",
       installerLaunched: "安裝器已可見啟動。使用該 Provider 前需要完成廠商安裝提示。",
+      runtimeFilesUnavailable: "無法取得所需執行檔案，請檢查網路後重試驗證。",
       componentFilesExtracted: "元件檔案已解壓到安裝目錄。"
     },
     gpuPlacement: {
@@ -42,8 +43,8 @@ export const zhBackendMessagesCopy = {
       windowsUninstallerDescription: "啟動 Windows 登錄檔提供的官方解除安裝器。",
       noUninstallUnknownRoot: "缺少解除安裝入口，只能跳轉或手動處理，Resource Manager 不刪除未知軟體根目錄。",
       manualClassificationNoUninstall: "手動分類/補錄項不直接代表解除安裝器；需要從軟體詳情或原始軟體入口處理。",
-      controlledNoUninstall: "受控軟體解除安裝策略需要獨立記錄；當前只支援資料遷移恢復。",
-      selfNoUninstall: "資源管理器自身不能從這裡解除安裝或遷移。",
+      controlledNoUninstall: "受控軟體需要獨立的解除安裝策略；目前沒有可用的解除安裝入口。",
+      selfNoUninstall: "請使用 UninstallResourceManager.exe 解除安裝資源管理器，並選擇是否保留使用者資料。",
       adaptedNoUninstall: "適配軟體需要透過註冊/manifest 宣告解除安裝策略後才能由 Resource Manager 執行。",
       legacyControlledNoUninstall: "L0 受控註冊沒有解除安裝策略。",
       portableNoUninstall: "便攜軟體沒有解除安裝器；刪除原檔案後重新整理軟體列表會自動移除記錄。"

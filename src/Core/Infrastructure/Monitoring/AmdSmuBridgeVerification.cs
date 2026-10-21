@@ -1,4 +1,4 @@
-using ResourceManager.App.Infrastructure.Monitoring.AmdSmu;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -20,7 +20,7 @@ internal static class AmdSmuBridgeVerification
             : contentRootPath;
         try
         {
-            using var reader = new AmdSmuCpuSensorReader(root);
+            using var reader = AmdSmuHardwareBinding.CreateReader(root);
             var description = reader.DescribeSession();
             if (!description.SessionOpen)
             {

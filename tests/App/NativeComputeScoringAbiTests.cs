@@ -18,6 +18,10 @@ public sealed class NativeComputeScoringAbiTests
         => Assert.Equal(expectedSize, Marshal.SizeOf(type));
 
     [Theory]
+    [InlineData(typeof(NativeComputeScoringCapacity), nameof(NativeComputeScoringCapacity.ScratchByteCount), 40)]
+    [InlineData(typeof(NativeComputeScoringCapacity), nameof(NativeComputeScoringCapacity.ScratchAlignment), 48)]
+    [InlineData(typeof(NativeComputeScoringCapacity), nameof(NativeComputeScoringCapacity.Reserved0), 52)]
+    [InlineData(typeof(NativeComputeScoringCapacity), nameof(NativeComputeScoringCapacity.Reserved), 56)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.CpuCoreCount), 36)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.CpuStateMultipliers), 40)]
     [InlineData(typeof(NativeComputeScoringConfiguration), nameof(NativeComputeScoringConfiguration.GpuStateMultipliers), 96)]
@@ -56,7 +60,7 @@ public sealed class NativeComputeScoringAbiTests
     [Fact]
     public void EnumAndMaskValuesMatchNativeContract()
     {
-        Assert.Equal(0x0004_0004U, NativeComputeScoringAbi.Version);
+        Assert.Equal(0x0005_0000U, NativeComputeScoringAbi.Version);
         Assert.Equal(7, NativeComputeScoringAbi.RuntimeStateCount);
         Assert.Equal(0x0FUL, (ulong)NativeComputeScoringConfigFields.Required);
         Assert.Equal(0x03UL, (ulong)NativeComputeScoringEnvelopeFlags.Known);

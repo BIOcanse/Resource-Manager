@@ -4,20 +4,29 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 
 internal static class NativeMetricSnapshotSourceCatalog
 {
-    internal const string WindowsCpu = "windows.cpu";
-    internal const string WindowsMemory = "windows.memory";
-    internal const string WindowsVirtualMemory = "windows.virtual-memory";
-    internal const string WindowsGpuAdapterOrder = "windows.gpu-adapter-order";
-    internal const string PdhCpuFrequency = "pdh.cpu-frequency";
-    internal const string PdhGpuEngine = "pdh.gpu-engine";
-    internal const string NvidiaNvml = "nvidia.nvml";
-    internal const string NvidiaNvapi = "nvidia.nvapi";
-    internal const string AmdAdlx = "amd.adlx";
-    internal const string AmdSmu = "amd.smu";
-    internal const string WindowsStorageSensors = "windows.storage-sensors";
-    internal const string HardwareMonitorWmi = "hardware-monitor.wmi";
-    internal const string NotebookOemFan = "notebook-oem.fan";
-    internal const string PdhSystemIo = "pdh.system-io";
+    internal const string WindowsCpu = NativeMetricSnapshotSources.WindowsCpu;
+    internal const string WindowsMemory = NativeMetricSnapshotSources.WindowsMemory;
+    internal const string WindowsVirtualMemory = NativeMetricSnapshotSources.WindowsVirtualMemory;
+    internal const string WindowsGpuAdapterOrder = NativeMetricSnapshotSources.WindowsGpuAdapterOrder;
+    internal const string PdhCpuFrequency = NativeMetricSnapshotSources.PdhCpuFrequency;
+    internal const string PdhGpuEngine = NativeMetricSnapshotSources.PdhGpuEngine;
+    internal const string NvidiaNvml = NativeMetricSnapshotSources.NvidiaNvml;
+    internal const string NvidiaNvapi = NativeMetricSnapshotSources.NvidiaNvapi;
+    internal const string AmdAdlx = NativeMetricSnapshotSources.AmdAdlx;
+    internal const string IntelGcl = NativeMetricSnapshotSources.IntelGcl;
+    internal const string IntelMsr = NativeMetricSnapshotSources.IntelMsr;
+    internal const string AmdSmu = NativeMetricSnapshotSources.AmdSmu;
+    internal const string WindowsStorageSensors = NativeMetricSnapshotSources.WindowsStorageSensors;
+    internal const string WindowsNvmeHealth = NativeMetricSnapshotSources.WindowsNvmeHealth;
+    internal const string WindowsAtaSmart = NativeMetricSnapshotSources.WindowsAtaSmart;
+    internal const string WindowsDiskPerformance = NativeMetricSnapshotSources.WindowsDiskPerformance;
+    internal const string WindowsNpuEngine = NativeMetricSnapshotSources.WindowsNpuEngine;
+    internal const string WindowsNpuMemory = NativeMetricSnapshotSources.WindowsNpuMemory;
+    internal const string WindowsBattery = NativeMetricSnapshotSources.WindowsBattery;
+    internal const string HardwareMonitorWmi = NativeMetricSnapshotSources.HardwareMonitorWmi;
+    internal const string NotebookOemFan = NativeMetricSnapshotSources.NotebookOemFan;
+    internal const string WindowsNetworkInterface = NativeMetricSnapshotSources.WindowsNetworkInterface;
+    internal const string PdhSystemIo = NativeMetricSnapshotSources.PdhSystemIo;
 
     internal static string ResolveZoneId(string sourceId)
         => sourceId switch
@@ -33,12 +42,18 @@ internal static class NativeMetricSnapshotSourceCatalog
             NvidiaNvml => MonitoringSourceZoneIds.VendorNvidiaNvml,
             NvidiaNvapi => MonitoringSourceZoneIds.VendorNvidiaNvapi,
             AmdAdlx => MonitoringSourceZoneIds.VendorAmdAdlx,
+            IntelGcl => MonitoringSourceZoneIds.VendorIntelGcl,
+            IntelMsr => MonitoringSourceZoneIds.VendorIntelMsr,
             AmdSmu => MonitoringSourceZoneIds.VendorAmdSmu,
-            WindowsStorageSensors =>
+            WindowsStorageSensors or WindowsNvmeHealth or WindowsAtaSmart or WindowsDiskPerformance =>
                 MonitoringSourceZoneIds.WindowsStorageSensors,
+            WindowsNpuEngine => MonitoringSourceZoneIds.WindowsNpuEngine,
+            WindowsNpuMemory => MonitoringSourceZoneIds.WindowsNpuMemory,
+            WindowsBattery => MonitoringSourceZoneIds.WindowsBattery,
             HardwareMonitorWmi =>
                 MonitoringSourceZoneIds.HardwareMonitorWmi,
             NotebookOemFan => MonitoringSourceZoneIds.NotebookOemFan,
+            WindowsNetworkInterface => MonitoringSourceZoneIds.IpHelperNetwork,
             PdhSystemIo => MonitoringSourceZoneIds.PdhSystemIo,
             _ => throw new InvalidOperationException(
                 $"Unknown native metric source '{sourceId}'.")

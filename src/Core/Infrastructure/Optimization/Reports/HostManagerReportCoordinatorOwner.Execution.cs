@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
@@ -16,6 +17,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         CompiledHostManagerPlan hostPlan,
         CancellationToken cancellationToken)
     {
+        await SettlePendingAsync(cancellationToken);
         var desired = hostPlan.ReportCoordinator;
         if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256
             && appliedPlan.Build == desired.Build
@@ -24,6 +26,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             return;
         }
 
+        if (pendingWorkspaceClose is not null)
+            throw new InvalidOperationException("The previous report workspace still has a close obligation.");
         var initial = workspace is null;
         var recreate = !initial
             && (appliedPlan!.Build != desired.Build
@@ -42,7 +46,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             replacement = new NativeReportCoordinatorWorkspace(
                 desired,
                 runtimeIdentity.InstanceId,
-                NextIncarnation());
+                NextIncarnation(),
+                createScratch);
             var loadedRows = await persistenceStore.LoadAsync(cancellationToken);
             replacementState = new CoordinatorState(
                 NativeReportCoordinatorPersistenceMigration.RebindLoadedRows(
@@ -64,7 +69,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         catch (Exception stagingFailure)
         {
             var failures = new List<Exception> { stagingFailure };
-            CaptureDisposalFailure(replacement, failures);
+            RetireWorkspace(replacement, failures);
             try
             {
                 attempt.CompleteFailed("report-coordinator-apply-failed");
@@ -83,7 +88,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         catch (Exception settlementFailure)
         {
             var failures = new List<Exception> { settlementFailure };
-            CaptureDisposalFailure(replacement, failures);
+            RetireWorkspace(replacement, failures);
             ThrowFailures(failures);
         }
 
@@ -96,7 +101,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner
 
         try
         {
+            pendingWorkspaceClose = previous;
             previous?.Dispose();
+            pendingWorkspaceClose = null;
         }
         catch (Exception retirementFailure)
         {
@@ -107,7 +114,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
     }
 
     private static void CaptureDisposalFailure(
-        NativeReportCoordinatorWorkspace? candidate,
+        IDisposable? candidate,
         ICollection<Exception> failures)
     {
         try
@@ -235,6 +242,12 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         state.CommitSourceObservation(source, sourceFrame, facts);
     }
 
+    private async Task SettlePendingAsync(CancellationToken cancellationToken)
+    {
+        if (workspace is not { PendingPlan: not null } current) return;
+        await SettleAndPublishAsync(current, RequireAppliedPlan(), RequireCoordinatorState(), cancellationToken);
+    }
+
     private async Task SettleAndPublishAsync(
         NativeReportCoordinatorWorkspace target,
         CompiledHostManagerReportCoordinatorPlan plan,
@@ -260,66 +273,101 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         SystemInterruptSnapshot interruptSnapshot,
         CancellationToken cancellationToken)
     {
-        var stamp = NextCommandStamp(DateTimeOffset.UtcNow);
-        var input = new NativeReportPlanInput
+        using var lease = target.AcquireScratch();
+        var settledInterrupts = target.PendingPlan?.InterruptSnapshot ?? interruptSnapshot;
+        var commandUtc = DateTimeOffset.UtcNow;
+        // Full batches have one feedback-derived layer (Trust -> Report); fixed UTC
+        // prevents persistence latency from creating more metadata checkpoints.
+        const int maximumSuccessfulBatches = 2;
+        for (var successfulBatches = 0; ; successfulBatches++)
         {
-            AbiVersion = NativeReportCoordinatorAbi.Version,
-            StructSize = SizeOf<NativeReportPlanInput>(),
-            ConfigurationGeneration = plan.ConfigurationGeneration,
-            OperationEpoch = stamp.OperationEpoch,
-            PlanEpoch = NextEpoch(ref planEpoch, "plan"),
-            CommandMonotonicMilliseconds = stamp.MonotonicMilliseconds,
-            CommandUtcMilliseconds = stamp.UtcMilliseconds,
-            ValidMask = (ulong)NativeReportPlanValidity.Required,
-            ReportLimit = checked((uint)target.ReportBuffer.Length),
-            PersistenceLimit = checked((uint)target.PersistenceBuffer.Length)
-        };
-        RequireStatus(
-            target.Session.Plan(
-                in input,
-                target.ReportBuffer,
-                target.PersistenceBuffer,
-                out var output),
-            "planning");
-        ValidatePlanOutput(
-            in input,
-            in output,
-            target.ReportBuffer.Length,
-            target.PersistenceBuffer.Length);
+            var planned = PlanReports(target, lease, plan, settledInterrupts, commandUtc);
+            if (planned.Operations.Length == 0)
+            {
+                var model = ReadPlannedReports(target, lease, plan, state, planned.Output, settledInterrupts);
+                lease.Complete();
+                return model;
+            }
+            if (successfulBatches == maximumSuccessfulBatches)
+                throw new InvalidOperationException(
+                    "Report persistence did not stabilize after two successful full batches.");
 
-        var persistenceCount = checked((int)output.PersistenceOperationCount);
-        if (persistenceCount != 0)
-        {
-            var operations = target.PersistenceBuffer
-                .AsMemory(0, persistenceCount)
-                .ToArray();
-            await persistenceStore.PersistAsync(operations, cancellationToken);
-            state.ApplyCommitted(operations);
-            ApplyPersistenceFeedback(
-                target,
-                plan,
-                operations);
+            // Independent persistence values, not a Memory/Span borrowed from the region.
+            await persistenceStore.PersistAsync(planned.Operations, cancellationToken);
+            state.ApplyCommitted(planned.Operations);
+            ApplyPersistenceFeedback(target, lease, plan, planned.Operations, commandUtc);
+            target.PendingPlan = null;
         }
+    }
 
-        return BuildReadModel(
-            target.ReportBuffer.AsSpan(
-                0,
-                checked((int)output.ReportCount)),
-            plan,
-            state,
-            output,
-            interruptSnapshot);
+    private (NativeReportPlanOutput Output, NativeReportPersistenceOperation[] Operations) PlanReports(
+        NativeReportCoordinatorWorkspace target,
+        ComputeScratchLease lease,
+        CompiledHostManagerReportCoordinatorPlan plan,
+        SystemInterruptSnapshot interruptSnapshot,
+        DateTimeOffset commandUtc)
+    {
+        using var view = new ComputeScratchView(lease);
+        var reports = view.Column<NativeReportOutput>(target.Layout.Reports, target.Layout.ReportCapacity);
+        var persistence = view.Column<NativeReportPersistenceOperation>(target.Layout.Persistence,
+            target.Layout.PersistenceCapacity);
+        NativeReportPlanInput input;
+        if (target.PendingPlan is { } pending)
+        {
+            input = pending.Input;
+        }
+        else
+        {
+            var stamp = NextCommandStamp(commandUtc);
+            input = new NativeReportPlanInput
+            {
+                AbiVersion = NativeReportCoordinatorAbi.Version,
+                StructSize = SizeOf<NativeReportPlanInput>(),
+                ConfigurationGeneration = plan.ConfigurationGeneration,
+                OperationEpoch = stamp.OperationEpoch,
+                PlanEpoch = NextEpoch(ref planEpoch, "plan"),
+                CommandMonotonicMilliseconds = stamp.MonotonicMilliseconds,
+                CommandUtcMilliseconds = stamp.UtcMilliseconds,
+                ValidMask = (ulong)NativeReportPlanValidity.Required,
+                ReportLimit = checked((uint)reports.Length),
+                PersistenceLimit = checked((uint)persistence.Length)
+            };
+        }
+        RequireStatus(target.Session.Plan(in input, reports, persistence, out var output), "planning");
+        if (output.PersistenceOperationCount != 0)
+            target.PendingPlan ??= new PendingReportPlan(input, interruptSnapshot);
+        ValidatePlanOutput(in input, in output, reports.Length, persistence.Length);
+        return (output, persistence[..checked((int)output.PersistenceOperationCount)].ToArray());
+    }
+
+    private HostManagerReportReadModel ReadPlannedReports(
+        NativeReportCoordinatorWorkspace target,
+        ComputeScratchLease lease,
+        CompiledHostManagerReportCoordinatorPlan plan,
+        CoordinatorState state,
+        in NativeReportPlanOutput output,
+        SystemInterruptSnapshot interruptSnapshot)
+    {
+        using var view = new ComputeScratchView(lease);
+        return BuildReadModel(view.Column<NativeReportOutput>(target.Layout.Reports,
+            target.Layout.ReportCapacity)[..checked((int)output.ReportCount)],
+            plan, state, output, interruptSnapshot);
     }
 
     private void ApplyPersistenceFeedback(
         NativeReportCoordinatorWorkspace target,
+        ComputeScratchLease lease,
         CompiledHostManagerReportCoordinatorPlan plan,
-        IReadOnlyList<NativeReportPersistenceOperation> operations)
+        IReadOnlyList<NativeReportPersistenceOperation> operations,
+        DateTimeOffset commandUtc)
     {
+        using var view = new ComputeScratchView(lease);
+        var feedback = view.Column<NativeReportPersistenceFeedback>(target.Layout.Feedback,
+            target.Layout.PersistenceCapacity);
         for (var index = 0; index < operations.Count; index++)
         {
             var operation = operations[index];
-            target.FeedbackBuffer[index] = new NativeReportPersistenceFeedback
+            feedback[index] = new NativeReportPersistenceFeedback
             {
                 StructSize = SizeOf<NativeReportPersistenceFeedback>(),
                 Status = (uint)NativeReportPersistenceFeedbackStatus.Persisted,
@@ -334,7 +382,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             };
         }
 
-        var stamp = NextCommandStamp(DateTimeOffset.UtcNow);
+        var stamp = NextCommandStamp(commandUtc);
         var input = new NativeReportPersistenceFeedbackInput
         {
             AbiVersion = NativeReportCoordinatorAbi.Version,
@@ -350,7 +398,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         RequireStatus(
             target.Session.ApplyFeedback(
                 in input,
-                target.FeedbackBuffer.AsSpan(0, operations.Count)),
+                feedback[..operations.Count]),
             "persistence feedback");
     }
 

@@ -5,7 +5,7 @@ namespace ResourceManager.Adapter.NativeScheduling;
 
 public static class ResourceSchedulerProtocol
 {
-    public const uint Version = 11;
+    public const uint Version = 12;
 }
 
 public enum ResourceSchedulerRevalidationReason : byte
@@ -16,7 +16,8 @@ public enum ResourceSchedulerRevalidationReason : byte
     IdentityChanged = 3,
     ResourceChanged = 4,
     RequiredNow = 5,
-    ActionBlocked = 6
+    ActionBlocked = 6,
+    ReservationExpired = 7
 }
 
 public enum ResourceSchedulerSchedulingGrade : byte

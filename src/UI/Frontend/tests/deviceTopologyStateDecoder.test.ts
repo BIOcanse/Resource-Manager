@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 
@@ -303,3 +304,24 @@ assert.deepEqual(deviceTopologyStateDecoder.decode({
   failureCode: null,
   attemptDiagnostics: []
 });
+
+const edidWire = JSON.parse(readFileSync(new URL("./fixtures/displayEdid.json", import.meta.url), "utf8"));
+const edidDisplay = deviceTopologyStateDecoder.decode(edidWire).snapshot!.ports[0].display!;
+assert.equal(edidDisplay.currentRefreshRateNumerator, 60000); assert.equal(edidDisplay.currentRefreshRateDenominator, 1001);
+assert.equal(edidDisplay.modeCapabilityDeclared!.modes.length, 7);
+assert.equal(edidDisplay.modeCapabilityDeclared!.modes[5].nominalVerticalRateHz, null);
+assert.equal(edidDisplay.modeCapabilityDeclared!.modes[6].cvtParameters!.deltaHorizontalBlankingCode, 6);
+assert.equal(edidDisplay.edidRawDeclaredBase64, edidWire.snapshot.ports[0].display.edidRawDeclaredBase64);
+const legacyEdidWire = structuredClone(edidWire);
+for (const key of ["modeCapabilityDeclared", "edidRawDeclaredBase64", "currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"])
+  delete legacyEdidWire.snapshot.ports[0].display[key];
+const legacyDisplay = deviceTopologyStateDecoder.decode(legacyEdidWire).snapshot!.ports[0].display!;
+assert.equal(legacyDisplay.modeCapabilityDeclared, null); assert.equal(legacyDisplay.edidRawDeclaredBase64, null); assert.equal(legacyDisplay.currentWidth, null);
+const invalidCurrent = structuredClone(edidWire); invalidCurrent.snapshot.ports[0].display.currentWidth = 0x100000000;
+assert.throws(() => deviceTopologyStateDecoder.decode(invalidCurrent), ResponseDecodeError);
+const twoDisplays = structuredClone(edidWire); const otherPort = structuredClone(twoDisplays.snapshot.ports[0]);
+otherPort.id = "fixture-hdmi-2"; otherPort.display.monitorDevicePath = "different-monitor-path"; otherPort.display.modeCapabilityDeclared = null;
+twoDisplays.snapshot.ports.push(otherPort);
+const exactPaths = deviceTopologyStateDecoder.decode(twoDisplays).snapshot!.ports;
+assert.equal(exactPaths[0].display!.modeCapabilityDeclared!.modes.length, 7); assert.equal(exactPaths[1].display!.modeCapabilityDeclared, null);
+assert.notEqual(exactPaths[0].display!.monitorDevicePath, exactPaths[1].display!.monitorDevicePath);

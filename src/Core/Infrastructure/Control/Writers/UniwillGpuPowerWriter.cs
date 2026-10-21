@@ -1,20 +1,26 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
 /// <summary>OEM GPU offsets. Readback is a register observation, not measured power or a firmware limit.</summary>
-public sealed class UniwillGpuPowerWriter : IControlWriter
+public sealed partial class UniwillGpuPowerWriter : IControlWriter
 {
     private readonly ILogger<UniwillGpuPowerWriter>? logger;
     private readonly IUniwillGpuPowerHardware bridge;
 
-    public UniwillGpuPowerWriter(ILogger<UniwillGpuPowerWriter>? logger = null)
-        : this(new UniwillGpuPowerHardware(), logger) { }
+    public UniwillGpuPowerWriter(IHostEnvironment environment, ILogger<UniwillGpuPowerWriter>? logger = null)
+        : this(new UniwillGpuPowerHardware(), Path.Combine(
+            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath), "UserData", "Control", "uniwill-gpu-baselines.json"), logger) { }
 
     internal UniwillGpuPowerWriter(IUniwillGpuPowerHardware hardware, ILogger<UniwillGpuPowerWriter>? logger = null)
+        : this(hardware, null, logger) { }
+
+    internal UniwillGpuPowerWriter(IUniwillGpuPowerHardware hardware, string? baselinePath, ILogger<UniwillGpuPowerWriter>? logger = null)
     {
         bridge = hardware ?? throw new ArgumentNullException(nameof(hardware));
+        this.baselinePath = baselinePath;
         this.logger = logger;
     }
     internal const string CtgpOffsetCapabilityId = "gpu.ctgp-offset";
@@ -22,10 +28,13 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
     internal const string DynamicBoostOffsetCapabilityId = "gpu.dynamic-boost-offset";
 
     private const string PlatformMissing = "没有 Uniwill 平台接口。";
+    internal const string TargetUnconfirmed = "整机固件预算只用于唯一确认的内置 NVIDIA 独显；外接或身份不明的显卡不可调整。";
+    internal const string FirmwareUnconfirmed = "未确认此机型固件支持 GPU 功耗控制，不能调整。";
     private const string BudgetUnknown = "读不到功率预算。";
     private const string WriteRefused = "写入后无法确认寄存器值。";
     private const string EnableRefused = "使能位未确认，未继续写入额度。";
     private const string FirmwareManaged = "功率预算现在由固件自管，EC 里这几个值不是当前生效值。";
+    internal const string BaselineUnavailable = "无法读取或保存功率预算恢复基线，未继续调整。";
 
     private const byte TakeoverBits =
         UniwillEcRegisters.CtgpDbEnableGeneralBit | UniwillEcRegisters.CtgpDbEnableCtgpBit;
@@ -42,10 +51,12 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
         {
             return ControlWriteAvailability.NotMine;
         }
+        if (!IsBudgetTarget(target)) return ControlWriteAvailability.No(TargetUnconfirmed);
         if (!bridge.IsAvailable)
         {
             return ControlWriteAvailability.No(PlatformMissing);
         }
+        if (!bridge.IsBudgetFirmwareConfirmed) return ControlWriteAvailability.No(FirmwareUnconfirmed);
         if (string.Equals(capability.Id, DynamicBoostEnabledCapabilityId, StringComparison.Ordinal))
         {
             return bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not null
@@ -59,7 +70,7 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
 
         return ControlWriteAvailability.Yes(new ControlNumberRange(
             0,
-            RequestMaximum(budget.HeadroomWatts),
+            RequestMaximum(budget, capability.Id),
             1,
             ControlUnits.Watt,
             0));
@@ -74,7 +85,8 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
         ArgumentNullException.ThrowIfNull(capability);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!IsMine(target, capability.Id) || !bridge.IsAvailable)
+        if (!IsMine(target, capability.Id) || !IsBudgetTarget(target) || !bridge.IsAvailable
+            || !bridge.IsBudgetFirmwareConfirmed)
         {
             return Task.FromResult<ControlActualValue?>(null);
         }
@@ -118,46 +130,76 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
         {
             return Task.FromResult(Failed(target, capability, "控制项不匹配。"));
         }
+        if (!IsBudgetTarget(target)) return Task.FromResult(Failed(target, capability, TargetUnconfirmed));
         if (!bridge.IsAvailable)
         {
             return Task.FromResult(Failed(target, capability, PlatformMissing));
         }
+        if (!bridge.IsBudgetFirmwareConfirmed) return Task.FromResult(Failed(target, capability, FirmwareUnconfirmed));
 
-        return Task.FromResult(
-            string.Equals(capability.Id, DynamicBoostEnabledCapabilityId, StringComparison.Ordinal)
-                ? WriteDynamicBoostEnabled(target, capability, setting)
-                : WriteOffset(target, capability, setting));
+        lock (baselineGate)
+        {
+            try
+            {
+                return Task.FromResult(string.Equals(capability.Id, DynamicBoostEnabledCapabilityId, StringComparison.Ordinal)
+                    ? WriteDynamicBoostEnabled(target, capability, setting)
+                    : WriteOffset(target, capability, setting));
+            }
+            catch (Exception error) when (IsBaselineError(error))
+            {
+                logger?.LogWarning(error, "无法保存 Uniwill GPU 恢复基线。");
+                return Task.FromResult(Failed(target, capability, BaselineUnavailable));
+            }
+        }
     }
 
     public Task<bool> RestoreAsync(
         ControlObject target,
         ControlCapability capability,
         IReadOnlySet<string> stillConfigured,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, ControlSetting? previousSetting = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsMine(target, capability.Id) || !bridge.IsAvailable
-            || bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current)
+        if (!IsMine(target, capability.Id) || !IsBudgetTarget(target) || !bridge.IsAvailable
+            || !bridge.IsBudgetFirmwareConfirmed)
         {
             return Task.FromResult(false);
         }
-        var retained = stillConfigured.Any(id => id is CtgpOffsetCapabilityId
-            or DynamicBoostEnabledCapabilityId or DynamicBoostOffsetCapabilityId);
-        if (!retained)
+        lock (baselineGate)
         {
-            var automatic = (byte)(current & ~TakeoverBits);
-            return Task.FromResult(current == automatic
-                || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, automatic) == automatic);
+            try
+            {
+                if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current) return Task.FromResult(false);
+                var retained = stillConfigured.Any(id => id is CtgpOffsetCapabilityId
+                    or DynamicBoostEnabledCapabilityId or DynamicBoostOffsetCapabilityId);
+                if (!retained)
+                {
+                    var automatic = (byte)(current & ~TakeoverBits);
+                    var restored = current == automatic
+                        || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, automatic) == automatic;
+                    if (restored) RemoveBaseline(target);
+                    return Task.FromResult(restored);
+                }
+                LoadBaselines();
+                if (!baselines!.TryGetValue(target.Id, out var baseline)) return Task.FromResult(false);
+                if (capability.Id == DynamicBoostEnabledCapabilityId)
+                {
+                    var restored = (byte)((current & ~UniwillEcRegisters.CtgpDbEnableDynamicBoostBit)
+                        | (baseline.DynamicBoostEnabled ? UniwillEcRegisters.CtgpDbEnableDynamicBoostBit : 0));
+                    return Task.FromResult(current == restored
+                        || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, restored) == restored);
+                }
+                var original = capability.Id == CtgpOffsetCapabilityId ? baseline.Ctgp : baseline.DynamicBoost;
+                return Task.FromResult(bridge.Read(AddressOf(capability.Id)) == original
+                    || bridge.WriteReadingBack(AddressOf(capability.Id), original) == original);
+            }
+            catch (Exception error) when (IsBaselineError(error))
+            {
+                logger?.LogWarning(error, "无法读取或释放 Uniwill GPU 恢复基线。");
+                return Task.FromResult(false);
+            }
         }
-        if (capability.Id == DynamicBoostEnabledCapabilityId)
-        {
-            var disabled = (byte)(current & ~UniwillEcRegisters.CtgpDbEnableDynamicBoostBit);
-            return Task.FromResult(current == disabled
-                || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, disabled) == disabled);
-        }
-        return Task.FromResult(bridge.WriteReadingBack(AddressOf(capability.Id), 0) == 0);
     }
-
     private ControlApplyOutcome WriteDynamicBoostEnabled(
         ControlObject target,
         ControlCapability capability,
@@ -171,6 +213,8 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
         {
             return Failed(target, capability, BudgetUnknown);
         }
+
+        if (!CaptureBaseline(target, current)) return Failed(target, capability, BaselineUnavailable);
 
         var next = (byte)(wanted
             ? current | TakeoverBits | UniwillEcRegisters.CtgpDbEnableDynamicBoostBit
@@ -195,10 +239,12 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
         {
             return Failed(target, capability, BudgetUnknown);
         }
-        if (value > RequestMaximum(budget.HeadroomWatts))
+        if (value > RequestMaximum(budget, capability.Id))
         {
             return Failed(target, capability, "请求超出当前功率偏移范围。");
         }
+        if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } enable || !CaptureBaseline(target, enable))
+            return Failed(target, capability, BaselineUnavailable);
         if (!EnsureTakeover())
         {
             return Failed(target, capability, EnableRefused);
@@ -256,10 +302,14 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
             : new GpuPowerBudget(baseWatts, headroom, ctgp, dynamicBoost);
     }
 
-    private static double RequestMaximum(double headroomWatts)
+    private bool IsBudgetTarget(ControlObject target)
+        => target.AdapterIndex is { } index && target.AdapterKey is { } key && bridge.IsBudgetTarget(index, key);
+
+    private static double RequestMaximum(GpuPowerBudget budget, string capabilityId)
     {
         // Existing NVML request envelope, not a measured per-register firmware ceiling.
-        return Math.Min(byte.MaxValue, Math.Floor(headroomWatts));
+        var sibling = capabilityId == CtgpOffsetCapabilityId ? budget.DynamicBoostOffsetWatts : budget.CtgpOffsetWatts;
+        return Math.Clamp(Math.Floor(budget.HeadroomWatts - sibling), 0, byte.MaxValue);
     }
 
     private static ushort AddressOf(string capabilityId)
@@ -269,6 +319,7 @@ public sealed class UniwillGpuPowerWriter : IControlWriter
 
     private static bool IsMine(ControlObject target, string capabilityId)
         => string.Equals(target.Kind, ControlObjectKinds.Gpu, StringComparison.Ordinal)
+            && target.Platform.Vendor == ControlVendors.Nvidia
             && string.Equals(
                 target.GpuAttachment,
                 ControlGpuAttachments.Discrete,

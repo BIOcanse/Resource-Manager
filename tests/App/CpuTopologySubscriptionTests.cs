@@ -272,10 +272,15 @@ public sealed class CpuTopologySubscriptionTests
         await fixture.Owner.StopAsync(CancellationToken.None);
         if (disposeOwner)
         {
-            fixture.Owner.Dispose();
+            Assert.False(fixture.Reader.ExecuteTask!.IsCompleted);
+            Assert.Throws<InvalidOperationException>(() => fixture.Owner.Dispose());
         }
         fixture.Sampler.Complete(CpuTopologyProviderTestFixture.CreateSnapshot(34));
         await fixture.Reader.ExecuteTask!.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
+        if (disposeOwner)
+        {
+            fixture.Owner.Dispose();
+        }
 
         Assert.Same(saved, fixture.Reader.GetSnapshot());
         Assert.False(pending.IsCompleted);
@@ -285,23 +290,35 @@ public sealed class CpuTopologySubscriptionTests
     [Fact]
     public void RealStaticTopologyDoesNotAdvanceTheProcessorUsageBaseline()
     {
-        var reader = new WindowsCpuTopologyReader(new CountingOverrideStore());
-        var baseline = typeof(WindowsCpuTopologyReader).GetField(
-            "previousTimes", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        var nativeReads = 0;
+        var reader = new WindowsCpuTopologyReader(new CountingOverrideStore(), () =>
+        {
+            nativeReads++;
+            return new Dictionary<int, WindowsCpuOsTopologyReader.ProcessorTimes>
+            { [0] = new(nativeReads, nativeReads * 2, nativeReads) };
+        });
         var topology = reader.CaptureTopology();
 
         Assert.NotEmpty(topology.LogicalProcessors);
         Assert.NotEmpty(topology.PhysicalCores);
+        var reported = Assert.IsType<CpuOsTopologyInformation>(topology.OsTopologyInformation);
+        Assert.NotNull(reported.PhysicalCores);
+        Assert.NotNull(reported.Caches);
+        Assert.NotNull(reported.NumaNodes);
+        var numaProcessors = reported.NumaNodes.SelectMany(static node => node.LogicalProcessorIds).ToHashSet();
+        Assert.All(reported.PhysicalCores.SelectMany(static core => core.LogicalProcessorIds),
+            id => Assert.Contains(id, numaProcessors));
         Assert.All(topology.LogicalProcessors, processor => Assert.Null(processor.UsagePercent));
-        Assert.Null(baseline.GetValue(reader));
-        _ = reader.CaptureSnapshot();
-        var firstBaseline = baseline.GetValue(reader);
-        Assert.NotNull(firstBaseline);
+        Assert.Equal(0, nativeReads);
+        var first = reader.CaptureSnapshot();
+        Assert.Equal(1, nativeReads);
+        Assert.All(first.OsTopologyInformation!.LogicalProcessorBusyPercent!, value => Assert.Null(value));
 
         _ = reader.CaptureTopology();
-        Assert.Same(firstBaseline, baseline.GetValue(reader));
-        _ = reader.CaptureSnapshot();
-        Assert.NotSame(firstBaseline, baseline.GetValue(reader));
+        Assert.Equal(1, nativeReads);
+        var second = reader.CaptureSnapshot();
+        Assert.Equal(2, nativeReads);
+        Assert.Equal(200d / 3, second.OsTopologyInformation!.LogicalProcessorBusyPercent![0]);
     }
 
     private sealed class CountingOverrideStore : ICpuCorePerformanceOverrideStore

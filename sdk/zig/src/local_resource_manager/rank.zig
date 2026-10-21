@@ -6,6 +6,35 @@ pub fn sortCapacity(values: []protocol.Intent) void {
     std.sort.heap(protocol.Intent, values, {}, capacityBefore);
 }
 
+// A worst-first heap retains the best capacity candidates in fixed caller memory.
+pub fn retainCapacity(values: []protocol.Intent, count: *usize, candidate: protocol.Intent) void {
+    if (values.len == 0) return;
+    if (count.* < values.len) {
+        var index = count.*;
+        values[index] = candidate;
+        count.* += 1;
+        while (index != 0) {
+            const parent = (index - 1) / 2;
+            if (!capacityLess(values[parent], values[index])) break;
+            std.mem.swap(protocol.Intent, &values[parent], &values[index]);
+            index = parent;
+        }
+        return;
+    }
+    if (!capacityLess(candidate, values[0])) return;
+    values[0] = candidate;
+    var index: usize = 0;
+    while (true) {
+        const left = index * 2 + 1;
+        if (left >= values.len) break;
+        const right = left + 1;
+        const worst = if (right < values.len and capacityLess(values[left], values[right])) right else left;
+        if (!capacityLess(values[index], values[worst])) break;
+        std.mem.swap(protocol.Intent, &values[index], &values[worst]);
+        index = worst;
+    }
+}
+
 pub fn sortMode(values: []protocol.Intent) void {
     std.sort.heap(protocol.Intent, values, {}, modeBefore);
 }

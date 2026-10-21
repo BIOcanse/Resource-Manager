@@ -1,53 +1,70 @@
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal sealed class NativeSamplingSubscriptionWorkspace : IDisposable
 {
-    private readonly NativeSamplingSubscriptionSession[] sessions;
+    private readonly NativeSamplingSubscriptionSession?[] sessions =
+        new NativeSamplingSubscriptionSession?[CompiledHostManagerSamplingSubscriptionPlan.RoleCount];
+    private bool initializationStarted;
+    private bool initialized;
     private bool disposed;
+    private SamplingSessionScratch? scratch;
 
-    public NativeSamplingSubscriptionWorkspace(CompiledHostManagerSamplingSubscriptionPlan plan)
+    public void Initialize(CompiledHostManagerSamplingSubscriptionPlan plan,
+        Func<ulong, IComputeScratch>? createScratch = null)
     {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (initializationStarted)
+            throw new InvalidOperationException("Sampling subscription workspace initialization was already attempted.");
         ArgumentNullException.ThrowIfNull(plan);
         if (!plan.IsPublished)
         {
             throw new InvalidOperationException("Sampling subscription plan is not published.");
         }
 
-        sessions = new NativeSamplingSubscriptionSession[CompiledHostManagerSamplingSubscriptionPlan.RoleCount];
-        var created = 0;
-        try
+        // The owner retains this metadata object before any Native session is allocated.
+        // A partial failure therefore leaves every created session available to explicit close.
+        initializationStarted = true;
+        var configurations = new NativeSamplingSubscriptionConfiguration[sessions.Length];
+        ulong total = 0;
+        for (var index = 0; index < sessions.Length; index++)
         {
-            for (var index = 0; index < sessions.Length; index++)
-            {
-                var configuration = CreateConfiguration(
-                    plan.Build.AbiVersion,
-                    plan.Recreate.Roles[index],
-                    plan.HotPublish.Roles[index],
-                    plan.ConfigurationGeneration);
-                sessions[index] = new NativeSamplingSubscriptionSession(in configuration);
-                created++;
-            }
+            configurations[index] = CreateConfiguration(
+                plan.Build.AbiVersion,
+                plan.Recreate.Roles[index],
+                plan.HotPublish.Roles[index],
+                plan.ConfigurationGeneration);
+            total = checked(total + 32UL * configurations[index].MaximumItemCount);
         }
-        catch
+        if (createScratch is not null)
+            scratch = new SamplingSessionScratch(createScratch(checked(total + 7)));
+        ulong offset = 0;
+        for (var index = 0; index < sessions.Length; index++)
         {
-            for (var index = created - 1; index >= 0; index--)
-            {
-                sessions[index].Dispose();
-            }
-            throw;
+            var configuration = configurations[index];
+            var length = checked(32UL * configuration.MaximumItemCount);
+            var sliceOffset = offset;
+            sessions[index] = scratch is null
+                ? new NativeSamplingSubscriptionSession(in configuration)
+                : new NativeSamplingSubscriptionSession(in configuration,
+                    () => scratch.Acquire(sliceOffset, length));
+            offset = checked(offset + length);
         }
+        initialized = true;
     }
 
     public NativeSamplingSubscriptionSession GetSession(int roleId)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (!initialized)
+            throw new InvalidOperationException("Sampling subscription workspace is not initialized.");
         if (roleId is < 1 or > CompiledHostManagerSamplingSubscriptionPlan.RoleCount)
         {
             throw new ArgumentOutOfRangeException(nameof(roleId));
         }
-        return sessions[roleId - 1];
+        return sessions[roleId - 1]!;
     }
 
     public void Dispose()
@@ -57,11 +74,12 @@ internal sealed class NativeSamplingSubscriptionWorkspace : IDisposable
             return;
         }
 
-        disposed = true;
         foreach (var session in sessions)
         {
-            session.Dispose();
+            session?.Dispose();
         }
+        scratch?.Dispose();
+        disposed = true;
     }
 
     internal static NativeSamplingSubscriptionConfiguration CreateConfiguration(

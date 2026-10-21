@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Collections.Immutable;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Optimization;
@@ -23,10 +24,12 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     IResourceBreakdownObservationSource resourceSource,
     ISystemInterruptSnapshotSource interruptSource,
     IOptimizationProtectionService protectionService,
-    ILogger<HostManagerReportCoordinatorOwner> logger)
+    ILogger<HostManagerReportCoordinatorOwner> logger,
+    Func<ulong, IComputeScratch> createScratch)
     : BackgroundService,
         IHostManagerReportService,
-        IOptimizationSoftwareIssueSignalSource
+        IOptimizationSoftwareIssueSignalSource,
+        IAsyncDisposable
 {
     private const int SampleIntervalSeconds = 10;
     private static readonly MetricSampleRequest ReportMetricRequest =
@@ -50,6 +53,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private readonly SemaphoreSlim executionGate = new(1, 1);
     private readonly SemaphoreSlim planSignal = new(0, 1);
     private NativeReportCoordinatorWorkspace? workspace;
+    private NativeReportCoordinatorWorkspace? pendingWorkspaceClose;
+    private int retiring;
+    private bool disposed;
     private CompiledHostManagerReportCoordinatorPlan? appliedPlan;
     private CoordinatorState? coordinatorState;
     private HostManagerReportReadModel readModel = HostManagerReportReadModel.Empty;
@@ -76,37 +82,46 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             await executionGate.WaitAsync(cancellationToken);
             try
             {
+                ThrowIfRetiring();
                 using var publication = planProvider.AcquirePublicationLease();
                 await ApplyPlanCoreAsync(
                     publication.Plan.HostManager.RequirePublished(),
                     cancellationToken);
+                ThrowIfRetiring();
                 AcquireObservationSubscriptions();
+                await base.StartAsync(cancellationToken);
             }
             finally
             {
                 executionGate.Release();
             }
 
-            await base.StartAsync(cancellationToken);
         }
-        catch
+        catch (Exception startupFailure)
         {
-            ReleaseObservationSubscriptions();
+            var failures = new List<Exception> { startupFailure };
+            ReleaseObservationSubscriptions(failures);
             UnsubscribeFromPlanProvider();
-            throw;
+            ThrowFailures(failures);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         UnsubscribeFromPlanProvider();
+        var failures = new List<Exception>();
         try
         {
             await base.StopAsync(cancellationToken);
         }
-        finally
+        catch (Exception stopFailure)
         {
-            ReleaseObservationSubscriptions();
+            failures.Add(stopFailure);
+        }
+        ReleaseObservationSubscriptions(failures);
+        if (failures.Count > 0)
+        {
+            ThrowFailures(failures);
         }
     }
 
@@ -158,6 +173,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         await executionGate.WaitAsync(cancellationToken);
         try
         {
+            ThrowIfRetiring();
+            await SettlePendingAsync(cancellationToken);
             var current = Volatile.Read(ref readModel);
             if (!current.NativeReportById.TryGetValue(reportId, out var report))
             {
@@ -223,6 +240,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         await executionGate.WaitAsync(cancellationToken);
         try
         {
+            ThrowIfRetiring();
+            await SettlePendingAsync(cancellationToken);
             var current = Volatile.Read(ref readModel);
             if (!current.NativeTrustById.TryGetValue(trustId, out var trust))
             {
@@ -287,6 +306,10 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             {
                 await EvaluateLatestAsync(stoppingToken);
             }
+            catch (ObjectDisposedException) when (Volatile.Read(ref retiring) != 0)
+            {
+                break;
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
                 break;
@@ -300,17 +323,6 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 
             await planSignal.WaitAsync(SampleInterval, stoppingToken);
         }
-    }
-
-    public override void Dispose()
-    {
-        UnsubscribeFromPlanProvider();
-        ReleaseObservationSubscriptions();
-        workspace?.Dispose();
-        workspace = null;
-        executionGate.Dispose();
-        planSignal.Dispose();
-        base.Dispose();
     }
 
     private void OnPlanPublished(CompiledRuntimePlan _)
@@ -344,6 +356,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         await executionGate.WaitAsync(cancellationToken);
         try
         {
+            ThrowIfRetiring();
             using var publication = planProvider.AcquirePublicationLease();
             await ApplyPlanCoreAsync(
                 publication.Plan.HostManager.RequirePublished(),
@@ -407,21 +420,22 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                 "host-manager.reports.system-interrupts",
                 SampleInterval);
         }
-        catch
+        catch (Exception acquisitionFailure)
         {
-            ReleaseObservationSubscriptions();
-            throw;
+            var failures = new List<Exception> { acquisitionFailure };
+            ReleaseObservationSubscriptions(failures);
+            ThrowFailures(failures);
         }
     }
 
-    private void ReleaseObservationSubscriptions()
+    private void ReleaseObservationSubscriptions(ICollection<Exception> failures)
     {
         var interrupts = Interlocked.Exchange(ref interruptSubscription, null);
         var resources = Interlocked.Exchange(ref resourceSubscription, null);
         var metrics = Interlocked.Exchange(ref metricSubscription, null);
-        interrupts?.Dispose();
-        resources?.Dispose();
-        metrics?.Dispose();
+        CaptureDisposalFailure(interrupts, failures);
+        CaptureDisposalFailure(resources, failures);
+        CaptureDisposalFailure(metrics, failures);
     }
 
     private NativeReportCoordinatorWorkspace RequireWorkspace()

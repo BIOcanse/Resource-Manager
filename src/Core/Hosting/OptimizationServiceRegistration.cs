@@ -28,6 +28,17 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.AddSingleton<IGpuPerformanceScoreOverrideStore, JsonGpuPerformanceScoreOverrideStore>();
         services.AddSingleton<IDebugDiagnosticLogReader, JsonDebugDiagnosticLogReader>();
+        if (startupCapabilities.Allows(StartupCapability.OptimizationRuntime)
+            || startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
+        {
+            services.AddSingleton(static provider =>
+                new NativeProcessPolicyBatchExecutor(
+                    provider.GetRequiredService<Infrastructure.RuntimeSpecialization.HostManagerProcessPolicyExecutorRuntime>()));
+            services.AddSingleton<IProcessResourcePolicyWriter>(static provider =>
+                new WindowsProcessResourcePolicyWriter(
+                    provider.GetRequiredService<NativeProcessPolicyBatchExecutor>()));
+            services.AddSingleton<ResourceManagerSelfLocalResourceManager>();
+        }
         if (!startupCapabilities.Allows(StartupCapability.OptimizationRuntime))
         {
             return services;
@@ -35,13 +46,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<IOptimizationProtectionStore, JsonOptimizationProtectionStore>();
         services.AddSingleton<IHostManagerRollbackStateStore, JsonHostManagerRollbackStateStore>();
-        services.AddSingleton(static provider =>
-            new NativeProcessPolicyBatchExecutor(
-                provider.GetRequiredService<Infrastructure.RuntimeSpecialization.HostManagerProcessPolicyExecutorRuntime>()));
-        services.AddSingleton<IProcessResourcePolicyWriter>(static provider =>
-            new WindowsProcessResourcePolicyWriter(
-                provider.GetRequiredService<NativeProcessPolicyBatchExecutor>()));
-        services.AddSingleton<ResourceManagerSelfLocalResourceManager>();
         services.AddSingleton<HostManagerSchedulingAuthority>();
         services.AddSingleton<IHostManagerSchedulingAuthoritySource>(static provider =>
             provider.GetRequiredService<HostManagerSchedulingAuthority>());
@@ -66,8 +70,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<Infrastructure.RuntimeSpecialization.HostManagerTransactionJournalDeploymentRuntime>(),
                 new HostManagerAppliedOwnershipRuntime(
                     provider.GetRequiredService<HostManagerAppliedOwnershipDeploymentRuntime>(),
-                    retirements),
-                retirements);
+                    retirements,
+                    provider.GetRequiredService<ResourceManagerSelfLocalResourceManager>().CreateScratch),
+                retirements,
+                provider.GetRequiredService<ResourceManagerSelfLocalResourceManager>().CreateScratch);
         });
         services.AddSingleton<JsonDebugDiagnosticLogWriter>();
         services.AddSingleton<IDebugDiagnosticLogWriter>(static provider => provider.GetRequiredService<JsonDebugDiagnosticLogWriter>());
@@ -78,7 +84,17 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<OptimizationProtectionService>();
         services.AddSingleton<IOptimizationProtectionService>(static provider =>
             provider.GetRequiredService<OptimizationProtectionService>());
-        services.AddSingleton<HostManagerReportCoordinatorOwner>();
+        services.AddSingleton(static provider => new HostManagerReportCoordinatorOwner(
+            provider.GetRequiredService<RuntimePlanProvider>(),
+            provider.GetRequiredService<HostManagerReportCoordinatorRuntime>(),
+            provider.GetRequiredService<HostManagerRuntimeIdentity>(),
+            provider.GetRequiredService<INativeReportCoordinatorPersistenceStore>(),
+            provider.GetRequiredService<ResourceManager.App.Application.Metrics.IMetricSnapshotObservationSource>(),
+            provider.GetRequiredService<ResourceManager.App.Application.ResourceBreakdown.IResourceBreakdownObservationSource>(),
+            provider.GetRequiredService<ResourceManager.App.Application.SystemHealth.ISystemInterruptSnapshotSource>(),
+            provider.GetRequiredService<IOptimizationProtectionService>(),
+            provider.GetRequiredService<ILogger<HostManagerReportCoordinatorOwner>>(),
+            provider.GetRequiredService<ResourceManagerSelfLocalResourceManager>().CreateScratch));
         services.AddSingleton<IHostManagerReportService>(static provider =>
             provider.GetRequiredService<HostManagerReportCoordinatorOwner>());
         services.AddSingleton<IOptimizationSoftwareIssueSignalSource>(static provider =>

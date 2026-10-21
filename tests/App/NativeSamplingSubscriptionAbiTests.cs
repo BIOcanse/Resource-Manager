@@ -9,18 +9,19 @@ public sealed class NativeSamplingSubscriptionAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0003_0000U, NativeSamplingSubscriptionAbi.Version);
+        Assert.Equal(0x0004_0000U, NativeSamplingSubscriptionAbi.Version);
         Assert.Equal(112, Unsafe.SizeOf<NativeSamplingSubscriptionConfiguration>());
-        Assert.Equal(64, Unsafe.SizeOf<NativeSamplingSubscriptionCapacity>());
+        Assert.Equal(72, Unsafe.SizeOf<NativeSamplingSubscriptionCapacity>());
         Assert.Equal(32, Unsafe.SizeOf<NativeSamplingSubscriptionItemReference>());
         Assert.Equal(96, Unsafe.SizeOf<NativeSamplingSubscriptionTrackInput>());
         Assert.Equal(72, Unsafe.SizeOf<NativeSamplingSubscriptionRemoveInput>());
         Assert.Equal(64, Unsafe.SizeOf<NativeSamplingSubscriptionControlInput>());
-        Assert.Equal(120, Unsafe.SizeOf<NativeSamplingSubscriptionPlanHeader>());
+        Assert.Equal(128, Unsafe.SizeOf<NativeSamplingSubscriptionPlanHeader>());
+        Assert.Equal(48, Unsafe.SizeOf<NativeSamplingSubscriptionTrigger>());
         Assert.Equal(64, Unsafe.SizeOf<NativeSamplingSubscriptionDueItem>());
         Assert.Equal(64, Unsafe.SizeOf<NativeSamplingSubscriptionSourceView>());
         Assert.Equal(48, Unsafe.SizeOf<NativeSamplingSubscriptionExpiredSource>());
-        Assert.Equal(88, Unsafe.SizeOf<NativeSamplingSubscriptionCompletionInput>());
+        Assert.Equal(96, Unsafe.SizeOf<NativeSamplingSubscriptionCompletionInput>());
         Assert.Equal(72, Unsafe.SizeOf<NativeSamplingSubscriptionCompletionOutput>());
         Assert.Equal(112, Unsafe.SizeOf<NativeSamplingSubscriptionSnapshotHeader>());
         Assert.Equal(64, Unsafe.SizeOf<NativeSamplingSubscriptionItemState>());
@@ -34,12 +35,18 @@ public sealed class NativeSamplingSubscriptionAbiTests
         AssertOffset<NativeSamplingSubscriptionTrackInput>(nameof(NativeSamplingSubscriptionTrackInput.SourceHandle), 40);
         AssertOffset<NativeSamplingSubscriptionTrackInput>(nameof(NativeSamplingSubscriptionTrackInput.ValidMask), 56);
         AssertOffset<NativeSamplingSubscriptionTrackInput>(nameof(NativeSamplingSubscriptionTrackInput.Reserved), 72);
+        AssertOffset<NativeSamplingSubscriptionCapacity>(nameof(NativeSamplingSubscriptionCapacity.TriggerCapacity), 28);
         AssertOffset<NativeSamplingSubscriptionPlanHeader>(nameof(NativeSamplingSubscriptionPlanHeader.DueItemCapacity), 48);
         AssertOffset<NativeSamplingSubscriptionPlanHeader>(nameof(NativeSamplingSubscriptionPlanHeader.NextWakeMilliseconds), 80);
         AssertOffset<NativeSamplingSubscriptionPlanHeader>(nameof(NativeSamplingSubscriptionPlanHeader.RequestFlags), 104);
+        AssertOffset<NativeSamplingSubscriptionPlanHeader>(nameof(NativeSamplingSubscriptionPlanHeader.TriggerCapacity), 112);
+        AssertOffset<NativeSamplingSubscriptionPlanHeader>(nameof(NativeSamplingSubscriptionPlanHeader.Reserved), 120);
         AssertOffset<NativeSamplingSubscriptionDueItem>(nameof(NativeSamplingSubscriptionDueItem.ScheduledDueMilliseconds), 56);
+        AssertOffset<NativeSamplingSubscriptionTrigger>(nameof(NativeSamplingSubscriptionTrigger.ScheduledDueMilliseconds), 24);
         AssertOffset<NativeSamplingSubscriptionCompletionInput>(nameof(NativeSamplingSubscriptionCompletionInput.ValidMask), 48);
-        AssertOffset<NativeSamplingSubscriptionCompletionInput>(nameof(NativeSamplingSubscriptionCompletionInput.Reserved), 72);
+        AssertOffset<NativeSamplingSubscriptionCompletionInput>(nameof(NativeSamplingSubscriptionCompletionInput.TriggerCount), 60);
+        AssertOffset<NativeSamplingSubscriptionCompletionInput>(nameof(NativeSamplingSubscriptionCompletionInput.Status), 64);
+        AssertOffset<NativeSamplingSubscriptionCompletionInput>(nameof(NativeSamplingSubscriptionCompletionInput.Reserved), 80);
         AssertOffset<NativeSamplingSubscriptionSnapshotHeader>(nameof(NativeSamplingSubscriptionSnapshotHeader.ActiveSourceCount), 56);
         AssertOffset<NativeSamplingSubscriptionSnapshotHeader>(nameof(NativeSamplingSubscriptionSnapshotHeader.Flags), 88);
         AssertOffset<NativeSamplingSubscriptionItemState>(nameof(NativeSamplingSubscriptionItemState.LastPlannedEpoch), 40);
@@ -49,17 +56,18 @@ public sealed class NativeSamplingSubscriptionAbiTests
     [Fact]
     public void PublishedMasksAndStatusesMatchTheZigContract()
     {
-        Assert.Equal(0x03U, (uint)NativeSamplingSubscriptionSourceFlags.Known);
+        Assert.Equal(0x1FU, (uint)NativeSamplingSubscriptionSourceFlags.Known);
         Assert.Equal(0x00UL, (ulong)NativeSamplingSubscriptionConfigurationFlags.Known);
-        Assert.Equal(0x0FUL, (ulong)NativeSamplingSubscriptionPlanFlags.Known);
+        Assert.Equal(0x1FUL, (ulong)NativeSamplingSubscriptionPlanFlags.Known);
         Assert.Equal(0x00UL, (ulong)NativeSamplingSubscriptionPlanRequestFlags.Known);
         Assert.Equal(0x00U, (uint)NativeSamplingSubscriptionDueItemFlags.Known);
+        Assert.Equal(0x01U, (uint)NativeSamplingSubscriptionTriggerFlags.Known);
         Assert.Equal(0x03UL, (ulong)NativeSamplingSubscriptionCompletionFlags.Known);
         Assert.Equal(0x0FUL, (ulong)NativeSamplingSubscriptionTrackValidity.Required);
         Assert.Equal(0x1FUL, (ulong)NativeSamplingSubscriptionTrackValidity.Known);
         Assert.Equal(0x03UL, (ulong)NativeSamplingSubscriptionRemoveValidity.Required);
         Assert.Equal(0x01UL, (ulong)NativeSamplingSubscriptionPlanValidity.Required);
-        Assert.Equal(0x07UL, (ulong)NativeSamplingSubscriptionCompletionValidity.Required);
+        Assert.Equal(0x0FUL, (ulong)NativeSamplingSubscriptionCompletionValidity.Required);
         Assert.Equal(1U, (uint)NativeSamplingSubscriptionCompletionStatus.Sampled);
         Assert.Equal(3U, (uint)NativeSamplingSubscriptionCompletionStatus.Skipped);
         Assert.Equal(7, (int)NativeSamplingSubscriptionStatus.OutOfMemory);
@@ -68,6 +76,7 @@ public sealed class NativeSamplingSubscriptionAbiTests
     [Fact]
     public void RootDllExportsCreateAndCapacityRoundTrip()
     {
+        Assert.Equal("ResourceManager.SubscriptionCore", typeof(NativeSamplingSubscriptionSession).Assembly.GetName().Name);
         var configuration = new NativeSamplingSubscriptionConfiguration
         {
             AbiVersion = NativeSamplingSubscriptionAbi.Version,
@@ -96,6 +105,7 @@ public sealed class NativeSamplingSubscriptionAbiTests
         Assert.Equal(4U, session.Capacity.SourceCapacity);
         Assert.Equal(4U, session.Capacity.ItemCapacity);
         Assert.Equal(8U, session.Capacity.MembershipCapacity);
+        Assert.Equal(8U, session.Capacity.TriggerCapacity);
     }
 
     private static void AssertOffset<T>(string fieldName, int expected) where T : struct

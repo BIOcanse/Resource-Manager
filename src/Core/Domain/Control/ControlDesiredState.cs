@@ -63,7 +63,7 @@ public sealed record ControlDesiredState(
 /// <summary>施加一项设定之后的结果。</summary>
 public static class ControlApplyStatuses
 {
-    /// <summary>写进去了，而且读回来对得上。</summary>
+    /// <summary>原执行通道判定成功；具体是否回读验证由 Evidence 说明。</summary>
     public const string Applied = "applied";
     /// <summary>这台机器上这一项根本控不了（缺驱动/缺组件/硬件不支持）。</summary>
     public const string Unsupported = "unsupported";
@@ -79,7 +79,11 @@ public sealed record ControlApplyOutcome(
     string ObjectId,
     string CapabilityId,
     string Status,
-    string? Message = null);
+    string? Message = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ResourceManager.ReadWrite.FieldWriteReceipt? Evidence { get; init; }
+}
 
 /// <summary>一次施加的整体结果。</summary>
 public sealed record ControlApplyReport(
@@ -93,3 +97,4 @@ public sealed record ControlApplyReport(
 public sealed record ControlStateView(
     ControlDesiredState Desired,
     ControlApplyReport LastApply);
+

@@ -3,16 +3,23 @@ using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-internal sealed class NotebookOemFanSensorReader
+internal sealed class NotebookOemFanSensorReader : IDisposable
 {
     public const string ComponentId = "notebook-oem-fan-provider";
     public const string ComponentName = "Notebook OEM Fan Provider";
 
     private readonly object compileGate = new();
-    private readonly MechrevoUwAcpiSensorReader mechrevoUwAcpiSensorReader = new();
+    private readonly MechrevoUwAcpiSensorReader mechrevoUwAcpiSensorReader;
     private CompiledFirmwareProviderPlan? compiledPlan;
     private Func<NotebookOemFanSensorSnapshot>? compiledReadRoute;
+    private int disposed;
 
+    public NotebookOemFanSensorReader() : this(new MechrevoUwAcpiSensorReader()) { }
+
+    internal NotebookOemFanSensorReader(MechrevoUwAcpiSensorReader reader)
+        => mechrevoUwAcpiSensorReader = reader ?? throw new ArgumentNullException(nameof(reader));
+
+    internal void ReleaseSession() => mechrevoUwAcpiSensorReader.ReleaseSession();
     public NotebookOemFanSensorSnapshot Read()
     {
         return Read(CompiledFirmwareProviderPlan.Default);
@@ -20,7 +27,16 @@ internal sealed class NotebookOemFanSensorReader
 
     public NotebookOemFanSensorSnapshot Read(CompiledFirmwareProviderPlan firmwareProviderPlan)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        if (firmwareProviderPlan.NotebookOemFanProvider != NotebookOemFanProviderKind.MechrevoUwAcpi)
+            mechrevoUwAcpiSensorReader.ReleaseSession();
         return GetCompiledReadRoute(firmwareProviderPlan)();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) == 0)
+            mechrevoUwAcpiSensorReader.Dispose();
     }
 
     private Func<NotebookOemFanSensorSnapshot> GetCompiledReadRoute(CompiledFirmwareProviderPlan firmwareProviderPlan)
@@ -53,16 +69,7 @@ internal sealed class NotebookOemFanSensorReader
     }
 
     private NotebookOemFanSensorSnapshot ReadMechrevoUwAcpi()
-    {
-        var mechrevo = mechrevoUwAcpiSensorReader.Read();
-        var providerState = MergeProviderStates([mechrevo.ProviderState]);
-
-        return new NotebookOemFanSensorSnapshot(
-            providerState,
-            mechrevo.CpuFanSpeedRpm,
-            mechrevo.CpuFanSpeedPercent,
-            mechrevo.GpuFanSensor is null ? [] : [mechrevo.GpuFanSensor]);
-    }
+        => ResourceManager.ReadWrite.Windows.Metrics.Resources.WindowsNotebookFanProjection.Create(mechrevoUwAcpiSensorReader.Read());
 
     public static NotebookOemFanSensorSnapshot Frozen()
     {
@@ -120,35 +127,5 @@ internal sealed class NotebookOemFanSensorReader
             []);
     }
 
-    private static HardwareSensorProviderState MergeProviderStates(IReadOnlyList<HardwareSensorProviderState> states)
-    {
-        if (states.Any(static state => state.State.Equals("Active", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new HardwareSensorProviderState(
-                ComponentName,
-                "Active",
-                string.Join("; ", states.Select(static state => $"{state.Provider}: {state.State}")));
-        }
-
-        if (states.Any(static state =>
-            state.State.Equals("RuntimeAvailable", StringComparison.OrdinalIgnoreCase)
-            || state.State.Equals("InstalledUnverified", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new HardwareSensorProviderState(
-                ComponentName,
-                "InstalledUnverified",
-                string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
-        }
-
-        return new HardwareSensorProviderState(
-            ComponentName,
-            "Unavailable",
-            string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
-    }
 }
 
-internal sealed record NotebookOemFanSensorSnapshot(
-    HardwareSensorProviderState ProviderState,
-    double? CpuFanSpeedRpm,
-    double? CpuFanSpeedPercent,
-    IReadOnlyList<PlatformGpuSensor> GpuFanSensors);

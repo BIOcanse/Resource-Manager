@@ -11,7 +11,6 @@ const app = readSource("App.tsx");
 const frontendSources = readSource("frontendRuntime/source/FrontendSources.ts");
 const appShell = readSource("app/AppShell.tsx");
 const details = readSource("features/details/DetailsPage.tsx");
-const migration = readSource("stores/migrationStore.ts");
 const managementWorkspace = readSource("features/management/ManagementWorkspace.tsx");
 const managementPage = readSource("features/management/components/ManagementPage.tsx");
 const settingsWorkspace = readSource("features/settings/SettingsWorkspace.tsx");
@@ -61,15 +60,8 @@ assert.match(
   /data && metricSnapshot\(\) !== null && resourceBreakdown\(\) !== null/);
 assert.match(details, /CpuTopologyDiagram[\s\S]*runtimeEffectsEnabled=/);
 
-// Migration requests preserve last-good values and expose independent retryable observations.
-for (const key of ["roots", "records", "sessions"] as const) {
-  assert.match(migration, new RegExp(`${key}Observation`));
-  assert.match(managementWorkspace, new RegExp(`migration\\.${key}Observation\\(\\)`));
-  assert.match(managementWorkspace, new RegExp(`migration\\.refresh${key[0].toUpperCase()}${key.slice(1)}\\(\\)`));
-}
-assert.doesNotMatch(migration, /catch\s*\{\s*setRoots\(null\)/);
-assert.doesNotMatch(migration, /catch\s*\{\s*setRecords\(\[\]\)/);
-assert.doesNotMatch(migration, /catch\s*\{\s*setSessions\(\[\]\)/);
+// The cancelled data migration feature must expose no workspace or requests.
+assert.doesNotMatch(managementWorkspace, /MigrationPanel|migrationWorkbenchPage/);
 
 // Entity-specific actions must not route components through process/software menus.
 const componentCard = managementPage.match(

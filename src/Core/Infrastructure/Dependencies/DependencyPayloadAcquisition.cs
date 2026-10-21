@@ -2,6 +2,7 @@ using System.IO.Compression;
 using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite.Dependencies;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -82,7 +83,7 @@ public sealed class DependencyPayloadAcquisition(
             .ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        // 归档不大（几十 KB），直接进内存，省掉一个要清理的临时文件。
+        // 辅助程序的独立发行包也走同一条获取通道。
         await using var stream = await response.Content
             .ReadAsStreamAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -91,25 +92,8 @@ public sealed class DependencyPayloadAcquisition(
         buffer.Position = 0;
 
         using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
-        var extracted = new List<string>();
-        foreach (var name in wanted)
-        {
-            // 只按文件名取，且只写到目标目录下 —— 不跟随归档里的路径，
-            // 免得一个构造过的归档把文件写到目录外面去。
-            var entry = archive.Entries.FirstOrDefault(candidate =>
-                string.Equals(
-                    Path.GetFileName(candidate.FullName),
-                    name,
-                    StringComparison.OrdinalIgnoreCase));
-            if (entry is null)
-            {
-                continue;
-            }
-            var destination = Path.Combine(directory, name);
-            entry.ExtractToFile(destination, overwrite: true);
-            extracted.Add(name);
-        }
-        return extracted;
+        return DependencyPackageInstaller.ExtractArchive(archive, directory,
+            source.IncludeArchiveContents ? null : [.. wanted], cancellationToken);
     }
 
     private string ResolvePayloadDirectory(string componentId)

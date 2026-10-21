@@ -17,7 +17,6 @@ internal sealed class NativePlacementCoordinatorWorkspace
         Applied = new NativePlacementAppliedInput[configuration.MaximumAppliedCount];
         Actions = new NativePlacementAction[capacity.ActionCapacity];
         Feedback = new NativePlacementFeedback[capacity.ActionCapacity];
-        States = new NativePlacementState[capacity.SnapshotStateCapacity];
     }
 
     public NativePlacementDesiredInput[] Desired { get; }
@@ -28,5 +27,4 @@ internal sealed class NativePlacementCoordinatorWorkspace
 
     public NativePlacementFeedback[] Feedback { get; }
 
-    public NativePlacementState[] States { get; }
 }

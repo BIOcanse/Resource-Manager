@@ -155,7 +155,13 @@ public sealed class WindowsGpuProviderIdentityResolverTests
     [Fact]
     public void AdlxBridgeAndManagedLayoutExposeVersionedPnpIdentity()
     {
-        Assert.Equal(2U, AmdAdlxBridgeReader.BridgeAbiVersion);
+        Assert.Equal(5U, AmdAdlxBridgeReader.BridgeAbiVersion);
+        Assert.Equal(840, Marshal.SizeOf<NativeAdlxGpuMetrics>());
+        Assert.Equal(520, Marshal.SizeOf<NativeAdlxGpuSelection>());
+        Assert.Equal(824, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.IdentityValid)).ToInt32());
+        Assert.Equal(832, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.SampleTimestampMilliseconds)).ToInt32());
+        Assert.Equal(816, Marshal.OffsetOf<NativeAdlxGpuMetrics>(
+            nameof(NativeAdlxGpuMetrics.MemoryTemperatureCelsius)).ToInt32());
         Assert.Equal(
             512,
             Marshal.SizeOf<AdlxFixedString512>());
@@ -167,9 +173,7 @@ public sealed class WindowsGpuProviderIdentityResolverTests
 
         var appRoot = FindAppRoot();
         var managed = File.ReadAllText(Path.Combine(
-            appRoot,
-            "Infrastructure",
-            "Monitoring",
+            appRoot, "..", "ReadWriteCore", "Vendors", "Amd",
             "AmdAdlxBridgeReader.cs"));
         var native = File.ReadAllText(Path.Combine(
             appRoot,
@@ -186,7 +190,7 @@ public sealed class WindowsGpuProviderIdentityResolverTests
             native,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RM_ADLX_BRIDGE_ABI_VERSION 2",
+            "RM_ADLX_BRIDGE_ABI_VERSION 5",
             native,
             StringComparison.Ordinal);
     }
@@ -200,10 +204,10 @@ public sealed class WindowsGpuProviderIdentityResolverTests
             "Monitoring");
         var files = new[]
         {
-            "NvidiaNvmlReader.Device.cs",
-            "NvidiaNvapiReader.Device.cs",
-            "NvidiaNvapiReader.Sensors.cs",
-            "AmdAdlxBridgeReader.cs",
+            "../../../ReadWriteCore/Vendors/Nvidia/NvidiaNvmlReader.Device.cs",
+            "../../../ReadWriteCore/Vendors/Nvidia/NvidiaNvapiReader.Device.cs",
+            "../../../ReadWriteCore/Vendors/Nvidia/NvidiaNvapiReader.Sensors.cs",
+            "../../../ReadWriteCore/Vendors/Amd/AmdAdlxBridgeReader.cs",
             "WindowsHardwareMetricSampler.NativeCollection.cs"
         };
         var source = string.Concat(

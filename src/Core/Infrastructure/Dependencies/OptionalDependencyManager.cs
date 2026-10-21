@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Dependencies;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.ServiceHosting;
 
 namespace ResourceManager.App.Infrastructure.Dependencies;
 
@@ -12,6 +13,7 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     private readonly IFileChangeTracker fileChangeTracker;
     private readonly IInstalledSoftwareInventory installedSoftwareInventory;
     private readonly IDependencyInstallerSourceResolver installerSourceResolver;
+    private readonly IInteractiveUserSessionBroker sessionBroker;
     private readonly string packageRoot;
 
     public OptionalDependencyManager(
@@ -19,12 +21,14 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
         IHostEnvironment environment,
         IFileChangeTracker fileChangeTracker,
         IInstalledSoftwareInventory installedSoftwareInventory,
-        IDependencyInstallerSourceResolver installerSourceResolver)
+        IDependencyInstallerSourceResolver installerSourceResolver,
+        IInteractiveUserSessionBroker? sessionBroker = null)
     {
         this.httpClient = httpClient;
         this.fileChangeTracker = fileChangeTracker;
         this.installedSoftwareInventory = installedSoftwareInventory;
         this.installerSourceResolver = installerSourceResolver;
+        this.sessionBroker = sessionBroker ?? new WindowsInteractiveUserSessionBroker();
         packageRoot = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
     }
 
@@ -33,8 +37,13 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     private string InstallerCacheRoot => Path.Combine(packageRoot, "Misc", "DependencyInstallers");
 
     public async Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(CancellationToken cancellationToken)
+        => await GetStatusesAsync(windowsSid: null, cancellationToken: cancellationToken);
+
+    public async Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(
+        string? windowsSid,
+        CancellationToken cancellationToken)
     {
-        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
+        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(windowsSid, cancellationToken);
         IReadOnlyList<OptionalDependencyStatus> statuses = OptionalDependencyCatalog.Definitions
             .Select(definition => BuildStatus(definition, installedSoftware))
             .ToArray();
@@ -43,6 +52,12 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
     }
 
     public async Task<OptionalDependencyStatus?> GetStatusAsync(string id, CancellationToken cancellationToken)
+        => await GetStatusAsync(id, windowsSid: null, cancellationToken: cancellationToken);
+
+    public async Task<OptionalDependencyStatus?> GetStatusAsync(
+        string id,
+        string? windowsSid,
+        CancellationToken cancellationToken)
     {
         var definition = OptionalDependencyCatalog.Find(id);
         if (definition is null)
@@ -50,7 +65,7 @@ public sealed partial class OptionalDependencyManager : IOptionalDependencyManag
             return null;
         }
 
-        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(cancellationToken);
+        var installedSoftware = await installedSoftwareInventory.GetInstalledSoftwareAsync(windowsSid, cancellationToken);
         return BuildStatus(definition, installedSoftware);
     }
 

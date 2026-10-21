@@ -46,6 +46,7 @@ internal static class DaDk
         BackendPipelineNotReady = "Anmodningspipelinen for den lokale tjeneste er ikke klar.",
         NoProcessToTerminate = "Der er ingen proces at afslutte.",
         TerminateRequestCompleted = "Anmodningen om at afslutte processen er fuldført.",
+        TerminateResultFormat = "{0} / {1} processer blev afsluttet.",
 
         WebViewInitializationFailed = "Den integrerede brugerflade kunne ikke initialiseres. Åbn diagnosticeringsmappen for at se detaljer.",
         FrontendIdentityVerificationFailed = "Identitetsbekræftelsen af frontend-ressourcerne mislykkedes. Åbn diagnosticeringsmappen for at se detaljer.",

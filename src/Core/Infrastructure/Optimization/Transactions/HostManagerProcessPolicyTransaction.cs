@@ -952,15 +952,35 @@ public sealed class HostManagerProcessPolicyTransaction
     {
         var powerBit = NativeMethods.ProcessPowerThrottlingExecutionSpeed;
         return new TargetPolicy(
-            checked((uint)TargetPriority(grade)),
+            ResolveTargetPriority(payload.BaselinePriorityClass, grade),
             grade == HostManagerProcessGrades.A1
                 ? payload.BaselineMemoryPriority
-                : TargetMemoryPriority(grade),
+                : Math.Min(payload.BaselineMemoryPriority, TargetMemoryPriority(grade)),
             payload.BaselinePowerControlMask | powerBit,
             grade == HostManagerProcessGrades.A1
                 ? payload.BaselinePowerStateMask & ~powerBit
                 : payload.BaselinePowerStateMask | powerBit);
     }
+
+    private static uint ResolveTargetPriority(uint baseline, int grade)
+    {
+        var target = (uint)TargetPriority(grade);
+        var alreadyStronger = grade == HostManagerProcessGrades.A1
+            ? PriorityRank(baseline) >= PriorityRank(target)
+            : PriorityRank(baseline) <= PriorityRank(target);
+        return alreadyStronger ? baseline : target;
+    }
+
+    private static int PriorityRank(uint priority) => (ProcessPriorityClass)priority switch
+    {
+        ProcessPriorityClass.Idle => 0,
+        ProcessPriorityClass.BelowNormal => 1,
+        ProcessPriorityClass.Normal => 2,
+        ProcessPriorityClass.AboveNormal => 3,
+        ProcessPriorityClass.High => 4,
+        ProcessPriorityClass.RealTime => 5,
+        _ => 2
+    };
 
     private static bool IsSupportedGrade(int grade) => grade is
         HostManagerProcessGrades.A1

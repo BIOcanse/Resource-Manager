@@ -18,8 +18,6 @@ internal sealed unsafe class SharedMemoryRegion : IDisposable
     {
         if (!BitConverter.IsLittleEndian)
         {
-            view.Dispose();
-            mapping.Dispose();
             throw new PlatformNotSupportedException(
                 "The shared-resource ABI requires a little-endian host.");
         }
@@ -55,8 +53,7 @@ internal sealed unsafe class SharedMemoryRegion : IDisposable
             mappingName,
             capacity,
             MemoryMappedFileAccess.ReadWrite);
-        var view = mapping.CreateViewAccessor(0, capacity, MemoryMappedFileAccess.ReadWrite);
-        return new SharedMemoryRegion(mappingName, capacity, mapping, view, writable: true);
+        return CreateView(mappingName, capacity, mapping, writable: true);
     }
 
     public static SharedMemoryRegion OpenExisting(
@@ -68,9 +65,29 @@ internal sealed unsafe class SharedMemoryRegion : IDisposable
         var mapping = MemoryMappedFile.OpenExisting(
             mappingName,
             writable ? MemoryMappedFileRights.ReadWrite : MemoryMappedFileRights.Read);
-        var access = writable ? MemoryMappedFileAccess.ReadWrite : MemoryMappedFileAccess.Read;
-        var view = mapping.CreateViewAccessor(0, capacity, access);
-        return new SharedMemoryRegion(mappingName, capacity, mapping, view, writable);
+        return CreateView(mappingName, capacity, mapping, writable);
+    }
+
+    // Ownership transfers into this factory even if view construction fails.
+    internal static SharedMemoryRegion CreateView(
+        string mappingName,
+        long capacity,
+        MemoryMappedFile mapping,
+        bool writable)
+    {
+        MemoryMappedViewAccessor? view = null;
+        try
+        {
+            var access = writable ? MemoryMappedFileAccess.ReadWrite : MemoryMappedFileAccess.Read;
+            view = mapping.CreateViewAccessor(0, capacity, access);
+            return new SharedMemoryRegion(mappingName, capacity, mapping, view, writable);
+        }
+        catch
+        {
+            try { view?.Dispose(); }
+            finally { mapping.Dispose(); }
+            throw;
+        }
     }
 
     public void Dispose()
@@ -88,8 +105,8 @@ internal sealed unsafe class SharedMemoryRegion : IDisposable
             _pointer = null;
         }
 
-        _view.Dispose();
-        _mapping.Dispose();
+        try { _view.Dispose(); }
+        finally { _mapping.Dispose(); }
     }
 
     private static void ValidateArguments(string mappingName, long capacity)

@@ -31,6 +31,9 @@ public sealed class DashboardMonitoringCatalogState
             .Where(static definition => definition.Selectable)
             .Select(static definition => definition.Id)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // A bound field is subscribable even while its source has no current value.
+        available.UnionWith(snapshot.FieldBindings.Keys);
+        available.UnionWith(snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases));
         var selected = request.IsAll
             ? available
             : request.Ids
@@ -38,9 +41,12 @@ public sealed class DashboardMonitoringCatalogState
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (request.IncludesAllGpuCoreMetrics)
         {
-            selected.UnionWith(available.Where(IsGpuCoreMetric));
+            selected.UnionWith(available.Where(id => snapshot.FieldBindings.TryGetValue(id, out var binding)
+                ? binding.Field.Code is MetricFieldCode.GpuUsage or MetricFieldCode.GpuMemoryUsed or MetricFieldCode.GpuMemoryPercent or MetricFieldCode.GpuEngineBusy
+                : IsGpuCoreMetric(id)));
         }
-        return MetricSampleRequest.ForIds(selected);
+        var selection = MetricSampleRequest.ForIds(selected);
+        return request.IncludesCatalog ? selection.WithCatalog() : selection;
     }
 
     public void PublishCatalogProbe(HardwareMetricSnapshot snapshot)
@@ -77,7 +83,8 @@ public sealed class DashboardMonitoringCatalogState
         var name = metricId[(separator + 1)..];
         return name.Equals("usage", StringComparison.OrdinalIgnoreCase)
             || name.Equals("vram", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("vramPercent", StringComparison.OrdinalIgnoreCase);
+            || name.Equals("vramPercent", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("engineBusy", StringComparison.OrdinalIgnoreCase);
     }
 
     private readonly record struct CatalogIdentity(
@@ -88,11 +95,13 @@ public sealed class DashboardMonitoringCatalogState
     {
         internal static CatalogIdentity Create(HardwareMetricSnapshot snapshot)
         {
+            var boundAddresses = snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases)
+                .Concat(snapshot.FieldBindings.Keys).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var adapterIdentity = snapshot.Gpus
                 .OrderBy(static gpu => gpu.Index)
                 .Select(static gpu => $"{gpu.Index}:{gpu.IdentityKey ?? string.Empty}");
             var metricIdentity = MetricCatalog.FromSnapshot(snapshot)
-                .Where(static definition => definition.Selectable)
+                .Where(definition => definition.Selectable || boundAddresses.Contains(definition.Id))
                 .OrderBy(static definition => definition.Id, StringComparer.OrdinalIgnoreCase)
                 .Select(static definition =>
                     $"{definition.Id}:{definition.ScopeKind ?? string.Empty}:{definition.ScopeKey ?? string.Empty}");
@@ -100,7 +109,9 @@ public sealed class DashboardMonitoringCatalogState
                 snapshot.WorkspaceIdentity,
                 snapshot.ConfigurationGeneration,
                 snapshot.CatalogGeneration,
-                string.Join('|', adapterIdentity.Concat(metricIdentity)));
+                string.Join('|', adapterIdentity.Concat(metricIdentity).Concat(snapshot.FieldBindings.Values
+                    .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
+                    .Select(static binding => $"{binding.DeviceIdentity}:{binding.RequestAddress}:{binding.SourceId}"))));
         }
     }
 }

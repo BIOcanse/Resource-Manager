@@ -1,7 +1,6 @@
 using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Diagnostics.Tracing.Session;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -11,13 +10,20 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
     private readonly object lifecycle = new();
     private readonly object gate = new();
     private GpuAllocationLedger ledger = new();
-    private TraceEventSession? session;
-    private Task? processor;
+    private IGpuAllocationSession? session;
+    private readonly IGpuAllocationSessionFactory sessionFactory = new TraceEventGpuAllocationSessionFactory(logger);
+    private readonly TimeProvider timeProvider = TimeProvider.System;
+    private static readonly TimeSpan RestartInterval = TimeSpan.FromSeconds(5);
+    private long lastStartAttempt;
+    private bool hasStartAttempt;
+    private bool runtimeReleaseBlocked;
     private Timer? rescanTimer;
     private GpuAllocationLedger? candidate;
     private bool candidateFailed;
     private long scanId;
     private long activeScanId;
+    private long scanEventsLost;
+    private long acceptedEventsLost;
     internal long CompletedRescans { get; private set; }
     private int leases;
     private bool ready;
@@ -26,6 +32,10 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
     private ulong generation;
     private static readonly int[] EventIds = [33, 34, 35, 36, 37, 38, 39, 40, 53, 54, 55,
         74, 78, 80, 110, 227, 306, 307, 313, 314, 391];
+
+    internal GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
+        IGpuAllocationSessionFactory sessionFactory, TimeProvider timeProvider) : this(logger, configuration)
+        => (this.sessionFactory, this.timeProvider) = (sessionFactory, timeProvider);
 
     public IDisposable AcquireSubscription()
     {
@@ -41,37 +51,49 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
     {
         lock (lifecycle)
         {
-            if (session is null) return null;
-            lock (gate)
+            if (disposed || runtimeReleaseBlocked || leases == 0) return null;
+            EnsureProcessing();
+            if (session is null || !session.IsProcessing) return null;
+            return ReadVerifiedCurrent(currentProcesses, session.EventsLost);
+        }
+    }
+
+    internal GpuAllocationReading? ReadVerifiedCurrent(IReadOnlyDictionary<int, long> currentProcesses, long eventsLost)
+    {
+        lock (gate)
+        {
+            if (!ready || failed) return null;
+            try
             {
-                if (!ready || failed) return null;
-                try
-                {
-                    if (session.EventsLost != 0) throw new InvalidDataException("GPU allocation events were lost.");
-                    return ledger.Read(currentProcesses) with { Generation = generation, ObservedAtUtcTicks = DateTime.UtcNow.Ticks };
-                }
-                catch (Exception error)
-                {
-                    failed = true;
-                    logger.LogWarning(error, "GPU allocation current value is empty.");
-                    return null;
-                }
+                if (eventsLost != acceptedEventsLost) throw new InvalidDataException("GPU allocation events were lost.");
+                return ledger.Read(currentProcesses) with { Generation = generation, ObservedAtUtcTicks = DateTime.UtcNow.Ticks };
+            }
+            catch (Exception error)
+            {
+                failed = true;
+                logger.LogWarning(error, "GPU allocation current value is empty.");
+                return null;
             }
         }
     }
 
     private void Start()
     {
-        lock (gate) { ledger = new(); ready = false; failed = false; generation = 0; }
+        if (runtimeReleaseBlocked) return;
+        hasStartAttempt = true;
+        lastStartAttempt = timeProvider.GetTimestamp();
+        lock (gate) { ledger = new(); ready = false; failed = false; generation++; acceptedEventsLost = 0; }
         try
         {
-            var name = $"ResourceManagerGpuAllocations-{Environment.ProcessId}-{Guid.NewGuid():N}";
-            var current = new TraceEventSession(name) { StopOnDispose = true, BufferSizeMB = 16, EnableProviderTimeoutMSec = 2000 };
+            var name = ResourceManagerEtwSessionNames.Create(ResourceManagerEtwSessionNames.GpuAllocationsPrefix,
+                ResourceManagerEtwSessionNames.CurrentOwner);
+            var current = sessionFactory.Create(name);
             session = current;
-            current.Source.Dynamic.All += data =>
+            current.Bind(data =>
             {
                 lock (gate)
                 {
+                    if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
                     try
                     {
                         if (data.ProviderGuid == EventSource.GetGuid(typeof(GpuAllocationBoundary)))
@@ -82,39 +104,17 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
                                 var id = Convert.ToInt64(data.PayloadByName("scan"));
                                 if ((int)data.ID == 2)
                                 {
-                                    candidate = new();
-                                    candidateFailed = false;
-                                    activeScanId = id;
+                                    BeginRescan(id, Convert.ToInt64(data.PayloadByName("eventsLost")));
                                 }
                                 else if (candidate is not null && activeScanId == id)
                                 {
-                                    if (!candidateFailed && current.EventsLost == 0)
-                                    {
-                                        candidate.Read(new Dictionary<int, long>());
-                                        ledger = candidate;
-                                        ready = true;
-                                        failed = false;
-                                        generation++;
-                                        CompletedRescans++;
-                                        logger.LogInformation("GPU allocation full rescan {Scan} published.", id);
-                                    }
-                                    candidate = null;
+                                    CompleteRescan(id, current.EventsLost);
                                 }
                             }
                             return;
                         }
                         if (data.ProviderGuid != Provider || !EventIds.Contains((int)data.ID)) return;
-                        if (candidate is not null && !candidateFailed)
-                        {
-                            try { Apply(candidate, data); }
-                            catch (Exception error)
-                            {
-                                candidateFailed = true;
-                                logger.LogWarning(error, "GPU allocation rescan could not be applied.");
-                            }
-                        }
-                        if (!failed) Apply(ledger, data);
-                        generation++;
+                        ObserveAllocation((int)data.ID, data.PayloadByName, data.TimeStamp.ToUniversalTime());
                     }
                     catch (Exception error)
                     {
@@ -122,23 +122,20 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
                         logger.LogWarning(error, "GPU allocation event could not be applied.");
                     }
                 }
-            };
-            processor = Task.Factory.StartNew(() =>
+            });
+            current.StartProcessing(error =>
             {
-                try { current.Source.Process(); }
-                catch (Exception error)
+                lock (gate)
                 {
-                    lock (gate) failed = true;
-                    logger.LogWarning(error, "GPU allocation event stream ended.");
+                    if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
+                    ready = false; failed = true;
                 }
-                finally { lock (gate) { ready = false; failed = true; } }
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                logger.LogWarning(error, "GPU allocation event stream ended; the next requested read will retry.");
+            });
             current.EnableProvider(EventSource.GetGuid(typeof(GpuAllocationBoundary)));
-            current.EnableProvider(Provider, TraceEventLevel.Verbose, 0x41,
-                new TraceEventProviderOptions { EventIDsToEnable = EventIds });
+            current.EnableProvider(Provider, 0x41, EventIds);
             current.CaptureState(Provider, 0x41);
-            current.EnableProvider(Provider, TraceEventLevel.Verbose, 0x41,
-                new TraceEventProviderOptions { EventIDsToEnable = EventIds });
+            current.EnableProvider(Provider, 0x41, EventIds);
             GpuAllocationBoundary.Instance.Complete(name);
             current.Flush();
             var seconds = configuration.GetValue("Monitoring:GpuAllocationRescanSeconds", 60d);
@@ -152,21 +149,59 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
             lock (gate) failed = true;
             logger.LogWarning(error, "GPU allocation subscription could not start.");
             Stop();
+            if (error is KernelEtwSessionCreationCleanupException) runtimeReleaseBlocked = true;
         }
     }
 
-    private static void Apply(GpuAllocationLedger target, TraceEvent data)
-        => GpuAllocationEventDecoder.Apply(target, (int)data.ID, data.PayloadByName, data.TimeStamp.ToUniversalTime());
+    internal void BeginRescan(long id, long eventsLost)
+    {
+        lock (gate)
+        {
+            candidate = new(); candidateFailed = false; activeScanId = id; scanEventsLost = eventsLost;
+        }
+    }
 
-    private void Rescan(TraceEventSession current, string name)
+    internal void CompleteRescan(long id, long eventsLost)
+    {
+        lock (gate)
+        {
+            if (candidate is null || activeScanId != id) return;
+            if (!candidateFailed && eventsLost == scanEventsLost)
+            {
+                candidate.Read(new Dictionary<int, long>());
+                ledger = candidate; ready = true; failed = false; acceptedEventsLost = eventsLost;
+                generation++; CompletedRescans++;
+                logger.LogInformation("GPU allocation full rescan {Scan} published.", id);
+            }
+            else failed = true;
+            candidate = null;
+        }
+    }
+
+    internal void ObserveAllocation(int eventId, Func<string, object> payload, DateTime timestampUtc)
+    {
+        lock (gate)
+        {
+            if (candidate is not null && !candidateFailed)
+            {
+                try { GpuAllocationEventDecoder.Apply(candidate, eventId, payload, timestampUtc); }
+                catch (Exception error) { candidateFailed = true; logger.LogWarning(error, "GPU allocation rescan could not be applied."); }
+            }
+            if (!failed) GpuAllocationEventDecoder.Apply(ledger, eventId, payload, timestampUtc);
+            generation++;
+        }
+    }
+
+    private void Rescan(IGpuAllocationSession current, string name)
     {
         lock (lifecycle)
         {
             if (disposed || session != current) return;
+            if (!current.IsProcessing) { EnsureProcessing(); return; }
             try
             {
                 var id = ++scanId;
-                GpuAllocationBoundary.Instance.BeginScan(name, id);
+                GpuAllocationBoundary.Instance.BeginScan(name, id, current.EventsLost);
                 current.CaptureState(Provider, 0x41);
                 GpuAllocationBoundary.Instance.EndScan(name, id);
                 current.Flush();
@@ -189,12 +224,26 @@ public sealed class GpuAllocationCollector(ILogger<GpuAllocationCollector> logge
         rescanTimer?.Dispose();
         rescanTimer = null;
         var current = session;
+        if (current is null && runtimeReleaseBlocked) return;
+        var released = current?.Stop(TimeSpan.FromSeconds(3));
+        if (released is not null && !released.IsReleased)
+        {
+            runtimeReleaseBlocked = true;
+            lock (gate) { ready = false; failed = true; }
+            logger.LogError("GPU allocation session release was not confirmed: {Failures}", string.Join(" | ", released.Failures));
+            return;
+        }
         session = null;
-        current?.Dispose();
-        if (processor is not null && !processor.Wait(TimeSpan.FromSeconds(3)))
-            throw new TimeoutException("GPU allocation event processing did not stop.");
-        processor = null;
+        runtimeReleaseBlocked = false;
         lock (gate) { ready = false; ledger = new(); candidate = null; }
+    }
+
+    private void EnsureProcessing()
+    {
+        if (disposed || leases == 0 || runtimeReleaseBlocked || session?.IsProcessing == true) return;
+        if (hasStartAttempt && timeProvider.GetElapsedTime(lastStartAttempt) < RestartInterval) return;
+        Stop();
+        if (!runtimeReleaseBlocked) Start();
     }
 
     public void Dispose()
@@ -216,7 +265,7 @@ internal sealed class GpuAllocationBoundary : EventSource
     [Event(1, Level = EventLevel.Informational)]
     public void Complete(string session) => WriteEvent(1, session);
     [Event(2, Level = EventLevel.Informational)]
-    public void BeginScan(string session, long scan) => WriteEvent(2, session, scan);
+    public void BeginScan(string session, long scan, long eventsLost) => WriteEvent(2, session, scan, eventsLost);
     [Event(3, Level = EventLevel.Informational)]
     public void EndScan(string session, long scan) => WriteEvent(3, session, scan);
 }

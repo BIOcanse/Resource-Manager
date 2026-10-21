@@ -43,7 +43,7 @@ public sealed class BackendHostEnvironmentTests
     }
 
     [Fact]
-    public void InteractiveAndNoUiGraphs_DoNotRegisterTheSessionOwner()
+    public void InteractiveAndNoUiGraphsKeepSessionValidationWithoutNativeUiLauncher()
     {
         using var interactiveProvider = new ServiceCollection()
             .AddLogging()
@@ -62,8 +62,10 @@ public sealed class BackendHostEnvironmentTests
                     isLocalSystem: true))
             .BuildServiceProvider();
 
-        Assert.Null(interactiveProvider.GetService<IInteractiveUserSessionBroker>());
-        Assert.Null(headlessServiceProvider.GetService<IInteractiveUserSessionBroker>());
+        Assert.IsType<WindowsInteractiveUserSessionBroker>(
+            Assert.Single(interactiveProvider.GetServices<IInteractiveUserSessionBroker>()));
+        Assert.IsType<WindowsInteractiveUserSessionBroker>(
+            Assert.Single(headlessServiceProvider.GetServices<IInteractiveUserSessionBroker>()));
         Assert.DoesNotContain(
             interactiveProvider.GetServices<IHostedService>(),
             static service => service is NativeUiLaunchHostedService);

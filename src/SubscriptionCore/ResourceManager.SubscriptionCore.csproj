@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PackageId>ResourceManager.SubscriptionCore</PackageId>
+    <Version>0.1.0-dev.86</Version>
+    <Description>Native subscription planning, managed tracking and explicit read/write field subscriptions.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Authors>BIOcanse</Authors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ReadWriteCore/ResourceManager.ReadWriteCore.csproj" />
+    <InternalsVisibleTo Include="ResourceManager" />
+    <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../NOTICE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

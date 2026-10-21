@@ -5,6 +5,15 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ProcessOwnedEtwSessionRecoveryTests
 {
+    [Fact]
+    public void LegacyGpuRandomSuffixIsRecognizedOnlyForTheGpuProducer()
+    {
+        const string suffix = "0123456789abcdef0123456789abcdef";
+        var prefix = ResourceManagerEtwSessionNames.GpuAllocationsPrefix;
+        Assert.True(ResourceManagerEtwSessionNames.TryParse(prefix, $"{prefix}-42-{suffix}", out var owner));
+        Assert.Equal(new ProcessOwnedEtwSessionOwner(42, null), owner);
+        Assert.False(ResourceManagerEtwSessionNames.TryParse(Prefix, $"{Prefix}-42-{suffix}", out _));
+    }
     private const string Prefix = "ResourceManagerKernelTelemetry";
 
     [Fact]

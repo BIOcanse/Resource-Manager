@@ -6,5 +6,6 @@ public interface ISoftwareOperationManager
 {
     Task<SoftwareOperationResult> UninstallAsync(
         SoftwareOperationRequest request,
+        SoftwareOperationCaller? caller,
         CancellationToken cancellationToken);
 }

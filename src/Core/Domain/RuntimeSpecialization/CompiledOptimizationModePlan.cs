@@ -8,7 +8,7 @@ public enum OptimizationModeCapabilities : byte
     None = 0,
     ExternalAdaptedMemoryActions = 1 << 0,
     AutomaticMemoryCleanup = 1 << 1,
-    VramResourceActions = 1 << 2,
+    // Bit 2 belonged to an unused central VRAM action capability; preserve the remaining wire positions.
     SoftwareScheduling = 1 << 3,
     AutomaticProcessPolicies = 1 << 4,
     HardwarePlacement = 1 << 5,
@@ -39,8 +39,7 @@ public sealed record CompiledOptimizationModePlan(
         | OptimizationModeCapabilities.AutomaticProcessPolicies
         | OptimizationModeCapabilities.HardwarePlacement;
     private const OptimizationModeCapabilities GpuCapabilities =
-        OptimizationModeCapabilities.VramResourceActions
-        | OptimizationModeCapabilities.SoftwareScheduling
+        OptimizationModeCapabilities.SoftwareScheduling
         | OptimizationModeCapabilities.HardwarePlacement;
 
     public static CompiledOptimizationModePlan Default { get; } = Compile(AppOptimizationModes.Normal);
@@ -56,7 +55,6 @@ public sealed record CompiledOptimizationModePlan(
     public bool ResourceManagerSelfMemoryActionsEnabled =>
         Has(OptimizationModeCapabilities.ResourceManagerSelfMemoryActions);
     public bool AutomaticMemoryCleanupEnabled => Has(OptimizationModeCapabilities.AutomaticMemoryCleanup);
-    public bool VramResourceActionsEnabled => Has(OptimizationModeCapabilities.VramResourceActions);
     public bool SoftwareSchedulingEnabled => Has(OptimizationModeCapabilities.SoftwareScheduling);
     public bool AutomaticProcessPoliciesEnabled => Has(OptimizationModeCapabilities.AutomaticProcessPolicies);
     public bool HardwarePlacementEnabled => Has(OptimizationModeCapabilities.HardwarePlacement);

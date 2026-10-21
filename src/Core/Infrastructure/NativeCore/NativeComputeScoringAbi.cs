@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeComputeScoringAbi
 {
-    public const uint Version = 0x0004_0004;
+    public const uint Version = 0x0005_0000;
     public const int RuntimeStateCount = 7;
 }
 
@@ -175,7 +175,10 @@ internal unsafe struct NativeComputeScoringCapacity
     public uint ProcessCapacity;
     public uint GpuCapacity;
     public uint OutputCapacity;
-    public fixed ulong Reserved[4];
+    public ulong ScratchByteCount;
+    public uint ScratchAlignment;
+    public uint Reserved0;
+    public fixed ulong Reserved[2];
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 168)]

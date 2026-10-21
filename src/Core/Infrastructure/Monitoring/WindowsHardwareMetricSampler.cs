@@ -1,3 +1,8 @@
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
+using ResourceManager.ReadWrite.Windows.Metrics.Writes;
+using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
+using ResourceManager.ReadWrite.Native;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.Metrics;
@@ -5,10 +10,14 @@ using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.RuntimeSpecialization;
-using ResourceManager.App.Infrastructure.Monitoring.AmdSmu;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using System.Runtime.CompilerServices;
+using System.Collections.Immutable;
+using ResourceManager.ReadWrite;
+using ResourceManager.Subscription;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -19,9 +28,6 @@ public sealed partial class WindowsHardwareMetricSampler :
     IHostedService,
     IDisposable
 {
-    private static readonly TimeSpan CatalogProbeCacheDuration =
-        TimeSpan.FromSeconds(2);
-
     private readonly WindowsCpuMonitoringZone cpuZone;
     private readonly WindowsMemoryMonitoringZone memoryZone;
     private readonly WindowsVirtualMemoryMonitoringZone virtualMemoryZone;
@@ -33,32 +39,36 @@ public sealed partial class WindowsHardwareMetricSampler :
     private readonly NvidiaNvapiMonitoringZone nvidiaNvapiZone;
     private readonly AmdAdlxMonitoringZone amdAdlxZone;
     private readonly AmdSmuMonitoringZone amdSmuZone;
+    private readonly IntelMsrMonitoringZone intelMsrZone;
+    private readonly WindowsNpuMemoryMonitoringZone npuMemoryZone;
+    private readonly WindowsNpuEngineMonitoringZone npuEngineZone;
+    private readonly IntelGclMonitoringZone intelGclZone;
+    private readonly IpHelperNetworkMonitoringZone networkZone;
     // 哪一块卡是核显 —— 启动时认一次，之后不变。
     private readonly AmdIntegratedGpuSensorRoute integratedGpuSensorRoute;
     private readonly WindowsPlatformSensorReader platformSensorReader;
+    private readonly WindowsBatteryMonitoringZone batteryZone;
     private readonly HostManagerMetricSnapshotOwner metricSnapshotOwner;
     private readonly DashboardMonitoringCatalogState dashboardMonitoringCatalog;
-    private readonly NativeMetricSnapshotSourceRuntimeFacts sourceRuntimeFacts;
+    private readonly WindowsHardwareMetricCapture capture;
     private readonly ILogger<WindowsHardwareMetricSampler> logger;
     private readonly RuntimePlanProvider runtimePlanProvider;
     private readonly object lifecycleGate = new();
     private readonly SemaphoreSlim demandSignal = new(0, 1);
-    private readonly SemaphoreSlim sampleGate = new(1, 1);
+    private readonly SemaphoreSlim sampleGate;
     private readonly SamplingPublicationSignal publicationSignal = new();
-    private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot =
-        new();
-    private readonly LastSuccessfulHardwareMetricSnapshot catalogProbeSnapshot =
-        new();
+    private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot = new("Host Manager metric snapshot");
     private readonly NativeItemSamplingSubscriptionTracker<MetricSampleRequest>
         subscriptions;
+    private readonly NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken> samplingWorker;
     private CancellationTokenSource? samplingCts;
     private Task? samplingTask;
     private Task? samplingDrainTask;
     private ulong? samplingRunId;
     private bool samplingStopInProgress;
-    private long catalogProbeCompletedUtcTicks;
     private long nextObservationLeaseId;
     private int disposed;
+    private int ownedResourcesDisposed;
 
     internal WindowsHardwareMetricSampler(
         WindowsCpuMonitoringZone cpuZone,
@@ -79,7 +89,49 @@ public sealed partial class WindowsHardwareMetricSampler :
         IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
         RuntimePlanProvider runtimePlanProvider,
-        ILogger<WindowsHardwareMetricSampler> logger)
+        ILogger<WindowsHardwareMetricSampler> logger,
+        WindowsBatteryMonitoringZone? batteryZone = null,
+        IntelMsrMonitoringZone? intelMsrZone = null,
+        IpHelperNetworkMonitoringZone? networkZone = null,
+        IntelGclMonitoringZone? intelGclZone = null,
+        WindowsMetricControlResources? borrowedControls = null,
+        WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null)
+        : this(cpuZone, memoryZone, virtualMemoryZone, gpuAdapterOrderZone, cpuFrequencyZone,
+            gpuEngineZone, systemIoZone, nvidiaZone, nvidiaNvapiZone, amdAdlxZone, amdSmuZone,
+            integratedGpuSensorRoute, platformSensorReader, metricSnapshotOwner, dashboardMonitoringCatalog,
+            monitoringSourceZoneRegistry, samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone,
+            intelMsrZone, networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone, null)
+    {
+    }
+
+    private WindowsHardwareMetricSampler(
+        WindowsCpuMonitoringZone cpuZone,
+        WindowsMemoryMonitoringZone memoryZone,
+        WindowsVirtualMemoryMonitoringZone virtualMemoryZone,
+        WindowsGpuAdapterOrderMonitoringZone gpuAdapterOrderZone,
+        PdhCpuFrequencyMonitoringZone cpuFrequencyZone,
+        PdhGpuEngineMonitoringZone gpuEngineZone,
+        PdhSystemIoMonitoringZone systemIoZone,
+        NvidiaNvmlMonitoringZone nvidiaZone,
+        NvidiaNvapiMonitoringZone nvidiaNvapiZone,
+        AmdAdlxMonitoringZone amdAdlxZone,
+        AmdSmuMonitoringZone amdSmuZone,
+        AmdIntegratedGpuSensorRoute integratedGpuSensorRoute,
+        WindowsPlatformSensorReader platformSensorReader,
+        HostManagerMetricSnapshotOwner metricSnapshotOwner,
+        DashboardMonitoringCatalogState dashboardMonitoringCatalog,
+        IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
+        HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
+        RuntimePlanProvider runtimePlanProvider,
+        ILogger<WindowsHardwareMetricSampler> logger,
+        WindowsBatteryMonitoringZone? batteryZone,
+        IntelMsrMonitoringZone? intelMsrZone,
+        IpHelperNetworkMonitoringZone? networkZone,
+        IntelGclMonitoringZone? intelGclZone,
+        WindowsMetricControlResources? borrowedControls,
+        WindowsNpuMemoryMonitoringZone? npuMemoryZone,
+        WindowsNpuEngineMonitoringZone? npuEngineZone,
+        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch)
     {
         this.cpuZone = cpuZone;
         this.memoryZone = memoryZone;
@@ -92,25 +144,98 @@ public sealed partial class WindowsHardwareMetricSampler :
         this.nvidiaNvapiZone = nvidiaNvapiZone;
         this.amdAdlxZone = amdAdlxZone;
         this.amdSmuZone = amdSmuZone;
+        this.npuMemoryZone = npuMemoryZone ?? new WindowsNpuMemoryMonitoringZone();
+        this.npuEngineZone = npuEngineZone ?? new WindowsNpuEngineMonitoringZone();
+        this.intelMsrZone = intelMsrZone ?? new IntelMsrMonitoringZone(AppContext.BaseDirectory);
         this.integratedGpuSensorRoute = integratedGpuSensorRoute;
         this.platformSensorReader = platformSensorReader;
+        this.networkZone = networkZone ?? new IpHelperNetworkMonitoringZone();
+        this.intelGclZone = intelGclZone ?? new IntelGclMonitoringZone();
+        this.batteryZone = batteryZone ?? new WindowsBatteryMonitoringZone();
         this.metricSnapshotOwner = metricSnapshotOwner;
         this.dashboardMonitoringCatalog = dashboardMonitoringCatalog;
-        sourceRuntimeFacts = new NativeMetricSnapshotSourceRuntimeFacts(
-            monitoringSourceZoneRegistry);
-        subscriptions =
-            new NativeItemSamplingSubscriptionTracker<MetricSampleRequest>(
-                 samplingSubscriptionOwner,
-                 1,
-                 static request => request.CacheKey,
-                 GetSubscriptionItemIds,
-                 CreateMetricSampleRequest,
-                 coalesceItemsIntoLatestCapture: false);
+        var resources = CreateBorrowedResources(borrowedControls);
+        controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory, sourceId =>
+            monitoringSourceZoneRegistry.GetZone(NativeMetricSnapshotSourceCatalog.ResolveZoneId(sourceId switch
+            {
+                "control.intel.msr" => NativeMetricSnapshotSourceCatalog.IntelMsr,
+                "control.amd.hardware-bridge" or "control.amd.igpu.hardware-bridge" => NativeMetricSnapshotSourceCatalog.AmdSmu,
+                "control.amd.adlx" => NativeMetricSnapshotSourceCatalog.AmdAdlx,
+                "control.intel.igcl" => NativeMetricSnapshotSourceCatalog.IntelGcl,
+                _ => throw new ArgumentException("Unknown control source.", nameof(sourceId))
+            })).CurrentMode == ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
+        capture = new(resources,
+            sourceId => monitoringSourceZoneRegistry.GetMode(NativeMetricSnapshotSourceCatalog.ResolveZoneId(sourceId)) switch
+            {
+                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal => NativeMetricSnapshotZoneMode.Normal,
+                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.LowPower => NativeMetricSnapshotZoneMode.LowPower,
+                ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze => NativeMetricSnapshotZoneMode.Freeze,
+                _ => throw new InvalidOperationException("The monitoring source zone mode is invalid.")
+            }, TimeSpan.FromSeconds(5), integratedGpuSensorRoute, () => metricSnapshotOwner.RequestTopologyRefresh(),
+            (error, sourceId) => logger.LogWarning(error, "Metric source {SourceId} failed.", sourceId));
+        sampleGate = capture.SampleGate;
+        subscriptions = CreateSubscriptions(samplingSubscriptionOwner, createOutputScratch);
         this.logger = logger;
+        samplingWorker = new(subscriptions, demandSignal, SynchronizeCounterDemand,
+            ReportSamplingWorkerFailure, TimeSpan.FromSeconds(1));
         this.runtimePlanProvider = runtimePlanProvider;
         runtimePlanProvider.Published += OnRuntimePlanPublished;
         OnRuntimePlanPublished(runtimePlanProvider.Current);
     }
+
+    // Production DI selects this internal route explicitly; the ordinary
+    // constructor continues to use the tracker’s managed output buffers.
+    internal WindowsHardwareMetricSampler(
+        WindowsCpuMonitoringZone cpuZone,
+        WindowsMemoryMonitoringZone memoryZone,
+        WindowsVirtualMemoryMonitoringZone virtualMemoryZone,
+        WindowsGpuAdapterOrderMonitoringZone gpuAdapterOrderZone,
+        PdhCpuFrequencyMonitoringZone cpuFrequencyZone,
+        PdhGpuEngineMonitoringZone gpuEngineZone,
+        PdhSystemIoMonitoringZone systemIoZone,
+        NvidiaNvmlMonitoringZone nvidiaZone,
+        NvidiaNvapiMonitoringZone nvidiaNvapiZone,
+        AmdAdlxMonitoringZone amdAdlxZone,
+        AmdSmuMonitoringZone amdSmuZone,
+        AmdIntegratedGpuSensorRoute integratedGpuSensorRoute,
+        WindowsPlatformSensorReader platformSensorReader,
+        HostManagerMetricSnapshotOwner metricSnapshotOwner,
+        DashboardMonitoringCatalogState dashboardMonitoringCatalog,
+        IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
+        HostManagerSamplingSubscriptionOwner samplingSubscriptionOwner,
+        RuntimePlanProvider runtimePlanProvider,
+        ILogger<WindowsHardwareMetricSampler> logger,
+        ResourceManagerLedgerOwner ledgerOwner,
+        WindowsBatteryMonitoringZone? batteryZone = null,
+        IntelMsrMonitoringZone? intelMsrZone = null,
+        IpHelperNetworkMonitoringZone? networkZone = null,
+        IntelGclMonitoringZone? intelGclZone = null,
+        WindowsMetricControlResources? borrowedControls = null,
+        WindowsNpuMemoryMonitoringZone? npuMemoryZone = null,
+        WindowsNpuEngineMonitoringZone? npuEngineZone = null)
+        : this(cpuZone, memoryZone, virtualMemoryZone, gpuAdapterOrderZone,
+            cpuFrequencyZone, gpuEngineZone, systemIoZone, nvidiaZone, nvidiaNvapiZone,
+            amdAdlxZone, amdSmuZone, integratedGpuSensorRoute, platformSensorReader,
+            metricSnapshotOwner, dashboardMonitoringCatalog, monitoringSourceZoneRegistry,
+            samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone, intelMsrZone,
+            networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone,
+            CreateLedgerOutputFactory(ledgerOwner))
+    {
+    }
+
+    private static Func<ulong, uint, INativeSamplingOutputScratch> CreateLedgerOutputFactory(
+        ResourceManagerLedgerOwner ledgerOwner)
+    {
+        ArgumentNullException.ThrowIfNull(ledgerOwner);
+        return (length, alignment) =>
+            SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment);
+    }
+
+    private NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateSubscriptions(
+        HostManagerSamplingSubscriptionOwner owner,
+        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch)
+        => new(owner, 1, static request => request.CacheKey, GetSubscriptionItemIds,
+            CreateMetricSampleRequest, coalesceItemsIntoLatestCapture: false, createOutputScratch);
 
     private void OnRuntimePlanPublished(CompiledRuntimePlan plan)
     {
@@ -123,21 +248,16 @@ public sealed partial class WindowsHardwareMetricSampler :
         CancellationToken cancellationToken)
         => GetSnapshotAsync(MetricSampleRequest.All, cancellationToken);
 
-    public async Task<HardwareMetricSnapshot> GetSnapshotAsync(
+    public Task<HardwareMetricSnapshot> GetSnapshotAsync(
         MetricSampleRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (request.IsCatalogProbe)
-        {
-            return await RefreshCatalogCacheIfStaleAsync(cancellationToken);
-        }
-
         cancellationToken.ThrowIfCancellationRequested();
         var snapshot = ReadCachedSnapshot();
-        return snapshot is null
+        return Task.FromResult(snapshot is null
             ? CreateWarmingSnapshot(request)
-            : ProjectSnapshot(snapshot, request);
+            : ProjectSnapshot(snapshot, request));
     }
 
     public async Task<HardwareMetricSnapshot> CaptureSnapshotAsync(
@@ -145,12 +265,19 @@ public sealed partial class WindowsHardwareMetricSampler :
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         await sampleGate.WaitAsync(cancellationToken);
         try
         {
             var snapshot = await ReadSnapshotCoreAsync(
                 request,
-                cancellationToken);
+                cancellationToken,
+                completed =>
+                {
+                    _ = publishedSnapshot.Publish(completed, request);
+                });
+            if (request.IncludesCatalog) dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
+            PublishCompletedDatasets(GetPublicationItemIds(request));
             return ProjectSnapshot(snapshot, request);
         }
         finally
@@ -164,6 +291,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         MetricSampleRequest request,
         TimeSpan refreshInterval)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(subscriptionId);
         ArgumentNullException.ThrowIfNull(request);
         var subscriptionRequest =
@@ -174,11 +302,15 @@ public sealed partial class WindowsHardwareMetricSampler :
         }
         var leaseId = Interlocked.Increment(ref nextObservationLeaseId);
         var sourceKey = $"lease:{leaseId}:{subscriptionId.Trim()}";
-        subscriptions.TrackPersistent(
-            sourceKey,
-            subscriptionRequest,
-            DateTimeOffset.UtcNow,
-            refreshInterval);
+        lock (lifecycleGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            subscriptions.TrackPersistent(
+                sourceKey,
+                subscriptionRequest,
+                DateTimeOffset.UtcNow,
+                refreshInterval);
+        }
         SignalDemand(demandSignal);
         return new ObservationSubscriptionLease(this, sourceKey);
     }
@@ -270,10 +402,30 @@ public sealed partial class WindowsHardwareMetricSampler :
             samplingCts?.Dispose();
             var cts = new CancellationTokenSource();
             var runId = publishedSnapshot.OpenHostedRun();
+            FieldCollectionResult? completedFieldResult = null;
             samplingCts = cts;
             samplingRunId = runId;
             samplingTask = Task.Run(
-                () => RunSamplingLoopAsync(runId, cts.Token),
+                () => samplingWorker.RunAsync((plan, token) => TryRefreshCacheAsync(runId, plan.OwnerToken,
+                    plan.Schedule, plan.Request!, plan.DueItemIds, plan.Triggers,
+                    result => completedFieldResult = result, token), cts.Token,
+                    planCreated: plan =>
+                    {
+                        completedFieldResult = null;
+                        if (plan.Request is null)
+                            fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+                    },
+                    collectionCompleted: (plan, _) =>
+                    {
+                        if (plan.Request is null)
+                        {
+                            fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: true);
+                            return;
+                        }
+                        var result = completedFieldResult;
+                        completedFieldResult = null;
+                        fieldSubscriptionDelivery.Deliver(plan.Triggers, result);
+                    }),
                 CancellationToken.None);
         }
         return Task.CompletedTask;
@@ -284,6 +436,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         Task? drain;
         lock (lifecycleGate)
         {
+            fieldSubscriptionDelivery.RetireAll();
             if (samplingRunId is { } activeRun)
             {
                 _ = publishedSnapshot.CloseHostedRun(
@@ -311,22 +464,22 @@ public sealed partial class WindowsHardwareMetricSampler :
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
-        {
-            return;
-        }
-
-        runtimePlanProvider.Published -= OnRuntimePlanPublished;
+        var firstDisposal = Interlocked.Exchange(ref disposed, 1) == 0;
+        if (firstDisposal) runtimePlanProvider.Published -= OnRuntimePlanPublished;
 
         Task? drain = null;
         lock (lifecycleGate)
         {
-            if (samplingRunId is { } activeRun)
+            if (firstDisposal)
             {
-                _ = publishedSnapshot.CloseHostedRun(
-                    activeRun,
-                    DateTimeOffset.UtcNow,
-                    "hardware-owner-disposed");
+                fieldSubscriptionDelivery.RetireAll();
+                if (samplingRunId is { } activeRun)
+                {
+                    _ = publishedSnapshot.CloseHostedRun(
+                        activeRun,
+                        DateTimeOffset.UtcNow,
+                        "hardware-owner-disposed");
+                }
             }
             if (samplingTask is not null)
             {
@@ -349,8 +502,17 @@ public sealed partial class WindowsHardwareMetricSampler :
                 ex,
                 "Hardware sampling worker failed during disposal.");
         }
-        demandSignal.Dispose();
-        sampleGate.Dispose();
+        lock (lifecycleGate)
+        {
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+            subscriptions.CloseOutputScratch();
+            var cts = samplingCts;
+            samplingCts = null;
+            cts?.Dispose();
+            demandSignal.Dispose();
+            sampleGate.Dispose();
+            Volatile.Write(ref ownedResourcesDisposed, 1);
+        }
     }
 
     private async Task DrainSamplingWorkerAsync(
@@ -391,241 +553,49 @@ public sealed partial class WindowsHardwareMetricSampler :
         }
     }
 
-    private async Task<HardwareMetricSnapshot>
-        RefreshCatalogCacheIfStaleAsync(
-            CancellationToken cancellationToken)
+    private void SynchronizeCounterDemand(IReadOnlyList<string> activeItemIds)
     {
-        var nowTicks = DateTimeOffset.UtcNow.UtcTicks;
-        var cached = catalogProbeSnapshot.Read();
-        var completedTicks =
-            Volatile.Read(ref catalogProbeCompletedUtcTicks);
-        if (cached is not null
-            && nowTicks - completedTicks
-                < CatalogProbeCacheDuration.Ticks)
+        // The worker also calls this with empty demand when its lifetime ends.
+        if (dashboardMonitoringCatalog.Current is null || !metricSnapshotOwner.TryAcquire(out var lease))
         {
-            return cached;
-        }
-
-        await sampleGate.WaitAsync(cancellationToken);
-        try
-        {
-            nowTicks = DateTimeOffset.UtcNow.UtcTicks;
-            cached = catalogProbeSnapshot.Read();
-            completedTicks =
-                Volatile.Read(ref catalogProbeCompletedUtcTicks);
-            if (cached is not null
-                && nowTicks - completedTicks
-                    < CatalogProbeCacheDuration.Ticks)
-            {
-                return cached;
-            }
-
-            var snapshot = await ReadSnapshotCoreAsync(
-                MetricSampleRequest.CatalogProbe,
-                cancellationToken);
-            catalogProbeSnapshot.Publish(snapshot);
-            dashboardMonitoringCatalog.PublishCatalogProbe(snapshot);
-            Volatile.Write(
-                ref catalogProbeCompletedUtcTicks,
-                DateTimeOffset.UtcNow.UtcTicks);
-            return snapshot;
-        }
-        finally
-        {
-            sampleGate.Release();
-        }
-    }
-
-    private async Task RunSamplingLoopAsync(
-        ulong runId,
-        CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            NativeItemSamplingSubscriptionPlan<MetricSampleRequest> plan;
-            try
-            {
-                plan = CreateSamplingPlan(DateTimeOffset.UtcNow);
-            }
-            catch (OperationCanceledException)
-                when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Hardware sampling could not create a subscription plan; the owner will retry.");
-                await DelayAfterWorkerFailureAsync(cancellationToken);
-                continue;
-            }
-
-            if (!plan.IsActive)
-            {
-                try
-                {
-                    await demandSignal.WaitAsync(cancellationToken);
-                }
-                catch (OperationCanceledException)
-                    when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                continue;
-            }
-            if (plan.Request is null)
-            {
-                try
-                {
-                    await WaitForDemandOrDelayAsync(
-                        plan.Delay,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException)
-                    when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                continue;
-            }
-
-            var settlementAttempted = false;
-            try
-            {
-                var sampled = await TryRefreshCacheAsync(
-                    runId,
-                    plan.OwnerToken,
-                    plan.Schedule,
-                    plan.Request,
-                    plan.DueItemIds,
-                    cancellationToken);
-                settlementAttempted = true;
-                var completion = sampled switch
-                {
-                    HardwareSampleCompletion.Sampled => subscriptions.MarkSampled(
-                        plan.Request,
-                        DateTimeOffset.UtcNow),
-                    HardwareSampleCompletion.SkippedBusy or
-                    HardwareSampleCompletion.Canceled => subscriptions.MarkSkipped(
-                        plan.Request,
-                        DateTimeOffset.UtcNow),
-                    _ => throw new InvalidOperationException(
-                        "Hardware sampling returned an unknown completion.")
-                };
-                await WaitForDemandOrDelayAsync(
-                    completion.Delay,
-                    cancellationToken);
-            }
-            catch (OperationCanceledException)
-                when (cancellationToken.IsCancellationRequested)
-            {
-                if (!settlementAttempted)
-                {
-                    settlementAttempted = true;
-                    TrySettleInterruptedPlan(plan.Request);
-                }
-                return;
-            }
-            catch (Exception ex)
-            {
-                if (!settlementAttempted)
-                {
-                    settlementAttempted = true;
-                    TrySettleFaultedPlan(plan.Request, ex);
-                }
-                logger.LogError(
-                    ex,
-                    "Hardware sampling plan failed; the owner remains active and will retry.");
-                await DelayAfterWorkerFailureAsync(cancellationToken);
-            }
-        }
-    }
-
-    private void TrySettleInterruptedPlan(MetricSampleRequest request)
-    {
-        try
-        {
-            _ = subscriptions.MarkSkipped(request, DateTimeOffset.UtcNow);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Hardware sampling cancellation could not settle the pending plan.");
-        }
-    }
-
-    private void TrySettleFaultedPlan(
-        MetricSampleRequest request,
-        Exception originalError)
-    {
-        try
-        {
-            _ = subscriptions.MarkSkipped(request, DateTimeOffset.UtcNow);
-        }
-        catch (Exception settlementError)
-        {
-            logger.LogError(
-                settlementError,
-                "Hardware sampling fault could not release the pending plan after {ErrorType}.",
-                originalError.GetType().Name);
-        }
-    }
-
-    private static async Task DelayAfterWorkerFailureAsync(
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
-        catch (OperationCanceledException)
-            when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task WaitForDemandOrDelayAsync(
-        TimeSpan delay,
-        CancellationToken cancellationToken)
-    {
-        if (delay <= TimeSpan.Zero)
-        {
+            capture.ReleasePlatformSensorDemand();
             return;
         }
-
-        using var delayCts =
-            CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken);
-        var demandTask = demandSignal.WaitAsync(delayCts.Token);
-        var delayTask = Task.Delay(delay, delayCts.Token);
-        await Task.WhenAny(demandTask, delayTask);
-        await delayCts.CancelAsync();
-        try
+        using (lease)
         {
-            await Task.WhenAll(demandTask, delayTask);
-        }
-        catch (OperationCanceledException)
-            when (delayCts.IsCancellationRequested)
-        {
+            var workspace = lease!.Workspace;
+            var catalog = workspace.ReadCatalog();
+            var handles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(MetricSampleRequest.ForIds(activeItemIds), catalog);
+            SynchronizePlatformSensorDemand(handles, catalog);
+            if (!catalog.RuleBindings.Values.Any(static rule => rule.MetricKind is
+                (uint)NativeMetricSnapshotMetricKind.CounterRatio or (uint)NativeMetricSnapshotMetricKind.TimedCounterRate
+                or (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio or (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage)) return;
+            workspace.SynchronizeCounterDemand(handles, DateTimeOffset.UtcNow);
         }
     }
 
-    private async Task<HardwareSampleCompletion> TryRefreshCacheAsync(
+    internal void SynchronizePlatformSensorDemand(IReadOnlyCollection<ulong> activeHandles, NativeMetricSnapshotCatalogProjection catalog)
+        => capture.SynchronizePlatformSensorDemand(activeHandles, catalog);
+    private async Task<SubscriptionSampleCompletion> TryRefreshCacheAsync(
         ulong runId,
         SamplingOwnerToken workspaceOwnerToken,
         NativeItemSamplingSubscriptionScheduleReceipt schedule,
         MetricSampleRequest request,
         IReadOnlyList<string> dueDatasetIds,
+        ImmutableArray<NativeItemSamplingSubscriptionTrigger<MetricSampleRequest>> triggers,
+        Action<FieldCollectionResult> completeFieldResult,
         CancellationToken cancellationToken)
     {
         if (!await sampleGate.WaitAsync(0, cancellationToken))
         {
-            return HardwareSampleCompletion.SkippedBusy;
+            return SubscriptionSampleCompletion.Skipped;
         }
 
         HardwareMetricHostedPublicationTicket? ticket = null;
+        var queriedAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var publicationDatasetIds = request.IncludesCatalog
+            ? dueDatasetIds.Concat([SamplingDatasetIds.StorageInventory, SamplingDatasetIds.FanInventory, SamplingDatasetIds.BatteryInventory]).ToArray()
+            : dueDatasetIds;
         try
         {
             if (!publishedSnapshot.TryCaptureHostedTicket(
@@ -634,22 +604,27 @@ public sealed partial class WindowsHardwareMetricSampler :
                     schedule,
                     out var capturedTicket))
             {
-                return HardwareSampleCompletion.SkippedBusy;
+                return SubscriptionSampleCompletion.Skipped;
             }
             ticket = capturedTicket;
             var snapshot = await ReadSnapshotCoreAsync(
                 request,
-                cancellationToken);
+                cancellationToken,
+                sourceQueriesCompleted: queriedAddresses.UnionWith);
             if (!publishedSnapshot.TryPublishHosted(
                     capturedTicket,
                     snapshot,
                     request,
-                    dueDatasetIds,
+                    publicationDatasetIds,
                     readyUntil: null,
                     out var publication))
             {
-                return HardwareSampleCompletion.SkippedBusy;
+                completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
+                    triggers, queriedAddresses, committed: false));
+                return SubscriptionSampleCompletion.Skipped;
             }
+            completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
+                triggers, queriedAddresses, publication.IsSuccessful));
             if (!publication.IsSuccessful)
             {
                 logger.LogWarning(
@@ -658,17 +633,21 @@ public sealed partial class WindowsHardwareMetricSampler :
                     publication.RejectedDatasetCount,
                     string.Join(", ", publication.RejectedDatasetIds));
             }
-            publicationSignal.Publish(dueDatasetIds);
-            return HardwareSampleCompletion.Sampled;
+            if (request.IncludesCatalog)
+            {
+                dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
+            }
+            PublishCompletedDatasets(dueDatasetIds);
+            return SubscriptionSampleCompletion.Sampled;
         }
         catch (OperationCanceledException)
             when (cancellationToken.IsCancellationRequested)
         {
-            return HardwareSampleCompletion.Canceled;
+            return SubscriptionSampleCompletion.Canceled;
         }
         catch (MetricSnapshotWorkspaceRetiredException)
         {
-            return HardwareSampleCompletion.SkippedBusy;
+            return SubscriptionSampleCompletion.Skipped;
         }
         catch (Exception ex)
         {
@@ -676,17 +655,20 @@ public sealed partial class WindowsHardwareMetricSampler :
                 || !publishedSnapshot.TryRecordHostedFailure(
                     failureTicket,
                     request,
-                    dueDatasetIds,
+                    publicationDatasetIds,
                     DateTimeOffset.UtcNow,
                     $"hardware-sample-{ex.GetType().Name}"))
             {
-                return HardwareSampleCompletion.SkippedBusy;
+                return SubscriptionSampleCompletion.Skipped;
             }
+            completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
+                triggers, queriedAddresses, committed: false));
             logger.LogWarning(
                 ex,
                 "Native hardware metric background sample failed.");
-            publicationSignal.Publish(dueDatasetIds);
-            return HardwareSampleCompletion.Sampled;
+            if (request.IncludesCatalog) dashboardMonitoringCatalog.PublishCatalogProbe(publishedSnapshot.Read()!);
+            PublishCompletedDatasets(dueDatasetIds);
+            return SubscriptionSampleCompletion.Sampled;
         }
         finally
         {
@@ -694,36 +676,49 @@ public sealed partial class WindowsHardwareMetricSampler :
         }
     }
 
-    internal static void SignalDemand(SemaphoreSlim signal)
+    private void ReportSamplingWorkerFailure(SubscriptionWorkerFailure failure)
     {
-        ArgumentNullException.ThrowIfNull(signal);
-        try
+        switch (failure.Stage)
         {
-            signal.Release();
-        }
-        catch (SemaphoreFullException)
-        {
-            // One pending wake represents all demand observed before the next plan.
-        }
-        catch (ObjectDisposedException)
-        {
+            case SubscriptionWorkerFailureStage.Planning:
+                logger.LogError(failure.Error, "Hardware sampling could not create a subscription plan; the owner will retry.");
+                break;
+            case SubscriptionWorkerFailureStage.Demand:
+                logger.LogError(failure.Error, "Hardware counter demand synchronization failed.");
+                break;
+            case SubscriptionWorkerFailureStage.Collection:
+                logger.LogError(failure.Error, "Hardware sampling plan failed; the owner remains active and will retry.");
+                break;
+            case SubscriptionWorkerFailureStage.InterruptedSettlement:
+                logger.LogError(failure.Error, "Hardware sampling cancellation could not settle the pending plan.");
+                break;
+            case SubscriptionWorkerFailureStage.FaultedSettlement:
+                logger.LogError(failure.Error, "Hardware sampling fault could not release the pending plan after {ErrorType}.",
+                    failure.OriginalError?.GetType().Name);
+                break;
+            case SubscriptionWorkerFailureStage.Cleanup:
+                logger.LogError(failure.Error, "Hardware counter baseline cleanup failed after sampling stopped.");
+                break;
         }
     }
 
-    private NativeItemSamplingSubscriptionPlan<MetricSampleRequest>
-        CreateSamplingPlan(DateTimeOffset now)
-        => subscriptions.CreatePlan(now);
+    internal static void SignalDemand(SemaphoreSlim signal)
+        => NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken>.SignalDemand(signal);
 
     private void ReleaseObservationLease(string sourceKey)
     {
-        subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+        lock (lifecycleGate)
+        {
+            if (Volatile.Read(ref disposed) != 0) return;
+            subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+        }
         SignalDemand(demandSignal);
     }
 
     private IEnumerable<string> GetSubscriptionItemIds(
         MetricSampleRequest request)
     {
-        if (request.IsCatalogProbe || request.IsEmpty)
+        if (request.IsEmpty)
         {
             return [];
         }
@@ -731,25 +726,35 @@ public sealed partial class WindowsHardwareMetricSampler :
         if (request.IsAll)
         {
             return SamplingDatasetIds.ResolveAllSystemDatasets(
-                dashboardMonitoringCatalog.Current?.Items.Keys ?? []);
+                dashboardMonitoringCatalog.Current?.Items.Keys ?? [])
+                .Append(SamplingDatasetIds.SystemMetricCatalog);
         }
 
         var result = request.Ids
             .Select(SamplingDatasetIds.ForSystemMetric)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (request.IncludesCatalog) result.Add(SamplingDatasetIds.SystemMetricCatalog);
         if (request.IncludesAllGpuCoreMetrics)
         {
             result.UnionWith(
                 (dashboardMonitoringCatalog.Current?.Items.Keys ?? [])
                 .Where(IsGpuCoreMetric));
         }
-        if (result.Any(IsGpuMetric))
+        if (result.Any(itemId => IsGpuMetric(itemId) || IsManagedGpuMetric(itemId)))
         {
             result.Add(SamplingDatasetIds.SystemGpuInventory);
         }
         return result;
     }
 
+    private bool IsManagedGpuMetric(string itemId)
+    {
+        var snapshot = dashboardMonitoringCatalog.Current;
+        return snapshot is not null && snapshot.FieldBindings.TryGetValue(itemId, out var binding)
+            && binding.Field.Resource is MetricResource.Gpu or MetricResource.Fan
+            && WindowsMetricControlBindings.TryFind(binding)?.Family is WindowsMetricControlFamily.AmdDesktopGpu
+                or WindowsMetricControlFamily.IntelIntegratedGpu or WindowsMetricControlFamily.AmdIntegratedGpu;
+    }
     internal IEnumerable<string> GetPublicationItemIds(
         MetricSampleRequest request)
         => request.IsAll
@@ -758,6 +763,10 @@ public sealed partial class WindowsHardwareMetricSampler :
                 !itemId.Equals(
                     SamplingDatasetIds.SystemGpuInventory,
                     StringComparison.OrdinalIgnoreCase));
+
+    internal void PublishCompletedDatasets(IEnumerable<string> datasetIds)
+        => publicationSignal.Publish(MetricDatasetIds.ExpandBoundSystemDatasets(
+            datasetIds, ReadCachedSnapshot()?.FieldBindings.Values ?? []));
 
     private MetricSampleRequest? CreateMetricSampleRequest(
         IReadOnlyList<string> itemIds,
@@ -769,7 +778,8 @@ public sealed partial class WindowsHardwareMetricSampler :
             .Where(source => source.ItemIds.Any(dueItems.Contains))
             .ToArray();
         var metricIds = dueItems
-            .Where(static itemId => !itemId.Equals(
+            .Where(static itemId => !itemId.Equals(SamplingDatasetIds.SystemMetricCatalog, StringComparison.OrdinalIgnoreCase)
+                && !itemId.Equals(
                 SamplingDatasetIds.SystemGpuInventory,
                 StringComparison.OrdinalIgnoreCase))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -779,7 +789,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         {
             metricIds.UnionWith(relevantSources
                 .SelectMany(static source => source.Request.Ids)
-                .Where(IsGpuMetric));
+                .Where(itemId => IsGpuMetric(itemId) || IsManagedGpuMetric(itemId)));
             if (!metricIds.Any(IsGpuMetric))
             {
                 var inventoryProbeMetric =
@@ -791,11 +801,13 @@ public sealed partial class WindowsHardwareMetricSampler :
                 }
             }
         }
-        if (metricIds.Count == 0)
+        var dueCatalog = dueItems.Contains(SamplingDatasetIds.SystemMetricCatalog);
+        if (metricIds.Count == 0 && !dueCatalog)
         {
             return null;
         }
-        return MetricSampleRequest.ForIds(metricIds);
+        var request = MetricSampleRequest.ForIds(metricIds);
+        return dueCatalog ? request.WithCatalog() : request;
     }
 
     private HardwareMetricSnapshot? ReadCachedSnapshot()
@@ -811,8 +823,9 @@ public sealed partial class WindowsHardwareMetricSampler :
             : request.Ids
                 .Select(SamplingDatasetIds.ForSystemMetric)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (request.IncludesCatalog) datasetIds.Add(SamplingDatasetIds.SystemMetricCatalog);
         if (request.IncludesAllGpuCoreMetrics
-            || request.IncludesPrefix("gpu."))
+            || RequestIncludesResource(request, MetricResource.Gpu))
         {
             datasetIds.Add(SamplingDatasetIds.SystemGpuInventory);
         }
@@ -829,13 +842,13 @@ public sealed partial class WindowsHardwareMetricSampler :
                 0,
                 0),
             StringComparer.OrdinalIgnoreCase);
-        var cpuRequested = request.IsAll || request.IncludesPrefix("cpu.");
-        var memoryRequested = request.IsAll || request.IncludesPrefix("memory.");
+        var cpuRequested = RequestIncludesResource(request, MetricResource.Cpu);
+        var memoryRequested = RequestIncludesResource(request, MetricResource.Memory);
         var pageFileRequested = request.IsAll
             || request.IncludesPrefix("virtualMemory.");
         var gpuRequested = request.IsAll
             || request.IncludesAllGpuCoreMetrics
-            || request.IncludesPrefix("gpu.");
+            || RequestIncludesResource(request, MetricResource.Gpu);
         return new HardwareMetricSnapshot(
             DateTimeOffset.UnixEpoch,
             new CpuMetrics(
@@ -887,7 +900,9 @@ public sealed partial class WindowsHardwareMetricSampler :
             new Dictionary<string, MetricValue>(
                 StringComparer.OrdinalIgnoreCase))
         {
-            Datasets = datasets
+            Datasets = datasets,
+            FieldBindings = dashboardMonitoringCatalog.Current?.FieldBindings
+                ?? new Dictionary<string, MetricDeviceFieldBinding>()
         };
     }
 
@@ -932,11 +947,29 @@ public sealed partial class WindowsHardwareMetricSampler :
         };
     }
 
-    private static bool IsGpuMetric(string metricId)
-        => metricId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase);
+    private bool IsGpuMetric(string metricId)
+        => dashboardMonitoringCatalog.Current?.FieldBindings.TryGetValue(metricId, out var binding) == true
+            ? binding.Field.Resource == MetricResource.Gpu
+            : metricId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsGpuCoreMetric(string metricId)
+    private bool RequestIncludesResource(MetricSampleRequest request, MetricResource resource)
+        => request.IsAll || request.Ids.Any(id =>
+            dashboardMonitoringCatalog.Current?.FieldBindings.TryGetValue(id, out var binding) == true
+                ? binding.Field.Resource == resource
+                : resource switch
+                {
+                    MetricResource.Gpu => IsGpuMetric(id),
+                    MetricResource.Cpu => id.StartsWith("cpu.", StringComparison.OrdinalIgnoreCase),
+                    MetricResource.Memory => id.StartsWith("memory.", StringComparison.OrdinalIgnoreCase)
+                        || id.StartsWith("virtualMemory.", StringComparison.OrdinalIgnoreCase),
+                    _ => false
+                });
+
+    private bool IsGpuCoreMetric(string metricId)
     {
+        if (dashboardMonitoringCatalog.Current?.FieldBindings.TryGetValue(metricId, out var binding) == true)
+            return binding.Field.Code is MetricFieldCode.GpuUsage or MetricFieldCode.GpuMemoryUsed
+                or MetricFieldCode.GpuMemoryPercent or MetricFieldCode.GpuEngineBusy;
         if (!IsGpuMetric(metricId))
         {
             return false;
@@ -952,65 +985,29 @@ public sealed partial class WindowsHardwareMetricSampler :
             || name.Equals("vramPercent", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<HardwareMetricSnapshot> ReadSnapshotCoreAsync(
-        MetricSampleRequest request,
-        CancellationToken cancellationToken)
+    private async Task<HardwareMetricSnapshot> ReadSnapshotCoreAsync(MetricSampleRequest request,
+        CancellationToken cancellationToken, Action<HardwareMetricSnapshot>? onCommitted = null,
+        Action<ImmutableHashSet<string>>? sourceQueriesCompleted = null)
     {
-        metricSnapshotOwner.RefreshTopologyIfRequested();
-        using var lease =
-            await metricSnapshotOwner.AcquireAsync(cancellationToken);
-        var workspace = lease.Workspace;
-        var catalog = workspace.ReadCatalog();
-        var commandAt = DateTimeOffset.UtcNow;
-        var requestedMetricHandles =
-            NativeMetricSnapshotRequestProjection.CreateMetricHandles(
-                request,
-                catalog);
-        if (requestedMetricHandles.Length != 0)
-        {
-            var sourceModes =
-                sourceRuntimeFacts.CaptureModes(catalog, commandAt);
-            var includeGpuInventory = request.IsAll
-                || request.IsCatalogProbe
-                || request.IncludesPrefix("gpu.");
-            var plan = workspace.PlanCollection(
-                requestedMetricHandles,
-                sourceModes,
-                includeGpuInventory,
-                commandAt);
-            foreach (var sourcePlan in plan.Sources)
+        if (request.IncludesCatalog) metricSnapshotOwner.RequestTopologyRefresh();
+        _ = metricSnapshotOwner.RefreshTopologyIfRequested();
+        using var lease = await metricSnapshotOwner.AcquireAsync(cancellationToken);
+        var result = await capture.CaptureUnderGateAsync(request, lease.Workspace, lease.WorkspaceIdentity, lease.Topology,
+            commit => lease.TryPublish(_ => { commit(); return true; }, out _),
+            new(HostMetricSnapshotCopy.VirtualMemoryDetail, HostMetricSnapshotCopy.LegacyLabel), cancellationToken,
+            workspace => { _ = workspace.PersistRecoveryCheckpointIfAdvanced(DateTimeOffset.UtcNow); }, onCommitted,
+            enrichBeforeCommit: async (snapshot, selection, token, sourceQueryStarted) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var completion = await CollectNativeSourceAsync(
-                    plan,
-                    sourcePlan,
-                    cancellationToken);
-                _ = workspace.CompleteSource(
-                    plan,
-                    completion,
-                    DateTimeOffset.UtcNow);
-            }
-        }
-
-        if (lease.TryPublish(
-                currentWorkspace =>
-                {
-                    _ = currentWorkspace.PersistRecoveryCheckpointIfAdvanced(
-                        DateTimeOffset.UtcNow);
-                    var committed = currentWorkspace.ReadCommitted();
-                    return NativeMetricSnapshotCommittedProjection.Create(
-                        committed,
-                        cpuZone.CpuName,
-                        memoryZone.HardwareDescription,
-                        lease.WorkspaceIdentity);
-                },
-                out var published))
-        {
-            return published;
-        }
-
-        throw new MetricSnapshotWorkspaceRetiredException();
+                if (selection.IsCatalogProbe) snapshot = controlFields.Discover(snapshot);
+                return selection.IsCatalogProbe ? snapshot
+                    : await controlFields.ReadSelectedAsync(snapshot, selection, token, sourceQueryStarted);
+            },
+            sourceQueriesCompleted: sourceQueriesCompleted,
+            fieldCatalog: dashboardMonitoringCatalog.Current);
+        return result ?? throw new MetricSnapshotWorkspaceRetiredException();
     }
+    internal static HardwareMetricSnapshot AddCatalogObservations(HardwareMetricSnapshot snapshot, NativeMetricSnapshotCatalogTopologySnapshot? topology, DateTimeOffset observedAt)
+        => WindowsHardwareMetricCapture.AddCatalogObservations(snapshot, topology, observedAt);
 
     private sealed class ObservationSubscriptionLease(
         WindowsHardwareMetricSampler owner,
@@ -1051,9 +1048,9 @@ public sealed partial class WindowsHardwareMetricSampler :
         : Exception("The metric-snapshot workspace retired before publication.");
 }
 
-internal enum HardwareSampleCompletion
-{
-    Sampled,
-    SkippedBusy,
-    Canceled
-}
+
+
+
+
+
+

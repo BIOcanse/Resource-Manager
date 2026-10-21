@@ -123,7 +123,9 @@ public sealed unsafe class NativeResourceSchedulerSession : IDisposable
         }
         catch
         {
-            NativeMemory.AlignedFree(_stateBuffer);
+            var failedBuffer = _stateBuffer;
+            _stateBuffer = null;
+            NativeMemory.AlignedFree(failedBuffer);
             throw;
         }
     }
@@ -199,11 +201,18 @@ public sealed unsafe class NativeResourceSchedulerSession : IDisposable
         return Project(token);
     }
 
+    /// <summary>
+    /// Revalidate immediately before starting an action. The supplied current
+    /// monotonic time must use the same clock and units as ReserveSelection.
+    /// Expiry leaves the reservation available for explicit cancellation.
+    /// </summary>
     public ResourceSchedulerRevalidationResult RevalidateAndBeginReservation(
         ResourceSchedulerReservationToken token,
         ResourceSchedulerSelection selection,
-        ResourceSchedulerRevalidationResource resource)
+        ResourceSchedulerRevalidationResource resource,
+        ulong nowMonotonicTimestamp)
     {
+        ArgumentOutOfRangeException.ThrowIfZero(nowMonotonicTimestamp);
         var nativeToken = ToNative(token);
         var nativeSelection = ToNative(selection);
         var nativeInput = ToNative(resource);
@@ -221,6 +230,7 @@ public sealed unsafe class NativeResourceSchedulerSession : IDisposable
                         &nativeToken,
                         &nativeSelection,
                         &nativeInput,
+                        nowMonotonicTimestamp,
                         &nativeOutput),
                     "revalidate-and-begin-reservation");
             }
@@ -326,7 +336,10 @@ public sealed unsafe class NativeResourceSchedulerSession : IDisposable
 
     ~NativeResourceSchedulerSession()
     {
-        Dispose(disposing: false);
+        if (_stateBuffer is not null)
+        {
+            Dispose(disposing: false);
+        }
     }
 
     private void Dispose(bool disposing)

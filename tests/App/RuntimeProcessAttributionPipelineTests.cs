@@ -45,7 +45,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             SoftwareKinds.Game,
             "test",
             ExecutableNames: ["SkyrimSE.exe"]));
-        var pipeline = CreatePipeline([], identityCatalog: identityCatalog);
+        using var pipeline = CreatePipeline([], identityCatalog: identityCatalog);
 
         var attribution = pipeline.Match(new RuntimeProcessIdentity(
             46100,
@@ -63,7 +63,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_DoesNotPromoteWindowTitleAndContinuesToRuntimeProduct()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:star-rail", "崩坏: 星穹铁道", [])
         ]);
         var process = new RuntimeProcessIdentity(
@@ -85,7 +85,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_PrefersLauncherRootWhenLauncherTitleContainsGameName()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:star-rail", "崩坏: 星穹铁道", []),
             CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\HoYoPlay"])
         ]);
@@ -109,7 +109,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_AllowsNestedGameProcessToSeparateFromLauncherRoot()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\HoYoPlay"]),
             CreateSoftware("windows-installed:star-rail", "崩坏: 星穹铁道", [@"D:\Games\HoYoPlay\Games\Star Rail"])
         ]);
@@ -133,7 +133,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_ClassifiesLauncherManagedGameWhenOnlyLauncherIsInstalled()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\miHoYo Launcher"])
         ]);
         var process = new RuntimeProcessIdentity(
@@ -162,7 +162,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_GroupsLauncherManagedGameHelpersByGameDirectory()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\miHoYo Launcher"])
         ]);
         var game = new RuntimeProcessIdentity(
@@ -192,7 +192,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_ClassifiesResourceManagerSelfAsAdaptedSoftware()
     {
-        var pipeline = CreatePipeline([]);
+        using var pipeline = CreatePipeline([]);
         var process = new RuntimeProcessIdentity(
             103,
             null,
@@ -230,7 +230,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             "registered",
             DateTimeOffset.Now,
             DateTimeOffset.Now);
-        var pipeline = CreatePipeline([], [adapter]);
+        using var pipeline = CreatePipeline([], [adapter]);
         var process = new RuntimeProcessIdentity(
             104,
             null,
@@ -268,7 +268,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             "registered",
             DateTimeOffset.Now,
             DateTimeOffset.Now);
-        var pipeline = CreatePipeline([], [adapter]);
+        using var pipeline = CreatePipeline([], [adapter]);
         var process = new RuntimeProcessIdentity(
             105,
             null,
@@ -290,7 +290,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_NormalizesSoftwareAndProcessIdentityOnceWithoutChangingMatchSemantics()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:foo-bar", "Foo Bar", [])
         ]);
         var process = new RuntimeProcessIdentity(
@@ -310,7 +310,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void Match_AllowsDistinctRuntimeKnownIdentitiesToShareDisplayName()
     {
-        var pipeline = CreatePipeline([
+        using var pipeline = CreatePipeline([
             CreateSoftware("windows-installed:client-one", "Game Client", [@"D:\Games\One"]),
             CreateSoftware("windows-installed:client-two", "Game Client", [@"D:\Games\Two"])
         ]);
@@ -334,7 +334,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
             SoftwareKinds.WindowsService,
             "系统组件",
             []);
-        var pipeline = CreatePipeline(
+        using var pipeline = CreatePipeline(
             [],
             packageResolver: new UnavailablePackageIdentityResolver(),
             serviceResolver: new MatchedServiceIdentityResolver(serviceAttribution));
@@ -348,6 +348,47 @@ public sealed class RuntimeProcessAttributionPipelineTests
 
         Assert.Equal(serviceAttribution, attribution);
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(@"D:\Other\WordMemory.WebHost.exe")]
+    [InlineData(@"D:\Apps\WordMemory2\WordMemory.WebHost.exe")]
+    [InlineData(@"D:\Apps\WordMemory\..\Other\WordMemory.WebHost.exe")]
+    public void AdapterNameCannotClaimAProcessOutsideItsProgramRoot(string? path)
+    {
+        var adapter = ScopedAdapter([new("WordMemory.WebHost", null, null)]);
+        using var pipeline = CreatePipeline([], [adapter]);
+        var attribution = pipeline.Match(new(8001, null, "WordMemory.WebHost", path, false, ProductName: "WordMemory"));
+        Assert.NotEqual(adapter.Id, attribution?.Id);
+    }
+
+    [Fact]
+    public void LegacyExecutableDeclarationCannotExpandAdapterRoots()
+    {
+        const string outside = @"D:\Other\WordMemory.WebHost.exe";
+        var adapter = ScopedAdapter([new("WordMemory.WebHost", null, outside)]);
+        using var pipeline = CreatePipeline([], [adapter]);
+        Assert.NotEqual(adapter.Id, pipeline.Match(new(8001, null, "WordMemory.WebHost", outside, false))?.Id);
+        Assert.Equal(adapter.Id, pipeline.Match(new(8002, null, "UndeclaredHelper", @"D:\Apps\WordMemory\bin\helper.exe", false))?.Id);
+    }
+
+    [Fact]
+    public void ExactLivePidAndStartKeyCannotClaimAnotherProgramsImage()
+    {
+        using var current = System.Diagnostics.Process.GetCurrentProcess();
+        var start = current.StartTime.ToUniversalTime().Ticks;
+        var adapter = ScopedAdapter([new("WordMemory.WebHost", current.Id, null)]);
+        using var pipeline = CreatePipeline([], [adapter]);
+        Assert.NotEqual(adapter.Id, pipeline.Match(new(current.Id, null, "WordMemory.WebHost", Environment.ProcessPath, false, StartKey: start))?.Id);
+        Assert.NotEqual(adapter.Id, pipeline.Match(new(current.Id, null, "WordMemory.WebHost", null, false, StartKey: start))?.Id);
+    }
+
+    private static AdapterSoftwareRegistration ScopedAdapter(IReadOnlyList<AdapterProcessDeclaration> processes)
+        => new("adapter:scope-fixture", AdapterRegistrationSchemaVersions.Current,
+            "fixture.adapter", "fixture", "WordMemory", null, [@"D:\Apps\WordMemory"], processes, [],
+            new(AdapterResourceMarkerTransports.LoopbackHttp, "http://127.0.0.1:19090/ledger"),
+            new(AdapterResourceMarkerStates.Online, DateTimeOffset.UtcNow, 200, "ok"),
+            "registered", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static RuntimeProcessAttributionPipeline CreatePipeline(
         IReadOnlyList<SoftwareRecord> software,

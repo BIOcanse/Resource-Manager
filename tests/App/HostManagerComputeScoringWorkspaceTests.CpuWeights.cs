@@ -15,7 +15,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         var cpu = CpuScoringPlanCompiler.Compile(topology,
             new Dictionary<int, double> { [0] = 800, [1] = 400 }, 0.5);
         var configuration = CreateConfiguration(0.5, 2);
-        using var workspace = new HostManagerComputeScoringWorkspace(in configuration, cpu);
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration, cpu, CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 99);
         var physical = CpuCoreResidencyTestValues.Create(91, DateTimeOffset.UtcNow,
@@ -37,7 +37,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 99);
         if (removeScalarDataset)
@@ -70,7 +70,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10);
         var physical = CpuCoreResidencyTestValues.Create(91, DateTimeOffset.UtcNow,
@@ -85,7 +85,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
-            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), CreateScratchFixture);
         var inventory = CreateInventory();
         var facts = CreateFacts(inventory, 10);
         Assert.NotNull(workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency())?.Cpu);

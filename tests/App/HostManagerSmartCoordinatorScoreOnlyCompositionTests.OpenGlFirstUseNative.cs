@@ -54,8 +54,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(SamplingObservationStatus.Current, inventory.Status);
             Assert.Equal(0U, inventory.SkippedCount);
             Assert.Equal(0U, inventory.OverflowCount);
-            var initialAdapter = Assert.Single(inventory.Adapters, item => NativePdhAdapterIdentity.Pack(item.Luid) == source);
-            var selected = Assert.Single(inventory.Adapters, item => NativePdhAdapterIdentity.Pack(item.Luid) == adapter);
+            var initialAdapter = Assert.Single(inventory.Adapters, item => WindowsGpuAdapterIdentity.Pack(item.Luid) == source);
+            var selected = Assert.Single(inventory.Adapters, item => WindowsGpuAdapterIdentity.Pack(item.Luid) == adapter);
             Assert.NotEqual(source, adapter);
             const string softwareId = "software:owned-opengl-first-use";
             var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, "Owned OpenGL cycle") with
@@ -64,9 +64,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
                 RuntimeHotSwitchEnabled = true,
-                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-                TargetGpu = GpuPerformanceScorePresetResolver.IsLikelyIntegratedGpuName(selected.Name)
-                    ? GpuPlacementTargets.IntegratedGpu : GpuPlacementTargets.HighPerformanceGpu
+                AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             });
             var facts = CreateNativeGpuCycleFacts(identity, softwareId, inventory, initialAdapter.Index);
             var ledgerPath = Path.Combine(root, "recovery.json");

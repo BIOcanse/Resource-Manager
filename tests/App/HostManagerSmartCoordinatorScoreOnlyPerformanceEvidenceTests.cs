@@ -78,15 +78,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var nativeSessionBefore = ReadRequiredPrivateReference(
             nativeWorkspaceBefore,
             "session");
-        var nativeInputRowsBefore = ReadRequiredPrivateReference(
-            nativeWorkspaceBefore,
-            "inputRows");
-        var nativeActionsBefore = ReadRequiredPrivateReference(
-            nativeWorkspaceBefore,
-            "actions");
-        var nativeFeedbackRowsBefore = ReadRequiredPrivateReference(
-            nativeWorkspaceBefore,
-            "feedbackRows");
+        var nativeScratchBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch>(
+            ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
+        var nativeScratchUidBefore = nativeScratchBefore.Uid;
+        var nativeLayoutBefore = Assert.IsType<NativeSmartScratchLayout>(
+            ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
+        Assert.Equal(nativeLayoutBefore.Length, nativeScratchBefore.Length);
         var nativeSnapshotRowsBefore = ReadRequiredPrivateReference(
             nativeWorkspaceBefore,
             "snapshotRows");
@@ -118,9 +115,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             placementWorkspaceBefore,
             ReadPrivateField<object>(fixture.Coordinator, "placementCoordinatorWorkspace"));
         Assert.Same(nativeSessionBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "session"));
-        Assert.Same(nativeInputRowsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "inputRows"));
-        Assert.Same(nativeActionsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "actions"));
-        Assert.Same(nativeFeedbackRowsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "feedbackRows"));
+        Assert.Same(nativeScratchBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
+        Assert.Equal(nativeScratchUidBefore, nativeScratchBefore.Uid);
+        Assert.Same(nativeLayoutBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
         Assert.Same(nativeSnapshotRowsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "snapshotRows"));
         Assert.Equal(nativeCapacityBefore, nativeCapacityAfter);
         Assert.Equal(recorderCapacityBefore, fixture.DebugLogWriter.Records.Capacity);

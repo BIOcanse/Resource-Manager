@@ -46,6 +46,7 @@ internal static class NbNo
         BackendPipelineNotReady = "Forespørselspipelinen til den lokale tjenesten er ikke klar.",
         NoProcessToTerminate = "Det finnes ingen prosess å avslutte.",
         TerminateRequestCompleted = "Forespørselen om å avslutte prosessen er fullført.",
+        TerminateResultFormat = "{0} / {1} prosesser avsluttet.",
 
         WebViewInitializationFailed = "Det innebygde grensesnittet kunne ikke initialiseres. Åpne diagnostikkmappen for detaljer.",
         FrontendIdentityVerificationFailed = "Identitetsbekreftelsen av frontend-ressursene mislyktes. Åpne diagnostikkmappen for detaljer.",

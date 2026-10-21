@@ -19,11 +19,14 @@ public sealed class EdidParserTests
         WriteTextDescriptor(edid, 54, 0xFC, "P275MS PLUS");
         edid[126] = 1;
         edid[128] = 0x02;
+        edid[129] = 3;
         edid[130] = 8;
         edid[132] = 0xE3;
         edid[133] = 0x06;
         edid[134] = 0x0C;
         edid[135] = 0x01;
+        SetChecksum(edid.AsSpan(0, 128));
+        SetChecksum(edid.AsSpan(128, 128));
 
         var result = EdidParser.Parse(edid);
 
@@ -34,7 +37,7 @@ public sealed class EdidParserTests
         Assert.Equal(DeviceEdidDigitalInterfaces.DisplayPort, result.DigitalInterface);
         Assert.Equal(
             BackendMessageCodes.DeviceTopology.DisplayTechnologyDigital,
-            result.DisplayTechnology.Code);
+            WindowsDeviceTopologyReader.DescribeEdidDisplayTechnology(result)!.Code);
         Assert.Equal("HDR10 / PQ / HLG", result.HdrFormats);
         Assert.Equal(600u, result.WidthMillimeters);
         Assert.Equal(340u, result.HeightMillimeters);
@@ -52,5 +55,12 @@ public sealed class EdidParserTests
         edid[offset + 3] = type;
         var text = System.Text.Encoding.ASCII.GetBytes(value.PadRight(13));
         text.CopyTo(edid, offset + 5);
+    }
+
+    private static void SetChecksum(Span<byte> block)
+    {
+        block[127] = 0; var sum = 0;
+        foreach (var value in block) sum += value;
+        block[127] = unchecked((byte)-sum);
     }
 }

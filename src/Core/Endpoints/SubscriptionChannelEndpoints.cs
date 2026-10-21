@@ -235,6 +235,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             ["/api/metrics/subscribe"] = new((subscription, services, interval) =>
                 CompileMetricSubscription(subscription, services, interval)),
+            ["/api/metrics/fields/catalog/subscribe"] = new((subscription, services, interval) =>
+                CompileMetricCatalogSubscription(subscription, services, interval)),
             ["/api/metrics/gpu-specialized/subscribe"] = new((subscription, services, interval) =>
                 CompileGpuSubscription(subscription, services, interval)),
             ["/api/resource-monitor/subscribe"] = new((subscription, services, interval) =>
@@ -264,11 +266,30 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     subscription,
                     services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
                     interval)),
+            ["/api/device-topology/fields/subscribe"] =
+                new((subscription, services, interval) => CompileDeviceTopologySubscription(
+                    subscription,
+                    services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
+                    interval,
+                    fieldsOnly: true)),
+            ["/api/device-topology/nvidia-drs/fields/subscribe"] =
+                new((subscription, services, interval) => CompileNvidiaDrsSubscription(subscription, services, interval)),
+            ["/api/device-topology/acpi/fields/subscribe"] =
+                new((subscription, services, interval) => CompileAcpiInformationSubscription(
+                    subscription,
+                    services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
+                    interval)),
             ["/api/cpu/topology/subscribe"] =
                 new((subscription, services, interval) => CompileCpuTopologySubscription(
                     subscription,
                     services.GetRequiredService<ICpuTopologyReader>(),
                     interval)),
+            ["/api/cpu/topology/fields/subscribe"] =
+                new((subscription, services, interval) => CompileCpuTopologySubscription(
+                    subscription,
+                    services.GetRequiredService<ICpuTopologyReader>(),
+                    interval,
+                    fieldsOnly: true)),
             ["/api/cpu/residency/subscribe"] =
                 new((subscription, services, interval) => CompileCpuResidencySubscription(
                     subscription,
@@ -304,15 +325,31 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             .Compile(subscription, services, interval);
     }
 
+    private static CompiledFrontendSubscription CompileMetricCatalogSubscription(
+        ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
+    {
+        var source = services.GetRequiredService<IMetricSnapshotPushSource>();
+        return subscription.Compile(async (writer, cancellationToken) =>
+        {
+            await foreach (var snapshot in source.SubscribeAsync($"frontend-channel:{subscription.Id}",
+                MetricSampleRequest.CatalogProbe, interval, cancellationToken))
+                await writer.WriteAsync(subscription.Id, MetricDeviceFields.Catalog(snapshot), cancellationToken);
+        });
+    }
+
     private static CompiledFrontendSubscription CompileMetricSubscription(
         ParsedFrontendSubscription subscription,
         IServiceProvider services,
         TimeSpan interval)
     {
-        var runtimePlanProvider = services.GetRequiredService<IRuntimePlanProvider>();
-        var snapshotRequest = subscription.Query.TryGetValue("ids", out var ids)
+        var device = subscription.Query["device"].ToString();
+        var useFields = subscription.Query.ContainsKey("device") || subscription.Query.ContainsKey("fields");
+        var fields = ParseMetricFieldNames(subscription.Query);
+        var snapshotRequest = useFields
+            ? MetricDeviceFields.CreateRequest(services.GetRequiredService<DashboardMonitoringCatalogState>().Current, device, fields)
+            : subscription.Query.TryGetValue("ids", out var ids)
             ? MetricSampleRequest.ForIds(ids)
-            : runtimePlanProvider.Current.Monitoring.DashboardMetricRequest;
+            : services.GetRequiredService<IRuntimePlanProvider>().Current.Monitoring.DashboardMetricRequest;
         var source = services.GetRequiredService<IMetricSnapshotPushSource>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
@@ -325,7 +362,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var presentation = MetricCatalog.ApplyPresentation(snapshot);
                 await writer.WriteAsync(
                     subscription.Id,
-                    MetricSnapshotWireSnapshot.From(presentation, snapshotRequest),
+                    useFields
+                        ? (object)MetricDeviceFields.Read(snapshot, device, fields)
+                        : MetricSnapshotWireSnapshot.From(presentation, snapshotRequest),
                     cancellationToken);
             }
         });
@@ -442,10 +481,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static CompiledFrontendSubscription CompileCpuTopologySubscription(
         ParsedFrontendSubscription subscription,
         ICpuTopologyReader topology,
-        TimeSpan interval)
+        TimeSpan interval,
+        bool fieldsOnly = false)
     {
         return subscription.Compile(async (writer, cancellationToken) =>
         {
+            if (fieldsOnly)
+            {
+                await foreach (var fields in topology.SubscribeInformationAsync(
+                    $"frontend-channel:{subscription.Id}", interval, cancellationToken))
+                    await writer.WriteAsync(subscription.Id, fields, cancellationToken);
+                return;
+            }
             await foreach (var snapshot in topology.SubscribeAsync(
                 $"frontend-channel:{subscription.Id}", interval, cancellationToken))
             {
@@ -474,7 +521,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static CompiledFrontendSubscription CompileDeviceTopologySubscription(
         ParsedFrontendSubscription subscription,
         IDeviceTopologySnapshotProvider topology,
-        TimeSpan interval)
+        TimeSpan interval,
+        bool fieldsOnly = false)
     {
         return subscription.Compile(async (writer, cancellationToken) =>
         {
@@ -483,8 +531,24 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 interval,
                 cancellationToken))
             {
-                await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
+                if (fieldsOnly)
+                    await writer.WriteAsync(subscription.Id, snapshot.InformationFields, cancellationToken);
+                else
+                    await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
             }
+        });
+    }
+
+    private static CompiledFrontendSubscription CompileAcpiInformationSubscription(
+        ParsedFrontendSubscription subscription,
+        IDeviceTopologySnapshotProvider topology,
+        TimeSpan interval)
+    {
+        return subscription.Compile(async (writer, cancellationToken) =>
+        {
+            await foreach (var snapshot in topology.SubscribeAcpiAsync(
+                $"frontend-channel:{subscription.Id}", interval, cancellationToken))
+                await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
         });
     }
 

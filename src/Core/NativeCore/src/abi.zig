@@ -41,7 +41,7 @@ comptime {
     _ = compute_scoring_abi.rm_compute_scoring_destroy;
     _ = compute_scoring_abi.rm_compute_scoring_reconfigure;
     _ = compute_scoring_abi.rm_compute_scoring_query_capacity;
-    _ = compute_scoring_abi.rm_compute_scoring_score;
+    _ = compute_scoring_abi.rm_compute_scoring_score_with_scratch;
     _ = compute_scoring_abi.rm_compute_scoring_weighted_cpu_use;
     _ = compute_scoring_abi.rm_compute_scoring_software_base_mean;
     _ = memory_mode_controller_abi.rm_memory_mode_controller_abi_version;
@@ -86,6 +86,7 @@ comptime {
     _ = metric_snapshot_abi.rm_metric_snapshot_destroy;
     _ = metric_snapshot_abi.rm_metric_snapshot_reconfigure;
     _ = metric_snapshot_abi.rm_metric_snapshot_reset;
+    _ = metric_snapshot_abi.rm_metric_snapshot_synchronize_counter_demand;
     _ = metric_snapshot_abi.rm_metric_snapshot_query_capacity;
     _ = metric_snapshot_abi.rm_metric_snapshot_replace_catalog;
     _ = metric_snapshot_abi.rm_metric_snapshot_calculate_catalog_fingerprint;
@@ -361,6 +362,32 @@ pub export fn rm_pdh_collector_create(
     return code(.ok);
 }
 
+// External collectors never allocate ordinary parser backing buffers.
+pub export fn rm_pdh_collector_create_external_scratch(
+    config: ?*const pdh.Config,
+    handle: ?*?*anyopaque,
+) callconv(.c) i32 {
+    const result = rm_pdh_collector_create(config, handle);
+    if (result != code(.ok)) return result;
+    const collector: *pdh.Collector = @ptrCast(@alignCast(handle.?.*.?));
+    collector.external_scratch = true;
+    return result;
+}
+
+pub export fn rm_pdh_collector_sample_external_scratch(
+    handle: ?*anyopaque,
+    header: ?*pdh.FrameHeader,
+    provider: ?*const pdh.ExternalScratch.Provider,
+) callconv(.c) i32 {
+    const opaque_handle = handle orelse return code(.invalid_argument);
+    const output = header orelse return code(.invalid_argument);
+    const source = provider orelse return code(.invalid_argument);
+    if (output.abi_version != pdh.abi_version or output.struct_size != @sizeOf(pdh.FrameHeader))
+        return code(.abi_mismatch);
+    const collector: *pdh.Collector = @ptrCast(@alignCast(opaque_handle));
+    return code(collector.sampleExternal(output, source.*));
+}
+
 pub export fn rm_pdh_collector_destroy(handle: ?*anyopaque) callconv(.c) void {
     const opaque_handle = handle orelse return;
     const collector: *pdh.Collector = @ptrCast(@alignCast(opaque_handle));
@@ -412,6 +439,11 @@ pub export fn rm_pdh_collector_copy_frame(
     ));
 }
 
+pub export fn rm_pdh_collector_copy_gpu_engine_windows(handle: ?*anyopaque, expected_sequence: u64,
+    rows: ?[*]pdh.GpuEngineWindow, capacity: u32, row_size: u32, count: ?*u32) callconv(.c) i32 {
+    const collector: *pdh.Collector = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(collector.copyEngineWindows(expected_sequence, rows, capacity, row_size, count orelse return code(.invalid_argument)));
+}
 pub export fn rm_pdh_collector_get_diagnostics(
     handle: ?*anyopaque,
     diagnostics: ?*pdh.Diagnostics,
@@ -536,7 +568,7 @@ test "ABI structures keep their strict layout" {
     try std.testing.expectEqual(@as(usize, 232), @sizeOf(adapter_instance_lease.LeaseReceipt));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(pdh.Config));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(pdh.FrameHeader));
-    try std.testing.expectEqual(@as(usize, 24), @sizeOf(pdh.GpuEngineRow));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(pdh.GpuEngineRow));
     try std.testing.expectEqual(@as(usize, 24), @sizeOf(pdh.GpuMemoryRow));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(pdh.SystemIo));
     try std.testing.expectEqual(@as(usize, 56), @sizeOf(pdh.Diagnostics));
@@ -555,3 +587,4 @@ test {
     _ = display_coordinator;
     _ = operation_coordinator;
 }
+

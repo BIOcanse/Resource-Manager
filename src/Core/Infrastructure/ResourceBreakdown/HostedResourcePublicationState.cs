@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -29,15 +30,59 @@ internal sealed class HostedResourcePublicationState
     private HostedResourcePublicationOwnerToken activeOwnerToken;
     private bool ownerOpen;
 
-    public HostedResourcePublicationState()
+    public HostedResourcePublicationState(ResourceManager.ReadWrite.Native.Pdh.INativePdhSnapshotSource? gpuSource = null)
     {
         Resource = new ResourceBreakdownSnapshotState(gate);
         Scheduling = new SchedulingProcessFactSnapshotState(gate);
+        ProcessOwner = new(Resource.ProcessFieldState);
+        if (gpuSource is not null) ProcessOwner.BindGpuSource(gpuSource);
     }
+
+    internal WindowsProcessFieldOwner ProcessOwner { get; }
 
     public ResourceBreakdownSnapshotState Resource { get; }
 
     public SchedulingProcessFactSnapshotState Scheduling { get; }
+
+    internal HostedResourcePublicationOwnerToken CaptureDirectOwner()
+    {
+        lock (gate) return activeOwnerToken;
+    }
+
+    internal bool TryApplyDirectProcessFields(HostedResourcePublicationOwnerToken capturedOwner,
+        SamplingOwnerToken workspaceOwner, ResourceBreakdownSampleRequest request, ResourceBreakdownSnapshot sample,
+        DateTimeOffset attemptedAt, TimeSpan interval, TimeSpan grace, Action? onCommitted = null)
+    {
+        var committed = false;
+        workspaceOwner.TryPublish(() =>
+        {
+            lock (gate)
+            {
+                if (capturedOwner != activeOwnerToken || capturedOwner.IsValid && !ownerOpen) return;
+                Resource.ApplyDirect(request, sample, attemptedAt, interval, grace);
+                onCommitted?.Invoke();
+                committed = true;
+            }
+        });
+        return committed;
+    }
+
+    internal bool TryFailDirectProcessFields(HostedResourcePublicationOwnerToken capturedOwner,
+        SamplingOwnerToken workspaceOwner, ResourceBreakdownSampleRequest request, DateTimeOffset attemptedAt, Exception error, Action? onCommitted = null)
+    {
+        var committed = false;
+        workspaceOwner.TryPublish(() =>
+        {
+            lock (gate)
+            {
+                if (capturedOwner != activeOwnerToken || capturedOwner.IsValid && !ownerOpen) return;
+                Resource.MarkFailed(request, attemptedAt, error);
+                onCommitted?.Invoke();
+                committed = true;
+            }
+        });
+        return committed;
+    }
 
     public HostedResourcePublicationOwnerToken OpenOwner()
     {
@@ -160,6 +205,11 @@ internal sealed class HostedResourcePublicationState
     }
 
     public bool TryCommit(HostedResourcePublicationPreparation preparation)
+        => TryCommit(preparation, null);
+
+    public bool TryCommit(
+        HostedResourcePublicationPreparation preparation,
+        Action? onCommitted)
     {
         ArgumentNullException.ThrowIfNull(preparation);
         if (!ReferenceEquals(preparation.Owner, this))
@@ -181,6 +231,7 @@ internal sealed class HostedResourcePublicationState
                 Resource.CommitPrepared(preparation.Resource);
                 Scheduling.CommitPrepared(preparation.Scheduling);
                 committed = true;
+                onCommitted?.Invoke();
             }
         }))
         {

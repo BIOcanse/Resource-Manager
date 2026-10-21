@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Domain.Metrics;
-using ResourceManager.App.Infrastructure.Monitoring.AmdSmu;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -17,7 +17,7 @@ public sealed class AmdSmuMonitoringZone : MonitoringSourceZone, IDisposable
     public AmdSmuMonitoringZone(string contentRootPath)
         : base(MonitoringSourceZoneIds.VendorAmdSmu)
     {
-        reader = new AmdSmuCpuSensorReader(contentRootPath);
+        reader = AmdSmuHardwareBinding.CreateReader(contentRootPath);
     }
 
     internal CpuSensorMetrics Read(AmdSmuCpuSensorReadRequest request)

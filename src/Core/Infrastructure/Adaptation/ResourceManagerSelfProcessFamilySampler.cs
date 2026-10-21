@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using ResourceManager.App.Infrastructure.Windows;
+using ResourceManager.App.Infrastructure.Adaptation.Transport;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
+using ResourceManager.App.Infrastructure.ServiceHosting;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
@@ -9,76 +12,66 @@ internal readonly record struct ResourceManagerSelfProcessResource(
     bool IsBackend,
     bool IsNativeUi,
     bool IsNativeUiDescendant,
-    ulong WorkingSetBytes);
+    ulong WorkingSetBytes,
+    DateTimeOffset StartedAt);
 
 internal static class ResourceManagerSelfProcessFamilySampler
 {
     internal static IReadOnlyList<ResourceManagerSelfProcessResource> Capture(int backendProcessId)
     {
-        var parentById = ReadProcessParentIds();
-        var processRows = new List<ResourceManagerSelfProcessResource>();
-        var rootProcessIds = new HashSet<int>();
-
+        var parents = ReadProcessParentIds();
+        var rows = new List<ResourceManagerSelfProcessResource>();
+        var expectedUiPath = NativeUiLaunchHostedService.ResolveNativeUiPath();
         foreach (var process in Process.GetProcesses())
         {
             using (process)
             {
-                if (!TryCreateProcessResource(process, backendProcessId, out var row))
-                {
-                    continue;
-                }
-
-                if (row.IsBackend || row.IsNativeUi)
-                {
-                    rootProcessIds.Add(row.ProcessId);
-                }
-
-                processRows.Add(row);
+                if (TryCreateProcessResource(process, backendProcessId, expectedUiPath, out var row)) rows.Add(row);
             }
         }
-
-        var nativeUiRootProcessIds = processRows
-            .Where(static row => row.IsNativeUi)
-            .Select(static row => row.ProcessId)
-            .ToHashSet();
-
-        return processRows
-            .Where(row => row.IsBackend
-                || row.IsNativeUi
-                || IsDescendantOfAny(row.ProcessId, parentById, rootProcessIds))
-            .Select(row => row with
-            {
-                IsNativeUiDescendant = !row.IsBackend
-                    && !row.IsNativeUi
-                    && IsDescendantOfAny(row.ProcessId, parentById, nativeUiRootProcessIds)
-            })
-            .OrderBy(static row => row.ProcessId)
-            .ToArray();
+        var identities = rows.ToDictionary(row => row.ProcessId, row => new ProcessAncestryIdentity(
+            row.ProcessId, parents.GetValueOrDefault(row.ProcessId), row.StartedAt.UtcDateTime.ToFileTimeUtc()));
+        var roots = rows.Where(row => row.IsBackend || row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
+        var uiRoots = rows.Where(row => row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
+        var family = ProcessAncestry.FindFamily(identities, roots);
+        var uiFamily = ProcessAncestry.FindFamily(identities, uiRoots);
+        return rows.Where(row => family.Contains(row.ProcessId))
+            .Select(row => row with { IsNativeUiDescendant = !row.IsBackend && !row.IsNativeUi && uiFamily.Contains(row.ProcessId) })
+            .OrderBy(row => row.ProcessId).ToArray();
     }
 
-    private static bool TryCreateProcessResource(
-        Process process,
-        int backendProcessId,
-        out ResourceManagerSelfProcessResource row)
+    private static bool TryCreateProcessResource(Process process, int backendProcessId,
+        string expectedUiPath, out ResourceManagerSelfProcessResource row)
     {
         row = default;
+        var handle = IntPtr.Zero;
         try
         {
             var processId = process.Id;
-            var name = process.ProcessName;
-            row = new ResourceManagerSelfProcessResource(
-                processId,
-                processId == backendProcessId,
-                MatchesProcessName(name, "ResourceManager.NativeUi"),
-                IsNativeUiDescendant: false,
-                (ulong)Math.Max(0, process.WorkingSet64));
+            handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, processId);
+            if (handle == IntPtr.Zero || !NativeMethods.GetProcessTimes(handle, out var created, out _, out _, out _)) return false;
+            var startedAt = new DateTimeOffset(DateTime.FromFileTimeUtc(checked((long)created.ToUInt64())));
+            var isNativeUi = false;
+            if (process.ProcessName.Equals("ResourceManager.NativeUi", StringComparison.OrdinalIgnoreCase))
+            {
+                var identity = WindowsNamedPipeCallerAttester.ReadProcessIdentity(checked((uint)processId));
+                isNativeUi = identity.CreatedUtcTicks == startedAt.UtcTicks
+                    && IsNativeUiImage(identity.CanonicalExecutablePath, expectedUiPath);
+            }
+            row = new(processId, processId == backendProcessId, isNativeUi, false,
+                (ulong)Math.Max(0, process.WorkingSet64), startedAt);
             return true;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or Win32Exception)
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or Win32Exception
+                                   or IOException or UnauthorizedAccessException)
         {
             return false;
         }
+        finally { if (handle != IntPtr.Zero) NativeMethods.CloseHandle(handle); }
     }
+
+    internal static bool IsNativeUiImage(string actualPath, string expectedPath)
+        => StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(actualPath), Path.GetFullPath(expectedPath));
 
     private static Dictionary<int, int> ReadProcessParentIds()
     {
@@ -111,34 +104,4 @@ internal static class ResourceManagerSelfProcessFamilySampler
         }
     }
 
-    private static bool IsDescendantOfAny(
-        int processId,
-        IReadOnlyDictionary<int, int> parentById,
-        IReadOnlySet<int> ancestorProcessIds)
-    {
-        var visited = new HashSet<int>();
-        var current = processId;
-        while (parentById.TryGetValue(current, out var parentProcessId) && parentProcessId > 0)
-        {
-            if (!visited.Add(parentProcessId))
-            {
-                return false;
-            }
-
-            if (ancestorProcessIds.Contains(parentProcessId))
-            {
-                return true;
-            }
-
-            current = parentProcessId;
-        }
-
-        return false;
-    }
-
-    private static bool MatchesProcessName(string processName, string expectedName)
-    {
-        return processName.Equals(expectedName, StringComparison.OrdinalIgnoreCase)
-            || processName.Equals(Path.GetFileNameWithoutExtension(expectedName), StringComparison.OrdinalIgnoreCase);
-    }
 }

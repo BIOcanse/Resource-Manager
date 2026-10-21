@@ -71,9 +71,9 @@ public sealed partial class WindowsResourceBreakdownSampler
                 hardwareSnapshot.Memory.TotalBytes,
                 hardwareSnapshot.Memory.UsedBytes,
                 processAttribution.Processes
-                    .Where(static process => process.HasWorkingSetBytes)
+                    .Where(static process => process.HasPrivateWorkingSetBytes)
                     .Select(static process =>
-                    KeyValuePair.Create(process.ProcessId, (double)Math.Max(0, process.WorkingSetBytes))),
+                    KeyValuePair.Create(process.ProcessId, (double)Math.Max(0, process.PrivateWorkingSetBytes))),
                 processAttribution,
                 baseScorePlan,
                 residualBreakdownProvider,
@@ -247,13 +247,13 @@ public sealed partial class WindowsResourceBreakdownSampler
              * 这两件事先前混在一起，于是界面上出现过"某个软件 8.6%、总和只有 5.0%"：
              * 总和走的是 gpu.UsagePercent（N 卡上是 NVML 的 SM utilization，
              * 问的是"卡上有没有核在跑"），分项走的是 PDH 的 GPU Engine 计数器
-             * 按进程把各引擎求和（问的是"这个进程在各引擎上忙了多久"）。
+             * 使用同一采样中最忙引擎上的进程占用。
              * 两个量定义不同、采样窗口也不同，所以部分大于整体是必然会发生的；
              * 而聚合层算残差时那个负数被静默丢掉，谁也没吭声。
              *
              * 分工定死：
              *   - **量**用设备自己的读数（有 NVML 就是 NVML，它更准，不该被顶掉）。
-             *   - **比例**用 PDH：每个进程占整卡的份额 = 它的引擎和 / 整卡引擎和。
+             *   - **比例**用 PDH：最忙引擎上的进程占用 / 该引擎总占用。
              *     PDH 的绝对值和 NVML 不同口径，但它的相对份额是可信的，
              *     而且这是唯一的每进程来源。
              *
@@ -261,7 +261,7 @@ public sealed partial class WindowsResourceBreakdownSampler
              * 已归属份额 ≤ 设备读数，"任一分项 ≤ 总和"恒成立；剩下的那块
              * （归不到进程头上的引擎行）仍然是残差，语义没有丢。
              *
-             * 分母是**整卡的 PDH 总和**。它有三种情况，各自的处理是确定的：
+             * 分母是**最忙引擎的 PDH 总占用**。它有三种情况，各自的处理是确定的：
              *
              *   - 大于 0：正常，按份额把设备读数摊下去。
              *   - 等于 0：卡闲着。归属本身是好的，只是没有东西可分 ——

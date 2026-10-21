@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -11,7 +12,7 @@ using System.Text.Json.Nodes;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerOperationCoordinatorOwnerTests
+public sealed partial class HostManagerOperationCoordinatorOwnerTests
 {
     [Fact]
     public async Task PublishedStateProjectsOneCommittedImageAndAdvancesRevision()
@@ -345,7 +346,7 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
         Assert.Equal(0, fixture.ComponentExecutor.ExecuteCount);
     }
 
-    private static CompiledHostManagerPlan CreateSmallPlan(
+    internal static CompiledHostManagerPlan CreateSmallPlan(
         Action<JsonObject>? mutate = null)
         => HostManagerTestPlanFactory.CreatePlan(root =>
         {
@@ -448,7 +449,7 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
         }
     }
 
-    private sealed class Fixture : IAsyncDisposable
+    private sealed partial class Fixture : IAsyncDisposable
     {
         private readonly bool ownsRoot;
 
@@ -457,6 +458,7 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
             CompiledHostManagerPlan plan,
             HostManagerOperationCoordinatorOwner owner,
             RuntimePlanProvider provider,
+            HostManagerDeploymentState deployment,
             RecordingEffectExecutor componentExecutor,
             bool ownsRoot)
         {
@@ -464,6 +466,7 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
             Plan = plan;
             Owner = owner;
             Provider = provider;
+            Deployment = deployment;
             ComponentExecutor = componentExecutor;
             this.ownsRoot = ownsRoot;
         }
@@ -475,6 +478,8 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
         internal HostManagerOperationCoordinatorOwner Owner { get; }
 
         internal RuntimePlanProvider Provider { get; }
+
+        internal HostManagerDeploymentState Deployment { get; }
 
         internal RecordingEffectExecutor ComponentExecutor { get; }
 
@@ -492,7 +497,9 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
         private static async Task<Fixture> CreateAsync(
             string root,
             CompiledHostManagerPlan plan,
-            bool ownsRoot)
+            bool ownsRoot,
+            bool start = true,
+            Func<ulong, IComputeScratch>? createScratch = null)
         {
             var deployment = new HostManagerDeploymentState();
             var provider = new RuntimePlanProvider(deployment);
@@ -514,15 +521,17 @@ public sealed class HostManagerOperationCoordinatorOwnerTests
                     : new RecordingEffectExecutor(kind))
                 .Cast<IHostManagerOperationEffectExecutor>()
                 .ToArray();
-            var owner = new HostManagerOperationCoordinatorOwner(
-                provider,
-                new HostManagerOperationCoordinatorRuntime(provider, deployment),
-                new HostManagerOperationEffectRouter(executors),
-                new TestHostEnvironment(
-                    Path.Combine(root, "Resource Manager-APP")),
-                NullLogger<HostManagerOperationCoordinatorOwner>.Instance);
-            await owner.StartAsync(CancellationToken.None);
-            return new Fixture(root, plan, owner, provider, component, ownsRoot);
+            var runtime = new HostManagerOperationCoordinatorRuntime(provider, deployment);
+            var router = new HostManagerOperationEffectRouter(executors);
+            var environment = new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP"));
+            var logger = NullLogger<HostManagerOperationCoordinatorOwner>.Instance;
+            var owner = new HostManagerOperationCoordinatorOwner(provider, runtime, router,
+                environment, logger, createScratch ?? OperationScratchFixture.Create);
+            if (start)
+            {
+                await owner.StartAsync(CancellationToken.None);
+            }
+            return new Fixture(root, plan, owner, provider, deployment, component, ownsRoot);
         }
 
         internal Task<HostManagerOperationSnapshot> SubmitComponentDownloadAsync()

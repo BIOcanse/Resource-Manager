@@ -10,9 +10,9 @@ public sealed class NativeResourceSchedulerSessionTests
     private const ulong LayoutFingerprint = 0x4605066A76753B1D;
 
     [Fact]
-    public void AbiV11_UsesPublishedFixedLayoutsOffsetsAndFingerprint()
+    public void AbiV12_UsesPublishedFixedLayoutsOffsetsAndFingerprint()
     {
-        Assert.Equal(11U, ResourceSchedulerProtocol.Version);
+        Assert.Equal(12U, ResourceSchedulerProtocol.Version);
         Assert.Equal(LayoutFingerprint, NativeResourceSchedulerSession.PublishedLayoutFingerprint);
         NativeResourceSchedulerSession.ValidateConfiguration(CreateConfiguration(1));
     }
@@ -97,7 +97,7 @@ public sealed class NativeResourceSchedulerSessionTests
         Assert.True(scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
 
         var blocked = PlanPrivate(scheduler, configuration, requestId: 2, now: 999);
         Assert.Equal(1U, blocked.Summary.ActivePendingCount);
@@ -120,7 +120,7 @@ public sealed class NativeResourceSchedulerSessionTests
         Assert.True(scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
 
         var feedback = scheduler.ApplyFeedback(
             token,
@@ -147,7 +147,7 @@ public sealed class NativeResourceSchedulerSessionTests
         Assert.True(scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
 
         var feedback = scheduler.ApplyFeedback(
             token,
@@ -173,7 +173,7 @@ public sealed class NativeResourceSchedulerSessionTests
         Assert.True(scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection)).Allowed);
+            CreatePrivateRevalidation(selection), nowMonotonicTimestamp: 101).Allowed);
         var capacity = CreateCapacity();
 
         var wrongRequest = CreateFeedback(selection, AdapterResourceActionStatus.Failed) with
@@ -246,7 +246,7 @@ public sealed class NativeResourceSchedulerSessionTests
             var blocked = scheduler.RevalidateAndBeginReservation(
                 token,
                 selection,
-                CreatePrivateRevalidation(selection) with { Authority = drifted });
+                CreatePrivateRevalidation(selection) with { Authority = drifted }, nowMonotonicTimestamp: 101);
             Assert.False(blocked.Allowed);
             Assert.Equal(ResourceSchedulerRevalidationReason.IdentityChanged, blocked.Reason);
         }
@@ -254,7 +254,7 @@ public sealed class NativeResourceSchedulerSessionTests
         var allowed = scheduler.RevalidateAndBeginReservation(
             token,
             selection,
-            CreatePrivateRevalidation(selection) with { Authority = newer });
+            CreatePrivateRevalidation(selection) with { Authority = newer }, nowMonotonicTimestamp: 101);
         Assert.True(allowed.Allowed);
         scheduler.AbandonReservation(token);
     }
@@ -304,6 +304,99 @@ public sealed class NativeResourceSchedulerSessionTests
         Assert.Equal(1U, privateResult.Summary.InvalidResourceCount);
     }
 
+
+    [Theory]
+    [InlineData(AdapterResourceTier.Vram, true)]
+    [InlineData(AdapterResourceTier.Vram, false)]
+    [InlineData(AdapterResourceTier.PhysicalMemory, true)]
+    [InlineData(AdapterResourceTier.PhysicalMemory, false)]
+    public void Plan_NewMoveReservationsShareDestinationCapacityAcrossTargets(
+        AdapterResourceTier tier, bool emitCandidates)
+    {
+        var configuration = CreateConfiguration(37);
+        using var scheduler = CreateSession(configuration);
+        var capacity = tier == AdapterResourceTier.Vram
+            ? CreateCapacity() with { FreeVramBytes = 64 * Mib, FreePhysicalBytes = 4 * Gib }
+            : CreateCapacity() with { FreeVirtualBytes = 6 * Gib };
+        var firstTarget = CreateTarget(privateResourceCount: 1) with
+        {
+            Capacity = capacity,
+            IncludeVram = true
+        };
+        var secondTarget = firstTarget with { TargetKey = 22, PrivateResourceStart = 1 };
+        var firstResource = CreatePrivateResource(AdapterResourceActionMask.MoveDown) with
+        {
+            SizeBytes = 2 * Gib,
+            Tier = tier
+        };
+        var secondResource = firstResource with
+        {
+            TargetKey = secondTarget.TargetKey,
+            MoveDownAuthority = firstResource.MoveDownAuthority with
+            {
+                ResourceSlot = 2,
+                ResourceId = 2,
+                ResourceKey = 102,
+                ActionAttemptIdLow = 133,
+                ActionAttemptIdHigh = 134
+            }
+        };
+        var request = CreateRequest(configuration, requestId: 371, now: 100) with
+        {
+            RequestedActions = AdapterResourceActionMask.MoveDown,
+            EnabledTierMask = (byte)(1 << (byte)tier),
+            EmitCandidates = emitCandidates
+        };
+
+        // Either move fits alone. Together they cross the configured destination
+        // free-space floor. Exercise the actual native planner with a budget of two.
+        var result = scheduler.Plan(request, [firstTarget, secondTarget],
+            [firstResource, secondResource], new ResourceSchedulerFactBatch(ProjectionEpoch, 2, []));
+
+        Assert.Equal(0U, result.Summary.InvalidResourceCount);
+        Assert.Equal(2U, result.Summary.CandidateCount);
+        Assert.Equal(1U, result.Summary.DangerTargetCount);
+        Assert.Equal(2 * Gib, Assert.Single(result.Selections).SizeBytes);
+        Assert.Single(result.TargetPlans, target => target.DangerFlags != 0);
+        Assert.Single(result.TargetPlans, target => target.SelectedActionCount == 1);
+    }
+
+    [Theory]
+    [InlineData(109UL, true)]
+    [InlineData(110UL, false)]
+    [InlineData(111UL, false)]
+    public void Reservation_DeadlineIsCheckedAtBeginAndExpiredWorkCanBeCancelled(ulong now, bool allowed)
+    {
+        var configuration = CreateConfiguration(39);
+        using var scheduler = CreateSession(configuration);
+        var selection = Assert.Single(PlanPrivate(scheduler, configuration, requestId: 391, now: 100).Selections);
+        var token = scheduler.ReserveSelection(selection, 100, 110, 392, 1, 1);
+        scheduler.BindReservationToJournal(token, 393, 394);
+
+        var result = scheduler.RevalidateAndBeginReservation(token, selection,
+            CreatePrivateRevalidation(selection), now);
+
+        Assert.Equal(allowed, result.Allowed);
+        Assert.Equal(allowed ? ResourceSchedulerRevalidationReason.Allowed
+            : ResourceSchedulerRevalidationReason.ReservationExpired, result.Reason);
+        if (allowed) scheduler.CompleteReservation(token);
+        else scheduler.CancelReservation(token);
+        Assert.Single(PlanPrivate(scheduler, configuration, requestId: 395, now: 112).Selections);
+    }
+
+    [Fact]
+    public void Reservation_ZeroTimeIsRejectedWithoutConsumingReservation()
+    {
+        var configuration = CreateConfiguration(40);
+        using var scheduler = CreateSession(configuration);
+        var selection = Assert.Single(PlanPrivate(scheduler, configuration, requestId: 401, now: 100).Selections);
+        var token = scheduler.ReserveSelection(selection, 100, 110, 402, 1, 1);
+        scheduler.BindReservationToJournal(token, 403, 404);
+        Assert.Throws<ArgumentOutOfRangeException>(() => scheduler.RevalidateAndBeginReservation(
+            token, selection, CreatePrivateRevalidation(selection), 0));
+        scheduler.CancelReservation(token);
+        Assert.Single(PlanPrivate(scheduler, configuration, requestId: 405, now: 112).Selections);
+    }
 
     private static NativeResourceSchedulerSession CreateSession(
         ResourceSchedulerConfig configuration,

@@ -1,13 +1,16 @@
-using System.Diagnostics;
 using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Domain.LocalSystem;
+using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.ServiceHosting;
+using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Infrastructure.LocalSystem;
 
-public sealed class WindowsExplorerPathOpener : ILocalPathOpener
+public sealed class WindowsExplorerPathOpener(IInteractiveUserSessionBroker sessionBroker) : ILocalPathOpener
 {
-    public LocalPathOpenResult Open(LocalPathOpenRequest request)
+    public LocalPathOpenResult Open(LocalPathOpenRequest request, SoftwareOperationCaller? caller)
     {
+        UserSessionCallerValidation.RequireActiveUser(caller, sessionBroker);
         if (string.IsNullOrWhiteSpace(request.Path))
         {
             throw new InvalidOperationException("路径不能为空。");
@@ -29,12 +32,10 @@ public sealed class WindowsExplorerPathOpener : ILocalPathOpener
             ? $"/select,{Quote(openedPath)}"
             : Quote(openedPath);
 
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "explorer.exe",
-            Arguments = arguments,
-            UseShellExecute = true
-        });
+        var shellRequest = new UserShellExecuteRequest("explorer.exe", arguments);
+        _ = sessionBroker.LaunchUserShell(caller!.WindowsSessionId, caller.WindowsSid,
+            NativeUiLaunchHostedService.ResolveNativeUiPath(),
+            UserShellExecuteRequest.Argument + " " + shellRequest.Encode());
 
         return new LocalPathOpenResult(
             normalizedPath,

@@ -31,11 +31,6 @@ interface PageRefreshSchedulerOptions {
     refreshState: RefreshActionWithForce;
     refreshBrowserRuntimes: RefreshActionWithForce;
   };
-  migration: {
-    refreshRoots: RefreshAction;
-    refreshRecords: RefreshAction;
-    refreshSessions: RefreshAction;
-  };
   optimization: {
     refreshReports: RefreshActionWithForce;
     refreshHostManagerStatus: RefreshAction;
@@ -173,21 +168,6 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
         if (options.frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes)) {
           await options.management.refreshBrowserRuntimes(false);
         }
-      } else if (options.management.activeSubpage() === "Migration") {
-        if (!options.runtimeCapabilities.runtimeEffectsEnabled()) {
-          return;
-        }
-        const requests: Promise<unknown>[] = [];
-        if (options.frontendWork.isNeeded(frontendWorkIds.migrationRoots)) {
-          requests.push(Promise.resolve(options.migration.refreshRoots()));
-        }
-        if (options.frontendWork.isNeeded(frontendWorkIds.migrationRecords)) {
-          requests.push(Promise.resolve(options.migration.refreshRecords()));
-        }
-        if (options.frontendWork.isNeeded(frontendWorkIds.migrationSessions)) {
-          requests.push(Promise.resolve(options.migration.refreshSessions()));
-        }
-        await Promise.all(requests);
       } else if (options.frontendWork.isNeeded(frontendWorkIds.managementInventory)) {
         await options.management.refreshState(false);
       }

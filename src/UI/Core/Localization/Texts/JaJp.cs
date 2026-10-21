@@ -46,6 +46,7 @@ internal static class JaJp
         BackendPipelineNotReady = "ローカル サービスの要求パイプラインの準備ができていません。",
         NoProcessToTerminate = "終了できるプロセスがありません。",
         TerminateRequestCompleted = "プロセス終了の要求が完了しました。",
+        TerminateResultFormat = "{1} 個中 {0} 個のプロセスを終了しました。",
 
         WebViewInitializationFailed = "埋め込み画面の初期化に失敗しました。診断フォルダーで詳細を確認できます。",
         FrontendIdentityVerificationFailed = "フロントエンド資産の ID 検証に失敗しました。診断フォルダーで詳細を確認できます。",

@@ -1,651 +1,343 @@
+using Microsoft.Extensions.Logging;
+using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.Adapter;
-using ResourceManager.Adapter.NativeScheduling;
 using ResourceManager.Adapter.LocalResources;
 using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Domain.DiskUsage;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Adaptation;
-using ResourceManager.App.Infrastructure.NativeCore;
-using ResourceManager.App.Infrastructure.Optimization.NativeScheduling;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization;
-using System.Reflection;
+using ResourceManager.Ledger;
 
 namespace Resource_Manager_APP.Tests;
 
-[Collection(LocalResourceCapabilityHandlerProcessStateCollection.Name)]
-/// <summary>
-/// 没有扫描结果的磁盘占用存储。
-/// 这些用例只关心工作集那两条资源；没扫过时磁盘占用不该出现在账本里，
-/// 正好也顺带守住了这一点。
-/// </summary>
 internal sealed class EmptyDiskUsageTreeStore : IDiskUsageTreeStore
 {
-    public DiskUsageScanResult? Current => null;
-
-    public void Replace(DiskUsageScanResult result) => throw new NotSupportedException();
-
-    public void Clear()
-    {
-    }
+    public DiskUsageScanSummary? CurrentSummary => null;
+    public DiskUsageTreeReadLease? TryAcquire() => null;
+    public int ClearCount { get; private set; }
+    public void Replace(DiskUsageScanResult result, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    public void Clear() => ClearCount++;
 }
 
 public sealed class ResourceManagerSelfTypedResourceActionTests
 {
-    [Fact]
-    public void LocalSelfManagerResynchronizesAgainstNativeDefinitionAuthority()
-    {
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(),
-            new EmptyDiskUsageTreeStore());
-        var sample = InvokePrivate(manager, "CaptureProcessFamilySample");
-        var rows = sample.GetType().GetProperty("Backend")!.GetValue(sample)!;
-        var resourceId = (LocalResourceId)typeof(ResourceManagerSelfLocalResourceManager)
-            .GetField("BackendWorkingSetId", BindingFlags.Static | BindingFlags.NonPublic)!
-            .GetValue(null)!;
-        var synchronize = typeof(ResourceManagerSelfLocalResourceManager).GetMethod(
-            "SynchronizeResource",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var arguments = new[] { (object)resourceId, rows, 3u };
+    private static readonly DateTimeOffset StartedAt = new(2026, 10, 15, 0, 0, 0, TimeSpan.Zero);
 
-        synchronize.Invoke(manager, arguments);
-        var nativeManager = GetPrivateField<DefaultLocalResourceManager>(manager, "manager");
-        var resources = GetPrivateField<Dictionary<LocalResourceId, LocalResourceHandle>>(
-            manager,
-            "resources");
-        var handle = resources[resourceId];
-        var expected = nativeManager.Session.ReadResource(handle);
-        Assert.Equal(0UL, expected.SettledActivity);
-        Assert.Equal(
-            LocalResourceAccessLossImpact.UnobservableNow,
-            expected.AccessLossImpact);
-        var divergentSize = expected.SizeBytes == 0 ? 1UL : expected.SizeBytes - 1;
-        nativeManager.UpdateResource(handle, new(
-            resourceId,
-            divergentSize,
-            expected.RecoveryCostCoefficient,
-            expected.Recoverability,
-            expected.AccessLossImpact));
-        Assert.Equal(divergentSize, nativeManager.Session.ReadResource(handle).SizeBytes);
-
-        synchronize.Invoke(manager, arguments);
-
-        Assert.Equal(expected.SizeBytes, nativeManager.Session.ReadResource(handle).SizeBytes);
-    }
+    [Theory]
+    [InlineData(LocalResourceSoftwareMemoryMode.Unrestricted, LedgerTableMode.Unrestricted)]
+    [InlineData(LocalResourceSoftwareMemoryMode.Normal, LedgerTableMode.Normal)]
+    [InlineData(LocalResourceSoftwareMemoryMode.Optimize, LedgerTableMode.Optimize)]
+    [InlineData(LocalResourceSoftwareMemoryMode.PagedFrozen, LedgerTableMode.Normal)]
+    public void ProductModesHaveExplicitLedgerMappings(LocalResourceSoftwareMemoryMode mode, LedgerTableMode expected)
+        => Assert.Equal(expected, ResourceManagerSelfLocalResourceManager.LedgerMode(mode));
 
     [Fact]
-    public async Task LocalSelfManagerNormalTickRegistersOnlyOperableWorkingSets()
-    {
-        var writer = new RecordingPolicyWriter();
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            writer,
-            new EmptyDiskUsageTreeStore());
+    public void UnknownModeIsRejected()
+        => Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ResourceManagerSelfLocalResourceManager.LedgerMode((LocalResourceSoftwareMemoryMode)255));
 
+    [Fact]
+    public async Task NormalSamplesOsWorkingSetsWithoutLedgerRegistrationsOrTrim()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = CreateWriter();
+        using var manager = CreateManager(writer, owner);
         var result = await manager.TickAsync();
-
         Assert.False(manager.IsBackgroundWorkerRunning);
-        Assert.InRange(result.RegisteredResourceCount, 1, 2);
-        Assert.Equal(result.RegisteredResourceCount, result.Capacity.OccupiedCount);
-        Assert.Equal(8, result.Capacity.Capacity);
-        Assert.Equal(0, result.Manager.CapacityActionCount);
-        Assert.Equal(0, result.Manager.ModeActionCount);
-        Assert.Equal(0, result.PendingUncertainExecutionCount);
-        Assert.Empty(manager.GetPendingUncertainExecutions());
+        Assert.Equal(1000UL, result.BackendWorkingSetBytes);
+        Assert.Equal(2000UL, result.NativeUiWorkingSetBytes);
+        Assert.Equal(0UL, result.Memory.RegisteredBytes);
+        Assert.Equal(0UL, result.Ledger.Released);
+        Assert.Empty(result.TrimResults);
         Assert.Empty(writer.Requests);
     }
 
     [Fact]
-    public async Task LocalSelfManagerOptimizePersistsUntilNormalReplacesIt()
+    public async Task OptimizeReturnsExactOsObservationsWithoutCountingThemAsLedgerReleases()
     {
-        var writer = new RecordingPolicyWriter();
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            writer,
-            new EmptyDiskUsageTreeStore());
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = CreateWriter();
+        using var manager = CreateManager(writer, owner);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        var result = await manager.TickAsync();
+        Assert.Equal(2, result.TrimResults.Count);
+        Assert.All(result.TrimResults, trim =>
+        {
+            Assert.Equal(AdapterResourceActionStatus.Completed, trim.Status);
+            Assert.False(trim.ObservationPending);
+            Assert.All(trim.Requests, request => Assert.Equal(StartedAt, request.ExpectedStartedAt));
+            Assert.All(trim.Observations, observation => Assert.Equal(500UL, observation.BytesAfter));
+        });
+        Assert.Equal(0UL, result.Memory.RegisteredBytes);
+        Assert.Equal(0UL, result.Ledger.Released);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
+        _ = await manager.TickAsync();
+        Assert.Equal(2, writer.Requests.Count);
+    }
 
+    [Fact]
+    public async Task FailedBatchesKeepTheirActualOsOutcome()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = new RecordingPolicyWriter(succeed: false, startedAtOverride: _ => StartedAt);
+        using var manager = CreateManager(writer, owner);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        var failed = await manager.TickAsync();
+        Assert.All(failed.TrimResults, trim => Assert.Equal(AdapterResourceActionStatus.Failed, trim.Status));
+        Assert.Equal(0UL, failed.Ledger.Released);
+    }
+
+    [Fact]
+    public async Task UnreadableMalformedBatchIsRecheckedWithoutClaimingThatTrimSucceeded()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = new RecordingPolicyWriter(malformedResults: true, startedAtOverride: _ => StartedAt);
+        ulong? refreshed = null;
+        using var manager = CreateManager(writer, owner, read: (_, _) => refreshed);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        var unknown = await manager.TickAsync();
+        Assert.Equal(2, unknown.PendingTrimObservationCount);
+        Assert.All(unknown.TrimResults, trim =>
+        {
+            Assert.Equal(AdapterResourceActionStatus.ResourceBusy, trim.Status);
+            Assert.Empty(trim.Results);
+            Assert.True(trim.ObservationPending);
+        });
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
+        refreshed = 300;
+        var observed = await manager.TickAsync();
+        Assert.Empty(observed.TrimResults);
+        Assert.Equal(0, observed.PendingTrimObservationCount);
+        Assert.Equal(2, observed.RecheckedTrimObservations.Count);
+        Assert.All(observed.RecheckedTrimObservations, trim =>
+        {
+            Assert.Equal(AdapterResourceActionStatus.ResourceBusy, trim.Status);
+            Assert.False(trim.ObservationPending);
+            Assert.All(trim.Observations, observation => Assert.Equal(300UL, observation.BytesAfter));
+        });
+        Assert.Equal(2, writer.Requests.Count);
+        Assert.Equal(0UL, observed.Ledger.Released);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompletedRecheckSurvivesLaterSamplingFailureOrCancellation(bool cancel)
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        using var cancellation = new CancellationTokenSource();
+        var writer = new RecordingPolicyWriter(malformedResults: true, startedAtOverride: _ => StartedAt);
+        ulong? refreshed = null;
+        var captureCount = 0;
+        using var manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore(), owner,
+            () =>
+            {
+                if (++captureCount == 2)
+                {
+                    if (cancel)
+                    {
+                        cancellation.Cancel();
+                        cancellation.Token.ThrowIfCancellationRequested();
+                    }
+                    throw new IOException("injected capture failure after completed recheck");
+                }
+                return Sample();
+            }, (_, _) => refreshed);
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
         var first = await manager.TickAsync();
-        var second = await manager.TickAsync();
-        var optimizeRequestCount = writer.Requests.Count;
+        Assert.Equal(2, first.PendingTrimObservationCount);
+        var previous = manager.LastTrimResults;
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
-        var normal = await manager.TickAsync();
+        refreshed = 300;
 
-        Assert.Equal(1, first.Manager.ModeActionCount);
-        Assert.Equal(1, second.Manager.ModeActionCount);
-        Assert.True(optimizeRequestCount >= 2);
-        Assert.Equal(0, normal.Manager.ModeActionCount);
-        Assert.Equal(optimizeRequestCount, writer.Requests.Count);
-        Assert.All(writer.Requests, static request =>
-            Assert.True(request.TrimWorkingSet));
+        var error = await Record.ExceptionAsync(() => manager.TickAsync(cancellation.Token));
+
+        if (cancel) Assert.IsAssignableFrom<OperationCanceledException>(error);
+        else Assert.IsType<IOException>(error);
+        Assert.NotSame(previous, manager.LastTrimResults);
+        Assert.Equal(2, manager.LastTrimResults.Count);
+        foreach (var observation in manager.LastTrimResults)
+        {
+            var original = Assert.Single(first.TrimResults, trim => trim.Group == observation.Group);
+            Assert.Equal(AdapterResourceActionStatus.ResourceBusy, observation.Status);
+            Assert.Same(original.Requests, observation.Requests);
+            Assert.Same(original.Results, observation.Results);
+            Assert.False(observation.ObservationPending);
+            Assert.All(observation.Observations, row => Assert.Equal(300UL, row.BytesAfter));
+        }
+        // The normal and failure branches call this same OS-only logger. A
+        // completed observation must retain ResourceBusy, never Ledger release data.
+        var logger = new WorkingSetLogger();
+        HostManagerSmartCoordinator.LogSelfWorkingSetResults(logger, manager.LastTrimResults);
+        Assert.Equal(2, logger.Entries.Count);
+        Assert.All(logger.Entries, entry =>
+        {
+            Assert.Equal(LogLevel.Warning, entry.Level);
+            Assert.Equal(AdapterResourceActionStatus.ResourceBusy, entry.Properties["Status"]);
+            Assert.Equal(false, entry.Properties["ObservationPending"]);
+            using var evidence = System.Text.Json.JsonDocument.Parse((string)entry.Properties["BatchEvidence"]!);
+            Assert.Equal(300UL, evidence.RootElement.GetProperty("Observations")[0].GetProperty("BytesAfter").GetUInt64());
+            Assert.NotEmpty(evidence.RootElement.GetProperty("Requests").EnumerateArray());
+            Assert.Equal(0, evidence.RootElement.GetProperty("Results").GetArrayLength());
+            Assert.False(entry.Properties.ContainsKey("ReleasedCount"));
+            Assert.False(entry.Properties.ContainsKey("ReleasedBytes"));
+        });
+        Assert.Equal(2, writer.Requests.Count);
+        var later = await manager.TickAsync();
+        Assert.Empty(later.RecheckedTrimObservations);
+        Assert.Equal(0, later.PendingTrimObservationCount);
     }
 
     [Fact]
-    public async Task LocalSelfManagerPreservesAndReconcilesUnknownTrimEffect()
+    public async Task SuccessfulTickSnapshotIncludesRechecksAndNewTrimsExactlyOnce()
     {
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true),
-            new EmptyDiskUsageTreeStore());
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = new RecordingPolicyWriter(malformedResults: true, startedAtOverride: _ => StartedAt);
+        ulong? refreshed = null;
+        using var manager = CreateManager(writer, owner, read: (_, _) => refreshed);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        _ = await manager.TickAsync();
+        refreshed = 300;
 
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
         var result = await manager.TickAsync();
-        var execution = Assert.Single(result.Manager.UncertainExecutions);
 
-        Assert.False(execution.IsResolved);
-        Assert.Equal(1, result.PendingUncertainExecutionCount);
-        Assert.Same(execution, Assert.Single(manager.GetPendingUncertainExecutions()));
-        var reconciled = manager.Reconcile(
-            execution,
-            LocalResourceEffect.NoEffect);
-        Assert.False(reconciled.EffectUncertain);
-        Assert.True(execution.IsResolved);
-        Assert.Empty(manager.GetPendingUncertainExecutions());
-
-        manager.SetDesiredMode(LocalResourceCleanupMode.Normal);
-        var next = await manager.TickAsync();
-        Assert.Equal(0, next.Manager.ModeActionCount);
+        Assert.Equal(2, result.RecheckedTrimObservations.Count);
+        Assert.Equal(2, result.TrimResults.Count);
+        Assert.Equal(4, manager.LastTrimResults.Count);
+        Assert.Equal(result.RecheckedTrimObservations.Concat(result.TrimResults), manager.LastTrimResults);
+        var logger = new WorkingSetLogger();
+        HostManagerSmartCoordinator.LogSelfWorkingSetResults(logger,
+            result.TrimResults.Concat(result.RecheckedTrimObservations));
+        Assert.Equal(4, logger.Entries.Count);
+        Assert.All(logger.Entries, entry => Assert.Equal(LogLevel.Warning, entry.Level));
+        Assert.Equal(0UL, result.Ledger.Released);
     }
-
     [Fact]
-    public async Task LocalSelfManagerRetainsHandleUntilRecoveryCompletesAndUnregisterCanBeRetried()
+    public async Task WriterExceptionRetainsSubmittedIdentitiesAndFailureForLaterObservation()
     {
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true),
-            new EmptyDiskUsageTreeStore());
-        var sample = InvokePrivate(manager, "CaptureProcessFamilySample");
-
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-        var tick = await manager.TickAsync();
-        var execution = Assert.Single(tick.Manager.UncertainExecutions);
-        var resourceId = execution.Context.ResourceUid;
-        var resources = GetPrivateField<Dictionary<LocalResourceId, LocalResourceHandle>>(
-            manager,
-            "resources");
-        var retainedHandle = resources[resourceId];
-        var nativeManager = GetPrivateField<DefaultLocalResourceManager>(manager, "manager");
-        var memoryTable = GetPrivateField<LocalResourceTableHandle>(manager, "memoryTable");
-        var capacityBefore = nativeManager.Session.ReadCapacity(memoryTable);
-        var definition = nativeManager.Session.ReadResource(retainedHandle);
-        var backendId = (LocalResourceId)typeof(ResourceManagerSelfLocalResourceManager)
-            .GetField("BackendWorkingSetId", BindingFlags.Static | BindingFlags.NonPublic)!
-            .GetValue(null)!;
-        var rows = sample.GetType()
-            .GetProperty(resourceId == backendId ? "Backend" : "NativeUi")!
-            .GetValue(sample)!;
-        var factType = typeof(ResourceManagerSelfLocalResourceManager)
-            .GetNestedType("SelfProcessFact", BindingFlags.NonPublic)!;
-        var emptyRows = Array.CreateInstance(factType, 0);
-        var synchronize = typeof(ResourceManagerSelfLocalResourceManager).GetMethod(
-            "SynchronizeResource",
-            BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object[] MissingArguments() =>
-            [resourceId, emptyRows, definition.RecoveryCostCoefficient];
-
-        var invocation = Assert.Throws<TargetInvocationException>(() =>
-            synchronize.Invoke(manager, MissingArguments()));
-        var recoveryRequired = Assert.IsType<NativeLocalResourceManagerException>(
-            invocation.InnerException);
-        Assert.Equal(LocalResourceManagerError.RecoveryRequired, recoveryRequired.Error);
-        try
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = new RecordingPolicyWriter(throwOnApply: true, startedAtOverride: _ => StartedAt);
+        using var manager = CreateManager(writer, owner, read: (_, _) => null);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        var result = await manager.TickAsync();
+        Assert.Equal(2, result.PendingTrimObservationCount);
+        Assert.All(result.TrimResults, trim =>
         {
-            Assert.Equal(retainedHandle, resources[resourceId]);
-            Assert.Equal(capacityBefore, nativeManager.Session.ReadCapacity(memoryTable));
-
-            manager.Reconcile(execution, LocalResourceEffect.NoEffect);
-            synchronize.Invoke(manager, MissingArguments());
-            Assert.False(resources.ContainsKey(resourceId));
-            var capacityAfterUnregister = nativeManager.Session.ReadCapacity(memoryTable);
-            Assert.Equal(capacityBefore.OccupiedCount - 1, capacityAfterUnregister.OccupiedCount);
-
-            synchronize.Invoke(
-                manager,
-                [resourceId, rows, definition.RecoveryCostCoefficient]);
-            Assert.True(resources.ContainsKey(resourceId));
-            Assert.Equal(
-                capacityBefore.OccupiedCount,
-                nativeManager.Session.ReadCapacity(memoryTable).OccupiedCount);
-        }
-        finally
-        {
-            if (!execution.IsResolved)
-            {
-                manager.Reconcile(execution, LocalResourceEffect.NoEffect);
-            }
-        }
+            Assert.Equal(AdapterResourceActionStatus.ResourceBusy, trim.Status);
+            Assert.Contains("IOException", trim.Failure!);
+            Assert.Single(trim.Requests);
+            Assert.True(trim.ObservationPending);
+        });
+        Assert.Equal(result.TrimResults, manager.LastTrimResults);
     }
 
     [Fact]
-    public async Task LocalSelfManagerRetainsAuthorityBeforePropagatingTypedTickFailure()
+    public async Task ANewModeWithdrawsTheFormerModesActionsBeforeSubmission()
     {
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(throwOnApply: true),
-            new EmptyDiskUsageTreeStore());
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-
-        var exception = await Assert.ThrowsAsync<LocalResourceManagerTickFailedException>(
-            () => manager.TickAsync());
-
-        Assert.Equal(1, exception.PartialResult.ModeActionCount);
-        var uncertain = Assert.Single(exception.PartialResult.UncertainExecutions);
-        Assert.Same(uncertain, Assert.Single(manager.GetPendingUncertainExecutions()));
-        Assert.Equal(LocalResourceManagerCloseResult.RecoveryRequired, manager.TryClose());
-
-        manager.Reconcile(uncertain, LocalResourceEffect.NoEffect);
-        Assert.True(uncertain.IsResolved);
-        Assert.Empty(manager.GetPendingUncertainExecutions());
-        Assert.Equal(LocalResourceManagerCloseResult.Closed, manager.TryClose());
-    }
-
-    [Fact]
-    public async Task LocalSelfManagerCloseRetainsUnknownAuthorityUntilReconciled()
-    {
-        using var manager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(malformedResults: true),
-            new EmptyDiskUsageTreeStore());
-
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-        var tick = await manager.TickAsync();
-        var uncertain = Assert.Single(tick.Manager.UncertainExecutions);
-
-        Assert.Equal(
-            LocalResourceManagerCloseResult.RecoveryRequired,
-            manager.TryClose());
-        var closeException = Assert.Throws<LocalResourceRecoveryRequiredException>(
-            manager.Dispose);
-        Assert.Equal(1, closeException.PendingExecutionCount);
-        Assert.Same(uncertain, Assert.Single(manager.GetPendingUncertainExecutions()));
-        Assert.False(uncertain.IsResolved);
-
-        manager.Reconcile(uncertain, LocalResourceEffect.NoEffect);
-        Assert.True(uncertain.IsResolved);
-        Assert.Empty(manager.GetPendingUncertainExecutions());
-        Assert.Equal(LocalResourceManagerCloseResult.Closed, manager.TryClose());
-        Assert.Equal(LocalResourceManagerCloseResult.Closed, manager.TryClose());
-        Assert.Throws<ObjectDisposedException>(
-            manager.GetPendingUncertainExecutions);
-    }
-
-    [Fact]
-    public async Task LocalSelfModePublishesDuringHandlerAndDisposeRetriesAfterward()
-    {
-        using var handlerEntered = new ManualResetEventSlim();
-        using var allowHandlerToFinish = new ManualResetEventSlim();
-        var writer = new RecordingPolicyWriter(
-            applyEntered: handlerEntered,
-            applyContinue: allowHandlerToFinish);
-        var manager = new ResourceManagerSelfLocalResourceManager(
-            writer,
-            new EmptyDiskUsageTreeStore());
-        using var cancellation = new CancellationTokenSource();
-
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-        var tick = Task.Run(() => manager.TickAsync(cancellation.Token));
-        try
-        {
-            Assert.True(handlerEntered.Wait(TimeSpan.FromSeconds(10)));
-            manager.SetDesiredMode(LocalResourceCleanupMode.Normal);
-            var active = Assert.Throws<InvalidOperationException>(manager.Dispose);
-            Assert.Equal(
-                "A local resource capability handler cannot enter any local resource manager lifecycle.",
-                active.Message);
-
-            allowHandlerToFinish.Set();
-            var first = await tick.WaitAsync(TimeSpan.FromSeconds(10));
-            var next = await manager.TickAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(1, first.Manager.ModeActionCount);
-            Assert.Equal(0, next.Manager.ModeActionCount);
-            manager.Dispose();
-            await Assert.ThrowsAsync<ObjectDisposedException>(
-                () => manager.TickAsync());
-            Assert.Throws<ObjectDisposedException>(
-                manager.GetPendingUncertainExecutions);
-        }
-        finally
-        {
-            allowHandlerToFinish.Set();
-            if (!tick.IsCompleted)
-            {
-                cancellation.Cancel();
-                _ = await Record.ExceptionAsync(
-                    () => tick.WaitAsync(TimeSpan.FromSeconds(10)));
-            }
-            if (tick.IsCompleted)
-            {
-                _ = Record.Exception(manager.Dispose);
-            }
-        }
-    }
-
-    [Fact]
-    public async Task SuppressedFlowSelfCapabilityCannotReenterOwnerLifecycle()
-    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = CreateWriter();
         ResourceManagerSelfLocalResourceManager? manager = null;
-        (Exception? Tick, Exception? Query, Exception? Dispose) errors = default;
-        var writer = new RecordingPolicyWriter(onApply: () =>
+        using (manager = new(writer, new EmptyDiskUsageTreeStore(), owner, () =>
         {
-            Task<(Exception Tick, Exception Query, Exception Dispose)> probe;
-            using (ExecutionContext.SuppressFlow())
-            {
-                probe = Task.Run(() =>
-                    (Record.Exception(() =>
-                        manager!.TickAsync().GetAwaiter().GetResult()),
-                     Record.Exception(manager!.GetPendingUncertainExecutions),
-                     Record.Exception(manager!.Dispose)));
-            }
-            errors = probe.WaitAsync(TimeSpan.FromSeconds(2))
-                .GetAwaiter()
-                .GetResult();
-        });
-        using (manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore()))
+            manager!.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
+            return Sample();
+        }, (_, _) => 500))
         {
-            manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-
+            manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
             var result = await manager.TickAsync();
-
-            Assert.Equal(1, result.Manager.ModeActionCount);
-            Assert.IsType<InvalidOperationException>(errors.Tick);
-            Assert.IsType<InvalidOperationException>(errors.Query);
-            Assert.IsType<InvalidOperationException>(errors.Dispose);
-            Assert.Empty(manager.GetPendingUncertainExecutions());
+            Assert.Empty(result.TrimResults);
+            Assert.Empty(writer.Requests);
         }
     }
 
     [Fact]
-    public async Task LocalSelfManagerRetainsUncertainEffectBeforePropagatingCancellation()
+    public async Task ReusedPidIsNeverSubmittedToTrim()
     {
-        using var handlerEntered = new ManualResetEventSlim();
-        using var allowHandlerToFinish = new ManualResetEventSlim();
-        var writer = new RecordingPolicyWriter(
-            malformedResults: true,
-            applyEntered: handlerEntered,
-            applyContinue: allowHandlerToFinish);
-        var manager = new ResourceManagerSelfLocalResourceManager(
-            writer,
-            new EmptyDiskUsageTreeStore());
-        using var cancellation = new CancellationTokenSource();
-
-        manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-        var tick = Task.Run(() => manager.TickAsync(cancellation.Token));
-        try
-        {
-            Assert.True(handlerEntered.Wait(TimeSpan.FromSeconds(10)));
-            cancellation.Cancel();
-            allowHandlerToFinish.Set();
-
-            var tickFailure = await Record.ExceptionAsync(
-                () => tick.WaitAsync(TimeSpan.FromSeconds(10)));
-            Assert.IsAssignableFrom<OperationCanceledException>(tickFailure);
-            var uncertain = Assert.Single(manager.GetPendingUncertainExecutions());
-            Assert.False(uncertain.IsResolved);
-            Assert.Equal(
-                LocalResourceManagerCloseResult.RecoveryRequired,
-                manager.TryClose());
-            var closeException = Assert.Throws<LocalResourceRecoveryRequiredException>(
-                manager.Dispose);
-            Assert.Equal(1, closeException.PendingExecutionCount);
-            Assert.Same(uncertain, Assert.Single(manager.GetPendingUncertainExecutions()));
-            manager.Reconcile(uncertain, LocalResourceEffect.NoEffect);
-            Assert.True(uncertain.IsResolved);
-            Assert.Empty(manager.GetPendingUncertainExecutions());
-            Assert.Equal(LocalResourceManagerCloseResult.Closed, manager.TryClose());
-        }
-        finally
-        {
-            cancellation.Cancel();
-            allowHandlerToFinish.Set();
-            if (!tick.IsCompleted)
-            {
-                _ = await Record.ExceptionAsync(
-                    () => tick.WaitAsync(TimeSpan.FromSeconds(10)));
-            }
-            if (tick.IsCompleted)
-            {
-                _ = Record.Exception(() => ReconcileAll(manager));
-                _ = Record.Exception(manager.Dispose);
-            }
-        }
+        using var owner = new ResourceManagerLedgerOwner();
+        var writer = new RecordingPolicyWriter(startedAtOverride: _ => StartedAt.AddSeconds(1));
+        using var manager = CreateManager(writer, owner);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        var result = await manager.TickAsync();
+        Assert.Empty(result.TrimResults);
+        Assert.Empty(writer.Requests);
     }
 
     [Fact]
-    public async Task LocalSelfManagerCapabilityCannotReenterOwnerLifecycle()
+    public async Task PagedFrozenExplicitlyWithdrawsTheStoreAndUsesSafeLedgerMaintenance()
     {
-        ResourceManagerSelfLocalResourceManager? manager = null;
-        Exception? tickError = null;
-        Exception? modeError = null;
-        Exception? queryError = null;
-        Exception? disposeError = null;
-        var writer = new RecordingPolicyWriter(onApply: () =>
-        {
-            tickError = Record.Exception(() => manager!.TickAsync().GetAwaiter().GetResult());
-            modeError = Record.Exception(() =>
-                manager!.SetDesiredMode(LocalResourceCleanupMode.Normal));
-            queryError = Record.Exception(() =>
-                manager!.GetPendingUncertainExecutions());
-            disposeError = Record.Exception(manager!.Dispose);
-        });
-        using (manager = new ResourceManagerSelfLocalResourceManager(writer, new EmptyDiskUsageTreeStore()))
-        {
-            manager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-            var result = await manager.TickAsync();
-
-            Assert.Equal(1, result.Manager.ModeActionCount);
-            Assert.IsType<InvalidOperationException>(tickError);
-            Assert.IsType<InvalidOperationException>(modeError);
-            Assert.IsType<InvalidOperationException>(queryError);
-            Assert.IsType<InvalidOperationException>(disposeError);
-            Assert.Empty(manager.GetPendingUncertainExecutions());
-            var next = await manager.TickAsync();
-            Assert.Equal(1, next.Manager.ModeActionCount);
-        }
-    }
-
-    [Fact]
-    public async Task LocalSelfCapabilityCannotEnterAnotherSelfManagerLifecycle()
-    {
-        ResourceManagerSelfLocalResourceManager? secondManager = null;
-        Exception? nestedTickError = null;
-        Exception? taskRunTickError = null;
-        Exception? queryError = null;
-        Exception? disposeError = null;
-        var firstWriter = new RecordingPolicyWriter(onApply: () =>
-        {
-            nestedTickError = Record.Exception(
-                () => secondManager!.TickAsync().GetAwaiter().GetResult());
-            taskRunTickError = Record.Exception(
-                () => Task.Run(() => secondManager!.TickAsync()).GetAwaiter().GetResult());
-            queryError = Record.Exception(secondManager!.GetPendingUncertainExecutions);
-            disposeError = Record.Exception(secondManager.Dispose);
-        });
-        using var firstManager = new ResourceManagerSelfLocalResourceManager(
-            firstWriter,
-            new EmptyDiskUsageTreeStore());
-        using (secondManager = new ResourceManagerSelfLocalResourceManager(
-            new RecordingPolicyWriter(),
-            new EmptyDiskUsageTreeStore()))
-        {
-            firstManager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-
-            var result = await firstManager.TickAsync();
-
-            Assert.Equal(1, result.Manager.ModeActionCount);
-            Assert.IsType<InvalidOperationException>(nestedTickError);
-            Assert.IsType<InvalidOperationException>(taskRunTickError);
-            Assert.IsType<InvalidOperationException>(queryError);
-            Assert.IsType<InvalidOperationException>(disposeError);
-            Assert.Empty(secondManager.GetPendingUncertainExecutions());
-
-            var independent = await secondManager.TickAsync();
-            Assert.Equal(0, independent.Manager.ModeActionCount);
-        }
-    }
-
-    [Fact]
-    public async Task ActiveSelfCapabilityRejectsOtherSdkLifecycleBeforeNativeBegin()
-    {
-        using var selfHandlerEntered = new ManualResetEventSlim();
-        using var allowSelfHandler = new ManualResetEventSlim();
-        var selfWriter = new RecordingPolicyWriter(
-            applyEntered: selfHandlerEntered,
-            applyContinue: allowSelfHandler);
-        using var selfManager = new ResourceManagerSelfLocalResourceManager(
-            selfWriter,
-            new EmptyDiskUsageTreeStore());
-        var configuration = LocalResourceManagerConfiguration.CreateDefault(
-            tableCapacity: 1,
-            resourceCapacity: 1);
-        using var sdkSession = new NativeLocalResourceManagerSession(configuration);
-        var sdkTable = sdkSession.RegisterTable(new(
-            new(901),
-            1,
-            LocalResourceDomain.Memory,
-            1));
-        var sdkHandlerCalls = 0;
-        ResourceManagerSelfLocalResourceManager? unexpectedManager = null;
-        sdkSession.Capabilities.Register(
-            sdkTable,
-            new(901, 9010, LocalResourceEffects.ChangesSizeBytes, Destructive: false),
-            (_, _) =>
-            {
-                Interlocked.Increment(ref sdkHandlerCalls);
-                return ValueTask.FromResult(LocalResourceEffect.NoEffect);
-            });
-        sdkSession.RegisterResource(
-            sdkTable,
-            new(new(1), 100, 1, LocalResourceRecoverability.Recoverable,
-                LocalResourceAccessLossImpact.UnobservableNow));
-        using var sdkManager = new DefaultLocalResourceManager(sdkSession);
-        sdkManager.SetDesiredMode(new(
-            sdkTable,
-            LocalResourceCleanupMode.Optimize,
-            MaximumIntentsPerTick: 1,
-            Generation: 1));
-        selfManager.SetDesiredMode(LocalResourceCleanupMode.Optimize);
-        var selfTick = Task.Run(() => selfManager.TickAsync());
-        Task<LocalResourceManagerTickResult>? sdkTick = null;
-        try
-        {
-            Assert.True(selfHandlerEntered.Wait(TimeSpan.FromSeconds(10)));
-            var constructorError = Record.Exception(() =>
-            {
-                unexpectedManager = new ResourceManagerSelfLocalResourceManager(
-                    new RecordingPolicyWriter(),
-                    new EmptyDiskUsageTreeStore());
-            });
-            sdkTick = Task.Run(() => sdkManager.TickAsync());
-            var active = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => sdkTick.WaitAsync(TimeSpan.FromSeconds(2)));
-
-            Assert.Equal(
-                "A local resource capability handler cannot enter any local resource manager lifecycle.",
-                active.Message);
-            Assert.IsType<InvalidOperationException>(constructorError);
-            Assert.Null(unexpectedManager);
-            Assert.Equal(0, sdkHandlerCalls);
-            Assert.False(selfTick.IsCompleted);
-        }
-        finally
-        {
-            allowSelfHandler.Set();
-            _ = await Record.ExceptionAsync(
-                () => selfTick.WaitAsync(TimeSpan.FromSeconds(10)));
-            if (sdkTick is not null)
-            {
-                _ = await Record.ExceptionAsync(
-                    () => sdkTick.WaitAsync(TimeSpan.FromSeconds(10)));
-            }
-            unexpectedManager?.Dispose();
-        }
-
-        _ = await selfTick.WaitAsync(TimeSpan.FromSeconds(10));
-        var retry = await sdkManager.TickAsync();
-        Assert.Equal(1, retry.ModeActionCount);
-        Assert.Equal(1, sdkHandlerCalls);
+        using var owner = new ResourceManagerLedgerOwner();
+        var store = new EmptyDiskUsageTreeStore();
+        using var manager = CreateManager(CreateWriter(), owner, store);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
+        _ = await manager.TickAsync();
+        Assert.Equal(1, store.ClearCount);
+        Assert.Equal(LedgerStatus.Ok, manager.TryClose());
+        Assert.Equal(LedgerStatus.Ok, manager.TryClose());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => manager.TickAsync());
     }
 
     [Fact]
     public void PartialTypedTrimIsUncertainAndOnlyExactNoEffectIsFailed()
     {
-        var requests = new[]
-        {
-            new ProcessResourcePolicyBatchRequest(
-                101,
-                DateTimeOffset.UtcNow,
-                TrimWorkingSet: true),
-            new ProcessResourcePolicyBatchRequest(
-                102,
-                DateTimeOffset.UtcNow,
-                TrimWorkingSet: true)
-        };
-        ProcessResourcePolicyBatchWriteResult Result(
-            int processId,
-            bool succeeded)
-            => new(
-                processId,
-                [
-                    new ProcessResourcePolicyBatchFieldResult(
-                        ProcessResourcePolicyBatchFields.TrimWorkingSet,
-                        succeeded,
-                        succeeded ? "ok" : "unchanged")
-                ]);
-
-        Assert.Equal(
-            AdapterResourceActionStatus.ResourceBusy,
-            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(
-                requests,
-                [Result(101, true), Result(102, false)]));
-        Assert.Equal(
-            AdapterResourceActionStatus.Failed,
-            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(
-                requests,
-                [Result(101, false), Result(102, false)]));
-        Assert.Equal(
-            AdapterResourceActionStatus.Completed,
-            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(
-                requests,
-                [Result(101, true), Result(102, true)]));
-        Assert.Equal(
-            AdapterResourceActionStatus.ResourceBusy,
-            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(
-                requests,
-                [Result(101, true), Result(101, true)]));
+        var requests = new[] { new ProcessResourcePolicyBatchRequest(101, StartedAt, TrimWorkingSet: true),
+            new ProcessResourcePolicyBatchRequest(102, StartedAt, TrimWorkingSet: true) };
+        ProcessResourcePolicyBatchWriteResult Result(int pid, bool succeeded) => new(pid,
+            [new(ProcessResourcePolicyBatchFields.TrimWorkingSet, succeeded, "observed")]);
+        Assert.Equal(AdapterResourceActionStatus.ResourceBusy,
+            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(requests, [Result(101, true), Result(102, false)]));
+        Assert.Equal(AdapterResourceActionStatus.Failed,
+            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(requests, [Result(101, false), Result(102, false)]));
+        Assert.Equal(AdapterResourceActionStatus.Completed,
+            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(requests, [Result(101, true), Result(102, true)]));
+        Assert.Equal(AdapterResourceActionStatus.ResourceBusy,
+            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(requests, [Result(101, true), Result(101, true)]));
+        Assert.Equal(AdapterResourceActionStatus.ResourceBusy,
+            ResourceManagerSelfLocalResourceManager.ClassifyTrimBatchResults(requests, [Result(101, true)]));
     }
 
-    private static void ReconcileAll(ResourceManagerSelfLocalResourceManager manager)
+    private static RecordingPolicyWriter CreateWriter() => new(startedAtOverride: _ => StartedAt);
+    private static ResourceManagerSelfProcessResource[] Sample() =>
+        [new(101, true, false, false, 1000, StartedAt), new(102, false, true, false, 2000, StartedAt)];
+    private static ResourceManagerSelfLocalResourceManager CreateManager(RecordingPolicyWriter writer,
+        ResourceManagerLedgerOwner owner, EmptyDiskUsageTreeStore? store = null,
+        Func<int, DateTimeOffset, ulong?>? read = null)
+        => new(writer, store ?? new EmptyDiskUsageTreeStore(), owner, Sample, read ?? ((_, _) => 500));
+    private sealed class WorkingSetLogger : ILogger
     {
-        foreach (var execution in manager.GetPendingUncertainExecutions())
+        internal sealed record Entry(LogLevel Level, IReadOnlyDictionary<string, object?> Properties);
+        public List<Entry> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
         {
-            if (!execution.IsResolved)
-            {
-                manager.Reconcile(execution, LocalResourceEffect.NoEffect);
-            }
+            var fields = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object?>>>(state);
+            Entries.Add(new(logLevel, fields.ToDictionary(static pair => pair.Key, static pair => pair.Value)));
         }
     }
-
-    private static object InvokePrivate(object target, string methodName)
-        => target.GetType().GetMethod(
-                methodName,
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(target, null)!;
-
-    private static T GetPrivateField<T>(object target, string fieldName)
-        => (T)target.GetType().GetField(
-                fieldName,
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(target)!;
-
-    // 账本相关的其他用例也要用它，所以放开到程序集内可见。
     internal sealed class RecordingPolicyWriter(
         bool succeed = true,
         bool throwOnApply = false,
         bool malformedResults = false,
         ManualResetEventSlim? applyEntered = null,
         ManualResetEventSlim? applyContinue = null,
-        Action? onApply = null)
+        Action? onApply = null,
+        Func<int, DateTimeOffset?>? startedAtOverride = null)
         : IProcessResourcePolicyWriter
     {
         public List<ProcessResourcePolicyBatchRequest> Requests { get; } = [];
 
         public DateTimeOffset? TryReadProcessStartedAt(int processId)
-            => processId > 0
-                ? DateTimeOffset.UnixEpoch.AddSeconds(processId)
-                : null;
+        {
+            if (startedAtOverride is not null) return startedAtOverride(processId);
+            try
+            {
+                using var process = System.Diagnostics.Process.GetProcessById(processId);
+                return new DateTimeOffset(process.StartTime.ToUniversalTime());
+            }
+            catch (ArgumentException) { return null; }
+        }
 
         public IReadOnlyList<ProcessResourcePolicyBatchWriteResult> TryApplyBatch(
             IReadOnlyList<ProcessResourcePolicyBatchRequest> requests)

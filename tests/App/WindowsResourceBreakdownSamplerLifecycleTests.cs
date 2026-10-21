@@ -14,8 +14,58 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 namespace Resource_Manager_APP.Tests;
 
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
-public sealed class WindowsResourceBreakdownSamplerLifecycleTests
+public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 {
+    [Theory]
+    [InlineData(ResourceBreakdownScaleModes.Capacity)]
+    [InlineData(ResourceBreakdownScaleModes.Active)]
+    public async Task PhysicalMemorySegmentsUsePrivateResidentBytesWithoutCountingSharedPages(string scaleMode)
+    {
+        using var process = Process.GetCurrentProcess();
+        var startKey = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        if (!WindowsProcessResidentMemory.SupportsPrivateWorkingSet)
+        {
+            Assert.False(WindowsProcessResidentMemory.TryRead(process.Id, startKey, out _));
+            return;
+        }
+        // A shareable mapping distinguishes resident private bytes from the full working set.
+        using var mapping = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateNew(null, 128L << 20);
+        using var view = mapping.CreateViewAccessor();
+        for (long offset = 0; offset < view.Capacity; offset += 4096) view.Write(offset, (byte)1);
+        Assert.True(WindowsProcessResidentMemory.TryRead(process.Id, startKey, out var before));
+        Assert.True(before.WorkingSetBytes - before.PrivateResidentBytes >= (32L << 20));
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
+        var hardware = CreateMemorySnapshot() with { Memory = new MemoryMetrics(8UL << 30, 16UL << 30, 50, true, "test") };
+        using var sampler = new WindowsResourceBreakdownSampler(
+            new StaticMetricSampler(hardware), catalogProvider,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var snapshot = await sampler.CaptureSnapshotAsync(
+            ResourceBreakdownSampleRequest.ForResourceTable([ResourceBreakdownMetricIds.MemoryUsage],
+                new Dictionary<string, string> { [ResourceBreakdownMetricIds.MemoryUsage] = scaleMode }), CancellationToken.None);
+        Assert.True(WindowsProcessResidentMemory.TryRead(process.Id, startKey, out var after));
+        var bar = Assert.Single(snapshot.Bars);
+        var segment = Assert.Single(bar.Software.SelectMany(software => software.Processes), item => item.ProcessId == process.Id);
+        Assert.InRange(segment.Value, Math.Max(1, Math.Min(before.PrivateResidentBytes, after.PrivateResidentBytes) - (16L << 20)),
+            Math.Max(before.PrivateResidentBytes, after.PrivateResidentBytes) + (16L << 20));
+        Assert.True(segment.Value < Math.Min(before.WorkingSetBytes, after.WorkingSetBytes) - (16L << 20));
+        var residual = Assert.Single(bar.Software, item => item.SoftwareId == "resource-residual:memory.usage");
+        Assert.Equal(hardware.Memory.UsedBytes - segment.Value, residual.Value);
+    }
+
+    [Fact]
+    public void PrivateResidentMemoryRejectsReusedOrUnknownProcessIdentity()
+    {
+        using var process = Process.GetCurrentProcess();
+        var startKey = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        Assert.False(WindowsProcessResidentMemory.TryRead(process.Id, startKey + 1, out var wrong));
+        Assert.Equal(default, wrong);
+        Assert.False(WindowsProcessResidentMemory.TryRead(-1, startKey, out _));
+        Assert.False(WindowsProcessResidentMemory.TryRead(process.Id, 0, out _));
+    }
+
     [Theory]
     [InlineData(ResourceBreakdownScaleModes.Capacity)]
     [InlineData(ResourceBreakdownScaleModes.Active)]
@@ -91,6 +141,71 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(Environment.ProcessId, process.ProcessId);
         Assert.Equal(Environment.ProcessPath, process.ExecutablePath);
         Assert.True(process.ProcessStartKey > 0);
+        Assert.Equal(catalogProvider.CaptureCount, catalogProvider.ReturnedLeases);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AttributionLeaseReturnsBeforeHardwareWaitEvenWhenTheRestOfCaptureFails(bool canceled)
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
+        using var cancellation = new CancellationTokenSource();
+        var hardware = new StaticMetricSampler(CreateMemorySnapshot(), () =>
+        {
+            Assert.Equal(1, catalogProvider.CaptureCount);
+            Assert.Equal(1, catalogProvider.ReturnedLeases);
+            if (canceled)
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+            throw new InvalidOperationException("hardware failed after attribution");
+        });
+        using var sampler = new WindowsResourceBreakdownSampler(hardware, catalogProvider,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var request = ResourceBreakdownSampleRequest.ForResourceTable(
+            [ResourceBreakdownMetricIds.MemoryUsage], new Dictionary<string, string>());
+        if (canceled)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+        Assert.Equal(catalogProvider.CaptureCount, catalogProvider.ReturnedLeases);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AttributionLeaseReturnsWhenTheResolverThrowsOrCancelsInsideTheRead(bool canceled)
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var cancellation = new CancellationTokenSource();
+        using var catalogProvider = new VersionedProcessAttributionCatalogProvider(() =>
+        {
+            if (canceled)
+            {
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+            throw new InvalidOperationException("resolver failed inside the catalog read");
+        });
+        var hardware = new StaticMetricSampler(CreateMemorySnapshot());
+        using var sampler = new WindowsResourceBreakdownSampler(hardware, catalogProvider,
+            new StaticResourceResidualBreakdownProvider(), null!, null!,
+            subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
+            new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
+        var request = ResourceBreakdownSampleRequest.ForResourceTable(
+            [ResourceBreakdownMetricIds.MemoryUsage], new Dictionary<string, string>());
+        if (canceled)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => sampler.CaptureSnapshotAsync(request, cancellation.Token));
+        Assert.Equal(1, catalogProvider.CaptureCount);
+        Assert.Equal(1, catalogProvider.ReturnedLeases);
+        Assert.Equal(0, hardware.CaptureCount);
     }
 
     [Theory]
@@ -683,7 +798,7 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
         };
     }
 
-    private sealed class StaticMetricSampler(HardwareMetricSnapshot snapshot) :
+    private sealed class StaticMetricSampler(HardwareMetricSnapshot snapshot, Action? beforeCapture = null) :
         IMetricSampler,
         IMetricSnapshotObservationSource
     {
@@ -718,6 +833,7 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref captureCount);
+            beforeCapture?.Invoke();
             return Task.FromResult(snapshot);
         }
 
@@ -794,7 +910,7 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
         }
     }
 
-    private sealed class VersionedProcessAttributionCatalogProvider
+    private sealed class VersionedProcessAttributionCatalogProvider(Action? observe = null)
         : IRuntimeProcessAttributionCatalogProvider,
           IDisposable
     {
@@ -804,25 +920,28 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
                 [],
                 [],
                 [],
-                new NullResolvers(),
-                new NullResolvers(),
-                new NullResolvers(),
-                new NullResolvers(),
+                new NullResolvers(observe),
+                new NullResolvers(observe),
+                new NullResolvers(observe),
+                new NullResolvers(observe),
                 SoftwareIdentityCatalogTestData.Empty,
                 SoftwareIdentityCatalogTestData.Owner);
         private long generation;
         private int captureCount;
+        private int returnedLeases;
 
         public long SoftwareSnapshotGeneration => Volatile.Read(ref generation);
 
         internal int CaptureCount => Volatile.Read(ref captureCount);
+        internal int ReturnedLeases => Volatile.Read(ref returnedLeases);
 
-        public Task<RuntimeProcessAttributionCatalog> GetCatalogAsync(
+        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref captureCount);
-            return Task.FromResult(catalog);
+            return Task.FromResult(new RuntimeProcessAttributionCatalogLease(catalog,
+                () => Interlocked.Increment(ref returnedLeases)));
         }
 
         public Task InvalidateSoftwareSnapshotAsync()
@@ -844,24 +963,27 @@ public sealed class WindowsResourceBreakdownSamplerLifecycleTests
 
         internal int CaptureCount => Volatile.Read(ref captureCount);
 
-        public Task<RuntimeProcessAttributionCatalog> GetCatalogAsync(
+        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref captureCount);
-            return Task.FromException<RuntimeProcessAttributionCatalog>(
+            return Task.FromException<RuntimeProcessAttributionCatalogLease>(
                 new InvalidOperationException("catalog unavailable"));
         }
 
         public Task InvalidateSoftwareSnapshotAsync() => Task.CompletedTask;
     }
 
-    private sealed class NullResolvers :
+    private sealed class NullResolvers(Action? observe = null) :
         IRuntimePackageIdentityResolver,
         IRuntimeServiceIdentityResolver,
         IRuntimeRootIdentityResolver,
         IRuntimeSystemProcessClassifier
     {
         public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
-            => RuntimeAttributionObservation.NoMatch;
+        {
+            observe?.Invoke();
+            return RuntimeAttributionObservation.NoMatch;
+        }
     }
 }

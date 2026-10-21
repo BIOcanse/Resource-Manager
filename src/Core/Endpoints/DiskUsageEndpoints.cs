@@ -1,8 +1,11 @@
 using ResourceManager.App.Application.DiskUsage;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Domain.DiskUsage;
+using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Operations;
+using ResourceManager.App.Infrastructure.Security;
+using ResourceManager.App.Endpoints.Transport;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -19,16 +22,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             DisableResponseCache(response);
             return Results.Ok(volumes.ReadVolumes());
-        }).AllowAnonymous();
+        });
 
         // 扫描结果的概况。还没扫过就是 null，界面据此显示空态。
         app.MapGet("/api/disk-usage/summary", (
+            HttpContext context,
             HttpResponse response,
-            IDiskUsageTreeStore store) =>
+            IOwnedDiskUsageTreeStore store) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(store.Current?.Summary);
-        }).AllowAnonymous();
+            if (!TryGetResultOwner(context, out var owner)) return Results.Unauthorized();
+            var summary = store.SummaryFor(owner);
+            return summary is null
+                ? Results.Text("null", "application/json")
+                : Results.Json(summary);
+        });
 
         // 方格布局。默认从根开始；钻进子树时带上 node。
         //
@@ -37,9 +45,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         // 看不见的不发，在屏幕上小于一个像素门槛的也不发。
         // 一个都不传就按整张图、不缩放算，所以这些参数都是可选的。
         app.MapGet("/api/disk-usage/layout", (
+            HttpContext context,
             HttpResponse response,
-            IDiskUsageTreeStore store,
+            IOwnedDiskUsageTreeStore store,
             int? node,
+            int? rootIndex,
             float? pixelWidth,
             float? pixelHeight,
             float? scale,
@@ -49,7 +59,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             float? maxY) =>
         {
             DisableResponseCache(response);
-            var current = store.Current;
+            if (!TryGetResultOwner(context, out var owner)) return Results.Unauthorized();
+            using var reading = store.TryAcquire(owner);
+            var current = reading?.Result;
             if (current is null || current.Tree.Roots.Count == 0)
             {
                 return Results.Bytes(
@@ -58,9 +70,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
 
             var tree = current.Tree;
+            if (node is not null && rootIndex is not null)
+            {
+                return Results.BadRequest(new { error = "Select a tree node or a scan root, not both." });
+            }
+            if (node is null && rootIndex is { } selectedRoot
+                && (selectedRoot < 0 || selectedRoot >= tree.Roots.Count))
+            {
+                return Results.BadRequest(new { error = "The requested disk-usage root is unavailable." });
+            }
             var rootNode = node is { } requested && requested >= 0 && requested < tree.Count
                 ? requested
-                : tree.Roots[0];
+                : rootIndex is { } index ? tree.Roots[index] : tree.Roots[0];
             var view = DiskUsageViewWindow.Normalize(
                 pixelWidth, pixelHeight, scale, minX, minY, maxX, maxY);
             var layout = DiskUsageTreemapLayout.Create(tree, rootNode, view);
@@ -74,16 +95,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     tree.PathOf(rootNode),
                     tree.SizeOf(rootNode)),
                 "application/octet-stream");
-        }).AllowAnonymous();
+        });
 
         // 单个节点的事实：右键菜单和选中提示要的就是这些。
         app.MapGet("/api/disk-usage/node/{nodeId:int}", (
+            HttpContext context,
             HttpResponse response,
-            IDiskUsageTreeStore store,
+            IOwnedDiskUsageTreeStore store,
             int nodeId) =>
         {
             DisableResponseCache(response);
-            var current = store.Current;
+            if (!TryGetResultOwner(context, out var owner)) return Results.Unauthorized();
+            using var reading = store.TryAcquire(owner);
+            var current = reading?.Result;
             if (current is null || nodeId < 0 || nodeId >= current.Tree.Count)
             {
                 return Results.NotFound();
@@ -100,22 +124,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 tree.AllocatedOf(nodeId) > 0 ? (ulong)tree.AllocatedOf(nodeId) : 0,
                 tree.FileCountOf(nodeId),
                 null));
-        }).AllowAnonymous();
+        });
 
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
             // 扫描走操作协调器：进度、取消和任务中心条目都是它现成给的。
             app.MapPost("/api/disk-usage/scan", async (
+                HttpContext context,
                 DiskUsageScanRequest request,
                 IHostManagerOperationCommandService operations,
                 CancellationToken cancellationToken) =>
             {
                 try
                 {
-                    var command = HostManagerOperationRequestCodec.DiskUsageScan(request);
-                    return Results.Ok(await operations
+                    if (!TryGetResultOwner(context, out var owner)) return Results.Unauthorized();
+                    var command = HostManagerOperationRequestCodec.DiskUsageScan(request, owner);
+                    var operation = await operations
                         .SubmitAsync(command, cancellationToken)
-                        .ConfigureAwait(false));
+                        .ConfigureAwait(false);
+                    return Results.Ok(HostManagerOperationWireProjection.Project(operation));
                 }
                 catch (ArgumentException error)
                 {
@@ -129,5 +156,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
 
         return app;
+    }
+
+    private static bool TryGetResultOwner(HttpContext context, out DiskUsageResultOwner owner)
+    {
+        if (context.Items.TryGetValue(typeof(TrustedAdapterCallerIdentity), out var value)
+            && value is TrustedAdapterCallerIdentity frontend)
+        {
+            owner = new DiskUsageResultOwner(frontend.WindowsSid, frontend.WindowsSessionId);
+            if (owner.IsValid) return true;
+        }
+
+        if (WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller)
+            && caller.ProcessId != Environment.ProcessId)
+        {
+            owner = new DiskUsageResultOwner(caller.WindowsSid, caller.WindowsSessionId);
+            if (owner.IsValid) return true;
+        }
+
+        owner = default;
+        return false;
     }
 }

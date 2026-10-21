@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const protocol_version: u32 = 11;
+pub const protocol_version: u32 = 12;
 pub const no_scheduling_grade: u8 = 0xff;
 pub const none_index: u32 = std.math.maxInt(u32);
 
@@ -155,6 +155,7 @@ pub const RevalidationReason = enum(u8) {
     resource_changed = 4,
     required_now = 5,
     action_blocked = 6,
+    reservation_expired = 7,
 };
 
 pub const danger_memory: u8 = 1 << 0;

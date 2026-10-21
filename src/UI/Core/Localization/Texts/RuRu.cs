@@ -46,6 +46,7 @@ internal static class RuRu
         BackendPipelineNotReady = "Конвейер запросов локальной службы не готов.",
         NoProcessToTerminate = "Нет процессов для завершения.",
         TerminateRequestCompleted = "Запрос на завершение процесса выполнен.",
+        TerminateResultFormat = "Завершено процессов: {0} / {1}.",
 
         WebViewInitializationFailed = "Не удалось инициализировать встроенный интерфейс. Подробности можно посмотреть в папке диагностики.",
         FrontendIdentityVerificationFailed = "Не удалось проверить подлинность ресурсов интерфейса. Подробности можно посмотреть в папке диагностики.",

@@ -15,7 +15,26 @@ public sealed class MetricSampleRequestTests
         Assert.False(gpu.Includes("cpu.usage"));
         Assert.False(MetricSampleRequest.Merge([gpu, MetricSampleRequest.ForIds([])]).IsEmpty);
         Assert.True(MetricSampleRequest.ForIds([]).IsEmpty);
-        Assert.True(MetricSampleRequest.CatalogProbe.IsEmpty);
+        Assert.False(MetricSampleRequest.CatalogProbe.IsEmpty);
+    }
+
+    [Fact]
+    public void CatalogueDemandDoesNotExpandNumericDemandWhenMerged()
+    {
+        var catalogue = MetricSampleRequest.CatalogProbe;
+        Assert.True(catalogue.IncludesCatalog);
+        Assert.False(catalogue.Includes("cpu.usage"));
+        Assert.False(catalogue.IncludesPrefix("gpu."));
+        Assert.False(catalogue.IncludesAllGpuCoreMetrics);
+        var cpu = MetricSampleRequest.ForIds(["cpu.usage"]);
+        var merged = MetricSampleRequest.Merge([catalogue, cpu]);
+        Assert.True(merged.IncludesCatalog);
+        Assert.False(merged.IsCatalogProbe);
+        Assert.False(merged.IsAll);
+        Assert.True(merged.Includes("cpu.usage"));
+        Assert.False(merged.Includes("gpu.0.usage"));
+        Assert.NotEqual(cpu.CacheKey, merged.CacheKey);
+        Assert.True(MetricSampleRequest.Merge([]).IsEmpty);
     }
 
     [Fact]

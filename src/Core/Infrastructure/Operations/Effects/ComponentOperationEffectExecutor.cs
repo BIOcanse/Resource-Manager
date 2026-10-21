@@ -1,4 +1,5 @@
 ﻿using ResourceManager.App.Application.Components;
+using ResourceManager.App.Domain.Software;
 
 namespace ResourceManager.App.Infrastructure.Operations.Effects;
 
@@ -32,8 +33,16 @@ internal sealed class ComponentOperationEffectExecutor(
         CancellationToken cancellationToken)
     {
         _ = progress;
-        var (id, acknowledge, versionChoice) =
-            HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
+        SoftwareOperationCaller? caller = null;
+        string id;
+        bool acknowledge;
+        string? versionChoice;
+        if (IsInstall && ticket.Request.SchemaId == HostManagerOperationRequestSchemas.UserComponentInstall)
+            (id, acknowledge, versionChoice, caller) =
+                HostManagerOperationRequestCodec.DecodeUserAcquisitionRequest(ticket.Request.Payload);
+        else
+            (id, acknowledge, versionChoice) =
+                HostManagerOperationRequestCodec.DecodeAcquisitionRequest(ticket.Request.Payload);
         try
         {
             var result = IsInstall
@@ -41,7 +50,8 @@ internal sealed class ComponentOperationEffectExecutor(
                     id,
                     acknowledge,
                     versionChoice,
-                    cancellationToken).ConfigureAwait(false)
+                    cancellationToken,
+                    caller).ConfigureAwait(false)
                 : await componentManager.DownloadAsync(
                     id,
                     acknowledge,

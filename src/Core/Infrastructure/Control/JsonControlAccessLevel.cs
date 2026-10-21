@@ -23,10 +23,8 @@ public sealed class JsonControlAccessLevel : IControlAccessLevel
         ILogger<JsonControlAccessLevel>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
-        markerPath = Path.Combine(
+        markerPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "UserData",
-            "Control",
             "access-level.txt");
         this.logger = logger;
     }

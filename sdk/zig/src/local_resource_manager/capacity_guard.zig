@@ -186,12 +186,12 @@ fn writeTablePlan(
     };
 }
 
-const PhaseAndLimit = struct {
+pub const PhaseAndLimit = struct {
     phase: protocol.CapacityPhase,
     maximum: usize,
 };
 
-fn classify(
+pub fn classify(
     view: layout.View,
     table: *const layout.TableSlot,
     free: u32,
@@ -238,12 +238,12 @@ fn classify(
     };
 }
 
-fn guardCapacity(table: *const layout.TableSlot) u32 {
+pub fn guardCapacity(table: *const layout.TableSlot) u32 {
     const direct_capacity = table.capacity - table.partition_reservation_capacity;
     return if (direct_capacity == 0) table.capacity else direct_capacity;
 }
 
-fn guardFree(table: *const layout.TableSlot) u32 {
+pub fn guardFree(table: *const layout.TableSlot) u32 {
     return if (table.partition_reservation_capacity == table.capacity)
         table.capacity - table.occupied_count
     else
