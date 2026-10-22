@@ -1349,6 +1349,46 @@ public sealed class HostManagerProcessEffectValidationScopeTests
             .AreAccessRulesProtected);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void OnlyUnclaimedEmptyInheritedStorageCanBeInitialized(bool nonempty, bool untrustedWriter)
+    {
+        using var fixture = ScopeFixture.Create();
+        try
+        {
+            fixture.DeleteStorageTreeForTest();
+            fixture.DeleteAuthorityTreeForTest();
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(true, false);
+            using var current = WindowsIdentity.GetCurrent();
+            // Match the installed Program Files shape: trusted writers and public read.
+            foreach (var sid in new[] { current.User!, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null) }.Distinct())
+                security.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                untrustedWriter ? FileSystemRights.Modify : FileSystemRights.ReadAndExecute,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(fixture.ContainerRoot).SetAccessControl(security);
+            var directory = Directory.CreateDirectory(fixture.Root);
+            if (nonempty) File.WriteAllText(Path.Combine(fixture.Root, "unknown-input"), "keep");
+            var before = directory.GetAccessControl().GetSecurityDescriptorBinaryForm();
+            var restarted = fixture.CreateRestartedAuthority();
+            Assert.Equal(nonempty || untrustedWriter ? "faultedBlocked" : "productionUnscoped", restarted.GetStatus().State);
+            if (nonempty || untrustedWriter)
+                Assert.Equal(before, directory.GetAccessControl().GetSecurityDescriptorBinaryForm());
+            else
+            {
+                Assert.True(directory.GetAccessControl().AreAccessRulesProtected);
+                Assert.Equal(current.User, directory.GetAccessControl().GetOwner(typeof(SecurityIdentifier)));
+                Assert.Equal("productionUnscoped", fixture.CreateRestartedAuthority().GetStatus().State);
+            }
+        }
+        finally { OwnedTestDirectoryPermissions.RestoreOwnerAccessForCleanup(fixture.ContainerRoot); }
+    }
+
     [Fact]
     public void EmptyExistingStorageDirectoryMustStillPassNamespaceValidation()
     {

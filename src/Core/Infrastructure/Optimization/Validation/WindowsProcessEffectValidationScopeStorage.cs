@@ -106,6 +106,50 @@ internal static class WindowsProcessEffectValidationScopeStorage
         }
     }
 
+    // Only used before the permanent authority namespace has ever been created.
+    // An empty Program Files directory is not a closed validation scope.
+    internal static void InitializeUnclaimedEmptyDirectoryIfPresent(string canonicalFilePath)
+    {
+        var path = Path.GetDirectoryName(Path.GetFullPath(canonicalFilePath))!;
+        if (GetAttributesExact(path) is null) return;
+        using var handle = CreateFile(path, FileReadAttributes | ReadControl | 0x00040000 | 0x00080000,
+            FileShareRead | FileShareWrite, IntPtr.Zero, OpenExisting,
+            FileFlagOpenReparsePoint | FileFlagBackupSemantics, IntPtr.Zero);
+        if (handle.IsInvalid) throw CreateOpenException(Marshal.GetLastWin32Error(), path, "directory");
+        var info = QueryAttributeTag(handle, path);
+        if ((info.FileAttributes & (uint)FileAttributes.Directory) == 0
+            || (info.FileAttributes & (uint)FileAttributes.ReparsePoint) != 0 || info.ReparseTag != 0)
+            throw new InvalidDataException("The unclaimed validation directory is not a regular directory.");
+        AssertFinalPath(handle, path);
+        if (Directory.EnumerateFileSystemEntries(path).Any())
+            throw new InvalidDataException("Unclaimed validation storage is not empty.");
+        var current = GetCurrentSid();
+        var security = new DirectoryInfo(path).GetAccessControl(AccessControlSections.Access | AccessControlSections.Owner);
+        if (security.AreAccessRulesProtected)
+            throw new InvalidDataException("An established protected namespace lost its authority manifest.");
+        if (new RawSecurityDescriptor(security.GetSecurityDescriptorBinaryForm(), 0).DiscretionaryAcl is null)
+            throw new UnauthorizedAccessException("An empty validation directory with a null DACL permits untrusted writers.");
+        var owner = security.GetOwner(typeof(SecurityIdentifier));
+        var trusted = RequiredSids(current).Select(sid => sid.Value).ToHashSet(StringComparer.Ordinal);
+        if (owner is not SecurityIdentifier sid || !trusted.Contains(sid.Value))
+            throw new UnauthorizedAccessException("The empty validation directory belongs to another owner.");
+        // Inherited Program Files read rules are harmless. An untrusted writer
+        // makes this an unowned namespace and must continue to fail closed.
+        trusted.Add("S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"); // TrustedInstaller
+        const FileSystemRights writes = FileSystemRights.Write | FileSystemRights.Delete |
+            FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
+        if (security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+            .Any(rule => rule.AccessControlType == AccessControlType.Allow && (rule.FileSystemRights & writes) != 0
+                && rule.IdentityReference.Value != "S-1-3-0" && !trusted.Contains(rule.IdentityReference.Value)))
+            throw new UnauthorizedAccessException("The empty validation directory permits an untrusted writer.");
+        if (!SetKernelObjectSecurity(handle, OwnerSecurityInformation | DaclSecurityInformation | 0x80000000,
+                CreateDirectorySecurity().GetSecurityDescriptorBinaryForm()))
+            throw new IOException("Could not initialize the empty validation directory ACL.", new Win32Exception(Marshal.GetLastWin32Error()));
+        VerifyHandleSecurity(handle, path);
+        if (Directory.EnumerateFileSystemEntries(path).Any())
+            throw new InvalidDataException("Validation storage changed during initialization.");
+    }
+
     internal static void ValidateExistingDirectoryIfPresent(string canonicalFilePath)
     {
         try
@@ -481,6 +525,10 @@ internal static class WindowsProcessEffectValidationScopeStorage
         [Out] char[] filePath,
         uint filePathLength,
         uint flags);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetKernelObjectSecurity(SafeFileHandle handle, uint securityInformation, byte[] descriptor);
 
     [DllImport("advapi32.dll")]
     private static extern uint GetSecurityInfo(

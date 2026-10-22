@@ -114,6 +114,57 @@ public sealed class ManagerSelfUpdateTests
         Assert.DoesNotContain("载荷", ToolText.For("zh-TW").ManagerPayloadInvalid);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Public028DownloadHelperRelocatesOnlyCommittedBytesAndPreservesExternalFiles(bool interruptedRegistration)
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        foreach (var name in new[] { "Start.exe", UninstallationPlan.ExecutableName })
+            File.Copy(Path.Combine(fixture.Download, name), Path.Combine(fixture.Installed, name));
+        fixture.WriteInstalledManifest("0.3.0", allEntries: true);
+        var old = Path.Combine(Path.GetDirectoryName(fixture.Installed)!, "ResourceManager.UpdateManager", UpdateManagerPaths.ExecutableName);
+        Directory.CreateDirectory(Path.GetDirectoryName(old)!);
+        File.WriteAllText(old, "public-0.2.8-manager");
+        File.Delete(fixture.OldManager);
+        Directory.Delete(Path.GetDirectoryName(fixture.OldManager)!);
+        var writes = 0;
+        Task Run() => ManagerSelfUpdate.ReplaceVerifiedAsync(UpdateManagerPaths.PackagedExecutable(fixture.Download),
+            fixture.Installed, 123, old, () =>
+            {
+                writes++;
+                Assert.Equal(File.ReadAllBytes(Path.Combine(fixture.Installed, "Start.exe")),
+                    File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(fixture.OldManager)!, "Start.exe")));
+                if (interruptedRegistration && writes == 1) throw new IOException("injected registration failure");
+            }, CancellationToken.None, waitForExit: (path, pid, _, _) =>
+            { Assert.Equal(old, path); Assert.Equal(123, pid); return Task.CompletedTask; });
+        if (interruptedRegistration)
+        {
+            await Assert.ThrowsAsync<IOException>(Run);
+            Assert.NotNull(ManagerSelfUpdate.ReadLastFailure(fixture.Installed));
+        }
+        await Run();
+        Assert.Null(ManagerSelfUpdate.ReadLastFailure(fixture.Installed));
+        Assert.Equal(interruptedRegistration ? 2 : 1, writes);
+        Assert.Equal("public-0.2.8-manager", File.ReadAllText(old));
+        Assert.Equal(File.ReadAllBytes(UpdateManagerPaths.PackagedExecutable(fixture.Installed)), File.ReadAllBytes(fixture.OldManager));
+    }
+
+    [Fact]
+    public async Task MismatchedDownloadHelperWritesFailureWithoutReplacingManagerOrRegistration()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        File.WriteAllText(UpdateManagerPaths.PackagedExecutable(fixture.Download), "foreign-download");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ManagerSelfUpdate.ReplaceVerifiedAsync(
+            UpdateManagerPaths.PackagedExecutable(fixture.Download), fixture.Installed, 123, fixture.OldManager,
+            () => throw new Xunit.Sdk.XunitException("Unexpected registration"), CancellationToken.None,
+            waitForExit: (_, _, _, _) => throw new Xunit.Sdk.XunitException("Unexpected wait")));
+        Assert.Equal("old-manager", File.ReadAllText(fixture.OldManager));
+        Assert.NotNull(ManagerSelfUpdate.ReadLastFailure(fixture.Installed));
+    }
+
     private sealed class Fixture : IDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "rm-manager-test-" + Guid.NewGuid().ToString("N"));
@@ -145,11 +196,14 @@ public sealed class ManagerSelfUpdateTests
             File.Copy(UpdateManagerPaths.PackagedExecutable(Download), UpdateManagerPaths.PackagedExecutable(Installed));
             WriteInstalledManifest("0.3.0");
         }
-        public void WriteInstalledManifest(string version, int copies = 1)
+        public void WriteInstalledManifest(string version, int copies = 1, bool allEntries = false)
         {
             var entry = Entry("Internal/UpdateManager/ResourceManager.UpdateManager.exe", UpdateManagerPaths.PackagedExecutable(Installed));
             File.WriteAllText(Path.Combine(Installed, "release-manifest.json"), JsonSerializer.Serialize(new
-                { version, files = Enumerable.Repeat(entry, copies).ToArray() }));
+                { version, files = Enumerable.Repeat(entry, copies).Concat(allEntries
+                    ? new[] { Entry("Start.exe", Path.Combine(Installed, "Start.exe")),
+                        Entry(UninstallationPlan.ExecutableName, Path.Combine(Installed, UninstallationPlan.ExecutableName)) }
+                    : []).ToArray() }));
         }
         private static object Entry(string path, string full) => new { path, length = new FileInfo(full).Length,
             sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(full))) };

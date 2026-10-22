@@ -10,7 +10,7 @@ public static class UpdateManagerPaths
     public static string InstalledExecutable(string installRoot)
         => Path.Combine(InstalledDirectory(installRoot), ExecutableName);
 
-    // Only retirement/uninstall reads the real previous external registration.
+    // Retirement/uninstall and the explicit old-manager handoff recognize the real previous external registration.
     public static string RequireOwnedManager(string installRoot, string? registeredExecutable)
     {
         var root = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);

@@ -38,47 +38,98 @@ internal static class ManagerSelfUpdate
     public static async Task<string> ReplaceAsync(string executablePath, string installRoot,
         int oldProcessId, CancellationToken cancellationToken, ToolText? text = null)
     {
-        var target = UpdatePlan.RequireRegisteredTarget(installRoot);
+        var target = UpdatePlan.RequireProductTarget(installRoot);
+        var registeredManager = ManagerRelocationRegistration.RequireOwned(target);
+        return await ReplaceVerifiedAsync(executablePath, target, oldProcessId, registeredManager,
+            () => ManagerRelocationRegistration.Rewrite(target), cancellationToken, text);
+    }
+
+    // The public entry verifies machine registration. This seam records the same
+    // file transaction without modifying the test machine's registration.
+    internal static async Task<string> ReplaceVerifiedAsync(string executablePath, string target,
+        int oldProcessId, string registeredManager, Action relocateRegistration,
+        CancellationToken cancellationToken, ToolText? text = null,
+        Func<string, int, CancellationToken, ToolText, Task>? waitForExit = null)
+    {
         text ??= ToolText.FromInstallRoot(target);
+        registeredManager = UpdateManagerPaths.RequireOwnedManager(target, registeredManager);
         var managerDirectory = UpdateManagerPaths.InstalledDirectory(target);
         var installedExecutable = UpdateManagerPaths.InstalledExecutable(target);
+        foreach (var path in new[] { target, Path.Combine(target, "Internal") }) ReleasePackageLayout.RejectReparse(path);
+        RejectOptionalReparse(managerDirectory);
+        Directory.CreateDirectory(managerDirectory);
         ReleasePackageLayout.RejectReparse(managerDirectory);
-        ReleasePackageLayout.RejectReparse(installedExecutable);
+        RejectOptionalReparse(installedExecutable);
         var resultPath = Path.Combine(managerDirectory, "self-update-result.json");
         try
         {
+            using var verifiedSource = OpenVerifiedManager(target, text: text);
+            // 0.2.8 starts the new helper in the download directory. Its bytes
+            // must match the protected, committed payload; never copy from it.
             var source = Path.GetFullPath(executablePath);
             if (!source.Equals(UpdateManagerPaths.PackagedExecutable(target), StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(text.ManagerSourceInvalid);
-            await WaitForOldManagerExitAsync(installedExecutable, oldProcessId, cancellationToken, text);
+            {
+                ReleasePackageLayout.RejectReparse(source);
+                if (!SameFileContents(verifiedSource, source))
+                    throw new InvalidOperationException(text.ManagerSourceInvalid);
+                verifiedSource.Position = 0;
+            }
+            await (waitForExit ?? WaitForOldManagerExitAsync)(registeredManager, oldProcessId, cancellationToken, text);
             using var operationLock = UpdateManagerCommand.AcquireOperationLock(target);
-            using var verifiedSource = OpenVerifiedManager(target, text: text);
-            var expectedHash = SHA256.HashData(verifiedSource);
-            verifiedSource.Position = 0;
-            var staged = Path.Combine(managerDirectory, "next-" + Guid.NewGuid().ToString("N") + ".exe");
-            var backup = Path.Combine(managerDirectory, "previous-" + Guid.NewGuid().ToString("N") + ".exe");
+            var relocating = !registeredManager.Equals(installedExecutable, StringComparison.OrdinalIgnoreCase);
+            // Prepare every stable entry before any desktop identity is switched.
+            var payloads = new List<(FileStream Input, string Destination)> { (verifiedSource, installedExecutable) };
             try
             {
-                using (var stagedOutput = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    verifiedSource.CopyTo(stagedOutput);
-                byte[] stagedHash;
-                using (var stagedStream = File.OpenRead(staged)) stagedHash = SHA256.HashData(stagedStream);
-                if (!expectedHash.AsSpan().SequenceEqual(stagedHash))
-                    throw new InvalidDataException(text.ManagerCopyInvalid);
-                File.Replace(staged, installedExecutable, backup);
+                if (relocating)
+                    foreach (var name in new[] { "Start.exe", UninstallationPlan.ExecutableName })
+                        payloads.Add((OpenVerifiedPayload(target, name, text: text), Path.Combine(managerDirectory, name)));
+                string? backup = null;
+                foreach (var payload in payloads)
+                    backup = Promote(payload.Input, payload.Destination, text);
+                if (relocating) relocateRegistration();
+                WriteResult(resultPath, true, text.Format(text.ManagerSelfUpdatedBackupFormat, backup ?? registeredManager));
+                return text.ManagerSelfUpdated;
             }
             finally
             {
-                if (File.Exists(staged)) File.Delete(staged);
+                foreach (var payload in payloads.Skip(1)) payload.Input.Dispose();
             }
-            WriteResult(resultPath, true, text.Format(text.ManagerSelfUpdatedBackupFormat, backup));
-            return text.ManagerSelfUpdated;
         }
         catch (Exception exception)
         {
             WriteResult(resultPath, false, exception.ToString());
             throw;
         }
+    }
+
+    internal static void RejectOptionalReparse(string path)
+    {
+        try { ReleasePackageLayout.RejectReparse(path); }
+        catch (FileNotFoundException) { }
+        catch (DirectoryNotFoundException) { }
+    }
+
+    private static string? Promote(FileStream source, string destination, ToolText text)
+    {
+        RejectOptionalReparse(destination);
+        source.Position = 0;
+        var expectedHash = SHA256.HashData(source);
+        source.Position = 0;
+        var staged = Path.Combine(Path.GetDirectoryName(destination)!, "next-" + Guid.NewGuid().ToString("N") + ".exe");
+        var backup = Path.Combine(Path.GetDirectoryName(destination)!, "previous-" + Guid.NewGuid().ToString("N") + ".exe");
+        try
+        {
+            using (var output = new FileStream(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            { source.CopyTo(output); output.Flush(flushToDisk: true); }
+            using (var stream = File.OpenRead(staged))
+                if (!expectedHash.AsSpan().SequenceEqual(SHA256.HashData(stream)))
+                    throw new InvalidDataException(text.ManagerCopyInvalid);
+            if (File.Exists(destination)) File.Replace(staged, destination, backup);
+            else { File.Move(staged, destination); backup = null; }
+            return backup;
+        }
+        finally { if (File.Exists(staged)) File.Delete(staged); }
     }
 
     public static string? ReadLastFailure(string installRoot)
@@ -130,6 +181,10 @@ internal static class ManagerSelfUpdate
     }
 
     internal static FileStream OpenVerifiedManager(string installRoot, string? expectedVersion = null, ToolText? text = null)
+        => OpenVerifiedPayload(installRoot, "Internal/UpdateManager/ResourceManager.UpdateManager.exe", expectedVersion, text);
+
+    internal static FileStream OpenVerifiedPayload(string installRoot, string relative,
+        string? expectedVersion = null, ToolText? text = null)
     {
         text ??= ToolText.FromInstallRoot(installRoot);
         var root = Path.GetFullPath(installRoot);
@@ -144,11 +199,10 @@ internal static class ManagerSelfUpdate
         if (string.IsNullOrWhiteSpace(version) || (expectedVersion is not null &&
             !string.Equals(version, expectedVersion, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidDataException(text.ManagerPayloadInvalid);
-        const string relative = "Internal/UpdateManager/ResourceManager.UpdateManager.exe";
         var entries = top.GetProperty("files").EnumerateArray()
             .Where(entry => string.Equals(entry.GetProperty("path").GetString(), relative, StringComparison.Ordinal)).ToArray();
         if (entries.Length != 1) throw new InvalidDataException(text.ManagerPayloadInvalid);
-        var source = UpdateManagerPaths.PackagedExecutable(root);
+        var source = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
         ReleasePackageLayout.RejectReparse(source);
         var stream = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
         try

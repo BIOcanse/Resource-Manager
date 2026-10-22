@@ -12,6 +12,12 @@ public sealed partial class HardwareMonitorWmiReader
 
     private static bool IsMemoryTemperatureSensor(IReadOnlyDictionary<string, object?> row)
     {
+        var name = ReadString(row, "Name") ?? string.Empty;
+        // SPD hubs also expose configured alarms and resolution as Temperature
+        // sensors. These are not measured DIMM temperatures.
+        if (name.Contains("limit", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("threshold", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("resolution", StringComparison.OrdinalIgnoreCase)) return false;
         var text = RowText(row);
         return text.Contains("/ram", StringComparison.OrdinalIgnoreCase)
             || text.Contains("/memory", StringComparison.OrdinalIgnoreCase)

@@ -18,7 +18,7 @@ public static class UpdateManagerCommand
     }
 
     public static IReadOnlyList<string> GetPendingRecoveryDescriptions(string installRoot)
-        => PackageSwitchTransaction.ListPending(UpdatePlan.RequireRegisteredTarget(installRoot))
+        => PackageSwitchTransaction.ListPending(UpdatePlan.RequireProductTarget(installRoot))
             .Select(entry => $"{entry.PreviousVersion} → {entry.TargetVersion}（{entry.Stage}）")
             .ToArray();
 

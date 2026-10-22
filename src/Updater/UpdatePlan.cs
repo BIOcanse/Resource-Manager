@@ -42,6 +42,17 @@ internal sealed record UpdatePlan(
 
     public static string RequireRegisteredTarget(string installRoot)
     {
+        var target = RequireProductTarget(installRoot);
+        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+        using var key = machine.OpenSubKey(@"Software\ResourceManager");
+        if (!string.Equals(key?.GetValue("UpdateManagerPath") as string,
+                UpdateManagerPaths.InstalledExecutable(target), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("目标目录没有本产品及外置更新管理器登记。");
+        return target;
+    }
+
+    internal static string RequireProductTarget(string installRoot)
+    {
         var target = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
         var parent = Path.GetDirectoryName(target)
             ?? throw new InvalidOperationException("安装目录缺少父目录。");
@@ -49,9 +60,7 @@ internal sealed record UpdatePlan(
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
         using var key = machine.OpenSubKey(@"Software\ResourceManager");
         if (key?.GetValue("InstallationContract") as string != "resource-manager-directory-registration-v1"
-            || !string.Equals(key.GetValue("InstallRoot") as string, target, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(key.GetValue("UpdateManagerPath") as string,
-                UpdateManagerPaths.InstalledExecutable(target), StringComparison.OrdinalIgnoreCase))
+            || !string.Equals(key.GetValue("InstallRoot") as string, target, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("目标目录没有本产品及外置更新管理器登记。");
         return target;
     }

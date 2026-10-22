@@ -40,45 +40,7 @@ internal static class InstallationRegistry
     }
 
     public static void Write(PackageLayout target)
-    {
-        using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
-        using (var key = machine.CreateSubKey(Product))
-        {
-            SetOwned(key, target.Root);
-            key.SetValue("BackendPath", target.Backend);
-            key.SetValue("NativeUiPath", target.NativeUi);
-            key.SetValue("LauncherPath", target.InternalLauncher);
-            key.SetValue("StartPath", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
-            key.SetValue("UpdateManagerPath", UpdateManagerPaths.InstalledExecutable(target.Root));
-            key.SetValue("ServiceName", WindowsServiceRegistration.ProductServiceName);
-            key.SetValue("AppUserModelId", "ResourceManager.Desktop");
-        }
-        using (var key = machine.CreateSubKey(AppPath))
-        {
-            SetOwned(key, target.Root);
-            key.SetValue("", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
-            key.SetValue("Path", UpdateManagerPaths.InstalledDirectory(target.Root));
-        }
-        using (var key = machine.CreateSubKey(ManagerAppPath))
-        {
-            SetOwned(key, target.Root);
-            key.SetValue("", UpdateManagerPaths.InstalledExecutable(target.Root));
-            key.SetValue("Path", UpdateManagerPaths.InstalledDirectory(target.Root));
-        }
-        using (var key = machine.CreateSubKey(Uninstall))
-        {
-            SetOwned(key, target.Root);
-            key.SetValue("DisplayName", "Resource Manager");
-            key.SetValue("DisplayVersion", target.Version);
-            key.SetValue("Publisher", "BIOcanse");
-            key.SetValue("InstallLocation", target.Root);
-            key.SetValue("DisplayIcon", Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), "Start.exe"));
-            key.SetValue("NoModify", 1, RegistryValueKind.DWord);
-            key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-            key.SetValue("UninstallString", "\"" + Path.Combine(UpdateManagerPaths.InstalledDirectory(target.Root), UninstallationPlan.ExecutableName) + "\"");
-            key.DeleteValue("NoRemove", false);
-        }
-    }
+        => ProductInstallationRegistration.Write(target.Root, target.Version);
 
     public static void Undo(PackageLayout target)
     {
