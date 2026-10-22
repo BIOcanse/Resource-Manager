@@ -44,6 +44,9 @@ assert.doesNotMatch(
   browserRuntimePage,
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/);
 assert.match(workspace, /sharedBrowserRuntimeComponentId/);
+// 依赖列表去重要用该角色的全部组件名（含只在运行时管理里列的共享运行时），
+// 不能只用过滤后的卡片，否则同名软件记录会带着后端原名回到依赖列表。
+assert.match(managementPage, /const componentNameSet = new Set\(roleComponents/);
 assert.match(browserRuntimePage, /<UserDetailsDialog/);
 assert.match(browserRuntimePage, /runtimeDetailSections/);
 assert.doesNotMatch(browserRuntimePage, /<code[^>]*runtimeDirectory/);
