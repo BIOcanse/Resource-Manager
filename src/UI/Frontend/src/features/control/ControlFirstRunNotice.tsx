@@ -1,5 +1,5 @@
 import { createSignal, For, Show } from "solid-js";
-import { DialogRoot } from "../../ui/primitives/Dialog";
+import { DialogBody, DialogRoot } from "../../ui/primitives/Dialog";
 import { uiText } from "../../text.ts";
 
 /**
@@ -29,20 +29,24 @@ export function ControlFirstRunNotice(props: { onAcknowledge: () => void }) {
         when={step() === "warranty"}
         fallback={
           <>
-            <h2 id="control-first-run-notice-title">{text.riskTitle}</h2>
-            <p class="control-first-run-notice-disclaimer">
-              {uiText.control.accessLevel.disclaimer.normal}
-            </p>
+            <DialogBody class="control-first-run-notice-body">
+              <h2 id="control-first-run-notice-title">{text.riskTitle}</h2>
+              <p class="control-first-run-notice-disclaimer">
+                {uiText.control.accessLevel.disclaimer.normal}
+              </p>
+            </DialogBody>
             <div class="modal-actions">
               <button type="button" onClick={props.onAcknowledge}>{text.accept}</button>
             </div>
           </>
         }
       >
-        <h2 id="control-first-run-notice-title">{text.warrantyTitle}</h2>
-        <For each={text.warrantyBody}>
-          {(line) => <p>{line}</p>}
-        </For>
+        <DialogBody class="control-first-run-notice-body">
+          <h2 id="control-first-run-notice-title">{text.warrantyTitle}</h2>
+          <For each={text.warrantyBody}>
+            {(line) => <p>{line}</p>}
+          </For>
+        </DialogBody>
         <div class="modal-actions">
           <button type="button" onClick={() => setStep("risk")}>{text.next}</button>
         </div>

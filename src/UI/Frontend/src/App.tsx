@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createEffect, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
 import { useGlobalFeedback } from "./app/useGlobalFeedback";
 import { AppRoutes } from "./app/AppRoutes";
 import { AppShell } from "./app/AppShell";
@@ -8,21 +8,20 @@ import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
 import { MetricDependencyState, MetricModal } from "./features/monitor/MetricModal";
-import { SoftwareDetailModal } from "./components/SoftwareDetailModal";
 import { StandardContextMenu } from "./components/StandardContextMenu";
 import { FrontendWorkProvider } from "./frontendWork/FrontendWorkContext";
 import { useFrontendWorkController } from "./frontendWork/useFrontendWorkController";
+import { frontendWorkIds } from "./frontendWork/frontendWorkIds";
 import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
-import { TaskCenterDialog } from "./ui/task-center/TaskCenterDialog";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
-import { publishCommittedDocumentTheme } from "./presentation/documentTheme";
+import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
+import { normalizeUiAppearance } from "./presentation/uiStyles";
 import { createManagementStore } from "./stores/managementStore";
 import { createMonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
   normalizeBarColorMode,
-  normalizeThemeMode,
   resolveAdaptiveBooleanMode,
   resolveLogicRefreshIntervalMs
 } from "./stores/settingsStore";
@@ -34,6 +33,12 @@ import type {
   MetricDefinition,
   PageId
 } from "./types";
+
+// 软件详情与任务中心按需打开，各自一个分包；首屏渲染时即开始载入，打开时已就绪。
+const SoftwareDetailModal = lazy(() => import("./components/SoftwareDetailModal")
+  .then((module) => ({ default: module.SoftwareDetailModal })));
+const TaskCenterDialog = lazy(() => import("./ui/task-center/TaskCenterDialog")
+  .then((module) => ({ default: module.TaskCenterDialog })));
 
 export default function App() {
   const frontendRuntime = useFrontendRuntime();
@@ -97,6 +102,8 @@ export default function App() {
     showToast,
     enabled: runtimeCapabilities.optimizationEnabled,
     reportSource: frontendRuntime.sources.optimizationReports,
+    statusSource: frontendRuntime.sources.smartCoordinatorStatus,
+    statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
     requestClient: frontendRuntime.requestClient
   });
   onCleanup(() => {
@@ -221,7 +228,8 @@ export default function App() {
       return;
     }
 
-    publishCommittedDocumentTheme(normalizeThemeMode(settings.settings().appearance?.theme));
+    const appearance = settings.settings().appearance;
+    publishCommittedDocumentAppearance(normalizeUiAppearance(appearance?.uiStyle, appearance?.theme));
   });
 
   createEffect(() => {

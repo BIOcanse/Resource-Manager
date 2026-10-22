@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
+import { displayConnectorTechnology, portDisplayName, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../types";
 import { uiText } from "../../text.ts";
 
@@ -48,14 +48,14 @@ export function describeDeviceTopologyNode(port: DeviceTopologyPort): DeviceTopo
     return {
       title: portDisplayName(port),
       subtitle: joinSummary(portHardwareKind(port), meaningfulSpeed(port.speed)),
-      badge: isControllerNode(port) ? uiText.deviceInterface.controllerBadge : port.protocol
+      badge: isControllerNode(port) ? uiText.deviceInterface.controllerBadge : portProtocol(port)
     };
   }
 
   const connectionState = resolveConnectionState(port);
   const connectionLabel = connectionStateLabel(connectionState);
   const connectionTarget = resolveConnectionTarget(port);
-  const transport = meaningfulSpeed(port.speed) ?? port.protocol;
+  const transport = meaningfulSpeed(port.speed) ?? portProtocol(port);
   return {
     title: externalInterfaceLabel(port.connectorKind),
     subtitle: joinSummary(connectionLabel, connectionTarget, transport),
@@ -87,7 +87,7 @@ export function deviceTopologySummaryFields(port: DeviceTopologyPort): DeviceTop
       { label: uiText.deviceSpecialized.controllerType, value: port.advancedInterconnect ? uiText.deviceInterface.systemInterconnectNode : displayValue(port.hardwareKind) },
       { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
       { label: uiText.deviceTopology.label.driverService, value: displayValue(port.service) },
-      { label: uiText.deviceTopology.label.protocol, value: displayValue(port.protocol) }
+      { label: uiText.deviceTopology.label.protocol, value: displayValue(portProtocol(port)) }
     ];
   }
 
@@ -95,7 +95,7 @@ export function deviceTopologySummaryFields(port: DeviceTopologyPort): DeviceTop
     { label: uiText.deviceTopology.label.deviceType, value: displayValue(port.hardwareKind) },
     { label: uiText.deviceTopology.label.deviceStatus, value: displayValue(port.status) },
     { label: uiText.deviceTopology.label.bus, value: busLabel(port.busKind) },
-    { label: uiText.deviceTopology.label.protocol, value: displayValue(port.protocol) }
+    { label: uiText.deviceTopology.label.protocol, value: displayValue(portProtocol(port)) }
   ];
 }
 
@@ -172,7 +172,7 @@ function externalInterfaceProtocol(port: DeviceTopologyPort) {
   return displayValue(
     port.usb?.supportedProtocols
       ?? (port.display ? displayConnectorTechnology(port.display) : undefined)
-      ?? port.protocol
+      ?? portProtocol(port)
   );
 }
 

@@ -1,43 +1,4 @@
 /* Device Topology */
-.details-tabs {
-  position: sticky;
-  top: 0;
-  z-index: 12;
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 4px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  box-shadow: var(--elev-1), var(--edge-highlight);
-  overflow-x: auto;
-}
-
-.details-tab {
-  min-height: 32px;
-  flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-  color: var(--muted);
-  padding: 0 13px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.details-tab:not(.active):not(:disabled):hover {
-  background: var(--hover-bg);
-  color: var(--text);
-}
-
-.details-tab.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
 .device-scope-tabs {
   display: inline-flex;
   width: max-content;
@@ -144,6 +105,8 @@
   grid-area: ports;
   display: grid;
   align-content: start;
+  /* 清单比面板高时 auto 行只按条目的 min-height 分配高度，换行的副标题会溢出卡片；按内容定行高。 */
+  grid-auto-rows: max-content;
   gap: 8px;
   padding: 10px;
   overflow: auto;

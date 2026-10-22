@@ -18,11 +18,13 @@ public sealed class HostManagerOptimizationWireContractTests
                 LastRestoreAt: null,
                 PendingChangeCount: 2,
                 AppliedTargetCount: 3,
+                FaultClosedReason: null,
                 "ready"),
             WebJson);
         Assert.Equal(
             [
                 "appliedTargetCount",
+                "faultClosedReason",
                 "lastRestoreAt",
                 "lastRunAt",
                 "message",

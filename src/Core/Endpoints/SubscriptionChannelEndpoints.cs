@@ -300,6 +300,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     subscription,
                     services.GetRequiredService<IHostManagerSmartCoordinator>().GetStateAsync,
                     interval)),
+            // 优化页的调度状态：模式、是否运行、故障关闭、待确认与已优化对象数都由协调器一次合成。
+            ["/api/optimization/smart/status/subscribe"] =
+                new((subscription, services, interval) => CompileAlignedPeriodicAsyncSubscription(
+                    subscription,
+                    services.GetRequiredService<IHostManagerSmartCoordinator>().GetStatusAsync,
+                    interval)),
             // 操作队列不按间隔采样：它是推来的，来一条发一条。
             ["/api/operations/subscribe"] = new((subscription, services, _) =>
                 CompileOperationSubscription(

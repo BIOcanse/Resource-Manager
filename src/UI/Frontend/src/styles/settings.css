@@ -35,8 +35,8 @@
   font-weight: 700;
 }
 
-.settings-nav-item:hover {
-  background: var(--surface-strong);
+.settings-nav-item:not(.active):not(:disabled):hover {
+  background: var(--accent-soft);
   color: var(--text);
 }
 

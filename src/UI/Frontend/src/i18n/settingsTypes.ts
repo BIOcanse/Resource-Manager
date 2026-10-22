@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppThemeMode, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -96,6 +96,8 @@ export interface SettingsCopy {
     refreshCadenceItems: Record<AppLogicRefreshIntervalKey, { label: string; description: string }>;
   };
   appearance: {
+    uiStyleTitle: string;
+    uiStyleDescription: string;
     themeTitle: string;
     themeDescription: string;
     animationTitle: string;
@@ -114,7 +116,9 @@ export interface SettingsCopy {
     settingsLanguageTitle: string;
     settingsLanguageDescription: string;
     languageSelectLabel: string;
-    themeOptions: Record<AppThemeMode, string>;
+    uiStyleOptions: Record<AppUiStyle, string>;
+    // 所有风格的配色名称；每个风格列出哪些配色见 presentation/uiStyles.ts。
+    themeOptions: Record<AppPalette, string>;
     animationOptions: Record<AppAnimationMode, { label: string; description: string }>;
     barColorOptions: Record<AppBarColorMode, { label: string; description: string }>;
     byteUnitOptions: Record<ByteUnitMode, { label: string; description: string }>;
@@ -321,7 +325,8 @@ export type SettingsCopyPatchObject<T> = {
 
 export interface SettingsTextBundle extends SettingsCopy {
   language: ConcreteAppLanguageMode;
-  themeOptions: Array<{ id: AppThemeMode; label: string }>;
+  // 按目录顺序排好的风格选项。
+  uiStyleOptions: Array<{ id: AppUiStyle; label: string }>;
   animationOptions: Array<{ id: AppAnimationMode; label: string; description: string }>;
   barColorOptions: Array<{ id: AppBarColorMode; label: string; description: string }>;
   byteUnitOptions: Array<{ id: ByteUnitMode; label: string; description: string }>;

@@ -13,6 +13,7 @@ import type {
   InternalControllerDeviceModel,
   NetworkAdapterDeviceModel
 } from "./types";
+import { portProtocol } from "../deviceVocabulary.ts";
 import { uiText } from "../../../text.ts";
 
 export const graphicsAdapter: DeviceAdapter<GraphicsAdapterDeviceModel> = {
@@ -221,6 +222,6 @@ function resolveNetworkStandard(port: import("../../../types").DeviceTopologyPor
   if (/Wi-?Fi\s*6|802\.11ax/i.test(evidence)) return "Wi-Fi 6";
   if (/Wi-?Fi\s*5|802\.11ac/i.test(evidence)) return "Wi-Fi 5";
   if (/Wi-?Fi|Wireless|802\.11/i.test(evidence)) return "Wi-Fi";
-  if (/Ethernet|以太网/i.test(evidence)) return "Ethernet";
-  return displayValue(port.protocol, uiText.deviceAdapters.networkAdapter);
+  if (/Ethernet|以太网/i.test(evidence)) return uiText.deviceTopology.ethernetProtocol;
+  return displayValue(portProtocol(port), uiText.deviceAdapters.networkAdapter);
 }

@@ -10,6 +10,10 @@ const field = (name, unit, valueKind, extra) => ({
 });
 
 export const metricFieldDevices = [
+  // 单例设备「处理器」：名字和原有「处理器」资源组相同，选择器里仍是两组。
+  { deviceIdentity: "cpu|fixture", device: { kind: "cpu", address: null, displayName: null, ordinal: 0 }, fields: [
+    field("cpu_all_usage_percent", "%", "float64", { numericValue: 12.5 })
+  ] },
   { deviceIdentity: "numa|windows-numa-node|0", device: { kind: "numa_node", address: { kind: "numa_node", nodeNumber: 0 }, displayName: null, ordinal: 0 }, fields: [
     field("memory_all_numa_node_capacity_mib", "MiB", "unsigned64", { integerValue: "32768" }),
     field("memory_all_numa_node_available_bytes", "B", "unsigned64", { integerValue: "5", status: 3 })

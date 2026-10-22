@@ -82,6 +82,7 @@ export const zhMonitorViewsCopy = {
     listLabel: "監控項",
     empty: "沒有匹配的監控項",
     needsInstall: (name: string) => `需要安裝：${name}`,
+    deviceFields: "裝置欄位",
     cancel: "取消",
     confirm: "確定"
   },

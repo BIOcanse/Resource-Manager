@@ -1,5 +1,6 @@
 import { StandardSelect } from "../../../components/StandardSelect";
 import { languageOptions, normalizeLanguageMode } from "../../../text.ts";
+import { uiStylePalettes } from "../../../presentation/uiStyles.ts";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
@@ -7,8 +8,9 @@ import type {
   AppBarColorMode,
   AppFontSmoothing,
   AppLanguageMode,
+  AppPalette,
   AppSettings,
-  AppThemeMode,
+  AppUiStyle,
   ByteUnitMode
 } from "../../../types";
 import { SegmentedControl } from "./SettingsControls";
@@ -16,7 +18,8 @@ import { SegmentedControl } from "./SettingsControls";
 interface AppearanceSettingsSectionProps {
   settings: AppSettings["appearance"] | undefined;
   text: SettingsTextBundle;
-  onThemeChange: (theme: AppThemeMode) => void;
+  onUiStyleChange: (uiStyle: AppUiStyle) => void;
+  onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
   onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -27,7 +30,8 @@ interface AppearanceSettingsSectionProps {
 
 export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps) {
   const appearance = () => props.settings ?? {
-    theme: "system" as AppThemeMode,
+    uiStyle: "standard" as AppUiStyle,
+    theme: "system" as AppPalette,
     animations: "auto" as AppAnimationMode,
     resourceBarHardwareAccelerationMode: "auto" as AppAdaptiveBooleanMode,
     barColorMode: "type" as AppBarColorMode,
@@ -36,8 +40,24 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
     language: "system" as AppLanguageMode
   };
 
+  // 配色只列当前风格提供的那几种，顺序按目录。
+  const paletteOptions = () => uiStylePalettes(appearance().uiStyle)
+    .map((id) => ({ id, label: props.text.appearance.themeOptions[id] }));
+
   return (
     <div class="settings-section-panel">
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.appearance.uiStyleTitle}</strong>
+          <span>{props.text.appearance.uiStyleDescription}</span>
+        </div>
+        <SegmentedControl
+          value={appearance().uiStyle}
+          options={props.text.uiStyleOptions}
+          ariaLabel={props.text.appearance.uiStyleTitle}
+          onChange={props.onUiStyleChange}
+        />
+      </div>
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.appearance.themeTitle}</strong>
@@ -45,7 +65,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
         </div>
         <SegmentedControl
           value={appearance().theme}
-          options={props.text.themeOptions}
+          options={paletteOptions()}
           ariaLabel={props.text.appearance.themeTitle}
           onChange={props.onThemeChange}
         />

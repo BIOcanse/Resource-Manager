@@ -63,8 +63,8 @@ function createHubModel(
     summaryFields: summaryFields(
       [uiText.deviceAdapters.label.deviceType, typeLabel],
       [uiText.deviceAdapters.label.upstreamInterface, connection.upstreamInterface],
-      [uiText.deviceAdapters.label.downstreamInterfaces, String(total)],
-      [uiText.deviceAdapters.label.connectedDevices, String(connected)]
+      [uiText.deviceAdapters.label.downstreamInterfaces, uiText.deviceTopology.countSuffix(total)],
+      [uiText.deviceAdapters.label.connectedDevices, uiText.deviceTopology.countSuffix(connected)]
     ),
     capabilityLabels: [
       total > 0 ? uiText.deviceAdapters.hubDownstreamSummary(total) : undefined,

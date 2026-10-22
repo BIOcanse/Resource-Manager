@@ -27,6 +27,7 @@
 }
 
 .software-detail-tabs button {
+  box-shadow: none;
   min-height: 32px;
   padding: 0 13px;
   border: 1px solid var(--line);

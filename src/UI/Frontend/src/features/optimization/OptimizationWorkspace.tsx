@@ -20,7 +20,10 @@ export function OptimizationWorkspace(props: OptimizationWorkspaceProps) {
         actionId={optimization.actionId()}
         pendingOptimizationMode={optimization.pendingOptimizationMode()}
         optimizationModeApplyRemainingSeconds={optimization.optimizationModeApplyRemainingSeconds()}
-        onRefresh={() => void optimization.refreshReports(true)}
+        onRefresh={() => {
+          void optimization.refreshReports(true);
+          void optimization.refreshHostManagerStatus();
+        }}
         onOptimizationModeChange={(mode) => void optimization.changeHostManagerSmartCoordinatorMode(mode)}
         onDismiss={(report) => void optimization.dismissReport(report)}
         onInspect={(report) => void props.onInspectOptimizationTarget(report)}

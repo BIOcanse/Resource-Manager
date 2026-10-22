@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { readDocumentTheme } from "../../presentation/documentTheme";
+import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 import {
   hitTest,
   magnificationOf,
@@ -61,11 +61,7 @@ export function DiskUsageTreemapPlane(props: {
     }
     measure();
 
-    const themeObserver = new MutationObserver(() => setTheme(readPaintTheme()));
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"]
-    });
+    const stopObservingAppearance = observeDocumentAppearance(() => setTheme(readPaintTheme()));
 
     // 窗口失焦时指针不会再有消息传过来，贴边平移必须就地停住，
     // 否则切回来会发现视图自己跑掉了。
@@ -79,7 +75,7 @@ export function DiskUsageTreemapPlane(props: {
 
     onCleanup(() => {
       observer.disconnect();
-      themeObserver.disconnect();
+      stopObservingAppearance();
       window.removeEventListener("blur", release);
       stopEdgePan();
     });
@@ -502,19 +498,18 @@ function isTypingSomewhere(): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+// 颜色从当前风格和配色的 CSS 变量取；深浅看根元素实际生效的 color-scheme，
+// 跟随系统时由 CSS 媒体查询决定，这里不用自己判断。
 function readPaintTheme(): DiskUsagePaintTheme {
-  const theme = readDocumentTheme();
-  // 「跟随系统」要问系统，不能当成浅色，否则深色模式下整张图会白得刺眼。
-  const dark = theme === "dark"
-    || theme === "lowContrast"
-    || (theme === "system"
-      && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true);
+  const style = getComputedStyle(document.documentElement);
+  const token = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+  const dark = style.colorScheme.includes("dark");
   return {
-    directoryHue: 168,
-    fileHue: 205,
-    surface: dark ? "#10161a" : "#f2f6f7",
-    label: dark ? "#f2f6f7" : "#10161a",
+    directoryHue: Number(token("--treemap-directory-hue", "168")),
+    fileHue: Number(token("--treemap-file-hue", "205")),
+    surface: token("--surface", dark ? "#10161a" : "#f2f6f7"),
+    label: token("--text", dark ? "#f2f6f7" : "#10161a"),
     labelShadow: dark ? "rgba(6, 10, 12, 0.62)" : "rgba(255, 255, 255, 0.72)",
-    selection: dark ? "#7ae6cf" : "#0b7a66"
+    selection: token("--accent-strong", dark ? "#7ae6cf" : "#0b7a66")
   };
 }

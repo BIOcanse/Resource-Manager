@@ -135,6 +135,122 @@ public sealed class HostManagerPlacementRollbackExecutorTests
         Assert.Equal(HostManagerPlacementSettlementKind.RetryableFailure, retained.Kind);
     }
 
+    [Fact]
+    public void CpuSetsRecordWithoutPreviousCpuSetsRestoresByClearingTheDefaultSet()
+    {
+        // 真机故障：几乎所有进程原本都没有 CPU Sets，恢复必须写空集合（清除），而不是被当作非法请求。
+        var writer = new FakeProcessPolicyWriter(
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(CpuSetSnapshot(256, 257)),
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(CpuSetSnapshot()))
+        {
+            BatchFieldResult = static _ => new ProcessResourcePolicyBatchFieldResult(
+                ProcessResourcePolicyBatchFields.CpuSets,
+                true,
+                "已清除进程默认 CPU Sets。")
+        };
+
+        var settlement = CreateExecutor(writer).RestoreRecord(CpuSetRecord(previous: "", applied: "256,257"));
+
+        Assert.Equal(HostManagerPlacementSettlementKind.Restored, settlement.Kind);
+        Assert.True(settlement.CanRemoveReceipt);
+        var request = Assert.Single(writer.BatchRequests);
+        Assert.NotNull(request.CpuSetIds);
+        Assert.Empty(request.CpuSetIds);
+        Assert.Null(request.AffinityMask);
+        Assert.Equal(CpuSetSnapshot().StartedAt, request.ExpectedStartedAt);
+    }
+
+    [Fact]
+    public void FailedCpuSetsRestoreWriteIsReportedInsteadOfSwallowed()
+    {
+        var writer = new FakeProcessPolicyWriter(
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(CpuSetSnapshot(256, 257)),
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(CpuSetSnapshot(256, 257)))
+        {
+            BatchFieldResult = static _ => new ProcessResourcePolicyBatchFieldResult(
+                ProcessResourcePolicyBatchFields.CpuSets,
+                false,
+                "fixture access denied")
+            {
+                ErrorCode = 5
+            }
+        };
+
+        var settlement = CreateExecutor(writer).RestoreRecord(CpuSetRecord(previous: "", applied: "256,257"));
+
+        Assert.Equal(HostManagerPlacementSettlementKind.RetryableFailure, settlement.Kind);
+        Assert.False(settlement.CanRemoveReceipt);
+        Assert.Equal(5, settlement.NativeErrorCode);
+        Assert.Contains("fixture access denied", settlement.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FailedMemoryPriorityRestoreWriteIsReportedInsteadOfSwallowed()
+    {
+        var writer = new FakeProcessPolicyWriter(
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(MemoryPrioritySnapshot(3)),
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(MemoryPrioritySnapshot(3)))
+        {
+            MemoryPriorityWriteResult = new(false, "fixture memory priority rejected")
+        };
+
+        var settlement = CreateExecutor(writer).RestoreRecord(MemoryPriorityRecord());
+
+        Assert.Equal(HostManagerPlacementSettlementKind.RetryableFailure, settlement.Kind);
+        Assert.Contains("fixture memory priority rejected", settlement.Message, StringComparison.Ordinal);
+    }
+
+    private static HostManagerAppliedRecord CpuSetRecord(string previous, string applied)
+        => new(
+            HostManagerAppliedRecordKinds.CpuAffinity,
+            "cpu-sets",
+            new Dictionary<string, string>
+            {
+                ["affinityKind"] = "cpu-sets",
+                ["processId"] = "42",
+                ["processName"] = "process",
+                ["executablePath"] = string.Empty,
+                ["processStartedAt"] = "1000",
+                ["previousCpuSetIds"] = previous,
+                ["appliedCpuSetIds"] = applied
+            });
+
+    private static HostManagerAppliedRecord MemoryPriorityRecord()
+        => new(
+            HostManagerAppliedRecordKinds.ProcessMemoryPriority,
+            "memory-priority",
+            new Dictionary<string, string>
+            {
+                ["processId"] = "42",
+                ["processName"] = "process",
+                ["executablePath"] = string.Empty,
+                ["processStartedAt"] = "1000",
+                ["previousMemoryPriority"] = "5",
+                ["appliedMemoryPriority"] = "3"
+            });
+
+    private static ProcessPlacementRecoverySnapshot CpuSetSnapshot(params uint[] cpuSetIds)
+        => new(
+            42,
+            DateTimeOffset.FromUnixTimeMilliseconds(1000),
+            "process",
+            null,
+            null,
+            cpuSetIds,
+            null,
+            null);
+
+    private static ProcessPlacementRecoverySnapshot MemoryPrioritySnapshot(uint memoryPriority)
+        => new(
+            42,
+            DateTimeOffset.FromUnixTimeMilliseconds(1000),
+            "process",
+            null,
+            null,
+            null,
+            null,
+            memoryPriority);
+
     private static HostManagerPlacementRollbackExecutor CreateExecutor(
         FakeProcessPolicyWriter? process = null,
         FakeGraphicsPreferenceStore? graphics = null)
@@ -273,12 +389,14 @@ public sealed class HostManagerPlacementRollbackExecutorTests
 
         public ProcessMemoryPrioritySnapshot? TryReadMemoryPriority(int processId) => null;
 
+        public ProcessResourcePolicyWriteResult MemoryPriorityWriteResult { get; init; } = new(true, "ok");
+
         public ProcessResourcePolicyWriteResult TrySetMemoryPriority(
             int processId,
             DateTimeOffset expectedStartedAt,
             uint expectedCurrentMemoryPriority,
             uint memoryPriority)
-            => new(true, "ok");
+            => MemoryPriorityWriteResult;
 
         public ProcessPowerThrottlingSnapshot? TryReadPowerThrottling(int processId) => null;
 
@@ -287,6 +405,8 @@ public sealed class HostManagerPlacementRollbackExecutorTests
             uint controlMask,
             uint stateMask) => new(true, "ok");
 
+        public Func<ProcessResourcePolicyBatchRequest, ProcessResourcePolicyBatchFieldResult>? BatchFieldResult { get; init; }
+
         public List<ProcessResourcePolicyBatchRequest> BatchRequests { get; } = [];
         public IReadOnlyList<ProcessResourcePolicyBatchWriteResult> TryApplyBatch(
             IReadOnlyList<ProcessResourcePolicyBatchRequest> requests)
@@ -294,7 +414,13 @@ public sealed class HostManagerPlacementRollbackExecutorTests
             BatchRequests.AddRange(requests);
             AffinityWriteCount += requests.Count(request => request.AffinityMask is not null);
             Assert.All(requests, request => Assert.NotNull(request.ExpectedStartedAt));
-            return [];
+            return BatchFieldResult is null
+                ? []
+                : requests
+                    .Select(request => new ProcessResourcePolicyBatchWriteResult(
+                        request.ProcessId,
+                        [BatchFieldResult(request)]))
+                    .ToArray();
         }
     }
 }

@@ -2,14 +2,6 @@
 
 namespace ResourceManager.App.Domain.Settings;
 
-public static class AppThemeModes
-{
-    public const string System = "system";
-    public const string Light = "light";
-    public const string Dark = "dark";
-    public const string LowContrast = "lowContrast";
-}
-
 public static class AppAnimationModes
 {
     public const string Auto = "auto";
@@ -217,7 +209,9 @@ public sealed record AppPerformanceSettings(
     AppPresetNumericSetting OptimizationRefreshIntervalMs,
     AppPresetNumericSetting LocalSystemRefreshIntervalMs);
 
+// UiStyle 是界面风格，Theme 是该风格下的配色；合法组合见 src/Shared/Appearance/ui-styles.json。
 public sealed record AppAppearanceSettings(
+    string UiStyle,
     string Theme,
     string Animations,
     bool ResourceBarHardwareAccelerationEnabled,

@@ -7,7 +7,7 @@ const readSource = (relativePath: string) =>
 const layout = readSource("styles/layout.css");
 const theme = readSource("styles/theme.css");
 const base = readSource("styles/base.css");
-const documentTheme = readSource("presentation/documentTheme.ts");
+const documentAppearance = readSource("presentation/documentAppearance.ts");
 const resourceTable = readSource("features/resourceTable/ResourceTable.tsx");
 const resourceBreakdown = readSource("features/resourceBreakdown/ResourceBreakdown.tsx");
 const dashboard = readSource("features/monitor/Dashboard.tsx");
@@ -71,14 +71,14 @@ const settingsSources = [
 ];
 
 assert.doesNotMatch(theme, /--workspace-min-width/);
-assert.match(theme, /:root\[data-theme="dark"\]/);
-assert.match(theme, /:root\[data-theme="lowContrast"\]/);
+assert.match(theme, /:root\[data-ui-style="standard"\]\[data-theme="dark"\]/);
+assert.match(theme, /:root\[data-ui-style="standard"\]\[data-theme="lowContrast"\]/);
 assert.match(theme, /--divider:\s*color\(display-p3/);
 assert.match(theme, /--divider-soft:\s*color\(display-p3/);
 assert.doesNotMatch(theme, /body\[data-theme=/);
 assert.match(base, /html,\s*\nbody,\s*\n#root\s*\{[\s\S]*?background:\s*var\(--bg\);/);
-assert.match(documentTheme, /document\.documentElement/);
-assert.match(documentTheme, /document\.body\.removeAttribute\("data-theme"\)/);
+assert.match(documentAppearance, /document\.documentElement/);
+assert.match(documentAppearance, /document\.body\.removeAttribute\("data-theme"\)/);
 assert.doesNotMatch(app, /document\.body\.dataset\.theme/);
 assert.doesNotMatch(
   themeConsumerStyles,
@@ -196,7 +196,7 @@ assert.match(settingsControls, /<PrimitiveSegmentedControl/);
 assert.match(aiGatewayKeyManager, /<SegmentedControl/);
 assert.match(resourceTable, /<SegmentedControl/);
 assert.doesNotMatch(resourceTable, /resource-table-mode-switch" role="tablist"/);
-assert.match(managementPage, /<nav class="management-tabs" aria-label=\{uiText\.management\.categoryNav\}>/);
+assert.match(managementPage, /<nav class="page-subnav" aria-label=\{uiText\.management\.categoryNav\}>/);
 assert.match(managementPage, /aria-current=\{props\.activeSubpage === kind\.id \? "page" : undefined\}/);
 assert.doesNotMatch(managementPage, /<TabsRoot|role="tab"|role="tabpanel"/);
 assert.match(softwareDetailModal, /<TabsRoot/);

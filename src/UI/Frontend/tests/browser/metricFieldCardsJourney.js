@@ -27,7 +27,13 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   // 字段目录 5 秒推一次，首个推送最长等一个周期。
   const option = picker.locator(`[data-metric-id="${npuBusyCardId}"]`);
   await option.waitFor({ timeout: 15_000 });
-  await picker.getByRole("group", { name: group, exact: true }).waitFor();
+  // 设备字段组标题带「设备字段」，和原有同名资源组分开。
+  await picker.getByRole("group", { name: `${group} · ${app.metricPicker.deviceFields}`, exact: true }).waitFor();
+  const cpuDeviceGroup = picker.getByRole("group", { name: `${app.dashboard.deviceKind.cpu} · ${app.metricPicker.deviceFields}`, exact: true });
+  await cpuDeviceGroup.locator('[data-metric-id="cpu_all_usage_percent@cpu|fixture"]').waitFor();
+  if (await picker.getByRole("group", { name: app.status.metricGroup.cpu, exact: true }).locator('[data-metric-id*="@"]').count()) {
+    throw new Error("device fields were merged into the legacy CPU group");
+  }
   await picker.getByRole("combobox").fill("Fixture NPU");
   if (!await option.isVisible()) throw new Error("searching by device name does not find the device field");
   if ((await option.locator(".metric-option-label").textContent())?.trim() !== label) throw new Error("picker option does not show the localized field name");

@@ -14,8 +14,8 @@
   scrollbar-gutter: stable;
 }
 
-body[data-page="components"] .app-shell,
-.app-shell.components-shell {
+/* 有二级分页条的页面，正文从分页条下面开始。 */
+.app-shell.has-page-subnav {
   top: calc(var(--shellbar-height) + var(--managementbar-height));
 }
 

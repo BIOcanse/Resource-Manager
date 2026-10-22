@@ -327,3 +327,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   cpu_amd_smu_temperature_reported_celsius: { label: "CPU-Temperatur (SMU)", hint: "Von der AMD SMU gemeldete CPU-Temperatur; ob es sich um Tctl oder Tdie handelt, ist nicht geklärt." },
   gpu_amd_apu_temperature_reported_celsius: { label: "APU-Grafiktemperatur (SMU)", hint: "Temperatur der integrierten Grafik dieser AMD-APU, gemeldet von der SMU." },
 };
+
+export const fieldValueLabel: AppCopy["fieldValueLabel"] = {
+  batteryPowerState: { onLine: "Netzbetrieb", discharging: "Entlädt", charging: "Lädt", critical: "Kritisch" }
+};

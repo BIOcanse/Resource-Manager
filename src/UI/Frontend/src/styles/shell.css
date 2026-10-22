@@ -14,7 +14,7 @@
   padding: 0 176px 0 12px;
   background: var(--shell-bg);
   border-bottom: 1px solid var(--divider);
-  backdrop-filter: blur(14px);
+  backdrop-filter: var(--shell-backdrop);
   user-select: none;
 }
 

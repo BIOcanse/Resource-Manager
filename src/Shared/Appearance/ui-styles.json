@@ -1,0 +1,89 @@
+{
+  "styles": [
+    {
+      "id": "standard",
+      "palettes": [
+        {
+          "id": "system",
+          "follows": {
+            "light": "light",
+            "dark": "dark"
+          }
+        },
+        {
+          "id": "light",
+          "startupBackground": "#F4F7F8"
+        },
+        {
+          "id": "dark",
+          "startupBackground": "#141617"
+        },
+        {
+          "id": "lowContrast",
+          "startupBackground": "#E6E9E6"
+        }
+      ]
+    },
+    {
+      "id": "soft",
+      "palettes": [
+        {
+          "id": "system",
+          "follows": {
+            "light": "light",
+            "dark": "dark"
+          }
+        },
+        {
+          "id": "light",
+          "startupBackground": "#EEF2F7"
+        },
+        {
+          "id": "dark",
+          "startupBackground": "#11151C"
+        }
+      ]
+    },
+    {
+      "id": "outline",
+      "palettes": [
+        {
+          "id": "system",
+          "follows": {
+            "light": "paper",
+            "dark": "graphite"
+          }
+        },
+        {
+          "id": "paper",
+          "startupBackground": "#F3F0E8"
+        },
+        {
+          "id": "graphite",
+          "startupBackground": "#1D1E20"
+        },
+        {
+          "id": "blueprint",
+          "startupBackground": "#0E2340"
+        }
+      ]
+    },
+    {
+      "id": "terminal",
+      "palettes": [
+        {
+          "id": "phosphor",
+          "startupBackground": "#050806"
+        },
+        {
+          "id": "amber",
+          "startupBackground": "#080603"
+        },
+        {
+          "id": "ice",
+          "startupBackground": "#04070B"
+        }
+      ]
+    }
+  ]
+}

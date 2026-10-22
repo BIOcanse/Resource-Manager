@@ -79,6 +79,9 @@ public static class MetricDeviceFields
             { Device = descriptors[group.Key] }).ToArray();
     }
 
+    // Returns public field addresses only. A projected field (a discovered GPU engine) is mapped to its
+    // internal planner trigger at the native planning boundary (WindowsHardwareMetricCapture.CreateCollectionRequest);
+    // the host subscribes, publishes and projects by public dataset ids, which never contain that trigger.
     public static MetricSampleRequest CreateRequest(
         HardwareMetricSnapshot? catalog, string? deviceIdentity, IEnumerable<string> fields)
     {
@@ -94,7 +97,7 @@ public static class MetricDeviceFields
                 throw new ArgumentException("metric-field-name-unknown", nameof(fields));
             return MetricSampleRequest.ForIds(catalog.FieldBindings.Values
                 .Where(binding => names.Contains(binding.Field.Name))
-                .Select(static binding => binding.EffectiveSampleRequestAddress));
+                .Select(static binding => binding.RequestAddress));
         }
 
         var available = catalog.FieldBindings.Values.Where(binding => binding.DeviceIdentity == deviceIdentity).ToArray();
@@ -102,7 +105,7 @@ public static class MetricDeviceFields
         if (names.Count == 0 || names.Except(available.Select(static binding => binding.Field.Name), StringComparer.Ordinal).Any())
             throw new ArgumentException("metric-field-name-unknown", nameof(fields));
         return MetricSampleRequest.ForIds(available.Where(binding => names.Contains(binding.Field.Name))
-            .Select(static binding => binding.EffectiveSampleRequestAddress));
+            .Select(static binding => binding.RequestAddress));
     }
 
     public static IReadOnlyList<DeviceMetricFieldSnapshot> Read(

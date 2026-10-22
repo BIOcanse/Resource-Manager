@@ -132,6 +132,26 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             static (current, token) => current.ReadSnapshotAsync(token),
             cancellationToken);
 
+    /// <summary>
+    /// 只读查询用：账本尚未打开（首个调度周期之前）时返回 null，表示还没有已知的所有权，不抛异常。
+    /// </summary>
+    public async Task<NativeAppliedOwnershipSnapshot?> TryReadSnapshotAsync(
+        CancellationToken cancellationToken)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            ThrowIfDisposed();
+            return owner is null
+                ? null
+                : await owner.ReadSnapshotAsync(cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<NativeAppliedOwnershipReadResult> GetAsync(
         NativeAppliedOwnershipPrimaryIdentity primary,
         CancellationToken cancellationToken)

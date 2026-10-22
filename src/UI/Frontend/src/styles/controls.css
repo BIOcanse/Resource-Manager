@@ -28,13 +28,15 @@ textarea {
 
 /* Elevation only on the prominent buttons: bare accent primaries (no modifier
    class) and .secondary. Flat/ghost buttons always carry their own class so
-   they never pick up a stray shadow. */
-button:not([class]):not(:disabled),
+   they never pick up a stray shadow. The bare case sits in :where so a list or
+   tab container that styles its own bare buttons (select options, tab strips)
+   can drop the shadow without out-ranking this rule. */
+:where(button:not([class]):not(:disabled)),
 button.secondary:not(:disabled) {
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
-button:not([class]):not(:disabled):hover,
+:where(button:not([class]):not(:disabled)):hover,
 button.secondary:not(:disabled):hover {
   box-shadow: var(--elev-2), var(--edge-highlight);
 }
@@ -140,6 +142,11 @@ button:disabled:disabled {
   padding: 0;
 }
 
+/* 焦点环只画在外框上；motion.css 的通用 input 焦点环会再画一圈，这里关掉。 */
+.standard-select-search input:focus-visible {
+  outline: none;
+}
+
 .standard-select-search:focus-within {
   border-color: var(--accent);
   outline: var(--focus-ring);
@@ -186,6 +193,7 @@ button:disabled:disabled {
 
 .standard-select-options > button:disabled {
   opacity: 1;
+  background-color: transparent;
   color: var(--control-disabled-text);
 }
 

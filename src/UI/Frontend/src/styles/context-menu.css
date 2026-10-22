@@ -42,9 +42,11 @@
   color: var(--danger);
 }
 
-.standard-context-menu-item:disabled {
-  opacity: 0.45;
+/* 菜单里的禁用项只把文字变灰，不套用禁用按钮的底色和边框（button:disabled:disabled 的优先级更高，这里要对齐）。 */
+.standard-context-menu-item:disabled:disabled {
   cursor: default;
+  background-color: transparent;
+  color: var(--control-disabled-text);
 }
 
 .standard-context-menu-separator {

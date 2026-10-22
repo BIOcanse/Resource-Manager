@@ -96,6 +96,7 @@ public static class AppSettingsMigrator
                     "localSystemRefreshIntervalMs",
                     defaults.Performance.LocalSystemRefreshIntervalMs)),
             new AppAppearanceSettings(
+                ReadString(root, "appearance", "uiStyle", defaults.Appearance.UiStyle),
                 ReadString(root, "appearance", "theme", defaults.Appearance.Theme),
                 ReadString(root, "appearance", "animations", defaults.Appearance.Animations),
                 ReadBoolean(root, "appearance", "resourceBarHardwareAccelerationEnabled", defaults.Appearance.ResourceBarHardwareAccelerationEnabled),
@@ -135,6 +136,7 @@ public static class AppSettingsMigrator
             || !string.Equals(version.GetString(), AppSettingsDefaults.CurrentVersion, StringComparison.Ordinal)
             || !root.TryGetProperty("appearance", out var appearance)
             || appearance.ValueKind != JsonValueKind.Object
+            || !appearance.TryGetProperty("uiStyle", out _)
             || !appearance.TryGetProperty("animations", out _)
             || !appearance.TryGetProperty("resourceBarHardwareAccelerationEnabled", out _)
             || !appearance.TryGetProperty("resourceBarHardwareAccelerationMode", out var resourceBarHardwareAccelerationMode)

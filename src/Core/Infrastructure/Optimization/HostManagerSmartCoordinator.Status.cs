@@ -6,31 +6,63 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private HostManagerSmartCoordinatorStatus CreateStatus(
+    // 调用方持有 gate：读取期间没有周期在改所有权、验证作用域或原生工作区。
+    private async Task<HostManagerSmartCoordinatorStatus> CreateStatusAsync(
         string mode,
         HostManagerRollbackStateDocument state,
-        bool running,
-        uint nativePendingCount)
+        CancellationToken cancellationToken)
     {
         var normalizedMode = HostManagerOptimizationModes.Normalize(mode);
-        var schedulingEnabled = normalizedMode != AppOptimizationModes.Normal;
+        var faultClosedReason = ReadFaultClosedReason();
+        // 账本尚未打开时还没有已知的所有权，和原生工作区尚未建立时一样计为没有对象。
+        var ownership = await nativeActionTransactions.AppliedOwnership
+            .TryReadSnapshotAsync(cancellationToken);
+        IReadOnlyCollection<NativeAppliedOwnershipProcessIdentity> memoryOwners = ownership is null
+            ? []
+            : CreateAppliedOwnershipFactIndex(ownership).MemoryProcessRecords.Keys.ToArray();
         return new HostManagerSmartCoordinatorStatus(
             normalizedMode,
-            running && schedulingEnabled,
+            schedulerRunning
+                && normalizedMode != AppOptimizationModes.Normal
+                && faultClosedReason is null,
             state.LastRunAt,
             state.LastRestoreAt,
-            checked((int)nativePendingCount),
-            CountAppliedTargets(
-                state.AppliedPlacements,
-                nativeWorkspace is null
-                    ? ReadOnlySpan<NativeSmartCoordinatorSnapshotRow>.Empty
-                    : nativeWorkspace.CurrentSnapshotRows),
+            checked((int)(nativeWorkspace?.Snapshot.PendingCount ?? 0)),
+            CountCurrentAppliedTargets(state, memoryOwners),
+            faultClosedReason,
             state.Message);
     }
 
+    private int CountCurrentAppliedTargets(
+        HostManagerRollbackStateDocument state,
+        IReadOnlyCollection<NativeAppliedOwnershipProcessIdentity> memoryOwners)
+        => CountAppliedTargets(
+            state.AppliedPlacements,
+            nativeWorkspace is null
+                ? ReadOnlySpan<NativeSmartCoordinatorSnapshotRow>.Empty
+                : nativeWorkspace.CurrentSnapshotRows,
+            memoryOwners);
+
+    /// <summary>
+    /// 验证作用域故障或过期时，运行时拒绝一切新的效果准入（故障关闭）。返回原因码；正常准入时返回 null。
+    /// 作用域的状态推导只在作用域权威里做一次，这里直接取它的状态。
+    /// </summary>
+    private string? ReadFaultClosedReason()
+    {
+        var scope = processEffectValidationScopeAuthorityOwner.GetStatus();
+        return scope.State is "faultedBlocked" or "expiredBlocked"
+            ? scope.Failure ?? scope.State
+            : null;
+    }
+
+    /// <summary>
+    /// 产品当前持有改动的对象数：旧式放置回执、原生行上的进程/软件所有权，以及账本里的进程内存优先级所有权。
+    /// 内存优先级归属到它所在的进程对象，同一进程的多项改动只算一个对象。
+    /// </summary>
     internal static int CountAppliedTargets(
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placements,
-        ReadOnlySpan<NativeSmartCoordinatorSnapshotRow> rows)
+        ReadOnlySpan<NativeSmartCoordinatorSnapshotRow> rows,
+        IEnumerable<NativeAppliedOwnershipProcessIdentity> memoryOwners)
     {
         var targets = new HashSet<ulong>();
         foreach (var placement in placements)
@@ -51,6 +83,14 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 targets.Add(row.TargetKey);
             }
+        }
+
+        foreach (var owner in memoryOwners)
+        {
+            targets.Add(NativeStableIdentity.CreateCaseInsensitiveKey(
+                HostManagerTargetIdentity.CreateProcessTargetId(
+                    checked((int)owner.ProcessId),
+                    owner.ProcessStartKey)));
         }
         return targets.Count;
     }

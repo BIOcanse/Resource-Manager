@@ -124,6 +124,7 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
     detailTitle: (name: string) => `${name} details`,
     fallbackDeviceName: "Device",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `Parent hub port ${port}`,
     connectedDevice: "Connected device",
     section: {
       overview: "Overview",
@@ -153,7 +154,7 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
       activeResolution: "Active resolution",
       refreshRate: "Refresh rate",
       connectionLocation: "Connection location",
-      networkInterface: "Network interface",
+      networkInterface: "System interface name",
       transmitSpeed: "Transmit speed",
       receiveSpeed: "Receive speed",
       macAddress: "MAC address",
@@ -245,6 +246,7 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
       internal: (connector: string) => `${connector} · internal connection`
     },
     usbGenericConnector: "USB-A / USB connection",
+    ethernetProtocol: "Ethernet",
     deviceCategory: {
       internalDisplayPanel: "Built-in display panel",
       wirelessDisplay: "Wireless / virtual display",

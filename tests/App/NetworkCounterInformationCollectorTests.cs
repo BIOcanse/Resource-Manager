@@ -64,11 +64,48 @@ public sealed partial class NetworkCounterInformationCollectorTests
         Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, directory.Status);
         Assert.NotEmpty(directory.Identities);
         output.WriteLine($"Read-only production OS directory: {directory.Identities.Count} interfaces.");
+        // The decoded MIB_IF_ROW2.Description must match the OS adapter description for the same interface GUID.
+        var osDescriptions = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .Where(static adapter => Guid.TryParse(adapter.Id, out _))
+            .ToDictionary(static adapter => Guid.Parse(adapter.Id), static adapter => adapter.Description.Trim());
+        var compared = directory.Identities.Where(identity => osDescriptions.ContainsKey(identity.Guid)).ToArray();
+        Assert.NotEmpty(compared);
+        Assert.All(compared, identity => Assert.Equal(osDescriptions[identity.Guid], identity.NameDeclared));
+        output.WriteLine($"Declared descriptions matched the OS adapter list for {compared.Length} interfaces.");
         var selected = directory.Identities[0];
         var result = Assert.Single(zone.ReadInterfaces(directory.Identities,Request(selected,Fields().Select(field=>field.Code).ToArray())));
         Assert.False(result.RequiresTopologyRefresh);
         Assert.Equal(17,result.Counters.Count);Assert.Equal(2,result.Rates.Count);
         Assert.All(result.Rates.Values,counter=>Assert.True(counter.TicksPerSecond>0));
+    }
+
+    [Fact]
+    public void InterfaceDescriptionFromTheSameRowIsTheDeclaredDeviceName()
+    {
+        const string description = "Motorcomm YT6801 Gigabit Ethernet Adapter";
+        var api = new Api();
+        var row = api.Table!.AsSpan(ResourceManager.ReadWrite.Windows.Devices.WindowsNetworkInterfaceTableDecoder.TableOffset,
+            ResourceManager.ReadWrite.Windows.Devices.WindowsNetworkInterfaceTableDecoder.InterfaceRowSize);
+        var luid = BinaryPrimitives.ReadUInt64LittleEndian(row);
+        System.Text.Encoding.Unicode.GetBytes(description).CopyTo(
+            row[ResourceManager.ReadWrite.Windows.Devices.WindowsNetworkInterfaceTableDecoder.InterfaceDescriptionOffset..]);
+        var identities = new IpHelperNetworkMonitoringZone(api).ReadInterfaceIdentities().Identities;
+        var named = Assert.Single(identities, identity => identity.Luid == luid);
+        Assert.Equal(description, named.NameDeclared);
+        // The SDK fixture's other row declares no description; it stays null instead of a synthesized name.
+        Assert.Null(Assert.Single(identities, identity => identity.Luid != luid).NameDeclared);
+
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
+            [], [], [], NativeMetricSnapshotCatalogHandleMap.Empty, networkInterfaces: identities);
+        var bindings = catalog.RuleBindings.Values.Where(binding => binding.DeviceIdentity == named.ExactIdentityKey).ToArray();
+        Assert.NotEmpty(bindings);
+        Assert.All(bindings, binding =>
+        {
+            Assert.Equal("network_interface", binding.Device.Kind);
+            Assert.Equal(description, binding.Device.DisplayName);
+        });
+        Assert.All(catalog.RuleBindings.Values.Where(binding => binding.Device.Kind == "network_interface"
+            && binding.DeviceIdentity != named.ExactIdentityKey), binding => Assert.Null(binding.Device.DisplayName));
     }
 
     [Theory]

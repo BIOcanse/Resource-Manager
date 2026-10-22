@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./fr-FR-targetedReport.ts";
-import { fieldLabel } from "./fr-FR-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./fr-FR-fieldLabels.ts";
 
 const frFrAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "Enregistrement",
     saveFailed: "Échec de l'enregistrement"
@@ -619,6 +620,7 @@ const frFrAppCopy: AppCopy = {
     listLabel: "Éléments de surveillance",
     empty: "Aucun élément de surveillance correspondant",
     needsInstall: (name: string) => `Installation requise : ${name}`,
+    deviceFields: "Champs de l'appareil",
     cancel: "Annuler",
     confirm: "Confirmer"
   },
@@ -800,6 +802,8 @@ const frFrAppCopy: AppCopy = {
     reportPanel: "Rapports d'optimisation",
     gpuScoreUnrecognizedTitle: "Modèle de GPU non reconnu",
     gpuScoreUnrecognizedMessage: (names: string) => `${names} ne correspond à aucun score de performance intégré. Un score manuel positif permet d'inclure ces GPU dans le classement automatique.`,
+    runtimeFaultClosedTitle: "Moteur d'optimisation bloqué après une erreur",
+    runtimeFaultClosedDetail: (reason: string) => `Aucun nouvel ajustement d'optimisation ne sera appliqué. Code de cause : ${reason}`,
     filterLabel: "Filtre des rapports",
     filterUntrusted: (count: string) => `Non approuvés ${count}`,
     filterAll: (count: string) => `Tous ${count}`,
@@ -1023,6 +1027,7 @@ const frFrAppCopy: AppCopy = {
     detailTitle: (name: string) => `Détails de ${name}`,
     fallbackDeviceName: "Appareil",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `Port ${port} du hub parent`,
     connectedDevice: "Appareil connecté",
     section: {
       overview: "Vue d'ensemble",
@@ -1052,7 +1057,7 @@ const frFrAppCopy: AppCopy = {
       activeResolution: "Résolution active",
       refreshRate: "Fréquence de rafraîchissement",
       connectionLocation: "Emplacement de connexion",
-      networkInterface: "Interface réseau",
+      networkInterface: "Nom d'interface système",
       transmitSpeed: "Vitesse d'émission",
       receiveSpeed: "Vitesse de réception",
       macAddress: "Adresse MAC",
@@ -1144,6 +1149,7 @@ const frFrAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · connexion interne`
     },
     usbGenericConnector: "USB-A / connexion USB",
+    ethernetProtocol: "Ethernet",
     deviceCategory: {
       internalDisplayPanel: "Dalle d'affichage intégrée",
       wirelessDisplay: "Écran sans fil / virtuel",
@@ -1227,7 +1233,7 @@ const frFrAppCopy: AppCopy = {
     powerRole: "Rôle d'alimentation",
     negotiatedPower: "Puissance négociée",
     graphicsBus: "Bus graphique",
-    networkInterface: "Interface réseau",
+    networkInterface: "Nom d'interface système",
     connectionState: "État de connexion",
     transmitLink: "Liaison d'émission",
     receiveLink: "Liaison de réception",

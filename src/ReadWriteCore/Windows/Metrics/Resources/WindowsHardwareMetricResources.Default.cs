@@ -157,15 +157,15 @@ public sealed partial class WindowsHardwareMetricResources
             {
                 var read = storage.ReadIdentities();
                 return new(read.Error is null ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-                    read.Identities.Select(item => Ordinal(item, generation)).ToArray());
+                    read.Identities.Select(item => StorageCatalogIdentity(item, generation)).ToArray());
             },
             ReadDiskPerformanceAsync = (targets, token) =>
                 diskPerformance.ReadAsync(targets, storage.ReadInformationDeclarations(), token),
             ReadFanIdentities = generation => WindowsNotebookFanProjection.CreateFanCatalog(
                 hardwareMonitor.ReadFanIdentities(options.WmiQueryTimeout), options.EnableMechrevo, generation),
-            ReadStorageSensors = () => Project(storage.ReadStorageSensors()),
-            ReadNvmeSensors = request => Project(storage.ReadNvmeSensorsCore(request)),
-            ReadAtaSensors = request => Project(storage.ReadAtaSensorsCore(request)),
+            ReadStorageSensors = () => ProjectStorageSensors(storage.ReadStorageSensors()),
+            ReadNvmeSensors = request => ProjectStorageSensors(storage.ReadNvmeSensorsCore(request)),
+            ReadAtaSensors = request => ProjectStorageSensors(storage.ReadAtaSensorsCore(request)),
             ReadHardwareMonitor = () => hardwareMonitor.Read(options.WmiQueryTimeout),
             ReadNotebookFans = () => options.EnableMechrevo ? WindowsNotebookFanProjection.Create(mechrevo.Read())
                 : new(new("Notebook OEM Fan Provider", "UnsupportedFirmware", "OEM firmware policy was not enabled."), null, null, []),
@@ -184,18 +184,22 @@ public sealed partial class WindowsHardwareMetricResources
         result.owned.Add(pdh);
         result.owned.Add(mechrevo);
         return result;
-
-        static NativeMetricSnapshotOrdinalCatalogIdentity Ordinal(StorageOwnerIdentity identity, ulong generation)
-            => new(identity.DisplayIndex, identity.ExactIdentityKey, generation)
-            {
-                SupportsNvmeHealth = identity.SupportsNvmeHealth,
-                SupportsAtaSmart = identity.SupportsAtaSmart,
-                Device = new("storage", MetricDeviceAddress.StorageDevice(identity.DisplayIndex,
-                    identity.UniqueId, identity.SerialNumber), Clean(identity.NameDeclared), identity.DisplayIndex)
-            };
-        static StorageSensorSnapshot Project(StorageOwnerSensorSnapshot snapshot)
-            => new(snapshot.ProviderState, snapshot.Disks)
-            { Identities = snapshot.Identities?.Select(identity => Ordinal(identity, 0)).ToArray() };
-        static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
+
+    // The single storage catalog projection. The Core host's borrowed storage zone uses it too,
+    // so every production path publishes the same storage descriptor.
+    internal static NativeMetricSnapshotOrdinalCatalogIdentity StorageCatalogIdentity(StorageOwnerIdentity identity, ulong generation)
+        => new(identity.DisplayIndex, identity.ExactIdentityKey, generation)
+        {
+            SupportsNvmeHealth = identity.SupportsNvmeHealth,
+            SupportsAtaSmart = identity.SupportsAtaSmart,
+            Device = new("storage", MetricDeviceAddress.StorageDevice(identity.DisplayIndex,
+                identity.UniqueId, identity.SerialNumber), Clean(identity.NameDeclared), identity.DisplayIndex)
+        };
+
+    internal static StorageSensorSnapshot ProjectStorageSensors(StorageOwnerSensorSnapshot snapshot)
+        => new(snapshot.ProviderState, snapshot.Disks)
+        { Identities = snapshot.Identities?.Select(identity => StorageCatalogIdentity(identity, 0)).ToArray() };
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

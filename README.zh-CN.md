@@ -115,52 +115,7 @@
 
 每张设备卡片都有独立的**应用**和**撤销改动**。可以先修改多项设置，再只应用这一张卡；撤销时也不会丢掉其他卡片的草稿。常用设置可以存为配置，方便下次复用。不能调整的项目，把鼠标放到图标上即可查看原因；**普通**与 **Root** 两档权限区分日常调节和进阶控制。
 
-### 硬件调整支持
-
-✅ **已验证支持** · 🟡 **已支持** · ❌ **未支持**
-
-矩阵按硬件调整的设计覆盖范围标注。🟡 表示设计支持，仍需完成接入或实机验证；✅ 表示已有具体机型的调节与回读验证；❌ 表示设计不支持。当前发行版实际可用的调节项以控制页检测结果为准。
-
-<table>
-  <thead>
-    <tr><th rowspan="2" scope="col">设备类型</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th><th colspan="3" scope="colgroup">iGPU</th></tr>
-    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
-  </thead>
-  <tbody>
-    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持：设计排除 AMD 笔记本独显">❌</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
-    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
-  </tbody>
-</table>
-
-GPU 为独显，iGPU 为核显。
-
-<details>
-<summary><strong>查看调节项、依赖与硬件限制</strong></summary>
-
-**调节范围与接入进度：**
-
-**0.2.7 阶段发行版**已接通 **Intel CPU 和桌面 AMD 独显** 的控制页、组件安装、回读及恢复链路。桌面主板风扇使用 Fan Control Core 的 Super I/O 后端。新增链路已做接口测试，**尚未实机验证**。剩余设计缺口见下文。
-
-- **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限的映射或回读尚未确认，当前未开放。
-- **Intel CPU**：已实现 PL1 / PL2、各自时间窗及核心 / 缓存 / 核显 / 系统代理电压偏移，经官方签名 PawnIO IntelMSR 模块。组件需显式安装，固件锁定和 OC 邮箱拒绝会显示具体原因。**MMIO、TCC、Turbo 倍频 / 开关、HWP / EPP 和 CPU / 核显功率分配仍未完成**：当前签名模块不允许所需寄存器写入，安装现有组件也不能解锁这些项。
-- **AMD 桌面独显**：已实现 ADLX 功耗偏移（%）、核心最低频率、显存最高频率。核心最高频率和电压在 Navi4 之前使用绝对值，已识别的 Navi4 使用偏移量，遵循 ADLX 的代际定义；未知代际的 GFX 项等待识别后开放。范围和步长由驱动提供，写入后回读；撤销逐参数恢复接管前的原值，不重置整块显卡。**旧式 GFX / VRAM 状态表接口尚未实现**。**AMD 笔记本独显明确不支持**，不进入通用 GPU 兜底写入器。
-- **AMD 核显**：GPU Curve Optimizer，需要 Hardware Bridge 与相应 SMU 能力，独立于 CPU Curve Optimizer。
-- **Intel 核显**：核心频率偏移，需要 IGCL 驱动接口与硬件开放调节能力。
-- **NVIDIA 独显**：NVAPI 核心与显存频率偏移；NVML 功耗上限、核心与显存锁频、温度阈值。可调范围由驱动返回，部分笔记本驱动会拒绝 NVML 写入，能读取不代表能调整。
-- **兼容的 Uniwill / 同方 OEM 笔记本**：另支持 cTGP 偏移、Dynamic Boost 开关与偏移，需要对应 EC 接口；寄存器回读不等于实际功耗变化。
-
-**风扇调整：**
-
-| 设备类型 | 状态 | 范围 |
-| --- | --- | --- |
-| 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
-| 🖥️ 桌面主机 | 🟡 | Super I/O 主板接头已由 Fan Control Core + LibreHardwareMonitor 接入；AMD ADLX 风扇控制器已接最低转速、目标 RPM 和 Zero RPM，逐能力探测。USB / HID、NVIDIA 原生风扇写入、AMD 固件风扇曲线仍未完成 |
-
-仅有自动 / 全速接口的机器不提供任意定速；目标 RPM 与监测 RPM 分别显示。其他原设计缺口还包括 AMD CPU 电流 / 温度回读及命令校准、更多 SMU 调节项和 Linux 产品控制宿主；Fan Control Core 已有 Linux hwmon，不代表主产品已经支持 Linux。
-
-当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「✅ 已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
-
-</details>
+硬件调整支持矩阵及依赖与硬件限制见[支持清单](#-支持清单)。
 
 ### 🌡️ 风扇曲线
 
@@ -196,9 +151,232 @@ CPU 和 GPU 的详细监控信息，而不是只能看到一个简单的占用�
 
 ---
 
+## 📋 支持清单
+
+✅ **已验证支持** · 🟡 **已支持** · ❌ **未支持** · — 不适用
+
+- **硬件调整：** ✅ 表示已有具体机型的调节与回读验证；🟡 表示设计支持，仍需完成接入或实机验证；❌ 表示设计不支持。
+- **监控与设备信息：** ✅ 表示该读数已在实机上读到当前值。验证机为一台 AMD Ryzen 9 8940HX 笔记本，配 NVIDIA GeForce RTX 5060 Laptop GPU 和 AMD Radeon 610M 核显，没有 NPU，2026-10-22 只读检查；读数没有和其他工具对比。🟡 表示已实现，并用录制或模拟数据测试过，尚未在实机上确认；❌ 表示不支持。
+
+本清单对应 2026-10-22 的源码。最新公开 beta 为 0.2.8（2026-10-01），下面很多读数是在它之后加入的，随下一个 beta 发布。实际能看到哪些读数，取决于硬件、驱动和已安装的组件；硬件不提供的读数显示为不可用。
+
+### 硬件调整
+
+矩阵按硬件调整的设计覆盖范围标注。当前发行版实际可用的调节项以控制页检测结果为准。
+
+<table>
+  <thead>
+    <tr><th rowspan="2" scope="col">设备类型</th><th colspan="3" scope="colgroup">CPU</th><th colspan="3" scope="colgroup">GPU</th><th colspan="3" scope="colgroup">iGPU</th></tr>
+    <tr><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th></tr>
+  </thead>
+  <tbody>
+    <tr><th scope="row">💻 笔记本</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="未支持：设计排除 AMD 笔记本独显">❌</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+    <tr><th scope="row">🖥️ 桌面主机</th><td align="center" title="已支持">🟡</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持">❌</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持：设计排除 Intel 独显">❌</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="已支持">🟡</td><td align="center" title="未支持">❌</td></tr>
+  </tbody>
+</table>
+
+GPU 为独显，iGPU 为核显。
+
+<details>
+<summary><strong>查看调节项、依赖与硬件限制</strong></summary>
+
+**调节范围与接入进度：**
+
+**0.2.7 阶段发行版**已接通 **Intel CPU 和桌面 AMD 独显** 的控制页、组件安装、回读及恢复链路。桌面主板风扇使用 Fan Control Core 的 Super I/O 后端。新增链路已做接口测试，**尚未实机验证**。0.2.8 beta 没有改变调节范围。当前源码中，开关类调节项改为三选一：交还固件、开启、关闭。剩余设计缺口见下文。
+
+- **AMD CPU / APU**：STAPM、慢速与快速功耗上限、PBO Scalar、CPU Curve Optimizer。需要 Hardware Bridge，具体型号、固件与驱动决定各项是否可用，Curve Optimizer 需要可回读；TDC / EDC 电流上限与温度上限的映射或回读尚未确认，当前未开放。
+- **Intel CPU**：已实现 PL1 / PL2、各自时间窗及核心 / 缓存 / 核显 / 系统代理电压偏移，经官方签名 PawnIO IntelMSR 模块。组件需显式安装，固件锁定和 OC 邮箱拒绝会显示具体原因。**MMIO、TCC、Turbo 倍频 / 开关、HWP / EPP 和 CPU / 核显功率分配仍未完成**：当前签名模块不允许所需寄存器写入，安装现有组件也不能解锁这些项。
+- **AMD 桌面独显**：已实现 ADLX 功耗偏移（%）、核心最低频率、显存最高频率。核心最高频率和电压在 Navi4 之前使用绝对值，已识别的 Navi4 使用偏移量，遵循 ADLX 的代际定义；未知代际的 GFX 项等待识别后开放。范围和步长由驱动提供，写入后回读；撤销逐参数恢复接管前的原值，不重置整块显卡。**旧式 GFX / VRAM 状态表接口尚未实现**。**AMD 笔记本独显明确不支持**，不进入通用 GPU 兜底写入器。
+- **AMD 核显**：GPU Curve Optimizer，需要 Hardware Bridge 与相应 SMU 能力，独立于 CPU Curve Optimizer。
+- **Intel 核显**：核心频率偏移，需要 IGCL 驱动接口与硬件开放调节能力。
+- **NVIDIA 独显**：NVAPI 核心与显存频率偏移；NVML 功耗上限、核心与显存锁频、温度阈值。可调范围由驱动返回，部分笔记本驱动会拒绝 NVML 写入，能读取不代表能调整。
+- **兼容的 Uniwill / 同方 OEM 笔记本**：另支持 cTGP 偏移、Dynamic Boost 开关与偏移，需要对应 EC 接口；寄存器回读不等于实际功耗变化。
+
+**风扇调整：**
+
+| 设备类型 | 状态 | 范围 |
+| --- | --- | --- |
+| 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
+| 🖥️ 桌面主机 | 🟡 | Super I/O 主板接头已由 Fan Control Core + LibreHardwareMonitor 接入；AMD ADLX 风扇控制器已接最低转速、目标 RPM 和 Zero RPM，逐能力探测。USB / HID、NVIDIA 原生风扇写入、AMD 固件风扇曲线仍未完成 |
+
+仅有自动 / 全速接口的机器不提供任意定速；目标 RPM 与监测 RPM 分别显示。其他原设计缺口还包括 AMD CPU 电流 / 温度回读及命令校准、更多 SMU 调节项和 Linux 产品控制宿主；Fan Control Core 已有 Linux hwmon，不代表主产品已经支持 Linux。
+
+当前尚未发布包含机型、驱动、调节值和回读结果的完整实机验证记录，因此没有将上述项目标为「✅ 已验证支持」。欢迎通过 Issues 提交这些信息及恢复默认值的结果，帮助补齐验证范围。
+
+</details>
+
+### 监控与读数
+
+监视控制台最多可显示 325 个命名读数，按设备分组。下表按设备类型汇总，展开详情可查看每组读数及来源。
+
+<table>
+  <thead>
+    <tr><th scope="col">设备类型</th><th align="center" scope="col">AMD</th><th align="center" scope="col">Intel</th><th align="center" scope="col">NVIDIA</th><th align="center" scope="col">Qualcomm</th></tr>
+  </thead>
+  <tbody>
+    <tr><th scope="row">🧠 CPU</th><td align="center" title="已在 Ryzen 9 8940HX 上验证：Windows 计数器与 SMU 读数">✅</td><td align="center" title="已接入，待实机验证">🟡</td><td align="center" title="未支持：发行版只支持 Windows x64">❌</td><td align="center" title="未支持：发行版只支持 Windows x64">❌</td></tr>
+    <tr><th scope="row">🎮 GPU</th><td align="center" title="与已验证的 Radeon 610M 走同一 ADLX 路径；独显尚未验证">🟡</td><td align="center" title="经 IGCL 接入，待实机验证">🟡</td><td align="center" title="已在 GeForce RTX 5060 Laptop GPU 上验证：NVML、NVAPI 与 Windows 计数器">✅</td><td align="center" title="不适用">—</td></tr>
+    <tr><th scope="row">🖼️ iGPU</th><td align="center" title="已在 Radeon 610M 上验证：ADLX、SMU 与 Windows 计数器">✅</td><td align="center" title="经 IGCL 接入，待实机验证">🟡</td><td align="center" title="未支持：发行版只支持 Windows x64">❌</td><td align="center" title="未支持：发行版只支持 Windows x64">❌</td></tr>
+    <tr><th scope="row">🤖 NPU</th><td align="center" title="已接入；验证机没有 NPU">🟡</td><td align="center" title="已接入；验证机没有 NPU">🟡</td><td align="center" title="不适用">—</td><td align="center" title="未支持：发行版只支持 Windows x64">❌</td></tr>
+  </tbody>
+</table>
+
+✅ 表示该列的主要读数已在上述验证机上确认，其中个别读数仍可能是 🟡，见详情。AMD SMU 读数与处理器代际有关，目前只检查过 Ryzen 9 8940HX。
+
+| 设备 | 状态 | 主要读数 | 来源 |
+| --- | :---: | --- | --- |
+| 🧮 内存与虚拟内存 | ✅ | 物理内存总量 / 已用 / 可用；提交量、上限与峰值；系统缓存；内核池；进程、线程与句柄数 | Windows，内置 |
+| 🧩 NUMA 节点 | ✅ | 每个节点的可用内存与容量 | Windows，内置 |
+| 💽 全部磁盘 | ✅ | 总活动时间、读写速率、队列长度 | Windows 性能计数器 |
+| 💾 NVMe 硬盘 | 🟡 | 健康状态 ✅；NVMe 健康日志（温度、备用空间、磨损、读写数据量、错误、通电时间）、可靠性计数、单盘吞吐 / IOPS / 延迟 | Windows 存储接口 |
+| 💾 SATA 硬盘 | 🟡 | 健康状态、ATA SMART 数据与阈值、可靠性计数、单盘吞吐 | Windows 存储接口 |
+| 💾 USB 硬盘 | 🟡 | 健康状态 ✅；其他读数取决于 USB 桥接芯片 | Windows 存储接口 |
+| 🌐 网络 | ✅ | 逐网卡 17 项累计计数与收发速率；总吞吐与利用率 | Windows IP Helper、性能计数器 |
+| 🔋 电池 | ✅ | 电量、充放电功率、电源状态、设计 / 满充 / 剩余容量、电压、满充 / 设计容量比 | Windows 电池驱动 |
+| 🌀 笔记本风扇 | ✅ | 兼容的 Uniwill / 同方笔记本的 CPU 与 GPU 风扇转速（RPM 与 %）；其他品牌依靠 LibreHardwareMonitor（🟡） | 内置 OEM 读取，只读 |
+| 🌀 桌面风扇与主板传感器 | 🟡 | 风扇转速、主板 / VRM / 芯片组温度、主板电压、内存温度、通用 CPU 温度 | LibreHardwareMonitor，可选 |
+| 📋 软件与进程 | ✅ | CPU、内存（含共享内存估算份额）、磁盘、网络、各 GPU 占用与显存 | Windows |
+
+<details>
+<summary><strong>按设备查看读数、来源与限制</strong></summary>
+
+**CPU**
+
+| 读数 | AMD | Intel | 来源 |
+| --- | :---: | :---: | --- |
+| 占用率；频率及相对基础频率的百分比 | ✅ | 🟡 | Windows 计数器，内置 |
+| CPU 拓扑页的分核、分线程负载 | ✅ | 🟡 | Windows CPU Sets 与处理器信息 |
+| 封装、STAPM、实际与平均功耗；SoC 功耗与电压；核心电压；封装、TDC 与 EDC 电流；SMU 温度；平均核心频率 | ✅ | — | AMD SMU，经 PawnIO 及其 RyzenSMU 模块（可选组件，需显式安装） |
+| 核心与封装温度（DTS）、距 TjMax 余量、TjMax | — | 🟡 | Intel MSR，经 PawnIO 及其 IntelMSR 模块（可选组件） |
+| 封装、核心、核显、DRAM 能量计数；封装与 DRAM 声明功耗限制 | — | 🟡 | Intel MSR |
+| 逐线程有效频率（活动期间平均频率，来自 APERF / MPERF） | — | 🟡 | Intel MSR |
+| 温度、功耗、电流与跨域限制状态（当前及已记录） | — | 🟡 | Intel MSR |
+| 通用 CPU 温度与桌面 CPU 风扇 | 🟡 | 🟡 | LibreHardwareMonitor（可选，WMI） |
+
+SMU 温度是 SMU 报告的值，尚未确定对应 Tctl 还是 Tdie。Intel C-state 驻留与详细降频原因暂不提供，因为当前签名 IntelMSR 模块不允许读取所需寄存器。Intel 区间功率暂未提供，提供的是原始能量计数。
+
+**GPU**
+
+| 读数 | NVIDIA | AMD | Intel | 来源 |
+| --- | :---: | :---: | :---: | --- |
+| 最忙引擎占用率 | ✅ | ✅ | 🟡 | Windows GPU 引擎计数器 |
+| 逐引擎占用率 | 🟡 | 🟡 | 🟡 | Windows GPU 引擎计数器 |
+| 厂商占用：处理器、显存控制器、编码器、解码器（NVML）；活动率（ADLX）；渲染 / 计算与媒体引擎忙碌率（IGCL） | ✅ | ✅ | 🟡 | NVML；ADLX；IGCL |
+| 核心频率、显存频率、频率百分比 | ✅ | ✅ | 🟡 | NVML；ADLX 与 SMU；IGCL |
+| 显存：已用、总量、空闲、保留 | ✅ | 🟡 | — | NVML；ADLX |
+| 功耗与限制：报告、瞬时与 1 秒平均功耗，默认与生效上限（NVML）；芯片与整卡功耗（ADLX）；区间功率与能量（IGCL） | ✅ | 🟡 | 🟡 | NVML；ADLX；IGCL |
+| 核心 / Edge / APU 温度 | ✅ | ✅ | 🟡 | NVML；ADLX 与 SMU；IGCL |
+| 显存、热点与进风温度 | 🟡 | 🟡 | 🟡 | NVML；ADLX；IGCL |
+| 电压 | ✅ | ✅ | 🟡 | NVAPI；ADLX 与 SMU；IGCL |
+| 电流 | 🟡 | — | — | NVAPI |
+| PCIe 链路代数与通道数（当前与最大） | ✅ | — | 🟡 | NVML；IGCL |
+| 性能状态与时钟事件原因（NVML）；功耗 / 温度 / 电流 / 电压 / 占用限制标志（IGCL） | ✅ | — | 🟡 | NVML；IGCL |
+| 显卡自报的风扇转速 | 🟡 | 🟡 | 🟡 | NVML（逐风扇）；ADLX；IGCL |
+| 显存读写流量计数 | — | — | 🟡 | IGCL |
+
+AMD 一列在 Radeon 610M 核显上检查；AMD 独显走同一 ADLX 路径，尚未检查。验证机的显卡不提供显存温度和电流。笔记本显卡风扇见笔记本风扇一行。
+
+**NPU**
+
+| 读数 | Intel | AMD | Qualcomm | 来源 |
+| --- | :---: | :---: | :---: | --- |
+| 名称、驱动与位置 | 🟡 | 🟡 | ❌ | DXCore、Windows 设备树 |
+| 专用与共享内存的提交量和驻留量 | 🟡 | 🟡 | ❌ | DXCore |
+| 引擎运行时间与忙碌率（任务管理器同款算法，可超过 100%） | 🟡 | 🟡 | ❌ | DXCore |
+| AMD 报告的活动率与频率，显示在对应 AMD 显卡下 | — | 🟡 | — | ADLX |
+
+验证机没有 NPU。Qualcomm NPU 运行在 Windows on Arm 上，x64 发行版不支持。
+
+**内存、存储、网络、电池与风扇**
+
+| 读数 | 状态 | 来源 |
+| --- | :---: | --- |
+| 物理内存、提交量、系统缓存、内核池；进程 / 线程 / 句柄数 | ✅ | Windows |
+| NUMA 节点可用内存与容量（单节点） | ✅ | Windows |
+| 多节点及纯内存 NUMA 节点 | 🟡 | Windows |
+| 内存温度 | 🟡 | LibreHardwareMonitor |
+| 全部磁盘的总活动时间、读写速率、队列长度 | ✅ | Windows 性能计数器 |
+| 硬盘健康状态（NVMe 与 USB） | ✅ | Windows 存储管理（MSFT_PhysicalDisk） |
+| 硬盘健康状态（SATA） | 🟡 | Windows 存储管理（MSFT_PhysicalDisk） |
+| 硬盘温度、磨损、读写错误、通电时间、启停与加载次数、最大延迟 | 🟡 | Windows 存储可靠性计数 |
+| NVMe 健康日志：警告、备用空间、已用百分比、综合温度与 8 个传感器温度、数据量、命令数、忙碌时间、上电次数、异常断电、介质错误、512 字节原始日志 | 🟡 | NVMe 健康日志查询 |
+| ATA SMART 数据与阈值（原始页） | 🟡 | ATA SMART 查询 |
+| 单盘读写速率、IOPS、活动时间、队列长度、延迟 | 🟡 | Windows 磁盘性能查询 |
+| 逐网卡：字节、单播 / 组播 / 广播流量、包数、丢弃、错误、未知协议包、收发速率 | ✅ | Windows IP Helper |
+| 网络总收发速率与利用率 | ✅ | Windows 性能计数器 |
+| 电池电量、充放电功率、电源状态、各项容量、电压、满充 / 设计容量比 | ✅ | Windows 电池驱动 |
+| 电池循环次数与剩余时间 | 🟡 | Windows 电池驱动，取决于电池固件 |
+| 兼容的 Uniwill / 同方笔记本的 CPU / GPU 风扇转速 | ✅ | 内置 OEM 读取（UWACPI，只读） |
+| 桌面风扇、主板 / VRM / 芯片组温度、主板电压 | 🟡 | LibreHardwareMonitor（可选，WMI） |
+| 逐软件、逐进程的 CPU、内存、磁盘、网络、GPU 占用与显存 | ✅ | Windows 进程计数器、ETW、GPU 计数器 |
+
+</details>
+
+### 设备信息
+
+| 范围 | 状态 | 内容 |
+| --- | :---: | --- |
+| 🔌 设备拓扑 | ✅ | 内部与外部接口、所接设备、实际协商与最高链路速率 |
+| 🔗 USB、HID 与摄像头 | ✅ | USB 身份与速率、HID 集合、UVC 摄像头声明的帧间隔 |
+| 🖥️ 显示器与 EDID 基础信息 | ✅ | 当前模式、HDR 状态、亮度、旋转；EDID 原文、版本、尺寸与色度 |
+| 📐 显示模式与时序 | 🟡 | 从 EDID、CTA-861 和 DisplayID 1.3 / 2.x 解析的模式，含 Type V / VI 时序与 Adaptive-Sync |
+| 🧠 CPU 身份与拓扑 | ✅ | CPUID 身份、指令集特性、核心、线程、CCD 与缓存 |
+| 🎮 GPU 身份 | ✅ | 名称、PCI ID、驱动版本、VBIOS；NVIDIA CUDA 能力；AMD 显存类型 |
+| 🧰 GPU API 能力 | 🟡 | Vulkan、OpenGL、Direct3D 与 OpenCL 的限制与特性 |
+| 🧾 SMBIOS 与固件 | ✅ | 系统、主板、BIOS、内存条、插槽与 CPU 插座 |
+| 💾 磁盘与卷 | ✅ | 分区布局、对齐、TRIM、卷空间、分页文件 |
+| 🌐 网络、安全与驱动 | ✅ | 地址、路由、TCP / UDP 端点、安全软件、驱动版本 |
+| 🤖 NPU 身份 | 🟡 | 名称、驱动与位置 |
+
+<details>
+<summary><strong>查看设备信息详情与来源</strong></summary>
+
+| 范围 | 状态 | 内容 | 来源 |
+| --- | :---: | --- | --- |
+| 设备拓扑 | ✅ | USB、PCIe、HD Audio、eDP、HDMI、Mini DP、RJ45 与蓝牙接口及其后的设备，以及 USB-C 连接器管理（UCSI）；实际协商与最高速率 | Windows 设备树（SetupAPI / CfgMgr32） |
+| USB | ✅ | VID / PID、类别、USB 版本、设备版本、序列号、连接器类型、上级集线器端口、当前与最高速率 | USB 集线器查询 |
+| USB 摄像头（UVC） | ✅ | 各格式、各分辨率声明的帧间隔（Uncompressed / MJPEG）与最佳模式；当前视频流模式为 🟡 | USB 描述符 |
+| HID | ✅ | 顶层集合、用途、报告长度、按钮与数值能力 | Windows HID 接口 |
+| PCI | ✅ | 厂商 / 设备 / 子系统 / 修订 ID、硬件 ID 与兼容 ID、已分配的内存 / IO / 总线范围、中断；传统 DMA 通道为 🟡 | Windows 设备树 |
+| 显示器 | ✅ | 当前模式的分辨率、精确刷新率比值与位深；HDR 支持 / 开启 / 生效；颜色模式、SDR 白电平、亮度、旋转 | DisplayConfig、DXGI |
+| EDID 基础信息 | ✅ | Windows 保存的 EDID 原文、EDID 版本、产品名、物理尺寸、基础色度 | 注册表 EDID |
+| 显示模式与时序 | 🟡 | 详细、标准与既定时序，CVT，范围限制；CTA-861 视频格式、YCbCr 4:2:0、颜色与 HDR 声明；DisplayID 1.3 时序（Type I、II、III、V、VI）与 DisplayID 2.x 时序（Type VII）、动态时序范围、Adaptive-Sync。遇到解析器不认识的声明时，模式列表显示为不可用，不做猜测 | 注册表 EDID |
+| CPU | ✅ | CPUID 厂商 / 家族 / 型号 / 步进 / 品牌、指令集特性与系统可用特性；核心、线程、CCD、缓存、效率等级 | CPUID、Windows 处理器信息 |
+| CPU 扩展信息 | 🟡 | XSAVE 状态掩码、地址宽度、虚拟化（VMX / SMX / SVM）、逐线程 CPUID 寄存器、封装与 die 关系、Intel 规格频率 | CPUID、Windows |
+| GPU 身份 | ✅ | 名称、PCI ID、适配器 LUID、驱动版本；NVIDIA VBIOS 与 CUDA 计算能力；AMD VBIOS 版本、料号与日期、显存类型 | DXGI、NVML、ADLX |
+| GPU API 能力 | 🟡 | Vulkan 核心与图像限制、OpenGL、Direct3D 11 视频、Direct3D 12 光追等级、OpenCL | 图形 API |
+| NVIDIA 驱动配置 | 🟡 | 驱动 Profile 设置，只读 | NVAPI |
+| SMBIOS | ✅ | 系统、主板与 BIOS；内存条（Type 17）、插槽（Type 9）、CPU 插座（Type 4） | 固件表 |
+| ACPI 表 | 🟡 | ACPI 原始表，按需读取 | 固件表 |
+| 磁盘与卷 | ✅ | 分区布局（MBR / GPT）、对齐、TRIM、总线类型、卷空间与配额、分页文件；ATA / NVMe Identify 数据为 🟡 | Windows 存储接口 |
+| 网络配置 | ✅ | 网卡标识、IPv4 / IPv6 地址、路由、TCP / UDP 端点及所属进程 | Windows IP Helper |
+| 安全软件 | ✅ | 防病毒与防火墙产品及其健康状态、生效的防火墙配置 | Windows 安全中心、防火墙接口 |
+| 驱动 | ✅ | 每个设备的驱动提供商、日期与版本 | Windows 设备树 |
+| 电池身份 | ✅ | 厂商、化学类型、序列号 | Windows 电池驱动 |
+| NPU 身份 | 🟡 | 名称、驱动与位置 | DXCore、Windows 设备树 |
+
+</details>
+
+### 优化实机结果
+
+2026-10-22 在上面的验证机（Ryzen 9 8940HX，2 个 CCD，32 GB 内存）上用开发版测过一次。测试期间同时有其他编译负载，整机可用内存的起伏来自这些负载，不能算作优化效果，所以下表只列直接观察到的动作和恢复结果。
+
+| 项目 | 状态 | 实测 |
+| --- | :---: | --- |
+| 内存调度：修剪空闲后台进程 | ✅ | 12 分钟内修剪 8 个低占用后台进程，共约 430 MB；真正空闲的进程能保持在低位 |
+| 内存调度：降低后台进程的内存优先级 | 🟡 | 切换到内存调度后 30 秒内写入 92 个进程，切回普通模式或停止后全部恢复；冷启动直接进入时执行偏少，源码已在修正 |
+| CPU 调度：单 CCD 放置 | 🟡 | 在 2 个 CCD 的机器上会把进程放到单个 CCD；撤销放置失败的问题已在源码修复，待复测 |
+| GPU 调度 | — | 未测，它涉及启动拦截和 D3D 代理 |
+
+测试结束后，全部进程的优先级、亲和性、内存优先级、节流状态和 CPU Sets 都与测试前一致。
+
+---
+
 ## ⚙️ 设置
 
 配置你需要的调度策略。
+
+外观可以选择界面风格和配色。风格改变控件的圆角、线条、阴影和字体，不改布局：标准（跟随系统、浅色、深色、低对比）、柔和（跟随系统、浅色、深色）、线框（跟随系统、纸面、石墨、蓝图）、终端（磷绿、琥珀、冰蓝）。每种风格只列出它自己的配色。
 
 ![设置](docs/screenshots/zh/08-settings.png)
 

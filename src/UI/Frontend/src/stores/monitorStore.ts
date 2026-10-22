@@ -307,7 +307,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     intervalMs: options.resourceTableIntervalMs()
   }));
   let activeMetricQueryKey: string | null = null;
-  const [fieldCatalog, setFieldCatalog] = createSignal<readonly MetricFieldCatalogDevice[] | null>(null);
+  // 目录每 5 秒推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
+  const [fieldCatalog, setFieldCatalog] = createSignal<readonly MetricFieldCatalogDevice[] | null>(
+    null,
+    { equals: sameMetricFieldCatalog });
   const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldDevice[] | null>(null);
   const fieldSlots = createMemo(() => fieldCardSlots(activeCards()));
   const fieldSubscriptionKey = createMemo(() => JSON.stringify({
@@ -1152,6 +1155,19 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     clearResourceSelection,
     cancelAllMonitorEdits
   };
+}
+
+/** 目录只有设备描述和字段定义（纯 JSON 数据），按完整内容比较，目录合同加字段时也不漏。 */
+function sameMetricFieldCatalog(
+  left: readonly MetricFieldCatalogDevice[] | null,
+  right: readonly MetricFieldCatalogDevice[] | null): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function moveItemBefore<T>(items: T[], key: (item: T) => string, sourceKey: string, targetKey: string) {

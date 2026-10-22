@@ -32,7 +32,8 @@ public sealed class WindowsNetworkInterfaceMetricResource
                 return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
             return new(NativeMetricSnapshotCatalogTopologyStatus.Complete,
                 rows.OrderBy(static row => row.Guid).Select(static (row, ordinal) =>
-                    new NetworkInterfaceCatalogIdentity(ordinal, row.Guid, row.Luid, row.Index)).ToArray());
+                    new NetworkInterfaceCatalogIdentity(ordinal, row.Guid, row.Luid, row.Index)
+                    { NameDeclared = row.Description }).ToArray());
         }
         catch (Exception) { return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []); }
     }

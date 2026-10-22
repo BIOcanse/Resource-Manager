@@ -32,29 +32,28 @@ for (const asset of managedAssets) {
   assert.ok(statSync(path).size > 0, `Managed HTML asset is empty: ${asset}`);
 }
 
-const managedModulePath = join(managedRoot, managedModules[0].slice(1));
-const managedModule = readFileSync(managedModulePath, "utf8");
+// 页面和弹窗按需分包：内容检查覆盖全部构建脚本，不只入口。
 const managedJavaScript = readdirSync(join(managedRoot, "assets"))
   .filter((name) => name.endsWith(".js"))
   .map((name) => readFileSync(join(managedRoot, "assets", name), "utf8"))
   .join("\n");
 assert.doesNotMatch(
-  managedModule,
+  managedJavaScript,
   /resourceDangerLineTitle|onAdaptedResourceDangerLinesChange|资源安全线|Resource Safety Limits/,
   "Built UI must not expose actionable controls for retired resource-movement settings.");
 assert.doesNotMatch(
-  managedModule,
+  managedJavaScript,
   /GPU0.{0,160}GPU1.{0,160}GPU2.{0,160}GPU3/s,
   "Built UI must not contain the former static exact-GPU option inventory.");
-assert.match(managedModule, /processCapabilities/);
-assert.match(managedModule, /targetInventory/);
-assert.match(managedModule, /D3D11/);
+assert.match(managedJavaScript, /processCapabilities/);
+assert.match(managedJavaScript, /targetInventory/);
+assert.match(managedJavaScript, /D3D11/);
 assert.match(
-  managedModule,
+  managedJavaScript,
   /host\.backend-session\.request/,
   "Built UI must request the Native UI verified backend session projection.");
 assert.match(
-  managedModule,
+  managedJavaScript,
   /local-system\.status\.v1/,
   "Built UI must contain the strict local-system response decoder.");
 assert.match(

@@ -46,9 +46,11 @@ import type {
   AppPresetNumericSettingMode,
   AppSettings,
   AppSystemIntegrationSettings,
-  AppThemeMode,
+  AppPalette,
+  AppUiStyle,
   SettingsSection
 } from "../types";
+import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
 import { postShellMessage } from "../utils.ts";
 import { normalizeEditableHotkeys } from "../features/settings/editableHotkeys.ts";
 import { normalizeOptimizationModeValue } from "../features/settings/optimizationMode.ts";
@@ -104,7 +106,8 @@ export interface SettingsStore {
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateFrontendHiddenRefreshMode: (mode: AppFrontendHiddenRefreshMode) => void;
   updateLogicRefreshInterval: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
-  updateTheme: (theme: AppThemeMode) => void;
+  updateUiStyle: (uiStyle: AppUiStyle) => void;
+  updateTheme: (theme: AppPalette) => void;
   updateAnimations: (animations: AppAnimationMode) => void;
   updateResourceBarHardwareAccelerationMode: (mode: AppAdaptiveBooleanMode) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
@@ -418,14 +421,24 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     })),
     updateLogicRefreshInterval: (key, setting) => updatePerformance((performance) =>
       assignLogicRefreshInterval(performance, key, normalizeLogicRefreshIntervalSetting(key, setting))),
+    // 换风格时配色在新风格里也有就保留，没有就用新风格的默认配色。
+    updateUiStyle: (uiStyle) => {
+      updateDraft((currentSettings) => {
+        const appearance = normalizeAppSettings(currentSettings).appearance!;
+        return {
+          ...currentSettings,
+          appearance: { ...appearance, ...normalizeUiAppearance(uiStyle, appearance.theme) }
+        };
+      });
+    },
     updateTheme: (theme) => {
-      updateDraft((currentSettings) => ({
-        ...currentSettings,
-        appearance: {
-          ...normalizeAppSettings(currentSettings).appearance!,
-          theme
-        }
-      }));
+      updateDraft((currentSettings) => {
+        const appearance = normalizeAppSettings(currentSettings).appearance!;
+        return {
+          ...currentSettings,
+          appearance: { ...appearance, ...normalizeUiAppearance(appearance.uiStyle, theme) }
+        };
+      });
     },
     updateAnimations: (animations) => {
       updateDraft((currentSettings) => ({
@@ -590,6 +603,7 @@ export function defaultAppSettings(): AppSettings {
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
     },
     appearance: {
+      uiStyle: "standard",
       theme: "system",
       animations: "auto",
       resourceBarHardwareAccelerationEnabled: true,
@@ -802,13 +816,6 @@ function assignLogicRefreshInterval(
   return performance;
 }
 
-export function normalizeThemeMode(theme?: string | null): AppThemeMode {
-  if (theme === "light" || theme === "dark" || theme === "lowContrast") {
-    return theme;
-  }
-
-  return "system";
-}
 
 export function normalizeAnimationMode(animations?: string | null): AppAnimationMode {
   if (animations === "auto") {
@@ -937,7 +944,7 @@ function normalizeAppearanceSettings(
   settings?: AppAppearanceSettings | null
 ): AppAppearanceSettings {
   return {
-    theme: normalizeThemeMode(settings?.theme),
+    ...normalizeUiAppearance(settings?.uiStyle, settings?.theme),
     animations: normalizeAnimationMode(settings?.animations),
     resourceBarHardwareAccelerationEnabled: normalizeResourceBarHardwareAcceleration(
       settings?.resourceBarHardwareAccelerationEnabled),
@@ -983,9 +990,8 @@ function alignRuntimeOwnedSettings(
 
 function syncPrebootAppearance(settings: AppSettings) {
   try {
-    localStorage.setItem(prebootAppearanceStorageKey, JSON.stringify({
-      theme: normalizeThemeMode(settings.appearance?.theme)
-    }));
+    localStorage.setItem(prebootAppearanceStorageKey, JSON.stringify(
+      normalizeUiAppearance(settings.appearance?.uiStyle, settings.appearance?.theme)));
   } catch {
     // Preboot theming is a visual fallback only; settings still live in the backend.
   }

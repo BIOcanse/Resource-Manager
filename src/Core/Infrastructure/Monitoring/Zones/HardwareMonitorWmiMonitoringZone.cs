@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Windows.Platform;
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -14,9 +15,10 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
             var queried = query(path, statement);
             return new(queried.Rows, queried.Error);
         });
-        var result = reader.ReadFanIdentities(TimeSpan.FromSeconds(2));
-        return new(result.Complete ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-            result.Identities.Select(item => new NativeMetricSnapshotOrdinalCatalogIdentity(item.Index, item.IdentityKey, generation)).ToArray());
+        // Shared WMI fan catalog projection, so these identities carry the same fan device descriptor
+        // as the ReadWriteCore default resources. This path appended no OEM fan identities before either.
+        return WindowsNotebookFanProjection.CreateFanCatalog(reader.ReadFanIdentities(TimeSpan.FromSeconds(2)),
+            enableMechrevo: false, generation);
     }
 
     internal HardwareMonitorSensorSnapshot ReadSensors()

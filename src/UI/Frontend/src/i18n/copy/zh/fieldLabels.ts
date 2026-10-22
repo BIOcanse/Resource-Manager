@@ -327,5 +327,9 @@ export const zhFieldLabelsCopy = {
     gpu_amd_memory_temperature_celsius: { label: "显存温度（ADLX）", hint: "AMD ADLX 报告的显存温度。" },
     cpu_amd_smu_temperature_reported_celsius: { label: "CPU 温度（SMU）", hint: "AMD SMU 报告的 CPU 温度；尚未确定它是 Tctl 还是 Tdie。" },
     gpu_amd_apu_temperature_reported_celsius: { label: "核显温度（SMU）", hint: "SMU 报告的这颗 AMD APU 核显温度。" }
-  } as Record<string, { label: string; hint: string }>
+  } as Record<string, { label: string; hint: string }>,
+  // 代码字段取值的显示名（解码见 presentation/fieldValueFormat.ts）；认不出的代码显示原值。
+  fieldValueLabel: {
+    batteryPowerState: { onLine: "接通交流电", discharging: "正在放电", charging: "正在充电", critical: "电量严重不足" }
+  }
 };

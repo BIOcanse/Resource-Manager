@@ -69,7 +69,7 @@ export const enDeviceDetailsCopy: Pick<AppCopy, "deviceSpecialized" | "deviceInt
     powerRole: "Power role",
     negotiatedPower: "Negotiated power",
     graphicsBus: "Graphics bus",
-    networkInterface: "Network interface",
+    networkInterface: "System interface name",
     connectionState: "Connection state",
     transmitLink: "Transmit link",
     receiveLink: "Receive link",

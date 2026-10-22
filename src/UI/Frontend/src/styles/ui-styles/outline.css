@@ -1,0 +1,344 @@
+/* outline style（线框）. Rules: docs/ui_styles.md.
+   平面、结构化：不用投影，近直角，区域靠 1px 实线划分，表面和底色基本一致；
+   选中和激活用实心填充或下划线式的内嵌线表达，不用光晕。
+   只改外观，不改布局：尺寸、间距、字号、行高、边框宽度一律沿用标准风格。 */
+
+/* ---- 风格级变量（不分配色） ---- */
+:root[data-ui-style="outline"] {
+  /* 顶栏不透明，背景模糊看不出来，关掉省合成开销。 */
+  --shell-backdrop: none;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  /* 阴影一律换成透明的零阴影而不是 none：这些变量会和 --edge-highlight 写进同一个逗号列表，
+     none 出现在列表里会让整条 box-shadow 失效。 */
+  --elev-1: 0 0 0 0 transparent;
+  --elev-2: 0 0 0 0 transparent;
+  --elev-3: 0 0 0 0 transparent;
+  --edge-highlight: 0 0 0 0 transparent;
+  --shadow: 0 0 0 0 transparent;
+  --modal-shadow: 0 0 0 0 transparent;
+  --focus-ring: 2px solid var(--accent);
+}
+
+/* ---- 纸面：暖白纸、墨色文字、克制的墨蓝强调。跟随系统的浅色一侧也用它。 ---- */
+:root[data-ui-style="outline"][data-theme="paper"],
+:root[data-ui-style="outline"][data-theme="system"] {
+  color-scheme: light;
+  --bg: #f3f0e8;
+  --surface: #f8f6f0;
+  --surface-soft: #f3f0e8;
+  --surface-strong: #e8e4d9;
+  --table-header-bg: #efebe2;
+  --hover-bg: #ebe7dc;
+  --text: #1c1e23;
+  --muted: #57554e;
+  --line: #a9a192;
+  --line-soft: #d3cdbf;
+  --divider: #bfb8a9;
+  --divider-soft: #dcd6ca;
+  --hairline: #8f8778;
+  --accent: #1f4f8f;
+  --accent-strong: #163b6c;
+  --accent-soft: #e1e8f1;
+  --warn: #8f5500;
+  --warn-soft: #f5e8cf;
+  --danger: #a3241f;
+  --danger-soft: #f6e0dc;
+  --shell-bg: #f8f6f0;
+  --badge-bg: #e6e1d4;
+  --empty-bg: #f8f6f08f;
+  --resource-empty: #f8f6f0;
+  --on-accent: #ffffff;
+  --backdrop: #1c1e2452;
+  --shadow-color: 0.110 0.118 0.137;
+}
+
+/* ---- 石墨：中性深灰、清晰的浅色线条、橙色强调；警告偏黄、危险偏红，和强调色拉开。 ---- */
+:root[data-ui-style="outline"][data-theme="graphite"] {
+  color-scheme: dark;
+  --bg: #1d1e20;
+  --surface: #212224;
+  --surface-soft: #252628;
+  --surface-strong: #2e3033;
+  --table-header-bg: #27282b;
+  --hover-bg: #2c2e31;
+  --text: #e9e7e3;
+  --muted: #aaa69f;
+  --line: #55585d;
+  --line-soft: #3a3c40;
+  --divider: #46484d;
+  --divider-soft: #333539;
+  --hairline: #62656b;
+  --accent: #ec8a3c;
+  --accent-strong: #f5a768;
+  --accent-soft: #3b2b1e;
+  --warn: #e0c04a;
+  --warn-soft: #39321b;
+  --danger: #f06560;
+  --danger-soft: #3e201d;
+  --shell-bg: #1f2022;
+  --badge-bg: #34322d;
+  --empty-bg: #2122248f;
+  --resource-empty: #202123;
+  --on-accent: #1b1106;
+  --backdrop: #0a0a0ba6;
+  --shadow-color: 0.000 0.000 0.000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-style="outline"][data-theme="system"] {
+    color-scheme: dark;
+    --bg: #1d1e20;
+    --surface: #212224;
+    --surface-soft: #252628;
+    --surface-strong: #2e3033;
+    --table-header-bg: #27282b;
+    --hover-bg: #2c2e31;
+    --text: #e9e7e3;
+    --muted: #aaa69f;
+    --line: #55585d;
+    --line-soft: #3a3c40;
+    --divider: #46484d;
+    --divider-soft: #333539;
+    --hairline: #62656b;
+    --accent: #ec8a3c;
+    --accent-strong: #f5a768;
+    --accent-soft: #3b2b1e;
+    --warn: #e0c04a;
+    --warn-soft: #39321b;
+    --danger: #f06560;
+    --danger-soft: #3e201d;
+    --shell-bg: #1f2022;
+    --badge-bg: #34322d;
+    --empty-bg: #2122248f;
+    --resource-empty: #202123;
+    --on-accent: #1b1106;
+    --backdrop: #0a0a0ba6;
+    --shadow-color: 0.000 0.000 0.000;
+  }
+}
+
+/* ---- 蓝图：深藏青底、浅青色线条和文字，像技术图纸。 ---- */
+:root[data-ui-style="outline"][data-theme="blueprint"] {
+  color-scheme: dark;
+  --bg: #0e2340;
+  --surface: #112846;
+  --surface-soft: #132d4e;
+  --surface-strong: #1a3a5f;
+  --table-header-bg: #142f51;
+  --hover-bg: #183759;
+  --text: #e4f1ff;
+  --muted: #9ebad7;
+  --line: #4b77a3;
+  --line-soft: #2a4d74;
+  --divider: #3b648d;
+  --divider-soft: #22436a;
+  --hairline: #6b9ac8;
+  --accent: #7dd3ff;
+  --accent-strong: #a8e3ff;
+  --accent-soft: #1b4469;
+  --warn: #ffd166;
+  --warn-soft: #3a3626;
+  --danger: #ff7f7f;
+  --danger-soft: #4a2435;
+  --shell-bg: #0f2645;
+  --badge-bg: #1d3d62;
+  --empty-bg: #1128468f;
+  --resource-empty: #102644;
+  --on-accent: #08182c;
+  --backdrop: #040c18a6;
+  --shadow-color: 0.016 0.047 0.094;
+}
+
+/* ---- 控件 ---- */
+
+/* 按钮去掉标准风格的高光渐变，实心就是实心。 */
+:root[data-ui-style="outline"] button {
+  background-image: none;
+}
+
+/* 次要按钮是线框：透明底，边线沿用标准风格（组件自己的选中边线不受影响），悬停时边线换成强调色。 */
+:root[data-ui-style="outline"] button.secondary:not(:disabled) {
+  background-color: transparent;
+}
+
+:root[data-ui-style="outline"] :where(button:not(:disabled)).secondary:hover {
+  background-color: var(--hover-bg);
+  border-color: var(--accent);
+}
+
+/* 顶栏页签和二级分页：未选中是线框，选中是实心。 */
+:root[data-ui-style="outline"] .shell-page,
+:root[data-ui-style="outline"] .page-subnav-tab {
+  border-color: var(--line);
+  background: transparent;
+}
+
+:root[data-ui-style="outline"] .shell-page.active,
+:root[data-ui-style="outline"] .page-subnav-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+:root[data-ui-style="outline"] .shell-page:not(.active):hover,
+:root[data-ui-style="outline"] .page-subnav-tab:not(.active):not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+:root[data-ui-style="outline"] .shell-page.active:hover,
+:root[data-ui-style="outline"] .page-subnav-tab.active:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+/* 软件详情的分页按钮同样是线框；未选中的悬停给淡强调色，不落到全局按钮的实心悬停上。 */
+:root[data-ui-style="outline"] .software-detail-tabs button:not(.active) {
+  background: transparent;
+}
+
+:root[data-ui-style="outline"] .software-detail-tabs button:not(.active):not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* 分页标签：选中只画下划线，不刷底色、不加投影。 */
+:root[data-ui-style="outline"] .ui-tabs-list {
+  background: transparent;
+}
+
+:root[data-ui-style="outline"] .ui-tabs-trigger.active {
+  background: transparent;
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 开关是方的：轨道和滑块都只留很小的圆角。 */
+:root[data-ui-style="outline"] .settings-switch span {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="outline"] .settings-switch span::after {
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* 输入框聚焦：用一条贴边的强调色实线代替外发光。 */
+:root[data-ui-style="outline"] .toolbar-search input:focus,
+:root[data-ui-style="outline"] .resource-table-search input:focus,
+:root[data-ui-style="outline"] .settings-number-pair input:focus,
+:root[data-ui-style="outline"] .settings-number-field input:focus,
+:root[data-ui-style="outline"] .settings-hotkey-key-row select:focus,
+:root[data-ui-style="outline"] .settings-select .standard-select-trigger:focus-visible,
+:root[data-ui-style="outline"] .standard-select-trigger[aria-expanded="true"],
+:root[data-ui-style="outline"] .metric-picker-search:focus-within,
+:root[data-ui-style="outline"] .cpu-score-input:focus,
+:root[data-ui-style="outline"] .gpu-score-input:focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* 下拉框搜索栏：外框已经用 focus-within 画了聚焦环，里面的输入框不再叠一圈。 */
+:root[data-ui-style="outline"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* ---- 浮层 ---- */
+
+/* 右键菜单里不可用的项只降低不透明度，不套用禁用按钮的底色，菜单里不出现色块。 */
+:root[data-ui-style="outline"] .standard-context-menu-item:disabled {
+  background-color: transparent;
+}
+
+/* 浮层没有投影，靠边线和底色区分。资源条提示是反色实底：墨色底配纸色字，深色配色里反过来。 */
+:root[data-ui-style="outline"] .resource-tooltip {
+  background: var(--text);
+  color: var(--surface);
+  box-shadow: none;
+}
+
+/* 弹窗标题栏像图纸的标题栏：表头底色加一条实线。 */
+:root[data-ui-style="outline"] .modal-header {
+  background: var(--table-header-bg);
+  border-color: var(--line);
+}
+
+/* ---- 结构线 ---- */
+
+/* 表头和设置页标题栏的下边线加重，区域分界更清楚。 */
+:root[data-ui-style="outline"] .resource-table-header-clip,
+:root[data-ui-style="outline"] .settings-content-header {
+  border-color: var(--line);
+}
+
+/* ---- 字体与数字 ---- */
+
+/* 监视卡片的主数值用 Bahnschrift：比 Segoe 窄，行高沿用标准风格的固定倍数，盒子尺寸不变。
+   中文字形仍落到雅黑。小行数值不换，它们按内容定宽，换字体会让标签宽度跟着变。 */
+:root[data-ui-style="outline"] .metric-main .metric-value {
+  font-family: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+/* 资源列表的数字等宽，同一列上下对齐；列宽固定，不影响布局。 */
+:root[data-ui-style="outline"] .resource-table-viewport {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 蓝图底纹 ---- */
+
+/* 页面底色上画一层 24px 网格，只在卡片之间的空白处露出来。画在不滚动的 #root 上，滚动时不重绘。 */
+:root[data-ui-style="outline"][data-theme="blueprint"] #root {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--line-soft) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--line-soft) 55%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ---- 写死的大圆角：胶囊、圆点、大卡片一律收成近直角 ---- */
+:root[data-ui-style="outline"] #controlledCount,
+:root[data-ui-style="outline"] #managementCount,
+:root[data-ui-style="outline"] #resourceBreakdownStatus,
+:root[data-ui-style="outline"] #resourceTableStatus,
+:root[data-ui-style="outline"] #migrationStatus,
+:root[data-ui-style="outline"] #migrationRecordCount,
+:root[data-ui-style="outline"] #optimizationCount,
+:root[data-ui-style="outline"] .observation-state,
+:root[data-ui-style="outline"] .control-capability-tag,
+:root[data-ui-style="outline"] .device-port-protocol,
+:root[data-ui-style="outline"] .device-port-icon,
+:root[data-ui-style="outline"] .device-system-meta span,
+:root[data-ui-style="outline"] .device-topology-notes span,
+:root[data-ui-style="outline"] .task-center-tab-count,
+:root[data-ui-style="outline"] .shell-task-count,
+:root[data-ui-style="outline"] .slot-actions,
+:root[data-ui-style="outline"] .slot-change,
+:root[data-ui-style="outline"] .slot-delete,
+:root[data-ui-style="outline"] .metric-picker-search,
+:root[data-ui-style="outline"] .resource-segment-visual-plane,
+:root[data-ui-style="outline"] .cpu-ring-cache-region span,
+:root[data-ui-style="outline"] .cpu-ring-logical-chip,
+:root[data-ui-style="outline"] .cpu-cache-label,
+:root[data-ui-style="outline"] .cpu-process-score-list span,
+:root[data-ui-style="outline"] .gpu-position-main em,
+:root[data-ui-style="outline"] .gpu-position-meta span {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="outline"] .device-port-icon.large,
+:root[data-ui-style="outline"] .device-laptop-lid,
+:root[data-ui-style="outline"] .device-laptop-base,
+:root[data-ui-style="outline"] .cpu-ring-cache-region,
+:root[data-ui-style="outline"] .component-acquisition-versions {
+  border-radius: var(--radius-lg);
+}
+
+/* 条形轨道和状态圆点：方形。 */
+:root[data-ui-style="outline"] .cpu-core-meter,
+:root[data-ui-style="outline"] .gpu-pressure-track,
+:root[data-ui-style="outline"] .gpu-specialized-track,
+:root[data-ui-style="outline"] .device-laptop-hinge,
+:root[data-ui-style="outline"] .control-capability-level,
+:root[data-ui-style="outline"] .control-capability-live {
+  border-radius: 1px;
+}

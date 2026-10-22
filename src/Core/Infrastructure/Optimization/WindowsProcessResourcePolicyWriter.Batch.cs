@@ -209,13 +209,13 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             return false;
         }
 
-        if (request.CpuSetIds.Count == 0
-            || request.CpuSetIds.Any(static id => id == 0)
+        // 空集合是合法请求：清除进程默认 CPU Sets，恢复到“未设置”。
+        if (request.CpuSetIds.Any(static id => id == 0)
             || request.CpuSetIds.Distinct().Count() != request.CpuSetIds.Count)
         {
             validationResults.Add(Failure(
                 ProcessResourcePolicyBatchFields.CpuSets,
-                "CPU Sets 必须是非空、非零且不重复的 CPU Set ID 集合。"));
+                "CPU Sets 必须是非零且不重复的 CPU Set ID 集合；空集合表示清除进程默认 CPU Sets。"));
             return false;
         }
 
@@ -233,15 +233,11 @@ public sealed partial class WindowsProcessResourcePolicyWriter
     {
         foreach (var write in writes)
         {
-            var result = TrySetProcessDefaultCpuSetsExact(write);
-            fieldsByRequest[write.RequestIndex].Add(new ProcessResourcePolicyBatchFieldResult(
-                ProcessResourcePolicyBatchFields.CpuSets,
-                result.Succeeded,
-                result.Message));
+            fieldsByRequest[write.RequestIndex].Add(TrySetProcessDefaultCpuSetsExact(write));
         }
     }
 
-    private static ProcessResourcePolicyWriteResult TrySetProcessDefaultCpuSetsExact(
+    private static ProcessResourcePolicyBatchFieldResult TrySetProcessDefaultCpuSetsExact(
         PreparedCpuSetWrite write)
     {
         var handle = NativeMethods.OpenProcess(
@@ -250,9 +246,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             write.ProcessId);
         if (handle == IntPtr.Zero)
         {
-            return new ProcessResourcePolicyWriteResult(
-                false,
-                new Win32Exception(Marshal.GetLastWin32Error()).Message);
+            return Win32Failure(ProcessResourcePolicyBatchFields.CpuSets, Marshal.GetLastWin32Error());
         }
 
         IntPtr buffer = IntPtr.Zero;
@@ -262,26 +256,28 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             {
                 if (!GetProcessTimes(handle, out var creation, out _, out _, out _))
                 {
-                    return new ProcessResourcePolicyWriteResult(
-                        false,
-                        new Win32Exception(Marshal.GetLastWin32Error()).Message);
+                    return Win32Failure(ProcessResourcePolicyBatchFields.CpuSets, Marshal.GetLastWin32Error());
                 }
 
                 if (creation.ToUInt64() != checked((ulong)expectedStartedAt.ToFileTime()))
                 {
-                    return new ProcessResourcePolicyWriteResult(
-                        false,
+                    return Failure(
+                        ProcessResourcePolicyBatchFields.CpuSets,
                         "进程实例已经变化，拒绝写入 CPU Sets。");
                 }
             }
 
-            buffer = Marshal.AllocHGlobal(checked(write.CpuSetIds.Length * sizeof(uint)));
-            for (var index = 0; index < write.CpuSetIds.Length; index++)
+            // 空集合按 Windows 合同传 NULL/0，清除进程默认 CPU Sets。
+            if (write.CpuSetIds.Length > 0)
             {
-                Marshal.WriteInt32(
-                    buffer,
-                    index * sizeof(uint),
-                    unchecked((int)write.CpuSetIds[index]));
+                buffer = Marshal.AllocHGlobal(checked(write.CpuSetIds.Length * sizeof(uint)));
+                for (var index = 0; index < write.CpuSetIds.Length; index++)
+                {
+                    Marshal.WriteInt32(
+                        buffer,
+                        index * sizeof(uint),
+                        unchecked((int)write.CpuSetIds[index]));
+                }
             }
 
             if (!NativeMethods.SetProcessDefaultCpuSets(
@@ -289,14 +285,15 @@ public sealed partial class WindowsProcessResourcePolicyWriter
                     buffer,
                     checked((uint)write.CpuSetIds.Length)))
             {
-                return new ProcessResourcePolicyWriteResult(
-                    false,
-                    new Win32Exception(Marshal.GetLastWin32Error()).Message);
+                return Win32Failure(ProcessResourcePolicyBatchFields.CpuSets, Marshal.GetLastWin32Error());
             }
 
-            return new ProcessResourcePolicyWriteResult(
+            return new ProcessResourcePolicyBatchFieldResult(
+                ProcessResourcePolicyBatchFields.CpuSets,
                 true,
-                $"已设置进程默认 CPU Sets：{string.Join(',', write.CpuSetIds)}。");
+                write.CpuSetIds.Length == 0
+                    ? "已清除进程默认 CPU Sets。"
+                    : $"已设置进程默认 CPU Sets：{string.Join(',', write.CpuSetIds)}。");
         }
         finally
         {
@@ -482,6 +479,14 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         {
             ErrorCode = errorCode
         };
+    }
+
+    private static ProcessResourcePolicyBatchFieldResult Win32Failure(
+        ProcessResourcePolicyBatchFields field,
+        int lastWin32Error)
+    {
+        var error = unchecked((uint)lastWin32Error);
+        return Failure(field, Win32Message(error), error);
     }
 
     private static string Win32Message(uint error)

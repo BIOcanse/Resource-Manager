@@ -33,7 +33,6 @@ import type {
   ResourceTableSnapshot,
   ResourceTableViewMode,
   AppOptimizationMode,
-  HostManagerSmartCoordinatorStatus,
   SoftwareRecord,
   SystemProcessIdentity,
   SystemProcessOperationResult,
@@ -47,6 +46,8 @@ import {
   type ResourceMonitorWireSnapshot
 } from "./api/resourceBreakdownWire";
 import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
+import { decodeHostManagerSmartCoordinatorStatus } from
+  "./data/optimization/hostManagerSmartStatusSource.ts";
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
 import { uiText } from "./text.ts";
 import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
@@ -379,7 +380,8 @@ export async function observeGpuPlacementProcesses(request: GpuPlacementProcessO
 }
 
 export async function getHostManagerSmartCoordinatorStatus() {
-  return getJson<HostManagerSmartCoordinatorStatus>("/api/optimization/smart/status");
+  return decodeHostManagerSmartCoordinatorStatus(
+    await getJson<unknown>("/api/optimization/smart/status"));
 }
 
 export async function getHostManagerRollbackState() {
@@ -388,10 +390,10 @@ export async function getHostManagerRollbackState() {
 }
 
 export async function setHostManagerSmartCoordinatorMode(mode: AppOptimizationMode) {
-  return postJson<HostManagerSmartCoordinatorStatus>(
+  return decodeHostManagerSmartCoordinatorStatus(await postJson<unknown>(
     "/api/optimization/smart/mode",
     { mode },
-    uiText.apiError.switchSmartModeFailed);
+    uiText.apiError.switchSmartModeFailed));
 }
 
 export async function dismissOptimizationReport(id: string) {

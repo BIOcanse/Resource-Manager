@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ja-JP-targetedReport.ts";
-import { fieldLabel } from "./ja-JP-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
 const jaJpAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "保存中",
     saveFailed: "保存に失敗しました"
@@ -619,6 +620,7 @@ const jaJpAppCopy: AppCopy = {
     listLabel: "監視項目",
     empty: "一致する監視項目はありません",
     needsInstall: (name: string) => `インストールが必要: ${name}`,
+    deviceFields: "デバイス フィールド",
     cancel: "キャンセル",
     confirm: "確認"
   },
@@ -800,6 +802,8 @@ const jaJpAppCopy: AppCopy = {
     reportPanel: "最適化レポート",
     gpuScoreUnrecognizedTitle: "GPU モデルが未登録です",
     gpuScoreUnrecognizedMessage: (names: string) => `${names} は内蔵の性能スコアに一致しません。正の手動スコアを設定すると GPU の自動順位に含められます。`,
+    runtimeFaultClosedTitle: "最適化ランタイムは障害のため停止しています",
+    runtimeFaultClosedDetail: (reason: string) => `新しい最適化の調整は実行されません。理由コード: ${reason}`,
     filterLabel: "レポートのフィルター",
     filterUntrusted: (count: string) => `未信頼 ${count}`,
     filterAll: (count: string) => `すべて ${count}`,
@@ -1023,6 +1027,7 @@ const jaJpAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} の詳細`,
     fallbackDeviceName: "デバイス",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `親ハブのポート ${port}`,
     connectedDevice: "接続されたデバイス",
     section: {
       overview: "概要",
@@ -1052,7 +1057,7 @@ const jaJpAppCopy: AppCopy = {
       activeResolution: "現在の解像度",
       refreshRate: "リフレッシュ レート",
       connectionLocation: "接続場所",
-      networkInterface: "ネットワーク インターフェイス",
+      networkInterface: "システム インターフェイス名",
       transmitSpeed: "送信速度",
       receiveSpeed: "受信速度",
       macAddress: "MAC アドレス",
@@ -1144,6 +1149,7 @@ const jaJpAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · 内部接続`
     },
     usbGenericConnector: "USB-A / USB 接続",
+    ethernetProtocol: "イーサネット",
     deviceCategory: {
       internalDisplayPanel: "内蔵ディスプレイ パネル",
       wirelessDisplay: "ワイヤレス / 仮想ディスプレイ",
@@ -1227,7 +1233,7 @@ const jaJpAppCopy: AppCopy = {
     powerRole: "電力の役割",
     negotiatedPower: "ネゴシエートされた電力",
     graphicsBus: "グラフィックス バス",
-    networkInterface: "ネットワーク インターフェイス",
+    networkInterface: "システム インターフェイス名",
     connectionState: "接続状態",
     transmitLink: "送信リンク",
     receiveLink: "受信リンク",

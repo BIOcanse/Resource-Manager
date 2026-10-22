@@ -256,6 +256,37 @@ public sealed class MetricDeviceFieldAddressTests
     }
 
     [Fact]
+    public void PnpAddressesUseTheDeviceTopologySpellingWithoutAnEndpointTopologyCache()
+    {
+        // Real Radeon 610M: DXGI/SetupAPI reports a lowercase instance part; device topology port DeviceId is upper invariant.
+        const string reported = @" PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041 ";
+        const string topology = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&B799193&0&0041";
+        const string secondReported = @"PCI\VEN_1002&DEV_164E\4&b799193&0&0042";
+        var adapter = MetricDeviceAddress.GpuAdapter(0x10B0C, [reported]);
+        Assert.Equal(topology, adapter.PnpInstanceId);
+        Assert.Equal(topology, MetricDeviceAddress.GpuEngine(adapter, 0x10B0C, 0, 1, 0).PnpInstanceId);
+        Assert.True(new[] { topology, secondReported.ToUpperInvariant() }.SequenceEqual(
+            MetricDeviceAddress.GpuAdapter(0x10B0C, [reported, secondReported]).PnpInstanceIds!));
+        Assert.Equal(topology, MetricDeviceAddress.GpuFanTuningGroup(0x10B0C, [reported]).PnpInstanceId);
+        Assert.Equal(topology, MetricDeviceAddress.GpuFan(reported, 0).PnpInstanceId);
+        Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", MetricDeviceAddress.Npu(@"ACPI\Npu_Mixed\4&b799193").PnpInstanceId);
+        Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", MetricDeviceAddress.NpuEngine(@"ACPI\Npu_Mixed\4&b799193", 0, 1).PnpInstanceId);
+
+        var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        var gpu = new NativeMetricSnapshotGpuCatalogIdentity(0, "AMD Radeon(TM) 610M", "opaque-radeon", 0x10B0C, 1, 2, false)
+        { PhysicalPnpInstanceIds = [reported] };
+        var npu = new NpuMemoryCatalogIdentity(@"ACPI\Npu_Mixed\4&b799193");
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, [gpu], [], [],
+            NativeMetricSnapshotCatalogHandleMap.Empty, npuMemoryIdentities: [npu]);
+        var gpuBindings = catalog.RuleBindings.Values.Where(row => row.DeviceIdentity == gpu.ExactIdentityKey).ToArray();
+        Assert.NotEmpty(gpuBindings);
+        Assert.All(gpuBindings, row => Assert.Equal(topology, row.Device.Address!.PnpInstanceId));
+        var npuBindings = catalog.RuleBindings.Values.Where(row => row.DeviceIdentity == npu.ExactIdentityKey).ToArray();
+        Assert.NotEmpty(npuBindings);
+        Assert.All(npuBindings, row => Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", row.Device.Address!.PnpInstanceId));
+    }
+
+    [Fact]
     public void DiscoveredPdhGpuEngineCarriesParentDeviceAndItsOwnStableOrdinal()
     {
         const string gpuPnp = @"PCI\VEN_10DE&DEV_2C05\GPU-RAW";
@@ -300,6 +331,50 @@ public sealed class MetricDeviceFieldAddressTests
         });
         Assert.Equal(rows[0].Device, Assert.Single(MetricDeviceFields.Read(discovered,
             rows[0].DeviceIdentity, new HashSet<string>([field.Name], StringComparer.Ordinal))).Device);
+    }
+
+    [Fact]
+    public void DiscoveredGpuEngineFieldRequestUsesThePublicEngineAddressNotThePlannerTrigger()
+    {
+        // Real machine: /api/metrics/subscribe?fields=gpu_all_engine_busy_percent emitted no frame and
+        // /api/metrics/fields/snapshot returned 24 NotRequested engines, because the field request carried the
+        // planner trigger, which host publications and snapshot projections never contain. The host works on
+        // public dataset ids; WindowsHardwareMetricCapture.CreateCollectionRequest maps them to the trigger.
+        const ulong adapterLuid = 0xA1;
+        var field = MetricFieldRegistry.FindByName("gpu_all_engine_busy_percent")!;
+        var snapshot = CreateRequestSnapshot(
+        [
+            new MetricDeviceFieldBinding("gpu-adapter|fixture", field, "gpu.trigger", NativeMetricSnapshotSources.PdhGpuEngine)
+            {
+                AdapterKey = adapterLuid,
+                Device = new("gpu_adapter", MetricDeviceAddress.GpuAdapter(adapterLuid, [@"PCI\VEN_10DE&DEV_2C05\GPU-RAW"]), "Fixture GPU", 0)
+            }
+        ]);
+        var engine = new NativePdhGpuEngineIdentity(adapterLuid, 0, 1, NativePdhEngineClass.Other);
+        var read = new PdhGpuEngineUsageRead(new Dictionary<int, double>(),
+            NativePdhProviderAvailability.Available, DateTimeOffset.UtcNow)
+        {
+            UsageByEngine = new Dictionary<NativePdhGpuEngineIdentity, double> { [engine] = 12.5 }
+        };
+        var catalog = WindowsHardwareMetricCapture.ProjectGpuEngineFields(snapshot,
+            MetricSampleRequest.CatalogProbe, null, read);
+        var engineBinding = Assert.Single(catalog.FieldBindings.Values);
+        Assert.DoesNotContain("gpu.trigger", catalog.FieldBindings.Keys);
+        var state = new DashboardMonitoringCatalogState();
+        state.PublishCatalogProbe(catalog);
+
+        foreach (var device in new string?[] { null, engineBinding.DeviceIdentity })
+        {
+            var request = MetricDeviceFields.CreateRequest(catalog, device, [field.Name]);
+            Assert.Equal(new[] { engineBinding.RequestAddress }, request.Ids.ToArray());
+            Assert.Equal(request.Ids.ToArray(), state.SelectSubscribable(request).Ids.ToArray());
+            // The completed sample is announced under the same public id the subscriber waits on.
+            var published = MetricDatasetIds.ExpandBoundSystemDatasets(request.Ids, catalog.FieldBindings.Values);
+            Assert.Contains(engineBinding.RequestAddress, published);
+            Assert.DoesNotContain("gpu.trigger", published);
+        }
+        // The internal trigger is never a public subscription item.
+        Assert.True(state.SelectSubscribable(MetricSampleRequest.ForIds(["gpu.trigger"])).IsEmpty);
     }
 
     [Fact]
@@ -379,10 +454,11 @@ public sealed class MetricDeviceFieldAddressTests
         ]);
         var names = new[] { cpu.Name, memory.Name };
 
+        // Requests name public addresses; internal sample addresses are mapped only at native planning.
         var merged = MetricDeviceFields.CreateRequest(snapshot, null, names);
         Assert.False(merged.IsAll);
         Assert.False(merged.IsCatalogProbe);
-        Assert.True(new[] { "sample.cpu.0", "sample.cpu.1", "sample.numa.7" }
+        Assert.True(new[] { "cpu.public", "cpu.public.1", "numa.public" }
             .ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(merged.Ids));
 
         var selected = MetricDeviceFields.Read(snapshot, fields: names.ToHashSet(StringComparer.Ordinal));
@@ -400,7 +476,7 @@ public sealed class MetricDeviceFieldAddressTests
         Assert.Throws<ArgumentException>(() => MetricDeviceFields.CreateRequest(snapshot, null, ["metric_typo"]));
 
         var single = MetricDeviceFields.CreateRequest(snapshot, "cpu-0", [cpu.Name]);
-        Assert.True(new[] { "sample.cpu.0" }.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(single.Ids));
+        Assert.True(new[] { "cpu.public" }.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(single.Ids));
         Assert.Throws<ArgumentException>(() => MetricDeviceFields.CreateRequest(snapshot, "cpu-0", [memory.Name]));
         Assert.Throws<ArgumentException>(() => MetricDeviceFields.CreateRequest(snapshot, "cpu-0", ["metric_typo"]));
         Assert.Throws<ArgumentException>(() => MetricDeviceFields.CreateRequest(snapshot, "", [cpu.Name]));

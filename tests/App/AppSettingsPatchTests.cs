@@ -21,7 +21,7 @@ public sealed class AppSettingsPatchTests
 
         var patched = AppSettingsPatchApplier.Apply(current, changes.RootElement);
 
-        Assert.Equal(AppThemeModes.Dark, patched.Appearance.Theme);
+        Assert.Equal("dark", patched.Appearance.Theme);
         Assert.Equal(current.Appearance.Language, patched.Appearance.Language);
         Assert.Equal(
             JsonSerializer.Serialize(current.Performance),
@@ -29,6 +29,20 @@ public sealed class AppSettingsPatchTests
         Assert.Equal(
             JsonSerializer.Serialize(current.SystemIntegration),
             JsonSerializer.Serialize(patched.SystemIntegration));
+    }
+
+    [Fact]
+    public void Apply_SwitchingStyleKeepsAPaletteTheNewStyleOffers()
+    {
+        var current = AppSettingsDefaults.Create();
+        using var keep = JsonDocument.Parse("""{"appearance":{"uiStyle":"soft","theme":"dark"}}""");
+        using var fallback = JsonDocument.Parse("""{"appearance":{"uiStyle":"terminal"}}""");
+
+        var soft = AppSettingsPatchApplier.Apply(current, keep.RootElement);
+        var terminal = AppSettingsPatchApplier.Apply(soft, fallback.RootElement);
+
+        Assert.Equal(("soft", "dark"), (soft.Appearance.UiStyle, soft.Appearance.Theme));
+        Assert.Equal(("terminal", "phosphor"), (terminal.Appearance.UiStyle, terminal.Appearance.Theme));
     }
 
     [Theory]

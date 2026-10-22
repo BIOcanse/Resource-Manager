@@ -53,10 +53,10 @@ export function DetailsPage(props: DetailsPageProps) {
         value={activeTab()}
         onChange={(value) => setActiveTab(value as DetailsTab)}
       >
-        <TabsList class="details-tabs" ariaLabel={uiText.misc.detailsTab.tabsLabel}>
+        <TabsList class="page-subnav" ariaLabel={uiText.misc.detailsTab.tabsLabel}>
           <For each={visibleTabs()}>
             {(tab) => (
-              <TabsTrigger value={tab.id} class="details-tab">
+              <TabsTrigger value={tab.id} class="page-subnav-tab">
                 {tab.label}
               </TabsTrigger>
             )}

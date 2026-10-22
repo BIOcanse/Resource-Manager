@@ -1,6 +1,6 @@
 import type { AppCopy } from "../zh/index.ts";
 
-export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel"> = {
+export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"> = {
   fieldLabel: {
     npu_all_engine_running_time_microseconds: { label: "NPU 引擎執行時間（原始）", hint: "單一 NPU 引擎的累計執行時間原始計數，單位微秒（DXCore）；起點未定義，只用於計算忙碌率。" },
     npu_all_engine_busy_percent: { label: "NPU 引擎忙碌率", hint: "引擎忙碌時間，與工作管理員相同的演算法：取該 NPU 各引擎執行時間占實際時間比例的最大值；原始值可能超過 100%，不保證與工作管理員顯示的數字相同。" },
@@ -327,5 +327,8 @@ export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel"> = {
     gpu_amd_memory_temperature_celsius: { label: "視訊記憶體溫度（ADLX）", hint: "AMD ADLX 回報的視訊記憶體溫度。" },
     cpu_amd_smu_temperature_reported_celsius: { label: "CPU 溫度（SMU）", hint: "AMD SMU 回報的 CPU 溫度；尚未確定它是 Tctl 還是 Tdie。" },
     gpu_amd_apu_temperature_reported_celsius: { label: "核顯溫度（SMU）", hint: "SMU 回報的這顆 AMD APU 核顯溫度。" }
+  },
+  fieldValueLabel: {
+    batteryPowerState: { onLine: "已接上交流電源", discharging: "正在放電", charging: "正在充電", critical: "電量嚴重不足" }
   }
 };

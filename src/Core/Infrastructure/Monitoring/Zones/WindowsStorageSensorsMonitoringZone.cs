@@ -3,6 +3,7 @@ using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.ReadWrite.Windows.Devices;
+using ResourceManager.ReadWrite.Windows.Metrics.Resources;
 using static ResourceManager.App.Infrastructure.Monitoring.PlatformSensorWmiUtilities;
 using SdkSnapshot = ResourceManager.ReadWrite.Windows.Devices.StorageOwnerSensorSnapshot;
 using SdkQuery = ResourceManager.ReadWrite.Windows.Platform.QueryResult;
@@ -52,11 +53,9 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
         => ProjectIdentities(WindowsStorageOwner.ProjectIdentities(rows), generation);
     private static IReadOnlyList<NativeMetricSnapshotOrdinalCatalogIdentity> ProjectIdentities(
         IReadOnlyList<StorageOwnerIdentity> identities, ulong generation)
-        => identities.Select(identity => new NativeMetricSnapshotOrdinalCatalogIdentity(identity.DisplayIndex, identity.ExactIdentityKey, generation)
-            { SupportsAtaSmart = identity.SupportsAtaSmart, SupportsNvmeHealth = identity.SupportsNvmeHealth }).ToArray();
+        => identities.Select(identity => WindowsHardwareMetricResources.StorageCatalogIdentity(identity, generation)).ToArray();
     private static StorageSensorSnapshot Adapt(SdkSnapshot snapshot)
-        => new(snapshot.ProviderState, snapshot.Disks)
-        { Identities = snapshot.Identities is null ? null : ProjectIdentities(snapshot.Identities, 0) };
+        => WindowsHardwareMetricResources.ProjectStorageSensors(snapshot);
     internal StorageSensorSnapshot ReadSensors() => CanRead ? ReadStorageSensors() : StorageSensorsFrozen();
     private static StorageSensorSnapshot StorageSensorsFrozen()
         => new(new("Windows Storage Reliability Counter", "Frozen", "Windows Storage 传感监控源当前处于功能区冻结。"), []);

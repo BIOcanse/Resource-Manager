@@ -202,8 +202,10 @@ export default createSettingsLocale("zh-TW", {
     }
   },
   "appearance": {
-    "themeTitle": "色彩模式",
-    "themeDescription": "選擇跟隨系統、淺色、深色或低對比外觀。",
+    "uiStyleTitle": "介面風格",
+    "uiStyleDescription": "改變控制項的圓角、線條、陰影和字型，版面不變。每種風格有自己的配色。",
+    "themeTitle": "配色",
+    "themeDescription": "選擇目前風格提供的配色。跟隨系統會依 Windows 的淺色或深色設定切換。",
     "animationTitle": "動畫效果",
     "animationDescription": "選擇完整動畫、關閉動畫，或進一步簡化視覺以降低介面開銷。",
     "resourceBarHardwareAccelerationTitle": "資源條硬體加速",
@@ -236,11 +238,23 @@ export default createSettingsLocale("zh-TW", {
     "settingsLanguageTitle": "介面語言",
     "settingsLanguageDescription": "切換整個介面的語言，包括桌面外殼的托盤與視窗標題；跟隨系統會使用 Windows 顯示語言。",
     "languageSelectLabel": "語言",
+    "uiStyleOptions": {
+      "standard": "標準",
+      "soft": "柔和",
+      "outline": "線框",
+      "terminal": "終端"
+    },
     "themeOptions": {
       "system": "跟隨系統",
       "light": "淺色",
       "dark": "深色",
-      "lowContrast": "低對比"
+      "lowContrast": "低對比",
+      "paper": "紙面",
+      "graphite": "石墨",
+      "blueprint": "藍圖",
+      "phosphor": "磷綠",
+      "amber": "琥珀",
+      "ice": "冰藍"
     },
     "animationOptions": {
       "auto": {

@@ -32,7 +32,13 @@ export type ManagementKind = ManagementRole | "Adapted" | "Controlled" | "Unconf
 export type ManualSoftwareKind = "Adapted" | "Game" | "HighPerformance" | "Other";
 export type ResourceScaleMode = "capacity" | "active";
 export type ResourceTableViewMode = "software" | "process" | "performance";
-export type AppThemeMode = "system" | "light" | "dark" | "lowContrast";
+// 界面风格和配色的目录在 presentation/uiStyles.ts，规则见 docs/ui_styles.md。
+export type AppUiStyle = "standard" | "soft" | "outline" | "terminal";
+
+export type AppPalette =
+  | "system" | "light" | "dark" | "lowContrast"
+  | "paper" | "graphite" | "blueprint"
+  | "phosphor" | "amber" | "ice";
 export type AppAdaptiveBooleanMode = "auto" | "enabled" | "disabled";
 export type AppFrontendHiddenRefreshMode = "auto" | "pauseWhenHidden" | "continueWhenHidden";
 export type AppAnimationMode = "auto" | "normal" | "none" | "ultra";
@@ -250,7 +256,10 @@ export interface HostManagerSmartCoordinatorStatus {
   lastRunAt?: string | null;
   lastRestoreAt?: string | null;
   pendingChangeCount: number;
+  /** 产品当前持有改动的对象数（放置、进程策略、软件档位、进程内存优先级），同一进程只算一个。 */
   appliedTargetCount: number;
+  /** null：运行时正常准入；非 null：运行时故障关闭，不会执行任何新调整，值是诊断原因码。 */
+  faultClosedReason: string | null;
   message: string;
 }
 
@@ -283,7 +292,9 @@ export interface HostManagerAppliedRecord {
 export type ByteUnitMode = "native" | "binary" | "decimal";
 
 export interface AppAppearanceSettings {
-  theme: AppThemeMode;
+  uiStyle: AppUiStyle;
+  // 当前风格下的配色。
+  theme: AppPalette;
   animations?: AppAnimationMode;
   resourceBarHardwareAccelerationEnabled?: boolean;
   resourceBarHardwareAccelerationMode?: AppAdaptiveBooleanMode;

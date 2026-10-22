@@ -1,0 +1,488 @@
+/* soft style（柔和）. Rules: docs/ui_styles.md.
+   大圆角、柔和分层阴影代替硬边框、冷色表面、蓝色强调；按钮、页签、分段控件、搜索框做成胶囊形。
+   只改颜色、圆角、阴影、边框颜色和字体，不改尺寸、间距和布局。
+   阴影一律经 --elev-* 令牌，超高性能模式（body[data-animations="ultra"]）把令牌清零时这里跟着变平。
+   配色在 sRGB 里设计，换算成 display-p3 写入；浅色底 #EEF2F7，深色底 #11151C。 */
+
+/* ---------- 风格级（不分配色） ---------- */
+:root[data-ui-style="soft"] {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  /* 磁盘占用方格：目录是石板蓝，文件是淡紫蓝，和蓝色强调同一色系。 */
+  --treemap-directory-hue: 222;
+  --treemap-file-hue: 248;
+}
+
+/* ---------- 浅色（跟随系统的浅色一侧） ---------- */
+:root[data-ui-style="soft"][data-theme="light"],
+:root[data-ui-style="soft"][data-theme="system"] {
+  color-scheme: light;
+  --bg: color(display-p3 0.936 0.949 0.967);
+  --surface: color(display-p3 0.989 0.992 0.999);
+  --surface-soft: color(display-p3 0.962 0.968 0.983);
+  --surface-strong: color(display-p3 0.913 0.929 0.954);
+  --table-header-bg: color(display-p3 0.958 0.964 0.979);
+  --hover-bg: color(display-p3 0.933 0.948 0.981);
+  --text: color(display-p3 0.100 0.125 0.183);
+  --muted: color(display-p3 0.338 0.371 0.440);
+  --line: color(display-p3 0.821 0.846 0.886);
+  --line-soft: color(display-p3 0.890 0.905 0.934);
+  --divider: color(display-p3 0.870 0.886 0.915);
+  --divider-soft: color(display-p3 0.917 0.929 0.951);
+  --accent: color(display-p3 0.246 0.414 0.819);
+  --accent-strong: color(display-p3 0.164 0.302 0.655);
+  --accent-soft: color(display-p3 0.900 0.924 0.979);
+  --warn: color(display-p3 0.562 0.364 0.116);
+  --warn-soft: color(display-p3 0.978 0.946 0.882);
+  --danger: color(display-p3 0.690 0.234 0.250);
+  --danger-soft: color(display-p3 0.973 0.920 0.926);
+  --shell-bg: color(display-p3 0.989 0.992 0.999 / 0.94);
+  --badge-bg: color(display-p3 0.902 0.921 0.953);
+  --empty-bg: color(display-p3 0.989 0.992 0.999 / 0.6);
+  --resource-empty: color(display-p3 0.989 0.992 0.999);
+  --on-accent: color(display-p3 1 1 1);
+  --backdrop: color(display-p3 0.090 0.120 0.190 / 0.30);
+  --shadow: 0 12px 32px color(display-p3 0.180 0.240 0.360 / 0.12);
+  --modal-shadow: 0 24px 72px color(display-p3 0.180 0.240 0.360 / 0.22);
+  --shadow-color: 0.180 0.240 0.360;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.05), 0 3px 12px color(display-p3 var(--shadow-color) / 0.07);
+  --elev-2: 0 2px 6px color(display-p3 var(--shadow-color) / 0.07), 0 12px 28px color(display-p3 var(--shadow-color) / 0.11);
+  --elev-3: 0 10px 30px color(display-p3 var(--shadow-color) / 0.14), 0 30px 72px color(display-p3 var(--shadow-color) / 0.20);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.5);
+  --hairline: color(display-p3 var(--shadow-color) / 0.07);
+}
+
+/* ---------- 深色 ---------- */
+:root[data-ui-style="soft"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: color(display-p3 0.070 0.082 0.107);
+  --surface: color(display-p3 0.102 0.117 0.150);
+  --surface-soft: color(display-p3 0.118 0.137 0.173);
+  --surface-strong: color(display-p3 0.154 0.176 0.219);
+  --table-header-bg: color(display-p3 0.114 0.133 0.169);
+  --hover-bg: color(display-p3 0.140 0.168 0.219);
+  --text: color(display-p3 0.898 0.913 0.942);
+  --muted: color(display-p3 0.611 0.642 0.704);
+  --line: color(display-p3 0.215 0.242 0.293);
+  --line-soft: color(display-p3 0.170 0.191 0.235);
+  --divider: color(display-p3 0.186 0.207 0.254);
+  --divider-soft: color(display-p3 0.150 0.172 0.212);
+  --accent: color(display-p3 0.476 0.630 0.943);
+  --accent-strong: color(display-p3 0.612 0.733 0.979);
+  --accent-soft: color(display-p3 0.133 0.175 0.271);
+  --warn: color(display-p3 0.856 0.676 0.362);
+  --warn-soft: color(display-p3 0.194 0.162 0.110);
+  --danger: color(display-p3 0.882 0.510 0.513);
+  --danger-soft: color(display-p3 0.213 0.130 0.149);
+  --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+  --badge-bg: color(display-p3 0.171 0.195 0.250);
+  --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
+  --resource-empty: color(display-p3 0.090 0.105 0.134);
+  --on-accent: color(display-p3 0.050 0.074 0.129);
+  --backdrop: color(display-p3 0.010 0.020 0.045 / 0.58);
+  --shadow: 0 12px 32px color(display-p3 0.010 0.020 0.045 / 0.40);
+  --modal-shadow: 0 24px 72px color(display-p3 0.010 0.020 0.045 / 0.60);
+  --shadow-color: 0.010 0.020 0.045;
+  --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.35), 0 4px 14px color(display-p3 var(--shadow-color) / 0.28);
+  --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 14px 34px color(display-p3 var(--shadow-color) / 0.40);
+  --elev-3: 0 12px 34px color(display-p3 var(--shadow-color) / 0.50), 0 34px 80px color(display-p3 var(--shadow-color) / 0.60);
+  --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.06);
+  --hairline: color(display-p3 1 1 1 / 0.055);
+}
+
+/* ---------- 跟随系统的深色一侧：与上面的深色逐项相同 ---------- */
+@media (prefers-color-scheme: dark) {
+  :root[data-ui-style="soft"][data-theme="system"] {
+    color-scheme: dark;
+    --bg: color(display-p3 0.070 0.082 0.107);
+    --surface: color(display-p3 0.102 0.117 0.150);
+    --surface-soft: color(display-p3 0.118 0.137 0.173);
+    --surface-strong: color(display-p3 0.154 0.176 0.219);
+    --table-header-bg: color(display-p3 0.114 0.133 0.169);
+    --hover-bg: color(display-p3 0.140 0.168 0.219);
+    --text: color(display-p3 0.898 0.913 0.942);
+    --muted: color(display-p3 0.611 0.642 0.704);
+    --line: color(display-p3 0.215 0.242 0.293);
+    --line-soft: color(display-p3 0.170 0.191 0.235);
+    --divider: color(display-p3 0.186 0.207 0.254);
+    --divider-soft: color(display-p3 0.150 0.172 0.212);
+    --accent: color(display-p3 0.476 0.630 0.943);
+    --accent-strong: color(display-p3 0.612 0.733 0.979);
+    --accent-soft: color(display-p3 0.133 0.175 0.271);
+    --warn: color(display-p3 0.856 0.676 0.362);
+    --warn-soft: color(display-p3 0.194 0.162 0.110);
+    --danger: color(display-p3 0.882 0.510 0.513);
+    --danger-soft: color(display-p3 0.213 0.130 0.149);
+    --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+    --badge-bg: color(display-p3 0.171 0.195 0.250);
+    --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
+    --resource-empty: color(display-p3 0.090 0.105 0.134);
+    --on-accent: color(display-p3 0.050 0.074 0.129);
+    --backdrop: color(display-p3 0.010 0.020 0.045 / 0.58);
+    --shadow: 0 12px 32px color(display-p3 0.010 0.020 0.045 / 0.40);
+    --modal-shadow: 0 24px 72px color(display-p3 0.010 0.020 0.045 / 0.60);
+    --shadow-color: 0.010 0.020 0.045;
+    --elev-1: 0 1px 2px color(display-p3 var(--shadow-color) / 0.35), 0 4px 14px color(display-p3 var(--shadow-color) / 0.28);
+    --elev-2: 0 3px 10px color(display-p3 var(--shadow-color) / 0.40), 0 14px 34px color(display-p3 var(--shadow-color) / 0.40);
+    --elev-3: 0 12px 34px color(display-p3 var(--shadow-color) / 0.50), 0 34px 80px color(display-p3 var(--shadow-color) / 0.60);
+    --edge-highlight: inset 0 1px 0 color(display-p3 1 1 1 / 0.06);
+    --hairline: color(display-p3 1 1 1 / 0.055);
+  }
+}
+
+/* ============================================================
+   元素级覆盖（不分配色）。
+   选择器以 :root[data-ui-style="soft"] 开头，优先级高于组件自己的悬停规则，
+   所以凡是改了常态的控件，悬停、选中、禁用也在这里一并写全；颜色类规则带 :not(:disabled)，
+   禁用态仍走全局禁用样式。
+   ============================================================ */
+
+/* ---------- 按钮：胶囊形，主按钮去掉明暗渐变 ---------- */
+:root[data-ui-style="soft"] button:not([class]),
+:root[data-ui-style="soft"] button.secondary,
+:root[data-ui-style="soft"] .panel-refresh-button,
+:root[data-ui-style="soft"] .management-action-button,
+:root[data-ui-style="soft"] .management-settings-button,
+:root[data-ui-style="soft"] .settings-hotkey-add,
+:root[data-ui-style="soft"] .settings-icon-button,
+:root[data-ui-style="soft"] .settings-credit-link,
+:root[data-ui-style="soft"] .icon-button,
+:root[data-ui-style="soft"] .resource-row-actions {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] button:not([class]):not(:disabled) {
+  background-image: none;
+}
+
+:root[data-ui-style="soft"] button.secondary:not(:disabled),
+:root[data-ui-style="soft"] .management-settings-button:not(:disabled) {
+  border-color: var(--line-soft);
+  background-color: var(--surface);
+}
+
+:root[data-ui-style="soft"] button.secondary:not(:disabled):hover,
+:root[data-ui-style="soft"] .management-settings-button:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--accent) 34%, var(--line));
+  background-color: var(--hover-bg);
+  color: var(--text);
+}
+
+/* ---------- 顶栏与二级分页条：未选中的页签不铺底，选中的是浮起的强调色胶囊 ---------- */
+:root[data-ui-style="soft"] .window-shellbar,
+:root[data-ui-style="soft"] .page-subnav {
+  border-bottom-color: var(--divider-soft);
+}
+
+:root[data-ui-style="soft"] .shell-page,
+:root[data-ui-style="soft"] .page-subnav-tab {
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+}
+
+:root[data-ui-style="soft"] .shell-page:not(.active):hover,
+:root[data-ui-style="soft"] .page-subnav-tab:not(.active):not(:disabled):hover {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+:root[data-ui-style="soft"] .shell-page.active,
+:root[data-ui-style="soft"] .page-subnav-tab.active {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+:root[data-ui-style="soft"] .shell-page.active:hover,
+:root[data-ui-style="soft"] .page-subnav-tab.active:hover {
+  border-color: transparent;
+  background: var(--accent-hover);
+}
+
+/* ---------- 输入框：浅填充、淡描边；搜索框是胶囊形 ---------- */
+:root[data-ui-style="soft"] .toolbar-search input,
+:root[data-ui-style="soft"] .resource-table-search input,
+:root[data-ui-style="soft"] .device-port-search,
+:root[data-ui-style="soft"] .metric-picker-search,
+:root[data-ui-style="soft"] .standard-select-search {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] .toolbar-search input,
+:root[data-ui-style="soft"] .resource-table-search input,
+:root[data-ui-style="soft"] .device-port-search,
+:root[data-ui-style="soft"] .metric-picker-search,
+:root[data-ui-style="soft"] .settings-text-field,
+:root[data-ui-style="soft"] .settings-number-pair input,
+:root[data-ui-style="soft"] .settings-number-field input,
+:root[data-ui-style="soft"] .settings-hotkey-key-row select,
+:root[data-ui-style="soft"] .control-editor-value-input,
+:root[data-ui-style="soft"] .manual-software-field input,
+:root[data-ui-style="soft"] .manual-software-field textarea {
+  border-color: var(--line-soft);
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .toolbar-search input:focus,
+:root[data-ui-style="soft"] .resource-table-search input:focus,
+:root[data-ui-style="soft"] .device-port-search:focus,
+:root[data-ui-style="soft"] .metric-picker-search:focus-within,
+:root[data-ui-style="soft"] .settings-text-field:focus,
+:root[data-ui-style="soft"] .settings-number-pair input:focus,
+:root[data-ui-style="soft"] .settings-number-field input:focus,
+:root[data-ui-style="soft"] .settings-hotkey-key-row select:focus,
+:root[data-ui-style="soft"] .control-editor-value-input:focus,
+:root[data-ui-style="soft"] .manual-software-field input:focus,
+:root[data-ui-style="soft"] .manual-software-field textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+/* 下拉弹层里的搜索框：外层画焦点，里面的输入框不再画矩形轮廓。 */
+:root[data-ui-style="soft"] .standard-select-search:focus-within {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+:root[data-ui-style="soft"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* 下拉选项是列表项：全局主按钮的阴影会落到没有 class 的选项按钮上，这里去掉，圆角跟列表走。 */
+:root[data-ui-style="soft"] .standard-select-options > button {
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger:not(:disabled) {
+  border-color: var(--line-soft);
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  background: var(--hover-bg);
+}
+
+:root[data-ui-style="soft"] .standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent);
+}
+
+/* ---------- 分段控件：圆角轨道 + 轨道里的选中胶囊 ----------
+   轨道用 --surface-strong 铺底、边框透明；分段之间原来 1px 的缝和透明边框露出的都是轨道色，
+   选中段因此四周留出 1px 轨道。不用同色内描边假装内边距：圆角边缘会透出一圈强调色。 */
+:root[data-ui-style="soft"] .settings-segmented-control,
+:root[data-ui-style="soft"] .resource-table-mode-switch,
+:root[data-ui-style="soft"] .optimization-mode-group,
+:root[data-ui-style="soft"] .optimization-report-filter,
+:root[data-ui-style="soft"] .settings-hotkey-relation,
+:root[data-ui-style="soft"] .device-scope-tabs {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+
+:root[data-ui-style="soft"] .settings-segment,
+:root[data-ui-style="soft"] .resource-table-mode-button,
+:root[data-ui-style="soft"] .optimization-mode,
+:root[data-ui-style="soft"] .optimization-report-filter button,
+:root[data-ui-style="soft"] .settings-hotkey-relation button,
+:root[data-ui-style="soft"] .device-scope-tab {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] .device-scope-tab + .device-scope-tab {
+  border-left-color: transparent;
+}
+
+:root[data-ui-style="soft"] .settings-segment:not(:disabled),
+:root[data-ui-style="soft"] .resource-table-mode-button:not(:disabled),
+:root[data-ui-style="soft"] .optimization-mode:not(:disabled),
+:root[data-ui-style="soft"] .optimization-report-filter button:not(:disabled),
+:root[data-ui-style="soft"] .settings-hotkey-relation button:not(:disabled),
+:root[data-ui-style="soft"] .device-scope-tab:not(:disabled) {
+  background: transparent;
+  color: var(--muted);
+}
+
+:root[data-ui-style="soft"] .settings-segment:not(.active):not(:disabled):hover,
+:root[data-ui-style="soft"] .resource-table-mode-button:not(.active):not(:disabled):hover,
+:root[data-ui-style="soft"] .optimization-mode:not(.active):not(:disabled):hover,
+:root[data-ui-style="soft"] .optimization-report-filter button:not(.active):not(:disabled):hover,
+:root[data-ui-style="soft"] .settings-hotkey-relation button:not(.active):not(:disabled):hover,
+:root[data-ui-style="soft"] .device-scope-tab:not(.active):not(:disabled):hover {
+  background: color-mix(in oklab, var(--surface) 70%, var(--surface-strong));
+  color: var(--text);
+}
+
+:root[data-ui-style="soft"] .settings-segment.active:not(:disabled),
+:root[data-ui-style="soft"] .resource-table-mode-button.active:not(:disabled),
+:root[data-ui-style="soft"] .optimization-mode.active:not(:disabled),
+:root[data-ui-style="soft"] .optimization-report-filter button.active:not(:disabled),
+:root[data-ui-style="soft"] .settings-hotkey-relation button.active:not(:disabled),
+:root[data-ui-style="soft"] .device-scope-tab.active:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--elev-1);
+}
+
+/* 键盘焦点：轨道 overflow: hidden 会裁掉外扩的焦点轮廓，改画在胶囊内侧；选中段上用强调色上的文字色。 */
+:root[data-ui-style="soft"] .settings-segment:focus-visible,
+:root[data-ui-style="soft"] .resource-table-mode-button:focus-visible,
+:root[data-ui-style="soft"] .optimization-mode:focus-visible,
+:root[data-ui-style="soft"] .optimization-report-filter button:focus-visible,
+:root[data-ui-style="soft"] .settings-hotkey-relation button:focus-visible,
+:root[data-ui-style="soft"] .device-scope-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+:root[data-ui-style="soft"] .settings-segment.active:focus-visible,
+:root[data-ui-style="soft"] .resource-table-mode-button.active:focus-visible,
+:root[data-ui-style="soft"] .optimization-mode.active:focus-visible,
+:root[data-ui-style="soft"] .optimization-report-filter button.active:focus-visible,
+:root[data-ui-style="soft"] .settings-hotkey-relation button.active:focus-visible,
+:root[data-ui-style="soft"] .device-scope-tab.active:focus-visible {
+  outline-color: var(--on-accent);
+}
+
+/* 刷新频率各行的底色和轨道同为 --surface-strong，轨道会消失；行底改浅一级。 */
+:root[data-ui-style="soft"] .settings-interval-item {
+  background: var(--surface-soft);
+}
+
+:root[data-ui-style="soft"] .optimization-mode.pending {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+
+/* 禁用的分段（只读的控制项）：不铺禁用底色，只把文字压淡，选中段保留淡强调色。 */
+:root[data-ui-style="soft"] .settings-segment:disabled,
+:root[data-ui-style="soft"] .optimization-mode:disabled,
+:root[data-ui-style="soft"] .device-scope-tab:disabled {
+  background: transparent;
+}
+
+:root[data-ui-style="soft"] .settings-segment.active:disabled {
+  background: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
+  color: var(--text);
+}
+
+/* ---------- 页签 ---------- */
+:root[data-ui-style="soft"] .ui-tabs-list {
+  border-color: transparent;
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+
+:root[data-ui-style="soft"] .ui-tabs-trigger {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] .ui-tabs-trigger:hover {
+  background: color-mix(in oklab, var(--surface) 60%, var(--surface-strong));
+}
+
+:root[data-ui-style="soft"] .ui-tabs-trigger.active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+:root[data-ui-style="soft"] .software-detail-tabs button {
+  border-radius: 999px;
+}
+
+:root[data-ui-style="soft"] .software-detail-tabs button:not(.active):not(:disabled) {
+  border-color: transparent;
+  background: var(--surface-strong);
+  box-shadow: none;
+}
+
+:root[data-ui-style="soft"] .software-detail-tabs button:not(.active):not(:disabled):hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+:root[data-ui-style="soft"] .software-detail-tabs button.active {
+  border-color: transparent;
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+/* ---------- 设置侧栏：选中项是淡强调色，不用实心色块 ---------- */
+:root[data-ui-style="soft"] .settings-nav-item:not(.active):not(:disabled):hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+:root[data-ui-style="soft"] .settings-nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 16%, transparent);
+}
+
+/* ---------- 开关：轨道不描边，滑块是带柔和阴影的白点 ---------- */
+:root[data-ui-style="soft"] .settings-switch span {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--muted) 34%, var(--surface));
+}
+
+:root[data-ui-style="soft"] .settings-switch input:checked + span {
+  border-color: transparent;
+  background: var(--accent);
+}
+
+:root[data-ui-style="soft"] .settings-switch input:checked:disabled + span {
+  border-color: transparent;
+  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
+}
+
+:root[data-ui-style="soft"] .settings-switch span::after {
+  background: color(display-p3 1 1 1);
+  box-shadow: var(--elev-2);
+}
+
+/* ---------- 卡片与面板：几乎看不见的描边，靠阴影浮起 ---------- */
+:root[data-ui-style="soft"] .control-object,
+:root[data-ui-style="soft"] .software-detail-section,
+:root[data-ui-style="soft"] .software-detail-notice {
+  border-color: var(--hairline);
+}
+
+:root[data-ui-style="soft"] .component-item,
+:root[data-ui-style="soft"] .software-item {
+  background: var(--surface);
+}
+
+:root[data-ui-style="soft"] .observation-state {
+  border-radius: var(--radius-sm);
+}
+
+:root[data-ui-style="soft"] .control-readings {
+  background: var(--surface-soft);
+}
+
+/* 右键菜单的禁用项只靠菜单自己的透明度压淡，不铺全局禁用底色（一行行灰块很碎）。 */
+:root[data-ui-style="soft"] .standard-context-menu-item:disabled {
+  background: transparent;
+}
+
+/* ---------- 标签与徽标 ---------- */
+:root[data-ui-style="soft"] .software-issue-tag {
+  border-color: transparent;
+  border-radius: 999px;
+}
+
+/* ---------- 资源条：轨道内的绘制平面跟着轨道的内圆角走 ---------- */
+:root[data-ui-style="soft"] .resource-segment-visual-plane {
+  border-radius: calc(var(--radius-sm) - 1px);
+}

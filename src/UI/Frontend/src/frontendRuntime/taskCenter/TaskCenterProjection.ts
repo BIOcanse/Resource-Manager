@@ -210,7 +210,7 @@ export class TaskCenterProjection {
     const frontend = [...this.frontendTasks.values()].map(projectFrontendTask);
     const operations = this.operationSnapshot.operations.map((operation) =>
       projectOperation(operation, this.operationSnapshot));
-    const items = Object.freeze([...frontend, ...operations].sort(compareItems));
+    const items = Object.freeze(sortItems([...frontend, ...operations]));
     return Object.freeze({
       items,
       activeUserCount: items.filter((item) =>
@@ -359,7 +359,10 @@ function unknownSummary(value: unknown): string | null {
   return typeof value === "string" ? value : String(value);
 }
 
-function compareItems(left: TaskCenterItem, right: TaskCenterItem): number {
-  const created = Date.parse(right.createdAt) - Date.parse(left.createdAt);
-  return created || left.id.localeCompare(right.id);
+/** 新建的在前，同一时刻按 id。每项的时间只解析一次，不在比较里反复解析（每次发布都要排一百多项）。 */
+function sortItems(items: readonly TaskCenterItem[]): TaskCenterItem[] {
+  return items
+    .map((item) => ({ item, createdAt: Date.parse(item.createdAt) }))
+    .sort((left, right) => (right.createdAt - left.createdAt) || left.item.id.localeCompare(right.item.id))
+    .map((entry) => entry.item);
 }

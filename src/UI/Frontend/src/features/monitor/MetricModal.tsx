@@ -1,6 +1,6 @@
 import { localizedMetricLabel, metricUnitLabel } from "../../presentation/metricLabels";
 import { PackagePlus, Search, X } from "lucide-solid";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSelector, createSignal, For, Show } from "solid-js";
 import {
   componentDisplayName,
   userFacingMetricGroup,
@@ -33,6 +33,13 @@ interface MetricModalProps {
   onClose: () => void;
   onConfirm: () => void;
   onDependencyPrompt: (metric: MetricDefinition, dependency: MetricDependencyState) => void;
+}
+
+interface MetricOptionGroup {
+  group: string;
+  metrics: MetricDefinition[];
+  detail: string | null;
+  missingComponents: string[];
 }
 
 export interface MetricDependencyState {
@@ -69,46 +76,75 @@ export function MetricModal(props: MetricModalProps) {
   let listbox: HTMLDivElement | undefined;
   const [query, setQuery] = createSignal("");
   const [activeMetricId, setActiveMetricId] = createSignal<string | null>(null);
+  // 一千多个选项：当前项、已选项用 selector，切换时只更新变化的两项，不逐项重算。
+  const isActiveMetric = createSelector(activeMetricId);
+  const isSelectedMetric = createSelector(() => props.selectedMetricId);
   const selectedMetric = () => props.catalog.find((metric) => metric.id === props.selectedMetricId) ?? null;
   const isSelected = (id: string) => props.multiSelect
     ? props.selectedMetricIds?.includes(id) ?? false
-    : props.selectedMetricId === id;
+    : isSelectedMetric(id);
   const metricUnavailable = (metric: MetricDefinition) =>
     metric.selectable === false && !(dependencyFor(metric)?.missing ?? false);
   const selectedMetricUnavailable = () => {
     const metric = selectedMetric();
     return metric ? metricUnavailable(metric) : false;
   };
+  // 组件按小写 id 建一次表，选项查依赖时不再各自遍历组件列表。
+  const componentsById = createMemo(() => {
+    const byId = new Map<string, ManagedComponent>();
+    for (const component of props.components) {
+      const id = textOrEmpty(component.definition?.id).toLowerCase();
+      if (!byId.has(id)) {
+        byId.set(id, component);
+      }
+    }
+    return byId;
+  });
+  // 列表只在弹窗打开时整理；关着时目录推送不触发任何整理。
   const filteredMetrics = createMemo(() => {
+    if (!props.open) {
+      return [];
+    }
     const filter = query().trim().toLocaleLowerCase();
-    return props.catalog.filter((metric) => {
-      const group = userFacingMetricGroup(metric.group);
-      return !filter
-        || localizedMetricLabel(metric.id, metric.label).toLocaleLowerCase().includes(filter)
-        || metric.id.toLocaleLowerCase().includes(filter)
-        || group.toLocaleLowerCase().includes(filter);
-    });
+    if (!filter) {
+      return props.catalog;
+    }
+    return props.catalog.filter((metric) =>
+      localizedMetricLabel(metric.id, metric.label).toLocaleLowerCase().includes(filter)
+      || metric.id.toLocaleLowerCase().includes(filter)
+      || userFacingMetricGroup(metric.group).toLocaleLowerCase().includes(filter));
   });
   const enabledMetricIds = createMemo(() => filteredMetrics()
     .filter((metric) => !metricUnavailable(metric))
     .map((metric) => metric.id));
+  // 分组按键给出；渲染按键保留每组的节点，组内按选项对象增删，搜索和目录刷新不重建整张列表。
   const groupedMetrics = createMemo(() => {
+    // 设备字段按设备分组，不按显示名合并：单例设备（处理器、内存等）和原有同名资源组是两组。
     const groups = new Map<string, MetricDefinition[]>();
     for (const metric of filteredMetrics()) {
-      const group = userFacingMetricGroup(metric.group);
-      groups.set(group, [...(groups.get(group) ?? []), metric]);
+      const key = metric.scopeKind === deviceFieldScopeKind ? `device:${metric.scopeKey}` : userFacingMetricGroup(metric.group);
+      const metrics = groups.get(key);
+      if (metrics) {
+        metrics.push(metric);
+      } else {
+        groups.set(key, [metric]);
+      }
     }
-    return Array.from(groups, ([group, metrics]) => ({
-      group,
-      metrics,
-      detail: gpuGroupDetail(metrics),
-      // 这一组缺哪些组件，在组标题上说一次。
-      missingComponents: [...new Set(metrics
-        .filter((metric) => !metricUnavailable(metric))
-        .map((metric) => dependencyFor(metric))
-        .filter((dependency) => dependency?.missing)
-        .map((dependency) => dependency!.name))]
-    }));
+    const byKey = new Map<string, MetricOptionGroup>();
+    for (const [key, metrics] of groups) {
+      byKey.set(key, {
+        group: userFacingMetricGroup(metrics[0].group),
+        metrics,
+        detail: metrics[0].scopeKind === deviceFieldScopeKind ? uiText.metricPicker.deviceFields : gpuGroupDetail(metrics),
+        // 这一组缺哪些组件，在组标题上说一次。
+        missingComponents: [...new Set(metrics
+          .filter((metric) => !metricUnavailable(metric))
+          .map((metric) => dependencyFor(metric))
+          .filter((dependency) => dependency?.missing)
+          .map((dependency) => dependency!.name))]
+      });
+    }
+    return { keys: [...groups.keys()], byKey };
   });
 
   function dependencyFor(metric: MetricDefinition): MetricDependencyState | null {
@@ -117,8 +153,7 @@ export function MetricModal(props: MetricModalProps) {
       return null;
     }
 
-    const component = props.components.find((item) =>
-      textOrEmpty(item.definition?.id).toLowerCase() === componentId.toLowerCase());
+    const component = componentsById().get(componentId.toLowerCase());
     const name = componentDisplayName(
       componentId,
       metric.requiredComponentName ?? component?.definition?.name);
@@ -263,19 +298,23 @@ export function MetricModal(props: MetricModalProps) {
           aria-multiselectable={props.multiSelect || undefined}
           aria-label={uiText.metricPicker.listLabel}
         >
-          <For each={groupedMetrics()} fallback={<div class="metric-picker-empty">{uiText.metricPicker.empty}</div>}>
-            {(group, groupIndex) => {
-              const headingId = `metric-modal-group-${groupIndex()}`;
+          <For each={groupedMetrics().keys} fallback={<div class="metric-picker-empty">{uiText.metricPicker.empty}</div>}>
+            {(key, groupIndex) => {
+              // 这一组还在列表里时节点保留，内容跟着分组结果更新。
+              const group = createMemo<MetricOptionGroup>(
+                (previous) => groupedMetrics().byKey.get(key) ?? previous,
+                groupedMetrics().byKey.get(key)!);
+              const headingId = () => `metric-modal-group-${groupIndex()}`;
               return (
-                <section class="metric-option-group-block" role="group" aria-labelledby={headingId}>
+                <section class="metric-option-group-block" role="group" aria-labelledby={headingId()}>
                   <div class="metric-option-group-heading">
-                    <h3 id={headingId} class="metric-option-group-title" title={group.detail ?? undefined}>
-                      {group.group}
-                      <Show when={group.detail}>
+                    <h3 id={headingId()} class="metric-option-group-title" title={group().detail ?? undefined}>
+                      {group().group}
+                      <Show when={group().detail}>
                         {(detail) => <span class="metric-option-group-detail"> · {detail()}</span>}
                       </Show>
                     </h3>
-                    <For each={group.missingComponents}>
+                    <For each={group().missingComponents}>
                       {(name) => (
                         <small class="metric-option-group-note">
                           <PackagePlus size={13} aria-hidden="true" />
@@ -285,7 +324,7 @@ export function MetricModal(props: MetricModalProps) {
                     </For>
                   </div>
                   <div class="metric-option-group-grid">
-                    <For each={group.metrics}>
+                    <For each={group().metrics}>
                       {(metric) => {
                         const dependency = () => dependencyFor(metric);
                         const unavailable = () => metricUnavailable(metric);
@@ -297,7 +336,7 @@ export function MetricModal(props: MetricModalProps) {
                             tabIndex={-1}
                             class="metric-option"
                             classList={{
-                              active: activeMetricId() === metric.id,
+                              active: isActiveMetric(metric.id),
                               selected: isSelected(metric.id),
                               "requires-dependency": (dependency()?.missing ?? false) && !unavailable(),
                               unavailable: unavailable()

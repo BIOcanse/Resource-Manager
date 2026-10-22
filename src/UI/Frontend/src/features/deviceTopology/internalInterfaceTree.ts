@@ -1,4 +1,4 @@
-import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
+import { displayConnectorTechnology, portDisplayName, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
@@ -404,9 +404,9 @@ function describeInternalInterface(port: DeviceTopologyPort): InterfaceDescripto
     return { key: `acpi:${parentIdentity}`, title: uiText.deviceTree.acpiInterface, connectorKind: "acpi", protocol: "ACPI" };
   }
   if (port.busKind.toLocaleLowerCase() === "storage") {
-    return { key: `storage:${parentIdentity}`, title: uiText.deviceTree.storageInterface, connectorKind: "storage", protocol: port.storage?.busType ?? port.protocol };
+    return { key: `storage:${parentIdentity}`, title: uiText.deviceTree.storageInterface, connectorKind: "storage", protocol: port.storage?.busType ?? portProtocol(port) };
   }
-  return { key: `system:${parentIdentity}`, title: uiText.deviceTree.systemInterface, connectorKind: "internal", protocol: port.protocol };
+  return { key: `system:${parentIdentity}`, title: uiText.deviceTree.systemInterface, connectorKind: "internal", protocol: portProtocol(port) };
 }
 
 function internalDisplayInterfaceTitle(port: DeviceTopologyPort) {

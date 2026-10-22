@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./es-ES-targetedReport.ts";
-import { fieldLabel } from "./es-ES-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./es-ES-fieldLabels.ts";
 
 const esEsAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "Guardando",
     saveFailed: "No se pudo guardar"
@@ -619,6 +620,7 @@ const esEsAppCopy: AppCopy = {
     listLabel: "Elementos de supervisión",
     empty: "No hay ningún elemento de supervisión coincidente",
     needsInstall: (name: string) => `Requiere instalación: ${name}`,
+    deviceFields: "Campos del dispositivo",
     cancel: "Cancelar",
     confirm: "Confirmar"
   },
@@ -800,6 +802,8 @@ const esEsAppCopy: AppCopy = {
     reportPanel: "Informes de optimización",
     gpuScoreUnrecognizedTitle: "Modelo de GPU no reconocido",
     gpuScoreUnrecognizedMessage: (names: string) => `${names} no coincide con ninguna puntuación de rendimiento integrada. Una puntuación manual positiva permite incluir estas GPU en la clasificación automática.`,
+    runtimeFaultClosedTitle: "Motor de optimización bloqueado tras un error",
+    runtimeFaultClosedDetail: (reason: string) => `No se aplicará ningún ajuste de optimización nuevo. Código de causa: ${reason}`,
     filterLabel: "Filtro de informes",
     filterUntrusted: (count: string) => `No confiables ${count}`,
     filterAll: (count: string) => `Todos ${count}`,
@@ -1023,6 +1027,7 @@ const esEsAppCopy: AppCopy = {
     detailTitle: (name: string) => `Detalles de ${name}`,
     fallbackDeviceName: "Dispositivo",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `Puerto ${port} del hub superior`,
     connectedDevice: "Dispositivo conectado",
     section: {
       overview: "Resumen",
@@ -1052,7 +1057,7 @@ const esEsAppCopy: AppCopy = {
       activeResolution: "Resolución activa",
       refreshRate: "Frecuencia de actualización",
       connectionLocation: "Ubicación de la conexión",
-      networkInterface: "Interfaz de red",
+      networkInterface: "Nombre de interfaz del sistema",
       transmitSpeed: "Velocidad de transmisión",
       receiveSpeed: "Velocidad de recepción",
       macAddress: "Dirección MAC",
@@ -1144,6 +1149,7 @@ const esEsAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · conexión interna`
     },
     usbGenericConnector: "USB-A / conexión USB",
+    ethernetProtocol: "Ethernet",
     deviceCategory: {
       internalDisplayPanel: "Panel de pantalla integrado",
       wirelessDisplay: "Pantalla inalámbrica / virtual",
@@ -1227,7 +1233,7 @@ const esEsAppCopy: AppCopy = {
     powerRole: "Función de energía",
     negotiatedPower: "Potencia negociada",
     graphicsBus: "Bus gráfico",
-    networkInterface: "Interfaz de red",
+    networkInterface: "Nombre de interfaz del sistema",
     connectionState: "Estado de la conexión",
     transmitLink: "Enlace de transmisión",
     receiveLink: "Enlace de recepción",

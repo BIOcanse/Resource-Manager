@@ -1,4 +1,5 @@
-/* Theme Tokens */
+/* Theme Tokens: the base :root block is the standard light palette plus the layout tokens every style shares.
+   Palette blocks here apply to the standard style only; other styles live in styles/ui-styles/. */
 :root {
   color-scheme: light;
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
@@ -44,6 +45,11 @@
   --control-height-compact: 30px;
   --control-padding-x: 12px;
   --focus-ring: 2px solid var(--accent);
+  /* 磁盘占用图的目录 / 文件方格色相，风格可以改。 */
+  --treemap-directory-hue: 168;
+  --treemap-file-hue: 205;
+  /* 顶栏和二级分页条的背景模糊；不透明的风格可以设成 none，省掉合成开销。 */
+  --shell-backdrop: blur(14px);
 
   /* Refinement layer: radius / layered elevation / edge highlight / hairline.
      elev-* reference --shadow-color so light-family themes only re-point that. */
@@ -62,11 +68,11 @@
   --edge: var(--line-soft);
 }
 
-:root[data-theme="light"] {
+:root[data-ui-style="standard"][data-theme="light"] {
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-ui-style="standard"][data-theme="dark"] {
   color-scheme: dark;
   --bg: color(display-p3 0.078 0.086 0.090);
   --surface: color(display-p3 0.118 0.130 0.132);
@@ -103,7 +109,7 @@
   --hairline: color(display-p3 1 1 1 / 0.06);
 }
 
-:root[data-theme="lowContrast"] {
+:root[data-ui-style="standard"][data-theme="lowContrast"] {
   color-scheme: light;
   --bg: color(display-p3 0.900 0.914 0.902);
   --surface: color(display-p3 0.936 0.946 0.932);
@@ -138,7 +144,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root[data-theme="system"] {
+  :root[data-ui-style="standard"][data-theme="system"] {
     color-scheme: dark;
     --bg: color(display-p3 0.078 0.086 0.090);
     --surface: color(display-p3 0.118 0.130 0.132);

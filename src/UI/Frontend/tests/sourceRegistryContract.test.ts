@@ -27,7 +27,7 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 13);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 14);
 assert.match(pushValueSources, /this\.channel\.subscribe\(/);
 assert.doesNotMatch(pushValueSources, /BackendSessionOwner|\bfetch\s*\(/);
 assert.match(subscriptionChannel, /const subscriptionEndpoint = "\/api\/subscriptions\/stream"/);
@@ -74,6 +74,16 @@ const specializedGpuSource = sources.slice(
   sources.indexOf("gpuSchedulingModel: sourceRegistry.defineFamily"));
 assert.doesNotMatch(specializedGpuSource, /retainLastGood|retryPolicy|refreshInterval/);
 assert.doesNotMatch(optimizationStore, /reportSource\.acceptAuthoritative/);
+// 优化页的调度状态跟随后端推送；可见时订阅，刷新按钮同时重新读取调度状态。
+assert.match(sources, /smartCoordinatorStatus:\s*new BackendPushValueSource/);
+assert.match(optimizationStore, /options\.statusSource\.subscribe\(/);
+assert.match(app, /statusSource:\s*frontendRuntime\.sources\.smartCoordinatorStatus/);
+assert.match(
+  app,
+  /statusActive:\s*\(\)\s*=>\s*frontendWork\.isNeeded\(frontendWorkIds\.optimizationSmartStatus\)/);
+assert.match(
+  readSource("features/optimization/OptimizationWorkspace.tsx"),
+  /onRefresh=\{\(\) => \{[\s\S]*refreshReports\(true\)[\s\S]*refreshHostManagerStatus\(\)/);
 
 assert.match(scheduler, /options\.localSystemSource\.subscribe/);
 assert.match(scheduler, /options\.selfSchedulingSource\.subscribe/);

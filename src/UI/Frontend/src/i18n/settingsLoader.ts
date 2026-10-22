@@ -1,4 +1,5 @@
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppThemeMode, ByteUnitMode } from "../types.ts";
+import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, ByteUnitMode } from "../types.ts";
+import { uiStyles } from "../presentation/uiStyles.ts";
 import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
@@ -97,6 +98,8 @@ export const loadingSettingsText: SettingsTextBundle = {
     }
   },
   appearance: {
+    uiStyleTitle: "",
+    uiStyleDescription: "",
     themeTitle: "",
     themeDescription: "",
     animationTitle: "",
@@ -115,7 +118,12 @@ export const loadingSettingsText: SettingsTextBundle = {
     settingsLanguageTitle: "",
     settingsLanguageDescription: "",
     languageSelectLabel: "",
-    themeOptions: { system: "", light: "", dark: "", lowContrast: "" },
+    uiStyleOptions: { standard: "", soft: "", outline: "", terminal: "" },
+    themeOptions: {
+      system: "", light: "", dark: "", lowContrast: "",
+      paper: "", graphite: "", blueprint: "",
+      phosphor: "", amber: "", ice: ""
+    },
     animationOptions: {
       auto: { label: "", description: "" },
       normal: { label: "", description: "" },
@@ -284,7 +292,7 @@ export const loadingSettingsText: SettingsTextBundle = {
       solidPlugin: ""
     }
   },
-  themeOptions: [],
+  uiStyleOptions: [],
   animationOptions: [],
   barColorOptions: [],
   byteUnitOptions: [],
@@ -319,8 +327,7 @@ function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: Setti
   return {
     ...copy,
     language,
-    themeOptions: (Object.entries(copy.appearance.themeOptions) as Array<[AppThemeMode, string]>)
-      .map(([id, label]) => ({ id, label })),
+    uiStyleOptions: uiStyles.map((style) => ({ id: style.id, label: copy.appearance.uiStyleOptions[style.id] })),
     animationOptions: (Object.entries(copy.appearance.animationOptions) as Array<[AppAnimationMode, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     barColorOptions: (Object.entries(copy.appearance.barColorOptions) as Array<[AppBarColorMode, { label: string; description: string }]>)

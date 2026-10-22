@@ -95,8 +95,15 @@ import {
   buildHostManagerSmartStateSubscriptionUrl,
   hostManagerSmartStateDecoder
 } from "../../data/optimization/hostManagerSmartStateSource.ts";
+import {
+  buildHostManagerSmartStatusSubscriptionUrl,
+  hostManagerSmartStatusDecoder
+} from "../../data/optimization/hostManagerSmartStatusSource.ts";
 import type { OptimizationReportOverview } from "../../types.ts";
-import type { HostManagerRollbackStateDocument } from "../../types.ts";
+import type {
+  HostManagerRollbackStateDocument,
+  HostManagerSmartCoordinatorStatus
+} from "../../types.ts";
 import {
   buildGpuSpecializedTelemetrySubscriptionUrl,
   getGpuPerformanceScoreSource,
@@ -135,6 +142,8 @@ export interface FrontendSources {
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
+  /** 优化页的调度状态（模式、运行、故障关闭、待确认、已优化对象数），后端推送。 */
+  readonly smartCoordinatorStatus: PushValueSource<HostManagerSmartCoordinatorStatus>;
   readonly cpuExclusiveBindings: SourceHandle<CpuExclusiveBindingSnapshot | null>;
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
   readonly dashboardSettings: SourceHandle<DashboardSettingsResult>;
@@ -227,6 +236,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildHostManagerSmartStateSubscriptionUrl,
       decoder: hostManagerSmartStateDecoder
+    }),
+    smartCoordinatorStatus: new BackendPushValueSource<HostManagerSmartCoordinatorStatus>({
+      key: "host-manager.smart-status",
+      channel: subscriptionChannel,
+      buildUrl: buildHostManagerSmartStatusSubscriptionUrl,
+      decoder: hostManagerSmartStatusDecoder
     }),
     cpuExclusiveBindings: sourceRegistry.define<CpuExclusiveBindingSnapshot | null>({
       key: "cpu.exclusive-bindings",
