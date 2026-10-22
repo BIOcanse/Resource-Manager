@@ -462,7 +462,6 @@ export default createSettingsLocale("fr-FR", {
       "nativeToolchain": "Merci aux auteurs et mainteneurs GCC et MinGW pour la compilation et l’exécution natives. Certains composants lient statiquement libgcc/libstdc++ ; la redistribution fait l’objet d’un examen distinct.",
       "buildContributors": "Merci aux auteurs et mainteneurs des dépendances de compilation : outils Solid, cartes de sources, données de navigateurs et petites bibliothèques. La liste complète conserve chaque paquet et version verrouillés, y compris les plateformes facultatives.",
       "testContributors": "Merci aux contributeurs Playwright, xUnit.net, Coverlet et Microsoft pour l’automatisation des navigateurs, les tests de régression et la couverture. Ce sont des outils de développement, pas des dépendances d’exécution du produit.",
-      "openHardwareMonitor": "Merci aux auteurs et contributeurs OpenHardwareMonitor pour les interfaces de capteurs. Un fournisseur externe installé peut fournir des données WMI ; cela n’implique pas son inclusion.",
       "upstreamContributors": "Merci à tous les auteurs des notices originales .NET et WebView2, notamment ANTLR, Unicode, Mono, Brotli et LLVM. Les originaux complets sont conservés ; ils ne constituent pas un inventaire des DLL en cours d’exécution.",
       "resourceManager": "Copyright (c) 2026 BIOcanse. Ce projet utilise Apache-2.0. Les composants tiers conservent leurs propres licences.",
       "solid": "Fournit le modèle de composants réactifs de l’interface web légère actuelle.",
@@ -486,6 +485,9 @@ export default createSettingsLocale("fr-FR", {
       "pawnIo": "Pilote signé officiellement, partagé par les mesures SMU AMD, le contrôle des processeurs Intel et les capteurs de carte mère et de mémoire ; jamais installé en silence.",
       "pawnIoModules": "Modules signés officiellement (LGPL-2.1). RyzenSMU et IntelMSR sont récupérés lors de la vérification du composant ; les modules d'accès LPC, EC et SMBus sont intégrés à LibreHardwareMonitorLib.",
       "libreHardwareMonitor": "Bibliothèque principale officielle 0.9.6 fournie (MPL-2.0), avec seulement les groupes carte mère et mémoire ; lit via PawnIO les températures, tensions et ventilateurs de la carte mère et la température de la mémoire. Aucune interface graphique ni serveur web n'est lancé.",
+      "blacktempelToolkits": "Bibliothèques d'informations disque, de lecture SPD de la mémoire et de base utilisées par LibreHardwareMonitorLib (1.1.2, 1.4.2, 1.0.7), par Florian K., sous MPL-2.0.",
+      "hidSharp": "Bibliothèque d'accès aux périphériques USB HID 2.6.4 utilisée par LibreHardwareMonitorLib, par James F. Bellinger, sous Apache-2.0.",
+      "monoPosix": "Interface POSIX de Mono 1.0.0 utilisée par LibreHardwareMonitorLib, publiée par Microsoft sous la licence MIT des bibliothèques de classes Mono.",
       "usbIds": "Fournit hors ligne les noms de fabricants et appareils USB VID/PID ; chargé seulement à la demande des détails.",
       "pciIds": "Fournit hors ligne les noms de fabricants, appareils et sous-systèmes PCI VEN/DEV/SUBSYS ; chargé seulement à la demande des détails."
     },

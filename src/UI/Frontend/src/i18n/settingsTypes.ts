@@ -229,7 +229,6 @@ export interface SettingsCopy {
       nativeToolchain: string;
       buildContributors: string;
       testContributors: string;
-      openHardwareMonitor: string;
       upstreamContributors: string;
       resourceManager: string;
       solid: string;
@@ -253,6 +252,9 @@ export interface SettingsCopy {
       pawnIo: string;
       pawnIoModules: string;
       libreHardwareMonitor: string;
+      blacktempelToolkits: string;
+      hidSharp: string;
+      monoPosix: string;
       usbIds: string;
       pciIds: string;
     };

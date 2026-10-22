@@ -15,7 +15,7 @@ const creditCatalog: CreditCatalogItem[] = [
     links: [{ label: "docs", href: "https://learn.microsoft.com/windows/" }] },
   { group: "build", name: ".NET SDK / MSBuild / NuGet / PowerShell", role: "buildToolchain", note: "microsoftTools",
     links: [{ label: "github", href: "https://github.com/dotnet" }] },
-  { group: "windows", name: "Microsoft.Extensions.Hosting.WindowsServices / System.ServiceProcess.ServiceController / System.Reflection.TypeExtensions", role: "dotnetRuntime", note: "managedServices",
+  { group: "windows", name: "Microsoft.Extensions.Hosting.WindowsServices / System.ServiceProcess.ServiceController / System.Reflection.TypeExtensions / System.IO.Ports / System.IO.FileSystem.AccessControl", role: "dotnetRuntime", note: "managedServices",
     links: [{ label: "github", href: "https://github.com/dotnet/runtime" }] },
   { group: "build", name: "GCC / MinGW-w64 / winpthreads / WinLibs", role: "nativeCompiler", note: "nativeToolchain",
     links: [{ label: "official", href: "https://gcc.gnu.org/", subject: "GCC" }, { label: "official", href: "https://www.mingw-w64.org/", subject: "MinGW-w64" }] },
@@ -23,8 +23,6 @@ const creditCatalog: CreditCatalogItem[] = [
     links: [{ label: "official", href: "https://www.npmjs.com/" }] },
   { group: "build", name: "Playwright / xUnit.net / Coverlet / Microsoft.NET.Test.Sdk", role: "buildToolchain", note: "testContributors",
     links: [{ label: "official", href: "https://playwright.dev/", subject: "Playwright" }, { label: "official", href: "https://xunit.net/", subject: "xUnit.net" }, { label: "github", href: "https://github.com/coverlet-coverage/coverlet" }] },
-  { group: "hardware", name: "OpenHardwareMonitor", role: "hardwareBridge", note: "openHardwareMonitor",
-    links: [{ label: "github", href: "https://github.com/openhardwaremonitor/openhardwaremonitor" }] },
   { group: "runtime", name: "ANTLR / .NET & WebView2 third-party contributors", role: "dotnetRuntime", note: "upstreamContributors",
     links: [{ label: "official", href: "https://www.antlr.org/" }, { label: "github", href: "https://github.com/antlr/antlr4" }] },
   {
@@ -263,6 +261,37 @@ const creditCatalog: CreditCatalogItem[] = [
     links: [
       { label: "github", href: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor" },
       { label: "license", href: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LICENSE" }
+    ]
+  },
+  {
+    group: "hardware",
+    name: "DiskInfoToolkit / RAMSPDToolkit-NDD / BlackSharp.Core",
+    role: "hardwareBridge",
+    note: "blacktempelToolkits",
+    links: [
+      { label: "github", href: "https://github.com/Blacktempel/DiskInfoToolkit", subject: "DiskInfoToolkit" },
+      { label: "github", href: "https://github.com/Blacktempel/RAMSPDToolkit", subject: "RAMSPDToolkit" },
+      { label: "github", href: "https://github.com/Blacktempel/BlackSharp", subject: "BlackSharp" }
+    ]
+  },
+  {
+    group: "hardware",
+    name: "HidSharp",
+    role: "hardwareBridge",
+    note: "hidSharp",
+    links: [
+      { label: "official", href: "https://software.seekye.com/hidsharp" },
+      { label: "license", href: "https://www.apache.org/licenses/LICENSE-2.0" }
+    ]
+  },
+  {
+    group: "hardware",
+    name: "Mono.Posix.NETStandard",
+    role: "dotnetRuntime",
+    note: "monoPosix",
+    links: [
+      { label: "github", href: "https://github.com/mono/mono/tree/master/mcs/class/Mono.Posix" },
+      { label: "license", href: "https://github.com/mono/mono/blob/master/LICENSE" }
     ]
   }
 ];

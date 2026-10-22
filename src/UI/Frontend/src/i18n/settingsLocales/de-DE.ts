@@ -462,7 +462,6 @@ export default createSettingsLocale("de-DE", {
       "nativeToolchain": "Danke an GCC- und MinGW-Autoren und Betreuer für native Kompilierung und Laufzeitgrundlagen. Einige Komponenten binden libgcc/libstdc++ statisch; die Weitergabe wird separat geprüft.",
       "buildContributors": "Danke an alle Autoren und Betreuer der Build-Abhängigkeiten, einschließlich Solid-Werkzeuge, Source Maps, Browserdaten und Hilfsbibliotheken. Die vollständige Liste enthält alle fixierten Pakete und Versionen samt optionalen Plattformen.",
       "testContributors": "Danke an Playwright-, xUnit.net-, Coverlet- und Microsoft-Testplattform-Mitwirkende für Browserautomatisierung, Regressionstests und Abdeckung. Dies sind Entwicklungswerkzeuge, keine Laufzeitabhängigkeiten des Basisprodukts.",
-      "openHardwareMonitor": "Danke an OpenHardwareMonitor-Autoren und Mitwirkende für Sensorschnittstellen. Ein installierter externer Anbieter kann WMI-Daten liefern; dies bedeutet keine Bündelung.",
       "upstreamContributors": "Unser Dank gilt allen Autoren der ursprünglichen .NET- und WebView2-Hinweise, einschließlich ANTLR, Unicode, Mono, Brotli und LLVM. Vollständige Originale bleiben erhalten; sie sind kein Inventar geladener DLLs.",
       "resourceManager": "Copyright (c) 2026 BIOcanse. Dieses Projekt verwendet Apache-2.0. Drittanbieterkomponenten behalten ihre eigenen Lizenzen.",
       "solid": "Stellt das reaktive Komponentenmodell der aktuellen leichtgewichtigen Web-Oberfläche bereit.",
@@ -486,6 +485,9 @@ export default createSettingsLocale("de-DE", {
       "pawnIo": "Offiziell signierter Treiber, gemeinsam genutzt von AMD-SMU-Messdaten, Intel-Prozessorsteuerung sowie Mainboard- und Speichersensoren; niemals unbemerkt installiert.",
       "pawnIoModules": "Offiziell signierte Module (LGPL-2.1). RyzenSMU und IntelMSR werden beim Prüfen der Komponente geladen; die LPC-, EC- und SMBus-Zugriffsmodule sind in LibreHardwareMonitorLib eingebettet.",
       "libreHardwareMonitor": "Mitgelieferte offizielle Kernbibliothek 0.9.6 (MPL-2.0), nur mit den Gruppen Mainboard und Arbeitsspeicher; liest über PawnIO Mainboard-Temperaturen, Spannungen, Lüfter und Speichertemperatur. Weder Oberfläche noch Webserver werden gestartet.",
+      "blacktempelToolkits": "Von LibreHardwareMonitorLib genutzte Bibliotheken für Laufwerksinformationen, Speicher-SPD und Grundfunktionen (1.1.2, 1.4.2, 1.0.7) von Florian K., unter MPL-2.0.",
+      "hidSharp": "Von LibreHardwareMonitorLib genutzte Bibliothek für USB-HID-Gerätezugriff 2.6.4 von James F. Bellinger, unter Apache-2.0.",
+      "monoPosix": "Von LibreHardwareMonitorLib genutzte Mono-POSIX-Schnittstelle 1.0.0, veröffentlicht von Microsoft unter der MIT-Lizenz der Mono-Klassenbibliotheken.",
       "usbIds": "Liefert lokale Offline-Namen für USB-VID/PID-Hersteller und Geräte; nur bei angeforderten Gerätedetails geladen.",
       "pciIds": "Liefert lokale Offline-Namen für PCI-VEN/DEV/SUBSYS-Hersteller, Geräte und Subsysteme; nur bei angeforderten Gerätedetails geladen."
     },
