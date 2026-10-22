@@ -426,15 +426,25 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             : ["Debug", "Release"];
     }
 
+    // Source layout: this project is src/UI/Core and the backend project is src/Core,
+    // the counterpart of the backend's "../UI/Core" lookup in NativeUiLaunchHostedService.
     private static bool TryFindAppRoot(string startPath, out string appRoot)
     {
         for (var directory = new DirectoryInfo(startPath); directory is not null; directory = directory.Parent)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "ResourceManager.App.csproj")))
+            if (!File.Exists(Path.Combine(directory.FullName, "ResourceManager.NativeUi.csproj")))
             {
-                appRoot = directory.FullName;
+                continue;
+            }
+
+            var backendRoot = Path.GetFullPath(Path.Combine(directory.FullName, "..", "..", "Core"));
+            if (File.Exists(Path.Combine(backendRoot, "ResourceManager.App.csproj")))
+            {
+                appRoot = backendRoot;
                 return true;
             }
+
+            break;
         }
 
         appRoot = string.Empty;
