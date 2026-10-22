@@ -9,14 +9,16 @@ public sealed class HostManagerMetricSnapshotCatalogTopologySource
     private readonly Func<uint, uint, NativeMetricSnapshotCatalogProjection?, uint, NativeMetricSnapshotCatalogTopologySnapshot>? captureWithEngine;
     public HostManagerMetricSnapshotCatalogTopologySource(WindowsGpuAdapterOrderMonitoringZone gpuAdapterOrderZone,
         WindowsBatteryMonitoringZone batteryZone, ICpuTopologySampler? cpuTopologySampler = null, IpHelperNetworkMonitoringZone? networkZone = null,
-        NvidiaNvmlMonitoringZone? nvidiaZone = null, WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, IntelGclMonitoringZone? intelGclZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null)
+        NvidiaNvmlMonitoringZone? nvidiaZone = null, WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, IntelGclMonitoringZone? intelGclZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null,
+        HardwareMonitorWmiMonitoringZone? hardwareMonitorZone = null)
     {
         var engines = npuEngineZone ?? new WindowsNpuEngineMonitoringZone();
         var npus = npuMemoryZone ?? new WindowsNpuMemoryMonitoringZone();
         var network = networkZone ?? new IpHelperNetworkMonitoringZone();
         source = new(new(() => gpuAdapterOrderZone.ReadInventory(requested: true),
             generation => WindowsStorageSensorsMonitoringZone.ReadIdentities(generation),
-            generation => HardwareMonitorWmiMonitoringZone.ReadFanIdentities(generation),
+            generation => hardwareMonitorZone?.ReadFanCatalog(generation)
+                ?? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []),
             batteryZone.ReadIdentities, network.ReadInterfaceIdentities, WindowsMemoryMonitoringZone.ReadNumaIdentities)
             { OpenIgclFanDirectory = (inventory, maximum, prior) => intelGclZone?.OpenFanTopology(inventory, maximum, prior)
                     ?? new IntelFanTopologyRead(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []),

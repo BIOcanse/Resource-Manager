@@ -10,26 +10,31 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
     internal static NativeMetricSnapshotOrdinalTopologyRead ReadFanIdentities(ulong generation,
         Func<string, string, QueryResult>? query = null)
     {
-        var reader = query is null ? new HardwareMonitorWmiReader() : new HardwareMonitorWmiReader((path, statement, _) =>
-        {
-            var queried = query(path, statement);
-            return new(queried.Rows, queried.Error);
-        });
-        // Shared WMI fan catalog projection, so these identities carry the same fan device descriptor
-        // as the ReadWriteCore default resources. This path appended no OEM fan identities before either.
-        return WindowsNotebookFanProjection.CreateFanCatalog(reader.ReadFanIdentities(TimeSpan.FromSeconds(2)),
+        var identities = query is null
+            ? new HardwareMonitorFanIdentityRead(false, [])
+            : new HardwareMonitorWmiReader((path, statement, _) =>
+                { var result = query(path, statement); return new(result.Rows, result.Error); })
+                .ReadFanIdentities(TimeSpan.FromSeconds(2));
+        // The product owns the core-library session; injected WMI remains
+        // an explicit SDK test/query path, never a production fallback.
+        return WindowsNotebookFanProjection.CreateFanCatalog(identities,
             enableMechrevo: false, generation);
     }
 
+    internal NativeMetricSnapshotOrdinalTopologyRead ReadFanCatalog(ulong generation)
+        => WindowsNotebookFanProjection.CreateFanCatalog(
+            CanRead ? coreReader.ReadFanIdentities(TimeSpan.FromSeconds(2)) : new(false, []),
+            enableMechrevo: false, generation);
+
     internal HardwareMonitorSensorSnapshot ReadSensors()
-        => CanRead ? FormatSnapshot(new HardwareMonitorWmiReader().Read(TimeSpan.FromSeconds(2))) : HardwareMonitorSensorsFrozen();
+        => CanRead ? FormatSnapshot(coreReader.Read(TimeSpan.FromSeconds(2))) : HardwareMonitorSensorsFrozen();
 
     internal static HardwareMonitorSensorSnapshot FormatSnapshot(HardwareMonitorSensorSnapshot raw)
     {
         var state = raw.ProviderState;
         var message = state.Message ?? (state.State == "Active"
-            ? "已读取内存温度、主板传感、风扇或 GPU 后备传感器。"
-            : "未发现内存温度、主板传感、风扇或 GPU 后备传感器。");
+            ? "已读取内存温度、主板传感或风扇。"
+            : "未发现内存温度、主板传感或风扇。");
         return raw with
         {
             ProviderState = state with { Message = message },
@@ -58,6 +63,6 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
         };
 
     private static HardwareMonitorSensorSnapshot HardwareMonitorSensorsFrozen()
-        => new(new HardwareSensorProviderState("Hardware monitor WMI", "Frozen",
-            "HardwareMonitor WMI 监控源当前处于功能区冻结。"), null, null, null, null, null, null, null, [], []);
+        => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", "Frozen",
+            "LibreHardwareMonitor Core 监控源当前处于功能区冻结。"), null, null, null, null, null, null, null, [], []);
 }

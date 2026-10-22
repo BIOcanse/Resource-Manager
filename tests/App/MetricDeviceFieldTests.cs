@@ -119,7 +119,7 @@ public sealed class MetricDeviceFieldTests
         var fbTotal = Assert.Single(catalog.MetricBindings.Values, binding => binding.Field?.Name == "gpu_nvidia_fb_total_bytes");
         Assert.Equal("nvidia.nvml",fbTotal.SourceId);
         Assert.NotEqual(MetricFieldRegistry.FindByTemplate("gpu.{gpu}.vramTotal")!.Name,fbTotal.Field!.Name);
-        Assert.DoesNotContain(catalog.RuleBindings.Values, binding => binding.SourceId == "hardware-monitor.wmi"
+        Assert.DoesNotContain(catalog.RuleBindings.Values, binding => binding.SourceId == "hardware-monitor.core"
             && binding.Field?.Resource == MetricResource.Gpu);
     }
 

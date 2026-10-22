@@ -136,16 +136,28 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
                 if (catalog.RuleBindings.Values.Any(rule => rule.SourceId == NativeMetricSnapshotSources.NotebookOemFan
                     && handles.Contains(rule.MetricHandle))) directNotebookDemand = true;
             }
+            var readingCatalogChanged = false;
             var snapshot = await capture.CaptureUnderGateAsync(request, active, workspaceIdentity, topology,
                 commit => CommitCollection(commit, permit, borrow),
-                new(""), cancellationToken, onCommitted: request.IsCatalogProbe ? null : completed => current.Publish(completed, request),
+                new(""), cancellationToken, onCommitted: request.IsCatalogProbe ? null : completed =>
+                {
+                    current.Publish(completed, request);
+                    var catalog = Volatile.Read(ref catalogSnapshot);
+                    if (catalog is null) return;
+                    var updated = MetricReadingCatalog.Update(catalog, completed);
+                    if (ReferenceEquals(updated, catalog)) return;
+                    Volatile.Write(ref catalogSnapshot, updated);
+                    readingCatalogChanged = true;
+                },
                 enrichBeforeCommit: EnrichControlFieldsAsync,
                 sourceQueriesCompleted: sourceQueriesCompleted,
                 fieldCatalog: Volatile.Read(ref catalogSnapshot));
             if (request.IsCatalogProbe && snapshot is not null)
                 nvidiaWriter?.Discover(snapshot, modeProvider(NativeMetricSnapshotSources.NvidiaNvml) == NativeMetricSnapshotZoneMode.Freeze);
             if (!request.IsCatalogProbe && snapshot is not null)
-                Publications.Publish(PublicationKeys(request, snapshot));
+                Publications.Publish(readingCatalogChanged
+                    ? PublicationKeys(request, snapshot).Append(MetricDatasetIds.SystemMetricCatalog)
+                    : PublicationKeys(request, snapshot));
             return snapshot;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

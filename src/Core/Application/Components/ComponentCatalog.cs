@@ -35,47 +35,30 @@ public static class ComponentCatalog
             "Intel CPU control", "CPU",
             ["pl1", "pl2", "time-window", "voltage-offset"]),
         CreateOptionalDependencyDefinition(
-            "amd-ryzen-master-monitoring-sdk",
-            "AMD Ryzen Master Monitoring SDK",
-            "AMD",
-            "硬件传感 Provider",
-            "AMD CPU 功耗、电压、电流、温度 Provider 候选。",
-            "CPU telemetry SDK",
-            "CPU",
-            ["power", "voltage", "current", "temperature"]),
-        CreateOptionalDependencyDefinition(
             "fan-control-core", "风扇控制核心", "Resource Manager", "控制写入",
             "机身风扇的读取与控制经过它。", "Fan control", "Fan", ["fan-control"]),
         CreateOptionalDependencyDefinition(
             "hardware-bridge", "硬件写入辅助进程", "Resource Manager", "控制写入",
             "处理器功耗上限和电压写入经过它。", "CPU control", "CPU", ["power", "voltage"]),
         CreateOptionalDependencyDefinition(
-            "msi-afterburner",
-            "MSI Afterburner",
-            "MSI",
-            "支持软件/辅助工具",
-            "外部遥测参考和可选辅助工具，不作为基础运行依赖。",
-            "External telemetry helper",
-            "Helper",
-            ["reference-telemetry", "shared-memory"]),
-        CreateOptionalDependencyDefinition(
-            "librehardwaremonitor-provider",
-            "LibreHardwareMonitor Provider",
-            "LibreHardwareMonitor",
-            "硬件传感 Provider",
-            "通用硬件监控桥，补齐 CPU/系统风扇、内存温度、主板传感、电压等 Windows/厂商基础接口缺口。",
-            "Hardware monitor WMI bridge",
-            "HardwareMonitor",
-            ["hardware-monitor-wmi", "fan", "temperature", "voltage", "memory-temperature", "motherboard-temperature", "vrm-temperature", "chipset-temperature", "motherboard-voltage", "disk-temperature"]),
-        CreateOptionalDependencyDefinition(
-            "notebook-fancontrol-provider",
-            "Notebook FanControl Provider",
-            "NBFC",
-            "硬件传感 Provider",
-            "笔记本 EC 风扇路线，用于普通硬件监控和显卡驱动都不暴露风扇时的候选 Provider。",
-            "Notebook EC fan provider",
-            "NotebookEC",
-            ["notebook-ec", "fan", "fan-rpm", "fan-control"]),
+            "hardware-sensors-pawnio-provider", "Hardware sensors / PawnIO", "namazso",
+            "硬件传感驱动", "主板和内存核心读取共用官方签名 PawnIO 驱动。",
+            "PawnIO sensor driver", "HardwareMonitor", ["fan", "temperature", "voltage"]),
+        new ComponentDefinition(
+            Id: "librehardwaremonitor-provider", Name: "LibreHardwareMonitor Core",
+            Vendor: "LibreHardwareMonitor", Category: "硬件传感 Provider",
+            Purpose: "产品内的官方核心库；仅 Motherboard/Memory，读取主板、EC、SuperIO 与 DIMM，不启动 GUI 或服务。",
+            SourcePageUrl: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor",
+            ExternalTermsUrl: "https://www.mozilla.org/MPL/2.0/",
+            ManagementRole: SoftwareManagementRoles.Dependency, IsBundled: true,
+            RequiresExternalTermsAcknowledgement: false, RequiresElevation: false,
+            Capabilities:
+            [
+                new ComponentCapability("hardware-monitor-core", "主板与内存传感", "librehardwaremonitor-provider", "HardwareMonitor"),
+                new ComponentCapability("memory-temperature", "内存温度", "librehardwaremonitor-provider", "HardwareMonitor"),
+                new ComponentCapability("fan", "主板风扇", "librehardwaremonitor-provider", "HardwareMonitor")
+            ],
+            InstallNote: "MPL-2.0；核心库随产品提供，需已安装的 PawnIO 驱动，未验证支持不能当作实时读数。"),
         new ComponentDefinition(
             Id: "notebook-oem-fan-provider",
             Name: "Notebook OEM Fan Provider",
@@ -97,24 +80,6 @@ public static class ComponentCatalog
                 new ComponentCapability("notebook-oem-fan.vendor-adapters", "笔记本厂商适配", "notebook-oem-fan-provider", "NotebookOEM")
             ],
             InstallNote: "内置组件，随 Resource Manager 默认安装。当前接入 Mechrevo/Tongfang UWACPI 只读风扇路径；后续继续接入 Lenovo/ASUS/MSI/Dell/HP/Acer 等厂商。不会静默安装或分发 OEM 驱动。"),
-        CreateOptionalDependencyDefinition(
-            "windows-performance-toolkit",
-            "Windows Performance Toolkit",
-            "Microsoft",
-            "系统追踪/延迟诊断",
-            "官方 WPR/Xperf/WPA 工具链，用于 ETW kernel trace、DPC/ISR、磁盘和网络深度分析。",
-            "System trace toolkit",
-            "ETW",
-            ["kernel-trace", "dpc-isr", "wpr", "xperf", "wpa-export"]),
-        CreateOptionalDependencyDefinition(
-            "latencymon",
-            "LatencyMon",
-            "Resplendence",
-            "系统追踪/延迟诊断",
-            "ISR/DPC/hard pagefault 辅助诊断工具，用于对照验证中断延迟和驱动归因。",
-            "Latency diagnostics helper",
-            "Helper",
-            ["dpc-isr", "hard-pagefault", "driver-latency", "latency-report"]),
         new ComponentDefinition(
             Id: "nvidia-nvml-provider",
             Name: "NVIDIA NVML Provider",
@@ -177,26 +142,8 @@ public static class ComponentCatalog
                 new ComponentCapability("amd-gpu-fan", "GPU 风扇", "amd-adlx", "GPU"),
                 new ComponentCapability("amd-gpu-voltage", "GPU 电压", "amd-adlx", "GPU")
             ],
-            InstallNote: "ADLX 库通常随 AMD 显示驱动提供，基础包只包含 Resource Manager bridge，不随包分发 AMD 驱动 DLL。"),
-        new ComponentDefinition(
-            Id: "intel-pcm-provider",
-            Name: "Intel PCM / MSR Provider",
-            Vendor: "Intel",
-            Category: "硬件传感 Provider",
-            Purpose: "Intel CPU 底层功耗、频率和 MSR 相关 Provider 候选。",
-            SourcePageUrl: "https://github.com/intel/pcm",
-            ExternalTermsUrl: null,
-            ManagementRole: SoftwareManagementRoles.Dependency,
-            IsBundled: true,
-            RequiresExternalTermsAcknowledgement: false,
-            RequiresElevation: true,
-            Capabilities:
-            [
-                new ComponentCapability("intel-cpu-power", "CPU 功耗", "intel-pcm", "CPU"),
-                new ComponentCapability("intel-cpu-clocks", "CPU 频率", "intel-pcm", "CPU"),
-                new ComponentCapability("intel-msr", "MSR 访问", "intel-pcm", "CPU")
-            ],
-            InstallNote: "Windows MSR driver/service 路线必须显式安装和验证，不能静默启用。")
+            InstallNote: "ADLX 库通常随 AMD 显示驱动提供，基础包只包含 Resource Manager bridge，不随包分发 AMD 驱动 DLL。")
+
     ];
 
     public static ComponentDefinition? Find(string id)
@@ -256,28 +203,16 @@ public static class ComponentCatalog
             "fan-rpm" => "风扇转速",
             "fan-percent" => "风扇百分比",
             "fan-control" => "风扇控制",
-            "hardware-monitor-wmi" => "Hardware Monitor WMI",
             "memory-temperature" => "内存温度",
             "motherboard-temperature" => "主板温度",
             "vrm-temperature" => "供电温度",
             "chipset-temperature" => "芯片组温度",
             "motherboard-voltage" => "主板电压",
             "disk-temperature" => "磁盘温度",
-            "notebook-ec" => "笔记本 EC",
-            "reference-telemetry" => "参考遥测",
-            "shared-memory" => "共享内存",
-            "kernel-trace" => "内核追踪",
-            "dpc-isr" => "DPC/ISR 分析",
-            "hard-pagefault" => "Hard Pagefault 分析",
-            "driver-latency" => "驱动延迟归因",
-            "latency-report" => "延迟报告",
             "smu-pm-table" => "SMU PM table",
             "stapm" => "STAPM",
             "per-core" => "每核指标",
             "webview2-runtime" => "Web 界面运行时",
-            "wpr" => "Windows Performance Recorder",
-            "xperf" => "Xperf",
-            "wpa-export" => "WPA 导出",
             _ => capability
         };
     }

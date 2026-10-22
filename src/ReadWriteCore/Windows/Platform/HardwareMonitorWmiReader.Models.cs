@@ -13,7 +13,13 @@ public sealed record HardwareMonitorSensorSnapshot(
     double? CpuFanSpeedPercent,
     IReadOnlyList<SystemFanSensor> SystemFans,
     IReadOnlyList<PlatformGpuSensor> GpuSensors,
-    double? CpuTemperatureCelsius = null);
+    double? CpuTemperatureCelsius = null)
+{
+    public string? CpuTemperatureSensorIdentifier { get; init; }
+    public string? CpuTemperatureReadingKind { get; init; }
+    public IReadOnlyList<string> SensorIdentifiers { get; init; } = [];
+    public bool? CatalogComplete { get; init; }
+}
 
 internal sealed record HardwareMonitorHardwareInfo(
     string Identifier,

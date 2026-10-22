@@ -26,7 +26,7 @@ public sealed class HostReadWriteDependencyTests
         {
             ["nvidia.nvapi"] = "nvidia-nvapi-provider", ["amd.adlx"] = "amd-adlx-provider",
             ["amd.smu"] = "amd-smu-pawnio-provider", ["intel.msr"] = "intel-msr-pawnio-provider",
-            ["hardware-monitor.wmi"] = "librehardwaremonitor-provider", ["notebook-oem.fan"] = "notebook-oem-fan-provider"
+            ["hardware-monitor.core"] = "librehardwaremonitor-provider", ["notebook-oem.fan"] = "notebook-oem-fan-provider"
         };
         foreach (var (source, component) in pairs)
         {

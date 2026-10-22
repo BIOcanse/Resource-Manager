@@ -198,11 +198,9 @@ public sealed class DependencyInstallerSourceResolverTests
             .InstallerSourceKind;
 
         Assert.Equal(DependencyInstallerSourceKinds.Direct, KindOf("shared-webview2-runtime"));
-        Assert.Equal(DependencyInstallerSourceKinds.GitHubRelease, KindOf("librehardwaremonitor-provider"));
+        Assert.Equal(DependencyInstallerSourceKinds.GitHubRelease, KindOf("hardware-sensors-pawnio-provider"));
         Assert.Equal(DependencyInstallerSourceKinds.GitHubRelease, KindOf("amd-smu-pawnio-provider"));
-        Assert.Equal(DependencyInstallerSourceKinds.GitHubRelease, KindOf("notebook-fancontrol-provider"));
         // 下载页需要人工交互的厂商仍然是手动获取，不假装能一键。
-        Assert.Equal(DependencyInstallerSourceKinds.Manual, KindOf("msi-afterburner"));
     }
 
     [Fact]

@@ -43,7 +43,7 @@ public static class NativeMetricSnapshotSources
     public const string WindowsAtaSmart = "windows.ata-smart";
     public const string WindowsDiskPerformance = "windows.disk-performance";
     public const string WindowsBattery = "windows.battery";
-    public const string HardwareMonitorWmi = "hardware-monitor.wmi";
+    public const string HardwareMonitorWmi = "hardware-monitor.core";
     public const string NotebookOemFan = "notebook-oem.fan";
     public const string WindowsNetworkInterface = "windows.network-interface";
     public const string PdhSystemIo = "pdh.system-io";

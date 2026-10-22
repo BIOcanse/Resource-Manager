@@ -36,6 +36,11 @@ public sealed record NativeMetricSnapshotSourceCompletion(
     uint OverflowCount)
 {
     public PdhGpuEngineUsageRead? PdhGpuEngineUsage { get; init; }
+    // Positive sensor-presence facts are independent of a numeric value this frame.
+    public ImmutableArray<ulong> SupportedMetricHandles { get; init; } = [];
+    public ImmutableDictionary<ulong, string> ReadingQuantities { get; init; }
+        = ImmutableDictionary<ulong, string>.Empty;
+    public string? IntegratedGpuDeviceIdentity { get; init; }
 }
 
 public sealed record NativeMetricSnapshotCommittedFrame(

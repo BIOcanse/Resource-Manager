@@ -11,7 +11,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class DashboardMonitoringCatalogStateTests
+public sealed partial class DashboardMonitoringCatalogStateTests
 {
     [Fact]
     public void Publish_OnlySignalsCatalogIdentityChanges()

@@ -149,7 +149,11 @@ if($Stage -eq 'Build' -and [IO.File]::Exists($taskContextPath)) {
         }
     }
 }
-if($Stage -eq 'Build' -and $taskPartition -and -not $taskReusedActiveArtifacts){throw 'Partition Build requires the existing running incremental candidate artifacts.'}
+# A standalone focused closure uses the original project and its real resources,
+# but has no previous full-App candidate to reuse. Full-App partitions still do.
+$taskFocusedCompile=$taskPartition -and ($taskPartition.PSObject.Properties.Name -contains 'scope') -and
+    [string]$taskPartition.scope -ceq 'focused-compile-dependency-closure'
+if($Stage -eq 'Build' -and $taskPartition -and -not $taskReusedActiveArtifacts -and -not $taskFocusedCompile){throw 'Partition Build requires the existing running incremental candidate artifacts.'}
 if($Stage -eq 'Tests') {
     $taskContextHasPartition=$taskBuildContext.PSObject.Properties.Name -contains 'testCompileManifest' -and -not [string]::IsNullOrEmpty([string]$taskBuildContext.testCompileManifest)
     if($taskContextHasPartition -ne [bool]$taskPartition){throw 'Tests must use the same partition selection as the latest Build.'}
@@ -223,7 +227,10 @@ if($Stage -eq 'Build') {
         # Invalidate the old success before overwriting the same assembly output.
         [IO.File]::WriteAllText($taskContextPath,($taskNewContext|ConvertTo-Json -Depth 6),[Text.UTF8Encoding]::new($false))
         $taskDiagnostic=Join-Path $RunDirectory 'app-test-compiler.log'
-        $taskBuildArguments+=@('--no-restore',('-bl:'+(Join-Path $RunDirectory 'app-test-build.binlog')),
+        # Focused builds may start fresh or change a provider's package graph.
+        # Full-App partitions retain their already-restored candidate contract.
+        if(-not $taskFocusedCompile){$taskBuildArguments+='--no-restore'}
+        $taskBuildArguments+=@(('-bl:'+(Join-Path $RunDirectory 'app-test-build.binlog')),
             ('-flp:LogFile='+$taskDiagnostic+';Verbosity=diagnostic'))
     }
     Invoke-Dotnet ($taskBuildArguments+$taskProperties) ($taskLogPrefix+'-build')

@@ -95,16 +95,6 @@ public sealed partial class OptionalDependencyManager
         OptionalDependencyDefinition definition,
         string installDirectory)
     {
-        if (definition.Id.Equals("windows-performance-toolkit", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"/quiet /norestart /installpath \"{installDirectory}\" /features OptionId.WindowsPerformanceToolkit";
-        }
-
-        if (definition.Id.Equals("latencymon", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"/SILENT /NORESTART /SUPPRESSMSGBOXES /DIR=\"{installDirectory}\"";
-        }
-
         if (definition.Id.Equals("shared-webview2-runtime", StringComparison.OrdinalIgnoreCase))
         {
             return "/silent /install";

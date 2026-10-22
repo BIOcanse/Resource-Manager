@@ -3,10 +3,12 @@ param(
     [Parameter(Mandatory)][string]$TaskRoot,
     [Parameter(Mandatory)][string]$WorkspaceRoot,
     [switch]$SharedWorkspace,
+    [switch]$KeepTaskRunning,
     [string]$ProjectPolicyPath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
+if($KeepTaskRunning -and -not $SharedWorkspace){throw 'KeepTaskRunning requires SharedWorkspace.'}
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $taskPath=[IO.Path]::GetFullPath($TaskRoot)
 $workspace=[IO.Path]::GetFullPath($WorkspaceRoot)
@@ -128,10 +130,16 @@ if($SharedWorkspace) {
     $workspaceClosure=$raw|ConvertFrom-Json
 }
 $workspaceClosure|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'workspace-closure.json') -Encoding utf8
-$global:LASTEXITCODE=0
-$raw=& (Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1') -Action Complete -RootId $taskState.rootId -WorkspacePath $taskPath -Outcome success -References $references -PolicyPath $registration
-if($LASTEXITCODE -ne 0 -or -not $raw){throw 'Official task closure failed'}
-$taskClosure=$raw|ConvertFrom-Json
+if($KeepTaskRunning) {
+    $currentTask=Get-Content -LiteralPath (Join-Path $taskPath '.generated-workspace.json') -Raw|ConvertFrom-Json
+    if($currentTask.state -cne 'running' -or $currentTask.workspaceId -cne $taskState.workspaceId){throw 'Running task identity changed during leaf closure.'}
+    $taskClosure=[pscustomobject]@{state='running';workspaceId=$currentTask.workspaceId;endedAttemptsOnly=$true}
+} else {
+    $global:LASTEXITCODE=0
+    $raw=& (Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1') -Action Complete -RootId $taskState.rootId -WorkspacePath $taskPath -Outcome success -References $references -PolicyPath $registration
+    if($LASTEXITCODE -ne 0 -or -not $raw){throw 'Official task closure failed'}
+    $taskClosure=$raw|ConvertFrom-Json
+}
 # Zero-recent policies may legitimately reclaim the completed task. Do not
 # recreate an unregistered directory just to store its own closure receipt.
 if([IO.Directory]::Exists($taskPath)) {$taskClosure|ConvertTo-Json -Depth 20|Set-Content (Join-Path $taskPath 'task-closure.json') -Encoding utf8}

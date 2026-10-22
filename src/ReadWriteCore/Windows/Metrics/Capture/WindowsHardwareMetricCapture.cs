@@ -17,6 +17,7 @@ internal sealed partial class WindowsHardwareMetricCapture
     internal readonly SemaphoreSlim SampleGate = new(1, 1);
     private readonly WindowsHardwareMetricResources resources;
     private readonly NativeMetricSnapshotSourceRuntimeFacts sourceRuntimeFacts;
+    private readonly MetricReadingSourceTracker readingSources = new();
     private readonly AmdIntegratedGpuSensorRoute integratedGpuSensorRoute;
     private readonly Action requestTopologyRefresh;
     private readonly Action<Exception, string>? logFailure;
@@ -45,6 +46,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         var catalog = workspace.ReadCatalog();
         var commandAt = DateTimeOffset.UtcNow;
         var collectionRequest = CreateCollectionRequest(request, catalog, fieldCatalog);
+        collectionRequest = readingSources.ExpandLegacyRequest(collectionRequest, workspace.ReadCommitted(), workspaceIdentity);
         var requestedMetricHandles = NativeMetricSnapshotRequestProjection.CreateMetricHandles(collectionRequest, catalog);
         var queriedMetricAddresses = sourceQueriesCompleted is null ? null
             : ImmutableHashSet.CreateBuilder<string>(StringComparer.OrdinalIgnoreCase);
@@ -120,12 +122,15 @@ internal sealed partial class WindowsHardwareMetricCapture
                 }
                 checkpoint?.Invoke(workspace);
                 var committed = workspace.ReadCommitted();
+                readingSources.Observe(committed, workspaceIdentity, completions.Select(static row => row.Completion));
+                var sourceSelection = readingSources.Select(committed, workspaceIdentity);
                 var snapshot = NativeMetricSnapshotCommittedProjection.Create(committed, resources.CpuName,
-                    resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel);
+                    resources.MemoryDescription, workspaceIdentity, copy.VirtualMemoryDetail, copy.LegacyLabel, sourceSelection);
                 if (request.IncludesCatalog) snapshot = AddCatalogObservations(snapshot, topology, commandAt);
                 if (prepared is not null) snapshot = WindowsMetricControlFields.ApplyPreparedFields(snapshot, prepared);
                 snapshot = ProjectGpuEngineFields(snapshot, request, fieldCatalog, pdhGpuEngineUsage);
                 snapshot = ProjectNpuDeviceBusyFields(snapshot, request);
+                snapshot = readingSources.ApplyProjectedFields(snapshot);
                 onCommitted?.Invoke(snapshot);
                 published = snapshot;
             })) return null;

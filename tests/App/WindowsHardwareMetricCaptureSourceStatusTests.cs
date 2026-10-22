@@ -12,6 +12,33 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsHardwareMetricCaptureSourceStatusTests
 {
+    [Theory]
+    [InlineData(false, null, NativeMetricSnapshotObservationStatus.Unavailable)]
+    [InlineData(true, 1, NativeMetricSnapshotObservationStatus.Unsupported)]
+    public void UnroutedSmuCollectionDistinguishesInventoryGapFromKnownWrongAdapter(
+        bool inventoryCurrent, int? routedIndex, NativeMetricSnapshotObservationStatus expected)
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"smu-route-status-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(0, "AMD integrated", "gpu-amd-integrated", 0xA1, 1, 2, false)],
+            [], [], workspace.CreateCatalogHandleMap());
+        var binding = Assert.Single(catalog.MetricBindings.Values, row =>
+            row.Field?.Name == "gpu_amd_apu_temperature_reported_celsius");
+        var at = DateTimeOffset.UtcNow;
+        workspace.ReplaceCatalog(catalog, at);
+        var runtime = new NativeMetricSnapshotSourceRuntimeFacts(
+            static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
+        var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureModes(catalog, at),
+            includeGpuInventory: false, commandAt: at.AddMilliseconds(1));
+        var source = Assert.Single(plan.Sources);
+        var completion = WindowsHardwareMetricCapture.CreateUnroutedAmdSmuCompletion(
+            plan, source, new(source.SourceHandle, 1, 1), at.AddMilliseconds(1), routedIndex, inventoryCurrent);
+        Assert.Equal(NativeMetricSnapshotSourceStatus.Complete, completion.Status);
+        Assert.Equal((uint)expected, Assert.Single(completion.Observations).Status);
+    }
+
     [Fact]
     public void LegacyAmdGpuTemperatureUsesEdgeWhileApuTemperatureStaysIndependent()
     {

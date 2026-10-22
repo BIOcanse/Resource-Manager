@@ -1,6 +1,7 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.ReadWrite.Native;
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -13,6 +14,12 @@ public static class NativeMetricSnapshotCommittedProjection
         ulong workspaceIdentity,
         string virtualMemoryDetail = "",
         Func<string, string>? legacyLabel = null)
+        => Create(frame, cpuName, memoryHardwareDescription, workspaceIdentity, virtualMemoryDetail, legacyLabel, null);
+
+    internal static HardwareMetricSnapshot Create(
+        NativeMetricSnapshotCommittedFrame frame, string cpuName, string memoryHardwareDescription,
+        ulong workspaceIdentity, string virtualMemoryDetail, Func<string, string>? legacyLabel,
+        MetricReadingSelection? sourceSelection)
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (workspaceIdentity == 0)
@@ -20,7 +27,8 @@ public static class NativeMetricSnapshotCommittedProjection
             throw new ArgumentOutOfRangeException(
                 nameof(workspaceIdentity));
         }
-        var requestAliases = frame.Catalog.LegacyMetricHandles.GroupBy(static pair => pair.Value)
+        var selectedLegacy = sourceSelection?.LegacyHandles ?? frame.Catalog.LegacyMetricHandles;
+        var requestAliases = selectedLegacy.GroupBy(static pair => pair.Value)
             .ToDictionary(static group => group.Key, static group => group.Select(static pair => pair.Key).ToArray());
         var readings = frame.Metrics.ToDictionary(
             metric => frame.Catalog.MetricIds[metric.MetricHandle],
@@ -28,7 +36,7 @@ public static class NativeMetricSnapshotCommittedProjection
                 metric,
                 Decode(metric.ValueKind, metric.ValueBits)),
             StringComparer.OrdinalIgnoreCase);
-        foreach (var (address, handle) in frame.Catalog.LegacyMetricHandles)
+        foreach (var (address, handle) in selectedLegacy)
         {
             if (readings.TryGetValue(frame.Catalog.MetricIds[handle], out var reading))
                 readings[address] = reading;
@@ -106,7 +114,8 @@ public static class NativeMetricSnapshotCommittedProjection
                 .Where(static binding => binding.Field is not null)
                 .ToDictionary(static binding => binding.MetricId,
                     binding => new MetricDeviceFieldBinding(binding.DeviceIdentity,
-                        binding.Field!, binding.MetricId, binding.SourceId)
+                        binding.Field! with { Reading = sourceSelection?.Fields.GetValueOrDefault(binding.MetricHandle) },
+                        binding.MetricId, binding.SourceId)
                     {
                         NpuEngine = binding.NpuEngine,
                         Device = binding.Device,

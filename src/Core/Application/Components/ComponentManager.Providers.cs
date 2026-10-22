@@ -35,20 +35,11 @@ public sealed partial class ComponentManager
             : definition.Id switch
             {
                 "shared-webview2-runtime" => "未检测到共享 WebView2 运行时，可从运行时管理页受控安装。",
-                "amd-ryzen-master-monitoring-sdk" => "SDK 可受控安装；未检测到运行库，或实时读数尚未通过验证。",
                 "amd-smu-pawnio-provider" => "PawnIO 驱动可受控安装；未检测到运行库，或 AMD SMU Provider 读数尚未通过验证。",
                 "amd-adlx-provider" => "AMD ADLX 运行库或实时读数尚未通过验证。",
                 "nvidia-nvapi-provider" => "NVIDIA NVAPI 由显卡驱动提供；运行库未检测到，或 NVAPI Provider 读数尚未通过验证。",
-                "librehardwaremonitor-provider" => "LibreHardwareMonitor 可受控安装或手动放入依赖目录；未检测到 WMI/运行库，或实时读数尚未通过验证。",
-                "notebook-fancontrol-provider" => "NBFC 依赖机型配置和 EC 访问；未检测到服务/运行库，或风扇读数尚未通过验证。",
+                "librehardwaremonitor-provider" => "LibreHardwareMonitor 核心库随产品提供；需显式安装 PawnIO，实时传感能力按本机实际返回。",
                 "notebook-oem-fan-provider" => "内置笔记本 OEM 风扇组件已安装；当前机型尚未返回可验证风扇读数。",
-                "intel-pcm-provider" => "Intel PCM/MSR Provider 尚未接入，Windows 驱动/service 需要显式安装。",
-                "windows-performance-toolkit" when dependencyStatus?.Installed == true => "WPR/Xperf/WPA 已安装；kernel trace 启动需要管理员权限或后续受限提权 helper。",
-                "windows-performance-toolkit" => "Windows Performance Toolkit 可受控安装；用于 WPR/Xperf/WPA 官方 ETW trace 分析。",
-                "latencymon" when dependencyStatus?.Installed == true => "LatencyMon 已安装；可作为 ISR/DPC/hard pagefault 辅助诊断对照，不作为基础 API。",
-                "latencymon" => "LatencyMon 可受控安装；用于 ISR/DPC/hard pagefault 辅助诊断对照。",
-                "msi-afterburner" when dependencyStatus?.Installed == true => "已检测到 MSI Afterburner，可作为外部遥测参考或可选辅助工具。",
-                "msi-afterburner" => "MSI Afterburner 只作为可选辅助/参考，不作为基础 telemetry Provider。",
                 _ => "Provider 未返回可验证读数。"
             };
 
@@ -72,13 +63,9 @@ public sealed partial class ComponentManager
             "nvidia-nvml-provider" => HasNumericMetricFromProvider(snapshot, "NVIDIA NVML"),
             "amd-adlx-provider" => HasNumericMetricFromProvider(snapshot, "AMD ADLX"),
             "amd-smu-pawnio-provider" => HasNumericMetricFromProvider(snapshot, "AMD SMU / PawnIO"),
-            "amd-ryzen-master-monitoring-sdk" => HasNumericMetricFromProvider(snapshot, "AMD Ryzen Master Monitoring SDK"),
-            "librehardwaremonitor-provider" => HasNumericMetricFromProvider(snapshot, "LibreHardwareMonitor WMI")
-                || HasNumericMetricFromProvider(snapshot, "OpenHardwareMonitor WMI"),
+            "librehardwaremonitor-provider" => HasNumericMetricFromProvider(snapshot, "LibreHardwareMonitor Core"),
             "nvidia-nvapi-provider" => HasNumericMetricFromProvider(snapshot, "NVIDIA NVAPI"),
-            "notebook-fancontrol-provider" => HasNumericMetricFromProvider(snapshot, "Notebook FanControl"),
             "notebook-oem-fan-provider" => HasNotebookOemFanMetric(snapshot),
-            "intel-pcm-provider" => HasNumericMetricFromProvider(snapshot, "Intel PCM"),
             _ => false
         };
     }
@@ -89,10 +76,8 @@ public sealed partial class ComponentManager
             || componentId.Equals("amd-adlx-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("amd-smu-pawnio-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("intel-msr-pawnio-provider", StringComparison.OrdinalIgnoreCase)
-            || componentId.Equals("amd-ryzen-master-monitoring-sdk", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("nvidia-nvapi-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("librehardwaremonitor-provider", StringComparison.OrdinalIgnoreCase)
-            || componentId.Equals("notebook-fancontrol-provider", StringComparison.OrdinalIgnoreCase)
             || componentId.Equals("notebook-oem-fan-provider", StringComparison.OrdinalIgnoreCase);
     }
 

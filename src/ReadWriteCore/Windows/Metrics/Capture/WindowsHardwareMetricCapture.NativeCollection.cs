@@ -557,6 +557,10 @@ internal sealed partial class WindowsHardwareMetricCapture
             ? gpuInventory.Adapters
             : Array.Empty<WindowsGpuAdapter>();
         var integratedGpuIndex = integratedGpuSensorRoute.Resolve(routeAdapters);
+        if (selected.Length > 0 && selected.All(binding => binding.Field?.Resource == MetricResource.Gpu
+                && binding.DisplayIndex != integratedGpuIndex))
+            return CreateUnroutedAmdSmuCompletion(plan, sourcePlan, identity, capturedAt,
+                integratedGpuIndex, gpuInventoryIsCurrent);
         bool Integrated(MetricFieldCode code) => integratedGpuIndex is { } index
             && selected.Any(binding => binding.DisplayIndex == index && binding.FieldCode == code);
 
@@ -590,6 +594,14 @@ internal sealed partial class WindowsHardwareMetricCapture
             gpuInventoryIsCurrent);
     }
 
+    internal static NativeMetricSnapshotSourceCompletion CreateUnroutedAmdSmuCompletion(
+        NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
+        NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt,
+        int? integratedGpuIndex, bool gpuInventoryIsCurrent)
+        => CompleteWithValues(plan, sourcePlan, identity, capturedAt, _ => null,
+            id => AmdSmuMissingValueStatus(id.FieldCode, id.DisplayIndex,
+                integratedGpuIndex, gpuInventoryIsCurrent));
+
     internal static NativeMetricSnapshotSourceCompletion CreateAmdSmuCompletion(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -610,7 +622,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         }
 
         var selected = SelectedBindings(plan, sourcePlan.SourceHandle);
-        return CompleteWithValues(
+        var completion = CompleteWithValues(
             plan,
             sourcePlan,
             identity,
@@ -651,6 +663,14 @@ internal sealed partial class WindowsHardwareMetricCapture
                 id.DisplayIndex,
                 integratedGpuIndex,
                 gpuInventoryIsCurrent));
+        return completion with
+        {
+            IntegratedGpuDeviceIdentity = gpuInventoryIsCurrent && integratedGpuIndex is { } index
+                ? plan.Catalog.MetricBindings.Values.Where(binding => binding.SourceHandle == sourcePlan.SourceHandle
+                        && binding.FieldCode == MetricFieldCode.GpuTemperature && binding.DisplayIndex == index)
+                    .Select(static binding => binding.DeviceIdentity).Distinct(StringComparer.Ordinal).SingleOrDefault()
+                : null
+        };
     }
 
     internal static NativeMetricSnapshotObservationStatus AmdSmuMissingValueStatus(
@@ -788,7 +808,8 @@ internal sealed partial class WindowsHardwareMetricCapture
         DateTimeOffset capturedAt)
     {
         var sensors = resources.ReadHardwareMonitor();
-        return CompleteWithValues(
+        if (sensors.CatalogComplete == false) return Unavailable(sourcePlan.SourceHandle, identity, capturedAt);
+        var completion = CompleteWithValues(
             plan,
             sourcePlan,
             identity,
@@ -815,6 +836,20 @@ internal sealed partial class WindowsHardwareMetricCapture
             id => id.Field?.Resource == MetricResource.Gpu
                 ? NativeMetricSnapshotObservationStatus.Unsupported
                 : NativeMetricSnapshotObservationStatus.Unavailable);
+        var selected = SelectedBindings(plan, sourcePlan.SourceHandle);
+        return completion with
+        {
+            SupportedMetricHandles = sensors.CatalogComplete == true
+                ? selected.Where(binding => binding.FieldCode == MetricFieldCode.CpuTemperature
+                        && sensors.CpuTemperatureSensorIdentifier is not null
+                    || binding.FieldCode == MetricFieldCode.FanRpm
+                        && sensors.SystemFans.Any(fan => fan.IdentityKey == binding.DeviceIdentity))
+                    .Select(static binding => binding.MetricHandle).ToImmutableArray() : [],
+            ReadingQuantities = sensors.CatalogComplete == true && sensors.CpuTemperatureReadingKind is { } kind
+                ? selected.Where(static binding => binding.FieldCode == MetricFieldCode.CpuTemperature)
+                    .ToImmutableDictionary(static binding => binding.MetricHandle, _ => kind)
+                : ImmutableDictionary<ulong, string>.Empty
+        };
     }
 
     private NativeMetricSnapshotSourceCompletion CollectNotebookFans(

@@ -62,7 +62,7 @@ public static partial class MetricCatalog
 
         if (cpuName.Contains("Intel", StringComparison.OrdinalIgnoreCase))
         {
-            return "intel-pcm-provider";
+            return "intel-msr-pawnio-provider";
         }
 
         return null;
