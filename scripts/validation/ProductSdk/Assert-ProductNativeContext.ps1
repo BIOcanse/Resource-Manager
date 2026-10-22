@@ -48,6 +48,116 @@ function Assert-NormalReceipt($Context, [string]$Label) {
     $jobRun = [IO.Path]::GetFullPath([string]$jobManifest.runDirectory)
     Assert-JobReceipts (Join-Path $jobRun 'receipts.jsonl') $Label
 }
+function Assert-RetentionPlannerQualification($Change, $Item, $Recovery, [string]$RepositoryRoot) {
+    $expectedModule = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'scripts\maintenance\GeneratedWorkspaceRetention.psm1'))
+    $changedPath = [IO.Path]::GetFullPath([string]$Item.path)
+    if ($changedPath -ine $expectedModule) { throw "Administrative maintenance change is outside the exact retained-workspace module: $changedPath" }
+    if ($Change.PSObject.Properties.Name -notcontains 'retentionPlannerQualification') { throw 'Generated workspace retention change has no focused regression qualification evidence.' }
+    $evidence = $Change.retentionPlannerQualification
+    if ([string]$evidence.schema -cne 'rm/generated-workspace-retention-qualification/v1') { throw 'Generated workspace retention qualification schema is unsupported.' }
+
+    $expectedBeforePath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot '.local\local-retention-closeout\GeneratedWorkspaceRetention-before-planning-fix.psm1'))
+    $expectedTestPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot 'tests\GeneratedWorkspaceRetentionPlanning.Tests.ps1'))
+    $expectedResultsPath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot '.local\local-retention-closeout\planning-regression-results.json'))
+    $expectedSuitePath = [IO.Path]::GetFullPath((Join-Path $RepositoryRoot '.local\local-retention-closeout\maintenance-suite-results.json'))
+
+    Assert-FileProof $evidence.originalModule 'Original generated workspace retention module'
+    if ([IO.Path]::GetFullPath([string]$evidence.originalModule.path) -ine $expectedBeforePath -or
+        [long]$evidence.originalModule.length -ne [long]$Item.before.length -or
+        [string]$evidence.originalModule.sha256 -ine [string]$Item.before.sha256) {
+        throw 'Generated workspace retention original-module snapshot does not match the Native compile input.'
+    }
+    if ([long]$Change.current.length -ne [long]$Item.current.length -or [string]$Change.current.sha256 -ine [string]$Item.current.sha256) {
+        throw 'Generated workspace retention current-module proof does not match the current Native compile input.'
+    }
+    if ($Recovery.PSObject.Properties.Name -notcontains 'sourceRecoveryProof') { throw 'Generated workspace retention qualification does not identify its original accepted recovery report.' }
+    Assert-FileProof $Recovery.sourceRecoveryProof 'Original Native administrative-recovery report'
+    $sourceRecovery = Read-Json ([string]$Recovery.sourceRecoveryProof.path)
+    if (-not $sourceRecovery.acceptedCompile -or -not $sourceRecovery.inputsUnchangedAcrossCompile -or
+        [IO.Path]::GetFullPath([string]$sourceRecovery.executionJob.executionManifestPath) -ine [IO.Path]::GetFullPath([string]$Recovery.executionJob.executionManifestPath) -or
+        [string]$sourceRecovery.executionJob.executionManifestSha256 -ine [string]$Recovery.executionJob.executionManifestSha256 -or
+        [IO.Path]::GetFullPath([string]$sourceRecovery.executionJob.inputManifestPath) -ine [IO.Path]::GetFullPath([string]$Recovery.executionJob.inputManifestPath) -or
+        [string]$sourceRecovery.executionJob.inputManifestSha256 -ine [string]$Recovery.executionJob.inputManifestSha256 -or
+        [IO.Path]::GetFullPath([string]$sourceRecovery.executionJob.receiptPath) -ine [IO.Path]::GetFullPath([string]$Recovery.executionJob.receiptPath) -or
+        [string]$sourceRecovery.executionJob.receiptSha256 -ine [string]$Recovery.executionJob.receiptSha256) {
+        throw 'Generated workspace retention qualification does not preserve the original accepted Native recovery proof.'
+    }
+    foreach ($sourceChange in @($sourceRecovery.postCompileAdministrativeToolChanges)) {
+        $sourceMatches = @($Recovery.postCompileAdministrativeToolChanges | Where-Object { [IO.Path]::GetFullPath([string]$_.path) -ieq [IO.Path]::GetFullPath([string]$sourceChange.path) })
+        if ($sourceMatches.Count -ne 1 -or
+            [string]$sourceMatches[0].reason -cne [string]$sourceChange.reason -or
+            [IO.Path]::GetFullPath([string]$sourceMatches[0].before.path) -ine [IO.Path]::GetFullPath([string]$sourceChange.before.path) -or
+            [long]$sourceMatches[0].before.length -ne [long]$sourceChange.before.length -or [string]$sourceMatches[0].before.sha256 -ine [string]$sourceChange.before.sha256 -or
+            [long]$sourceMatches[0].current.length -ne [long]$sourceChange.current.length -or [string]$sourceMatches[0].current.sha256 -ine [string]$sourceChange.current.sha256) {
+            throw "Original Native administrative change was not preserved: $($sourceChange.path)"
+        }
+    }
+
+    Assert-FileProof $evidence.planningTestSource 'Retention planner regression test source'
+    if ([IO.Path]::GetFullPath([string]$evidence.planningTestSource.path) -ine $expectedTestPath) { throw 'Retention planner regression test source path is unexpected.' }
+    Assert-FileProof $evidence.planningRegressionResults 'Retention planner regression result'
+    if ([IO.Path]::GetFullPath([string]$evidence.planningRegressionResults.path) -ine $expectedResultsPath) { throw 'Retention planner regression result path is unexpected.' }
+    $regression = Read-Json $expectedResultsPath
+    if ([string]$regression.testSha256 -ine [string]$evidence.planningTestSource.sha256 -or
+        [string]$regression.moduleSha256 -ine [string]$Item.current.sha256 -or
+        [int]$regression.originalExitCode -ne 1 -or [int]$regression.currentPs7ExitCode -ne 0 -or [int]$regression.currentPs5ExitCode -ne 0) {
+        throw 'Retention planner RED/GREEN regression results do not bind the original and current module bytes.'
+    }
+    $regressionLogRoles = @{}
+    foreach ($proof in @($evidence.planningRegressionLogs)) {
+        Assert-FileProof $proof 'Retention planner regression log'
+        if ($regressionLogRoles.ContainsKey([string]$proof.role)) { throw 'Retention planner regression log role is duplicated.' }
+        $regressionLogRoles[[string]$proof.role] = $proof
+    }
+    if ($regressionLogRoles.Count -ne 3 -or -not $regressionLogRoles.ContainsKey('red-ps7') -or
+        -not $regressionLogRoles.ContainsKey('green-ps7') -or -not $regressionLogRoles.ContainsKey('green-ps5')) {
+        throw 'Retention planner proof must include one PS7 RED and PS7/PS5 GREEN log.'
+    }
+    $expectedRegressionLogs = @{
+        'red-ps7' = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $expectedResultsPath) 'planning-regression-red-ps7.log'))
+        'green-ps7' = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $expectedResultsPath) 'planning-regression-green-ps7.log'))
+        'green-ps5' = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $expectedResultsPath) 'planning-regression-green-ps5.log'))
+    }
+    foreach ($role in @('red-ps7','green-ps7','green-ps5')) {
+        $proof = $regressionLogRoles[$role]
+        if ([IO.Path]::GetFullPath([string]$proof.path) -ine $expectedRegressionLogs[$role]) { throw "Unexpected retention planner log path for $role." }
+        $log = Get-Content -LiteralPath ([string]$proof.path) -Raw
+        if ($role -eq 'red-ps7' -and $log -notmatch 'nodes=5001/5000') { throw 'Retention planner RED log does not show the original bounded-scan failure.' }
+        if ($role -ne 'red-ps7' -and $log -notmatch 'GeneratedWorkspaceRetentionPlanning\.Tests passed \(34 assertions\)') { throw "Retention planner GREEN log is incomplete: $role" }
+    }
+
+    Assert-FileProof $evidence.maintenanceSuiteResults 'Maintenance regression suite result'
+    if ([IO.Path]::GetFullPath([string]$evidence.maintenanceSuiteResults.path) -ine $expectedSuitePath) { throw 'Maintenance regression suite result path is unexpected.' }
+    $suite = @(Read-Json $expectedSuitePath)
+    if ($suite.Count -ne 6) { throw 'Maintenance regression suite must contain both hosts for all three suites.' }
+    $suiteLogProofs = @{}
+    foreach ($proof in @($evidence.maintenanceSuiteLogs)) {
+        Assert-FileProof $proof 'Maintenance regression suite log'
+        $key = [IO.Path]::GetFullPath([string]$proof.path)
+        if ($suiteLogProofs.ContainsKey($key)) { throw "Maintenance regression log is duplicated: $key" }
+        $suiteLogProofs[$key] = $proof
+    }
+    if ($suiteLogProofs.Count -ne 6) { throw 'Maintenance regression proof must bind all six host/suite logs.' }
+    $suiteKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($row in $suite) {
+        if ([int]$row.exitCode -ne 0) { throw "Maintenance regression suite failed: $($row.host)/$($row.test)" }
+        $expectedText = switch ([string]$row.test) {
+            'engine' { 'assertions=71' }
+            'automatic' { 'assertions=16' }
+            'batch' { 'Passed 32 checks;' }
+            default { throw "Unexpected maintenance regression suite: $($row.test)" }
+        }
+        $suiteKey = "$( [string]$row.host )/$( [string]$row.test )"
+        if ($row.host -notin @('ps7','ps5') -or -not $suiteKeys.Add($suiteKey)) { throw "Duplicate or invalid maintenance suite row: $suiteKey" }
+        $logPath = [IO.Path]::GetFullPath([string]$row.log)
+        if (-not $suiteLogProofs.ContainsKey($logPath)) { throw "Maintenance suite log is not hash-bound: $logPath" }
+        $log = Get-Content -LiteralPath $logPath -Raw
+        if ($log -notmatch [regex]::Escape($expectedText) -or $log -notmatch [regex]::Escape([string]$row.lastLine)) {
+            throw "Maintenance suite log does not support its successful result: $suiteKey"
+        }
+    }
+    if ($suiteKeys.Count -ne 6) { throw 'Maintenance regression suite is missing a host/test result.' }
+}
 function Assert-CurrentInputHashes($InputEvidence, $Context, $ManifestProof, $InputProof, $ReceiptProof) {
     $changed = [Collections.Generic.List[object]]::new()
     foreach ($row in @($InputEvidence.before)) {
@@ -95,8 +205,11 @@ function Assert-CurrentInputHashes($InputEvidence, $Context, $ManifestProof, $In
         } else { [IO.Path]::GetFullPath($RepositoryRoot) }
         $validationRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'scripts\validation')) + [IO.Path]::DirectorySeparatorChar
         $changedPath = [IO.Path]::GetFullPath([string]$item.path)
-        if (-not $changedPath.StartsWith($validationRoot,[StringComparison]::OrdinalIgnoreCase) -or
-            [IO.Path]::GetExtension($changedPath) -ine '.ps1') {
+        $retentionPlannerPath = [IO.Path]::GetFullPath((Join-Path $repoRoot 'scripts\maintenance\GeneratedWorkspaceRetention.psm1'))
+        $isRetentionPlanner = $changedPath -ieq $retentionPlannerPath
+        if (-not $isRetentionPlanner -and
+            (-not $changedPath.StartsWith($validationRoot,[StringComparison]::OrdinalIgnoreCase) -or
+             [IO.Path]::GetExtension($changedPath) -ine '.ps1')) {
             throw "Reported post-compile change is not a validation control script: $($item.path)"
         }
         if ([IO.Path]::GetFullPath([string]$change.before.path) -ine [string]$item.path -or
@@ -105,6 +218,7 @@ function Assert-CurrentInputHashes($InputEvidence, $Context, $ManifestProof, $In
             [string]::IsNullOrWhiteSpace([string]$change.reason)) {
             throw "Native compile administrative change proof does not match current bytes: $($item.path)"
         }
+        if ($isRetentionPlanner) { Assert-RetentionPlannerQualification $change $item $recovery $repoRoot }
     }
     if ($declared.Count -ne $changed.Count) { throw 'Native compile recovery report contains undeclared current input changes.' }
     return $recovery.executionJob
