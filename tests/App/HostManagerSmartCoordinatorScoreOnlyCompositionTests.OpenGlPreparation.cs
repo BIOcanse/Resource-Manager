@@ -46,6 +46,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .GetMethod("ExecuteOwnedOpenGlPreparationAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(fixture.Coordinator, [state, key, target, 123UL, new CompiledGpuWindowExecutionLimits(1, 1000, 80, 4096, 590312),
                 checked((ulong)Environment.TickCount64 + 5000), stop.Token])!;
+        Task<HostManagerRollbackStateDocument>? observation = null;
         try
         {
             if (delayedSave)
@@ -54,11 +55,20 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 stop.Cancel();
                 Assert.Null((await running.WaitAsync(TimeSpan.FromSeconds(2))).Source);
                 Assert.NotNull(typeof(HostManagerSmartCoordinator).GetField("gpuCallbackPreparation", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Coordinator));
-                await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Coordinator.GetStateAsync(default));
+                var beforeObservation = File.ReadAllBytes(path);
+                observation = fixture.Coordinator.GetStateAsync(default);
+                Assert.False(observation.IsCompleted);
+                Assert.Equal(beforeObservation, File.ReadAllBytes(path));
             }
         }
         finally { committer.Release(); }
         var completed = await running.WaitAsync(TimeSpan.FromSeconds(8));
+        if (observation is not null)
+        {
+            var observed = await observation.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(record.RecordId, Assert.Single(
+                Assert.Single(observed.AppliedPlacements).Records).RecordId);
+        }
         Assert.Null(completed.Source);
         if (!delayedSave) Assert.Contains("openGlPreparation", completed.State.AppliedPlacements[0].Records[0].Metadata!.Keys);
         await (Task)typeof(HostManagerSmartCoordinator).GetMethod("DrainGpuActionCheckpointAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -83,6 +93,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(0U, fact.GetProperty("Cleanup").GetProperty("ActiveProcessCount").GetUInt32());
         }
         Assert.Null(typeof(HostManagerSmartCoordinator).GetField("gpuCallbackPreparation", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Coordinator));
+        var persistedAfterCompletion = File.ReadAllBytes(path);
+        _ = await fixture.Coordinator.GetStateAsync(default);
+        _ = await fixture.Coordinator.GetStatusAsync(default);
+        Assert.Equal(persistedAfterCompletion, File.ReadAllBytes(path));
     }
 
     [Theory]

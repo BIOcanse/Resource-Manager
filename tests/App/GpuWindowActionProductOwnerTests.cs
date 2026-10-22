@@ -54,6 +54,7 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
             var running = (Task<(HostManagerRollbackStateDocument State, bool CanContinue)>)typeof(HostManagerSmartCoordinator)
                 .GetMethod("ExecuteGpuShimActionAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(coordinator, [state, projected, deadline, CancellationToken.None])!;
+            Task<HostManagerRollbackStateDocument>? observation = null;
             try
             {
                 if (mode == "pending-save") await committer.Entered.WaitAsync(TimeSpan.FromSeconds(4));
@@ -68,7 +69,10 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
                     Assert.False(await SettleWindowCheckpoint(coordinator));
                     Assert.Equal(before, await ReadOwnedWindow(window));
                     Assert.Empty(window.Requests);
-                    await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.GetStateAsync(default));
+                    var persistedBeforeObservation = File.ReadAllBytes(path);
+                    observation = coordinator.GetStateAsync(default);
+                    Assert.False(observation.IsCompleted);
+                    Assert.Equal(persistedBeforeObservation, File.ReadAllBytes(path));
                 }
                 committer.Release();
                 await (Task)typeof(HostManagerSmartCoordinator).GetMethod("DrainGpuActionCheckpointAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -76,6 +80,15 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
                 await (Task)typeof(HostManagerSmartCoordinator).GetMethod("DrainGpuWindowExecutionAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .Invoke(coordinator, null)!;
                 var saved = ReadCanonical(path);
+                if (observation is not null)
+                {
+                    var observed = await observation.WaitAsync(TimeSpan.FromSeconds(5));
+                    Assert.Single(observed.AppliedPlacements[0].Records, GpuWindowActionRecord.IsActionFact);
+                }
+                var persistedAfterCompletion = File.ReadAllBytes(path);
+                _ = await coordinator.GetStateAsync(default);
+                _ = await coordinator.GetStatusAsync(default);
+                Assert.Equal(persistedAfterCompletion, File.ReadAllBytes(path));
                 var fact = Assert.Single(saved.AppliedPlacements[0].Records, GpuWindowActionRecord.IsActionFact);
                 Assert.True(GpuWindowActionRecord.TryRead(fact, out var decoded));
                 var actual = Assert.IsType<GpuWindowActionResult>(decoded.Result);
