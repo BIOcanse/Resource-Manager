@@ -32,6 +32,10 @@ The console helps you monitor a wide range of system data. As shown below, all t
 
 ![Monitoring console](docs/screenshots/en/01-dashboard.png)
 
+### 🧭 Reading sources
+
+The same reading often has more than one source: integrated GPU temperature, for example, can come from the processor's SMU or from the graphics driver. By default each reading shows only the most accurate source on this computer. Settings → Appearance → Reading Sources can list every available source instead, with the most accurate one marked **Preferred**. Scheduling always uses the most accurate source, whatever this setting says.
+
 ### 📈 Bar-chart overview
 
 The lower half of the screenshot above uses bar charts so you can judge the state of your machine at a glance. Beyond the usual CPU, GPU, memory and VRAM views, you can also watch **virtual memory**. There are more monitoring items available here than the screenshot shows, and you can configure them freely.
@@ -61,6 +65,7 @@ From here you can quickly:
 
 Each application can configure its base score, permitted adjustments, startup GPU preference and Level 2 protection. Runtime GPU placement is calculated after the process enters scheduling; it is not a saved target. Startup preferences do not override that calculation.
 
+The components that readings and hardware control rely on are managed here too, such as the hardware sensor driver (PawnIO), AMD processor sensor support, the fan control core and the hardware control helper. Each one is installed and verified only when you ask; until then its readings show as unavailable and everything else keeps working.
 
 ---
 
@@ -80,7 +85,7 @@ Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** indepe
 
 **Memory.** Selecting Memory scheduling enables ongoing RAM-pressure management. It can use CPU scores to order memory actions without enabling CPU actions.
 
-**CPU.** When CPU scheduling is selected, cores are assigned intelligently: important applications get the less-contended or higher-performance cores first. You can also configure **exclusive core allocation** and **core locking** to help hold a stable frame rate.
+**CPU.** When CPU scheduling is selected, load is balanced by application score rather than raw usage: higher-scored applications pick the less-busy, higher-performance cores first, and later ones avoid the spots already taken. By default the CPU range is not limited (All cores): threads only get a preferred core, and no application loses access to any core. You can still confine a single application to one CCD, and configure **exclusive core allocation** and **core locking** to help hold a steady frame rate.
 
 > 💡 Worth noting: although Resource Manager uses highly optimized algorithms, scheduling still costs something. On CPUs with very weak multicore performance there may be no obvious CPU-side benefit — on a very early i3 or Ryzen 5, for example.
 
@@ -176,6 +181,8 @@ This matrix describes the design scope of hardware adjustment. Available adjustm
 </table>
 
 GPU means discrete graphics; iGPU means integrated graphics.
+
+> 🔒 Low-level access to the processor, motherboard and memory goes through the officially signed PawnIO driver, which works with Memory Integrity and Secure Boot. Resource Manager does not use drivers with known vulnerabilities such as WinRing0 or InpOut.
 
 <details>
 <summary><strong>View adjustments, dependencies and hardware limitations</strong></summary>
@@ -364,11 +371,13 @@ Tested once on 2026-10-22 with a development build on the verification machine a
 | Item | Status | Observed |
 | --- | :---: | --- |
 | Memory scheduling: trimming idle background processes | ✅ | 8 low-usage background processes trimmed in 12 minutes, about 430 MB in total; truly idle processes stay low |
-| Memory scheduling: lowering background memory priority | 🟡 | 92 processes written within 30 seconds of switching to memory scheduling, all restored when switching back to normal or stopping; entering it directly at cold start applies too few, being corrected in source |
+| Memory scheduling: lowering background memory priority | 🟡 | 92 processes written within 30 seconds of switching to memory scheduling, all restored when switching back to normal or stopping; applying too few when entered directly at cold start is fixed in source and awaits a retest |
+| CPU scheduling: background priority and efficiency mode (EcoQoS) | ✅ | Background processes are moved to idle priority with EcoQoS step by step; within 5 seconds of switching back to normal, and after a normal stop, everything matched the state before the test |
+| CPU scheduling: all-core score balancing | 🟡 | Preferred cores set for 270 threads in 9 processes within 30 seconds, landing on both CCDs, without touching any process's CPU Sets or affinity; all restored after switching back to normal and stopping. Slow progress right after entering is fixed in source and awaits a retest |
 | CPU scheduling: single-CCD placement | 🟡 | Places processes on one CCD on a 2-CCD machine; a failure to undo placements is fixed in source and awaits a retest |
 | GPU scheduling | — | Not tested; it involves launch interception and a D3D proxy |
 
-After the test, every process's priority, affinity, memory priority, throttling state and CPU Sets matched the state before the test.
+After the test, every process's priority, affinity, memory priority, throttling state, CPU Sets and preferred thread cores matched the state before the test.
 
 ---
 
@@ -377,6 +386,8 @@ After the test, every process's priority, affinity, memory priority, throttling 
 Configure the scheduling policies you want.
 
 Appearance offers an interface style and a palette. A style changes the corners, lines, shadows and fonts of controls without changing the layout: Standard (System, Light, Dark, Low contrast), Soft (System, Light, Dark), Outline (System, Paper, Graphite, Blueprint) and Terminal (Phosphor, Amber, Ice). Each style lists only its own palettes.
+
+Appearance also sets the resource-bar animation frame rate (follows the display refresh rate by default, or a custom 10–240 FPS) and reading sources (only the most accurate source by default, or every source with the preferred one marked).
 
 ![Settings](docs/screenshots/en/08-settings.png)
 
