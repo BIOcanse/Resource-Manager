@@ -103,7 +103,7 @@ export default createSettingsLocale("ja-JP", {
       }
     },
     "automaticMemoryCleanupTitle": "緊急クリーンアップのしきい値",
-    "automaticMemoryCleanupDescription": "バックグラウンドのクリーンアップはリソースの負荷に応じて段階的に行われます。物理メモリまたはコミット容量の残量がこの値を下回ると、緊急クリーンアップを行います。",
+    "automaticMemoryCleanupDescription": "バックグラウンドのクリーンアップはリソースの負荷に応じて段階的に行われます。物理メモリまたはコミット容量の残量がこの値を下回ると、緊急クリーンアップを行います。最適化モードにメモリ調整が含まれる場合のみ有効です。",
     "physicalMemoryAutomaticCleanupLabel": "物理メモリ空き率 %",
     "virtualMemoryAutomaticCleanupLabel": "コミット余裕率 %",
     "memoryOptimizationTargetTitle": "メモリ最適化の目標",
@@ -111,7 +111,7 @@ export default createSettingsLocale("ja-JP", {
     "physicalMemoryOptimizationTargetLabel": "物理メモリ目標使用率 %",
     "virtualMemoryOptimizationTargetLabel": "コミット目標使用率 %",
     "moveDownDangerTitle": "退避時の危険しきい値",
-    "moveDownDangerDescription": "リソーススケジューリングは、VRAM のデータを物理メモリへ、または物理メモリのデータを仮想メモリへ退避する前に、退避後の残量を見積もります。残量がこの割合を下回る場合はそのソフトウェアの退避を見送り、次の層へ負荷を移さないようにします。",
+    "moveDownDangerDescription": "VRAM のデータを物理メモリへ、または物理メモリのデータを仮想メモリへ退避するときの安全余裕です。退避後の残量の見積もりがこの割合を下回る場合はそのソフトウェアの退避を見送り、次の層へ負荷を移さないようにします。このバージョンではこの種の退避はまだ有効になっておらず、値は保存されるだけです。",
     "vramMoveDownPhysicalMemoryDangerLabel": "VRAM 退避時：物理メモリ空き率 %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "メモリ退避時：コミット余裕率 %",
     "refreshCadenceTitle": "情報の更新頻度",

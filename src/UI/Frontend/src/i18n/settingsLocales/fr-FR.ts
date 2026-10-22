@@ -103,7 +103,7 @@ export default createSettingsLocale("fr-FR", {
       }
     },
     "automaticMemoryCleanupTitle": "Seuils de nettoyage d’urgence",
-    "automaticMemoryCleanupDescription": "Le nettoyage en arrière-plan suit les niveaux de pression sur les ressources. Ces seuils déterminent quand le faible niveau de mémoire physique ou de capacité d’engagement restante déclenche un nettoyage d’urgence.",
+    "automaticMemoryCleanupDescription": "Le nettoyage en arrière-plan suit les niveaux de pression sur les ressources. Ces seuils déterminent quand le faible niveau de mémoire physique ou de capacité d’engagement restante déclenche un nettoyage d’urgence. Ils ne s’appliquent que si le mode d’optimisation inclut la gestion mémoire.",
     "physicalMemoryAutomaticCleanupLabel": "Mémoire physique libre %",
     "virtualMemoryAutomaticCleanupLabel": "Marge d’engagement mémoire %",
     "memoryOptimizationTargetTitle": "Cible d’optimisation mémoire",
@@ -111,7 +111,7 @@ export default createSettingsLocale("fr-FR", {
     "physicalMemoryOptimizationTargetLabel": "Utilisation cible de mémoire physique %",
     "virtualMemoryOptimizationTargetLabel": "Utilisation cible de mémoire engagée %",
     "moveDownDangerTitle": "Seuils de danger des transferts mémoire",
-    "moveDownDangerDescription": "Avant de transférer des données de la VRAM vers la mémoire physique, ou de la mémoire physique vers la mémoire virtuelle, la planification estime ce qui restera libre. En dessous de ces pourcentages, le transfert de ce logiciel est annulé pour ne pas reporter la pression sur le niveau suivant.",
+    "moveDownDangerDescription": "Marges de sécurité pour transférer des données de la VRAM vers la mémoire physique, ou de la mémoire physique vers la mémoire virtuelle : si la part libre estimée après le transfert est inférieure à ces pourcentages, le transfert de ce logiciel est annulé pour ne pas reporter la pression sur le niveau suivant. Ce type de transfert n’est pas encore activé dans cette version ; les valeurs sont seulement enregistrées.",
     "vramMoveDownPhysicalMemoryDangerLabel": "Depuis la VRAM : mémoire physique libre %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Depuis la mémoire : marge d’engagement %",
     "refreshCadenceTitle": "Fréquence d’actualisation",
