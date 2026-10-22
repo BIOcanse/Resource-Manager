@@ -446,7 +446,7 @@ public sealed class CanonicalMetricControlBindingTests
             if (operation == "set-curve-optimizer") CpuCounts = Convert.ToDouble(arguments!["value"]);
             if (operation == "set-igpu-curve-optimizer")
             {
-                GpuCounts = Convert.ToDouble(arguments!["counts"]);
+                GpuCounts = Convert.ToDouble(arguments!["value"]);
                 if (OmitGpuWriteReadback) return Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new { ok = true, accepted = true }));
             }
             return Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new

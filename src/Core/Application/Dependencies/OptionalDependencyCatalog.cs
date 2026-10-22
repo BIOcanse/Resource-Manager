@@ -140,12 +140,12 @@ public static class OptionalDependencyCatalog
             InstallNote: "处理器功耗上限和电压（Curve Optimizer）的写入都经过它。"
                 + "它是独立程序，按 GPL-3.0 发布，由主程序随开随关。",
             ReleaseSource: new GitHubReleaseSource(
-                Owner: "BIOcanse", Repository: "Resource-Manager-HardwareBridge", VerifiedTag: "v0.1.0",
+                Owner: "BIOcanse", Repository: "Resource-Manager-HardwareBridge", VerifiedTag: "v0.2.0",
                 VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip", AssetPatterns: ["ResourceManager.HardwareBridge-win-x64.zip"]),
             PayloadSource: new DependencyPayloadSource(
                 Owner: "BIOcanse",
                 Repository: "Resource-Manager-HardwareBridge",
-                VerifiedTag: "v0.1.0",
+                VerifiedTag: "v0.2.0",
                 VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip",
                 FileNames: ["ResourceManager.HardwareBridge.exe", "LICENSE"], IncludeArchiveContents: true))
 

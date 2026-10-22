@@ -22,7 +22,7 @@ internal sealed class RecordedControlHelper : IHardwareBridgeProcessClient
             else if ((string?)arguments["which"] == "slow") Slow=value; else Fast=value;
         }
         if (operation == "set-curve-optimizer") CpuCounts=Convert.ToDouble(arguments!["value"]);
-        if (operation == "set-igpu-curve-optimizer") GpuCounts=Convert.ToDouble(arguments!["counts"]);
+        if (operation == "set-igpu-curve-optimizer") GpuCounts=Convert.ToDouble(arguments!["value"]);
         return Task.FromResult<JsonElement?>(Envelope(new {ok=true,available=true,powerTable=true,curveOptimizer=true,
             integratedGpuCurveOptimizer=true,accepted=true,status="OK",stapmLimitWatts=Stapm,slowLimitWatts=Slow,fastLimitWatts=Fast,
             curveOptimizerCounts=CpuCounts,integratedGpuCurveOptimizerCounts=GpuCounts}));
