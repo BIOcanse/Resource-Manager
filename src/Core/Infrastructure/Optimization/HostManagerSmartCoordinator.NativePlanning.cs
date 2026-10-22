@@ -22,10 +22,7 @@ public sealed partial class HostManagerSmartCoordinator
         ulong sequence,
         string trigger,
         HostManagerSmartCoordinatorCycleDiagnostics? cycleDiagnostics,
-        CancellationToken cancellationToken,
-        List<HostManagerAutomaticGpuPlacement>? firstUse = null,
-        bool placementStateAvailable = true,
-        bool gpuControlAvailable = true)
+        CancellationToken cancellationToken)
     {
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The native workspace is unavailable.");
@@ -227,7 +224,7 @@ public sealed partial class HostManagerSmartCoordinator
         cycleDiagnostics?.CaptureNativeTerminalSnapshot(workspace.Snapshot);
         cycleDiagnostics?.Mark("snapshot-readback");
         operation.Complete();
-        operation.Dispose(); // The following placement stage no longer reads these buffers.
+        operation.Dispose(); // Later effect stages no longer read these buffers.
         authoritativeAppliedFactsRequired = (authoritativeAppliedFactsRequired && !sentAuthoritativeAppliedFacts)
             || workspace.Snapshot.Flags.HasFlag(
                 NativeSmartCoordinatorSnapshotFlags.RequiresAuthoritativeResync);
@@ -236,28 +233,6 @@ public sealed partial class HostManagerSmartCoordinator
             cycleDiagnostics?.Defer("native-transaction-recovery-required");
             return false;
         }
-        if (!placementStateAvailable)
-        {
-            cycleDiagnostics?.Mark("placement-ledger-busy");
-            return true;
-        }
-        var placementCompleted = await RunAutomaticPlacementCycleAsync(
-            effectAdmission,
-            processEffectValidationScope,
-            desired,
-            sample,
-            computeScoring,
-            cpuPlacementEnabled,
-            gpuPlacementEnabled,
-            cancellationToken,
-            firstUse,
-            gpuControlAvailable);
-        // GPU work owns its original completion. Independent memory/public-resource effects can continue.
-        if (!placementCompleted && HasPendingGpuOwnerWork())
-        {
-            cycleDiagnostics?.Mark("gpu-placement-pending");
-            return true;
-        }
-        return placementCompleted;
+        return true;
     }
 }

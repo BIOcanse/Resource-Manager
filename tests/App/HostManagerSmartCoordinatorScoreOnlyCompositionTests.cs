@@ -3622,6 +3622,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
         var publicTicks = fixture.PublicResourceManager.TickCalls;
         var nativeSequence = fixture.Workspace.Snapshot.CycleSequence;
+        var cursor = typeof(HostManagerSmartCoordinator).GetField(
+            "nextRealtimeNewEffectIndex", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var stages = (Array)typeof(HostManagerSmartCoordinator).GetField(
+            "NewEffectOrder", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var cleanupIndex = Enumerable.Range(0, stages.Length)
+            .Single(index => stages.GetValue(index)!.ToString() == "MemoryCleanup");
+        // This scenario starts with cleanup, independently of other work stages.
+        cursor.SetValue(fixture.Coordinator, cleanupIndex);
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -3634,9 +3642,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(attempt == 0 ? nativeSequence : nativeSequence + 2,
                 fixture.Workspace.Snapshot.CycleSequence);
             Assert.Equal((uint)attempt, fixture.PublicResourceManager.NewEffectAttemptCount);
-            Assert.Equal(attempt == 0 ? 3 : 0, typeof(HostManagerSmartCoordinator).GetField(
-                "nextRealtimeNewEffectIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(fixture.Coordinator));
+            Assert.Equal(attempt == 0 ? cleanupIndex : (cleanupIndex + 1) % stages.Length,
+                cursor.GetValue(fixture.Coordinator));
         }
     }
 
