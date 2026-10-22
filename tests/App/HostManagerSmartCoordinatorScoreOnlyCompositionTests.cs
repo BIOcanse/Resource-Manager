@@ -5509,7 +5509,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution.WindowsGpuWindowActionRuntime? gpuWindowRuntime = null,
              ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null,
              Microsoft.Extensions.Logging.ILogger<HostManagerSmartCoordinator>? coordinatorLogger = null,
-             ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null)
+             ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null,
+             IReadOnlyList<string>? singleCcdSoftwareIds = null)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -5589,6 +5590,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     HostManagerSmartCoordinatorPerformanceLogEnabled = performanceLogEnabled
                 }
             };
+            if (singleCcdSoftwareIds is not null)
+            {
+                runtimePlan = runtimePlan with
+                {
+                    GpuPlacement = runtimePlan.GpuPlacement with
+                    {
+                        SoftwarePoliciesBySoftwareId = singleCcdSoftwareIds.ToDictionary(
+                            static id => id,
+                            static id => ResourceManager.App.Domain.GpuPlacement.ResolvedGpuPlacementPolicy.FromSoftware(
+                                ResourceManager.App.Domain.GpuPlacement.GpuPlacementPolicyDefaults.CreateSoftwarePolicy(id, id) with
+                                { CpuMaximumOccupancyMode = ResourceManager.App.Domain.GpuPlacement.CpuMaximumOccupancyModes.SingleCcd }),
+                            StringComparer.OrdinalIgnoreCase)
+                    }
+                };
+            }
             runtimePlanProvider.Publish(runtimePlan);
 
             var stateStore = new RecordingRollbackStateStore(

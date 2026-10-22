@@ -140,7 +140,8 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
                     if (mode == LocalResourceSoftwareMemoryMode.PagedFrozen) diskUsageTrees.Clear();
                 }
             }
-            if (mode is LocalResourceSoftwareMemoryMode.Optimize or LocalResourceSoftwareMemoryMode.PagedFrozen)
+            // Optimize reclaims owned Ledger caches, not the whole processes' OS working sets.
+            if (mode == LocalResourceSoftwareMemoryMode.PagedFrozen)
             {
                 TrimGroup(ResourceManagerSelfProcessGroup.Backend, backend, generation, trims, cancellationToken);
                 TrimGroup(ResourceManagerSelfProcessGroup.NativeUi, nativeUi, generation, trims, cancellationToken);

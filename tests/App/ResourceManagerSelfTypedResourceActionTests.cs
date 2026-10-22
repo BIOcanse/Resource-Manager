@@ -7,6 +7,7 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.DiskUsage;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Infrastructure.DiskUsage;
 using ResourceManager.Ledger;
 
 namespace Resource_Manager_APP.Tests;
@@ -54,26 +55,46 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
     }
 
     [Fact]
-    public async Task OptimizeReturnsExactOsObservationsWithoutCountingThemAsLedgerReleases()
+    public async Task OptimizeRepeatedTicksReclaimOnlyLedgerCacheWithoutTrimmingProcessWorkingSets()
     {
         using var owner = new ResourceManagerLedgerOwner();
         var writer = CreateWriter();
-        using var manager = CreateManager(writer, owner);
+        var store = new DiskUsageTreeStore(owner);
+        var builder = new DiskUsageTreeBuilder();
+        var root = builder.Add(-1, "C:\\", true, 0, 0);
+        for (var index = 0; index < 65; index++)
+            builder.Add(root, $"owned-cache-entry-{index:00}", false, 0, 0);
+        store.Replace(new(builder.Build(), new DiskUsageScanSummary(
+            DiskUsageScanScopes.Volume, DiskUsageScanModes.Fast, "C:", ["C:\\"],
+            DiskUsageScanKinds.MasterFileTable, [], StartedAt, 0.1, 0, 0, 65, 1, 0)));
+        Assert.True(owner.ReadTable().RegisteredBytes > 0);
+        using var manager = new ResourceManagerSelfLocalResourceManager(
+            writer, store, owner, Sample, (_, _) => 500);
         manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
-        var result = await manager.TickAsync();
-        Assert.Equal(2, result.TrimResults.Count);
-        Assert.All(result.TrimResults, trim =>
+        var reading = store.TryAcquire();
+        Assert.NotNull(reading);
+        try
         {
-            Assert.Equal(AdapterResourceActionStatus.Completed, trim.Status);
-            Assert.False(trim.ObservationPending);
-            Assert.All(trim.Requests, request => Assert.Equal(StartedAt, request.ExpectedStartedAt));
-            Assert.All(trim.Observations, observation => Assert.Equal(500UL, observation.BytesAfter));
-        });
-        Assert.Equal(0UL, result.Memory.RegisteredBytes);
-        Assert.Equal(0UL, result.Ledger.Released);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
-        _ = await manager.TickAsync();
-        Assert.Equal(2, writer.Requests.Count);
+            var inUse = await manager.TickAsync();
+            Assert.Equal(0UL, inUse.Ledger.Released);
+            Assert.NotNull(store.CurrentSummary);
+            Assert.Empty(inUse.TrimResults);
+        }
+        finally { reading.Dispose(); }
+        ulong released = 0;
+        for (var round = 0; round < 4; round++)
+        {
+            var result = await manager.TickAsync();
+            released += result.Ledger.Released;
+            Assert.Equal(1000UL, result.BackendWorkingSetBytes);
+            Assert.Equal(2000UL, result.NativeUiWorkingSetBytes);
+            Assert.Empty(result.TrimResults);
+            Assert.Empty(result.RecheckedTrimObservations);
+        }
+        Assert.True(released > 0);
+        Assert.Null(store.CurrentSummary);
+        Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+        Assert.Empty(writer.Requests);
     }
 
     [Fact]
@@ -82,7 +103,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         using var owner = new ResourceManagerLedgerOwner();
         var writer = new RecordingPolicyWriter(succeed: false, startedAtOverride: _ => StartedAt);
         using var manager = CreateManager(writer, owner);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var failed = await manager.TickAsync();
         Assert.All(failed.TrimResults, trim => Assert.Equal(AdapterResourceActionStatus.Failed, trim.Status));
         Assert.Equal(0UL, failed.Ledger.Released);
@@ -95,7 +116,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         var writer = new RecordingPolicyWriter(malformedResults: true, startedAtOverride: _ => StartedAt);
         ulong? refreshed = null;
         using var manager = CreateManager(writer, owner, read: (_, _) => refreshed);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var unknown = await manager.TickAsync();
         Assert.Equal(2, unknown.PendingTrimObservationCount);
         Assert.All(unknown.TrimResults, trim =>
@@ -104,7 +125,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             Assert.Empty(trim.Results);
             Assert.True(trim.ObservationPending);
         });
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Normal);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
         refreshed = 300;
         var observed = await manager.TickAsync();
         Assert.Empty(observed.TrimResults);
@@ -144,7 +165,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
                 }
                 return Sample();
             }, (_, _) => refreshed);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var first = await manager.TickAsync();
         Assert.Equal(2, first.PendingTrimObservationCount);
         var previous = manager.LastTrimResults;
@@ -196,7 +217,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         var writer = new RecordingPolicyWriter(malformedResults: true, startedAtOverride: _ => StartedAt);
         ulong? refreshed = null;
         using var manager = CreateManager(writer, owner, read: (_, _) => refreshed);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         _ = await manager.TickAsync();
         refreshed = 300;
 
@@ -219,7 +240,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         using var owner = new ResourceManagerLedgerOwner();
         var writer = new RecordingPolicyWriter(throwOnApply: true, startedAtOverride: _ => StartedAt);
         using var manager = CreateManager(writer, owner, read: (_, _) => null);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var result = await manager.TickAsync();
         Assert.Equal(2, result.PendingTrimObservationCount);
         Assert.All(result.TrimResults, trim =>
@@ -244,7 +265,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
             return Sample();
         }, (_, _) => 500))
         {
-            manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+            manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
             var result = await manager.TickAsync();
             Assert.Empty(result.TrimResults);
             Assert.Empty(writer.Requests);
@@ -257,7 +278,7 @@ public sealed class ResourceManagerSelfTypedResourceActionTests
         using var owner = new ResourceManagerLedgerOwner();
         var writer = new RecordingPolicyWriter(startedAtOverride: _ => StartedAt.AddSeconds(1));
         using var manager = CreateManager(writer, owner);
-        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.Optimize);
+        manager.SetDesiredMemoryMode(LocalResourceSoftwareMemoryMode.PagedFrozen);
         var result = await manager.TickAsync();
         Assert.Empty(result.TrimResults);
         Assert.Empty(writer.Requests);

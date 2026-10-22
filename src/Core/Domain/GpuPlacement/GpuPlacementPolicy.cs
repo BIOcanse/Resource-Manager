@@ -216,7 +216,7 @@ public static class CpuMaximumOccupancyModes
     public const string SingleCcd = "SingleCcd";
     public const string AllCores = "AllCores";
 
-    public static string Normalize(string? value, string fallback = SingleCcd)
+    public static string Normalize(string? value, string fallback = AllCores)
     {
         return value?.Trim() switch
         {
@@ -258,7 +258,7 @@ public sealed record GpuPlacementSoftwarePolicy(
     bool? KeepCpuProcessesOnMainCcd = null,
     bool GpuExclusive = false,
     bool AbsolutePerformanceModeEnabled = false,
-    string CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.SingleCcd,
+    string CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores,
     bool CpuExclusiveLocksAffinity = false,
     IReadOnlyList<string>? CpuManualExclusivePositionIds = null,
     IReadOnlyList<string>? CpuManualLockedPositionIds = null);
@@ -394,10 +394,10 @@ public static class GpuPlacementPolicyDefaults
             null,
             true,
             updatedAt ?? DateTimeOffset.MinValue,
-            true,
             false,
             false,
-            CpuMaximumOccupancyModes.SingleCcd,
+            false,
+            CpuMaximumOccupancyModes.AllCores,
             false,
             [],
             []);
