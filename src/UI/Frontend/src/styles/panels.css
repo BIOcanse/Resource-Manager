@@ -45,6 +45,13 @@
   padding: 4px;
 }
 
+/* 组件页的面板没有底色，动作区的白底和负外边距会凸出一块 */
+#componentsPage .panel-header-actions {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
 .save-state {
   min-height: 28px;
   display: inline-flex;
@@ -144,11 +151,14 @@
   height: 24px;
   display: inline-grid;
   place-items: center;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--badge-bg);
-  color: var(--warn);
+  color: var(--muted);
   font-weight: 700;
   font-size: 13px;
+  padding: 0 8px;
+  white-space: nowrap;
 }
 .observation-state {
   display: flex;

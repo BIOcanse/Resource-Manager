@@ -413,6 +413,39 @@
   background: var(--surface);
 }
 
+/* 二级保护：文字在左、设置页同款开关在右，整行可点。 */
+.software-protection-section .policy-toggle {
+  margin-top: 10px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.software-protection-section .settings-switch {
+  flex: none;
+}
+
+.software-protection-message {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.software-protection-message.error {
+  color: var(--danger);
+}
+
 .provider-checkbox-group {
   display: grid;
   gap: 8px;
@@ -631,156 +664,6 @@
   display: grid;
   align-content: start;
   gap: 12px;
-}
-
-.metric-picker {
-  min-height: 0;
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-  padding: 12px;
-}
-
-.metric-picker-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.metric-picker-search {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 8px 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-}
-
-.metric-picker-search:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
-}
-
-.metric-picker-search input {
-  min-width: 0;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.metric-picker-search input:focus {
-  box-shadow: none;
-}
-
-.metric-picker-clear {
-  width: 28px;
-  height: 28px;
-}
-
-.metric-picker-count {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.metric-options {
-  overflow: auto;
-  padding: 2px 4px 8px 0;
-}
-
-.metric-option-group-block + .metric-option-group-block {
-  margin-top: 14px;
-}
-
-.metric-option-group-title {
-  margin: 0 0 7px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.metric-option-group-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(320px, 1fr));
-  gap: 8px;
-}
-
-.metric-picker-empty {
-  min-height: 160px;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-}
-
-.metric-option {
-  text-align: left;
-  min-height: 56px;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 12px;
-  background: var(--surface);
-  color: var(--text);
-  border-color: var(--line);
-  padding: 10px 12px;
-}
-
-.metric-option-content {
-  min-width: 0;
-  display: grid;
-  gap: 5px;
-  line-height: 1.35;
-}
-
-.metric-option-content span,
-.metric-option-content small {
-  overflow-wrap: anywhere;
-}
-
-.metric-option:not(:disabled):hover,
-.metric-option.active,
-.metric-option.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.metric-option.requires-dependency {
-  border-color: var(--warn);
-  background: var(--warn-soft);
-}
-
-.metric-option.unavailable {
-  cursor: not-allowed;
-  opacity: 0.58;
-  border-color: var(--line);
-  background: color-mix(in oklab, var(--surface) 78%, var(--border-strong));
-}
-
-.metric-option.unavailable:hover {
-  border-color: var(--line);
-  background: color-mix(in oklab, var(--surface) 78%, var(--border-strong));
-}
-
-.metric-option small {
-  color: var(--muted);
-}
-
-.metric-option .metric-dependency.missing {
-  color: var(--warn);
-  font-weight: 700;
-}
-
-.metric-option .metric-unavailable {
-  color: var(--muted);
-  font-weight: 700;
 }
 
 .portable-root-warning {

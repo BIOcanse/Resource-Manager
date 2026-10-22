@@ -80,6 +80,8 @@ export default function App() {
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
     dashboardSettingsSource: frontendRuntime.sources.dashboardSettings,
     metricSnapshotSource: frontendRuntime.sources.metricSnapshot,
+    metricFieldCatalogSource: frontendRuntime.sources.metricFieldCatalog,
+    metricFieldsSource: frontendRuntime.sources.metricFields,
     resourceMonitorSource: frontendRuntime.sources.resourceMonitor,
     metricSnapshotActive: () =>
       activePage() === "monitor" && frontendWork.frontendVisible(),
@@ -328,7 +330,7 @@ export default function App() {
 
       <MetricModal
         open={Boolean(monitor.metricModalTarget())}
-        catalog={monitor.catalog()}
+        catalog={monitor.cardCatalog()}
         components={management.components()}
         selectedMetricId={monitor.selectedMetricId()}
         onSelect={monitor.setSelectedMetricId}

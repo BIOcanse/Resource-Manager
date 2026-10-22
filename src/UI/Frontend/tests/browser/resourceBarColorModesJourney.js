@@ -29,7 +29,8 @@ export default async function resourceBarColorModesJourney(page, baseUrl) {
 
   const track = page.locator('.resource-bar-track[data-metric-id="memory.usage"]');
   await page.setViewportSize({ width: 1100, height: 520 });
-  await track.scrollIntoViewIfNeeded();
+  // 把资源条滚到视口顶端，保证在页面滚离顶部的状态下测点击（卡片区高度变化不影响这个前提）。
+  await track.evaluate((element) => element.scrollIntoView({ block: "start" }));
   const beforeClick = await page.locator("main.app-shell").evaluate((element) => element.scrollTop);
   assert(beforeClick > 0, "Segment interaction must be tested below the top of the page");
   const bounds = await track.boundingBox();

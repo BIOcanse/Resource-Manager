@@ -1,5 +1,5 @@
-import { localizedMetricLabel } from "../../presentation/metricLabels";
-import { Search, X } from "lucide-solid";
+import { localizedMetricLabel, metricUnitLabel } from "../../presentation/metricLabels";
+import { PackagePlus, Search, X } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   componentDisplayName,
@@ -20,6 +20,7 @@ import {
 } from "../../ui/primitives/activeDescendantListbox.ts";
 import { isComponentInstalled, textOrEmpty } from "../../utils";
 import { uiText } from "../../text.ts";
+import { deviceFieldScopeKind } from "./fieldCards.ts";
 
 interface MetricModalProps {
   open: boolean;
@@ -40,6 +41,26 @@ export interface MetricDependencyState {
   stateLabel: string;
   message: string;
   missing: boolean;
+}
+
+/** 显卡组（gpu.N）的显卡名：组内各项的目录说明都相同时，它就是这块卡的名字。 */
+function gpuGroupDetail(metrics: readonly MetricDefinition[]): string | null {
+  if (!metrics.every((metric) => /^gpu\.\d+$/i.test(metric.group.trim()))) {
+    return null;
+  }
+  const details = new Set(metrics.map((metric) => metric.detail?.trim() ?? ""));
+  const [detail] = details;
+  return details.size === 1 && detail ? detail : null;
+}
+
+/** 选项名和右侧原因都可能被截断：悬停看全名、不可选的原因；设备字段附字段说明，已装的组件附组件状态。 */
+function optionTitle(metric: MetricDefinition, dependency: MetricDependencyState | null, unavailable: boolean): string {
+  return [
+    localizedMetricLabel(metric.id, metric.label),
+    unavailable ? userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason) : null,
+    metric.scopeKind === deviceFieldScopeKind ? metric.detail : null,
+    dependency && !dependency.missing ? `${dependency.name} · ${dependency.stateLabel}` : null
+  ].filter(Boolean).join("\n");
 }
 
 export function MetricModal(props: MetricModalProps) {
@@ -77,7 +98,17 @@ export function MetricModal(props: MetricModalProps) {
       const group = userFacingMetricGroup(metric.group);
       groups.set(group, [...(groups.get(group) ?? []), metric]);
     }
-    return Array.from(groups, ([group, metrics]) => ({ group, metrics }));
+    return Array.from(groups, ([group, metrics]) => ({
+      group,
+      metrics,
+      detail: gpuGroupDetail(metrics),
+      // 这一组缺哪些组件，在组标题上说一次。
+      missingComponents: [...new Set(metrics
+        .filter((metric) => !metricUnavailable(metric))
+        .map((metric) => dependencyFor(metric))
+        .filter((dependency) => dependency?.missing)
+        .map((dependency) => dependency!.name))]
+    }));
   });
 
   function dependencyFor(metric: MetricDefinition): MetricDependencyState | null {
@@ -237,7 +268,22 @@ export function MetricModal(props: MetricModalProps) {
               const headingId = `metric-modal-group-${groupIndex()}`;
               return (
                 <section class="metric-option-group-block" role="group" aria-labelledby={headingId}>
-                  <h3 id={headingId} class="metric-option-group-title">{group.group}</h3>
+                  <div class="metric-option-group-heading">
+                    <h3 id={headingId} class="metric-option-group-title" title={group.detail ?? undefined}>
+                      {group.group}
+                      <Show when={group.detail}>
+                        {(detail) => <span class="metric-option-group-detail"> · {detail()}</span>}
+                      </Show>
+                    </h3>
+                    <For each={group.missingComponents}>
+                      {(name) => (
+                        <small class="metric-option-group-note">
+                          <PackagePlus size={13} aria-hidden="true" />
+                          {uiText.metricPicker.needsInstall(name)}
+                        </small>
+                      )}
+                    </For>
+                  </div>
                   <div class="metric-option-group-grid">
                     <For each={group.metrics}>
                       {(metric) => {
@@ -257,6 +303,7 @@ export function MetricModal(props: MetricModalProps) {
                               unavailable: unavailable()
                             }}
                             data-metric-id={metric.id}
+                            title={optionTitle(metric, dependency(), unavailable())}
                             aria-selected={isSelected(metric.id)}
                             disabled={unavailable()}
                             onPointerMove={() => {
@@ -266,21 +313,25 @@ export function MetricModal(props: MetricModalProps) {
                             }}
                             onClick={() => chooseMetric(metric)}
                           >
-                            <span class="metric-option-content">
-                              <span>{localizedMetricLabel(metric.id, metric.label)}</span>
-                              <Show when={dependency()}>
-                                {(state) => (
-                                  <small class={state().missing ? "metric-dependency missing" : "metric-dependency"}>
-                                    {state().missing
-                                      ? uiText.metricPicker.needsInstall(state().name)
-                                      : `${state().name} · ${state().stateLabel}`}
-                                  </small>
-                                )}
+                            <span class="metric-option-label">
+                              {localizedMetricLabel(metric.id, metric.label)}
+                            </span>
+                            {/* 右侧小字：不可选时写原因，否则写单位；缺组件只留图标，提示在组标题。 */}
+                            <span class="metric-option-aside">
+                              <Show when={dependency()?.missing && !unavailable()}>
+                                <span
+                                  class="metric-option-dependency"
+                                  role="img"
+                                  aria-label={uiText.metricPicker.needsInstall(dependency()!.name)}
+                                  title={uiText.metricPicker.needsInstall(dependency()!.name)}
+                                >
+                                  <PackagePlus size={13} aria-hidden="true" />
+                                </span>
                               </Show>
-                              <Show when={unavailable()}>
-                                <small class="metric-unavailable">
+                              <Show when={unavailable()} fallback={metricUnitLabel(metric.unit)}>
+                                <span class="metric-unavailable">
                                   {userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason)}
-                                </small>
+                                </span>
                               </Show>
                             </span>
                           </button>

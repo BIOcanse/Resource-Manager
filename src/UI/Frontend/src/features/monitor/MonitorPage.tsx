@@ -45,11 +45,13 @@ export function MonitorPage(props: MonitorPageProps) {
 
   return (
     <section id="monitorPage" class="page active-page">
-      <div class="topbar monitor-toolbar">
-        <div class="toolbar">
+      {/* 卡片区和下面两个面板一样：标题在左，编辑按钮在右。 */}
+      <div class="panel-header monitor-toolbar">
+        <h2>{uiText.monitorPage.liveMetrics}</h2>
+        <div class="panel-header-actions">
           <button
             ref={dashboardAddButton}
-            class="secondary"
+            class="secondary panel-refresh-button"
             classList={{ hidden: !monitor.editMode() }}
             type="button"
             aria-label={uiText.monitorPage.addCardLabel}
@@ -62,7 +64,7 @@ export function MonitorPage(props: MonitorPageProps) {
           </Show>
           <Show when={monitor.editMode()}>
             <button
-              class="secondary"
+              class="secondary panel-refresh-button"
               type="button"
               aria-label={uiText.monitorPage.cancelEditLabel}
               disabled={monitor.dashboardSaveState() === "saving"}
@@ -73,6 +75,7 @@ export function MonitorPage(props: MonitorPageProps) {
           </Show>
           <button
             ref={dashboardEditButton}
+            class="secondary panel-refresh-button"
             type="button"
             data-focus-key="monitor-dashboard-edit"
             aria-label={monitor.editMode() ? uiText.monitorPage.saveLayoutLabel : uiText.monitorPage.editLayoutLabel}
@@ -115,8 +118,8 @@ export function MonitorPage(props: MonitorPageProps) {
               >
                 <Dashboard
                   cards={monitor.activeCards()}
-                  catalog={monitor.catalog()}
-                  snapshot={monitor.snapshot()}
+                  catalog={monitor.cardCatalog()}
+                  snapshot={monitor.cardSnapshot()}
                   editMode={monitor.editMode()}
                   metricSelectionAvailable={metricSelectionAvailable()}
                   onOpenMetricModal={monitor.openMetricModal}

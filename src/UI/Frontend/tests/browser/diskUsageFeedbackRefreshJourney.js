@@ -205,15 +205,16 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
         const telemetry = await response.json();
         return (telemetry["/api/disk-usage/layout"]?.inFlightByQuery["?rootIndex=1"] ?? 0) > 0;
       }, null, { timeout: 5000 });
-      const resetRequest = page.waitForRequest(request => {
+      // 先登记等待响应再点击：响应可能在请求返回后立刻到达，晚登记会错过。
+      const resetResponse = page.waitForResponse(response => {
+        const request = response.request();
         if (request.method() !== "GET") return false;
         const url = new URL(request.url());
         return url.pathname === "/api/disk-usage/layout"
           && url.searchParams.get("node") === "0";
       });
       await page.getByRole("button", { name: app.diskUsage.resetView, exact: true }).click();
-      const resetLayoutRequest = await resetRequest;
-      await page.waitForResponse(response => response.request() === resetLayoutRequest);
+      await resetResponse;
       await lateRootResponse;
       await waitForDiskRoot("C:\\", cTotals);
       await patchScenario({ diskUsageRootIndexOneDelayMs: 0 });

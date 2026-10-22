@@ -1,9 +1,12 @@
-import { localizedMetricLabel, metricDisplayValue, resourceMetricBasis
+import { localizedMetricLabel, metricCardReading, resourceMetricBasis
 } from "../../presentation/metricLabels";
+import { Plus, Replace, X } from "lucide-solid";
 import { createSignal, For, Show } from "solid-js";
 import { pointerReorderProps } from "../../interactions/pointerReorder";
 import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../../types";
+import { dashboardSmallMetricLimit } from "../../stores/monitorConfig";
 import { uiText } from "../../text.ts";
+import { deviceFieldScopeKind } from "./fieldCards.ts";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -122,7 +125,8 @@ function smallSlots(card: DashboardCardSettings, editMode: boolean) {
     return metrics;
   }
 
-  const count = Math.min(Math.max(metrics.length + 1, 3), 3);
+  // 编辑时在已有指标后面留一个空槽，满了就不留。
+  const count = Math.min(metrics.length + 1, dashboardSmallMetricLimit);
   return Array.from({ length: count }, (_, index) => metrics[index] ?? null);
 }
 
@@ -195,29 +199,35 @@ function MetricSlot(props: {
               title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : undefined}
               onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: null })}
             >
-              +
+              <Plus size={16} aria-hidden="true" />
             </button>
           }
         >
           <MetricView metricId={props.metricId} isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot} />
-          <button
-            type="button"
-            class="slot-change"
-            aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
-            disabled={!props.metricSelectionAvailable}
-            title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : undefined}
-            onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: props.metricId })}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            class="slot-delete"
-            aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
-            onClick={() => props.onClearSlot(props.card.id, props.slot, props.index)}
-          >
-            ×
-          </button>
+          {/* 槽内操作：悬停或聚焦这一槽时显示。 */}
+          <span class="slot-actions">
+            <button
+              type="button"
+              class="slot-change"
+              aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
+              disabled={!props.metricSelectionAvailable}
+              title={!props.metricSelectionAvailable
+                ? uiText.dashboard.catalogUnavailable
+                : uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
+              onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: props.metricId })}
+            >
+              <Replace size={13} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              class="slot-delete"
+              aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
+              title={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
+              onClick={() => props.onClearSlot(props.card.id, props.slot, props.index)}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          </span>
         </Show>
       </div>
     </Show>
@@ -236,15 +246,46 @@ function MetricView(props: {
     const label = metric()?.label?.trim();
     return label && label !== props.metricId ? label : null;
   };
-  const label = () => (props.metricId
-    ? localizedMetricLabel(props.metricId, definition()?.label ?? snapshotLabel())
-    : null)
-    ?? (props.metricId ? uiText.dashboard.metricUnavailable : "--");
-  const value = () => metricDisplayValue(metric(), definition() ? "N/A" : "--");
+  // 目录和文案都认不出名字时写「指标不可用」，原 id 放悬停说明。
+  const knownLabel = () => {
+    if (!props.metricId) {
+      return null;
+    }
+    const label = localizedMetricLabel(props.metricId, definition()?.label ?? snapshotLabel());
+    return label && label !== props.metricId ? label : null;
+  };
+  const label = () => props.metricId ? knownLabel() ?? uiText.dashboard.metricUnavailable : "--";
+  // 设备字段：标签下面写是哪台设备，悬停看字段说明。
+  const deviceName = () => definition()?.scopeKind === deviceFieldScopeKind ? definition()!.group : null;
+  // 标签可能被截断：悬停总能看到全名，再加设备与字段说明，或量纲说明。
+  const labelTitle = () => {
+    if (!props.metricId) {
+      return undefined;
+    }
+    if (!knownLabel()) {
+      return props.metricId;
+    }
+    const extra = deviceName()
+      ? [deviceName(), definition()?.detail]
+      : [resourceMetricBasis(props.metricId)];
+    return [label(), ...extra].filter(Boolean).join("\n");
+  };
+  const reading = () => props.metricId
+    ? metricCardReading(definition(), metric())
+    : { value: "--", gap: "", unit: "", missing: true, title: undefined };
   return (
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
-      <div class="metric-label" title={resourceMetricBasis(props.metricId)}>{label()}</div>
-      <div class="metric-value">{value()}</div>
+      <div class="metric-label" title={labelTitle()}>
+        <span class="metric-label-text">{label()}</span>
+        <Show when={deviceName()}>
+          {(name) => <span class="metric-device">{name()}</span>}
+        </Show>
+      </div>
+      <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
+        <Show when={reading().unit} fallback={reading().value}>
+          <span class="metric-number">{reading().value}</span>{reading().gap}<span class="metric-unit">{reading().unit}</span>
+        </Show>
+      </div>
     </div>
   );
 }

@@ -2,11 +2,14 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog } from "./displayEdidDialogProbe.js";
+import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
 import usabilityProbe from "./usabilityProbe.js";
+import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, enableMetricFields, seedFieldCards } from "./metricFieldsProbe.js";
 
 export default async function localizationJourney(page, baseUrl) {
   const failures = [];
   const typeXChecks = [];
+  const declarationChecks = [];
   page.on("pageerror", error => failures.push(String(error)));
   page.on("console", message => {
     const expectedFailure = failProtectionSave && message.location().url.includes("/api/optimization/protection/software/");
@@ -17,6 +20,10 @@ export default async function localizationJourney(page, baseUrl) {
     body: JSON.stringify({ runtimeEffectOwners: true })
   });
   if (!scenario.ok) throw new Error("Unable to enable the mock runtime controls");
+  await enableMetricFields(baseUrl);
+  await seedFieldCards(baseUrl);
+  const metricFieldChecks = [];
+  const fieldCardChecks = [];
   let verificationFails = false;
   let verificationRequests = 0;
   await page.route("**/api/components", route => route.fulfill({ json: [{
@@ -62,8 +69,12 @@ export default async function localizationJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
   const checked = [];
+  // RM_LOCALIZATION_LANGUAGES（逗号分隔的语言 id）只跑其中几种，用于把九语旅程拆成几个进程并行；不设就跑全部。
+  const languageFilter = process.env.RM_LOCALIZATION_LANGUAGES?.split(",").map(id => id.trim()).filter(Boolean);
   const offered = [...languageOptions.filter(option => option.id !== "system" && option.id !== "en-US"),
-    languageOptions.find(option => option.id === "en-US")];
+    languageOptions.find(option => option.id === "en-US")]
+    .filter(option => !languageFilter?.length || languageFilter.includes(option.id));
+  if (offered.length === 0) throw new Error(`RM_LOCALIZATION_LANGUAGES matched no language: ${process.env.RM_LOCALIZATION_LANGUAGES}`);
   for (const option of offered) {
     const oldApp = await loadAppCopy(previous);
     const oldSettings = await loadSettingsText(previous);
@@ -93,14 +104,33 @@ export default async function localizationJourney(page, baseUrl) {
     const typeXResponse = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "typex" }) });
     if (!typeXResponse.ok) throw new Error(option.id + ": TypeX real wire input unavailable");
     typeXChecks.push({ language: option.id, ...await checkTypeXDisplayDialog(page, app) });
+    for (const variant of ["typeVVi", "typeVViClock", "adaptiveSync", "adaptiveSyncZero", "dynamicRange"]) {
+      const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: variant }) });
+      if (!response.ok) throw new Error(option.id + ": " + variant + " fixture unavailable");
+      const result = await checkDeclarationDisplayDialog(page, app, variant);
+      declarationChecks.push({ language: option.id, variant, declarations: result.declarations, openRefresh: result.openRefresh });
+    }
     const original = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "ready" }) });
     if (!original.ok) throw new Error(option.id + ": original EDID fixture unavailable");
     await checkRecordedDisplayDialog(page, app);
+    // 规范字段的新显示：CPU 拓扑的 NUMA 行与有效频率，设备详情的 NPU／AMD NPU 两节。
+    await checkCpuMetricFields(page, app, option.id);
+    metricFieldChecks.push(await checkDeviceMetricFields(page, app, option.id));
+    // 监视控制台的设备字段卡片：字段名、设备种类名、「设备不在」。
+    fieldCardChecks.push(await checkFieldCardDisplay(page, app, option.id));
     await page.getByRole("navigation").getByRole("button", { name: app.page.control, exact: true }).click();
     await page.locator(".control-group h3").filter({ hasText: app.control.kind.gpu }).waitFor();
     await page.locator(".control-readings dt").filter({ hasText: app.control.presentation.labels["gpu.temperature-limit"] }).waitFor();
     await page.locator(".control-capability-actual").filter({ hasText: app.control.presentation.toggleOff }).first().waitFor();
     await page.getByRole("radio", { name: app.control.ownership.app, exact: true }).waitFor();
+    // X80：开关的三选一（交还固件／开启／关闭）按当前语言显示，交还固件带说明。
+    await page.getByRole("radio", { name: app.control.ownership.app, exact: true }).click();
+    const boost = page.getByRole("radiogroup", { name: app.control.presentation.labels["gpu.dynamic-boost-enabled"], exact: true });
+    for (const label of [app.control.toggleChoice.firmware, app.control.presentation.toggleOn, app.control.presentation.toggleOff])
+      await boost.getByRole("radio", { name: label, exact: true }).waitFor();
+    if (await boost.getByRole("radio", { name: app.control.toggleChoice.firmware, exact: true }).getAttribute("title") !== app.control.toggleChoice.firmwareHint)
+      throw new Error(`${option.id}: Return-to-firmware choice lost its localized explanation`);
+    await page.getByRole("radio", { name: app.control.ownership.firmware, exact: true }).click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
     await page.getByRole("button", { name: `${app.managementRole.Dependency} 1`, exact: true }).click();
@@ -177,7 +207,7 @@ export default async function localizationJourney(page, baseUrl) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { typeXChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, languages: checked, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
     translatedComponentVerificationSuccessAndFailure: true,
     translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };

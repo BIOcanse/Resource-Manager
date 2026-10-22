@@ -26,6 +26,10 @@
   font-size: 13px;
 }
 
+.optimization-mode:not(.active):not(:disabled):hover {
+  background: var(--hover-bg);
+}
+
 .optimization-mode.active {
   background: var(--accent);
   color: var(--on-accent);

@@ -30,6 +30,13 @@ import type {
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
+import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
+import {
+  effectiveFrequencyFieldName,
+  effectiveFrequencyRows,
+  numaFieldNames,
+  numaNodeRows
+} from "./cpuMetricFields.ts";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 
@@ -72,6 +79,8 @@ export function CpuTopologyDiagram(props: {
   const [topology, setTopology] = createSignal<CpuTopologySnapshot | null>(null);
   const [residency, setResidency] =
     createSignal<CpuCoreResidencySnapshot | null>(null);
+  const [numaFields, setNumaFields] = createSignal<readonly MetricFieldDevice[] | null>(null);
+  const [frequencyFields, setFrequencyFields] = createSignal<readonly MetricFieldDevice[] | null>(null);
   createEffect(() => {
     if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel)) {
       return;
@@ -82,7 +91,18 @@ export function CpuTopologyDiagram(props: {
     const stopResidency = frontendRuntime.sources.cpuResidency.subscribe(
       1_000,
       setResidency);
+    const stopNuma = frontendRuntime.sources.metricFields.subscribe(
+      { fields: numaFieldNames },
+      5_000,
+      setNumaFields);
+    // 有效频率随拓扑视图订阅一次，弹窗只负责显示：订阅集合变化会让整条推送流重连。
+    const stopFrequency = frontendRuntime.sources.metricFields.subscribe(
+      { fields: [effectiveFrequencyFieldName] },
+      1_000,
+      setFrequencyFields);
     onCleanup(() => {
+      stopFrequency();
+      stopNuma();
       stopResidency();
       stopTopology();
     });
@@ -191,6 +211,18 @@ export function CpuTopologyDiagram(props: {
             <>
             <div class="cpu-topology-meta">
               <strong>{model().cpuName}</strong>
+              <For each={numaNodeRows(numaFields())}>
+                {(node) => (
+                  <span class="cpu-topology-numa" title={uiText.cpuTopology.numaHint}>
+                    {uiText.cpuTopology.numaNode(node.nodeNumber, [
+                      node.capacity === undefined ? null
+                        : uiText.cpuTopology.numaCapacity(node.capacity ?? uiText.cpuTopology.fieldUnavailable),
+                      node.available === undefined ? null
+                        : uiText.cpuTopology.numaAvailable(node.available ?? uiText.cpuTopology.fieldUnavailable)
+                    ].filter((part) => part !== null).join(" · "))}
+                  </span>
+                )}
+              </For>
             </div>
             <div class="cpu-topology-diagram" classList={{ "ring-layout": model().visualLayoutKind === "RingBus" }}>
               <Show when={model().visualLayoutKind === "RingBus"} fallback={
@@ -214,6 +246,7 @@ export function CpuTopologyDiagram(props: {
                               <article class="cpu-core" classList={{ selected: isSelected(selected(), "core", core.id) }}>
                                 <CpuCoreSelectionButton
                                   core={core}
+                                  cacheSummary={formatCacheLevelList(privateCacheLevels(core, coresForCcd(model(), ccd)))}
                                   executionTimeMilliseconds={runtime().executionTimeMilliseconds}
                                   residencyAvailable={residencyHasData()}
                                   selected={isSelected(selected(), "core", core.id)}
@@ -221,14 +254,10 @@ export function CpuTopologyDiagram(props: {
                                   onToggle={() => toggleSelection(setSelected, "core", core.id)}
                                 />
                                 <Show when={editing()}>
-                                  <input
-                                    class="cpu-score-input"
-                                    type="number"
-                                    min="0"
-                                    step="any"
-                                    aria-label={uiText.cpuTopology.setCoreScore(core.label)}
+                                  <CpuScoreInput
+                                    core={core}
                                     value={scoreDraft()[core.index] ?? formatScore(core.performanceScore)}
-                                    onInput={(event) => updateScoreDraft(core.index, event.currentTarget.value)}
+                                    onInput={(value) => updateScoreDraft(core.index, value)}
                                   />
                                 </Show>
                                 <div class="cpu-logical-list">
@@ -292,50 +321,45 @@ export function CpuTopologyDiagram(props: {
                             }}
                             style={ringCorePosition(index(), model().physicalCores.length)}
                           >
-                            <CpuRingPrivateCacheShell core={core}>
-                              <CpuCoreSelectionButton
+                            <CpuCoreSelectionButton
+                              core={core}
+                              cacheSummary={formatCacheLevelList(privateCacheLevels(core, model().physicalCores))}
+                              executionTimeMilliseconds={runtime().executionTimeMilliseconds}
+                              residencyAvailable={residencyHasData()}
+                              selected={isSelected(selected(), "core", core.id)}
+                              variant="ring"
+                              onToggle={() => toggleSelection(setSelected, "core", core.id)}
+                            />
+                            <Show when={editing()}>
+                              <CpuScoreInput
                                 core={core}
-                                executionTimeMilliseconds={runtime().executionTimeMilliseconds}
-                                residencyAvailable={residencyHasData()}
-                                selected={isSelected(selected(), "core", core.id)}
-                                variant="ring"
-                                onToggle={() => toggleSelection(setSelected, "core", core.id)}
+                                value={scoreDraft()[core.index] ?? formatScore(core.performanceScore)}
+                                onInput={(value) => updateScoreDraft(core.index, value)}
                               />
-                              <Show when={editing()}>
-                                <input
-                                  class="cpu-score-input"
-                                  type="number"
-                                  min="0"
-                                  step="any"
-                                  aria-label={uiText.cpuTopology.setCoreScore(core.label)}
-                                  value={scoreDraft()[core.index] ?? formatScore(core.performanceScore)}
-                                  onInput={(event) => updateScoreDraft(core.index, event.currentTarget.value)}
-                                />
-                              </Show>
-                              <div class="cpu-ring-logical-list">
-                                <For each={logicalForCore(model(), core)}>
-                                  {(logical) => {
-                                    const logicalRuntime = () => logicalRuntimeDuration(residencyDurations(), logical.id);
-                                    return (
-                                      <button
-                                        class="cpu-ring-logical-chip"
-                                        classList={{ selected: isSelected(selected(), "logical", String(logical.id)), unavailable: !logical.affinitySelectable }}
-                                        type="button"
-                                        disabled={!logical.affinitySelectable}
-                                        aria-pressed={isSelected(selected(), "logical", String(logical.id))}
-                                        aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
-                                        title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
-                                        onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
-                                      >
-                                        <span>{logical.id}</span>
-                                        <small>{formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}</small>
-                                      </button>
-                                    );
-                                  }}
-                                </For>
-                              </div>
-                              <CpuProcessDurationList processes={runtime().topProcesses} compact />
-                            </CpuRingPrivateCacheShell>
+                            </Show>
+                            <div class="cpu-ring-logical-list">
+                              <For each={logicalForCore(model(), core)}>
+                                {(logical) => {
+                                  const logicalRuntime = () => logicalRuntimeDuration(residencyDurations(), logical.id);
+                                  return (
+                                    <button
+                                      class="cpu-ring-logical-chip"
+                                      classList={{ selected: isSelected(selected(), "logical", String(logical.id)), unavailable: !logical.affinitySelectable }}
+                                      type="button"
+                                      disabled={!logical.affinitySelectable}
+                                      aria-pressed={isSelected(selected(), "logical", String(logical.id))}
+                                      aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                      title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                      onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
+                                    >
+                                      <span>{logical.id}</span>
+                                      <small>{formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData())}</small>
+                                    </button>
+                                  );
+                                }}
+                              </For>
+                            </div>
+                            <CpuProcessDurationList processes={runtime().topProcesses} compact />
                           </article>
                         );
                       }}
@@ -368,6 +392,7 @@ export function CpuTopologyDiagram(props: {
               bindings={exclusiveBindingsSnapshot()?.bindings ?? []}
               bindingsLoading={!sourceCanRender(exclusiveBindingsSource.snapshot())}
               selectedCoreId={detailsCoreId()}
+              frequencyFields={frequencyFields()}
               onSelectCore={setDetailsCoreId}
               onOpenSoftwareSettings={props.onOpenSoftwareSettings}
               onClose={() => setDetailsOpen(false)}
@@ -444,6 +469,8 @@ export function CpuTopologyDiagram(props: {
 
 function CpuCoreSelectionButton(props: {
   core: CpuPhysicalCoreModel;
+  /** 只属于这个核心的缓存（不画框的那些），空串时不显示这一行。 */
+  cacheSummary: string;
   executionTimeMilliseconds: number;
   residencyAvailable: boolean;
   selected: boolean;
@@ -460,13 +487,16 @@ function CpuCoreSelectionButton(props: {
       class={props.variant === "ring" ? "cpu-ring-core-main" : "cpu-core-main"}
       type="button"
       aria-pressed={props.selected}
-      aria-label={uiText.cpuTopology.coreAriaLabel(props.core.label, usage(), performance(), executionTime())}
+      aria-label={uiText.cpuTopology.coreAriaLabel(coreName(props.core), usage(), performance(), executionTime())}
       onClick={props.onToggle}
     >
-      <span>{props.core.label}</span>
+      <span>{coreName(props.core)}</span>
       <strong>{usage()}</strong>
       <small>{uiText.cpuTopology.corePerformance(performance())}</small>
       <small>{uiText.cpuTopology.coreExecutionTime(executionTime())}</small>
+      <Show when={props.cacheSummary}>
+        <small class="cpu-core-cache" title={props.cacheSummary}>{props.cacheSummary}</small>
+      </Show>
       <Show when={props.variant === "grid"}>
         <span class="cpu-core-meter" aria-hidden="true">
           <span style={{ width: `${clampPercent(props.core.usagePercent ?? 0)}%` }} />
@@ -474,6 +504,32 @@ function CpuCoreSelectionButton(props: {
       </Show>
     </button>
   );
+}
+
+function CpuScoreInput(props: {
+  core: CpuPhysicalCoreModel;
+  value: string;
+  onInput: (value: string) => void;
+}) {
+  return (
+    <label class="cpu-score-field">
+      <span>{uiText.cpuTopology.scoreInputLabel}</span>
+      <input
+        class="cpu-score-input"
+        type="number"
+        min="0"
+        step="any"
+        aria-label={uiText.cpuTopology.setCoreScore(coreName(props.core))}
+        value={props.value}
+        onInput={(event) => props.onInput(event.currentTarget.value)}
+      />
+    </label>
+  );
+}
+
+/** 后端 label 固定是英文 "Core N"，界面按核心序号用当前语言拼名字。 */
+function coreName(core: CpuPhysicalCoreModel) {
+  return uiText.cpuTopology.coreName(core.index);
 }
 
 function renderableSourceData<T>(source: SourceSnapshot<T>): T | undefined {
@@ -488,6 +544,7 @@ function CpuTopologyDetailsDialog(props: {
   bindings: CpuExclusiveBinding[];
   bindingsLoading: boolean;
   selectedCoreId: string | null;
+  frequencyFields: readonly MetricFieldDevice[] | null;
   onSelectCore: (coreId: string) => void;
   onOpenSoftwareSettings: (softwareId: string, softwareName: string) => void;
   onClose: () => void;
@@ -502,6 +559,7 @@ function CpuTopologyDetailsDialog(props: {
   const runtime = () => core()
     ? coreRuntimeDuration(props.residency, core()!.id)
     : emptyRuntimeDuration;
+  const frequencies = () => effectiveFrequencyRows(props.frequencyFields, logical());
   const bindings = () => core()
     ? props.bindings.filter((binding) =>
         binding.expandedExclusivePhysicalCoreIds.includes(core()!.id)
@@ -527,7 +585,7 @@ function CpuTopologyDetailsDialog(props: {
                 aria-pressed={item.id === core()?.id}
                 onClick={() => props.onSelectCore(item.id)}
               >
-                <span>{item.label}</span>
+                <span>{coreName(item)}</span>
                 <small>{formatUsage(item.usagePercent)}</small>
               </button>
             )}
@@ -538,13 +596,21 @@ function CpuTopologyDetailsDialog(props: {
             {(current) => (
               <>
                 <section class="user-details-section">
-                  <h3>{current().label}</h3>
+                  <h3>{coreName(current())}</h3>
                   <dl>
                     <div class="user-details-row"><dt>CCD</dt><dd>{ccd()?.label ?? current().ccdId}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.usage}</dt><dd>{formatUsage(current().usagePercent)}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.performanceScore}</dt><dd>{formatScore(current().performanceScore)}</dd></div>
                     <div class="user-details-row"><dt>{uiText.cpuTopology.logicalProcessors}</dt><dd>{logical().map((item) => item.id).join(", ") || "--"}</dd></div>
-                    <div class="user-details-row"><dt>{uiText.cpuTopology.cache}</dt><dd>{formatCoreCacheLevels(current().cacheLevels)}</dd></div>
+                    <div class="user-details-row"><dt>{uiText.cpuTopology.cache}</dt><dd>{formatCacheLevelList(current().cacheLevels) || "--"}</dd></div>
+                    <Show when={frequencies().length > 0}>
+                      <div class="user-details-row">
+                        <dt title={uiText.cpuTopology.effectiveFrequencyHint}>{uiText.cpuTopology.effectiveFrequency}</dt>
+                        <dd>{frequencies().map((row) => uiText.cpuTopology.logicalFrequency(
+                          row.logicalProcessorId,
+                          row.frequency ?? uiText.cpuTopology.fieldUnavailable)).join(" · ")}</dd>
+                      </div>
+                    </Show>
                     <div class="user-details-row">
                       <dt>{uiText.cpuTopology.executionTime}</dt>
                       <dd>{formatRuntimeDuration(runtime().executionTimeMilliseconds, props.residencyAvailable)}</dd>
@@ -623,12 +689,23 @@ function resolveDetailCoreId(
   return null;
 }
 
-function formatCoreCacheLevels(levels: CpuCoreCacheLevelModel[]) {
-  return levels.length > 0
-    ? levels
-        .map((level) => `L${level.level} ${level.sizeKb === null ? uiText.cpuTopology.cacheUnknownSize : formatCacheSize(level.sizeKb)}`)
-        .join(" · ")
-    : "--";
+/**
+ * 缓存列表写成「L1 64.0 KiB · L2 1.00 MiB」，核心卡片和详情弹窗共用；没有缓存时为空串。
+ * 每一项内部用不换行空格，窄卡片只在「·」处换行。
+ */
+function formatCacheLevelList(levels: readonly CpuCoreCacheLevelModel[]) {
+  return levels
+    .map((level) => uiText.cpuTopology.cacheLevel(
+      String(level.level),
+      formatCacheSize(level.sizeKb) || uiText.cpuTopology.cacheUnknownSize).replaceAll(" ", " "))
+    .join(" · ");
+}
+
+function physicalCoreName(
+  model: CpuTopologySnapshot,
+  match: (core: CpuPhysicalCoreModel) => boolean) {
+  const core = model.physicalCores.find(match);
+  return core ? coreName(core) : undefined;
 }
 
 function formatRequestedCpuPositions(model: CpuTopologySnapshot, positionIds: string[]) {
@@ -638,7 +715,7 @@ function formatRequestedCpuPositions(model: CpuTopologySnapshot, positionIds: st
   return positionIds
     .map((id) =>
       model.ccds.find((ccd) => ccd.id.toLowerCase() === id.toLowerCase())?.label
-      ?? model.physicalCores.find((core) => core.id.toLowerCase() === id.toLowerCase())?.label
+      ?? physicalCoreName(model, (core) => core.id.toLowerCase() === id.toLowerCase())
       ?? id)
     .join(", ");
 }
@@ -648,7 +725,7 @@ function formatPhysicalCoreIds(model: CpuTopologySnapshot, coreIds: string[]) {
     return "--";
   }
   return coreIds
-    .map((id) => model.physicalCores.find((core) => core.id === id)?.label ?? id)
+    .map((id) => physicalCoreName(model, (core) => core.id === id) ?? id)
     .join(", ");
 }
 
@@ -695,7 +772,7 @@ function CpuCacheHierarchy(props: { cores: CpuPhysicalCoreModel[]; renderCore: (
   );
 }
 
-function CpuCacheBox(props: { group?: CpuCacheGroup; level: number; variant?: "ring-private"; children: JSX.Element }) {
+function CpuCacheBox(props: { group?: CpuCacheGroup; level: number; children: JSX.Element }) {
   if (!props.group) {
     return <div class="cpu-cache-pass">{props.children}</div>;
   }
@@ -703,27 +780,12 @@ function CpuCacheBox(props: { group?: CpuCacheGroup; level: number; variant?: "r
   return (
     <section
       class={`cpu-cache-box level-${props.level}`}
-      classList={{
-        unknown: props.group.sizeKb === null,
-        "ring-private": props.variant === "ring-private"
-      }}
+      classList={{ unknown: props.group.sizeKb === null }}
       title={formatCacheGroupTitle(props.group)}
     >
       <span class="cpu-cache-label">{formatCacheGroupLabel(props.group)}</span>
       {props.children}
     </section>
-  );
-}
-
-function CpuRingPrivateCacheShell(props: { core: CpuPhysicalCoreModel; children: JSX.Element }) {
-  const l1Group = () => cacheGroupForSingleCore(props.core, 1, true);
-  const l2Group = () => cacheGroupForSingleCore(props.core, 2, false);
-  return (
-    <CpuCacheBox group={l2Group()} level={2} variant="ring-private">
-      <CpuCacheBox group={l1Group()} level={1} variant="ring-private">
-        {props.children}
-      </CpuCacheBox>
-    </CpuCacheBox>
   );
 }
 
@@ -998,12 +1060,10 @@ function formatCacheSize(sizeKb?: number | null) {
 function partitionByCacheLevel(
   cores: CpuPhysicalCoreModel[],
   level: number): CpuCachePartition[] {
-  const groups = buildCacheGroupsForCores(cores, level)
-    .filter((group) => shouldRenderCacheGroup(group, level));
   const assignedCoreIds = new Set<string>();
   const partitions: CpuCachePartition[] = [];
 
-  for (const group of groups) {
+  for (const group of sharedCacheGroups(cores, level)) {
     const groupedCores = cores.filter((core) => group.coreIds.includes(core.id) && !assignedCoreIds.has(core.id));
     if (groupedCores.length === 0) {
       continue;
@@ -1014,18 +1074,29 @@ function partitionByCacheLevel(
   }
 
   const remaining = cores.filter((core) => !assignedCoreIds.has(core.id));
-  if (level === 1) {
-    for (const core of remaining) {
-      partitions.push({
-        group: cacheGroupForSingleCore(core, 1, true),
-        cores: [core]
-      });
-    }
-  } else if (remaining.length > 0) {
+  if (remaining.length > 0) {
     partitions.push({ cores: remaining });
   }
 
   return partitions.sort((left, right) => firstCoreIndex(left) - firstCoreIndex(right));
+}
+
+/** 同级缓存被多个核心共享时才画框；只属于一个核心的缓存写进核心卡片。 */
+function sharedCacheGroups(
+  cores: CpuPhysicalCoreModel[],
+  level: number) {
+  return buildCacheGroupsForCores(cores, level)
+    .filter((group) => group.coreIds.length > 1);
+}
+
+/** 这个核心没有和 peers 里其他核心共享的缓存，按级别排序。 */
+function privateCacheLevels(
+  core: CpuPhysicalCoreModel,
+  peers: CpuPhysicalCoreModel[]) {
+  return core.cacheLevels
+    .filter((cache) => isKnownCache(cache)
+      && !sharedCacheGroups(peers, cache.level).some((group) => group.coreIds.includes(core.id)))
+    .sort((left, right) => left.level - right.level);
 }
 
 function buildCacheGroupsForCores(
@@ -1071,64 +1142,9 @@ function buildCacheGroupsForCores(
     .sort(compareCacheGroups);
 }
 
-function shouldRenderCacheGroup(
-  group: CpuCacheGroup,
-  level: number) {
-  if (level === 1) {
-    return true;
-  }
-
-  return group.sizeKb !== null || group.logicalProcessorIds.length > 0 || group.coreIds.length > 1;
-}
-
-function cacheGroupForSingleCore(
-  core: CpuPhysicalCoreModel,
-  level: number,
-  allowUnknownFallback: boolean): CpuCacheGroup | undefined {
-  const cache = cacheForLevel(core, level);
-  if (!isKnownCache(cache)) {
-    return allowUnknownFallback ? fallbackCoreCacheGroup(core, level) : undefined;
-  }
-
-  const logicalProcessorIds = normalizeLogicalProcessorIds(cache.logicalProcessorIds.length > 0
-    ? cache.logicalProcessorIds
-    : core.logicalProcessorIds);
-  const isSharedWithOtherCores = logicalProcessorIds.some((logicalId) => !core.logicalProcessorIds.includes(logicalId))
-    || normalizeCacheScope(cache.scope) === "shared";
-  if (!allowUnknownFallback && isSharedWithOtherCores) {
-    return undefined;
-  }
-
-  const sizeKb = normalizeCacheSize(cache.sizeKb);
-  return {
-    key: cacheGroupKey(level, sizeKb, logicalProcessorIds),
-    level,
-    sizeKb,
-    logicalProcessorIds,
-    coreIds: [core.id],
-    coreIndexes: [core.index],
-    scope: normalizeCacheScope(cache.scope)
-  };
-}
-
-function fallbackCoreCacheGroup(
-  core: CpuPhysicalCoreModel,
-  level: number): CpuCacheGroup {
-  return {
-    key: `fallback:${level}:${core.id}`,
-    level,
-    sizeKb: null,
-    logicalProcessorIds: normalizeLogicalProcessorIds(core.logicalProcessorIds),
-    coreIds: [core.id],
-    coreIndexes: [core.index],
-    scope: "unknown"
-  };
-}
-
 function ringSharedCacheGroups(model: CpuTopologySnapshot) {
   return [3, 2]
-    .flatMap((level) => buildCacheGroupsForCores(model.physicalCores, level))
-    .filter((group) => group.coreIds.length > 1)
+    .flatMap((level) => sharedCacheGroups(model.physicalCores, level))
     .sort((left, right) => right.level - left.level || compareCacheGroups(left, right));
 }
 

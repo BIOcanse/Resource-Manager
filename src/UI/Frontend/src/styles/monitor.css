@@ -5,33 +5,28 @@
 
 .dashboard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
   min-width: 0;
 }
 
+/* 卡片是容器查询的容器：数值字号和小指标分几列都按卡片自己的宽度定。 */
 .metric-card {
+  container-type: inline-size;
   min-width: 0;
-  min-height: 180px;
   position: relative;
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-1), var(--edge-highlight);
-  padding: 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.metric-card:not(.editing):hover {
-  transform: translateY(-2px);
-  box-shadow: var(--elev-2), var(--edge-highlight);
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .metric-card.editing {
-  padding-top: 22px;
   cursor: grab;
 }
 
@@ -74,65 +69,148 @@ body.pointer-reordering * {
 
 .metric-main {
   min-width: 0;
-  min-height: 72px;
+  min-height: 64px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+}
+
+.metric-main-content {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
 }
 
 .metric-label {
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
-  line-height: 1.2;
+  line-height: 1.25;
+}
+
+/* 主标签最多两行。 */
+.metric-main-content .metric-label-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .metric-value {
-  font-size: 38px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: clamp(24px, 11cqi, 34px);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.1;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 单位和数值分开：小一号、灰色。 */
+.metric-unit {
+  color: var(--muted);
+  font-size: 0.6em;
+  font-weight: 600;
+}
+
+/* 没有值：灰色小字，原因在悬停说明里。 */
+.metric-value.missing {
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
 }
 
 .metric-small-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
 }
 
 .metric-small-row {
   min-width: 0;
-  min-height: 38px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   border-top: 1px solid var(--divider);
-  padding-top: 8px;
+  padding-top: 6px;
+}
+
+.metric-small-row .metric-label {
+  flex: 1 1 auto;
+}
+
+.metric-small-row .metric-label-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metric-small-row .metric-value {
   flex: 0 0 auto;
-  font-size: 16px;
-  line-height: 1.15;
-  white-space: nowrap;
+  max-width: 70%;
+  font-size: 15px;
+  line-height: 1.2;
 }
 
-.metric-small-row .metric-label {
-  min-width: 0;
+.metric-small-row .metric-unit {
+  font-size: 0.75em;
+}
+
+.metric-small-row .metric-value.missing {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 卡片够宽时小指标排多列，每格标签在上、值在下。 */
+@container (min-width: 330px) {
+  .metric-small-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    column-gap: 14px;
+  }
+
+  .metric-small-row {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 2px;
+  }
+
+  .metric-small-row .metric-value {
+    max-width: none;
+  }
+}
+
+/* 设备字段卡片：标签下面的设备名。 */
+.metric-device {
+  display: block;
+  margin-top: 2px;
   overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.85;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .edit-slot {
   position: relative;
+  min-width: 0;
   border: 1px dashed var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
-  padding: 10px;
+  padding: 6px 8px;
+}
+
+.edit-slot .metric-small-row {
+  min-height: 24px;
+  border-top: 0;
+  padding-top: 0;
 }
 
 .edit-slot.has-metric {
@@ -143,40 +221,276 @@ body.pointer-reordering * {
   cursor: grabbing;
 }
 
-.slot-add {
-  width: 100%;
-  min-height: 44px;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius-sm);
+/* 空槽只留一个虚线的添加按钮，不再套一层虚线框。 */
+.edit-slot:not(.has-metric) {
+  border: 0;
+  background: none;
+  padding: 0;
+}
+
+/* 操作按钮在槽内右侧，不压分隔线；平时隐藏，悬停或聚焦这一槽时盖在数值右端显示。 */
+.slot-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  gap: 4px;
+  border-radius: 999px;
   background: var(--surface-soft);
-  color: var(--accent-strong);
-  font-size: 24px;
+  box-shadow: -6px 0 6px var(--surface-soft);
+  opacity: 0;
+}
+
+.metric-small-grid .slot-actions {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.edit-slot:hover .slot-actions,
+.edit-slot:focus-within .slot-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .slot-actions {
+    opacity: 1;
+  }
+}
+
+.slot-change,
+.slot-delete {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  padding: 0;
 }
 
 .slot-delete {
-  position: absolute;
-  top: -9px;
-  right: -9px;
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 0;
-  border-radius: 50%;
   border-color: var(--danger);
   background: var(--danger);
-  font-size: 16px;
-  line-height: 20px;
 }
 
-.slot-change {
-  position: absolute;
-  top: -9px;
-  left: -9px;
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
+/* 全局悬停只兜底到强调色以下，删除钮要自己的悬停反馈：稍深的危险色。 */
+.slot-delete:not(:disabled):hover {
+  border-color: color-mix(in oklab, var(--danger) 82%, black);
+  background: color-mix(in oklab, var(--danger) 82%, black);
+}
+
+.slot-add {
+  width: 100%;
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  background-image: none;
+  color: var(--accent-strong);
+  box-shadow: none;
+}
+
+.metric-main .slot-add {
+  min-height: 64px;
+}
+
+.slot-add:not(:disabled):hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/*
+  选择监控项弹窗（#metricModal）：紧凑多列、组标题吸顶、依赖提示合并到组标题。
+  弹窗宽度（.metric-modal）在 manual-software-modal.css。
+*/
+.metric-picker {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+/* 窄窗口下改为上下排列的规则在 responsive.css，需保持单类优先级。 */
+.metric-picker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-picker-search {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 8px 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.metric-picker-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent);
+}
+
+.metric-picker-search input {
+  min-width: 0;
+  border: 0;
   padding: 0;
-  border-radius: 50%;
-  font-size: 16px;
-  line-height: 20px;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* 搜索框外层已经有焦点框，输入框自己不再画一层。 */
+.metric-picker-search input:focus,
+.metric-picker-search input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* 清除只留自己的按钮，不再叠一个浏览器自带的。 */
+.metric-picker-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* 框内的小图标按钮；两个类是为了高于后加载的 .icon-button。 */
+.metric-modal .metric-picker-clear {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.metric-modal .metric-picker-clear:hover {
+  background: var(--surface-strong);
+  color: var(--text);
+}
+
+.metric-picker-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.metric-options {
+  overflow: auto;
+  padding: 0 4px 8px 0;
+}
+
+.metric-option-group-block + .metric-option-group-block {
+  margin-top: 10px;
+}
+
+.metric-option-group-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface);
+  padding: 6px 0 4px;
+}
+
+.metric-option-group-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.metric-option-group-detail {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.metric-option-group-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.metric-option-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+}
+
+.metric-picker-empty {
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+/* 不可选的项是禁用按钮，外观由全局禁用样式给出。缺组件的项不整块标黄：提示在组标题，这里只留图标。 */
+.metric-option {
+  text-align: left;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+  padding: 6px 10px;
+}
+
+.metric-option:not(:disabled):hover,
+.metric-option.active,
+.metric-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.metric-option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-option-aside {
+  min-width: 0;
+  max-width: 9em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-option-aside .metric-unavailable {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.metric-option-dependency {
+  flex: 0 0 auto;
+  color: var(--warn);
 }

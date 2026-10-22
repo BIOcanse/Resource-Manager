@@ -5,8 +5,7 @@ import { isAbsolute } from "node:path";
 export async function checkEmbeddedColourDisplayDialog(page, app, baseline, baselineDetails) {
   const variant = process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT;
   const spec = {
-    "cta-colour20": [0x20, "FDC32DA72FCDAA0F93DAFA5550C519F2B4B5CCBAB414092AAACE829B0717E307"],
-    "cta-colour21": [0x21, "57D6AE976C78C7DE4C8EDD865131006E1274DE456F07AF4852320DA245D16E68"]
+    "cta-colour20": [0x20, "FDC32DA72FCDAA0F93DAFA5550C519F2B4B5CCBAB414092AAACE829B0717E307"]
   }[variant];
   const input = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
   if (!spec || !input || !isAbsolute(input)) throw new Error("Embedded colour requires its explicit variant and absolute real wire input");

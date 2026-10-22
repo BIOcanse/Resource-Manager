@@ -5,7 +5,9 @@ import {
   formatBytesPerSecond,
   type ByteQuantityKind
 } from "./byteUnits.ts";
-import type { MetricValue, ResourceTableValue } from "../types.ts";
+import { backendMessageDomains } from "./backendMessage.ts";
+import { userFacingMetricUnavailableReason } from "./userFacingText.ts";
+import type { MetricDefinition, MetricValue, ResourceTableValue } from "../types.ts";
 
 // 后端按稳定指标 id 提供事实，用户看到的名称由当前语言的文案包决定。
 // 不认识的 id 保留后端标签，保证新增指标不会显示空白。
@@ -132,7 +134,8 @@ function normalizeMetricId(id: string): { pattern: string; index: string | null 
 /**
  * 一条指标读数怎么显示。
  *
- * 后端对容量类指标只发原始字节（unit 为 "B"），换算和单位标签在这里按当前进制模式给出；
+ * 后端对容量类指标只发原始字节（unit 为 "B"），字节速率发原始 B/s（numericValue），
+ * 换算和单位标签在这里按当前进制模式给出；
  * 其余指标的显示串仍由后端给定（°C、%、MHz、RPM 这类没有进制歧义）。
  * 所有消费端都走这一个函数，不要各自判断 unit。
  */
@@ -142,6 +145,9 @@ export function metricDisplayValue(
 ): string {
   if (!metric) {
     return fallback;
+  }
+  if (metric.unit === "B/s") {
+    return formatBytesPerSecond(metric.numericValue, undefined, fallback);
   }
   if (metric.unit !== "B") {
     return metric.displayValue || fallback;
@@ -156,6 +162,85 @@ export function metricDisplayValue(
     ? formatBytePair(used, metric.total, kind)
     : formatBytes(used, kind);
 }
+
+/**
+ * 监视卡片上一个槽位显示什么。
+ *
+ * 有值：数值和单位分开（单位小一号），两段拼起来与 metricDisplayValue 的结果逐字相同。
+ * 没有值：一句灰色短话，原因放悬停说明。没有值分四种：
+ * - 目录里没有这一项：「--」；
+ * - 需要装组件（目录给出的不可选原因是缺组件）：「需装组件」，说明写缺哪个组件；
+ * - 设备不在（设备字段卡片的设备不在字段目录里）：生产端写好的「设备不在」和说明；
+ * - 有这一项但没读数：后端的「N/A」或设备字段的「不可用」，说明写目录给的原因或「暂时没有读数」。
+ */
+export interface MetricCardReading {
+  /** 有值时是数值部分；没有值时是那句短话。 */
+  value: string;
+  /** 数值与单位之间原有的空白。 */
+  gap: string;
+  /** 单位；没有单位或没有值时为空串。 */
+  unit: string;
+  missing: boolean;
+  /** 悬停说明。 */
+  title?: string;
+}
+
+// 后端用这几个显示串表示没有读数（与后端 MetricCatalog.IsMetricSelectable 同一口径）。
+const noReadingDisplays = new Set(["", "-", "--", "N/A"]);
+// 后端 BackendMessageCodes.Metric.NeedsComponent。
+const metricNeedsComponentCode = 2;
+
+export function metricCardReading(
+  definition: MetricDefinition | null | undefined,
+  metric: MetricValue | null | undefined
+): MetricCardReading {
+  const text = uiText.dashboard;
+  const display = metricDisplayValue(metric, "");
+  const missing = (value: string, title?: string): MetricCardReading =>
+    ({ value, gap: "", unit: "", missing: true, title });
+
+  if (display === text.deviceAbsent) {
+    return missing(display, metric?.detail ?? undefined);
+  }
+  if (!noReadingDisplays.has(display) && display !== text.valueUnavailable) {
+    // 值不在目录里时（例如目录还没到），说明沿用读数自带的来源说明。
+    return { ...splitMetricUnit(display), missing: false, title: definition ? undefined : metric?.detail ?? undefined };
+  }
+  if (!definition) {
+    return metric
+      ? missing(display || "N/A", metric.detail ?? undefined)
+      : missing("--", text.notInCatalogHint);
+  }
+  const reason = definition.disabledReason;
+  const reasonText = reason
+    ? userFacingMetricUnavailableReason(definition.requiredComponentName, reason)
+    : undefined;
+  if (reason?.domain === backendMessageDomains.metric && reason.code === metricNeedsComponentCode) {
+    return missing(text.needsComponent, reasonText);
+  }
+  return missing(display || "N/A", reasonText ?? text.noReadingHint);
+}
+
+/** 把格式化好的显示串拆成数值和单位：单位是末尾紧贴的「%」，或一个空格后不含数字的一段。 */
+export function splitMetricUnit(display: string): Pick<MetricCardReading, "value" | "gap" | "unit"> {
+  const match = /^(.*\d)(?:(%)|(\s)([^\d\s][^\d]*))$/.exec(display);
+  return match
+    ? { value: match[1], gap: match[3] ?? "", unit: match[2] ?? match[4] }
+    : { value: display, gap: "", unit: "" };
+}
+
+/** 选择器里每项右侧的单位提示：字节类统一写 B，内部计数类不写。 */
+export function metricUnitLabel(unit: string | null | undefined): string {
+  const normalized = (unit ?? "").trim();
+  if (normalized === "MiB" || normalized === "512000 B") {
+    return "B";
+  }
+  return unitlessTokens.has(normalized) ? "" : normalized;
+}
+
+const unitlessTokens = new Set([
+  "", "1", "ratio", "count", "enum", "flag", "generation", "lanes", "bitmask64", "relative-unit", "relative-unit/h"
+]);
 
 /**
  * 一条指标的字节值属于哪一类物理量。

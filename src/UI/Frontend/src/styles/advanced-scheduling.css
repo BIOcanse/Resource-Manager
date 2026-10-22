@@ -134,9 +134,10 @@
 
 .cpu-topology-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 4px 12px;
   min-width: 0;
   color: var(--muted);
 }
@@ -193,16 +194,19 @@
   background: var(--surface);
   color: inherit;
   font: inherit;
+  font-size: 13px;
   text-align: left;
 }
 
 .cpu-ring-summary span {
+  font-size: 15px;
   font-weight: 700;
 }
 
 .cpu-ring-summary small {
   overflow: hidden;
   color: var(--muted);
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -310,6 +314,7 @@
   color: inherit;
   cursor: pointer;
   font: inherit;
+  font-size: 13px;
   text-align: left;
 }
 
@@ -321,6 +326,7 @@
 }
 
 .cpu-ring-core-main span {
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -332,6 +338,11 @@
 .cpu-ring-core-main small {
   color: var(--muted);
   font-size: 11px;
+}
+
+/* 环形布局的核心卡片窄，私有缓存一行放不下时换行，不截掉 L2。 */
+.cpu-ring-core-main .cpu-core-cache {
+  white-space: normal;
 }
 
 .cpu-ring-logical-list {
@@ -352,7 +363,7 @@
   background: var(--surface-soft);
   color: inherit;
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .cpu-ring-logical-chip span,
@@ -364,7 +375,7 @@
 
 .cpu-ring-logical-chip small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .cpu-ring-logical-chip.selected {
@@ -397,11 +408,13 @@
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+/* 这几块是卡片式按钮：基准字号跟全局按钮一样 13px，标题和小字在下面单独定。 */
 .cpu-ccd-header,
 .cpu-core-main,
 .cpu-logical-chip {
   color: inherit;
   font: inherit;
+  font-size: 13px;
 }
 
 .cpu-ccd-header {
@@ -418,12 +431,14 @@
 }
 
 .cpu-ccd-header span {
+  font-size: 15px;
   font-weight: 700;
 }
 
 .cpu-ccd-header small,
 .cpu-core-main small {
   color: var(--muted);
+  font-size: 12px;
 }
 
 .cpu-core-main span:first-child,
@@ -469,6 +484,12 @@
   background: color-mix(in oklab, #e3b341 8%, var(--surface-soft));
 }
 
+/* 只有共享缓存才画框：L2/L1 框占满一行，里面的核心横向排开，不挤在一个格子里竖排。 */
+.cpu-cache-box.level-2,
+.cpu-cache-box.level-1 {
+  grid-column: 1 / -1;
+}
+
 .cpu-cache-box.level-2 {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   border-color: color-mix(in oklab, #6ca7d8 62%, var(--line));
@@ -476,7 +497,7 @@
 }
 
 .cpu-cache-box.level-1 {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px;
   padding: 22px 6px 6px;
   border-width: 1px;
@@ -519,24 +540,9 @@
   color: color-mix(in oklab, #e3b341 78%, var(--text));
 }
 
-.cpu-cache-box.ring-private {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding: 17px 5px 5px;
-  border-width: 1px;
-  border-radius: 8px;
-  background: transparent;
-}
-
-.cpu-cache-box.ring-private .cpu-cache-label {
-  top: 2px;
-  right: 5px;
-  padding: 0 4px;
-  font-size: 9px;
-}
-
 .cpu-core {
   display: grid;
+  align-content: start;
   gap: 6px;
   min-width: 0;
   padding: 8px;
@@ -563,6 +569,7 @@
 }
 
 .cpu-core-main span:first-child {
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -570,15 +577,33 @@
   font-size: 20px;
 }
 
+.cpu-score-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.cpu-score-field span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .cpu-score-input {
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 7px;
+  flex: 0 0 auto;
+  width: 72px;
+  min-height: 26px;
+  padding: 2px 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
   color: var(--text);
   font: inherit;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -637,13 +662,23 @@
 .cpu-process-score-list small {
   min-width: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .cpu-process-score-list strong {
   flex: 0 0 auto;
   color: var(--text);
-  font-size: 10px;
+  font-size: 11px;
+}
+
+/* 详情弹窗里进程时长和上面的信息行同一档字号，不用拓扑图里的紧凑小字。 */
+.cpu-core-details-content .cpu-process-score-list span {
+  padding: 4px 8px;
+}
+
+.cpu-core-details-content .cpu-process-score-list small,
+.cpu-core-details-content .cpu-process-score-list strong {
+  font-size: 13px;
 }
 
 .cpu-logical-list {
@@ -676,7 +711,7 @@
 
 .cpu-logical-chip small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .cpu-logical-chip.selected {
@@ -754,6 +789,7 @@
 
 .cpu-core-details-option small {
   color: var(--muted);
+  font-size: 12px;
 }
 
 .cpu-core-details-content,
@@ -762,6 +798,12 @@
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+/* 弹窗内容区与信息行同为 13px。 */
+.cpu-core-details-content .user-details-summary,
+.cpu-exclusive-binding-item {
+  font-size: 13px;
 }
 
 .cpu-exclusive-binding-item {

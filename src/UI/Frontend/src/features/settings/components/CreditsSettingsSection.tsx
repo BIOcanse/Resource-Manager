@@ -18,7 +18,7 @@ export function CreditsSettingsSection(props: { text: SettingsTextBundle }) {
                 {(item) => (
                   <article class="settings-credit-item">
                     <div class="settings-credit-title">
-                      <strong>{item.name}</strong>
+                      <strong title={item.name}>{item.name}</strong>
                       <span>{item.role}</span>
                     </div>
                     <p>{item.note}</p>

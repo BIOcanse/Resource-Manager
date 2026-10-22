@@ -27,6 +27,11 @@
   white-space: nowrap;
 }
 
+.details-tab:not(.active):not(:disabled):hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
 .details-tab.active {
   border-color: var(--accent);
   background: var(--accent);
@@ -59,6 +64,11 @@
   border-left: 1px solid var(--divider);
 }
 
+.device-scope-tab:not(.active):not(:disabled):hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
 .device-scope-tab.active {
   background: color-mix(in oklab, var(--accent) 22%, var(--surface-soft));
   color: var(--text);
@@ -77,25 +87,31 @@
 
 .device-topology-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   min-width: 0;
 }
 
-.device-topology-header div {
+.device-topology-heading {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   gap: 3px;
 }
 
-.device-topology-header h2 {
+.device-topology-header .device-scope-tabs {
+  flex: none;
+}
+
+.device-topology-heading h2 {
   margin: 0;
   font-size: 18px;
   line-height: 1.2;
 }
 
-.device-topology-header span {
+.device-topology-heading span {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);

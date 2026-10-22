@@ -10,7 +10,7 @@ const creditCatalog: CreditCatalogItem[] = [
   { group: "data", name: "UL Solutions / 3DMark Steel Nomad", role: "externalReference", note: "upstreamContributors",
     links: [{ label: "official", href: "https://benchmarks.ul.com/compare/best-gpus" }] },
   { group: "runtime", name: "Free Software Foundation / libgcc / libstdc++ / Hewlett-Packard / Silicon Graphics / Lockless Inc.", role: "dotnetRuntime", note: "upstreamContributors",
-    links: [{ label: "official", href: "https://gcc.gnu.org/" }, { label: "official", href: "https://www.mingw-w64.org/" }] },
+    links: [{ label: "official", href: "https://gcc.gnu.org/", subject: "GCC" }, { label: "official", href: "https://www.mingw-w64.org/", subject: "MinGW-w64" }] },
   { group: "windows", name: "Microsoft Windows / Win32 / DirectX / WMI / ETW", role: "windowsManagement", note: "windowsFoundation",
     links: [{ label: "docs", href: "https://learn.microsoft.com/windows/" }] },
   { group: "build", name: ".NET SDK / MSBuild / NuGet / PowerShell", role: "buildToolchain", note: "microsoftTools",
@@ -18,11 +18,11 @@ const creditCatalog: CreditCatalogItem[] = [
   { group: "windows", name: "Microsoft.Extensions.Hosting.WindowsServices / System.ServiceProcess.ServiceController / System.Reflection.TypeExtensions", role: "dotnetRuntime", note: "managedServices",
     links: [{ label: "github", href: "https://github.com/dotnet/runtime" }] },
   { group: "build", name: "GCC / MinGW-w64 / winpthreads / WinLibs", role: "nativeCompiler", note: "nativeToolchain",
-    links: [{ label: "official", href: "https://gcc.gnu.org/" }, { label: "official", href: "https://www.mingw-w64.org/" }] },
+    links: [{ label: "official", href: "https://gcc.gnu.org/", subject: "GCC" }, { label: "official", href: "https://www.mingw-w64.org/", subject: "MinGW-w64" }] },
   { group: "build", name: "npm / Babel / Rolldown / Oxc / Lightning CSS / PostCSS / Browserslist", role: "buildToolchain", note: "buildContributors",
     links: [{ label: "official", href: "https://www.npmjs.com/" }] },
   { group: "build", name: "Playwright / xUnit.net / Coverlet / Microsoft.NET.Test.Sdk", role: "buildToolchain", note: "testContributors",
-    links: [{ label: "official", href: "https://playwright.dev/" }, { label: "official", href: "https://xunit.net/" }, { label: "github", href: "https://github.com/coverlet-coverage/coverlet" }] },
+    links: [{ label: "official", href: "https://playwright.dev/", subject: "Playwright" }, { label: "official", href: "https://xunit.net/", subject: "xUnit.net" }, { label: "github", href: "https://github.com/coverlet-coverage/coverlet" }] },
   { group: "hardware", name: "OpenHardwareMonitor", role: "hardwareBridge", note: "openHardwareMonitor",
     links: [{ label: "github", href: "https://github.com/openhardwaremonitor/openhardwaremonitor" }] },
   { group: "runtime", name: "ANTLR / .NET & WebView2 third-party contributors", role: "dotnetRuntime", note: "upstreamContributors",
@@ -93,8 +93,8 @@ const creditCatalog: CreditCatalogItem[] = [
     note: "node",
     links: [
       { label: "official", href: "https://nodejs.org/" },
-      { label: "github", href: "https://github.com/DefinitelyTyped/DefinitelyTyped" },
-      { label: "github", href: "https://github.com/frenic/csstype" }
+      { label: "github", href: "https://github.com/DefinitelyTyped/DefinitelyTyped", subject: "DefinitelyTyped" },
+      { label: "github", href: "https://github.com/frenic/csstype", subject: "CSSType" }
     ]
   },
   {
@@ -113,8 +113,8 @@ const creditCatalog: CreditCatalogItem[] = [
     role: "database",
     note: "sqlite",
     links: [
-      { label: "github", href: "https://github.com/dotnet/efcore" },
-      { label: "github", href: "https://github.com/ericsink/SQLitePCL.raw" },
+      { label: "github", href: "https://github.com/dotnet/efcore", subject: "Microsoft.Data.Sqlite" },
+      { label: "github", href: "https://github.com/ericsink/SQLitePCL.raw", subject: "SQLitePCLRaw" },
       { label: "license", href: "https://www.sqlite.org/copyright.html" }
     ]
   },
@@ -309,7 +309,9 @@ export function createCreditGroups(copy: SettingsCopy): CreditGroup[] {
   const grouped = new Map<keyof SettingsCopy["credits"]["groups"], CreditItem[]>();
   for (const item of creditCatalog) {
     const links = item.links.map((link) => ({
-      label: copy.credits.linkLabels[link.label],
+      label: link.subject
+        ? `${link.subject} · ${copy.credits.linkLabels[link.label]}`
+        : copy.credits.linkLabels[link.label],
       href: link.href
     }));
     const items = grouped.get(item.group) ?? [];

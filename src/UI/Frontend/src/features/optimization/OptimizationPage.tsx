@@ -112,9 +112,8 @@ export function OptimizationPage(props: OptimizationPageProps) {
       return uiText.optimization.scheduleStateUnknown;
     }
 
-    const modeStatus = optimizationModeLabel(state.mode);
+    // 当前模式已由左侧选中的分段表达，这里只补分段表达不了的运行状态。
     return [
-      modeStatus,
       state.mode !== "normal"
         ? state.schedulerRunning
           ? uiText.optimization.smartSchedulerRunning
@@ -178,9 +177,11 @@ export function OptimizationPage(props: OptimizationPageProps) {
               onInput={(event) => setSearchQuery(event.currentTarget.value)}
             />
           </label>
-          <span class="optimization-mode-status">
-            {props.actionId === "smart-mode" ? uiText.optimization.modeSwitching : hostManagerStatusText()}
-          </span>
+          <Show when={props.actionId === "smart-mode" || hostManagerStatusText()}>
+            <span class="optimization-mode-status">
+              {props.actionId === "smart-mode" ? uiText.optimization.modeSwitching : hostManagerStatusText()}
+            </span>
+          </Show>
         </div>
       </nav>
 

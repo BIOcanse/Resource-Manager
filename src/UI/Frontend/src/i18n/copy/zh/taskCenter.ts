@@ -12,7 +12,6 @@ export const zhTaskCenterCopy = {
     backendUnavailable: "无法读取后端任务状态；界面任务仍可正常管理。",
     filterLabel: "任务筛选",
     noTasksInFilter: "此筛选下没有任务",
-    itemCount: (count: number) => `${count} 项`,
     close: "关闭",
     sourceOperation: "后端操作",
     sourceFrontend: "界面任务",

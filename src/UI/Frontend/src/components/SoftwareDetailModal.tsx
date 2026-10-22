@@ -791,7 +791,7 @@ function CpuManualPlacementSection(props: {
                           {(core) => (
                             <article class="cpu-manual-core">
                               <div>
-                                <strong>{core.label}</strong>
+                                <strong>{uiText.cpuTopology.coreName(core.index)}</strong>
                                 <span>{uiText.softwareDetail.cpu.corePerformance(formatScoreValue(core.performanceScore), core.logicalProcessorIds.join(", "))}</span>
                               </div>
                               <CpuManualPlacementToggles

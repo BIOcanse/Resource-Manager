@@ -99,24 +99,26 @@ export function TargetedReportsPage() {
 
   return (
     <section class="targeted-reports-page" aria-label={uiText.targetedReport.title}>
-      <div class="targeted-report-toolbar">
-        <h2>{uiText.targetedReport.title}</h2>
-        <button type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
+      <div class="panel-header targeted-report-header">
+        <div class="optimization-heading">
+          <h2>{uiText.targetedReport.title}</h2>
+        </div>
+        <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
       </div>
-      <Show when={failed()}><p role="alert">{uiText.targetedReport.failed}</p></Show>
-      <Show when={recordings().length > 0} fallback={<p>{uiText.targetedReport.empty}</p>}>
+      <Show when={failed()}><p class="targeted-report-note error" role="alert">{uiText.targetedReport.failed}</p></Show>
+      <Show when={recordings().length > 0} fallback={<div class="optimization-empty">{uiText.targetedReport.empty}</div>}>
         <div class="targeted-report-list" role="list">
           <For each={recordings()}>
             {(item) => (
               <div class="targeted-report-list-row" role="listitem">
-                <button type="button" classList={{ active: selectedId() === item.id }}
+                <button class="secondary targeted-report-open" type="button" classList={{ active: selectedId() === item.id }}
                   onClick={() => void select(item.id)}>
                   <strong>{item.softwareName}</strong>
                   <span>{dateTime(item.startedAt)} · {item.status === "recording"
                     ? uiText.targetedReport.recording : stopReason(item.stopReason)}</span>
                 </button>
                 <Show when={item.status === "completed"}>
-                  <button class="secondary" type="button" onClick={() => void remove(item.id)}>
+                  <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item.id)}>
                     {uiText.targetedReport.delete}
                   </button>
                 </Show>
@@ -125,21 +127,21 @@ export function TargetedReportsPage() {
           </For>
         </div>
       </Show>
-      <Show when={loading()}><p role="status">{uiText.targetedReport.loading}</p></Show>
+      <Show when={loading()}><p class="targeted-report-note" role="status">{uiText.targetedReport.loading}</p></Show>
       <Show when={report()}>
         {(current) => (
           <div class="targeted-report-detail">
             <div class="targeted-report-toolbar">
               <h3>{current().recording.softwareName} · {dateTime(current().recording.startedAt)}</h3>
               <div class="targeted-report-actions">
-                <button type="button" onClick={() => void download(current().recording.id, "json")}>{uiText.targetedReport.exportJson}</button>
-                <button type="button" onClick={() => void download(current().recording.id, "csv")}>{uiText.targetedReport.exportCsv}</button>
+                <button class="secondary panel-refresh-button" type="button" onClick={() => void download(current().recording.id, "json")}>{uiText.targetedReport.exportJson}</button>
+                <button class="secondary panel-refresh-button" type="button" onClick={() => void download(current().recording.id, "csv")}>{uiText.targetedReport.exportCsv}</button>
               </div>
             </div>
-            <p>{uiText.targetedReport.applicationPresent} · {current().recording.status === "recording"
+            <p class="targeted-report-note">{uiText.targetedReport.applicationPresent} · {current().recording.status === "recording"
               ? uiText.targetedReport.recording : stopReason(current().recording.stopReason)}</p>
-            <Show when={current().recording.incomplete}><p role="status">{uiText.targetedReport.incomplete}</p></Show>
-            <Show when={current().summary} fallback={<p>{uiText.targetedReport.noFrames}</p>}>
+            <Show when={current().recording.incomplete}><p class="targeted-report-note" role="status">{uiText.targetedReport.incomplete}</p></Show>
+            <Show when={current().summary} fallback={<p class="targeted-report-note">{uiText.targetedReport.noFrames}</p>}>
               {(summary) => (
                 <dl class="targeted-report-summary">
                   <For each={[

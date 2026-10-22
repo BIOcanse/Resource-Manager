@@ -130,10 +130,6 @@ export function filterExternalInterfaceTree(
   return filterDeviceTopologyTree(nodes, query);
 }
 
-export function externalInterfaceRoleLabel(role: ExternalInterfaceNodeRole) {
-  return roleLabel(role);
-}
-
 function deduplicateUsbConnectors(ports: readonly DeviceTopologyPort[]) {
   const byPort = new Map<string, DeviceTopologyPort>();
   for (const port of ports) {

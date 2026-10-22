@@ -1,4 +1,4 @@
-import { Show, createEffect, on } from "solid-js";
+import { Show, createEffect, on, onCleanup, onMount } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
 import { ManagementSubpageBar } from "../features/management/components/ManagementPage";
@@ -31,6 +31,7 @@ interface AppShellProps {
 export function AppShell(props: AppShellProps) {
   let mainViewport: HTMLElement | undefined;
   let pageHeading: HTMLHeadingElement | undefined;
+  let pageNav: HTMLElement | undefined;
   const routeIdentity = () => props.activePage() === "components"
     ? `components:${props.management.activeSubpage()}`
     : props.activePage();
@@ -46,10 +47,35 @@ export function AppShell(props: AppShellProps) {
     });
   }, { defer: true }));
 
+  // 页签放不下时导航横向滚动：切页后、导航变宽变窄后，把当前页签滚回可见范围。
+  createEffect(on(props.activePage, () => queueMicrotask(revealActivePage), { defer: true }));
+  onMount(() => {
+    if (!pageNav) {
+      return;
+    }
+    const observer = new ResizeObserver(revealActivePage);
+    observer.observe(pageNav);
+    onCleanup(() => observer.disconnect());
+  });
+
+  function revealActivePage() {
+    const active = pageNav?.querySelector<HTMLElement>(".shell-page.active");
+    if (!pageNav || !active) {
+      return;
+    }
+    const navRect = pageNav.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    if (activeRect.left < navRect.left) {
+      pageNav.scrollLeft -= navRect.left - activeRect.left;
+    } else if (activeRect.right > navRect.right) {
+      pageNav.scrollLeft += activeRect.right - navRect.right;
+    }
+  }
+
   return (
     <>
       <header class="window-shellbar">
-        <nav class="shell-pages" aria-label={uiText.shell.pageNav}>
+        <nav ref={(element) => { pageNav = element; }} class="shell-pages" aria-label={uiText.shell.pageNav}>
           <button class="shell-page" classList={{ active: props.activePage() === "monitor" }} type="button" aria-current={props.activePage() === "monitor" ? "page" : undefined} onClick={() => props.onPageSelect("monitor")}>{uiText.page.monitor}</button>
           <button class="shell-page" classList={{ active: props.activePage() === "components" }} type="button" aria-current={props.activePage() === "components" ? "page" : undefined} onClick={() => props.onPageSelect("components")}>{uiText.page.components}</button>
           <Show when={props.runtimeCapabilities.optimizationEnabled()}>
@@ -68,7 +94,10 @@ export function AppShell(props: AppShellProps) {
         }}>
           <strong>{uiText.shell.productName}</strong>
           <span id="shellPageName">{props.pageTitle()}</span>
-          <span id="captureTime">{props.systemUptime()}</span>
+          <span class="shell-uptime" title={uiText.shell.uptimeTitle}>
+            <span class="shell-uptime-label">{uiText.shell.uptime}</span>
+            <span id="captureTime">{props.systemUptime()}</span>
+          </span>
         </div>
         <div class="shell-utility-actions">
           <button

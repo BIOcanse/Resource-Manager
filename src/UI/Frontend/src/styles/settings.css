@@ -151,11 +151,25 @@
 }
 
 .settings-section-panel {
+  --settings-panel-gap: 10px;
   min-height: 0;
   display: grid;
-  gap: 10px;
+  gap: var(--settings-panel-gap);
   padding: 12px;
   overflow: auto;
+}
+
+/* 设置区里单独一行的状态说明（版本历史不完整、已选目标、更新进度）：和行内说明同字号，出错用红色。 */
+.settings-section-panel > p {
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-section-panel > p[role="alert"] {
+  color: var(--danger);
 }
 
 .version-selector { display: grid; gap: 14px; min-width: 0; }
@@ -216,10 +230,11 @@
   gap: 8px;
 }
 
+/* 三列固定：名称 | 说明 | 链接。链接列定宽，说明列在各行之间不再随链接数量错位。 */
 .settings-credit-item {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(180px, 0.34fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(180px, 0.45fr) minmax(0, 1fr) 220px;
   align-items: center;
   gap: 12px;
   border: 1px solid var(--line-soft);
@@ -234,13 +249,16 @@
   gap: 3px;
 }
 
+/* 名称最多两行，完整名称在 title 里。 */
 .settings-credit-title strong {
+  display: -webkit-box;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: var(--text);
   font-size: 13px;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .settings-credit-title span {
@@ -257,8 +275,8 @@
 }
 
 .settings-credit-links {
+  min-width: 0;
   display: flex;
-  max-width: 320px;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
@@ -306,8 +324,27 @@
   align-items: stretch;
 }
 
+/* 从属选项（受上一项开关控制）：缩进，并用左侧引导线连成一组。 */
 .settings-debug-option {
-  padding-left: 18px;
+  position: relative;
+  margin-inline-start: 9px;
+  padding-inline-start: 13px;
+}
+
+.settings-debug-option::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: -1px;
+  inset-inline-start: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--line);
+}
+
+/* 相邻的从属选项之间穿过行间距和分隔线，连成一条线。 */
+.settings-debug-option + .settings-debug-option::before {
+  top: calc(-1px - var(--settings-panel-gap, 0px));
 }
 
 .settings-debug-option .settings-row-copy strong {
@@ -353,6 +390,7 @@
   color: var(--text);
   padding: 8px 10px;
   font: inherit;
+  font-size: 13px;
 }
 
 .settings-text-field:focus {
@@ -387,12 +425,13 @@
   cursor: not-allowed;
 }
 
+/* 关闭状态也要看得出轨道：灰色填充，不和面板底色混在一起。 */
 .settings-switch span {
   width: 46px;
   height: 26px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: var(--surface-strong);
+  background: color-mix(in oklab, var(--muted) 28%, var(--surface));
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -414,10 +453,15 @@
   background: var(--accent);
 }
 
+.settings-switch input:disabled + span {
+  opacity: 0.6;
+}
+
+/* 已打开但不能改：保留绿色，只是变淡，不能看起来像关闭。 */
 .settings-switch input:checked:disabled + span {
-  border-color: var(--line);
-  background: var(--surface-strong);
-  opacity: 0.72;
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
+  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
+  opacity: 1;
 }
 
 .settings-switch input:checked + span::after {
@@ -569,10 +613,11 @@
   width: 180px;
 }
 
+/* 说明 | 模式 | 当前模式的输入。自动调度时第三列留空，各行的模式控件仍然对齐。 */
 .settings-interval-item {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto minmax(150px, 0.45fr) minmax(120px, 0.32fr);
+  grid-template-columns: minmax(160px, 1fr) auto minmax(200px, 240px);
   align-items: end;
   gap: 10px;
   border: 1px solid var(--line-soft);
@@ -647,12 +692,14 @@
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
+/* 快捷键是独立的一项，不是从属选项：左右边距和普通设置行一致，分隔线跟普通行一样画在下方。 */
 .settings-hotkey-editor {
+  container: settings-hotkey / inline-size;
   min-width: 0;
   display: grid;
   gap: 12px;
-  border-top: 1px solid var(--divider-soft);
-  padding: 16px 18px 18px;
+  border-bottom: 1px solid var(--divider-soft);
+  padding: 14px 4px;
 }
 
 .settings-hotkey-editor-head {
@@ -691,6 +738,13 @@
     minmax(150px, 1fr);
   align-items: end;
   gap: 8px;
+}
+
+/* 按编辑器自身宽度判断：放不下“按键-关系”交替的 7 列（最小约 960px）就改成一列，不按窗口宽度猜。 */
+@container settings-hotkey (max-width: 959px) {
+  .settings-hotkey-keys {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .settings-hotkey-key-row {
@@ -914,26 +968,14 @@
 }
 
 @media (max-width: 1120px) {
+  /* 窄窗口：说明一行，模式和输入并排一行；模式控件按内容宽，不拉出空轨道。 */
   .settings-interval-item {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-columns: auto minmax(0, 260px);
+    justify-content: start;
   }
 
-  .settings-interval-item .settings-segmented-control,
-  .settings-inline-select,
-  .settings-number-field {
-    width: 100%;
-    max-width: none;
-  }
-
-  .settings-hotkey-keys {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .settings-hotkey-editor {
-    width: calc(100vw - 290px);
-    max-width: 100%;
-    box-sizing: border-box;
+  .settings-interval-copy {
+    grid-column: 1 / -1;
   }
 
   .ai-gateway-create-row {
@@ -942,22 +984,19 @@
   }
 
   .ai-gateway-create-row .settings-segmented-control {
-    width: 100%;
-    max-width: none;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-interval-item {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 720px) {
-  .settings-hotkey-editor {
-    width: 100%;
-  }
-
   .settings-hotkey-editor-head {
     align-items: flex-start;
-  }
-
-  .settings-hotkey-keys {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-gateway-value {

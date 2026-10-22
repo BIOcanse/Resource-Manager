@@ -201,6 +201,21 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   assert(JSON.stringify(settingsPatchBodies.at(-1)?.changes?.performance?.gpuPerformanceUseCases)
     === JSON.stringify(["general", "ai"]),
     "GPU performance use cases did not save both selected values");
+
+  // 信息更新频率只显示当前模式生效的输入：自动调度两者都不显示，锁定预设只有预设下拉框，自定义只有毫秒输入框。
+  const cadenceMode = page.getByRole("radiogroup", { name: "资源表", exact: true });
+  const cadencePreset = page.getByRole("combobox", { name: "资源表 预设", exact: true });
+  const cadenceCustom = page.getByRole("textbox", { name: "资源表 自定义 (ms)", exact: true });
+  assert(await cadenceMode.getByRole("radio", { name: "自动调度", exact: true }).isChecked(),
+    "The fixture did not start the resource table cadence in automatic mode");
+  assert(await cadencePreset.count() === 0 && await cadenceCustom.count() === 0,
+    "Automatic refresh cadence still shows preset or custom inputs that have no effect");
+  await cadenceMode.getByRole("radio", { name: "锁定预设", exact: true }).click();
+  await cadencePreset.waitFor({ state: "visible", timeout: 7000 });
+  assert(await cadenceCustom.count() === 0, "Locked preset cadence still shows the custom millisecond input");
+  await cadenceMode.getByRole("radio", { name: "自定义", exact: true }).click();
+  await cadenceCustom.waitFor({ state: "visible", timeout: 7000 });
+  assert(await cadencePreset.count() === 0, "Custom cadence still shows the preset select");
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {
@@ -212,6 +227,7 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     requestStatuses: settingsRequests.statuses,
     autoStartSavedAndReloaded: [false, true],
     editDuringSavePreserved: true,
+    refreshCadenceInputsFollowMode: true,
     pageErrors: failures
   };
 }

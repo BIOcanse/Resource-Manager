@@ -54,9 +54,10 @@ interface GpuSchedulingPosition {
   hasPerformanceOverride: boolean;
   usagePercent?: number | null;
   vramPercent?: number | null;
-  vramDisplay: string;
-  graphicsClockDisplay: string;
-  memoryClockDisplay: string;
+  // 没有读数时为 null，不显示这枚胶囊。
+  vramDisplay: string | null;
+  graphicsClockDisplay: string | null;
+  memoryClockDisplay: string | null;
   scoreSource: string;
   matchedPreset?: string | null;
   full: boolean;
@@ -313,7 +314,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                 <div class="gpu-position-main">
                   <div>
                     <strong>{position.name}</strong>
-                    <span>{position.label}</span>
+                    <Show when={position.label !== position.name}>
+                      <span>{position.label}</span>
+                    </Show>
                   </div>
                   <em>{position.full ? position.fullReason : uiText.gpuScheduling.schedulable}</em>
                 </div>
@@ -351,9 +354,9 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                   </Show>
                   <span>{uiText.gpuScheduling.softwareScoreTotal(formatScore(position.softwareScoreTotal))}</span>
                   <span>{formatProcessCount(position)}</span>
-                  <span>{position.graphicsClockDisplay}</span>
-                  <span>{position.memoryClockDisplay}</span>
-                  <span>{position.vramDisplay}</span>
+                  <Show when={position.graphicsClockDisplay}>{(text) => <span>{text()}</span>}</Show>
+                  <Show when={position.memoryClockDisplay}>{(text) => <span>{text()}</span>}</Show>
+                  <Show when={position.vramDisplay}>{(text) => <span>{text()}</span>}</Show>
                 </div>
 
                 <div class="gpu-pressure-grid">
@@ -543,11 +546,10 @@ function buildGpuPositions(
       hasPerformanceOverride: scoreItem?.hasPerformanceOverride ?? fallbackOverrideScore !== null,
       usagePercent,
       vramPercent: usedVramPercent,
-      vramDisplay: metricDisplayValue(
-        vram,
-        dedicatedMemory ? uiText.gpuScheduling.vramNoData : uiText.gpuScheduling.sharedMemory),
-      graphicsClockDisplay: graphicsClock?.displayValue ? uiText.gpuScheduling.clock(graphicsClock.displayValue) : uiText.gpuScheduling.clockNoData,
-      memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : uiText.gpuScheduling.memoryClockNoData,
+      vramDisplay: metricDisplayValue(vram, "")
+        || (dedicatedMemory ? null : uiText.gpuScheduling.sharedMemory),
+      graphicsClockDisplay: graphicsClock?.displayValue ? uiText.gpuScheduling.clock(graphicsClock.displayValue) : null,
+      memoryClockDisplay: memoryClock?.displayValue ? uiText.gpuScheduling.memoryClock(memoryClock.displayValue) : null,
       scoreSource: scoreItem?.source ?? "unknown",
       matchedPreset: scoreItem?.matchedPreset,
       full: fullReason !== "",

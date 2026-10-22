@@ -88,27 +88,18 @@ body[data-page="components"] .app-header {
   margin-bottom: 18px;
 }
 
+/* 卡片区标题行：和下面两个面板的标题行同一套（.panel-header），只是直接放在页面底色上。 */
 .monitor-toolbar {
-  position: sticky;
-  left: 0;
-  right: 0;
-  z-index: 14;
-  justify-content: flex-end;
-  margin-bottom: 14px;
-  pointer-events: none;
+  min-height: 30px;
+  margin-bottom: 8px;
+  padding: 0 2px;
 }
 
-.monitor-toolbar .toolbar {
-  position: sticky;
-  right: 0;
-  z-index: 15;
-  pointer-events: auto;
-  margin-left: auto;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  padding: 4px;
-  box-shadow: var(--elev-2), var(--edge-highlight);
+.monitor-toolbar .panel-header-actions {
+  position: static;
+  margin: 0;
+  padding: 0;
+  background: transparent;
 }
 
 h1,

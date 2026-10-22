@@ -199,15 +199,6 @@
   font-size: 13px;
 }
 
-.task-center-actions {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.task-center-actions > span {
-  margin-right: auto;
-}
-
 .task-center-spinner {
   animation: task-center-spin 900ms linear infinite;
 }

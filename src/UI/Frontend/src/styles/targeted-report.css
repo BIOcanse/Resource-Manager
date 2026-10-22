@@ -14,25 +14,48 @@
 }
 
 .targeted-recording-actions input { width: 8rem; }
+
+/* 与详细信息其他页签（advanced-scheduling.css 的 .smart-details-report 等）同一种面板。 */
+.targeted-reports-page {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+.targeted-report-header { padding: 0; }
+.targeted-report-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.targeted-report-note.error { color: var(--danger); }
 .targeted-report-toolbar { justify-content: space-between; }
-.targeted-report-toolbar h2,
-.targeted-report-toolbar h3 { margin: 0; }
-.targeted-report-list { display: grid; gap: 6px; margin: 14px 0; }
+.targeted-report-toolbar h3 { margin: 0; font-size: 14px; }
+.targeted-report-list { display: grid; gap: 6px; }
 .targeted-report-list-row {
   padding: 7px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
 }
-.targeted-report-list-row > button:first-child {
+.targeted-report-list-row > .targeted-report-open {
   display: flex;
   flex: 1;
   min-width: 180px;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  font-size: 13px;
   text-align: left;
 }
+.targeted-report-open span { color: var(--muted); font-size: 12px; }
+.targeted-report-open.active { border-color: var(--accent); }
 .targeted-report-detail { display: grid; gap: 14px; }
+.targeted-report-detail > h4 { margin: 0; font-size: 14px; }
 .targeted-report-summary,
 .targeted-report-resource-grid {
   display: grid;
@@ -46,9 +69,9 @@
   background: var(--surface-soft);
   padding: 10px;
 }
-.targeted-report-summary dt { color: var(--muted); }
-.targeted-report-summary dd { margin: 3px 0 0; font-size: 1.2rem; font-weight: 700; }
+.targeted-report-summary dt { color: var(--muted); font-size: 12px; font-weight: 700; }
+.targeted-report-summary dd { margin: 3px 0 0; font-size: 18px; font-weight: 700; }
 .targeted-report-card h4,
-.targeted-report-card h5 { margin: 0 0 8px; }
+.targeted-report-card h5 { margin: 0 0 8px; font-size: 13px; }
 .targeted-report-card h5 { display: flex; justify-content: space-between; gap: 6px; }
 .targeted-report-chart { display: block; width: 100%; height: 160px; }

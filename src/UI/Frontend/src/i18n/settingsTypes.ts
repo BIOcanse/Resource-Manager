@@ -30,7 +30,8 @@ export interface CreditCatalogItem {
   name: string;
   role: keyof SettingsCopy["credits"]["roles"];
   note: keyof SettingsCopy["credits"]["notes"];
-  links: Array<{ label: keyof SettingsCopy["credits"]["linkLabels"]; href: string }>;
+  // subject：同一项里有两个同类链接（例如两个官网）时，写明各自指向哪个项目，用来区分显示。
+  links: Array<{ label: keyof SettingsCopy["credits"]["linkLabels"]; href: string; subject?: string }>;
 }
 
 export interface SettingsCopy {
@@ -277,7 +278,6 @@ export interface UpdatesCopy {
   unknownVersion: string;
   checking: string;
   checkForUpdates: string;
-  catalogFailed: string;
   historyIncomplete: string;
   historyStale: string;
   versionsTitle: string;

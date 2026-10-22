@@ -162,7 +162,8 @@ export function userFacingMetricGroup(value: unknown) {
     case "fan": return group.fan;
     case "hardwaremonitor": return group.hardwareMonitor;
     case "system": return group.system;
-    default: return key || group.system;
+    // 认不出的分组（包括设备字段的设备名）原样显示，不改大小写。
+    default: return String(value ?? "").trim() || group.system;
   }
 }
 

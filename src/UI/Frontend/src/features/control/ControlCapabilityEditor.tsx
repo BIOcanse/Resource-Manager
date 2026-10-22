@@ -91,10 +91,19 @@ export function ControlCapabilityEditor(props: {
       }}
     >
       {/*
-        开关型的在这里什么都不画：行首那个勾选框就是它。
-        「这次要不要落实这一项」和「开还是关」对一个开关来说是同一句话，
-        摆两个一模一样的方框只会让人猜它们有什么区别。
+        开关型的是三选一：交还固件／开启／关闭。行首不另画勾选框。
+        先前一个勾选框同时表示「接不接管」和「开还是关」，勾上只能是开启，
+        于是没法明确关掉（X80）。三个选项各对应期望状态里的一种写法：
+        没有这一项、toggle=true、toggle=false。
       */}
+      <Show when={props.capability.valueKind === "toggle"}>
+        <ToggleEditor
+          capability={props.capability}
+          setting={props.setting}
+          disabled={!props.capability.supported || props.held === true}
+          onChange={props.onChange}
+        />
+      </Show>
       <Show when={props.capability.valueKind === "number"}>
         <NumberEditor
           capability={props.capability}
@@ -116,6 +125,45 @@ export function ControlCapabilityEditor(props: {
         />
       </Show>
     </div>
+  );
+}
+
+/**
+ * 开关的三选一。
+ *
+ * - 交还固件：期望状态里不留这一项。若此前接管过，保存时按原有按项恢复把控制还给固件；
+ *   这**不是**写 false，也不承诺把驱动状态强写成某个值。
+ * - 开启／关闭：保留这一项，toggle 分别为 true／false。false 是明确的设定，不等于没设。
+ */
+function ToggleEditor(props: {
+  capability: ControlCapability;
+  setting: ControlSetting | undefined;
+  disabled: boolean;
+  onChange: (setting: ControlSetting | null) => void;
+}) {
+  const choice = () => props.setting === undefined
+    ? "firmware"
+    : props.setting.toggle === false ? "off" : "on";
+  return (
+    <SegmentedControl
+      class="settings-segmented-control control-toggle-choice"
+      itemClass="settings-segment"
+      ariaLabel={controlCapabilityLabel(props.capability)}
+      value={choice()}
+      disabled={props.disabled}
+      options={[
+        {
+          id: "firmware",
+          label: uiText.control.toggleChoice.firmware,
+          description: uiText.control.toggleChoice.firmwareHint
+        },
+        { id: "on", label: uiText.control.presentation.toggleOn },
+        { id: "off", label: uiText.control.presentation.toggleOff }
+      ]}
+      onChange={(next) => props.onChange(next === "firmware"
+        ? null
+        : { capabilityId: props.capability.id, toggle: next === "on" })}
+    />
   );
 }
 

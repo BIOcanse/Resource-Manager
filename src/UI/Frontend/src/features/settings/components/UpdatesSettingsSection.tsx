@@ -1,5 +1,7 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { getJson, postJson } from "../../../api";
+import { ObservationStateNotice } from "../../../components/ObservationStateNotice";
+import { failedObservation, loadingObservation } from "../../../observation/observationState";
 import type { AppUpdateSettings } from "../../../types";
 import type { SettingsTextBundle } from "../../../i18n/settingsTypes.ts";
 import { VersionSelector, type VersionChoice } from "./VersionSelector";
@@ -98,7 +100,10 @@ export function UpdatesSettingsSection(props: {
     </div>
     <Show when={catalog()}>{(result) => <>
       <Show when={result().status === "error"}>
-        <p role="alert">{text().catalogFailed}{result().error}</p>
+        <ObservationStateNotice
+          state={failedObservation(loadingObservation(), result().error ?? "")}
+          label={text().versionsTitle}
+        />
       </Show>
       <Show when={result().status === "partial"}>
         <p role="status">{text().historyIncomplete}</p>

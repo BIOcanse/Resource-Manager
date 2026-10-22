@@ -8,7 +8,6 @@ export default createSettingsLocale("fr-FR", {
     "unknownVersion": "Inconnu",
     "checking": "Vérification…",
     "checkForUpdates": "Rechercher des mises à jour",
-    "catalogFailed": "Impossible de lire le catalogue : ",
     "historyIncomplete": "L’historique des versions est incomplet.",
     "historyStale": "Le catalogue précédent est affiché ; reconnectez-vous puis réessayez.",
     "versionsTitle": "Versions du produit",

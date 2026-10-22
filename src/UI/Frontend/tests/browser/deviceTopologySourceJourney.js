@@ -1,5 +1,6 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { checkTypeXDisplayDialog, checkType3DisplayDialog, checkRecordedDisplayDialog, checkDisplayVariant } from "./displayEdidDialogProbe.js";
+import { checkDeclarationDisplayDialog } from "./displayEdidDeclarationDialogProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const subscriptionPath = "/api/device-topology/state/subscribe";
   const directPath = "/api/device-topology/state";
@@ -139,6 +140,13 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await setScenario(page, { displayEdid: "typex" });
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeTypeX);
   const typeXDetails = await checkTypeXDisplayDialog(page, app);
+  const declarationDetails = [];
+  for (const variant of ["typeVVi", "typeVViClock", "adaptiveSync", "adaptiveSyncZero", "dynamicRange"]) {
+    const count = (await readTelemetry(page, subscriptionPath)).publications;
+    await setScenario(page, { displayEdid: variant });
+    await waitForTelemetry(page, subscriptionPath, value => value.publications > count);
+    declarationDetails.push(await checkDeclarationDisplayDialog(page, app, variant));
+  }
   const beforeOriginal = (await readTelemetry(page, subscriptionPath)).publications;
   await setScenario(page, { displayEdid: "ready" });
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeOriginal);
@@ -181,6 +189,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     edidDetails,
     type3Details,
     typeXDetails,
+    declarationDetails,
     longTextPresentation,
     firstActivation,
     firstChannel,

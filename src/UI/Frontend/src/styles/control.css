@@ -3,10 +3,11 @@
   margin-top: 18px;
 }
 
+/* 分组标题（显卡、风扇……）要比卡片标题更醒目，读得出是上一级。 */
 .control-group h3 {
   margin: 0 0 10px;
-  font-size: 14px;
-  color: var(--muted);
+  font-size: 15px;
+  color: var(--text);
 }
 
 /*
@@ -217,11 +218,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* 识别到过的设备。平时收着，从上面的入口打开。 */
-.control-instances-entry {
-  margin-top: 16px;
 }
 
 /* 识别到过的设备。不在场的压暗但保留，用户要看得见连接过什么。 */
@@ -558,6 +554,7 @@
   background: var(--surface-soft);
   color: var(--text);
   font: inherit;
+  font-size: 13px;
 }
 
 .control-preset-name::placeholder {
@@ -583,7 +580,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
@@ -783,9 +780,21 @@
   color: var(--accent);
 }
 
-/* 重新检测。放在页面级而不是某张卡里：它重探的是整台机器。 */
-.control-detect {
+/*
+  页面级操作：重新检测（重探的是整台机器，所以不放在某张卡里）和实例管理入口。
+  同一行小号次按钮，不抢卡片的注意力。
+*/
+.control-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-top: 16px;
+}
+
+/* 上面没有加载失败或授权提示时，与其他页面的首行内容对齐。 */
+.control-toolbar:first-child {
+  margin-top: 0;
 }
 
 /*

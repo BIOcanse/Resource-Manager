@@ -14,7 +14,6 @@ export const enTaskCenterCopy: Pick<AppCopy, "taskCenter"> = {
     backendUnavailable: "Backend task state cannot be read; interface tasks still work.",
     filterLabel: "Task filter",
     noTasksInFilter: "No tasks in this filter",
-    itemCount: (count: number) => `${count} items`,
     close: "Close",
     sourceOperation: "Backend operation",
     sourceFrontend: "Interface task",

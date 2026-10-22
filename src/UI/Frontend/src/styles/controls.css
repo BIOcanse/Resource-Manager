@@ -7,12 +7,21 @@ button {
   background-image: linear-gradient(color(display-p3 1 1 1 / 0.10), color(display-p3 0 0 0 / 0.05));
   color: var(--on-accent);
   font: inherit;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   padding: 0 var(--control-padding-x);
 }
 
-button:not(:disabled):hover {
+input,
+select,
+textarea {
+  font-size: 13px;
+}
+
+/* 全局悬停只兜底：:where 把优先级压到 (0,1,0)，组件自己的 .x:hover 一定能盖过它，
+   扁平按钮不会在悬停时被刷成实心强调色。 */
+:where(button:not(:disabled)):hover {
   background-color: var(--accent-hover);
   border-color: var(--accent-hover);
 }
@@ -37,7 +46,8 @@ button.secondary {
   border-color: var(--line);
 }
 
-button.secondary:not(:disabled):hover {
+/* (0,2,0)：高于 button.secondary 常态，与组件 .x:hover 同级时后加载的组件样式优先。 */
+:where(button:not(:disabled)).secondary:hover {
   background-color: var(--surface-strong);
 }
 

@@ -35,14 +35,18 @@ export function SoftwareProtectionControl(props: { softwareId: string }) {
     } catch { if (current === request) { setEnabled(previous); setState("error"); } }
   }
 
-  return <section class="software-detail-section">
+  // 开关沿用设置页的 .settings-switch；整行是 label，点文字也能切换。
+  return <section class="software-detail-section software-protection-section">
     <h3>{uiText.softwareDetail.protection.title}</h3>
-    <p>{uiText.softwareDetail.protection.hint}</p>
+    <p class="software-detail-hint">{uiText.softwareDetail.protection.hint}</p>
     <label class="policy-toggle">
-      <input type="checkbox" checked={enabled()} disabled={state() !== "ready"} onChange={() => void toggle()} />
-      {uiText.softwareDetail.protection.enabled}
+      <span>{uiText.softwareDetail.protection.enabled}</span>
+      <span class="settings-switch">
+        <input type="checkbox" checked={enabled()} disabled={state() !== "ready"} onChange={() => void toggle()} />
+        <span />
+      </span>
     </label>
-    <Show when={state() === "error"}><p role="alert">{uiText.softwareDetail.protection.failed}</p></Show>
-    <Show when={state() === "loading" || state() === "saving"}><p role="status">{uiText.softwareDetail.processing}</p></Show>
+    <Show when={state() === "error"}><p class="software-protection-message error" role="alert">{uiText.softwareDetail.protection.failed}</p></Show>
+    <Show when={state() === "loading" || state() === "saving"}><p class="software-protection-message" role="status">{uiText.softwareDetail.processing}</p></Show>
   </section>;
 }

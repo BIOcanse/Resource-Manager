@@ -60,6 +60,10 @@ export const zhShellCopy = {
       app: "軟體管理",
       firmwareNote: "歸韌體管，下面的設定不生效。"
     },
+    toggleChoice: {
+      firmware: "交還韌體",
+      firmwareHint: "不保留這一項設定。儲存時恢復接管前的狀態，把控制交還韌體；這不等於把它關閉。"
+    },
     /*
      * 第一次进控制页说的两屏。
      *
@@ -254,6 +258,8 @@ export const zhShellCopy = {
     taskCenterUnavailable: "任務中心 · 後端任務狀態不可用",
     minimize: "最小化",
     maximize: "最大化",
-    closeWindow: "關閉"
+    closeWindow: "關閉",
+    uptime: "開機時間",
+    uptimeTitle: "本機自上次開機以來的執行時間"
   }
 };
