@@ -27,7 +27,6 @@
   /* 选中、当前页、聚焦的少数控件用的微光；不要用在表格行这类大量重复的元素上。 */
   --terminal-glow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 8px color-mix(in srgb, var(--accent) 32%, transparent);
   --terminal-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
-  --terminal-heading: Bahnschrift, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }
 
 /* 配色：画布直接读 --surface、--surface-soft、--hairline、--text、--muted、--line、--divider、
@@ -144,13 +143,9 @@
   color: var(--on-accent);
 }
 
-/* 标题用 Bahnschrift（中文落到雅黑）。只给两端对齐、旁边不紧跟其他元素的标题，
-   字宽变化不会推动别的盒子；标题栏的产品名是居中排的，不换。 */
-:root[data-ui-style="terminal"] .panel-header h2,
-:root[data-ui-style="terminal"] .modal-header h2,
-:root[data-ui-style="terminal"] .settings-content-header h2 {
-  font-family: var(--terminal-heading);
-}
+/* 标题沿用标准字体。标题的行高是 normal，由字体决定：Bahnschrift、Cascadia、Consolas 在 16px 粗体下
+   行高 19px，Segoe UI Variable 是 21px，换了西文标题会变矮、下面的内容上移（中文落到雅黑看不出来）。
+   行高同为 21px、又不改中文字形的 Windows 无衬线字体只有 Segoe UI 系列，和标准一样，所以不换。 */
 
 /* 读数：等宽字只给宽度由外层决定的盒子（卡片主读数、定宽表格列），等宽字更宽，
    放进按内容定宽的位置会挤动旁边的标签。表格各列数字统一等宽对齐。 */
