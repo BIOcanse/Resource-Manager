@@ -130,8 +130,14 @@ for (const language of ["zh-CN", "en-US"] as const) {
   assert.ok(build.items.some((item) => item.name === "Vite / vite-plugin-solid"));
   assert.ok(build.items.some((item) => item.name === "Zig"));
   const external = groups.find((group) => group.title === copy.credits.groups.hardware)!;
-  assert.ok(external.items.some((item) => item.name === "Windows Performance Toolkit"));
-  assert.ok(external.items.some((item) => item.name === "MSI Afterburner"));
+  assert.ok(external.items.some((item) => item.name === "PawnIO / PawnIOLib"));
+  assert.match(external.items.find((item) => item.name === "PawnIO.Modules")!.note, /LGPL-2\.1/);
+  assert.match(external.items.find((item) => item.name === "LibreHardwareMonitorLib")!.note, /MPL-2\.0/);
+  // 只用核心的依赖：包装程序（GUI、外部工具、厂商 SDK）不再出现在致谢里。
+  for (const name of ["Windows Performance Toolkit", "MSI Afterburner", "LatencyMon", "Intel PCM",
+    "Notebook FanControl", "AMD Ryzen Master Monitoring SDK"]) {
+    assert.ok(!all.some((item) => item.name === name), `Removed wrapper still credited: ${name}`);
+  }
   for (const item of all) {
     for (const link of item.links) {
       assert.equal(new URL(link.href).protocol, "https:");

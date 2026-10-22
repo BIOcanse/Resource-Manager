@@ -214,17 +214,12 @@ export interface SettingsCopy {
       startupInjectionLibrary: string;
       traceLibrary: string;
       windowsManagement: string;
-      etwToolkit: string;
       nvidiaTelemetry: string;
       nvidiaExtension: string;
       amdTelemetry: string;
-      amdCpuSdk: string;
-      intelTelemetry: string;
-      amdSmuBoundary: string;
+      signedHardwareAccess: string;
       hardwareBridge: string;
-      notebookEc: string;
       externalReference: string;
-      latencyDiagnostics: string;
       deviceIdDatabase: string;
     };
     notes: {
@@ -252,17 +247,12 @@ export interface SettingsCopy {
       detours: string;
       traceEvent: string;
       systemManagement: string;
-      wpt: string;
       nvml: string;
       nvapi: string;
       adlx: string;
-      ryzenMaster: string;
-      intelPcm: string;
       pawnIo: string;
+      pawnIoModules: string;
       libreHardwareMonitor: string;
-      notebookFanControl: string;
-      afterburner: string;
-      latencyMon: string;
       usbIds: string;
       pciIds: string;
     };

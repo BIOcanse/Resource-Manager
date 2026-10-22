@@ -213,13 +213,6 @@ const creditCatalog: CreditCatalogItem[] = [
   },
   {
     group: "hardware",
-    name: "Windows Performance Toolkit",
-    role: "etwToolkit",
-    note: "wpt",
-    links: [{ label: "docs", href: "https://learn.microsoft.com/en-us/windows-hardware/get-started/adk-install" }]
-  },
-  {
-    group: "hardware",
     name: "NVIDIA NVML",
     role: "nvidiaTelemetry",
     note: "nvml",
@@ -244,25 +237,8 @@ const creditCatalog: CreditCatalogItem[] = [
   },
   {
     group: "hardware",
-    name: "AMD Ryzen Master Monitoring SDK",
-    role: "amdCpuSdk",
-    note: "ryzenMaster",
-    links: [
-      { label: "official", href: "https://www.amd.com/en/developer/ryzen-master-monitoring-sdk.html" },
-      { label: "eula", href: "https://www.amd.com/en/developer/ryzen-master-monitoring-sdk/ryzen-master-monitoring-sdk-eula.html" }
-    ]
-  },
-  {
-    group: "hardware",
-    name: "Intel PCM",
-    role: "intelTelemetry",
-    note: "intelPcm",
-    links: [{ label: "github", href: "https://github.com/intel/pcm" }]
-  },
-  {
-    group: "hardware",
-    name: "PawnIO / PawnIOLib / RyzenSMU module",
-    role: "amdSmuBoundary",
+    name: "PawnIO / PawnIOLib",
+    role: "signedHardwareAccess",
     note: "pawnIo",
     links: [
       { label: "official", href: "https://pawnio.eu/" },
@@ -271,37 +247,23 @@ const creditCatalog: CreditCatalogItem[] = [
   },
   {
     group: "hardware",
-    name: "LibreHardwareMonitor",
+    name: "PawnIO.Modules",
+    role: "signedHardwareAccess",
+    note: "pawnIoModules",
+    links: [
+      { label: "github", href: "https://github.com/namazso/PawnIO.Modules" },
+      { label: "license", href: "https://github.com/namazso/PawnIO.Modules/blob/main/COPYING" }
+    ]
+  },
+  {
+    group: "hardware",
+    name: "LibreHardwareMonitorLib",
     role: "hardwareBridge",
     note: "libreHardwareMonitor",
     links: [
       { label: "github", href: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor" },
       { label: "license", href: "https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/LICENSE" }
     ]
-  },
-  {
-    group: "hardware",
-    name: "Notebook FanControl",
-    role: "notebookEc",
-    note: "notebookFanControl",
-    links: [
-      { label: "github", href: "https://github.com/hirschmann/nbfc" },
-      { label: "license", href: "https://github.com/hirschmann/nbfc/blob/master/LICENSE.md" }
-    ]
-  },
-  {
-    group: "hardware",
-    name: "MSI Afterburner",
-    role: "externalReference",
-    note: "afterburner",
-    links: [{ label: "official", href: "https://www.msi.com/Landing/afterburner/graphics-cards" }]
-  },
-  {
-    group: "hardware",
-    name: "LatencyMon",
-    role: "latencyDiagnostics",
-    note: "latencyMon",
-    links: [{ label: "official", href: "https://www.resplendence.com/latencymon" }]
   }
 ];
 

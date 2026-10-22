@@ -631,7 +631,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
         [uiText.softwareActions.field.relation, roleLabel],
         [uiText.softwareActions.field.state, state],
         [uiText.softwareActions.field.vendor, definition.vendor],
-        [uiText.softwareActions.field.category, componentCategory(definition.id)],
+        [uiText.softwareActions.field.category, componentCategory()],
         [uiText.softwareActions.field.purpose, purpose]
       ],
       softwareIdentityId: "",
