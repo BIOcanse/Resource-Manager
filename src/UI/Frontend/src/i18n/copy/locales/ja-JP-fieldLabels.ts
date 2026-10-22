@@ -151,7 +151,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   gpu_amd_activity_percent: { label: "GPU アクティビティ（ADLX）", hint: "AMD ADLX が報告する GPU 使用率のサンプルで、ベンダーのサンプリング期間は規定されておらず、値がない場合も他のソースで代替しません。" },
   gpu_amd_voltage_reported_volts: { label: "GPU 電圧（ADLX）", hint: "AMD ADLX が報告する GPU 電圧を mV から V に換算した値で、どのレールを測定しているかは規定されておらず、VID やチューニング オフセットではありません。" },
   gpu_amd_sample_timestamp_reported_ms: { label: "サンプル タイムスタンプ（ADLX）", hint: "ADLX の生タイムスタンプ（ミリ秒）で、起点は規定されておらず、取得時刻でもサンプリング期間でもありません。" },
-  gpu_amd_adlx_dedicated_memory_mb: { label: "専用 VRAM（ADLX MB）", hint: "AMD ADLX が独自の MB 単位で報告する専用 GPU メモリの値で、1 単位あたりの正確なバイト数や、メモリが物理的に常駐しているかどうかは規定されていません。" },
+  gpu_amd_adlx_dedicated_memory_mb: { label: "専用 VRAM 使用量（ADLX）", hint: "AMD ADLX（GPUVRAM）が報告するこの GPU の専用 GPU メモリ使用量で、全プロセスの合計です。タスク マネージャーの「専用 GPU メモリ」に相当します。単位は MB（1 MB = 1024×1024 バイト）。" },
   memory_all_numa_node_capacity_mib: { label: "NUMA ノード容量", hint: "Windows が報告するこの NUMA ノードのメモリ サイズ（MiB 単位で切り捨て）で、ノードごとの OS から見た値であり、正確なバイト数や搭載モジュールの容量ではありません。" },
   cpu_intel_effective_frequency_mhz: { label: "実効クロック（スレッド）", hint: "直近の間隔でこの論理プロセッサが実行中（C0）だった間の平均クロックで、APERF/MPERF と宣言されたベース クロックから求め、アイドル時間は除外されます。" },
   gpu_amd_npu_activity_percent: { label: "NPU アクティビティ（ADLX）", hint: "AMD ADLX がこのグラフィックス デバイスについて報告する NPU アクティビティの割合で、NPU デバイスのシステム使用率とは別のベンダー値であり、特定の NPU デバイスには結び付いていません。" },
