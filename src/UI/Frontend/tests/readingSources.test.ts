@@ -36,19 +36,24 @@ const apuCpuAlias = reading("apu-edge");
 // Tctl：本机只有 SMU 可用，LHM 来源不支持。
 const tctlSmu = reading("tctl", { isPreferredSource: true, preferredDeviceIdentity: "cpu|0", preferredFieldName: "tctl_smu" });
 const tctlLhm = reading("tctl", { sourceAvailability: "unsupported", sourceRank: 20, preferredDeviceIdentity: "cpu|0", preferredFieldName: "tctl_smu" });
-// NVMe 综合温度：还没核定首选，两个来源都待确认（其中可靠性计数不支持）。
+// NVMe 综合温度：还没核定首选，健康日志和可靠性计数两个来源都待确认；传感器 1 不支持。
 const nvmeLog = reading("nvme", { sourceAvailability: "unverified", preferredDeviceIdentity: null, preferredFieldName: null });
-const nvmeCounter = reading("nvme", { sourceAvailability: "unsupported", sourceRank: 20, preferredDeviceIdentity: null, preferredFieldName: null });
+const nvmeReliability = reading("nvme", { sourceAvailability: "unverified", sourceRank: 20, preferredDeviceIdentity: null, preferredFieldName: null });
+const nvmeCounter = reading("nvme", { sourceAvailability: "unsupported", sourceRank: 30, preferredDeviceIdentity: null, preferredFieldName: null });
+// 单来源、还没核定的读取项：没有可选的来源，不标「待确认」。
+const lonePending = reading("fan", { sourceAvailability: "unverified", preferredDeviceIdentity: null, preferredFieldName: null });
 // 单一来源的读取项。
 const single = reading("usage", { isPreferredSource: true, preferredDeviceIdentity: "cpu|0", preferredFieldName: "usage" });
-const all = [apuPreferred, apuAdlx, apuCpuAlias, tctlSmu, tctlLhm, nvmeLog, nvmeCounter, single, null];
+const all = [apuPreferred, apuAdlx, apuCpuAlias, tctlSmu, tctlLhm, nvmeLog, nvmeReliability, nvmeCounter, lonePending, single, null];
 
 const preferredMode = readingSourceDisplays(all, "preferred");
 assert.deepEqual(preferredMode(apuPreferred), { listed: true, mark: null }, "the preferred source is listed without a mark by default");
 assert.deepEqual(preferredMode(apuAdlx), { listed: false, mark: null }, "an alternate source is not listed by default");
 assert.deepEqual(preferredMode(apuCpuAlias), { listed: false, mark: null }, "the cross-device alias is not listed by default");
 assert.deepEqual(preferredMode(tctlLhm), { listed: false, mark: null }, "an unsupported source is not listed");
-assert.deepEqual(preferredMode(nvmeLog), { listed: true, mark: "pending" }, "a reading without a preferred source is listed as pending");
+assert.deepEqual(preferredMode(nvmeLog), { listed: true, mark: "pending" }, "a multi-source reading without a preferred source lists every source as pending");
+assert.deepEqual(preferredMode(nvmeReliability), { listed: true, mark: "pending" });
+assert.deepEqual(preferredMode(lonePending), { listed: true, mark: null }, "a single-source reading awaiting confirmation is listed without a mark");
 assert.deepEqual(preferredMode(nvmeCounter), { listed: false, mark: null }, "an unsupported source of a pending reading is not listed");
 assert.deepEqual(preferredMode(single), { listed: true, mark: null });
 assert.deepEqual(preferredMode(null), { listed: true, mark: null }, "a field without a reading is listed as before");
@@ -60,6 +65,7 @@ assert.deepEqual(allMode(apuCpuAlias), { listed: true, mark: null }, "the alias 
 assert.deepEqual(allMode(tctlSmu), { listed: true, mark: null }, "no Preferred mark when the only other source is unsupported");
 assert.deepEqual(allMode(tctlLhm), { listed: false, mark: null }, "unsupported sources stay hidden when showing all");
 assert.deepEqual(allMode(nvmeLog), { listed: true, mark: "pending" });
+assert.deepEqual(allMode(lonePending), { listed: true, mark: null });
 assert.deepEqual(allMode(single), { listed: true, mark: null }, "a single-source reading carries no Preferred mark");
 assert.deepEqual(allMode(null), { listed: true, mark: null });
 
@@ -86,18 +92,20 @@ const catalog = metricFieldCatalogDecoder.decode([
   ] },
   { deviceIdentity: "disk|0", device: { kind: "storage", address: null, displayName: "SSD", ordinal: 0 }, fields: [
     { name: "storage_all_nvme_composite_temperature_celsius", unit: "°C", valueKind: "float64", reading: wireReading(nvmeLog) },
-    { name: "storage_all_reliability_temperature_celsius", unit: "°C", valueKind: "float64", reading: wireReading(nvmeCounter) }
+    { name: "disk_all_temperature_celsius", unit: "°C", valueKind: "float64", reading: wireReading(nvmeReliability) },
+    { name: "storage_all_nvme_temperature_sensor_1_celsius", unit: "°C", valueKind: "float64", reading: wireReading(nvmeCounter) }
   ] }
 ]);
 const listedIds = (definitions: ReturnType<typeof fieldCardDefinitions>) =>
   definitions.filter((metric) => metric.readingSource?.listed !== false).map((metric) => metric.id);
 applyReadingSourceMode("preferred");
 const preferredDefinitions = fieldCardDefinitions(catalog);
-assert.equal(preferredDefinitions.length, 6, "every catalog field still has a definition for cards");
+assert.equal(preferredDefinitions.length, 7, "every catalog field still has a definition for cards");
 assert.deepEqual(listedIds(preferredDefinitions), [
   "cpu_all_usage_percent@cpu|0",
   "gpu_amd_apu_temperature_reported_celsius@gpu|apu",
-  "storage_all_nvme_composite_temperature_celsius@disk|0"
+  "storage_all_nvme_composite_temperature_celsius@disk|0",
+  "disk_all_temperature_celsius@disk|0"
 ]);
 assert.equal(preferredDefinitions.find((metric) => metric.id.startsWith("storage_all_nvme"))?.readingSource?.mark, "pending");
 applyReadingSourceMode("all");
@@ -107,7 +115,8 @@ assert.deepEqual(listedIds(allDefinitions), [
   "cpu_all_usage_percent@cpu|0",
   "gpu_amd_apu_temperature_reported_celsius@gpu|apu",
   "gpu_amd_edge_temperature_celsius@gpu|apu",
-  "storage_all_nvme_composite_temperature_celsius@disk|0"
+  "storage_all_nvme_composite_temperature_celsius@disk|0",
+  "disk_all_temperature_celsius@disk|0"
 ]);
 assert.equal(allDefinitions.find((metric) => metric.id === "gpu_amd_apu_temperature_reported_celsius@gpu|apu")?.readingSource?.mark, "preferred");
 assert.equal(allDefinitions.find((metric) => metric.id === "cpu_all_usage_percent@cpu|0")?.readingSource?.mark, null);
@@ -121,15 +130,16 @@ const npuDevices = metricFieldDevicesDecoder.decode([
     value("npu_all_engine_busy_percent", { reading: wireReading(reading("busy", { isPreferredSource: true, preferredDeviceIdentity: "npu|0", preferredFieldName: "npu_all_engine_busy_percent" })) }),
     value("npu_all_dedicated_memory_committed", { reading: wireReading(reading("busy", { preferredDeviceIdentity: "npu|0", preferredFieldName: "npu_all_engine_busy_percent" })) }),
     value("npu_all_shared_memory_committed", { reading: wireReading(reading("shared", { sourceAvailability: "unverified", preferredDeviceIdentity: null, preferredFieldName: null })) }),
-    value("npu_all_shared_memory_resident", {})
+    value("npu_all_shared_memory_resident", { reading: wireReading(reading("shared", { sourceAvailability: "unverified", sourceRank: 20, preferredDeviceIdentity: null, preferredFieldName: null })) }),
+    value("npu_all_dedicated_memory_resident", { reading: wireReading(reading("lone", { sourceAvailability: "unverified", preferredDeviceIdentity: null, preferredFieldName: null })) })
   ] }
 ]);
 applyReadingSourceMode("preferred");
 assert.deepEqual(deviceMetricSections(npuDevices, pnp)[0].rows.map((row) => row.mark),
-  [null, "pending", null], "device details hide the alternate source and mark the pending one");
+  [null, null, "pending", "pending"], "device details hide the alternate source, leave the single pending source unmarked and mark the pending multi-source reading");
 applyReadingSourceMode("all");
 assert.deepEqual(deviceMetricSections(npuDevices, pnp)[0].rows.map((row) => row.mark),
-  ["preferred", null, "pending", null], "showing all lists the alternate source and marks the preferred one");
+  ["preferred", null, null, "pending", "pending"], "showing all lists the alternate source and marks the preferred one");
 applyReadingSourceMode("preferred");
 
 console.log("readingSources: ok");

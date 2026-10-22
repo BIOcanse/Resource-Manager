@@ -37,8 +37,8 @@ export const metricFieldDevices = [
 /*
  * 带读取项（reading）的设备字段，形状按 docs/metric_reading_source_selection.md：
  * 核显温度一个读取项三个来源——显卡上的 SMU 字段是本机首选，同卡的 ADLX 是次选，
- * 处理器封装下的核显温度是跨设备显示别名（同一个 id）；NVMe 综合温度还没核定首选（待确认）；
- * NVMe 传感器 1 不支持，两种模式都不列。
+ * 处理器封装下的核显温度是跨设备显示别名（同一个 id）；NVMe 综合温度有健康日志和可靠性计数两个来源、
+ * 还没核定首选（两个都标待确认）；NVMe 传感器 1 不支持，两种模式都不列。
  */
 const reading = (id, extra) => ({
   id, quantity: "q", sourceRank: 10, sourceAvailability: "available", isPreferredSource: false,
@@ -62,6 +62,8 @@ export const readingSourceDevices = [
   { deviceIdentity: "disk|reading", device: { kind: "storage", address: null, displayName: "Reading SSD", ordinal: 5 }, fields: [
     field("storage_all_nvme_composite_temperature_celsius", "°C", "float64", { numericValue: 40,
       reading: reading("nvme-composite", { sourceAvailability: "unverified", preferredDeviceIdentity: null, preferredFieldName: null }) }),
+    field("disk_all_temperature_celsius", "°C", "float64", { numericValue: 40,
+      reading: reading("nvme-composite", { sourceAvailability: "unverified", sourceRank: 20, preferredDeviceIdentity: null, preferredFieldName: null }) }),
     field("storage_all_nvme_temperature_sensor_1_celsius", "°C", "float64", { status: 3,
       reading: reading("nvme-sensor-1", { sourceAvailability: "unsupported", preferredDeviceIdentity: null, preferredFieldName: null }) })
   ] }
