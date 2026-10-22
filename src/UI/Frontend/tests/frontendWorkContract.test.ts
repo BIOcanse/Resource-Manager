@@ -200,6 +200,39 @@ assert.doesNotMatch(
   "page data must not regain frontend polling or continuous-value state machines");
 assert.match(refreshSchedulerSource, /scheduleVisiblePageRefresh/);
 assert.match(refreshSchedulerSource, /refreshVisiblePageData/);
+// 隐藏即暂停：本机状态订阅和其他数据源一样按 frontendVisible() 停止，没有按设置分支的“隐藏也刷新”。
+assert.match(
+  refreshSchedulerSource,
+  /if \(!frontendVisible\(\)\) \{\s*return;\s*\}\s*const unsubscribe = options\.localSystemSource\.subscribe/,
+  "local system status must stop with the hidden window like every other source");
+assert.doesNotMatch(
+  refreshSchedulerSource,
+  /frontendRefreshPaused|frontendHiddenRefreshMode|optimizationMode/,
+  "hidden-window refresh must not depend on a setting or the optimization mode");
+
+// 用户裁定删除的死设置不能在前端模型、设置页、文案或样式里留下读取方或开关。
+for (const relativePath of [
+  "types.ts",
+  "App.tsx",
+  "stores/settingsStore.ts",
+  "app/usePageRefreshScheduler.ts",
+  "app/selfScheduling/resolveSelfCpuRuntimePlan.ts",
+  "app/selfScheduling/resolveSelfGpuRuntimePlan.ts",
+  "features/settings/SettingsPage.tsx",
+  "features/settings/SettingsWorkspace.tsx",
+  "features/settings/components/PerformanceSettingsSection.tsx",
+  "features/settings/components/AppearanceSettingsSection.tsx",
+  "i18n/settingsTypes.ts",
+  "i18n/settingsLoader.ts",
+  "i18n/settingsLocaleFactory.ts",
+  "styles/motion.css",
+  "styles/resources.css"
+]) {
+  assert.doesNotMatch(
+    readSource(relativePath),
+    /managementRefreshIntervalMs|discoveryRefreshIntervalMs|optimizationRefreshIntervalMs|frontendHiddenRefreshMode|pauseFrontendRefreshWhenHiddenInNormalMode|resourceBarHardwareAcceleration|resource-bar-hardware-acceleration|monitoringIdleSeconds|resolveAdaptiveBooleanMode/,
+    `${relativePath} must not retain retired settings`);
+}
 
 const monitorStoreSource = readSource("stores/monitorStore.ts");
 assert.match(monitorStoreSource, /options\.resourceMonitorSource\.subscribe/);

@@ -1053,6 +1053,7 @@ function metricSnapshot(requestedIds) {
   return {
     version: 4,
     capturedAt: metricSlot.observedAt,
+    catalogRevision: "mock-catalog-1",
     items
   };
 }

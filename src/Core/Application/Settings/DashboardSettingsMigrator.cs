@@ -10,27 +10,27 @@ public sealed class DashboardSettingsMigrator
         HardwareMetricSnapshot? snapshot)
     {
         ArgumentNullException.ThrowIfNull(result);
-        var hasStoredSettings = result.Source.Kind
+        var hasStoredSettings = !result.Settings.UsesFactoryDefaults && result.Source.Kind
             is not DashboardSettingsSourceKind.BundledFirstRun
             and not DashboardSettingsSourceKind.RecoveredDefaultsAfterCorruption;
         if (snapshot is null)
         {
             return hasStoredSettings
                 ? MigrateForRead(result.Settings)
-                : DashboardSettingsDefaults.Create();
+                : DashboardSettingsDefaults.Create() with { UsesFactoryDefaults = true };
         }
 
         return hasStoredSettings
             ? MigrateForRead(result.Settings, snapshot)
-            : DashboardSettingsDefaults.Create(snapshot);
+            : DashboardSettingsDefaults.Create(snapshot) with { UsesFactoryDefaults = true };
     }
 
     public DashboardSettings MigrateForRead(DashboardSettings settings)
     {
-        if (settings.Version < DashboardSettingsDefaults.MinimumSupportedVersion
+        if (settings.UsesFactoryDefaults || settings.Version < DashboardSettingsDefaults.CurrentVersion
             || settings.Version > DashboardSettingsDefaults.CurrentVersion)
         {
-            return DashboardSettingsDefaults.Create();
+            return DashboardSettingsDefaults.Create() with { UsesFactoryDefaults = true };
         }
 
         return DashboardSettingsNormalizer.Normalize(settings);
@@ -40,10 +40,10 @@ public sealed class DashboardSettingsMigrator
         DashboardSettings settings,
         HardwareMetricSnapshot snapshot)
     {
-        if (settings.Version < DashboardSettingsDefaults.MinimumSupportedVersion
+        if (settings.UsesFactoryDefaults || settings.Version < DashboardSettingsDefaults.CurrentVersion
             || settings.Version > DashboardSettingsDefaults.CurrentVersion)
         {
-            return DashboardSettingsDefaults.Create(snapshot);
+            return DashboardSettingsDefaults.Create(snapshot) with { UsesFactoryDefaults = true };
         }
 
         var normalized = DashboardSettingsNormalizer.Normalize(settings);
@@ -55,18 +55,18 @@ public sealed class DashboardSettingsMigrator
         HardwareMetricSnapshot snapshot)
     {
         return DashboardSettingsBindingResolver.Resolve(
-            DashboardSettingsNormalizer.Normalize(settings),
+            DashboardSettingsNormalizer.Normalize(settings) with { UsesFactoryDefaults = false },
             snapshot);
     }
 
     public DashboardSettings SanitizeForSave(DashboardSettings settings)
     {
-        return DashboardSettingsNormalizer.Normalize(settings);
+        return DashboardSettingsNormalizer.Normalize(settings) with { UsesFactoryDefaults = false };
     }
 
     public bool AreEquivalent(DashboardSettings left, DashboardSettings right)
     {
-        if (left.Version != right.Version
+        if (left.Version != right.Version || left.UsesFactoryDefaults != right.UsesFactoryDefaults
             || left.Cards.Count != right.Cards.Count
             || left.ResourceBars.Count != right.ResourceBars.Count
             || (left.ResourceTableColumns?.Count ?? 0) != (right.ResourceTableColumns?.Count ?? 0)

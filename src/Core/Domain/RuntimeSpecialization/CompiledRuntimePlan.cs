@@ -12,7 +12,6 @@ public sealed record CompiledRuntimePlan(
     CompiledBaseScorePlan BaseScore,
     CompiledHardwareScorePlan HardwareScores,
     CompiledOptimizationModePlan OptimizationMode,
-    CompiledSelfLogicPlan SelfLogic,
     CompiledDiagnosticsPlan Diagnostics,
     CompiledMonitoringPlan Monitoring)
 {
@@ -36,7 +35,6 @@ public sealed record CompiledRuntimePlan(
         CompiledBaseScorePlan.Empty,
         CompiledHardwareScorePlan.Default,
         CompiledOptimizationModePlan.Default,
-        CompiledSelfLogicPlan.Default,
         CompiledDiagnosticsPlan.Default,
         CompiledMonitoringPlan.Default);
 }

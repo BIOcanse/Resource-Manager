@@ -61,7 +61,7 @@ export const loadingSettingsText: SettingsTextBundle = {
   actions: { save: "", restoreDefaults: "", retry: "", reload: "", reapply: "" },
   performance: {
     smartMonitoringTitle: "",
-    smartMonitoringDescription: () => "",
+    smartMonitoringDescription: "",
     adaptiveBooleanModeOptions: [],
     gpuPerformanceUseCasesTitle: "",
     gpuPerformanceUseCasesDescription: "",
@@ -79,9 +79,10 @@ export const loadingSettingsText: SettingsTextBundle = {
     memoryOptimizationTargetDescription: "",
     physicalMemoryOptimizationTargetLabel: "",
     virtualMemoryOptimizationTargetLabel: "",
-    pauseHiddenTitle: "",
-    pauseHiddenDescription: "",
-    frontendHiddenRefreshModeOptions: [],
+    moveDownDangerTitle: "",
+    moveDownDangerDescription: "",
+    vramMoveDownPhysicalMemoryDangerLabel: "",
+    physicalMemoryMoveDownVirtualMemoryDangerLabel: "",
     refreshCadenceTitle: "",
     refreshCadenceDescription: "",
     presetNumericModeOptions: [],
@@ -91,9 +92,6 @@ export const loadingSettingsText: SettingsTextBundle = {
     refreshCadenceItems: {
       monitor: { label: "", description: "" },
       resourceTable: { label: "", description: "" },
-      management: { label: "", description: "" },
-      discovery: { label: "", description: "" },
-      optimization: { label: "", description: "" },
       localSystem: { label: "", description: "" }
     }
   },
@@ -104,9 +102,6 @@ export const loadingSettingsText: SettingsTextBundle = {
     themeDescription: "",
     animationTitle: "",
     animationDescription: "",
-    resourceBarHardwareAccelerationTitle: "",
-    resourceBarHardwareAccelerationDescription: "",
-    resourceBarHardwareAccelerationModeOptions: [],
     resourceBarFrameRateTitle: "",
     resourceBarFrameRateDescription: "",
     resourceBarFrameRateModeOptions: [],

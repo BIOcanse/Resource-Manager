@@ -15,9 +15,15 @@ public static class MetricReadingCatalog
         {
             if (!committed.FieldBindings.TryGetValue(pair.Key, out var next)
                 || pair.Value.DeviceIdentity != next.DeviceIdentity || pair.Value.SourceId != next.SourceId
-                || pair.Value.Field.Name != next.Field.Name || pair.Value.Field.Reading == next.Field.Reading) continue;
+                || pair.Value.Field.Name != next.Field.Name) continue;
+            if (pair.Value.Field.Reading == next.Field.Reading
+                && pair.Value.RequestAliases.SequenceEqual(next.RequestAliases, StringComparer.OrdinalIgnoreCase)) continue;
             merged ??= new(catalog.FieldBindings, StringComparer.OrdinalIgnoreCase);
-            merged[pair.Key] = pair.Value with { Field = pair.Value.Field with { Reading = next.Field.Reading } };
+            merged[pair.Key] = pair.Value with
+            {
+                Field = pair.Value.Field with { Reading = next.Field.Reading },
+                RequestAliases = next.RequestAliases
+            };
         }
         return merged is null ? catalog : catalog with { FieldBindings = merged };
     }

@@ -77,22 +77,15 @@ export default createSettingsLocale("es-ES", {
   },
   "performance": {
     "smartMonitoringTitle": "Supervisión bajo demanda",
-    "smartMonitoringDescription": (seconds: number) => `Supervisa solo mientras se usan los datos y se detiene tras ${seconds} segundos de inactividad.`,
+    "smartMonitoringDescription": "Activado: solo se muestrean las lecturas que la interfaz muestra o tiene suscritas. Desactivado: se muestrean todas las lecturas del catálogo, lo que cuesta más.",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "Automático",
-        "description": "Elegir automáticamente según el modo de rendimiento actual."
-      },
-      {
         "id": "enabled",
-        "label": "Siempre activado",
-        "description": "Activar siempre este ajuste."
+        "label": "Activado"
       },
       {
         "id": "disabled",
-        "label": "Siempre desactivado",
-        "description": "Desactivar siempre este ajuste."
+        "label": "Desactivado"
       }
     ],
     "gpuPerformanceUseCasesTitle": "Usos de la GPU",
@@ -117,25 +110,10 @@ export default createSettingsLocale("es-ES", {
     "memoryOptimizationTargetDescription": "Por encima del objetivo continúa la liberación lenta de nivel uno, sin activar una limpieza de emergencia.",
     "physicalMemoryOptimizationTargetLabel": "Uso objetivo de memoria física %",
     "virtualMemoryOptimizationTargetLabel": "Uso objetivo de memoria comprometida %",
-    "pauseHiddenTitle": "Actualizar con la ventana oculta",
-    "pauseHiddenDescription": "En modo normal, las actualizaciones de la interfaz pueden pausarse con la ventana oculta y reanudarse al mostrarla.",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automático",
-        "description": "Decidir automáticamente según el modo de rendimiento actual."
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "Pausar al ocultar",
-        "description": "Pausar las actualizaciones de la interfaz cuando la ventana está oculta."
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "Seguir actualizando",
-        "description": "Mantener las actualizaciones de la interfaz con la ventana oculta."
-      }
-    ],
+    "moveDownDangerTitle": "Umbrales de peligro al trasladar memoria",
+    "moveDownDangerDescription": "Antes de trasladar datos de la VRAM a la memoria física, o de la memoria física a la virtual, la planificación estima cuánto quedará libre. Si queda por debajo de estos porcentajes, se omite el traslado de ese programa para no pasar la presión al nivel siguiente.",
+    "vramMoveDownPhysicalMemoryDangerLabel": "Desde VRAM: memoria física libre %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Desde memoria: margen de compromiso %",
     "refreshCadenceTitle": "Frecuencia de actualización",
     "refreshCadenceDescription": "Controla la frecuencia de actualización de las mediciones y los estados. Una frecuencia mayor usa algo más de recursos.",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("es-ES", {
         "label": "Tabla de recursos",
         "description": "Actualiza la lista de recursos de programas y procesos."
       },
-      "management": {
-        "label": "Componentes y software",
-        "description": "Actualiza el estado de los componentes, las listas de programas y el progreso."
-      },
-      "discovery": {
-        "label": "Migración de software",
-        "description": "Actualiza el progreso de la migración y el contenido disponible."
-      },
-      "optimization": {
-        "label": "Optimización del rendimiento",
-        "description": "Actualiza los informes de optimización y el estado de planificación."
-      },
       "localSystem": {
         "label": "Sistema local",
         "description": "Actualiza estados locales de baja frecuencia, como el tiempo de actividad."
@@ -213,25 +179,6 @@ export default createSettingsLocale("es-ES", {
     "themeDescription": "Elige una paleta del estilo actual. Sistema sigue el ajuste claro u oscuro de Windows.",
     "animationTitle": "Animaciones",
     "animationDescription": "Elige animaciones completas, ninguna animación o efectos simplificados para reducir la carga de la interfaz.",
-    "resourceBarHardwareAccelerationTitle": "Aceleración por hardware de las barras",
-    "resourceBarHardwareAccelerationDescription": "Usa la tarjeta gráfica para mejorar la animación de las barras. Desactívalo si hay problemas de visualización.",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automático",
-        "description": "Mantener la fluidez en primer plano y reducir el consumo en segundo plano de bajo consumo."
-      },
-      {
-        "id": "enabled",
-        "label": "Siempre activado",
-        "description": "Usar siempre aceleración por hardware en las barras."
-      },
-      {
-        "id": "disabled",
-        "label": "Siempre desactivado",
-        "description": "Usar siempre el renderizado de compatibilidad en las barras."
-      }
-    ],
     "resourceBarFrameRateTitle": "Fotogramas de las barras de recursos",
     "resourceBarFrameRateDescription": "Cuántos fotogramas por segundo dibujan las transiciones de las barras. Seguir la pantalla usa la frecuencia de actualización del monitor; Personalizado limita los fotogramas para reducir la carga. Solo se aplica con animaciones normales.",
     "resourceBarFrameRateModeOptions": [

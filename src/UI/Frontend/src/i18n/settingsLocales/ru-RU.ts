@@ -77,22 +77,15 @@ export default createSettingsLocale("ru-RU", {
   },
   "performance": {
     "smartMonitoringTitle": "Мониторинг по запросу",
-    "smartMonitoringDescription": (seconds: number) => `Мониторинг работает только при использовании данных и останавливается после ${seconds} секунд простоя.`,
+    "smartMonitoringDescription": "Вкл.: опрашиваются только показания, которые интерфейс показывает или на которые подписан. Выкл.: опрашиваются все показания из каталога, что увеличивает нагрузку.",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "Автоматически",
-        "description": "Автоматически выбирать в зависимости от текущего режима производительности."
-      },
-      {
         "id": "enabled",
-        "label": "Всегда включено",
-        "description": "Всегда включать этот параметр."
+        "label": "Вкл."
       },
       {
         "id": "disabled",
-        "label": "Всегда выключено",
-        "description": "Всегда выключать этот параметр."
+        "label": "Выкл."
       }
     ],
     "gpuPerformanceUseCasesTitle": "Назначение GPU",
@@ -117,25 +110,10 @@ export default createSettingsLocale("ru-RU", {
     "memoryOptimizationTargetDescription": "При превышении цели продолжается плавное освобождение первого уровня без экстренной очистки.",
     "physicalMemoryOptimizationTargetLabel": "Целевая загрузка физической памяти %",
     "virtualMemoryOptimizationTargetLabel": "Целевое использование выделенной памяти %",
-    "pauseHiddenTitle": "Обновление при скрытом окне",
-    "pauseHiddenDescription": "В обычном режиме обновления интерфейса можно приостановить при скрытом окне и немедленно возобновить при его показе.",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "Автоматически",
-        "description": "Автоматически определять по текущему режиму производительности."
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "Пауза при скрытом окне",
-        "description": "Приостанавливать обновления интерфейса при скрытом окне."
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "Продолжать обновление",
-        "description": "Продолжать обновления интерфейса при скрытом окне."
-      }
-    ],
+    "moveDownDangerTitle": "Пороги опасности при вытеснении",
+    "moveDownDangerDescription": "Перед вытеснением данных из видеопамяти в физическую память или из физической памяти в виртуальную планирование оценивает, сколько останется свободным. Если меньше этих процентов, вытеснение для этой программы пропускается, чтобы не перегружать следующий уровень.",
+    "vramMoveDownPhysicalMemoryDangerLabel": "Из видеопамяти: свободная память %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Из памяти: запас лимита выделения %",
     "refreshCadenceTitle": "Частота обновления информации",
     "refreshCadenceDescription": "Задаёт скорость обновления данных мониторинга и состояния. Более частое обновление немного увеличивает расход ресурсов.",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("ru-RU", {
         "label": "Таблица ресурсов",
         "description": "Обновляет список ресурсов программ и процессов."
       },
-      "management": {
-        "label": "Компоненты и программы",
-        "description": "Обновляет состояние компонентов, списки программ и ход операций."
-      },
-      "discovery": {
-        "label": "Перенос программ",
-        "description": "Обновляет ход переноса и доступное содержимое."
-      },
-      "optimization": {
-        "label": "Оптимизация производительности",
-        "description": "Обновляет отчёты об оптимизации и состояние планирования."
-      },
       "localSystem": {
         "label": "Локальная система",
         "description": "Обновляет редко меняющееся локальное состояние, например время работы."
@@ -213,25 +179,6 @@ export default createSettingsLocale("ru-RU", {
     "themeDescription": "Выберите палитру текущего стиля. «Системная» следует светлой или тёмной теме Windows.",
     "animationTitle": "Анимация",
     "animationDescription": "Выберите полную анимацию, её отключение или упрощённые эффекты для снижения нагрузки интерфейса.",
-    "resourceBarHardwareAccelerationTitle": "Аппаратное ускорение полос ресурсов",
-    "resourceBarHardwareAccelerationDescription": "Использует видеокарту для плавной анимации полос. При проблемах отображения отключите эту функцию.",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "Автоматически",
-        "description": "Сохранять плавность на переднем плане и снижать нагрузку в энергосберегающем фоновом режиме."
-      },
-      {
-        "id": "enabled",
-        "label": "Всегда включено",
-        "description": "Всегда использовать аппаратное ускорение полос ресурсов."
-      },
-      {
-        "id": "disabled",
-        "label": "Всегда выключено",
-        "description": "Всегда использовать совместимый способ отрисовки полос ресурсов."
-      }
-    ],
     "resourceBarFrameRateTitle": "Частота кадров анимации полос",
     "resourceBarFrameRateDescription": "Сколько кадров в секунду рисуют переходы полос ресурсов. «Как у экрана» использует частоту обновления монитора; «Вручную» ограничивает кадры и снижает нагрузку. Действует только при обычной анимации.",
     "resourceBarFrameRateModeOptions": [

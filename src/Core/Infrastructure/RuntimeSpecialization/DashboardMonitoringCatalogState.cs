@@ -9,10 +9,13 @@ public sealed class DashboardMonitoringCatalogState
     private readonly object gate = new();
     private HardwareMetricSnapshot? current;
     private CatalogIdentity identity;
+    private string revision = Guid.NewGuid().ToString("N");
 
     public event Action? Changed;
 
     public HardwareMetricSnapshot? Current => Volatile.Read(ref current);
+
+    public string Revision => Volatile.Read(ref revision);
 
     public MetricSampleRequest SelectSubscribable(MetricSampleRequest request)
     {
@@ -64,6 +67,7 @@ public sealed class DashboardMonitoringCatalogState
             }
 
             identity = nextIdentity;
+            Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
             changed = Changed;
         }
 
@@ -80,6 +84,7 @@ public sealed class DashboardMonitoringCatalogState
             if (ReferenceEquals(next, current)) return false;
             Volatile.Write(ref current, next);
             identity = CatalogIdentity.Create(next);
+            Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
             changed = Changed;
         }
         changed?.Invoke();

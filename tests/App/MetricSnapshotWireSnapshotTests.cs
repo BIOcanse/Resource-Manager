@@ -31,6 +31,22 @@ public sealed class MetricSnapshotWireSnapshotTests
         Assert.DoesNotContain("generation", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(SamplingObservationStatus.Current)]
+    [InlineData(SamplingObservationStatus.RetainedLastGood)]
+    public void CatalogRevisionIsAnOpaqueStringIndependentOfCurrentValue(SamplingObservationStatus status)
+    {
+        const string revision = "opaque-catalog-token";
+        var wire = MetricSnapshotWireSnapshot.From(
+            CreateSnapshot(DateTimeOffset.Parse("2026-08-23T16:00:00Z"), status),
+            MetricSampleRequest.ForIds(["cpu.usage"]), revision);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(wire, WebJson));
+        Assert.Equal(4, json.RootElement.GetProperty("version").GetInt32());
+        Assert.Equal(revision, json.RootElement.GetProperty("catalogRevision").GetString());
+        Assert.Equal(status == SamplingObservationStatus.Current ? 25d : (double?)null,
+            wire.Items["cpu.usage"].NumericValue);
+    }
+
     [Fact]
     public void EmptyCurrentValueUsesTheSameItemShape()
     {

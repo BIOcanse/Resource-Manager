@@ -22,6 +22,7 @@ assert.throws(() => metricCatalogDecoder.decode([{ id: "cpu.usage" }]));
 const snapshot = metricSnapshotDecoder.decode({
   version: 4,
   capturedAt: "2026-08-22T12:00:00.000Z",
+  catalogRevision: "catalog-a",
   items: {
     "cpu.usage": {
       displayValue: "25%",
@@ -31,10 +32,15 @@ const snapshot = metricSnapshotDecoder.decode({
   }
 });
 assert.equal(snapshot.items["cpu.usage"].numericValue, 25);
+assert.equal(snapshot.catalogRevision, "catalog-a");
 assert.throws(() => metricSnapshotDecoder.decode({ items: [] }));
+// 目录修订号是必有的不透明标记，缺了就不是当前 wire。
+assert.throws(() => metricSnapshotDecoder.decode({ ...snapshot, catalogRevision: undefined }), /catalogRevision/);
+assert.throws(() => metricSnapshotDecoder.decode({ ...snapshot, catalogRevision: "" }), /catalogRevision/);
 const emptySnapshot = metricSnapshotDecoder.decode({
   version: 4,
   capturedAt: null,
+  catalogRevision: "catalog-a",
   items: {
     "cpu.usage": {
       displayValue: "-",

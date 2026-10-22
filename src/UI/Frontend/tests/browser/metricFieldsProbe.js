@@ -151,7 +151,7 @@ export async function setDashboardSettings(baseUrl, cards) {
   const response = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dashboardSettings: {
-      version: 15, cards, resourceBars: [], resourceTableColumns: [], resourceTableProcessColumns: []
+      version: 16, cards, resourceBars: [], resourceTableColumns: [], resourceTableProcessColumns: []
     } })
   });
   if (!response.ok) throw new Error("Unable to set dashboard settings");

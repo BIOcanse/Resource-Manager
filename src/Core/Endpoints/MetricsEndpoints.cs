@@ -52,6 +52,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpResponse response,
             IMetricSampler sampler,
             IRuntimePlanProvider runtimePlanProvider,
+            DashboardMonitoringCatalogState catalogState,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
@@ -60,7 +61,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : runtimePlanProvider.Current.Monitoring.DashboardMetricRequest;
             var snapshot = await sampler.GetSnapshotAsync(snapshotRequest, cancellationToken);
             var presentation = MetricCatalog.ApplyPresentation(snapshot);
-            return Results.Ok(MetricSnapshotWireSnapshot.From(presentation, snapshotRequest));
+            return Results.Ok(MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision));
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/gpu-specialized", (

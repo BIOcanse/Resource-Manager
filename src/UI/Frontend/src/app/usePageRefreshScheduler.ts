@@ -11,7 +11,7 @@ import {
   type ManagementSubpageId
 } from "../features/management/managementNavigation";
 import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan";
-import type { AppOptimizationMode, AppPerformanceSettings, PageId } from "../types";
+import type { AppPerformanceSettings, PageId } from "../types";
 import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils";
 
 type RefreshAction = () => void | Promise<unknown>;
@@ -25,7 +25,6 @@ interface PageRefreshSchedulerOptions {
   frontendWork: Pick<FrontendWorkController, "frontendVisible" | "activeWorkIds" | "isNeeded">;
   runtimeCapabilities: Pick<RuntimeCapabilitiesStore, "runtimeEffectsEnabled" | "optimizationEnabled">;
   performanceSettings: Accessor<AppPerformanceSettings | undefined>;
-  optimizationMode: Accessor<AppOptimizationMode>;
   management: {
     activeSubpage: Accessor<ManagementSubpageId>;
     refreshState: RefreshActionWithForce;
@@ -47,11 +46,8 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   const foregroundInteractive = createMemo(() => frontendVisible() && frontendFocused());
   const cpuRuntimePlan = createMemo(() => resolveSelfCpuRuntimePlan(
     options.performanceSettings(),
-    options.optimizationMode(),
     selfScheduling()?.cpuGrade ?? "normal",
-    frontendVisible(),
     foregroundInteractive()));
-  const frontendRefreshPaused = createMemo(() => cpuRuntimePlan().frontendRefreshPaused);
   const currentLocalSystemRefreshIntervalMs = createMemo(
     () => cpuRuntimePlan().refreshIntervalMs.localSystem);
   const systemUptime = createMemo(() => {
@@ -74,12 +70,13 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     onCleanup(unsubscribe);
   });
 
+  // 本机状态和其他数据源一样，窗口隐藏即停止订阅，重新显示时再订阅。
   createEffect(() => {
     if (!options.performanceSettings()) {
       return;
     }
     const intervalMs = currentLocalSystemRefreshIntervalMs();
-    if (frontendRefreshPaused()) {
+    if (!frontendVisible()) {
       return;
     }
     const unsubscribe = options.localSystemSource.subscribe(

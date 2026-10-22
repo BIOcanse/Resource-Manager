@@ -33,7 +33,6 @@ import type {
   AppBarColorMode,
   ByteUnitMode,
   AppFontSmoothing,
-  AppFrontendHiddenRefreshMode,
   AppGpuPerformanceUseCase,
   AppLanguageMode,
   AppLogicRefreshIntervalKey,
@@ -69,25 +68,16 @@ const prebootAppearanceStorageKey = "resource-manager:appearance";
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
   "monitor",
   "resourceTable",
-  "management",
-  "discovery",
-  "optimization",
   "localSystem"
 ];
 export const logicRefreshIntervalPresetValues: Record<AppLogicRefreshIntervalKey, Record<AppLogicRefreshIntervalPreset, number>> = {
   monitor: { responsive: 1000, balanced: 2000, lowPower: 3000, quiet: 5000 },
   resourceTable: { responsive: 1000, balanced: 2000, lowPower: 3000, quiet: 5000 },
-  management: { responsive: 5000, balanced: 10000, lowPower: 20000, quiet: 30000 },
-  discovery: { responsive: 3000, balanced: 5000, lowPower: 10000, quiet: 30000 },
-  optimization: { responsive: 5000, balanced: 10000, lowPower: 20000, quiet: 60000 },
   localSystem: { responsive: 30000, balanced: 60000, lowPower: 120000, quiet: 300000 }
 };
 const defaultLogicRefreshIntervalPreset: Record<AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset> = {
   monitor: "responsive",
   resourceTable: "responsive",
-  management: "balanced",
-  discovery: "responsive",
-  optimization: "balanced",
   localSystem: "balanced"
 };
 const minLogicRefreshIntervalMs = 500;
@@ -112,12 +102,11 @@ export interface SettingsStore {
   updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  updateFrontendHiddenRefreshMode: (mode: AppFrontendHiddenRefreshMode) => void;
+  updateMoveDownDangerLines: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
   updateLogicRefreshInterval: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
   updateAnimations: (animations: AppAnimationMode) => void;
-  updateResourceBarHardwareAccelerationMode: (mode: AppAdaptiveBooleanMode) => void;
   updateResourceBarFrameRateMode: (mode: AppResourceBarFrameRateMode) => void;
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
@@ -404,8 +393,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     resetDraftToDefaults,
     updateSmartMonitoringMode: (mode) => updatePerformance((performance) => ({
       ...performance,
-      smartMonitoringMode: normalizeAdaptiveBooleanMode(mode),
-      smartMonitoringEnabled: resolveAdaptiveBooleanMode(mode, true)
+      smartMonitoringMode: normalizeAdaptiveBooleanMode(mode)
     })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,
@@ -425,10 +413,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(physicalMemoryPercent, 70),
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(virtualMemoryPercent, 70)
     })),
-    updateFrontendHiddenRefreshMode: (mode) => updatePerformance((performance) => ({
+    updateMoveDownDangerLines: (vramMoveDownPhysicalMemoryPercent, physicalMemoryMoveDownVirtualMemoryPercent) => updatePerformance((performance) => ({
       ...performance,
-      frontendHiddenRefreshMode: normalizeFrontendHiddenRefreshMode(mode),
-      pauseFrontendRefreshWhenHiddenInNormalMode: mode !== "continueWhenHidden"
+      vramMoveDownPhysicalMemoryDangerPercent: normalizeDangerPercent(vramMoveDownPhysicalMemoryPercent, performance.vramMoveDownPhysicalMemoryDangerPercent),
+      physicalMemoryMoveDownVirtualMemoryDangerPercent: normalizeDangerPercent(physicalMemoryMoveDownVirtualMemoryPercent, performance.physicalMemoryMoveDownVirtualMemoryDangerPercent)
     })),
     updateLogicRefreshInterval: (key, setting) => updatePerformance((performance) =>
       assignLogicRefreshInterval(performance, key, normalizeLogicRefreshIntervalSetting(key, setting))),
@@ -457,16 +445,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         appearance: {
           ...normalizeAppSettings(currentSettings).appearance!,
           animations
-        }
-      }));
-    },
-    updateResourceBarHardwareAccelerationMode: (mode) => {
-      updateDraft((currentSettings) => ({
-        ...currentSettings,
-        appearance: {
-          ...normalizeAppSettings(currentSettings).appearance!,
-          resourceBarHardwareAccelerationMode: normalizeAdaptiveBooleanMode(mode),
-          resourceBarHardwareAccelerationEnabled: resolveAdaptiveBooleanMode(mode, true)
         }
       }));
     },
@@ -617,12 +595,9 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.26",
+    version: "1.0.27",
     performance: {
-      smartMonitoringEnabled: true,
-      monitoringIdleSeconds: 5,
       optimizationMode: "normal",
-      pauseFrontendRefreshWhenHiddenInNormalMode: true,
       preciseGpuPlacementEnabled: false,
       vramMoveDownPhysicalMemoryDangerPercent: 10,
       physicalMemoryMoveDownVirtualMemoryDangerPercent: 12,
@@ -631,21 +606,15 @@ export function defaultAppSettings(): AppSettings {
       physicalMemoryOptimizationTargetUsagePercent: 70,
       virtualMemoryOptimizationTargetUsagePercent: 70,
       gpuPerformanceUseCases: ["general"],
-      smartMonitoringMode: "auto",
-      frontendHiddenRefreshMode: "auto",
+      smartMonitoringMode: "enabled",
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
-      managementRefreshIntervalMs: defaultLogicRefreshIntervalSetting("management"),
-      discoveryRefreshIntervalMs: defaultLogicRefreshIntervalSetting("discovery"),
-      optimizationRefreshIntervalMs: defaultLogicRefreshIntervalSetting("optimization"),
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
     },
     appearance: {
       uiStyle: "standard",
       theme: "system",
       animations: "auto",
-      resourceBarHardwareAccelerationEnabled: true,
-      resourceBarHardwareAccelerationMode: "auto",
       resourceBarFrameRateMode: "display",
       resourceBarFrameRate: resourceBarFrameRateDefault,
       barColorMode: "type",
@@ -682,12 +651,10 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.26",
+    version: "1.0.27",
+    // 只列出当前模型里的字段：旧文件里已删除的键（旧布尔副本、隐藏时刷新、三项无读取方的刷新频率等）在这里自然丢弃。
     performance: {
-      smartMonitoringEnabled: settings?.performance?.smartMonitoringEnabled ?? defaults.performance!.smartMonitoringEnabled,
-      monitoringIdleSeconds: 5,
       optimizationMode: normalizeOptimizationMode(settings?.performance?.optimizationMode),
-      pauseFrontendRefreshWhenHiddenInNormalMode: settings?.performance?.pauseFrontendRefreshWhenHiddenInNormalMode ?? defaults.performance!.pauseFrontendRefreshWhenHiddenInNormalMode,
       preciseGpuPlacementEnabled: settings?.performance?.preciseGpuPlacementEnabled ?? defaults.performance!.preciseGpuPlacementEnabled,
       vramMoveDownPhysicalMemoryDangerPercent: normalizeDangerPercent(settings?.performance?.vramMoveDownPhysicalMemoryDangerPercent, defaults.performance!.vramMoveDownPhysicalMemoryDangerPercent),
       physicalMemoryMoveDownVirtualMemoryDangerPercent: normalizeDangerPercent(settings?.performance?.physicalMemoryMoveDownVirtualMemoryDangerPercent, defaults.performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent),
@@ -697,12 +664,8 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
       gpuPerformanceUseCases: normalizeGpuPerformanceUseCases(settings?.performance?.gpuPerformanceUseCases),
       smartMonitoringMode: normalizeAdaptiveBooleanMode(settings?.performance?.smartMonitoringMode),
-      frontendHiddenRefreshMode: normalizeFrontendHiddenRefreshMode(settings?.performance?.frontendHiddenRefreshMode),
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),
-      managementRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("management", settings?.performance?.managementRefreshIntervalMs),
-      discoveryRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("discovery", settings?.performance?.discoveryRefreshIntervalMs),
-      optimizationRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("optimization", settings?.performance?.optimizationRefreshIntervalMs),
       localSystemRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("localSystem", settings?.performance?.localSystemRefreshIntervalMs)
     },
     appearance: normalizeAppearanceSettings(settings?.appearance),
@@ -844,12 +807,6 @@ function assignLogicRefreshInterval(
       return { ...performance, monitorRefreshIntervalMs: setting };
     case "resourceTable":
       return { ...performance, resourceTableRefreshIntervalMs: setting };
-    case "management":
-      return { ...performance, managementRefreshIntervalMs: setting };
-    case "discovery":
-      return { ...performance, discoveryRefreshIntervalMs: setting };
-    case "optimization":
-      return { ...performance, optimizationRefreshIntervalMs: setting };
     case "localSystem":
       return { ...performance, localSystemRefreshIntervalMs: setting };
   }
@@ -874,37 +831,9 @@ export function normalizeAnimationMode(animations?: string | null): AppAnimation
   return "normal";
 }
 
-export function normalizeResourceBarHardwareAcceleration(enabled?: boolean | null) {
-  return enabled !== false;
-}
-
+// 只有显式 disabled 是关；旧值 auto、缺省和认不出的值都读成开（与后端归一化一致）。
 export function normalizeAdaptiveBooleanMode(mode?: string | null): AppAdaptiveBooleanMode {
-  if (mode === "enabled" || mode === "disabled") {
-    return mode;
-  }
-
-  return "auto";
-}
-
-export function resolveAdaptiveBooleanMode(mode?: string | null, autoEnabled = true) {
-  const normalized = normalizeAdaptiveBooleanMode(mode);
-  if (normalized === "enabled") {
-    return true;
-  }
-
-  if (normalized === "disabled") {
-    return false;
-  }
-
-  return autoEnabled;
-}
-
-export function normalizeFrontendHiddenRefreshMode(mode?: string | null): AppFrontendHiddenRefreshMode {
-  if (mode === "pauseWhenHidden" || mode === "continueWhenHidden") {
-    return mode;
-  }
-
-  return "auto";
+  return mode === "disabled" ? "disabled" : "enabled";
 }
 
 export function resolveEffectiveAnimationMode(
@@ -918,23 +847,6 @@ export function resolveEffectiveAnimationMode(
   }
 
   return selfGpuGrade === "optimize" && !frontendFocused ? "ultra" : "normal";
-}
-
-export function resolveEffectiveResourceBarHardwareAcceleration(
-  mode?: string | null,
-  selfGpuGrade?: ResourceManagerSelfGpuGrade | null,
-  frontendFocused = true
-) {
-  const normalized = normalizeAdaptiveBooleanMode(mode);
-  if (normalized === "enabled") {
-    return true;
-  }
-
-  if (normalized === "disabled") {
-    return false;
-  }
-
-  return !(selfGpuGrade === "optimize" && !frontendFocused);
 }
 
 export function normalizeBarColorMode(barColorMode?: string | null): AppBarColorMode {
@@ -987,10 +899,6 @@ function normalizeAppearanceSettings(
   return {
     ...normalizeUiAppearance(settings?.uiStyle, settings?.theme),
     animations: normalizeAnimationMode(settings?.animations),
-    resourceBarHardwareAccelerationEnabled: normalizeResourceBarHardwareAcceleration(
-      settings?.resourceBarHardwareAccelerationEnabled),
-    resourceBarHardwareAccelerationMode: normalizeAdaptiveBooleanMode(
-      settings?.resourceBarHardwareAccelerationMode),
     resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(settings?.resourceBarFrameRateMode),
     resourceBarFrameRate: normalizeResourceBarFrameRate(settings?.resourceBarFrameRate),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),

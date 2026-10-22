@@ -1,7 +1,6 @@
 import {
   resolveEffectiveAnimationMode,
-  resolveEffectiveFontSmoothing,
-  resolveEffectiveResourceBarHardwareAcceleration
+  resolveEffectiveFontSmoothing
 } from "../../stores/settingsStore";
 import type {
   AppAnimationMode,
@@ -13,7 +12,6 @@ import type {
 export interface ResourceManagerSelfGpuRuntimePlan {
   animations: Exclude<AppAnimationMode, "auto">;
   fontSmoothing: Exclude<AppFontSmoothing, "auto">;
-  resourceBarHardwareAcceleration: boolean;
 }
 
 export function resolveSelfGpuRuntimePlan(
@@ -27,10 +25,6 @@ export function resolveSelfGpuRuntimePlan(
     foregroundInteractive);
   return {
     animations,
-    fontSmoothing: resolveEffectiveFontSmoothing(appearance?.fontSmoothing, animations),
-    resourceBarHardwareAcceleration: resolveEffectiveResourceBarHardwareAcceleration(
-      appearance?.resourceBarHardwareAccelerationMode,
-      gpuGrade,
-      foregroundInteractive)
+    fontSmoothing: resolveEffectiveFontSmoothing(appearance?.fontSmoothing, animations)
   };
 }

@@ -6,15 +6,11 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.26";
-    public const int MonitoringIdleSeconds = 5;
+    public const string CurrentVersion = "1.0.27";
     public const int MinLogicRefreshIntervalMs = 500;
     public const int MaxLogicRefreshIntervalMs = 300_000;
     public const int MonitorRefreshResponsiveIntervalMs = 1_000;
     public const int ResourceTableRefreshResponsiveIntervalMs = 1_000;
-    public const int ManagementRefreshBalancedIntervalMs = 10_000;
-    public const int DiscoveryRefreshResponsiveIntervalMs = 3_000;
-    public const int OptimizationRefreshBalancedIntervalMs = 10_000;
     public const int LocalSystemRefreshBalancedIntervalMs = 60_000;
     public const byte VramMoveDownPhysicalMemoryDangerPercent = 10;
     public const byte PhysicalMemoryMoveDownVirtualMemoryDangerPercent = 12;
@@ -34,11 +30,8 @@ public static class AppSettingsDefaults
         return new AppSettings(
             CurrentVersion,
             new AppPerformanceSettings(
-                SmartMonitoringEnabled: true,
-                MonitoringIdleSeconds: MonitoringIdleSeconds,
                 OptimizationMode: AppOptimizationModes.Normal,
-                PauseFrontendRefreshWhenHiddenInNormalMode: true,
-                PreciseGpuPlacementEnabled: true,
+                PreciseGpuPlacementEnabled: false,
                 VramMoveDownPhysicalMemoryDangerPercent: VramMoveDownPhysicalMemoryDangerPercent,
                 PhysicalMemoryMoveDownVirtualMemoryDangerPercent: PhysicalMemoryMoveDownVirtualMemoryDangerPercent,
                 PhysicalMemoryAutomaticCleanupPercent: PhysicalMemoryAutomaticCleanupPercent,
@@ -46,23 +39,13 @@ public static class AppSettingsDefaults
                 PhysicalMemoryOptimizationTargetUsagePercent: PhysicalMemoryOptimizationTargetUsagePercent,
                 VirtualMemoryOptimizationTargetUsagePercent: VirtualMemoryOptimizationTargetUsagePercent,
                 GpuPerformanceUseCases: [AppGpuPerformanceUseCases.General],
-                SmartMonitoringMode: AppAdaptiveBooleanModes.Auto,
-                FrontendHiddenRefreshMode: AppFrontendHiddenRefreshModes.Auto,
+                SmartMonitoringMode: AppAdaptiveBooleanModes.Enabled,
                 MonitorRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
                     AppLogicRefreshIntervalPresets.Responsive,
                     MonitorRefreshResponsiveIntervalMs),
                 ResourceTableRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
                     AppLogicRefreshIntervalPresets.Responsive,
                     ResourceTableRefreshResponsiveIntervalMs),
-                ManagementRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Balanced,
-                    ManagementRefreshBalancedIntervalMs),
-                DiscoveryRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Responsive,
-                    DiscoveryRefreshResponsiveIntervalMs),
-                OptimizationRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Balanced,
-                    OptimizationRefreshBalancedIntervalMs),
                 LocalSystemRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
                     AppLogicRefreshIntervalPresets.Balanced,
                     LocalSystemRefreshBalancedIntervalMs)),
@@ -70,8 +53,6 @@ public static class AppSettingsDefaults
                 defaultAppearance.UiStyle,
                 defaultAppearance.Theme,
                 AppAnimationModes.Auto,
-                true,
-                AppAdaptiveBooleanModes.Auto,
                 AppResourceBarFrameRateModes.Display,
                 ResourceBarFrameRate,
                 AppBarColorModes.Type,

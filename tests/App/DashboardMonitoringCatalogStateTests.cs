@@ -20,19 +20,25 @@ public sealed partial class DashboardMonitoringCatalogStateTests
         var changed = 0;
         state.Changed += () => changed++;
 
+        var initialRevision = state.Revision;
+        Assert.NotEqual(initialRevision, new DashboardMonitoringCatalogState().Revision);
         var first = CreateSnapshot(1, "gpu-dedicated", "gpu.0.usage");
         state.PublishCatalogProbe(first);
+        var firstRevision = state.Revision;
+        Assert.NotEqual(initialRevision, firstRevision);
         state.PublishCatalogProbe(first with
         {
             CapturedAt = first.CapturedAt.AddSeconds(1),
             CommittedGeneration = first.CommittedGeneration + 1
         });
 
+        Assert.Equal(firstRevision, state.Revision);
         Assert.Equal(1, changed);
         Assert.Equal(first.CommittedGeneration + 1, state.Current?.CommittedGeneration);
 
         state.PublishCatalogProbe(CreateSnapshot(2, "gpu-dedicated", "gpu.0.usage", "gpu.0.vram"));
         Assert.Equal(2, changed);
+        Assert.NotEqual(firstRevision, state.Revision);
     }
 
     [Fact]

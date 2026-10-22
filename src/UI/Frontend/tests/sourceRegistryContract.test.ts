@@ -113,4 +113,5 @@ assert.match(app, /source:\s*frontendRuntime\.sources\.appSettings/);
 assert.doesNotMatch(scheduler, /refreshSettings:\s*\(\)\s*=>\s*settings\.refresh/);
 assert.doesNotMatch(optimizationStore, /refreshSettings|getCurrentOptimizationMode/);
 assert.doesNotMatch(app, /getCurrentOptimizationMode|refreshSettings:\s*settings\.refresh/);
-assert.match(app, /optimizationMode:\s*optimization\.optimizationMode/);
+// 隐藏即暂停后，刷新调度不再看优化模式；优化模式只由优化存储持有，App 也不再转交给调度器。
+assert.doesNotMatch(scheduler, /optimizationMode/);

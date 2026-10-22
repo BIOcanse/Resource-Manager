@@ -166,7 +166,7 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     assert(await autoStart.isChecked() === enabled, `Autostart ${enabled} did not survive reload`);
   }
   await page.getByRole("button", { name: "外观", exact: true }).click();
-  for (const name of ["动画效果", "资源条硬件加速", "资源条动画帧率", "读数来源", "文字平滑"]) {
+  for (const name of ["动画效果", "资源条动画帧率", "读数来源", "文字平滑"]) {
     assert(await page.getByRole("radiogroup", { name }).isVisible(),
       `${name} has a persisted setting but no usable control`);
   }
@@ -183,8 +183,6 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   await frameRateInput.press("Enter");
   await page.getByRole("radiogroup", { name: "动画效果" })
     .getByRole("radio", { name: "无动画" }).click();
-  await page.getByRole("radiogroup", { name: "资源条硬件加速" })
-    .getByRole("radio", { name: "始终关闭" }).click();
   await page.getByRole("radiogroup", { name: "文字平滑" })
     .getByRole("radio", { name: "灰度平滑" }).click();
   const appearanceSave = page.waitForResponse((response) => response.request().method() === "PATCH"
@@ -193,7 +191,6 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   await appearanceSave;
   const appearancePatch = settingsPatchBodies.at(-1)?.changes?.appearance;
   assert(appearancePatch?.animations === "none"
-    && appearancePatch?.resourceBarHardwareAccelerationMode === "disabled"
     && appearancePatch?.resourceBarFrameRateMode === "custom"
     && appearancePatch?.resourceBarFrameRate === 90
     && appearancePatch?.fontSmoothing === "grayscale",

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using ResourceManager.App.Domain.Settings;
 
 namespace ResourceManager.App.Application.Settings;
@@ -57,10 +57,7 @@ public static class AppSettingsMigrator
         var settings = new AppSettings(
             AppSettingsDefaults.CurrentVersion,
             new AppPerformanceSettings(
-                ReadBoolean(root, "performance", "smartMonitoringEnabled", defaults.Performance.SmartMonitoringEnabled),
-                defaults.Performance.MonitoringIdleSeconds,
                 ReadString(root, "performance", "optimizationMode", defaults.Performance.OptimizationMode),
-                ReadBoolean(root, "performance", "pauseFrontendRefreshWhenHiddenInNormalMode", defaults.Performance.PauseFrontendRefreshWhenHiddenInNormalMode),
                 ReadBoolean(root, "performance", "preciseGpuPlacementEnabled", defaults.Performance.PreciseGpuPlacementEnabled),
                 ReadByte(root, "performance", "vramMoveDownPhysicalMemoryDangerPercent", defaults.Performance.VramMoveDownPhysicalMemoryDangerPercent),
                 ReadByte(root, "performance", "physicalMemoryMoveDownVirtualMemoryDangerPercent", defaults.Performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent),
@@ -70,7 +67,6 @@ public static class AppSettingsMigrator
                 ReadByte(root, "performance", "virtualMemoryOptimizationTargetUsagePercent", defaults.Performance.VirtualMemoryOptimizationTargetUsagePercent),
                 ReadGpuPerformanceUseCases(root, defaults.Performance.GpuPerformanceUseCases),
                 ReadString(root, "performance", "smartMonitoringMode", defaults.Performance.SmartMonitoringMode),
-                ReadString(root, "performance", "frontendHiddenRefreshMode", defaults.Performance.FrontendHiddenRefreshMode),
                 ReadLogicRefreshInterval(
                     root,
                     "monitorRefreshIntervalMs",
@@ -81,26 +77,12 @@ public static class AppSettingsMigrator
                     defaults.Performance.ResourceTableRefreshIntervalMs),
                 ReadLogicRefreshInterval(
                     root,
-                    "managementRefreshIntervalMs",
-                    defaults.Performance.ManagementRefreshIntervalMs),
-                ReadLogicRefreshInterval(
-                    root,
-                    "discoveryRefreshIntervalMs",
-                    defaults.Performance.DiscoveryRefreshIntervalMs),
-                ReadLogicRefreshInterval(
-                    root,
-                    "optimizationRefreshIntervalMs",
-                    defaults.Performance.OptimizationRefreshIntervalMs),
-                ReadLogicRefreshInterval(
-                    root,
                     "localSystemRefreshIntervalMs",
                     defaults.Performance.LocalSystemRefreshIntervalMs)),
             new AppAppearanceSettings(
                 ReadString(root, "appearance", "uiStyle", defaults.Appearance.UiStyle),
                 ReadString(root, "appearance", "theme", defaults.Appearance.Theme),
                 ReadString(root, "appearance", "animations", defaults.Appearance.Animations),
-                ReadBoolean(root, "appearance", "resourceBarHardwareAccelerationEnabled", defaults.Appearance.ResourceBarHardwareAccelerationEnabled),
-                ReadString(root, "appearance", "resourceBarHardwareAccelerationMode", defaults.Appearance.ResourceBarHardwareAccelerationMode),
                 ReadString(root, "appearance", "resourceBarFrameRateMode", defaults.Appearance.ResourceBarFrameRateMode),
                 ReadInt32(root, "appearance", "resourceBarFrameRate", defaults.Appearance.ResourceBarFrameRate),
                 ReadString(root, "appearance", "barColorMode", defaults.Appearance.BarColorMode),
@@ -141,8 +123,8 @@ public static class AppSettingsMigrator
             || appearance.ValueKind != JsonValueKind.Object
             || !appearance.TryGetProperty("uiStyle", out _)
             || !appearance.TryGetProperty("animations", out _)
-            || !appearance.TryGetProperty("resourceBarHardwareAccelerationEnabled", out _)
-            || !appearance.TryGetProperty("resourceBarHardwareAccelerationMode", out var resourceBarHardwareAccelerationMode)
+            || appearance.TryGetProperty("resourceBarHardwareAccelerationEnabled", out _)
+            || appearance.TryGetProperty("resourceBarHardwareAccelerationMode", out _)
             || !appearance.TryGetProperty("resourceBarFrameRateMode", out _)
             || !appearance.TryGetProperty("resourceBarFrameRate", out _)
             || !appearance.TryGetProperty("barColorMode", out _)
@@ -180,22 +162,22 @@ public static class AppSettingsMigrator
             return true;
         }
 
-        if (!performance.TryGetProperty("smartMonitoringEnabled", out _)
-            || !performance.TryGetProperty("monitoringIdleSeconds", out _)
+        if (performance.TryGetProperty("smartMonitoringEnabled", out _)
+            || performance.TryGetProperty("monitoringIdleSeconds", out _)
             || !performance.TryGetProperty("optimizationMode", out var optimizationMode)
-            || !performance.TryGetProperty("pauseFrontendRefreshWhenHiddenInNormalMode", out _)
+            || performance.TryGetProperty("pauseFrontendRefreshWhenHiddenInNormalMode", out _)
             || !performance.TryGetProperty("preciseGpuPlacementEnabled", out _)
             || performance.TryGetProperty("samplingDispatchMode", out _)
             || !performance.TryGetProperty("vramMoveDownPhysicalMemoryDangerPercent", out var physicalMemoryDangerPercent)
             || !performance.TryGetProperty("physicalMemoryMoveDownVirtualMemoryDangerPercent", out var virtualMemoryDangerPercent)
             || !performance.TryGetProperty("gpuPerformanceUseCases", out var gpuPerformanceUseCases)
             || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
-            || !performance.TryGetProperty("frontendHiddenRefreshMode", out var frontendHiddenRefreshMode)
+            || performance.TryGetProperty("frontendHiddenRefreshMode", out _)
             || !performance.TryGetProperty("monitorRefreshIntervalMs", out var monitorRefreshIntervalMs)
             || !performance.TryGetProperty("resourceTableRefreshIntervalMs", out var resourceTableRefreshIntervalMs)
-            || !performance.TryGetProperty("managementRefreshIntervalMs", out var managementRefreshIntervalMs)
-            || !performance.TryGetProperty("discoveryRefreshIntervalMs", out var discoveryRefreshIntervalMs)
-            || !performance.TryGetProperty("optimizationRefreshIntervalMs", out var optimizationRefreshIntervalMs)
+            || performance.TryGetProperty("managementRefreshIntervalMs", out _)
+            || performance.TryGetProperty("discoveryRefreshIntervalMs", out _)
+            || performance.TryGetProperty("optimizationRefreshIntervalMs", out _)
             || !performance.TryGetProperty("localSystemRefreshIntervalMs", out var localSystemRefreshIntervalMs))
         {
             return true;
@@ -220,13 +202,8 @@ public static class AppSettingsMigrator
             || !IsSupportedDangerPercent(virtualMemoryDangerPercent)
             || !IsSupportedGpuPerformanceUseCases(gpuPerformanceUseCases)
             || !IsSupportedAdaptiveBooleanMode(smartMonitoringMode)
-            || !IsSupportedAdaptiveBooleanMode(resourceBarHardwareAccelerationMode)
-            || !IsSupportedFrontendHiddenRefreshMode(frontendHiddenRefreshMode)
             || !IsSupportedLogicRefreshInterval(monitorRefreshIntervalMs)
             || !IsSupportedLogicRefreshInterval(resourceTableRefreshIntervalMs)
-            || !IsSupportedLogicRefreshInterval(managementRefreshIntervalMs)
-            || !IsSupportedLogicRefreshInterval(discoveryRefreshIntervalMs)
-            || !IsSupportedLogicRefreshInterval(optimizationRefreshIntervalMs)
             || !IsSupportedLogicRefreshInterval(localSystemRefreshIntervalMs)
             || !IsBoolean(debugModeEnabled)
             || !IsBoolean(debugLogEnabled)
@@ -266,21 +243,8 @@ public static class AppSettingsMigrator
             return false;
         }
 
-        return value.GetString() is AppAdaptiveBooleanModes.Auto
-            or AppAdaptiveBooleanModes.Enabled
+        return value.GetString() is AppAdaptiveBooleanModes.Enabled
             or AppAdaptiveBooleanModes.Disabled;
-    }
-
-    private static bool IsSupportedFrontendHiddenRefreshMode(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        return value.GetString() is AppFrontendHiddenRefreshModes.Auto
-            or AppFrontendHiddenRefreshModes.PauseWhenHidden
-            or AppFrontendHiddenRefreshModes.ContinueWhenHidden;
     }
 
     private static bool IsSupportedLogicRefreshInterval(JsonElement value)

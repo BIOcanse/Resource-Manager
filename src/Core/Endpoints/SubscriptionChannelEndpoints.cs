@@ -357,6 +357,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ? MetricSampleRequest.ForIds(ids)
             : services.GetRequiredService<IRuntimePlanProvider>().Current.Monitoring.DashboardMetricRequest;
         var source = services.GetRequiredService<IMetricSnapshotPushSource>();
+        var catalogState = services.GetRequiredService<DashboardMonitoringCatalogState>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             if (useFields && snapshotRequest.IsEmpty)
@@ -375,7 +376,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     subscription.Id,
                     useFields
                         ? (object)ReadMetricFields(snapshot, device, fields, services)
-                        : MetricSnapshotWireSnapshot.From(presentation, snapshotRequest),
+                        : MetricSnapshotWireSnapshot.From(presentation, snapshotRequest, catalogState.Revision),
                     cancellationToken);
             }
         });

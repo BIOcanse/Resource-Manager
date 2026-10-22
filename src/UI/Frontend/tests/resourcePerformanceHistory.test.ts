@@ -59,6 +59,7 @@ function snapshot(
   return {
     version: 4 as const,
     capturedAt,
+    catalogRevision: "catalog-a",
     items: { "cpu.usage": { numericValue, displayValue } }
   };
 }

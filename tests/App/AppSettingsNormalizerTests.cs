@@ -12,7 +12,7 @@ public sealed class AppSettingsNormalizerTests
         {
             Performance = null!, PublicService = null!, AiModelService = null!, SystemIntegration = null!
         });
-        Assert.True(settings.Performance.PreciseGpuPlacementEnabled);
+        Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
         Assert.False(settings.PublicService.Enabled);
         Assert.False(settings.PublicService.FileIndexEnabled);
         Assert.False(settings.PublicService.DatabaseServiceEnabled);

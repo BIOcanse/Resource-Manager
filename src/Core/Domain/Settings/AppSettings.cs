@@ -12,7 +12,6 @@ public static class AppAnimationModes
 
 public static class AppAdaptiveBooleanModes
 {
-    public const string Auto = "auto";
     public const string Enabled = "enabled";
     public const string Disabled = "disabled";
 }
@@ -22,13 +21,6 @@ public static class AppResourceBarFrameRateModes
 {
     public const string Display = "display";
     public const string Custom = "custom";
-}
-
-public static class AppFrontendHiddenRefreshModes
-{
-    public const string Auto = "auto";
-    public const string PauseWhenHidden = "pauseWhenHidden";
-    public const string ContinueWhenHidden = "continueWhenHidden";
 }
 
 public static class AppPresetNumericSettingModes
@@ -204,10 +196,7 @@ public sealed record AppPresetNumericSetting(
     int CustomValue);
 
 public sealed record AppPerformanceSettings(
-    bool SmartMonitoringEnabled,
-    int MonitoringIdleSeconds,
     string OptimizationMode,
-    bool PauseFrontendRefreshWhenHiddenInNormalMode,
     bool PreciseGpuPlacementEnabled,
     byte VramMoveDownPhysicalMemoryDangerPercent,
     byte PhysicalMemoryMoveDownVirtualMemoryDangerPercent,
@@ -217,12 +206,8 @@ public sealed record AppPerformanceSettings(
     byte VirtualMemoryOptimizationTargetUsagePercent,
     IReadOnlyList<string> GpuPerformanceUseCases,
     string SmartMonitoringMode,
-    string FrontendHiddenRefreshMode,
     AppPresetNumericSetting MonitorRefreshIntervalMs,
     AppPresetNumericSetting ResourceTableRefreshIntervalMs,
-    AppPresetNumericSetting ManagementRefreshIntervalMs,
-    AppPresetNumericSetting DiscoveryRefreshIntervalMs,
-    AppPresetNumericSetting OptimizationRefreshIntervalMs,
     AppPresetNumericSetting LocalSystemRefreshIntervalMs);
 
 // UiStyle 是界面风格，Theme 是该风格下的配色；合法组合见 src/Shared/Appearance/ui-styles.json。
@@ -230,8 +215,6 @@ public sealed record AppAppearanceSettings(
     string UiStyle,
     string Theme,
     string Animations,
-    bool ResourceBarHardwareAccelerationEnabled,
-    string ResourceBarHardwareAccelerationMode,
     // 见 AppResourceBarFrameRateModes；ResourceBarFrameRate 是 custom 时的帧/秒，
     // 范围 AppSettingsDefaults.MinResourceBarFrameRate–MaxResourceBarFrameRate，display 时保留不用。
     string ResourceBarFrameRateMode,

@@ -1,4 +1,4 @@
-﻿using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Units;
 using ResourceManager.Shared.Appearance;
 
@@ -27,10 +27,7 @@ public static class AppSettingsNormalizer
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)
     {
         return new AppPerformanceSettings(
-            performance?.SmartMonitoringEnabled ?? true,
-            AppSettingsDefaults.MonitoringIdleSeconds,
             NormalizeOptimizationMode(performance?.OptimizationMode),
-            performance?.PauseFrontendRefreshWhenHiddenInNormalMode ?? true,
             performance?.PreciseGpuPlacementEnabled ?? AppSettingsDefaults.Create().Performance.PreciseGpuPlacementEnabled,
             NormalizeDangerPercent(performance?.VramMoveDownPhysicalMemoryDangerPercent, AppSettingsDefaults.VramMoveDownPhysicalMemoryDangerPercent),
             NormalizeDangerPercent(performance?.PhysicalMemoryMoveDownVirtualMemoryDangerPercent, AppSettingsDefaults.PhysicalMemoryMoveDownVirtualMemoryDangerPercent),
@@ -40,7 +37,6 @@ public static class AppSettingsNormalizer
             NormalizeTargetUsagePercent(performance?.VirtualMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.VirtualMemoryOptimizationTargetUsagePercent),
             NormalizeGpuPerformanceUseCases(performance?.GpuPerformanceUseCases),
             NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
-            NormalizeFrontendHiddenRefreshMode(performance?.FrontendHiddenRefreshMode),
             NormalizeLogicRefreshInterval(
                 performance?.MonitorRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Responsive,
@@ -49,18 +45,6 @@ public static class AppSettingsNormalizer
                 performance?.ResourceTableRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Responsive,
                 AppSettingsDefaults.ResourceTableRefreshResponsiveIntervalMs),
-            NormalizeLogicRefreshInterval(
-                performance?.ManagementRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Balanced,
-                AppSettingsDefaults.ManagementRefreshBalancedIntervalMs),
-            NormalizeLogicRefreshInterval(
-                performance?.DiscoveryRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Responsive,
-                AppSettingsDefaults.DiscoveryRefreshResponsiveIntervalMs),
-            NormalizeLogicRefreshInterval(
-                performance?.OptimizationRefreshIntervalMs,
-                AppLogicRefreshIntervalPresets.Balanced,
-                AppSettingsDefaults.OptimizationRefreshBalancedIntervalMs),
             NormalizeLogicRefreshInterval(
                 performance?.LocalSystemRefreshIntervalMs,
                 AppLogicRefreshIntervalPresets.Balanced,
@@ -74,8 +58,6 @@ public static class AppSettingsNormalizer
             choice.UiStyle,
             choice.Theme,
             NormalizeAnimations(appearance?.Animations),
-            appearance?.ResourceBarHardwareAccelerationEnabled ?? true,
-            NormalizeAdaptiveBooleanMode(appearance?.ResourceBarHardwareAccelerationMode),
             NormalizeResourceBarFrameRateMode(appearance?.ResourceBarFrameRateMode),
             NormalizeResourceBarFrameRate(appearance?.ResourceBarFrameRate),
             NormalizeBarColorMode(appearance?.BarColorMode),
@@ -224,17 +206,7 @@ public static class AppSettingsNormalizer
         {
             AppAdaptiveBooleanModes.Enabled => AppAdaptiveBooleanModes.Enabled,
             AppAdaptiveBooleanModes.Disabled => AppAdaptiveBooleanModes.Disabled,
-            _ => AppAdaptiveBooleanModes.Auto
-        };
-    }
-
-    public static string NormalizeFrontendHiddenRefreshMode(string? mode)
-    {
-        return mode switch
-        {
-            AppFrontendHiddenRefreshModes.PauseWhenHidden => AppFrontendHiddenRefreshModes.PauseWhenHidden,
-            AppFrontendHiddenRefreshModes.ContinueWhenHidden => AppFrontendHiddenRefreshModes.ContinueWhenHidden,
-            _ => AppFrontendHiddenRefreshModes.Auto
+            _ => AppAdaptiveBooleanModes.Enabled
         };
     }
 

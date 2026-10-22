@@ -11,7 +11,7 @@ import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/res
 import { deviceFieldScopeKind, fieldCardSlot } from "../features/monitor/fieldCards.ts";
 import { textOrEmpty } from "../utils";
 
-export const dashboardSettingsVersion = 15;
+export const dashboardSettingsVersion = 16;
 
 /** 一张卡片最多几个小指标。前端各处只读这一个数；后端 normalizer 的上限需与它一致。 */
 export const dashboardSmallMetricLimit = 6;

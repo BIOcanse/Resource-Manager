@@ -77,22 +77,15 @@ export default createSettingsLocale("de-DE", {
   },
   "performance": {
     "smartMonitoringTitle": "Überwachung nach Bedarf",
-    "smartMonitoringDescription": (seconds: number) => `Überwacht nur bei Bedarf und stoppt nach ${seconds} Sekunden ohne Nutzung.`,
+    "smartMonitoringDescription": "Ein: Nur Messwerte, die die Oberfläche gerade anzeigt oder abonniert hat, werden erfasst. Aus: Alle Messwerte des Katalogs werden erfasst, was mehr Last verursacht.",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "Automatisch",
-        "description": "Automatisch anhand des aktuellen Leistungsmodus auswählen."
-      },
-      {
         "id": "enabled",
-        "label": "Immer ein",
-        "description": "Diese Einstellung immer aktivieren."
+        "label": "Ein"
       },
       {
         "id": "disabled",
-        "label": "Immer aus",
-        "description": "Diese Einstellung immer deaktivieren."
+        "label": "Aus"
       }
     ],
     "gpuPerformanceUseCasesTitle": "GPU-Einsatzzwecke",
@@ -117,25 +110,10 @@ export default createSettingsLocale("de-DE", {
     "memoryOptimizationTargetDescription": "Bei Überschreitung des Ziels wird die langsame Freigabe der ersten Stufe fortgesetzt, ohne Notfallbereinigung auszulösen.",
     "physicalMemoryOptimizationTargetLabel": "Zielauslastung des physischen Speichers %",
     "virtualMemoryOptimizationTargetLabel": "Zielauslastung der Commit-Kapazität %",
-    "pauseHiddenTitle": "Aktualisieren bei ausgeblendetem Fenster",
-    "pauseHiddenDescription": "Im normalen Modus können Aktualisierungen bei verborgenem Fenster pausieren und beim Einblenden sofort fortgesetzt werden.",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automatisch",
-        "description": "Automatisch anhand des aktuellen Leistungsmodus entscheiden."
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "Bei ausgeblendetem Fenster pausieren",
-        "description": "Oberflächenaktualisierungen bei ausgeblendetem Fenster pausieren."
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "Weiter aktualisieren",
-        "description": "Oberflächenaktualisierungen auch bei ausgeblendetem Fenster fortsetzen."
-      }
-    ],
+    "moveDownDangerTitle": "Gefahrenschwellen beim Auslagern",
+    "moveDownDangerDescription": "Bevor die Planung Daten aus dem VRAM in den physischen Speicher oder aus dem physischen in den virtuellen Speicher auslagert, schätzt sie den danach freien Anteil. Liegt er unter diesen Werten, wird das Auslagern für diese Software übersprungen, damit die nächste Ebene nicht überlastet wird.",
+    "vramMoveDownPhysicalMemoryDangerLabel": "Aus VRAM: freier physischer Speicher %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Aus Speicher: freie Commit-Kapazität %",
     "refreshCadenceTitle": "Häufigkeit der Informationsaktualisierung",
     "refreshCadenceDescription": "Legt fest, wie schnell Messwerte und Status aktualisiert werden. Häufigere Aktualisierungen benötigen etwas mehr Ressourcen.",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("de-DE", {
         "label": "Ressourcentabelle",
         "description": "Aktualisiert die Ressourcenliste für Software und Prozesse."
       },
-      "management": {
-        "label": "Komponenten und Software",
-        "description": "Aktualisiert Komponentenstatus, Softwarelisten und Vorgangsfortschritt."
-      },
-      "discovery": {
-        "label": "Software-Migration",
-        "description": "Aktualisiert Migrationsfortschritt und verfügbare Inhalte."
-      },
-      "optimization": {
-        "label": "Leistungsoptimierung",
-        "description": "Aktualisiert Optimierungsberichte und Planungsstatus."
-      },
       "localSystem": {
         "label": "Lokales System",
         "description": "Aktualisiert selten wechselnde lokale Daten wie die Betriebszeit."
@@ -213,25 +179,6 @@ export default createSettingsLocale("de-DE", {
     "themeDescription": "Wählen Sie ein Farbschema des aktuellen Stils. System folgt der hellen oder dunklen Windows-Einstellung.",
     "animationTitle": "Animationen",
     "animationDescription": "Wählen Sie volle Animationen, keine Animationen oder vereinfachte Effekte für geringere Oberflächenlast.",
-    "resourceBarHardwareAccelerationTitle": "Hardwarebeschleunigung der Ressourcenleisten",
-    "resourceBarHardwareAccelerationDescription": "Nutzt die Grafikkarte für flüssigere Ressourcenleisten. Bei Darstellungsproblemen ausschalten.",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automatisch",
-        "description": "Im Vordergrund flüssig bleiben und im energiesparenden Hintergrund die Last reduzieren."
-      },
-      {
-        "id": "enabled",
-        "label": "Immer ein",
-        "description": "Für Ressourcenleisten immer Hardwarebeschleunigung verwenden."
-      },
-      {
-        "id": "disabled",
-        "label": "Immer aus",
-        "description": "Für Ressourcenleisten immer Kompatibilitätsdarstellung verwenden."
-      }
-    ],
     "resourceBarFrameRateTitle": "Bildrate der Ressourcenleisten",
     "resourceBarFrameRateDescription": "Wie viele Bilder pro Sekunde die Übergänge der Ressourcenleisten zeichnen. Bildschirm folgen nutzt die Bildwiederholrate des Monitors; Benutzerdefiniert begrenzt die Bilder und senkt die Last. Gilt nur bei normalen Animationen.",
     "resourceBarFrameRateModeOptions": [

@@ -76,20 +76,15 @@ export default createSettingsLocale("zh-TW", {
   },
   "performance": {
     "smartMonitoringTitle": "按需監控",
-    "smartMonitoringDescription": (seconds) => `只在需要顯示資料時保持對應監控；連續 ${seconds} 秒未使用後停止。`,
+    "smartMonitoringDescription": "開啟時只採樣介面正在顯示或訂閱的讀數；關閉時按讀數目錄全量採樣，開銷更大。",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "自動排程",
-        "description": "按效能模式自動選。"
-      },
-      {
         "id": "enabled",
-        "label": "始終開啟"
+        "label": "開啟"
       },
       {
         "id": "disabled",
-        "label": "始終關閉"
+        "label": "關閉"
       }
     ],
     "gpuPerformanceUseCasesTitle": "GPU 用途",
@@ -114,23 +109,10 @@ export default createSettingsLocale("zh-TW", {
     "memoryOptimizationTargetDescription": "超過目標後慢慢釋放，不做緊急清理。",
     "physicalMemoryOptimizationTargetLabel": "實體記憶體目標使用率 %",
     "virtualMemoryOptimizationTargetLabel": "提交量目標使用率 %",
-    "pauseHiddenTitle": "視窗隱藏時重新整理",
-    "pauseHiddenDescription": "普通模式下可以暫停隱藏視窗的介面更新；重新顯示後立即更新。",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "自動排程",
-        "description": "按效能模式自動決定。"
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "隱藏時暫停"
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "隱藏也重新整理"
-      }
-    ],
+    "moveDownDangerTitle": "下移危險閾值",
+    "moveDownDangerDescription": "資源排程把視訊記憶體資料移到實體記憶體、或把實體記憶體資料移到虛擬記憶體前，會先估算移動後的剩餘；低於此處的比例就放棄該軟體的這次下移，避免把壓力轉到下一層。",
+    "vramMoveDownPhysicalMemoryDangerLabel": "視訊記憶體下移：實體記憶體剩餘 %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "記憶體下移：提交額度剩餘 %",
     "refreshCadenceTitle": "資訊更新頻率",
     "refreshCadenceDescription": "越快越費資源。",
     "presetNumericModeOptions": [
@@ -183,18 +165,6 @@ export default createSettingsLocale("zh-TW", {
         "label": "資源表",
         "description": "軟體和程序列表"
       },
-      "management": {
-        "label": "元件與軟體",
-        "description": "元件狀態和操作進度"
-      },
-      "discovery": {
-        "label": "軟體遷移",
-        "description": "遷移進度和可遷移內容"
-      },
-      "optimization": {
-        "label": "效能最佳化",
-        "description": "最佳化報告和排程狀態"
-      },
       "localSystem": {
         "label": "本機狀態",
         "description": "開機時間等低頻狀態"
@@ -208,25 +178,6 @@ export default createSettingsLocale("zh-TW", {
     "themeDescription": "選擇目前風格提供的配色。跟隨系統會依 Windows 的淺色或深色設定切換。",
     "animationTitle": "動畫效果",
     "animationDescription": "選擇完整動畫、關閉動畫，或進一步簡化視覺以降低介面開銷。",
-    "resourceBarHardwareAccelerationTitle": "資源條硬體加速",
-    "resourceBarHardwareAccelerationDescription": "使用顯示卡提升資源條動畫流暢度；遇到顯示異常時可以關閉。",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "自動排程",
-        "description": "前臺流暢，後臺省開銷。"
-      },
-      {
-        "id": "enabled",
-        "label": "始終開啟",
-        "description": "資源條走硬體加速。"
-      },
-      {
-        "id": "disabled",
-        "label": "始終關閉",
-        "description": "資源條走相容渲染。"
-      }
-    ],
     "resourceBarFrameRateTitle": "資源條動畫幀率",
     "resourceBarFrameRateDescription": "資源條過渡動畫每秒繪製幾幀。跟隨螢幕依顯示器更新率繪製；自定義可限制幀數以降低開銷。只在正常動畫下生效。",
     "resourceBarFrameRateModeOptions": [
