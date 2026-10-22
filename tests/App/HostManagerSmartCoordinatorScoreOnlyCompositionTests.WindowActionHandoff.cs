@@ -106,6 +106,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(1));
         Assert.Same(preparation, CurrentWindowTask(fixture.Coordinator));
         Task<HostManagerRollbackStateDocument>? final = null;
+        Task<HostManagerRollbackStateDocument>? observation = null;
+        Task<HostManagerSmartCoordinatorStatus>? statusObservation = null;
         try
         {
             if (delayResult)
@@ -124,16 +126,46 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.False(final.IsCompleted);
             Assert.False(await SettleWindowCheckpoint(fixture.Coordinator));
             var calls = (counts.Loads, counts.Saves, counts.Reservations);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Coordinator.GetStateAsync(CancellationToken.None));
-            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Coordinator.GetStatusAsync(CancellationToken.None));
             await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeWindowCheckpoint(fixture.Coordinator, state));
             _ = await fixture.RunRealtimeCycleAsync().WaitAsync(TimeSpan.FromSeconds(1));
             Assert.True(fixture.MetricSampler.ReadLatestCalls > 0);
             Assert.NotEqual("not-attempted", fixture.Coordinator.SchedulingAuthority.UnavailableReason);
             Assert.Equal(calls, (counts.Loads, counts.Saves, counts.Reservations));
             Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+            var persistedBeforeObservation = File.ReadAllBytes(path);
+            using (var cancelRead = new CancellationTokenSource())
+            {
+                var cancelledObservation = fixture.Coordinator.GetStateAsync(cancelRead.Token);
+                Assert.False(cancelledObservation.IsCompleted);
+                cancelRead.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledObservation);
+            }
+            observation = fixture.Coordinator.GetStateAsync(CancellationToken.None);
+            statusObservation = fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+            Assert.False(observation.IsCompleted);
+            Assert.False(statusObservation.IsCompleted);
+            Assert.Equal((calls.Saves, calls.Reservations), (counts.Saves, counts.Reservations));
+            Assert.Equal(persistedBeforeObservation, File.ReadAllBytes(path));
             committer.Release();
             var saved = await final.WaitAsync(TimeSpan.FromSeconds(5));
+            var observed = await observation.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotNull(await statusObservation.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(calls.Loads + 3, counts.Loads);
+            Assert.Equal(calls.Reservations, counts.Reservations);
+            var normalizedPreparation = JsonHostManagerRollbackStateStore.NormalizeDocument(await preparation);
+            var normalizedFinal = JsonHostManagerRollbackStateStore.NormalizeDocument(saved);
+            var observedPlacements = JsonSerializer.SerializeToNode(observed.AppliedPlacements);
+            Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(observedPlacements,
+                    JsonSerializer.SerializeToNode(normalizedPreparation.AppliedPlacements))
+                || System.Text.Json.Nodes.JsonNode.DeepEquals(observedPlacements,
+                    JsonSerializer.SerializeToNode(normalizedFinal.AppliedPlacements)));
+            var persistedAfterObservation = File.ReadAllBytes(path);
+            var writesAfterCommit = (counts.Saves, counts.Reservations);
+            _ = await fixture.Coordinator.GetStateAsync(CancellationToken.None);
+            _ = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+            Assert.Equal(writesAfterCommit, (counts.Saves, counts.Reservations));
+            Assert.Equal(persistedAfterObservation, File.ReadAllBytes(path));
+            Assert.Same(final, CurrentWindowTask(fixture.Coordinator));
             Assert.Equal(result, GpuWindowActionRecord.TryRead(
                 Assert.Single(saved.AppliedPlacements[0].Records, GpuWindowActionRecord.IsActionFact), out var decoded) ? decoded.Result : null);
             await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeWindowCheckpoint(fixture.Coordinator, state));
@@ -150,6 +182,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             committer.Release();
             await preparation.WaitAsync(TimeSpan.FromSeconds(5));
             if (final is not null) await final.WaitAsync(TimeSpan.FromSeconds(5));
+            if (observation is not null) await observation.WaitAsync(TimeSpan.FromSeconds(5));
+            if (statusObservation is not null) await statusObservation.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 
