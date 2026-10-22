@@ -191,6 +191,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     frontendFocused,
     foregroundInteractive,
     selfScheduling,
+    cpuRuntimePlan,
     refreshVisiblePageData
   };
 }

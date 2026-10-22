@@ -216,6 +216,9 @@ assert.equal(
 assert.doesNotMatch(
   appSource,
   /frontendWork\.isNeeded\(frontendWorkIds\.monitor/);
+// 监控和资源表按刷新调度器算好的间隔订阅，“自动调度”才看得到本程序 CPU 档位和窗口前台状态。
+assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.monitor/);
+assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.resourceTable/);
 
 for (const relativePath of [
   "types.ts",
