@@ -14,7 +14,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
     [Fact]
-    public async Task DefaultAllCoresDoesNotReadOrWriteAnExtraProcessCpuSelector()
+    public async Task DefaultAllCoresBalancesThreadHintsWithoutRestrictingCpuSetsAndRestoresThem()
     {
         const int pid = 42_430;
         const ulong startKey = 133_900_000_000_000_030;
@@ -30,11 +30,53 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 95, DateTimeOffset.UtcNow, CpuCoreResidencyTestValues.Process(pid, startKey, ("core:0", 50)))),
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
             automaticPlacementTopology: topology);
+        var threads = new Dictionary<int, ThreadIdealProcessorPolicySnapshot>
+        {
+            [10001] = new(pid, startKey, 10001, startKey + 1, new(0, 0), 0, 15, []),
+            [10002] = new(pid, startKey, 10002, startKey + 2, new(0, 0), 0, 15, [])
+        };
+        fixture.ProcessPolicyWriter.IdealThreadsReadHandler = (actualPid, actualKey, maximum) =>
+        {
+            Assert.Equal(pid, actualPid);
+            Assert.Equal(startKey, actualKey);
+            Assert.True(maximum >= threads.Count);
+            return RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Found(threads.Values.ToArray());
+        };
         fixture.ProcessPolicyWriter.PlacementReadHandler = (_, _) =>
-            throw new InvalidOperationException("The unbounded default must not build a new CPU selector.");
+            RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(new(pid, DateTimeOffset.FromFileTime((long)startKey),
+                "fixture", @"C:\tests\fixture.exe", null, [1, 2, 3, 4], null, null));
+        fixture.ProcessPolicyWriter.IdealReadHandler = (actualPid, actualKey, threadId) =>
+        {
+            Assert.Equal(pid, actualPid);
+            Assert.Equal(startKey, actualKey);
+            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Found(threads[threadId]);
+        };
+        fixture.ProcessPolicyWriter.IdealWriteHandler = (expected, desired) =>
+        {
+            Assert.Equal(threads[expected.ThreadId], expected);
+            var record = Assert.Single(Assert.Single(fixture.StateStore.Current.AppliedPlacements).Records);
+            Assert.Equal(HostManagerAppliedRecordKinds.CpuThreadIdealProcessor, record.Kind);
+            Assert.Equal(expected.ThreadStartKey.ToString(), record.Metadata!["threadStartKey"]);
+            threads[expected.ThreadId] = expected with { IdealProcessor = desired };
+            return new(true, "recorded hint only");
+        };
         _ = await fixture.RunRealtimeCycleAsync();
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
+        Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
+        Assert.Equal(2, threads.Values.Select(static t => t.IdealProcessor).Distinct().Count());
+        Assert.All(threads.Values, static t => Assert.Equal(15UL, t.AllowedMask));
+        var workspace = ReadPrivateField<NativePlacementCoordinatorWorkspace>(fixture.Coordinator, "placementCoordinatorWorkspace")!;
+        Assert.Equal((uint)NativePlacementKind.ThreadIdealProcessor, workspace.Desired[0].PlacementKind);
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(1, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
+        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = fixture.RuntimePlan.Version + 1,
+            CompiledAt = DateTimeOffset.UtcNow, OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Normal) });
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(2, fixture.ProcessPolicyWriter.IdealProcessorWriteCalls);
+        Assert.All(threads.Values, static t => Assert.Equal(new ThreadIdealProcessor(0, 0), t.IdealProcessor));
         Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }
 
     [Theory]

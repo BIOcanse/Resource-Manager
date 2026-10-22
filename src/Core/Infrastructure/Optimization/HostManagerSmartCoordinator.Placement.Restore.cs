@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.GpuPlacement;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
-internal sealed class HostManagerPlacementRollbackExecutor(
+internal sealed partial class HostManagerPlacementRollbackExecutor(
     IProcessResourcePolicyWriter processPolicyWriter,
     IWindowsGraphicsPreferenceStore graphicsPreferenceStore,
     D3d11ProxyShimRuntime gpuShimRuntime,
@@ -15,6 +15,7 @@ internal sealed class HostManagerPlacementRollbackExecutor(
     {
         var settlement = record.Kind switch
         {
+            HostManagerAppliedRecordKinds.CpuThreadIdealProcessor => RestoreIdealProcessor(record),
             HostManagerAppliedRecordKinds.GpuPreference => RestoreGpuPreferenceRecord(record),
             HostManagerAppliedRecordKinds.GpuShimPolicy => gpuShimRuntime.RestorePolicyRecord(record),
             HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger => SettleRuntimeRebuildRecord(record),

@@ -4,6 +4,7 @@ using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
@@ -94,7 +95,9 @@ public sealed partial class HostManagerSmartCoordinator
                 gpuPlacementEnabled,
                 firstUse,
                 cpuReservationsAvailable,
-                cpuReservations);
+                cpuReservations,
+                desiredRuntime.RuntimePlan.HardwareScores,
+                desiredRuntime.HostPlan.HostRecreate.PlacementCoordinator.MaximumDesiredCount);
         }
 
         return await RunPreparedAutomaticPlacementCycleAsync(effectAdmission, state, fullDesired,
@@ -325,7 +328,9 @@ public sealed partial class HostManagerSmartCoordinator
         bool gpuPlacementEnabled,
         List<HostManagerAutomaticGpuPlacement>? firstUse = null,
         bool cpuReservationsAvailable = true,
-        HostManagerCpuReservations? cpuReservations = null)
+        HostManagerCpuReservations? cpuReservations = null,
+        CompiledHardwareScorePlan? hardwareScores = null,
+        int maximumThreadCount = 0)
     {
         var recordedState = existingPlacements;
         existingPlacements = GpuActionFacts.PlacementEffects(existingPlacements);
@@ -351,6 +356,11 @@ public sealed partial class HostManagerSmartCoordinator
                 desired.Add(item);
             }
         }
+
+        if (cpuPlacementEnabled && cpuReservationsAvailable && topology is not null)
+            desired.AddRange(CreateIdealProcessorDesired(topology, hardwareScores ?? throw new InvalidDataException("CPU preference has no captured hardware score plan."),
+                processes, plan.Cpu, existingPlacements, cpuReservations,
+                maximumThreadCount));
 
         foreach (var gpu in plan.Gpu
             .OrderByDescending(static item => item.CanonicalProcessScore)
@@ -408,6 +418,11 @@ public sealed partial class HostManagerSmartCoordinator
                     ? cpuPlacementEnabled
                         && topology is not null
                         && WantsCpuPlacement(topology, process)
+                        && (record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor
+                            ? process.Policy.CpuManualLockedPositionIds.Count == 0
+                                && process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.AllCores, StringComparison.OrdinalIgnoreCase)
+                            : process.Policy.CpuManualLockedPositionIds.Count != 0
+                                || process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase))
                         && (cpuReservations?.IsOwner(process.SoftwareId) != true || process.Policy.CpuManualLockedPositionIds.Count != 0)
                         && !process.CanonicalCpuScore.HasValue
                     : existing.ResourceKind.Equals(
@@ -620,6 +635,7 @@ public sealed partial class HostManagerSmartCoordinator
             return false;
         }
         return process.Policy.CpuManualLockedPositionIds.Count != 0
+            || process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.AllCores, StringComparison.OrdinalIgnoreCase)
             || topology.Ccds.Count > 1
                 && process.Policy.CpuMaximumOccupancyMode.Equals(
                     CpuMaximumOccupancyModes.SingleCcd,
@@ -726,6 +742,7 @@ public sealed partial class HostManagerSmartCoordinator
                     record);
                 var observation = record.Kind switch
                 {
+                    HostManagerAppliedRecordKinds.CpuThreadIdealProcessor => ObserveIdealProcessor(placement, record, receiptDigest, previousDigest),
                     HostManagerAppliedRecordKinds.CpuAffinity => ObserveCpuPlacement(
                         placement,
                         record,
@@ -1080,6 +1097,7 @@ public sealed partial class HostManagerSmartCoordinator
 
     private int WriteAutomaticPlacement(HostManagerAppliedRecord record)
     {
+        if (record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor) return WriteIdealProcessor(record);
         if (record.Kind == HostManagerAppliedRecordKinds.GpuShimPolicy)
         {
             try { return gpuShimRuntime.TryApplyPolicyRecord(record) ? 0 : 1306; }
@@ -1143,6 +1161,7 @@ public sealed partial class HostManagerSmartCoordinator
             record);
         var observation = record.Kind switch
         {
+            HostManagerAppliedRecordKinds.CpuThreadIdealProcessor => ObserveIdealProcessor(placement, record, receiptDigest, previousDigest),
             HostManagerAppliedRecordKinds.CpuAffinity => ObserveCpuPlacement(
                 placement,
                 record,

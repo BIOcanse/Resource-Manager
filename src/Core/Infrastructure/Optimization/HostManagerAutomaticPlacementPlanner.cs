@@ -48,7 +48,7 @@ internal sealed record HostManagerAutomaticPlacementPlan(
     IReadOnlyList<HostManagerAutomaticCpuPlacement> Cpu,
     IReadOnlyList<HostManagerAutomaticGpuPlacement> Gpu);
 
-internal static class HostManagerAutomaticPlacementPlanner
+internal static partial class HostManagerAutomaticPlacementPlanner
 {
     internal static HostManagerAutomaticPlacementPlan Plan(
         CpuTopologySnapshot? topology,

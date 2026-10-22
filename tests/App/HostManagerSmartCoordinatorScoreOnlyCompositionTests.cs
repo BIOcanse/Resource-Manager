@@ -6963,6 +6963,27 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal int PlacementReadCalls { get; private set; }
         internal int BatchCalls { get; private set; }
         internal int DefaultCpuSetWriteCalls { get; private set; }
+        internal int IdealProcessorWriteCalls { get; private set; }
+        internal Func<int, ulong, int, RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>>? IdealThreadsReadHandler { get; set; }
+        internal Func<int, ulong, int, RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>>? IdealReadHandler { get; set; }
+        internal Func<ThreadIdealProcessorPolicySnapshot, ThreadIdealProcessor, ProcessResourcePolicyWriteResult>? IdealWriteHandler { get; set; }
+        public RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>> ReadProcessThreadIdealProcessors(int pid, ulong key, int maximum)
+        {
+            TotalCalls++;
+            return IdealThreadsReadHandler?.Invoke(pid, key, maximum)
+                ?? RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Unavailable(50, "unsupported in this fixture");
+        }
+        public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> ReadThreadIdealProcessor(int pid, ulong key, int tid)
+        {
+            TotalCalls++;
+            return IdealReadHandler?.Invoke(pid, key, tid) ?? throw Unexpected();
+        }
+        public ProcessResourcePolicyWriteResult TrySetThreadIdealProcessor(ThreadIdealProcessorPolicySnapshot expected, ThreadIdealProcessor desired)
+        {
+            TotalCalls++;
+            IdealProcessorWriteCalls++;
+            return IdealWriteHandler?.Invoke(expected, desired) ?? throw Unexpected();
+        }
         internal IReadOnlyList<ProcessResourcePolicyBatchRequest> BatchRequests { get; private set; } = [];
         internal Func<
             IReadOnlyList<ProcessResourcePolicyBatchRequest>,
