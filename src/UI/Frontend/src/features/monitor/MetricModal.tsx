@@ -21,6 +21,7 @@ import {
 import { isComponentInstalled, textOrEmpty } from "../../utils";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
+import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
 
 interface MetricModalProps {
   open: boolean;
@@ -355,7 +356,8 @@ export function MetricModal(props: MetricModalProps) {
                             <span class="metric-option-label">
                               {localizedMetricLabel(metric.id, metric.label)}
                             </span>
-                            {/* 右侧小字：不可选时写原因，否则写单位；缺组件只留图标，提示在组标题。 */}
+                            {/* 右侧小字：不可选时写原因，否则写单位；缺组件只留图标，提示在组标题。
+                                设备字段的来源标记（首选／待确认）排在单位前面。 */}
                             <span class="metric-option-aside">
                               <Show when={dependency()?.missing && !unavailable()}>
                                 <span
@@ -367,6 +369,7 @@ export function MetricModal(props: MetricModalProps) {
                                   <PackagePlus size={13} aria-hidden="true" />
                                 </span>
                               </Show>
+                              <ReadingSourceMark mark={metric.readingSource?.mark} />
                               <Show when={unavailable()} fallback={metricUnitLabel(metric.unit)}>
                                 <span class="metric-unavailable">
                                   {userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason)}

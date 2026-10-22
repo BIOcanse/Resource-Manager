@@ -451,6 +451,12 @@ const ruRuAppCopy: AppCopy = {
     notInCatalogHint: "Этого элемента нет в каталоге метрик",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "Основной",
+      preferredHint: "Самый точный источник этого показания на этом компьютере.",
+      pending: "Уточняется",
+      pendingHint: "Какой источник этого показания на этом компьютере самый точный, ещё не подтверждено."
+    },
     deviceKind: {
       host: "Система",
       cpu: "Процессор",

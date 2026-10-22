@@ -108,6 +108,8 @@ export interface MetricDefinition {
   disabledReason?: BackendMessage | null;
   scopeKind?: string | null;
   scopeKey?: string | null;
+  /** 设备字段在当前读数来源设置下是否列进选择器、带什么标记；不是设备字段时没有。 */
+  readingSource?: ReadingSourceDisplay;
 }
 
 export interface MetricValue {
@@ -293,6 +295,18 @@ export interface HostManagerAppliedRecord {
 // binary = 一律 1024（KiB/MiB/GiB），decimal = 一律 1000（kB/MB/GB）。
 export type ByteUnitMode = "native" | "binary" | "decimal";
 
+// 读数来源怎么列：preferred = 每个读取项只列本机首选来源（默认），all = 列出所有可用来源并标出首选。
+// 后端只存和校验；筛选和标记见 presentation/readingSources.ts。
+export type AppReadingSourceMode = "preferred" | "all";
+
+// 一个设备字段在当前读数来源设置下怎么显示，由 presentation/readingSources.ts 给出。
+export interface ReadingSourceDisplay {
+  /** 当前模式下列表（选择器、设备详情）里是否列出这一来源。 */
+  readonly listed: boolean;
+  /** 来源旁的小标记：preferred = 首选，pending = 待确认；不加标记为 null。 */
+  readonly mark: "preferred" | "pending" | null;
+}
+
 export interface AppAppearanceSettings {
   uiStyle: AppUiStyle;
   // 当前风格下的配色。
@@ -307,6 +321,7 @@ export interface AppAppearanceSettings {
   fontSmoothing?: AppFontSmoothing;
   language?: AppLanguageMode;
   byteUnitMode?: ByteUnitMode;
+  readingSourceMode?: AppReadingSourceMode;
 }
 
 export interface AppSystemIntegrationSettings {

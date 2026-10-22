@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -113,6 +113,9 @@ export interface SettingsCopy {
     barColorDescription: string;
     byteUnitTitle: string;
     byteUnitDescription: string;
+    readingSourceTitle: string;
+    readingSourceDescription: string;
+    readingSourceModeOptions: Array<{ id: AppReadingSourceMode; label: string; description: string }>;
     fontSmoothingTitle: string;
     fontSmoothingDescription: string;
     languageTitle: string;

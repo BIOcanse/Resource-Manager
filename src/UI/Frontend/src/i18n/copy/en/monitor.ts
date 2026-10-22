@@ -41,6 +41,12 @@ export const enMonitorCopy: Pick<
     notInCatalogHint: "This item isn't in the metric catalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "Preferred",
+      preferredHint: "The most accurate source for this reading on this computer.",
+      pending: "Pending",
+      pendingHint: "The most accurate source for this reading on this computer has not been confirmed yet."
+    },
     deviceKind: {
       host: "System",
       cpu: "Processor",

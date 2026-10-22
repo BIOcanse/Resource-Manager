@@ -167,6 +167,26 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(store.draftSettings().appearance?.theme, "system");
       assert.equal(store.isDirty(), false);
 
+      // 读数来源：默认只列首选；改成显示所有可用来源后只 PATCH 这一项，提交后读回；认不出的值回到只列首选。
+      source.publishReady(result("6", "normal", "system"));
+      assert.equal(store.settings().appearance?.readingSourceMode, "preferred");
+      store.updateReadingSourceMode("all");
+      await store.saveDraft();
+      assert.deepEqual(requests.pop(), {
+        expectedRevision: "6",
+        changes: { appearance: { readingSourceMode: "all" } }
+      }, "Showing all reading sources must patch only that choice");
+      store.discardDraftChanges();
+      const readingSources = result("7", "normal", "system");
+      readingSources.settings.appearance!.readingSourceMode = "all";
+      source.publishReady(readingSources);
+      assert.equal(store.settings().appearance?.readingSourceMode, "all");
+      assert.equal(store.draftSettings().appearance?.readingSourceMode, "all");
+      const unknownReadingSources = result("8", "normal", "system");
+      (unknownReadingSources.settings.appearance as { readingSourceMode?: string }).readingSourceMode = "everything";
+      source.publishReady(unknownReadingSources);
+      assert.equal(store.settings().appearance?.readingSourceMode, "preferred", "Unknown values list only the preferred source");
+
       dispose();
       resolve();
     })().catch((error) => {

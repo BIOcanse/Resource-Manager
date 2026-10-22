@@ -106,7 +106,8 @@ public static class AppSettingsMigrator
                 ReadString(root, "appearance", "barColorMode", defaults.Appearance.BarColorMode),
                 ReadString(root, "appearance", "fontSmoothing", defaults.Appearance.FontSmoothing),
                 ReadString(root, "appearance", "language", defaults.Appearance.Language),
-                ReadString(root, "appearance", "byteUnitMode", defaults.Appearance.ByteUnitMode)),
+                ReadString(root, "appearance", "byteUnitMode", defaults.Appearance.ByteUnitMode),
+                ReadString(root, "appearance", "readingSourceMode", defaults.Appearance.ReadingSourceMode)),
             new AppSystemIntegrationSettings(
                 ReadBoolean(root, "systemIntegration", "taskManagerShortcutReplacementEnabled", defaults.SystemIntegration.TaskManagerShortcutReplacementEnabled),
                 ReadEditableHotkeys(root, defaults.SystemIntegration.Hotkeys),
@@ -147,6 +148,7 @@ public static class AppSettingsMigrator
             || !appearance.TryGetProperty("barColorMode", out _)
             || !appearance.TryGetProperty("fontSmoothing", out _)
             || !appearance.TryGetProperty("language", out var language)
+            || !appearance.TryGetProperty("readingSourceMode", out _)
             || appearance.TryGetProperty("sceneReferenceWhiteLog2Q16", out _)
             || appearance.TryGetProperty("outputDisplayProfiles", out _)
             || appearance.TryGetProperty("outputMinimumNits", out _)

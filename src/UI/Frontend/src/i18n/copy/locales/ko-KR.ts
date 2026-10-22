@@ -451,6 +451,12 @@ const koKrAppCopy: AppCopy = {
     notInCatalogHint: "이 항목은 메트릭 카탈로그에 없습니다",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "우선",
+      preferredHint: "이 컴퓨터에서 이 측정값의 가장 정확한 소스입니다.",
+      pending: "확인 중",
+      pendingHint: "이 컴퓨터에서 이 측정값의 어느 소스가 가장 정확한지 아직 확인되지 않았습니다."
+    },
     deviceKind: {
       host: "시스템 전체",
       cpu: "프로세서",

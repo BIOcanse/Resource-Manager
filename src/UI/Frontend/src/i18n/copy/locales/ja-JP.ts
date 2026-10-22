@@ -451,6 +451,12 @@ const jaJpAppCopy: AppCopy = {
     notInCatalogHint: "この項目はメトリック カタログにありません",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "優先",
+      preferredHint: "このコンピューターでこの読み取り値の最も正確なソースです。",
+      pending: "確認中",
+      pendingHint: "このコンピューターでこの読み取り値のどのソースが最も正確かは、まだ確認されていません。"
+    },
     deviceKind: {
       host: "システム全体",
       cpu: "プロセッサ",

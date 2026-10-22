@@ -20,6 +20,7 @@ import type {
   AppPresetNumericSetting,
   AppSettings,
   AppPalette,
+  AppReadingSourceMode,
   AppResourceBarFrameRateMode,
   AppUiStyle,
   SettingsSection
@@ -57,6 +58,7 @@ interface SettingsPageProps {
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
+  onReadingSourceModeChange: (mode: AppReadingSourceMode) => void;
   onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
   onLanguageChange: (language: AppLanguageMode) => void;
   onTaskManagerShortcutReplacementChange: (enabled: boolean) => void;
@@ -264,6 +266,7 @@ export function SettingsPage(props: SettingsPageProps) {
               onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}
               onByteUnitModeChange={props.onByteUnitModeChange}
+              onReadingSourceModeChange={props.onReadingSourceModeChange}
               onFontSmoothingChange={props.onFontSmoothingChange}
               onLanguageChange={props.onLanguageChange}
             />

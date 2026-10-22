@@ -42,6 +42,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onResourceBarFrameRateChange={settings.updateResourceBarFrameRate}
         onBarColorModeChange={settings.updateBarColorMode}
         onByteUnitModeChange={settings.updateByteUnitMode}
+        onReadingSourceModeChange={settings.updateReadingSourceMode}
         onFontSmoothingChange={settings.updateFontSmoothing}
         onLanguageChange={settings.updateLanguage}
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}

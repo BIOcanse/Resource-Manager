@@ -451,6 +451,12 @@ const frFrAppCopy: AppCopy = {
     notInCatalogHint: "Cet élément ne figure pas dans le catalogue de métriques",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "Préférée",
+      preferredHint: "La source la plus précise pour cette mesure sur cet ordinateur.",
+      pending: "À confirmer",
+      pendingHint: "La source la plus précise pour cette mesure sur cet ordinateur n’est pas encore confirmée."
+    },
     deviceKind: {
       host: "Système",
       cpu: "Processeur",

@@ -166,7 +166,7 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     assert(await autoStart.isChecked() === enabled, `Autostart ${enabled} did not survive reload`);
   }
   await page.getByRole("button", { name: "外观", exact: true }).click();
-  for (const name of ["动画效果", "资源条硬件加速", "资源条动画帧率", "文字平滑"]) {
+  for (const name of ["动画效果", "资源条硬件加速", "资源条动画帧率", "读数来源", "文字平滑"]) {
     assert(await page.getByRole("radiogroup", { name }).isVisible(),
       `${name} has a persisted setting but no usable control`);
   }

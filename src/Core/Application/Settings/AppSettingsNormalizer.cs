@@ -81,7 +81,8 @@ public static class AppSettingsNormalizer
             NormalizeBarColorMode(appearance?.BarColorMode),
             NormalizeFontSmoothing(appearance?.FontSmoothing),
             NormalizeLanguage(appearance?.Language),
-            AppByteUnitModes.Normalize(appearance?.ByteUnitMode));
+            AppByteUnitModes.Normalize(appearance?.ByteUnitMode),
+            NormalizeReadingSourceMode(appearance?.ReadingSourceMode));
     }
 
     private static AppSystemIntegrationSettings NormalizeSystemIntegration(AppSystemIntegrationSettings? systemIntegration)
@@ -299,6 +300,13 @@ public static class AppSettingsNormalizer
             framesPerSecond ?? AppSettingsDefaults.ResourceBarFrameRate,
             AppSettingsDefaults.MinResourceBarFrameRate,
             AppSettingsDefaults.MaxResourceBarFrameRate);
+    }
+
+    private static string NormalizeReadingSourceMode(string? mode)
+    {
+        return mode == AppReadingSourceModes.All
+            ? AppReadingSourceModes.All
+            : AppReadingSourceModes.Preferred;
     }
 
     private static string NormalizeBarColorMode(string? barColorMode)

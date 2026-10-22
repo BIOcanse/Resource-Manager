@@ -251,6 +251,20 @@ export default createSettingsLocale("fr-FR", {
     "barColorDescription": "Utilisez des couleurs fixes par type de logiciel ou une couleur différente pour chaque logiciel.",
     "byteUnitTitle": "Unités de capacité",
     "byteUnitDescription": "1 GiB = 1024 MiB, 1 GB = 1000 MB. Le changement convertit aussi les valeurs numériques, pas seulement les unités.",
+    "readingSourceTitle": "Sources des mesures",
+    "readingSourceDescription": "Comment les mesures ayant plusieurs sources sont listées dans la console de surveillance et les détails des appareils. Par défaut, seule la source la plus précise sur cet ordinateur est listée ; lorsque toutes les sources disponibles sont affichées, la plus précise est marquée « Préférée ». La planification utilise toujours la source la plus précise, quel que soit ce réglage.",
+    "readingSourceModeOptions": [
+      {
+        "id": "preferred",
+        "label": "La plus précise",
+        "description": "Lister uniquement la source la plus précise de chaque mesure sur cet ordinateur."
+      },
+      {
+        "id": "all",
+        "label": "Toutes disponibles",
+        "description": "Lister toutes les sources disponibles de chaque mesure et marquer la plus précise."
+      }
+    ],
     "fontSmoothingTitle": "Lissage du texte",
     "fontSmoothingDescription": "Équilibrez automatiquement lisibilité et coût de l’interface, ou fixez un mode de rendu.",
     "languageTitle": "Langue de l’interface",

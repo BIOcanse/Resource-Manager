@@ -11,6 +11,7 @@ import type {
 } from "../../data/metricFields/metricFieldSource.ts";
 import type { ByteQuantityKind } from "../../presentation/byteUnits.ts";
 import { formatFieldValue } from "../../presentation/fieldValueFormat.ts";
+import { readingSourceDisplays } from "../../presentation/readingSources.ts";
 import { cardExcludedFields } from "./canonicalFields.ts";
 import { uiText } from "../../text.ts";
 
@@ -19,6 +20,7 @@ import { uiText } from "../../text.ts";
  *
  * 选择器：字段目录里每台设备的每个可放卡片的字段是一项。id 为「字段名@设备身份」，
  * 绑定 { scopeKind: "device-field", scopeKey: 设备身份 }。分组是设备名，按设备种类、再按序号排。
+ * 每项带当前读数来源设置下的显示（readingSource）：选择器只列 listed 的项，卡片和选择器按 mark 加标记。
  * 卡片：从绑定得到设备，从 id 去掉「@设备身份」后缀得到字段名，不解析设备身份；
  * 按字段订阅后取这台设备的值。设备不在目录里时写「设备不在」，设置保留，设备回来后照常显示；
  * 值不可用写「不可用」，不当 0。
@@ -93,10 +95,12 @@ export function fieldCardSlots(cards: readonly DashboardCardSettings[]): FieldCa
 }
 
 export function fieldCardDefinitions(catalog: readonly MetricFieldCatalogDevice[]): MetricDefinition[] {
+  const cardFields = (device: MetricFieldCatalogDevice) =>
+    device.fields.filter((field) => !Object.hasOwn(cardExcludedFields, field.name));
+  const readingSource = readingSourceDisplays(catalog.flatMap((device) => cardFields(device).map((field) => field.reading)));
   return [...catalog].sort(compareDevices).flatMap((device) => {
     const group = deviceLabel(device, catalog);
-    return device.fields
-      .filter((field) => !Object.hasOwn(cardExcludedFields, field.name))
+    return cardFields(device)
       .map((field) => ({
         id: fieldCardId(field.name, device.deviceIdentity),
         label: fieldLabel(field.name),
@@ -106,7 +110,8 @@ export function fieldCardDefinitions(catalog: readonly MetricFieldCatalogDevice[
         detail: fieldHint(field.name),
         selectable: true,
         scopeKind: deviceFieldScopeKind,
-        scopeKey: device.deviceIdentity
+        scopeKey: device.deviceIdentity,
+        readingSource: readingSource(field.reading)
       }));
   });
 }

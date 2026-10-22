@@ -22,6 +22,7 @@ import type {
 } from "../frontendRuntime/source/SourceSnapshot.ts";
 import { classifySettingsApplicationOutcome } from "../features/settings/settingsApplicationDisposition.ts";
 import { normalizeByteUnitMode } from "../presentation/byteUnits.ts";
+import { normalizeReadingSourceMode } from "../presentation/readingSources.ts";
 import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
   AppAnimationMode,
@@ -47,6 +48,7 @@ import type {
   AppSettings,
   AppSystemIntegrationSettings,
   AppPalette,
+  AppReadingSourceMode,
   AppResourceBarFrameRateMode,
   AppUiStyle,
   SettingsSection
@@ -120,6 +122,7 @@ export interface SettingsStore {
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
   updateByteUnitMode: (byteUnitMode: ByteUnitMode) => void;
+  updateReadingSourceMode: (mode: AppReadingSourceMode) => void;
   updateFontSmoothing: (fontSmoothing: AppFontSmoothing) => void;
   updateLanguage: (language: AppLanguageMode) => void;
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
@@ -503,6 +506,15 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         }
       }));
     },
+    updateReadingSourceMode: (mode) => {
+      updateDraft((currentSettings) => ({
+        ...currentSettings,
+        appearance: {
+          ...normalizeAppSettings(currentSettings).appearance!,
+          readingSourceMode: normalizeReadingSourceMode(mode)
+        }
+      }));
+    },
     updateFontSmoothing: (fontSmoothing) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
@@ -638,7 +650,8 @@ export function defaultAppSettings(): AppSettings {
       resourceBarFrameRate: resourceBarFrameRateDefault,
       barColorMode: "type",
       fontSmoothing: "auto",
-      language: "system"
+      language: "system",
+      readingSourceMode: "preferred"
     },
     systemIntegration: {
       autoStartEnabled: false,
@@ -983,7 +996,8 @@ function normalizeAppearanceSettings(
     barColorMode: normalizeBarColorMode(settings?.barColorMode),
     byteUnitMode: normalizeByteUnitMode(settings?.byteUnitMode),
     fontSmoothing: normalizeFontSmoothing(settings?.fontSmoothing),
-    language: normalizeLanguageMode(settings?.language)
+    language: normalizeLanguageMode(settings?.language),
+    readingSourceMode: normalizeReadingSourceMode(settings?.readingSourceMode)
   };
 }
 

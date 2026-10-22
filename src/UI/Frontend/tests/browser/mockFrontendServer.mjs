@@ -116,7 +116,8 @@ const defaultAppSettings = {
     animations: scenario.animations,
     resourceBarFrameRateMode: "display",
     resourceBarFrameRate: 60,
-    language: "zh-CN"
+    language: "zh-CN",
+    readingSourceMode: "preferred"
   },
   debug: {
     debugModeEnabled: scenario.debugMode
@@ -1726,7 +1727,8 @@ function subscriptionPayloadFactory(url) {
       return () => scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
         deviceIdentity,
         device,
-        fields: fields.map(({ name, unit, valueKind }) => ({ name, unit, valueKind, meaning: "" }))
+        // 读取项和值上的相同；夹具没写的字段为 null（后端合同里 reading 可空）。
+        fields: fields.map(({ name, unit, valueKind, reading }) => ({ name, unit, valueKind, meaning: "", reading: reading ?? null }))
       }));
     case "/api/metrics/gpu-specialized/subscribe":
       return (publishedAt) => ({

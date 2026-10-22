@@ -134,6 +134,41 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_WritesExplicitReadingSourceModeAndKeepsShowingAllSources()
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var configRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
+        var settingsPath = Path.Combine(configRoot, "app-settings.json");
+        var environment = new TestHostEnvironment(appRoot);
+        var source = JsonNode.Parse(JsonSerializer.Serialize(
+            AppSettingsDefaults.Create(),
+            JsonSerializerOptions.Web))!.AsObject();
+        source["appearance"]!.AsObject().Remove("readingSourceMode");
+        await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
+
+        var store = new JsonAppSettingsStore(environment);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.True(loaded.Source.RewritePerformed);
+        Assert.Equal(AppReadingSourceModes.Preferred, loaded.Settings.Appearance.ReadingSourceMode);
+        using (var rewritten = JsonDocument.Parse(await File.ReadAllBytesAsync(settingsPath)))
+        {
+            Assert.Equal(
+                "preferred",
+                rewritten.RootElement.GetProperty("appearance").GetProperty("readingSourceMode").GetString());
+        }
+
+        await store.SaveAsync(loaded.Settings with
+        {
+            Appearance = loaded.Settings.Appearance with { ReadingSourceMode = AppReadingSourceModes.All }
+        }, CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
+
+        Assert.False(reloaded.Source.RewritePerformed);
+        Assert.Equal(AppReadingSourceModes.All, reloaded.Settings.Appearance.ReadingSourceMode);
+    }
+
+    [Fact]
     public async Task SaveAsync_NativeUiReaderDoesNotBlockAtomicReplacement()
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
