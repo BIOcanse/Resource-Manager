@@ -49,10 +49,11 @@ $committed = [ulong]($memory.CommitTotal.ToUInt64() * $pageSize)
 $availablePhysical = [ulong]($memory.PhysicalAvailable.ToUInt64() * $pageSize)
 if ($commitLimit -eq 0 -or $commitLimit -lt $committed) { throw 'OS commit counters are unavailable or inconsistent.' }
 $commitAvailable = $commitLimit - $committed
-$commitReserve = [ulong]4294967296
-$physicalReserve = [ulong]1073741824
-if ($commitAvailable -lt ($JobMemoryLimitBytes + $commitReserve) -or
-    $availablePhysical -lt ($JobMemoryLimitBytes + $physicalReserve)) { throw 'Current memory headroom does not admit this command envelope.' }
+$commitReserve = [ulong]2147483648
+$physicalReserve = [ulong]0
+# User ruling2026-10-21: Job limits constrain committed memory. Physical
+# availability is diagnostic only; Windows may page during a serial build.
+if ($commitAvailable -lt ($JobMemoryLimitBytes + $commitReserve)) { throw 'Current commit headroom does not admit this command envelope.' }
 $captureRoot = Join-Path $TaskRoot ('execution-preflight-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($captureRoot)
 $headroomPath = Join-Path $captureRoot 'headroom.json'

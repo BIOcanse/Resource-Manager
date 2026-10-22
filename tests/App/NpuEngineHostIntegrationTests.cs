@@ -63,6 +63,13 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         var identity = selected.ExactIdentityKey;
         Assert.Equal("npu_engine", core.Catalog.Devices.Single(device => device.Identity == identity).Resource);
         Assert.Empty(core.Query(new(identity, NpuEngineRecordedResources.Ratio)).Read.Dependencies);
+        var busyField = Assert.Single(core.Catalog.Fields, field =>
+            field.Field.FieldName == NpuEngineRecordedResources.Busy).Field;
+        var busyQuery = "?device=" + Uri.EscapeDataString(busyField.DeviceIdentity)
+            + "&fields=" + NpuEngineRecordedResources.Busy;
+        var busyCapability = core.Query(busyField);
+        Assert.True(busyCapability.Read.Supported); Assert.False(busyCapability.Write.Supported);
+        Assert.Equal("windows.npu-engine", busyCapability.ReadSource);
         var query = "?device=" + Uri.EscapeDataString(identity) + "&fields=" + NpuEngineRecordedResources.Raw + "," + NpuEngineRecordedResources.Ratio;
         var ended = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var app = await StartHttpAsync(sampler, dashboard, slots.Provider, core, ended, timeout.Token);
@@ -71,6 +78,15 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
             Assert.All(Assert.Single(initial.RootElement.EnumerateArray()).GetProperty("fields").EnumerateArray(), static field =>
                 Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));
+        using (var initialBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token))
+        {
+            var device = Assert.Single(initialBusy.RootElement.EnumerateArray());
+            Assert.Equal(busyField.DeviceIdentity, device.GetProperty("deviceIdentity").GetString());
+            var field = Assert.Single(device.GetProperty("fields").EnumerateArray());
+            Assert.Equal(NpuEngineRecordedResources.Busy, field.GetProperty("name").GetString());
+            Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind);
+            Assert.Equal("windows.npu-engine", field.GetProperty("sourceId").GetString());
+        }
         Assert.Equal(0, recording.Reads);
         await sampler.StartAsync(timeout.Token);
         try
@@ -78,26 +94,39 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
             { Content = JsonContent.Create(new { version = 1, subscriptions = new[]
-                { new { id = "npu-engine", path = "/api/metrics/subscribe" + query + "&intervalMs=100" } } }) };
+                { new { id = "npu-engine", path = "/api/metrics/subscribe" + query + "&intervalMs=100" },
+                  new { id = "npu-busy", path = "/api/metrics/subscribe" + busyQuery + "&intervalMs=100" } } }) };
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation.Token);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-            var value = await ReadUntilAsync(reader, json => EngineRatio(json) is { } field
+            var value = await ReadSubscriptionUntilAsync(reader, "npu-engine", json => EngineRatio(json) is { } field
                 && field.GetProperty("numericValue").ValueKind == JsonValueKind.Number
-                && field.GetProperty("numericValue").GetDouble() == 125d, timeout.Token, expectedSubscriptionId: "npu-engine");
+                && field.GetProperty("numericValue").GetDouble() == 125d, timeout.Token);
             Assert.Equal(125d, EngineRatio(value)!.Value.GetProperty("numericValue").GetDouble());
             var device = Assert.Single(value.EnumerateArray()); Assert.Equal(identity, device.GetProperty("deviceIdentity").GetString());
             var raw = device.GetProperty("fields").EnumerateArray().Single(field => field.GetProperty("name").GetString() == NpuEngineRecordedResources.Raw);
             Assert.Equal("unsigned64", raw.GetProperty("valueKind").GetString()); Assert.Equal("µs", raw.GetProperty("unit").GetString());
             Assert.Equal(JsonValueKind.String, raw.GetProperty("integerValue").ValueKind); Assert.Equal(JsonValueKind.Null, raw.GetProperty("numericValue").ValueKind);
             Assert.Equal("windows.npu-engine", raw.GetProperty("sourceId").GetString());
+            var busyValue = await ReadSubscriptionUntilAsync(reader, "npu-busy", json => EngineBusy(json) is { } field
+                && field.GetProperty("numericValue").ValueKind == JsonValueKind.Number
+                && field.GetProperty("numericValue").GetDouble() == 125d, timeout.Token);
+            var busyDevice = Assert.Single(busyValue.EnumerateArray());
+            Assert.Equal(busyField.DeviceIdentity, busyDevice.GetProperty("deviceIdentity").GetString());
+            var busyJson = Assert.Single(busyDevice.GetProperty("fields").EnumerateArray());
+            Assert.Equal(NpuEngineRecordedResources.Busy, busyJson.GetProperty("name").GetString());
+            Assert.Equal("%", busyJson.GetProperty("unit").GetString());
+            Assert.Equal("windows.npu-engine", busyJson.GetProperty("sourceId").GetString());
+            Assert.Equal(125d, busyJson.GetProperty("numericValue").GetDouble());
+            Assert.Equal(2, recording.LastRequested.Count); Assert.Equal(256U, recording.LastMaximum);
             await cancellation.CancelAsync(); response.Dispose(); reader.Dispose(); await ended.Task.WaitAsync(timeout.Token);
             await sampler.StopAsync(timeout.Token);
             var reads = recording.Reads; var current = core.ReadCached(new(identity, NpuEngineRecordedResources.Ratio));
             using var cached = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token);
             Assert.Equal(125d, EngineRatio(cached.RootElement)!.Value.GetProperty("numericValue").GetDouble());
+            using var cachedBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token);
+            Assert.Equal(125d, EngineBusy(cachedBusy.RootElement)!.Value.GetProperty("numericValue").GetDouble());
             Assert.Equal(current, core.ReadCached(new(identity, NpuEngineRecordedResources.Ratio))); Assert.Equal(reads, recording.Reads);
-            Assert.Single(recording.LastRequested); Assert.Equal(256U, recording.LastMaximum);
             var incarnation = owner.CurrentWorkspaceIdentity;
             owner.RequestTopologyRefresh(); Assert.NotNull(owner.RefreshTopologyIfRequested());
             Assert.Equal(incarnation, owner.CurrentWorkspaceIdentity); Assert.Equal(1, recording.Opens);
@@ -116,6 +145,30 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             foreach (var device in json.EnumerateArray()) foreach (var field in device.GetProperty("fields").EnumerateArray())
                 if (field.GetProperty("name").GetString() == NpuEngineRecordedResources.Ratio) return field;
             return null;
+        }
+
+        static JsonElement? EngineBusy(JsonElement json)
+        {
+            foreach (var device in json.EnumerateArray()) foreach (var field in device.GetProperty("fields").EnumerateArray())
+                if (field.GetProperty("name").GetString() == NpuEngineRecordedResources.Busy) return field;
+            return null;
+        }
+
+        static async Task<JsonElement> ReadSubscriptionUntilAsync(StreamReader reader, string subscriptionId,
+            Func<JsonElement, bool> accept, CancellationToken token)
+        {
+            for (var index = 0; index < 128; index++)
+            {
+                var line = await reader.ReadLineAsync(token);
+                Assert.NotNull(line);
+                using var document = JsonDocument.Parse(line!);
+                if (!string.Equals(document.RootElement.GetProperty("subscriptionId").GetString(), subscriptionId,
+                    StringComparison.Ordinal))
+                    continue;
+                var value = document.RootElement.GetProperty("value");
+                if (accept(value)) return value.Clone();
+            }
+            throw new InvalidOperationException($"The real channel did not publish the expected '{subscriptionId}' state within its bounded frame count.");
         }
     }
 }

@@ -4,7 +4,9 @@ public static partial class EdidParser
 {
     private static bool ReadDisplayIdModes(ReadOnlySpan<byte> block, uint index, int sectionCount, int sectionIndex,
         List<EdidModeDeclaration> modes,
-        List<EdidDynamicTimingRangeDeclaration> dynamicRanges, ModeCtaReferences references)
+        List<EdidDynamicTimingRangeDeclaration> dynamicRanges,
+        List<EdidAdaptiveSyncRangeDeclaration> adaptiveSyncRanges, ref bool adaptiveSyncSeen,
+        ModeCtaReferences references)
     {
         // Document1.3 uses structure1.2; documents2.0/2.1/2.1a use structure2.0.
         // The document revision is not an encoded structure revision.
@@ -39,7 +41,17 @@ public static partial class EdidParser
             var payload = block.Slice(offset + 3, length);
             var typeI = tag == 3 && block[1] < 0x20;
             var typeVII = tag == 0x22 && block[1] >= 0x20;
-            if (typeI || typeVII)
+            if (tag == 0x11 && block[1] == 0x12)
+            {
+                if (!ReadDisplayIdTypeV(payload, index, checked((uint)(offset + 3)), flags, block[1], modes))
+                    return false;
+            }
+            else if (tag == 0x13 && block[1] == 0x12)
+            {
+                if (!ReadDisplayIdTypeVi(payload, index, checked((uint)(offset + 3)), flags, block[1], modes))
+                    return false;
+            }
+            else if (typeI || typeVII)
             {
                 var stride = typeI ? 20 : checked(20 + ((flags & 0x70) >> 4));
                 // DisplayID2.0 E9 and2.1/2.1a table4-17 define only20-byte
@@ -87,6 +99,14 @@ public static partial class EdidParser
                 if (!ReadDisplayIdCvtModes(payload, index, checked((uint)(offset + 3)),
                     flags, block[1], modes))
                     return false;
+            }
+            else if (tag == 0x2B && block[1] == 0x20)
+            {
+                // One block per complete modern structure, including an empty block.
+                if (adaptiveSyncSeen || !ReadDisplayIdAdaptiveSyncRanges(payload, index,
+                    checked((uint)(offset + 3)), flags, block[1], adaptiveSyncRanges))
+                    return false;
+                adaptiveSyncSeen = true;
             }
             else if (tag == 0x25 && block[1] == 0x20)
             {

@@ -26,8 +26,8 @@ static ResourceManagerAdlxGpuDeclaration declaration(int flags)
 int main(void)
 {
     assert(offsetof(IADLXGPUVtbl,VRAMType)==12*sizeof(void*) && offsetof(IADLXGPUVtbl,BIOSInfo)==13*sizeof(void*));
-    assert(ResourceManagerAdlxGetAbiVersion()==5 && ResourceManagerAdlxGetDeclarationAbiVersion()==1);
-    assert(ResourceManagerAdlxGetGpuDeclarationSize()==1040 && offsetof(ResourceManagerAdlxGpuDeclaration,vbiosVersion)==528);
+    assert(ResourceManagerAdlxGetAbiVersion()==6 && ResourceManagerAdlxGetDeclarationAbiVersion()==1);
+    assert(ResourceManagerAdlxGetGpuDeclarationSize()==1040 && ResourceManagerAdlxGetGpuMetricsSize()==848 && offsetof(ResourceManagerAdlxGpuDeclaration,vbiosVersion)==528);
     IADLXGPUVtbl gpu_table={.Release=drop_declaration,.Name=text,.VendorId=text,.DeviceId=text,.PNPString=text,.Type=integer,.UniqueId=integer,.TotalVRAM=memory,.BIOSInfo=bios,.VRAMType=memory_type};
     IADLXGPUListVtbl list_table={.Release=release_list,.Size=size,.At_GPUList=at};
     IADLXSystemVtbl system_table={.GetGPUs=get_gpus}; IADLXSystem system={&system_table};

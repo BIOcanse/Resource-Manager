@@ -33,7 +33,7 @@ public sealed class WindowsNpuEngineReaderTests
         Assert.All(rows, static row => Assert.False(row.RequiresTopologyRefresh));
         Assert.Equal(WindowsNpuDxCoreEnumeration.NpuAttribute, api.Filter);
         Assert.All(api.Queries, static query =>
-        { Assert.Equal(4U, query.State); Assert.Equal(0U, query.Physical); Assert.Equal((nuint)8, query.InputSize); Assert.Equal((nuint)8, query.OutputSize); });
+        { Assert.Equal(4U, query.State); Assert.Equal(0U, query.Physical); Assert.Equal(0U, query.ProcessId); Assert.Equal((nuint)12, query.InputSize); Assert.Equal((nuint)8, query.OutputSize); });
         Assert.Empty(api.Released); // The holder's live session remains open across operations.
     }
 
@@ -384,6 +384,9 @@ public sealed class WindowsNpuEngineReaderTests
         Assert.Equal(4U, (uint)WindowsNpuDxCoreState.AdapterEngineRunningTimeMicroseconds);
         Assert.Equal(8, Marshal.SizeOf<WindowsNpuDxCoreEngineIndex>());
         Assert.Equal(4, Marshal.OffsetOf<WindowsNpuDxCoreEngineIndex>(nameof(WindowsNpuDxCoreEngineIndex.EngineIndex)).ToInt32());
+        Assert.Equal(12, Marshal.SizeOf<WindowsNpuDxCoreEngineQueryInput>());
+        Assert.Equal(0, Marshal.OffsetOf<WindowsNpuDxCoreEngineQueryInput>(nameof(WindowsNpuDxCoreEngineQueryInput.AdapterEngineIndex)).ToInt32());
+        Assert.Equal(8, Marshal.OffsetOf<WindowsNpuDxCoreEngineQueryInput>(nameof(WindowsNpuDxCoreEngineQueryInput.ProcessId)).ToInt32());
         Assert.Equal(IntPtr.Size == 8 ? 24 : 16, Marshal.SizeOf<WindowsNpuDxCoreEngineNameInput>());
         Assert.Equal(8, Marshal.OffsetOf<WindowsNpuDxCoreEngineNameInput>(nameof(WindowsNpuDxCoreEngineNameInput.EngineNameLength)).ToInt32());
         Assert.Equal(IntPtr.Size == 8 ? 16 : 12, Marshal.OffsetOf<WindowsNpuDxCoreEngineNameInput>(nameof(WindowsNpuDxCoreEngineNameInput.EngineName)).ToInt32());
@@ -463,7 +466,7 @@ public sealed class WindowsNpuEngineReaderTests
         internal int QiCalls { get; private set; }
         internal int NameCalls { get; private set; }
         internal List<nint> Released { get; } = [];
-        internal List<(uint State, uint Physical, uint Engine, nuint InputSize, nuint OutputSize)> Queries { get; } = [];
+        internal List<(uint State, uint Physical, uint Engine, uint ProcessId, nuint InputSize, nuint OutputSize)> Queries { get; } = [];
         public int CreateFactory(out nint factory) { FactoryCalls++; factory = 1; return Failure == "factory" ? -1 : 0; }
         public int CreateAdapterList(nint factory, Guid attribute, out nint list) { ListCalls++; Filter = attribute; list = 2; return Failure == "list" ? -1 : 0; }
         public uint GetAdapterCount(nint list) => Failure == "adapter-count" ? 257U : checked((uint)adapters.Length);
@@ -530,15 +533,22 @@ public sealed class WindowsNpuEngineReaderTests
         { Assert.Equal(WindowsNpuDxCoreState.AdapterEngineRunningTimeMicroseconds, state); return Failure != "state-unsupported"; }
         public int QueryState(nint adapter, WindowsNpuDxCoreState state, nuint inputSize, nint input, nuint outputSize, nint output)
         {
-            var details = Marshal.PtrToStructure<WindowsNpuDxCoreEngineIndex>(input);
-            Queries.Add(((uint)state, details.PhysicalAdapterIndex, details.EngineIndex, inputSize, outputSize));
+            if (state != WindowsNpuDxCoreState.AdapterEngineRunningTimeMicroseconds
+                || inputSize != (nuint)Marshal.SizeOf<WindowsNpuDxCoreEngineQueryInput>()
+                || outputSize != (nuint)sizeof(ulong))
+                return unchecked((int)0x80070057);
+            var details = Marshal.PtrToStructure<WindowsNpuDxCoreEngineQueryInput>(input);
+            if (details.ProcessId != 0 || details.AdapterEngineIndex.PhysicalAdapterIndex != 0)
+                return unchecked((int)0x80070057);
+            Queries.Add(((uint)state, details.AdapterEngineIndex.PhysicalAdapterIndex,
+                details.AdapterEngineIndex.EngineIndex, details.ProcessId, inputSize, outputSize));
             AfterQuery?.Invoke();
-            if (FailedEngine is null || FailedEngine == details.EngineIndex)
+            if (FailedEngine is null || FailedEngine == details.AdapterEngineIndex.EngineIndex)
             {
                 if (Failure == "state-throw") throw new COMException("Recorded state failure.");
                 if (Failure == "state-error") return -1;
             }
-            Marshal.WriteInt64(output, details.EngineIndex == 0 ? 0 : -1); return 0;
+            Marshal.WriteInt64(output, details.AdapterEngineIndex.EngineIndex == 0 ? 0 : -1); return 0;
         }
         public void Release(nint instance) => Released.Add(instance);
     }

@@ -111,14 +111,16 @@ public static class NativeMetricSnapshotObservationProjection
         NativeMetricSnapshotSourceObservationIdentity source, DateTimeOffset observedAt, NativeMetricSnapshotCounterPair? pair,
         NativeMetricSnapshotObservationStatus unavailableStatus = NativeMetricSnapshotObservationStatus.Unavailable)
     {
-        if (binding.MetricKind != (uint)NativeMetricSnapshotMetricKind.CounterRatio ||
+        var isFrequency = binding.MetricKind == (uint)NativeMetricSnapshotMetricKind.CounterFrequency;
+        if (binding.MetricKind is not ((uint)NativeMetricSnapshotMetricKind.CounterRatio or (uint)NativeMetricSnapshotMetricKind.CounterFrequency) ||
             binding.ValueKind != (uint)NativeMetricSnapshotValueKind.Float64)
-            throw new InvalidOperationException("Counter pair requires a counter-ratio rule.");
+            throw new InvalidOperationException("Counter pair requires a counter-ratio or counter-frequency rule.");
         var observation = CreateObservation(metric, binding, source, observedAt, null, unavailableStatus);
         observation.Flags = (uint)NativeMetricSnapshotObservationFlags.CounterPair;
-        if (pair is not { } raw) return observation;
+        if (pair is not { } raw || (isFrequency && raw.ReferenceFrequencyMhz == 0)) return observation;
         observation.ValueBits = raw.Primary;
         observation.ValueHighBits = raw.Reference;
+        observation.ReservedU32 = isFrequency ? (uint)raw.ReferenceFrequencyMhz : 0;
         observation.ValidMask |= (ulong)NativeMetricSnapshotObservationValidity.Value;
         observation.Status = (uint)NativeMetricSnapshotObservationStatus.Current;
         return observation;

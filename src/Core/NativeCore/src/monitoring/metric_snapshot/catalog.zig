@@ -35,6 +35,7 @@ pub const CounterBaseline = struct {
     primary: u64 = 0,
     reference: u64 = 0,
     ticks_per_second: u64 = 0,
+    reference_frequency_mhz: u32 = 0,
     observed_at_milliseconds: u64 = 0,
 };
 

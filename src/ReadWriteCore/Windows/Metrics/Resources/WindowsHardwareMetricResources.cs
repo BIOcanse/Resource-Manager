@@ -33,6 +33,8 @@ public sealed partial class WindowsHardwareMetricResources : IDisposable
     public required Func<MemoryMetrics> ReadMemory { get; init; }
     public required Func<VirtualMemoryMetrics> ReadVirtualMemory { get; init; }
     public required Func<IReadOnlyList<NumaMemoryCatalogIdentity>, IReadOnlySet<string>, IReadOnlyDictionary<string, ulong>> ReadNumaAvailable { get; init; }
+    public Func<IReadOnlyList<NumaMemoryCatalogIdentity>, IReadOnlySet<string>, IReadOnlyDictionary<string, ulong>> ReadNumaCapacityMiB { get; init; }
+        = static (_, _) => new Dictionary<string, ulong>(StringComparer.Ordinal);
     public required Func<NumaMemoryTopologyRead> ReadNumaIdentities { get; init; }
     public required Func<WindowsGpuAdapterInventoryRead> ReadGpuInventory { get; init; }
     public required Func<CpuFrequency> ReadCpuFrequency { get; init; }

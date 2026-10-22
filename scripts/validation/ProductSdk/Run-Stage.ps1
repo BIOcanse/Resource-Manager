@@ -69,7 +69,7 @@ if($Stage -eq 'ProductDiskNative') {
     exit
 }
 if($Stage -in @('ProductBackend','ProductShell','ProductImage')) {
-    & (Join-Path $PSScriptRoot 'Run-ProductPublish.ps1') -Stage $Stage -TaskRoot $taskRoot -RunDirectory $RunDirectory -ScratchRoot $taskScratch -RepositoryRoot $taskRepo -LedgerBuildRoot $LedgerBuildRoot -ProductArtifactsPath $ProductArtifactsPath
+    & (Join-Path $PSScriptRoot 'Run-ProductPublish.ps1') -Stage $Stage -TaskRoot $taskRoot -RunDirectory $RunDirectory -ScratchRoot $taskScratch -RepositoryRoot $taskRepo -LedgerBuildRoot $LedgerBuildRoot -ProductArtifactsPath $ProductArtifactsPath -NativeContextPath $NativeContextPath
     exit
 }
 $taskDiskInputs=& (Join-Path $PSScriptRoot 'Get-DiskCheckpointNativeInputs.ps1') -TaskRoot $taskRoot
@@ -317,6 +317,9 @@ if($Stage -eq 'Build') {
     $taskChecker=Join-Path $taskArtifacts 'bin/ResourceManager.FreedomPointCheck/debug/ResourceManager.FreedomPointCheck.dll'
     $taskOutput=Join-Path $taskRoot 'sources'
     if($Stage -eq 'Sources') {
+        Invoke-Dotnet (@('build','src/Development/FreedomPointCheck/ResourceManager.FreedomPointCheck.csproj','--configuration','Debug','--verbosity','minimal')+$taskProperties) 'checker-build'
+        $taskCheckerInfo=Get-Item -LiteralPath $taskChecker
+        [IO.File]::WriteAllText((Join-Path $RunDirectory 'checker-build-output.json'),(@{stage='Sources';runDirectory=$RunDirectory;binaryPath=$taskCheckerInfo.FullName;length=$taskCheckerInfo.Length;sha256=(Get-FileHash -LiteralPath $taskCheckerInfo.FullName).Hash}|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
         try {
             Invoke-Dotnet @($taskChecker,$taskRepo,$taskContext,$taskOutput,'--refresh-partition-contract') 'sources'
         } finally {

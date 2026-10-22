@@ -14,7 +14,7 @@ public sealed partial class AmdAdlxBridgeReader
     internal AmdAdlxBridgeReader(IAmdAdlxNativeBridge bridge) : this(bridge, null) { }
     private AmdAdlxBridgeReader(IAmdAdlxNativeBridge? bridge, Func<string, string, string?>? describeProviderMessage)
         => (this.bridge, this.describeProviderMessage) = (bridge ?? new NativeBridge(), describeProviderMessage);
-    internal const uint BridgeAbiVersion = 5;
+    internal const uint BridgeAbiVersion = 6;
     internal const int TimestampFlag = 4096;
     private const int UsageFlag = 1;
     private const int ClockFlag = 2;
@@ -28,6 +28,8 @@ public sealed partial class AmdAdlxBridgeReader
     private const int BoardPowerFlag = 512;
     private const int IntakeTemperatureFlag = 1024;
     private const int MemoryTemperatureFlag = 2048;
+    internal const int NpuActivityLevelFlag = 8192;
+    internal const int NpuFrequencyFlag = 16384;
     private const int GpuTypeIntegrated = 1;
     private const int GpuTypeDiscrete = 2;
 
@@ -174,6 +176,8 @@ public sealed partial class AmdAdlxBridgeReader
             flags |= IntakeTemperatureFlag;
         }
         if (request.IncludeMemoryTemperature) flags |= MemoryTemperatureFlag;
+        if (request.IncludeNpuActivityLevel) flags |= NpuActivityLevelFlag;
+        if (request.IncludeNpuFrequency) flags |= NpuFrequencyFlag;
 
         if (request.IncludeFan)
         {
@@ -261,7 +265,13 @@ public sealed partial class AmdAdlxBridgeReader
                 [MetricFieldCode.GpuMemoryPercent] = hasUsedMemory && totalMemoryBytes > 0 ? memoryPercent : null,
                 [MetricFieldCode.GpuMemoryTemperature] = HasAvailable(native, MemoryTemperatureFlag)
                     && double.IsFinite(native.MemoryTemperatureCelsius) && native.MemoryTemperatureCelsius is >= 0 and <= 1000
-                    ? native.MemoryTemperatureCelsius : null
+                    ? native.MemoryTemperatureCelsius : null,
+                [MetricFieldCode.AdlxNpuActivityPercent] = request.IncludeNpuActivityLevel
+                    && HasAvailable(native, NpuActivityLevelFlag) && native.NpuActivityLevelPercent is >= 0 and <= 100
+                    ? native.NpuActivityLevelPercent : null,
+                [MetricFieldCode.AdlxNpuFrequencyMhz] = request.IncludeNpuFrequency
+                    && HasAvailable(native, NpuFrequencyFlag) && native.NpuFrequencyMhz >= 0
+                    ? native.NpuFrequencyMhz : null
             }
         };
     }
@@ -385,7 +395,9 @@ public sealed record AmdAdlxReadRequest(
     bool IncludeFan,
     bool IncludeVoltage,
     bool IncludeMemoryTemperature = false,
-    bool IncludeSampleTimestamp = false)
+    bool IncludeSampleTimestamp = false,
+    bool IncludeNpuActivityLevel = false,
+    bool IncludeNpuFrequency = false)
 {
     internal IReadOnlyDictionary<int, int>? NativeFlagsByDisplayIndex { get; init; }
     public static AmdAdlxReadRequest All { get; } = new(
@@ -402,7 +414,9 @@ public sealed record AmdAdlxReadRequest(
         IncludeFan: true,
         IncludeVoltage: true,
         IncludeMemoryTemperature: true,
-        IncludeSampleTimestamp: true);
+        IncludeSampleTimestamp: true,
+        IncludeNpuActivityLevel: true,
+        IncludeNpuFrequency: true);
 
     public bool IncludesAnyMetric =>
         IncludeUsage
@@ -417,7 +431,9 @@ public sealed record AmdAdlxReadRequest(
         || IncludeFan
         || IncludeVoltage
         || IncludeMemoryTemperature
-        || IncludeSampleTimestamp;
+        || IncludeSampleTimestamp
+        || IncludeNpuActivityLevel
+        || IncludeNpuFrequency;
 
     public bool IncludesDisplayIndex(int displayIndex)
     {
@@ -456,6 +472,8 @@ internal unsafe struct NativeAdlxGpuMetrics
     public double MemoryTemperatureCelsius;
     public int IdentityValid;
     public long SampleTimestampMilliseconds;
+    public int NpuActivityLevelPercent;
+    public int NpuFrequencyMhz;
 }
 
 [StructLayout(LayoutKind.Sequential)]

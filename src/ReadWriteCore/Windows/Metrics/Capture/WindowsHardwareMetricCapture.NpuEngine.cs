@@ -14,7 +14,9 @@ internal sealed partial class WindowsHardwareMetricCapture
     {
         if (topology?.NpuEngineStatus != NativeMetricSnapshotCatalogTopologyStatus.Complete)
             return Unavailable(sourcePlan.SourceHandle, identity, capturedAt);
-        var requested = SelectedBindings(plan, sourcePlan.SourceHandle).Select(static binding => binding.DeviceIdentity)
+        var requested = SelectedBindings(plan, sourcePlan.SourceHandle)
+            .Where(static binding => binding.NpuEngine is not null)
+            .Select(static binding => binding.NpuEngine!.ExactIdentityKey)
             .ToHashSet(StringComparer.Ordinal);
         var values = resources.ReadNpuEngines(plan.Catalog.NpuEngineIdentities, requested,
             plan.Catalog.NpuEngineEffectiveMaximumInstanceCount, token);

@@ -71,7 +71,24 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         var name = NpuMemoryIntegrationRecording.SharedResident;
         var reference = new FieldReference(identity, name);
         Assert.Equal("npu", core.Catalog.Devices.Single(device => device.Identity == identity).Resource);
-        Assert.Equal(4, core.Catalog.Fields.Count(field => field.Field.DeviceIdentity == identity));
+        const string busyName = "npu_all_engine_busy_percent";
+        var expectedMemoryFields = new[]
+        {
+            "npu_all_dedicated_memory_committed",
+            "npu_all_dedicated_memory_resident",
+            "npu_all_shared_memory_committed",
+            NpuMemoryIntegrationRecording.SharedResident
+        };
+        var identityFields = core.Catalog.Fields.Where(field => field.Field.DeviceIdentity == identity)
+            .Select(field => field.Field.FieldName).ToArray();
+        Assert.Equal(expectedMemoryFields.OrderBy(static field => field, StringComparer.Ordinal),
+            identityFields.Where(field => field != busyName).OrderBy(static field => field, StringComparer.Ordinal));
+        Assert.Equal(expectedMemoryFields.Length + 1, identityFields.Length);
+        var busyField = Assert.Single(core.Catalog.Fields, field =>
+            field.Field.DeviceIdentity == identity && field.Field.FieldName == busyName).Field;
+        var busyCapability = core.Query(busyField);
+        Assert.True(busyCapability.Read.Supported);
+        Assert.Equal("windows.npu-engine", busyCapability.ReadSource);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, identity, [name]);
         _ = await sampler.GetSnapshotAsync(request, timeout.Token);
         Assert.Equal(0, recording.Reads);

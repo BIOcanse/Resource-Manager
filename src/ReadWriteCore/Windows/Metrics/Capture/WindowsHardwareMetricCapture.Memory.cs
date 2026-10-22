@@ -24,7 +24,8 @@ internal sealed partial class WindowsHardwareMetricCapture
 {
     internal static NativeMetricSnapshotSourceCompletion CreateMemoryCompletion(NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan, NativeMetricSnapshotSourceObservationIdentity identity,
-        DateTimeOffset capturedAt, MemoryMetrics? metrics, IReadOnlyDictionary<string, ulong> numaValues)
+        DateTimeOffset capturedAt, MemoryMetrics? metrics, IReadOnlyDictionary<string, ulong> numaValues,
+        IReadOnlyDictionary<string, ulong>? numaCapacityMiBValues = null)
         => CompleteWithValues(plan, sourcePlan, identity, capturedAt,
             binding => metrics is { IsUsageAvailable: true, TotalBytes: > 0 } ? binding.FieldCode switch
             {
@@ -34,8 +35,12 @@ internal sealed partial class WindowsHardwareMetricCapture
                 MetricFieldCode.MemoryAvailable => metrics.AvailableBytes,
                 _ => null
             } : null,
-            unsignedValue: binding => binding.FieldCode == MetricFieldCode.NumaNodeAvailableBytes
-                && numaValues.TryGetValue(binding.DeviceIdentity, out var value) ? value : null);
+            unsignedValue: binding => binding.FieldCode switch
+            {
+                MetricFieldCode.NumaNodeAvailableBytes when numaValues.TryGetValue(binding.DeviceIdentity, out var available) => available,
+                MetricFieldCode.NumaNodeCapacityMiB when numaCapacityMiBValues?.TryGetValue(binding.DeviceIdentity, out var capacity) == true => capacity,
+                _ => null
+            });
 }
 
 

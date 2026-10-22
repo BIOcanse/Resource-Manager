@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory)][string]$ScratchRoot,
     [Parameter(Mandatory)][string]$RepositoryRoot,
     [Parameter(Mandatory)][string]$LedgerBuildRoot,
-    [string]$ProductArtifactsPath)
+    [string]$ProductArtifactsPath,
+    [string]$NativeContextPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if([IO.Path]::GetFullPath($ScratchRoot) -ine [IO.Path]::GetFullPath($env:RM_REVIEW_SCRATCH)){throw 'Use bounded entry.'}
@@ -77,11 +78,9 @@ function Capture-ResolvedInputs([string]$EvidenceRoot) {
 }
 Set-Location $repo
 $diskInputs=& (Join-Path $PSScriptRoot 'Get-DiskCheckpointNativeInputs.ps1') -TaskRoot $TaskRoot
-$native=Read-AcceptedContext 'product-native-context.json'
-foreach($item in $native.outputs){Assert-Hash $item}
-Assert-Hash $native.sourceInputsManifest
-$nativeInputs=Get-Content $native.sourceInputsManifest.path -Raw|ConvertFrom-Json
-foreach($item in @($nativeInputs.source)+@($nativeInputs.baseline)){Assert-Hash $item}
+$nativeContextPath=if([string]::IsNullOrWhiteSpace($NativeContextPath)){Join-Path $TaskRoot 'product-native-context.json'}else{[IO.Path]::GetFullPath($(if([IO.Path]::IsPathRooted($NativeContextPath)){$NativeContextPath}else{Join-Path $repo $NativeContextPath}))}
+& (Join-Path $PSScriptRoot 'Assert-ProductNativeContext.ps1') -ContextPath $nativeContextPath | Out-Null
+$native=Get-Content -LiteralPath $nativeContextPath -Raw|ConvertFrom-Json
 $frontend=Read-AcceptedContext 'frontend-product-context.json'
 if(-not $frontend.contractsPassed -or -not $frontend.repositoryAssetsIdentical){throw 'Frontend source/asset contract is not ready for normal publish.'}
 foreach($proof in @(@{path=$frontend.sourceInputManifest;sha256=$frontend.sourceInputManifestSha256},@{path=$frontend.outputManifest;sha256=$frontend.outputManifestSha256})){Assert-Hash $proof}
@@ -249,7 +248,7 @@ if($Stage -eq 'ProductBackend') {
         if($copies.Count -ne 1 -or $copies[0].sha256 -ine $item.sha256){throw "Published Native input mismatch: $($item.path)"}
     }
     Save-Json @(Get-TreeManifest (Join-Path $artifacts 'freedom-point-generated')) (Join-Path $RunDirectory 'freedom-point-generated-output.json')
-    Save-Json @{accepted=$true;backendRun=$RunDirectory;artifacts=$artifacts;candidate=$candidate;backendDirectory=$backend;nativeContext=(Join-Path $TaskRoot 'product-native-context.json');frontendContext=(Join-Path $TaskRoot 'frontend-product-context.json')} (Join-Path $TaskRoot 'product-publish-context.json')
+    Save-Json @{accepted=$true;backendRun=$RunDirectory;artifacts=$artifacts;candidate=$candidate;backendDirectory=$backend;nativeContext=$nativeContextPath;frontendContext=(Join-Path $TaskRoot 'frontend-product-context.json')} (Join-Path $TaskRoot 'product-publish-context.json')
 } elseif($Stage -eq 'ProductShell') {
     $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @()
     $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @()

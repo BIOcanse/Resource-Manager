@@ -7,13 +7,13 @@ public static class NativeMetricSnapshotAbi
     public const uint Version = 0x000A_0000;
     public const uint CatalogContractVersion = 0x0005_0000;
     public const uint ValueContractVersion = 0x0003_0000;
-    public const uint ObservationContractVersion = 0x0007_0000;
+    public const uint ObservationContractVersion = 0x0008_0000;
     public const uint InventoryContractVersion = 0x0001_0000;
     public const uint PersistenceContractVersion = 0x0004_0000;
     public const uint CpuCounterContractVersion = 0x0001_0000;
     public const int MaximumValueBytes = 512;
     public const ulong LayoutFingerprint = 0x65F57826A9339DF5;
-    public const ulong WireContractFingerprint = 0xEE439EB77DDC0C5E;
+    public const ulong WireContractFingerprint = 0xF59BFA169EC0E2F7;
 }
 
 public enum NativeMetricSnapshotStatus : int
@@ -117,7 +117,8 @@ public enum NativeMetricSnapshotMetricKind : uint
     TimedCounterRate = 15,
     FloatingCounterRatio = 16,
     FloatingCounterPercentage = 17,
-    TimedMicrosecondCounterPercentage = 18
+    TimedMicrosecondCounterPercentage = 18,
+    CounterFrequency = 19
 }
 
 public enum NativeMetricSnapshotScopeKind : uint
@@ -533,6 +534,7 @@ public unsafe struct NativeMetricSnapshotObservationInput
     public uint Status;
     public uint ValueKind;
     public uint Quality;
+    // Observation contract v8: declared CPUID.16H base MHz for current CounterFrequency observations; zero otherwise.
     public uint ReservedU32;
     public ulong SampleDurationMilliseconds;
     public ulong ValueHighBits;

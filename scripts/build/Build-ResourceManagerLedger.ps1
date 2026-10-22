@@ -95,7 +95,7 @@ function Assert-ProductResult([string]$Root, [string]$ExpectedInputHash) {
     if ([int]$generated.uidWidthBits -ne 128 -or [int]$generated.tableCount -ne 2 -or
         [int]$generated.fixedCount -ne 0 -or [int]$generated.resourceCapacity -ne 36 -or
         [int]$generated.partitionCapacity -ne 0 -or [int]$generated.indexNodeCount -ne 36 -or [int]$generated.indexHomeCount -ne 64) {
-        throw 'Native manifest does not describe the product two-table owner (eight tree slots and twenty-seven compute scratch slots).'
+        throw 'Native manifest does not describe the product two-table owner (eight tree slots and twenty-eight compute scratch slots).'
     }
     foreach ($name in @('LedgerOwnerShape.g.cs', 'LedgerOwnerBuild.g.cs')) {
         $sourceRow = @($generated.outputs | Where-Object { $_.file -ceq $name })

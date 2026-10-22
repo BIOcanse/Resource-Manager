@@ -205,7 +205,10 @@ internal sealed partial class WindowsHardwareMetricCapture
         var requestedNodes = selected.Where(static binding => binding.FieldCode == MetricFieldCode.NumaNodeAvailableBytes)
             .Select(static binding => binding.DeviceIdentity).ToHashSet(StringComparer.Ordinal);
         var values = resources.ReadNumaAvailable(plan.Catalog.NumaIdentities, requestedNodes);
-        return CreateMemoryCompletion(plan, sourcePlan, identity, capturedAt, metrics, values);
+        var requestedCapacityNodes = selected.Where(static binding => binding.FieldCode == MetricFieldCode.NumaNodeCapacityMiB)
+            .Select(static binding => binding.DeviceIdentity).ToHashSet(StringComparer.Ordinal);
+        var capacityValues = resources.ReadNumaCapacityMiB(plan.Catalog.NumaIdentities, requestedCapacityNodes);
+        return CreateMemoryCompletion(plan, sourcePlan, identity, capturedAt, metrics, values, capacityValues);
     }
 
     private NativeMetricSnapshotSourceCompletion CollectVirtualMemory(
@@ -529,7 +532,9 @@ internal sealed partial class WindowsHardwareMetricCapture
             Includes(selected, MetricFieldCode.GpuFanRpm),
             Includes(selected, MetricFieldCode.GpuVoltage) || Includes(selected, MetricFieldCode.AdlxVoltage),
             Includes(selected, MetricFieldCode.GpuMemoryTemperature),
-            Includes(selected, MetricFieldCode.AdlxSampleTimestamp));
+            Includes(selected, MetricFieldCode.AdlxSampleTimestamp),
+            Includes(selected, MetricFieldCode.AdlxNpuActivityPercent),
+            Includes(selected, MetricFieldCode.AdlxNpuFrequencyMhz));
 
     private NativeMetricSnapshotSourceCompletion CollectAmdSmu(
         NativeMetricSnapshotCollectionPlan plan,
@@ -1130,7 +1135,7 @@ internal sealed partial class WindowsHardwareMetricCapture
                 if (binding.MetricKind is (uint)NativeMetricSnapshotMetricKind.TimedCounterRate or (uint)NativeMetricSnapshotMetricKind.TimedMicrosecondCounterPercentage)
                     return NativeMetricSnapshotObservationProjection.CreateTimedCounterObservation(
                         metric, binding, identity, valueTimestamp, timedCounterValue?.Invoke(binding), unavailableStatus(binding));
-                if (binding.MetricKind == (uint)NativeMetricSnapshotMetricKind.CounterRatio)
+                if (binding.MetricKind is (uint)NativeMetricSnapshotMetricKind.CounterRatio or (uint)NativeMetricSnapshotMetricKind.CounterFrequency)
                     return NativeMetricSnapshotObservationProjection.CreateCounterPairObservation(
                         metric, binding, identity, valueTimestamp, counterPairValue?.Invoke(binding), unavailableStatus(binding));
                 if (binding.ValueKind == (uint)NativeMetricSnapshotValueKind.Boolean)

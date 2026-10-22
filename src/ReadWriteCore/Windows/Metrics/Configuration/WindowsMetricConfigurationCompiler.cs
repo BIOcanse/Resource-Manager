@@ -228,6 +228,7 @@ public static class WindowsMetricConfigurationCompiler
                 "floating_counter_ratio" => 16,
                 "floating_counter_percentage" => 17,
                 "timed_microsecond_counter_percentage" => 18,
+                "counter_frequency" => 19,
                 _ => throw new InvalidDataException(
                     $"Unknown metric-snapshot metric kind '{source.MetricKind}'.")
             },

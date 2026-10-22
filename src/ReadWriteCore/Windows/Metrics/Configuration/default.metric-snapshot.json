@@ -1,12 +1,12 @@
 {
-  "profile_revision": 66,
+  "profile_revision": 67,
   "abi_version": 655360,
   "build_capacity": {
     "maximum_source_count": 32,
-    "maximum_metric_count": 12800,
+    "maximum_metric_count": 13472,
     "maximum_rule_count": 16384,
-    "maximum_requested_count": 12800,
-    "maximum_observation_count": 12800,
+    "maximum_requested_count": 13472,
+    "maximum_observation_count": 13472,
     "maximum_gpu_adapter_count": 64,
     "maximum_persistence_source_count": 32,
     "maximum_persistence_rule_count": 16384,
@@ -17,19 +17,19 @@
     "gpu_index_capacity": 128,
     "gpu_luid_index_capacity": 128,
     "gpu_key_index_capacity": 128,
-    "maximum_plan_metric_count": 12800,
+    "maximum_plan_metric_count": 13472,
     "maximum_source_mode_count": 32,
     "maximum_source_plan_count": 32,
-    "maximum_metric_plan_count": 12800,
+    "maximum_metric_plan_count": 13472,
     "resident_byte_budget": 134217728
   },
   "recreate": {
     "capacity": {
       "maximum_source_count": 32,
-      "maximum_metric_count": 12800,
+      "maximum_metric_count": 13472,
       "maximum_rule_count": 16384,
-      "maximum_requested_count": 12800,
-      "maximum_observation_count": 12800,
+      "maximum_requested_count": 13472,
+      "maximum_observation_count": 13472,
       "maximum_gpu_adapter_count": 16,
       "maximum_persistence_source_count": 32,
       "maximum_persistence_rule_count": 16384,
@@ -40,15 +40,15 @@
       "gpu_index_capacity": 32,
       "gpu_luid_index_capacity": 32,
       "gpu_key_index_capacity": 32,
-      "maximum_plan_metric_count": 12800,
+      "maximum_plan_metric_count": 13472,
       "maximum_source_mode_count": 32,
       "maximum_source_plan_count": 32,
-      "maximum_metric_plan_count": 12800,
+      "maximum_metric_plan_count": 13472,
       "resident_byte_budget": 67108864
     },
     "catalog_contract_version": 327680,
     "value_contract_version": 196608,
-    "observation_contract_version": 458752,
+    "observation_contract_version": 524288,
     "inventory_contract_version": 65536,
     "persistence_contract_version": 262144,
     "cpu_counter_contract_version": 65536
@@ -5921,6 +5921,102 @@
         "gpu_vendor_mask": 0,
         "applicability_mask": 0,
         "semantic_fingerprint": 35601
+      },
+      {
+        "template_id": "memory_all_numa_node_capacity_mib.optional",
+        "metric_id_template": "numa.{numa}.capacityMiB",
+        "source_id": "windows.memory",
+        "scope_expansion": "numa_node",
+        "metric_kind": "custom_numeric",
+        "value_kind": "unsigned64",
+        "retention": "mark_unavailable",
+        "capability_mask": 2,
+        "metric_flags": [
+          "nonnegative"
+        ],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 18446744073709551615,
+        "gpu_vendor_mask": 0,
+        "applicability_mask": 0,
+        "maximum_instance_count": 64,
+        "semantic_fingerprint": 20174
+      },
+      {
+        "template_id": "cpu_intel_effective_frequency_mhz.optional",
+        "metric_id_template": "thread.{thread}.intelEffectiveFrequencyMhz",
+        "source_id": "intel.msr",
+        "scope_expansion": "cpu_logical_processor",
+        "maximum_instance_count": 512,
+        "metric_kind": "counter_frequency",
+        "value_kind": "float64",
+        "retention": "mark_unavailable",
+        "capability_mask": 131072,
+        "metric_flags": [
+          "nonnegative"
+        ],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 9218868437227405311,
+        "gpu_vendor_mask": 0,
+        "applicability_mask": 0,
+        "semantic_fingerprint": 18053
+      },
+      {
+        "template_id": "gpu_amd_npu_activity_percent.optional",
+        "metric_id_template": "gpu.{gpu}.adlxNpuActivityLevel",
+        "source_id": "amd.adlx",
+        "scope_expansion": "gpu_adapter",
+        "metric_kind": "custom_numeric",
+        "value_kind": "float64",
+        "retention": "mark_unavailable",
+        "capability_mask": 256,
+        "metric_flags": [
+          "percentage",
+          "nonnegative"
+        ],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 4636737291354636288,
+        "gpu_vendor_mask": 2,
+        "applicability_mask": 0,
+        "maximum_instance_count": 32,
+        "semantic_fingerprint": 35108
+      },
+      {
+        "template_id": "gpu_amd_npu_frequency_mhz.optional",
+        "metric_id_template": "gpu.{gpu}.adlxNpuFrequency",
+        "source_id": "amd.adlx",
+        "scope_expansion": "gpu_adapter",
+        "metric_kind": "custom_numeric",
+        "value_kind": "float64",
+        "retention": "mark_unavailable",
+        "capability_mask": 256,
+        "metric_flags": [
+          "nonnegative"
+        ],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 4746794007244308480,
+        "gpu_vendor_mask": 2,
+        "applicability_mask": 0,
+        "maximum_instance_count": 32,
+        "semantic_fingerprint": 35109
+      },
+      {
+        "template_id": "npu_all_engine_busy_percent.optional",
+        "metric_id_template": "npu.{npu}.engineBusy",
+        "source_id": "windows.npu-engine",
+        "scope_expansion": "npu_device",
+        "maximum_instance_count": 64,
+        "metric_kind": "custom_numeric",
+        "value_kind": "float64",
+        "retention": "mark_unavailable",
+        "capability_mask": 2097152,
+        "metric_flags": [
+          "nonnegative"
+        ],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 9218868437227405311,
+        "gpu_vendor_mask": 0,
+        "applicability_mask": 0,
+        "semantic_fingerprint": 35602
       }
     ]
   },

@@ -111,7 +111,7 @@ public static class IntelMsrTopologyProjection
                 var id = processor.LogicalProcessorId;
                 produced.Add(new(id, processor.DeviceIdentity, new((ushort)(id / 64), (byte)(id % 64)),
                     signature, data.IntelX2ApicId, IntelMsrTargetKind.LogicalProcessor, false, false)
-                    { SupportsPerformanceFeedback = true });
+                    { SupportsPerformanceFeedback = true, IntelProcessorBaseFrequencyDeclaredMhz = data.IntelProcessorBaseFrequencyDeclaredMhz });
             }
             targets.AddRange(produced);
             return NativeMetricSnapshotCatalogTopologyStatus.Complete;

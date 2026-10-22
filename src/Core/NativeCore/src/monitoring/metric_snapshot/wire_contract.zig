@@ -97,6 +97,7 @@ pub fn fingerprint() u64 {
         @intFromEnum(protocol.MetricKind.floating_counter_ratio),
         @intFromEnum(protocol.MetricKind.floating_counter_percentage),
         @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage),
+        @intFromEnum(protocol.MetricKind.counter_frequency),
         @intFromEnum(protocol.ScopeKind.host),
         @intFromEnum(protocol.ScopeKind.cpu),
         @intFromEnum(protocol.ScopeKind.memory),

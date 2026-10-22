@@ -7,7 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ResourceManager.ReadWriteCore" Version="0.1.0-dev.83" />
+    <PackageReference Include="ResourceManager.ReadWriteCore" Version="0.1.0-dev.84" />
     <Compile Include="../../Fixtures/DisplayIdNonModeCtaFixture.cs" Link="DisplayIdNonModeCtaFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdFixture.cs" Link="DisplayIdCtaSvdFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdCtaSvdExpectation.cs" Link="DisplayIdCtaSvdExpectation.cs" />
@@ -19,6 +19,8 @@
     <Compile Include="../../Fixtures/DisplayIdCompactTimingFixture.cs" Link="DisplayIdCompactTimingFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdMixedStructureFixture.cs" Link="DisplayIdMixedStructureFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdDynamicRangeFixture.cs" Link="DisplayIdDynamicRangeFixture.cs" />
+    <Compile Include="../../Fixtures/DisplayIdAdaptiveSyncFixture.cs" Link="DisplayIdAdaptiveSyncFixture.cs" />
+    <Compile Include="../../Fixtures/DisplayIdTypeVViFixture.cs" Link="DisplayIdTypeVViFixture.cs" />
     <Compile Include="../../Fixtures/DisplayIdDynamicRangeConsumerAssertions.cs" Link="DisplayIdDynamicRangeConsumerAssertions.cs" />
     <Compile Include="../../Fixtures/DisplayIdFormulaExpectation.cs" Link="DisplayIdFormulaExpectation.cs" />
     <None Update="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />

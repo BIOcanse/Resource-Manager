@@ -4,11 +4,11 @@ pub const abi_version: u32 = 0x000A_0000;
 
 pub const catalog_contract_version: u32 = 0x0005_0000;
 pub const value_contract_version: u32 = 0x0003_0000;
-pub const observation_contract_version: u32 = 0x0007_0000;
+pub const observation_contract_version: u32 = 0x0008_0000;
 pub const inventory_contract_version: u32 = 0x0001_0000;
 pub const persistence_contract_version: u32 = 0x0004_0000;
 pub const cpu_counter_contract_version: u32 = 0x0001_0000;
-pub const wire_contract_fingerprint: u64 = 0xEE439EB77DDC0C5E;
+pub const wire_contract_fingerprint: u64 = 0xF59BFA169EC0E2F7;
 
 pub const Phase = enum(u32) {
     empty = 1,
@@ -89,6 +89,7 @@ pub const MetricKind = enum(u32) {
     floating_counter_ratio = 16,
     floating_counter_percentage = 17,
     timed_microsecond_counter_percentage = 18,
+    counter_frequency = 19,
 };
 
 pub const ScopeKind = enum(u32) {
@@ -434,6 +435,7 @@ pub const ObservationInput = extern struct {
     status: u32,
     value_kind: u32,
     quality: u32,
+    // Observation contract v8: CPUID.16H base MHz for current counter_frequency observations; zero otherwise.
     reserved_u32: u32,
     sample_duration_milliseconds: u64,
     value_high_bits: u64 = 0,
@@ -831,7 +833,9 @@ pub fn validValue(kind_raw: u32, flags: u32, minimum_bits: u64, maximum_bits: u6
 }
 
 pub fn isCounterMetric(kind: u32) bool {
-    return kind == @intFromEnum(MetricKind.counter_ratio) or isTimedCounterMetric(kind) or isFloatingCounterMetric(kind);
+    return kind == @intFromEnum(MetricKind.counter_ratio) or
+        kind == @intFromEnum(MetricKind.counter_frequency) or
+        isTimedCounterMetric(kind) or isFloatingCounterMetric(kind);
 }
 
 pub fn isTimedCounterMetric(kind: u32) bool {

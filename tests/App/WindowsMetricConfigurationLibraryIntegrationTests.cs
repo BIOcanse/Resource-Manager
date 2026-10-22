@@ -16,9 +16,9 @@ public sealed class WindowsMetricConfigurationLibraryIntegrationTests
         var config = WindowsMetricConfiguration.CreateDefault();
         Assert.Equal(typeof(ReadWriteCore).Assembly, typeof(WindowsMetricConfiguration).Assembly);
         Assert.Equal(typeof(ReadWriteCore).Assembly, typeof(WindowsMetricConfigurationCompiler).Assembly);
-        Assert.Equal(66UL << 32, config.Configuration.Generation);
+        Assert.Equal(67UL << 32, config.Configuration.Generation);
         Assert.Equal(23, config.CatalogConfiguration.SourcePolicies.Length);
-        Assert.Equal(299, config.CatalogConfiguration.RuleTemplates.Length);
+        Assert.Equal(304, config.CatalogConfiguration.RuleTemplates.Length);
         var npu = config.CatalogConfiguration.RuleTemplates.Where(rule => rule.SourceId == "windows.npu-memory").ToArray();
         Assert.Equal(4, npu.Length);
         Assert.All(npu, rule =>
@@ -48,11 +48,11 @@ public sealed class WindowsMetricConfigurationLibraryIntegrationTests
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(buffer.ToArray(), "unexpanded-marker.json"));
         var full = StrictHostManagerProfileLoader.ReadExpandedDefaultBytes();
         var root = JsonNode.Parse(full)!.AsObject();
-        Assert.Equal(299, root["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray().Count);
+        Assert.Equal(304, root["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray().Count);
         var edited = root["hot_publish"]!["metric_snapshot"]!["rule_templates"]![0]!;
         edited["semantic_fingerprint"] = edited["semantic_fingerprint"]!.GetValue<ulong>() + 1;
         var loaded = StrictHostManagerProfileLoader.LoadBytes(JsonSerializer.SerializeToUtf8Bytes(root), "explicit-override.json");
-        Assert.Equal(66, loaded.Profile.ProfileRevision);
+        Assert.Equal(67, loaded.Profile.ProfileRevision);
         root["hot_publish"]!["metric_snapshot"]!.AsObject().Remove("rule_templates");
         Assert.Throws<InvalidDataException>(() => StrictHostManagerProfileLoader.LoadBytes(JsonSerializer.SerializeToUtf8Bytes(root), "missing-custom-value.json"));
     }

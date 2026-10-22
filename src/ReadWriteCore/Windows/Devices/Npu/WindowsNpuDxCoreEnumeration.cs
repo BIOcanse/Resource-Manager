@@ -117,6 +117,13 @@ internal struct WindowsNpuDxCoreEngineIndex
 }
 
 [StructLayout(LayoutKind.Sequential)]
+internal struct WindowsNpuDxCoreEngineQueryInput
+{
+    public WindowsNpuDxCoreEngineIndex AdapterEngineIndex;
+    public uint ProcessId;
+}
+
+[StructLayout(LayoutKind.Sequential)]
 internal struct WindowsNpuDxCoreEngineNameInput
 {
     public WindowsNpuDxCoreEngineIndex AdapterEngineIndex;

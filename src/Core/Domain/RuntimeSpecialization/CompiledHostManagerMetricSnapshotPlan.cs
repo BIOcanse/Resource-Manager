@@ -106,13 +106,13 @@ public sealed record CompiledHostManagerMetricSnapshotRecreatePlan(
     private const uint ContractVersionV3 = 0x0003_0000U;
     private const uint ContractVersionV4 = 0x0004_0000U;
     private const uint ContractVersionV5 = 0x0005_0000U;
-    private const uint ContractVersionV7 = 0x0007_0000U;
+    private const uint ContractVersionV8 = 0x0008_0000U;
 
     public bool IsPublished => Capacity.IsPublished
         && !string.IsNullOrWhiteSpace(PersistenceRelativePath)
         && CatalogContractVersion == ContractVersionV5
         && ValueContractVersion == ContractVersionV3
-        && ObservationContractVersion == ContractVersionV7
+        && ObservationContractVersion == ContractVersionV8
         && InventoryContractVersion == ContractVersionV1
         && PersistenceContractVersion == ContractVersionV4
         && CpuCounterContractVersion == ContractVersionV1;
@@ -166,11 +166,11 @@ public sealed record CompiledHostManagerMetricSnapshotRuleTemplate(
         && SourceHandle > 0
         && SourcePriority > 0
         && ScopeExpansion is >= 1 and <= 17
-        && MetricKind is >= 1 and <= 18
+        && MetricKind is >= 1 and <= 19
         && ScopeKind is >= 1 and <= 4
         && ValueKind is >= 1 and <= 6
         && RetentionPolicy is 1 or 2
-        && (MetricKind is not (14 or 15 or 16 or 17 or 18) || (ValueKind == 1 && RetentionPolicy == 2))
+        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || (ValueKind == 1 && RetentionPolicy == 2))
         && CapabilityMask > 0
         && (MetricFlags & ~0x0FU) == 0
         && GpuVendorMask <= 0x0FU

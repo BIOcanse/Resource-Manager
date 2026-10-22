@@ -426,12 +426,16 @@ public sealed class WindowsNpuEngineDirectoryLease : IWindowsNpuEngineDirectory
         token.ThrowIfCancellationRequested();
         try
         {
-            var input = new WindowsNpuDxCoreEngineIndex { PhysicalAdapterIndex = 0, EngineIndex = engine };
+            var input = new WindowsNpuDxCoreEngineQueryInput
+            {
+                AdapterEngineIndex = new WindowsNpuDxCoreEngineIndex { PhysicalAdapterIndex = 0, EngineIndex = engine },
+                ProcessId = 0
+            };
             ulong output = 0;
             var ticksPerSecond = frequency();
             var begin = timestamp();
             var status = api.QueryState(adapter, WindowsNpuDxCoreState.AdapterEngineRunningTimeMicroseconds,
-                checked((nuint)sizeof(WindowsNpuDxCoreEngineIndex)), (nint)(&input), sizeof(ulong), (nint)(&output));
+                checked((nuint)sizeof(WindowsNpuDxCoreEngineQueryInput)), (nint)(&input), sizeof(ulong), (nint)(&output));
             var end = timestamp();
             var afterFrequency = frequency();
             token.ThrowIfCancellationRequested();

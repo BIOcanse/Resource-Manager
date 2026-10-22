@@ -10,8 +10,10 @@ public sealed partial class WindowsHardwareMetricSampler
 {
     internal static NativeMetricSnapshotSourceCompletion CreateMemoryCompletion(NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan, NativeMetricSnapshotSourceObservationIdentity identity,
-        DateTimeOffset capturedAt, MemoryMetrics? metrics, IReadOnlyDictionary<string, ulong> numaValues)
-        => ResourceManager.ReadWrite.Windows.Metrics.Capture.WindowsHardwareMetricCapture.CreateMemoryCompletion(plan, sourcePlan, identity, capturedAt, metrics, numaValues);
+        DateTimeOffset capturedAt, MemoryMetrics? metrics, IReadOnlyDictionary<string, ulong> numaValues,
+        IReadOnlyDictionary<string, ulong>? numaCapacityMiBValues = null)
+        => ResourceManager.ReadWrite.Windows.Metrics.Capture.WindowsHardwareMetricCapture.CreateMemoryCompletion(
+            plan, sourcePlan, identity, capturedAt, metrics, numaValues, numaCapacityMiBValues);
 
 }
 

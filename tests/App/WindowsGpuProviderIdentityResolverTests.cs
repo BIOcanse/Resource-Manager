@@ -155,11 +155,13 @@ public sealed class WindowsGpuProviderIdentityResolverTests
     [Fact]
     public void AdlxBridgeAndManagedLayoutExposeVersionedPnpIdentity()
     {
-        Assert.Equal(5U, AmdAdlxBridgeReader.BridgeAbiVersion);
-        Assert.Equal(840, Marshal.SizeOf<NativeAdlxGpuMetrics>());
+        Assert.Equal(6U, AmdAdlxBridgeReader.BridgeAbiVersion);
+        Assert.Equal(848, Marshal.SizeOf<NativeAdlxGpuMetrics>());
         Assert.Equal(520, Marshal.SizeOf<NativeAdlxGpuSelection>());
         Assert.Equal(824, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.IdentityValid)).ToInt32());
         Assert.Equal(832, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.SampleTimestampMilliseconds)).ToInt32());
+        Assert.Equal(840, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.NpuActivityLevelPercent)).ToInt32());
+        Assert.Equal(844, Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.NpuFrequencyMhz)).ToInt32());
         Assert.Equal(816, Marshal.OffsetOf<NativeAdlxGpuMetrics>(
             nameof(NativeAdlxGpuMetrics.MemoryTemperatureCelsius)).ToInt32());
         Assert.Equal(
@@ -190,7 +192,7 @@ public sealed class WindowsGpuProviderIdentityResolverTests
             native,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RM_ADLX_BRIDGE_ABI_VERSION 5",
+            "RM_ADLX_BRIDGE_ABI_VERSION 6",
             native,
             StringComparison.Ordinal);
     }

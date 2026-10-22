@@ -53,7 +53,7 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
     public void MissingSdkAbiOrMetadataFailureKeepsKnownIdentitiesEmpty(int defect)
     {
         var bridge=new Bridge { Metadata=[Metadata(10,PnpA)], Failure=defect switch { 0=>new DllNotFoundException(),1=>new EntryPointNotFoundException(),2=>new BadImageFormatException(),_=>null },
-            Abi=defect==3 ? 4U : 5U,DeclarationAbi=defect==4 ? 2U : 1U,Size=defect==5 ? 1036 : 1040,Count=defect==6 ? 33 : null };
+            Abi=defect==3 ? 5U : 6U,DeclarationAbi=defect==4 ? 2U : 1U,Size=defect==5 ? 1036 : 1040,Count=defect==6 ? 33 : null };
         var rows=new AmdAdlxBridgeReader(bridge).ReadDeclarations(Inventory())!;
         Assert.Equal(2,rows.Count); Assert.All(rows,row=> { Assert.Null(row.VbiosVersion); Assert.Null(row.VramType); Assert.Null(row.VbiosPartNumber); Assert.Null(row.VbiosDateRaw); });
         Assert.Empty(bridge.Selections);
@@ -140,7 +140,7 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
 
     private static NativeAdlxGpuMetrics Metadata(int id,string pnp)
     {
-        var row=new NativeAdlxGpuMetrics { StructSize=840,AbiVersion=5,UniqueId=id,IdentityValid=1 };
+        var row=new NativeAdlxGpuMetrics { StructSize=848,AbiVersion=6,UniqueId=id,IdentityValid=1 };
         Write(ref row,nameof(NativeAdlxGpuMetrics.PnpString),pnp); return row;
     }
     private static NativeAdlxGpuDeclaration Value(int id,string pnp)
@@ -163,10 +163,10 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
         WindowsGpuIdentityEvidence.CmCanonicalInstanceRoundTrip|WindowsGpuIdentityEvidence.KmtDeviceIds|WindowsGpuIdentityEvidence.CmPciAddress,WindowsGpuPhysicalIdentityStatus.Bound,0)] };
     private sealed class Bridge:IAmdAdlxNativeBridge
     {
-        public uint Abi=5,DeclarationAbi=1; public int Size=1040,Calls; public int? Count; public Exception? Failure;
+        public uint Abi=6,DeclarationAbi=1; public int Size=1040,Calls; public int? Count; public Exception? Failure;
         public NativeAdlxGpuMetrics[] Metadata=[]; public NativeAdlxGpuDeclaration[] Values=[]; public NativeAdlxGpuSelection[] Selections=[];
         public uint GetAbiVersion() { Calls++; if(Failure is not null) throw Failure; return Abi; }
-        public int GetMetricsSize()=>840; public int GetSelectionSize()=>520;
+        public int GetMetricsSize()=>848; public int GetSelectionSize()=>520;
         public uint GetDeclarationAbiVersion()=>DeclarationAbi; public int GetDeclarationSize()=>Size;
         public int ReadMetadata(NativeAdlxGpuMetrics[] output,StringBuilder message) { Metadata.CopyTo(output,0); return Count ?? Metadata.Length; }
         public int ReadSelected(NativeAdlxGpuMetrics[] output,NativeAdlxGpuSelection[] selections,StringBuilder message)=>throw new InvalidOperationException("No metrics demanded");

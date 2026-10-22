@@ -6,6 +6,11 @@ internal static partial class PdhCounterMethods
 {
     internal const int ErrorSuccess = 0;
     internal const uint PdhFmtDouble = 0x00000200;
+    internal const uint PdhFmtLarge = 0x00000400;
+    internal const uint PdhFmtNoScale = 0x00001000;
+    internal const uint PdhCounterTypeRawCount = 0x00010000;
+    internal const uint PdhCStatusValidData = 0;
+    internal const uint PdhCStatusNewData = 1;
     [LibraryImport("pdh.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int PdhOpenQuery(
         string? dataSource,
@@ -49,4 +54,7 @@ internal struct PdhFmtCounterValue
 
     [FieldOffset(8)]
     public double DoubleValue;
+
+    [FieldOffset(8)]
+    public long LargeValue;
 }

@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][string]$OutputPath,
     [ValidateRange(1,4096)][int]$MaxMethodsPerGroup = 128,
     [string[]]$IsolateMethods = @(),
+    [string]$SelectedMethodsPath,
     [string]$MetadataLoadContextPath = 'C:\Program Files\dotnet\sdk\10.0.300\System.Reflection.MetadataLoadContext.dll'
 )
 Set-StrictMode -Version Latest
@@ -39,11 +40,26 @@ foreach($method in $metadata.discoverable) {
 }
 $allMethods=New-Set @($methodRows.Keys) -Ordinal
 Check ($allMethods.Count -gt 0 -and $allMethods.Count -le 32768) 'Discoverable method count is outside its bound.'
+$focused=$false;$selectedMethods=$allMethods;$selectedInputPath=$null;$selectedMethodsHash=$null
+if($SelectedMethodsPath){
+    $focused=$true;$selectedInputPath=[IO.Path]::GetFullPath($SelectedMethodsPath)
+    Check ([IO.File]::Exists($selectedInputPath)) "SelectedMethodsPath does not exist: $selectedInputPath"
+    $selectedMethodsHash=Hash $selectedInputPath
+    $decoded=ConvertFrom-Json -InputObject (Get-Content -LiteralPath $selectedInputPath -Raw) -NoEnumerate
+    Check ($decoded -is [array] -and $decoded.Count -gt 0) 'SelectedMethodsPath must contain a nonempty JSON string array.'
+    $selectedMethods=New-Set @() -Ordinal
+    foreach($method in $decoded){
+        Check ($method -is [string] -and -not [string]::IsNullOrWhiteSpace($method) -and $method -ceq $method.Trim()) 'SelectedMethodsPath entries must be exact, nonempty runtime method keys.'
+        Check ($selectedMethods.Add($method)) "SelectedMethodsPath contains a duplicate method: $method"
+        Check ($allMethods.Contains($method)) "SelectedMethodsPath contains a non-discoverable method: $method"
+    }
+}
 $isolated=New-Set @($IsolateMethods) -Ordinal
 Check ($isolated.IsSubsetOf($allMethods)) 'Every IsolateMethods entry must be an exact discoverable FQN.'
+if($focused){$isolated.IntersectWith($selectedMethods)}
 $groups=[Collections.Generic.List[object]]::new();$pending=[Collections.Generic.List[string]]::new()
 foreach($key in @($isolated|Sort-Object)){$groups.Add([pscustomobject]@{groupId='';methods=@($key);filter='';isolated=$true})}
-foreach($key in @($allMethods|Sort-Object)) {
+foreach($key in @($selectedMethods|Sort-Object)) {
     if($isolated.Contains($key)){continue}
     $pending.Add($key)
     if($pending.Count -eq $MaxMethodsPerGroup){$groups.Add([pscustomobject]@{groupId='';methods=@($pending.ToArray());filter='';isolated=$false});$pending.Clear()}
@@ -68,7 +84,8 @@ foreach($group in $groups) {
     $group.filter=[string]::Join('|',[string[]]@($selectors|Sort-Object))
     Check ($group.filter.Length -le 131072) 'Runtime filter exceeds 128 KiB.'
 }
-Check ($covered.SetEquals($allMethods)) 'Runtime groups omitted discoverable methods.'
+Check ($covered.SetEquals($selectedMethods)) 'Runtime groups omitted declared methods.'
+if($focused){Verify-Hash $selectedInputPath $selectedMethodsHash}
 $toolPaths=@($generatorTool,$coverageTool,$MetadataLoadContextPath)
 $result=[ordered]@{
     schemaVersion=1;kind='AppTestRuntimePartitions';partitionId=$build.partitionId
@@ -77,13 +94,16 @@ $result=[ordered]@{
     buildRunDirectory=$buildRun;partitionBuildSha256=(Hash $buildFile)
     testAssemblySha256=$build.testAssemblySha256;assemblyArchive=$dll[0].archive;assemblyName=$metadata.assemblyName
     maxMethodsPerGroup=$MaxMethodsPerGroup;isolatedMethods=@($isolated|Sort-Object)
+    focused=$focused;wholeAssemblySelected=(-not $focused);discoveredMethodCount=$allMethods.Count
+    discoveryScope='Built test assembly metadata; methods contains the selected declaration set.'
+    selectedMethodsPath=$selectedInputPath;selectedMethodsSha256=$selectedMethodsHash
     tools=@($toolPaths|ForEach-Object {[pscustomobject]@{path=[IO.Path]::GetFullPath($_);sha256=(Hash $_)}})
-    methods=@($allMethods|Sort-Object);groups=@($groups.ToArray())
+    methods=@($selectedMethods|Sort-Object);groups=@($groups.ToArray())
     metadataDeclarationCount=$metadata.declared.Count;metadataDiscoverableDeclarationCount=$metadata.discoverable.Count
-    methodMapping=@($metadata.discoverable)
+    methodMapping=@(foreach($key in @($selectedMethods|Sort-Object)){foreach($row in $methodRows[$key]){$row}})
 }
 $destination=[IO.Path]::GetFullPath($OutputPath)
 Check ([IO.Directory]::Exists([IO.Path]::GetDirectoryName($destination))) 'Output parent must already exist in a registered task.'
 Check (-not [IO.File]::Exists($destination)) 'Runtime manifest is immutable; select a new output path.'
 [IO.File]::WriteAllText($destination,($result|ConvertTo-Json -Depth 12),[Text.UTF8Encoding]::new($false))
-Write-Output (@{partitionId=$build.partitionId;methodCount=$allMethods.Count;groupCount=$groups.Count;outputPath=$destination;sha256=(Hash $destination)}|ConvertTo-Json -Compress)
+Write-Output (@{partitionId=$build.partitionId;methodCount=$selectedMethods.Count;discoveredMethodCount=$allMethods.Count;focused=$focused;groupCount=$groups.Count;outputPath=$destination;sha256=(Hash $destination)}|ConvertTo-Json -Compress)

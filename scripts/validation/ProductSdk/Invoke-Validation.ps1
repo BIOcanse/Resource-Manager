@@ -21,6 +21,8 @@ if($taskExplicitTestProject -and $Stage -notin @('Build','Tests')){throw 'TestPr
 $taskPartitionHash=$null
 $taskPartitionReferences=@()
 $taskRuntimeReferences=@()
+$taskRuntime=$null
+$taskRuntimeSelectedCompilePath=$null
 $taskRuntimeSelection=$null
 if(-not [string]::IsNullOrWhiteSpace($TestCompileManifest)) {
     if(-not $taskExplicitTestProject -or $Stage -notin @('Build','Tests')){throw 'TestCompileManifest requires an explicit TestProject and Build or Tests stage.'}
@@ -48,6 +50,13 @@ if(-not [string]::IsNullOrWhiteSpace($TestRuntimeManifest) -or -not [string]::Is
     $taskRuntimeSelection=& (Join-Path $PSScriptRoot 'Get-AppTestRuntimeSelection.ps1') -ManifestPath $TestRuntimeManifest -GroupId $TestRuntimeGroupId -CompileManifestPath $TestCompileManifest -BuildContextPath (Join-Path $taskRoot 'build-context.json')
     $taskRuntime=Get-Content -LiteralPath $TestRuntimeManifest -Raw|ConvertFrom-Json
     $taskRuntimeReferences=@($TestRuntimeManifest,$taskRuntime.planPath,$taskRuntime.assemblyArchive,(Join-Path $taskRuntime.buildRunDirectory 'partition-build.json'))+@($taskRuntime.tools|ForEach-Object path)
+    $taskRuntimeSelectedCompilePath=Join-Path ([string]$taskRuntime.buildRunDirectory) 'compile-partition/selected-compile.txt'
+    $taskRuntimeReferences+= $taskRuntimeSelectedCompilePath
+}
+if($Stage -ceq 'Tests' -and $taskPartitionHash -and -not $taskRuntime) {
+    $taskExistingBuildContext=Get-Content -LiteralPath (Join-Path $taskRoot 'build-context.json') -Raw|ConvertFrom-Json
+    $taskRuntimeSelectedCompilePath=Join-Path ([string]$taskExistingBuildContext.runDirectory) 'compile-partition/selected-compile.txt'
+    $taskRuntimeReferences+=@((Join-Path ([string]$taskExistingBuildContext.runDirectory) 'partition-build.json'),$taskRuntimeSelectedCompilePath)
 }
 $taskTestProject=if($taskExplicitTestProject){[IO.Path]::GetFullPath($(if([IO.Path]::IsPathRooted($TestProject)){$TestProject}else{Join-Path $taskRepo $TestProject}))}else{Join-Path $taskRoot 'FocusedTests.csproj'}
 $taskUsesTestProject=$Stage -notin @('Frontend','ProductNative','ProductLegacy','ProductDiskNative','ProductBackend','ProductShell','ProductImage')
@@ -179,7 +188,8 @@ if($Stage -in @('Frontend','ProductNative','ProductLegacy','ProductDiskNative','
 }
 $taskInputs+=@('NuGet.Config','Directory.Build.props',(Join-Path $taskRoot 'NuGet.official.config'))+$taskNativeInputs+$taskDiskFiles+$taskRuntimeReferences
 if($Stage -in @('ProductBackend','ProductShell','ProductImage')) {
-    $taskInputs+=@((Join-Path $taskRoot 'product-native-context.json'),(Join-Path $taskRoot 'frontend-product-context.json'))
+    $taskProductNativeContextPath=if([string]::IsNullOrWhiteSpace($NativeContextPath)){Join-Path $taskRoot 'product-native-context.json'}else{$NativeContextPath}
+    $taskInputs+=@($taskProductNativeContextPath,(Join-Path $taskRoot 'frontend-product-context.json'))
     if($Stage -eq 'ProductImage'){$taskInputs+=Join-Path $taskRoot 'product-publish-context.json'}
 }
 if($taskUsesTestProject){$taskInputs+=$taskTestProject}
@@ -193,6 +203,80 @@ if([IO.File]::Exists((Join-Path $taskRoot 'package-prerequisites.json'))){
 }
 $taskInputs+=@('artifacts/sdk/manifest.0.1.0-dev.2.json','artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.2.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Build.0.1.0-dev.2.nupkg','artifacts/sdk/packages/ResourceManager.Ledger.Configuration.0.1.0-dev.2.nupkg','artifacts/sdk/native/0.1.0-dev.2/ResourceManager.Ledger.NativeSources.0.1.0-dev.2.zip','artifacts/sdk/tools/0.1.0-dev.2/.config/dotnet-tools.json')
 $taskInputs+=@(Get-ChildItem (Join-Path $taskRepo 'sdk/freedom-point/packages') -File -Filter '*0.1.0-dev.41.nupkg'|ForEach-Object FullName)
+if($Stage -in @('Sources','Pack','Consumers')) {
+    $taskCompileBuildContext=Get-Content -LiteralPath (Join-Path $taskRoot 'build-context.json') -Raw|ConvertFrom-Json
+    $taskCompileArtifacts=[IO.Path]::GetFullPath([string]$taskCompileBuildContext.artifacts)
+    $taskCompilePowerShell='C:\Users\kings\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe'
+    $taskCompileProperties=@(
+        ('-p:ArtifactsPath='+$taskCompileArtifacts),'-p:Configuration=Debug','-p:BuildInParallel=false','-maxcpucount:1','-nodeReuse:false',
+        '-p:UseSharedCompilation=false','-p:NuGetAudit=false','-p:SkipPerformanceOverlayNativeBuild=true','-p:SkipGpuPlacementNativeBuild=true',
+        '-p:SkipGpuPlacementPreparationNativeBuild=true','-p:SkipGpuLaunchBrokerNativeBuild=true','-p:SkipAdlxBridgeBuild=true',
+        '-p:SkipNativeCoreBuild=true','-p:SkipGpuWindowActionNativeBuild=true','-p:SkipGpuPlacementExternalNativeBuild=true',
+        '-p:SkipAdapterNativeBuild=true','-p:SkipClientAppBuild=true','-p:NativeCoreOptimize=ReleaseFast',
+        ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $taskRepo 'scripts/validation/FreedomPointCompilerCapture.targets')),
+        ('-p:CompilerResponseFile='+(Join-Path $taskRepo 'scripts/validation/ProductSdk/serial-compiler.rsp')),
+        ('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $taskRoot 'ledger-native')),
+        ('-p:ResourceManagerLedgerPowerShell='+$taskCompilePowerShell),
+        ('-p:RestoreConfigFile='+(Join-Path $taskRoot 'NuGet.official.config')),
+        ('-p:RestorePackagesPath='+(Join-Path $taskCompileArtifacts 'packages'))
+    )
+    if([string]::IsNullOrWhiteSpace($NativeContextPath)) {
+        $taskCompileProperties+='-p:NativeCoreInstallRoot=D:\Code\Resource-Manager-Development\.local\review-repairs-third-20261009\native-prefix'
+    } else {
+        $taskCompileNativeContext=Get-Content -LiteralPath $NativeContextPath -Raw|ConvertFrom-Json
+        $taskCompileAllowedNativeProperties=@('NativeCoreOutput','AdapterNativeRoot','AdapterNativeOutput','AdlxBridgeRoot',
+            'GpuPlacementShimRoot','GpuLaunchBrokerRoot','GpuWindowActionRoot','GpuPlacementExternalRoot',
+            'GpuPlacementPreparationRoot','PerformanceOverlayRoot','GpuMigrationProbeRoot','GpuLaunchTargetProbePath',
+            'SkipNativeCoreBuild','SkipAdapterNativeBuild','SkipAdlxBridgeBuild','SkipGpuPlacementNativeBuild',
+            'SkipGpuLaunchBrokerNativeBuild','SkipGpuWindowActionNativeBuild','SkipGpuPlacementExternalNativeBuild',
+            'SkipGpuPlacementPreparationNativeBuild','SkipPerformanceOverlayNativeBuild')
+        foreach($taskProperty in $taskCompileNativeContext.properties.PSObject.Properties) {
+            if($taskCompileAllowedNativeProperties -notcontains $taskProperty.Name){throw "Unexpected Native context property: $($taskProperty.Name)"}
+            if($taskProperty.Name.StartsWith('Skip',[StringComparison]::Ordinal) -and [string]$taskProperty.Value -cne 'true'){throw 'Native context cannot enable new builds.'}
+            if(($taskProperty.Name.EndsWith('Output',[StringComparison]::Ordinal) -or $taskProperty.Name.EndsWith('Path',[StringComparison]::Ordinal)) -and
+                @($taskCompileNativeContext.outputs|Where-Object {[string]$_.path -ieq [string]$taskProperty.Value}).Count -ne 1){throw "Native output property is not bound to a verified output: $($taskProperty.Name)"}
+            $taskCompileProperties+=('-p:'+$taskProperty.Name+'='+[string]$taskProperty.Value)
+        }
+        if(@($taskCompileNativeContext.outputs|Where-Object {[string]$_.path -ieq [string]$taskCompileNativeContext.properties.NativeCoreOutput}).Count -ne 1){throw 'NativeCoreOutput is not bound to a verified output.'}
+    }
+    if($taskDiskInputs) {
+        $taskCompileProperties+=@(('-p:DiskCheckpointNativeRoot='+$taskDiskInputs.context.artifactRoot),
+            ('-p:DiskCheckpointPowerShell='+$taskCompilePowerShell))
+    }
+    if(-not [string]::IsNullOrWhiteSpace($LedgerBuildRoot)) {
+        $taskCompileProperties+=('-p:ResourceManagerLedgerBuildRoot='+[IO.Path]::GetFullPath($LedgerBuildRoot))
+    }
+    $taskCompileManifestPath=Join-Path $taskRun 'compile-inputs.json'
+    $taskCompileArguments=@{
+        Stage=$Stage;RepositoryRoot=$taskRepo;TaskRoot=$taskRoot;ScratchRoot=$taskWorkset.IsolatedScratchRoot
+        ArtifactsPath=$taskCompileArtifacts;OutputPath=$taskCompileManifestPath;BuildProperties=$taskCompileProperties
+    }
+    $taskCompileSummary=& (Join-Path $PSScriptRoot 'Get-EvaluatedCompileInputs.ps1') @taskCompileArguments|ConvertFrom-Json
+    $taskCompileManifest=Get-Content -LiteralPath $taskCompileManifestPath -Raw|ConvertFrom-Json
+    $taskInputs+=@($taskCompileManifestPath,[string]$taskCompileSummary.captureTargetsPath)
+    $taskInputs+=@($taskCompileManifest.inputs|Where-Object {-not $_.generated}|ForEach-Object path)
+}
+if($taskPartitionHash) {
+    . (Join-Path $PSScriptRoot 'Get-AppTestCompileInputScope.ps1')
+    $taskSelectedCompilePath=$null
+    $taskSelectedCompileSha256=$null
+    if($Stage -ceq 'Tests') {
+        $taskSelectedCompileBuildRun=if($taskRuntime){[string]$taskRuntime.buildRunDirectory}else{[string]$taskExistingBuildContext.runDirectory}
+        $taskSelectedCompile=Get-AppTestSelectedCompileEvidence -BuildRunDirectory $taskSelectedCompileBuildRun `
+            -ExpectedPartitionId ([string]$taskPartition.partitionId) -ExpectedManifestPath $TestCompileManifest `
+            -ExpectedManifestSha256 $taskPartitionHash
+        $taskSelectedCompilePath=[string]$taskSelectedCompile.path
+        $taskSelectedCompileSha256=[string]$taskSelectedCompile.sha256
+        if([IO.Path]::GetFullPath($taskSelectedCompilePath) -ine [IO.Path]::GetFullPath($taskRuntimeSelectedCompilePath)) {
+            throw 'Test stage selected Compile evidence path differs from the Build output.'
+        }
+        $taskInputs+=$taskSelectedCompilePath
+    }
+    $taskInputs=@(Get-AppTestScopedInputRows -Rows $taskInputs -RepositoryRoot $taskRepo -Stage $Stage `
+        -ManifestPath $TestCompileManifest -OriginalCompileMetadataPath $taskPartition.originalCompileMetadata.path `
+        -SelectedCompilePath $taskSelectedCompilePath -SelectedCompileSha256 $taskSelectedCompileSha256 `
+        -IncludeRuntimeSelection:([bool]$taskRuntimeSelection))
+}
 $taskInputs=@($taskInputs|ForEach-Object { if([IO.Path]::IsPathRooted($_)){[IO.Path]::GetRelativePath($taskRepo,$_)}else{$_} })
 function Read-Inputs {
     foreach($taskPath in ($taskInputs|Sort-Object -Unique)) {

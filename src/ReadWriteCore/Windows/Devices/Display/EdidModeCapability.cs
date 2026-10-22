@@ -12,6 +12,7 @@ public sealed record EdidModeCapability(
     public byte? CtaFlags { get; init; }
     public ImmutableArray<EdidModeSelectionDeclaration> SelectionDeclarations { get; init; } = [];
     public ImmutableArray<EdidDynamicTimingRangeDeclaration> DynamicTimingRanges { get; init; } = [];
+    public ImmutableArray<EdidAdaptiveSyncRangeDeclaration> AdaptiveSyncRanges { get; init; } = [];
 }
 
 public sealed record EdidModeDeclaration(
@@ -43,6 +44,15 @@ public sealed record EdidModeDeclaration(
     public bool? ReducedBlanking { get; init; }
     public EdidDetailedTiming? Timing { get; init; }
     public EdidCvtTimingParameters? CvtParameters { get; init; }
+    /// <summary>Type V fields explicitly listed by DisplayID 1.3 Table 4-26.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EdidDisplayIdTypeVOptions? DisplayIdTypeVOptions { get; init; }
+    /// <summary>Type VI data needed when its inconsistent high pixel-clock bit makes Timing unavailable.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EdidDisplayIdTypeViTiming? DisplayIdTypeViTiming { get; init; }
+    /// <summary>Optional Type VI aspect multiplier and vertical image size, kept as declared.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EdidDisplayIdTypeViImageSize? DisplayIdTypeViImageSize { get; init; }
 }
 
 /// <summary>One original CTA selection block, in source order; not a computed winning mode.</summary>
@@ -85,6 +95,24 @@ public sealed record EdidCvtTimingParameters(byte ReducedBlankingVersion, byte S
     /// <summary>Original D7.0 for every supported RB version: true selects300us/20us, false460us/35us.</summary>
     public bool? AlternativeMinimumVerticalBlanking { get; init; }
 }
+
+public sealed record EdidDisplayIdTypeVOptions(
+    byte FormulaCode, byte StereoSupportCode, bool FractionalRefreshSupported);
+
+/// <summary>
+/// DisplayID 1.3 Type VI declared pixel clock and porch/sync values. PixelClockHz is null only
+/// for the high clock bit that conflicts with the table's stated maximum; RawDescriptor remains complete.
+/// </summary>
+public sealed record EdidDisplayIdTypeViTiming(
+    ulong? PixelClockHz,
+    uint HorizontalBlankingPixels, uint HorizontalFrontPorchPixels, uint HorizontalSyncWidthPixels,
+    uint VerticalBlankingLines, uint VerticalFrontPorchLines, uint VerticalSyncWidthLines,
+    bool PositiveHorizontalSync, bool PositiveVerticalSync, byte StereoSupportCode);
+
+/// <summary>Type VI's optional aspect multiplier and vertical image-size values in millimeters.</summary>
+public sealed record EdidDisplayIdTypeViImageSize(
+    byte AspectMultiplier, uint VerticalImageBaseSizeMillimeters,
+    byte SizeMultiplier, uint VerticalImageSizeMillimeters);
 
 /// <summary>Original aspect code and its explicit ratio; code8 declares an undefined ratio.</summary>
 public sealed record EdidAspectRatioDeclaration(byte Code, uint? Horizontal, uint? Vertical);

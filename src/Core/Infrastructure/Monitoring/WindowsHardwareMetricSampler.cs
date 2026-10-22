@@ -569,7 +569,8 @@ public sealed partial class WindowsHardwareMetricSampler :
             SynchronizePlatformSensorDemand(handles, catalog);
             if (!catalog.RuleBindings.Values.Any(static rule => rule.MetricKind is
                 (uint)NativeMetricSnapshotMetricKind.CounterRatio or (uint)NativeMetricSnapshotMetricKind.TimedCounterRate
-                or (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio or (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage)) return;
+                or (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio or (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage
+                or (uint)NativeMetricSnapshotMetricKind.CounterFrequency)) return;
             workspace.SynchronizeCounterDemand(handles, DateTimeOffset.UtcNow);
         }
     }

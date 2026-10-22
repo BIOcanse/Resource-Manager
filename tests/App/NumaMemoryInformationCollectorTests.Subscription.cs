@@ -23,15 +23,21 @@ public sealed partial class NumaMemoryInformationCollectorTests
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(), "CPU", "RAM", lease.WorkspaceIdentity));
         var reads = new List<ushort>();
+        var capacityReads = new List<ushort>();
         var memory = new WindowsMemoryMonitoringZone(node => { reads.Add(node); return 9_007_199_254_740_993UL; },
-            () => throw new InvalidOperationException("NUMA-only demand must not read global memory."));
+            () => throw new InvalidOperationException("NUMA-only demand must not read global memory."),
+            selected =>
+            {
+                capacityReads.AddRange(selected);
+                return selected.ToDictionary(static node => node, static _ => 123UL);
+            });
         var registry = new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id =>
             id == memory.DisplayName ? memory : new MonitoringSourceZone(id)).ToArray());
         using var sampler = new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(), memory,
             null!, null!, null!, null!, null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner,
             dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
-        var request = MetricDeviceFields.CreateRequest(dashboard.Current!, "windows-numa-node|9", [FieldName]);
-        Assert.Single(request.Ids);
+        var request = MetricDeviceFields.CreateRequest(dashboard.Current!, "windows-numa-node|9", [FieldName, CapacityFieldName]);
+        Assert.Equal(2, request.Ids.Count);
         await sampler.GetSnapshotAsync(request, CancellationToken.None);
         Assert.Empty(reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -42,17 +48,24 @@ public sealed partial class NumaMemoryInformationCollectorTests
                 .GetAsyncEnumerator(timeout.Token);
             Assert.True(await stream.MoveNextAsync());
             AssertNode(stream.Current, "windows-numa-node|9", "9007199254740993");
+            AssertCapacityNode(stream.Current, "windows-numa-node|9", "123");
             Assert.Equal(new ushort[] { 9 }, reads);
-            AssertNode(await sampler.GetSnapshotAsync(request, timeout.Token), "windows-numa-node|9", "9007199254740993");
+            Assert.Equal(new ushort[] { 9 }, capacityReads);
+            var snapshot = await sampler.GetSnapshotAsync(request, timeout.Token);
+            AssertNode(snapshot, "windows-numa-node|9", "9007199254740993");
+            AssertCapacityNode(snapshot, "windows-numa-node|9", "123");
             sampler.ReadLatest(request);
             Assert.Single(reads);
+            Assert.Single(capacityReads);
         }
         finally
         {
             await sampler.StopAsync(CancellationToken.None);
             var count = reads.Count;
+            var capacityCount = capacityReads.Count;
             await sampler.GetSnapshotAsync(request, CancellationToken.None);
             Assert.Equal(count, reads.Count);
+            Assert.Equal(capacityCount, capacityReads.Count);
         }
     }
 
