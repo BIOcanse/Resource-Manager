@@ -102,7 +102,7 @@ export default createSettingsLocale("zh-TW", {
       }
     },
     "automaticMemoryCleanupTitle": "緊急清理閾值",
-    "automaticMemoryCleanupDescription": "背景清理依資源壓力分級；此處設定實體記憶體或認可額度剩餘低於多少時進入緊急清理。",
+    "automaticMemoryCleanupDescription": "背景清理依資源壓力分級；此處設定實體記憶體或認可額度剩餘低於多少時進入緊急清理。只在最佳化模式包含記憶體排程時生效。",
     "physicalMemoryAutomaticCleanupLabel": "實體記憶體剩餘 %",
     "virtualMemoryAutomaticCleanupLabel": "提交額度剩餘 %",
     "memoryOptimizationTargetTitle": "記憶體最佳化目標",
@@ -110,7 +110,7 @@ export default createSettingsLocale("zh-TW", {
     "physicalMemoryOptimizationTargetLabel": "實體記憶體目標使用率 %",
     "virtualMemoryOptimizationTargetLabel": "提交量目標使用率 %",
     "moveDownDangerTitle": "下移危險閾值",
-    "moveDownDangerDescription": "資源排程把視訊記憶體資料移到實體記憶體、或把實體記憶體資料移到虛擬記憶體前，會先估算移動後的剩餘；低於此處的比例就放棄該軟體的這次下移，避免把壓力轉到下一層。",
+    "moveDownDangerDescription": "視訊記憶體資料移到實體記憶體、實體記憶體資料移到虛擬記憶體時的安全餘量：估算移動後的剩餘低於此處的比例，就放棄該軟體的這次下移，避免把壓力轉到下一層。目前版本尚未啟用這類下移，此處只儲存設定。",
     "vramMoveDownPhysicalMemoryDangerLabel": "視訊記憶體下移：實體記憶體剩餘 %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "記憶體下移：提交額度剩餘 %",
     "refreshCadenceTitle": "資訊更新頻率",

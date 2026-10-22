@@ -103,7 +103,7 @@ export default createSettingsLocale("de-DE", {
       }
     },
     "automaticMemoryCleanupTitle": "Schwellen für die Notfallbereinigung",
-    "automaticMemoryCleanupDescription": "Die Hintergrundbereinigung richtet sich nach der Ressourcenbelastung. Diese Schwellen bestimmen, wann wenig verbleibender physischer Speicher oder Zusicherungskapazität eine Notfallbereinigung auslöst.",
+    "automaticMemoryCleanupDescription": "Die Hintergrundbereinigung richtet sich nach der Ressourcenbelastung. Diese Schwellen bestimmen, wann wenig verbleibender physischer Speicher oder Zusicherungskapazität eine Notfallbereinigung auslöst. Sie gelten nur, wenn der Optimierungsmodus die Speichersteuerung einschließt.",
     "physicalMemoryAutomaticCleanupLabel": "Freier physischer Speicher %",
     "virtualMemoryAutomaticCleanupLabel": "Freie Commit-Kapazität %",
     "memoryOptimizationTargetTitle": "Ziel der Speicheroptimierung",
@@ -111,7 +111,7 @@ export default createSettingsLocale("de-DE", {
     "physicalMemoryOptimizationTargetLabel": "Zielauslastung des physischen Speichers %",
     "virtualMemoryOptimizationTargetLabel": "Zielauslastung der Commit-Kapazität %",
     "moveDownDangerTitle": "Gefahrenschwellen beim Auslagern",
-    "moveDownDangerDescription": "Bevor die Planung Daten aus dem VRAM in den physischen Speicher oder aus dem physischen in den virtuellen Speicher auslagert, schätzt sie den danach freien Anteil. Liegt er unter diesen Werten, wird das Auslagern für diese Software übersprungen, damit die nächste Ebene nicht überlastet wird.",
+    "moveDownDangerDescription": "Sicherheitsreserven für das Auslagern von Daten aus dem VRAM in den physischen Speicher oder aus dem physischen in den virtuellen Speicher: Liegt der danach geschätzte freie Anteil unter diesen Werten, wird das Auslagern für diese Software übersprungen, damit die nächste Ebene nicht überlastet wird. Diese Art des Auslagerns ist in dieser Version noch nicht aktiviert; die Werte werden nur gespeichert.",
     "vramMoveDownPhysicalMemoryDangerLabel": "Aus VRAM: freier physischer Speicher %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Aus Speicher: freie Commit-Kapazität %",
     "refreshCadenceTitle": "Häufigkeit der Informationsaktualisierung",

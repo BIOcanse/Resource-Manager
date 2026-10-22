@@ -103,7 +103,7 @@ export default createSettingsLocale("es-ES", {
       }
     },
     "automaticMemoryCleanupTitle": "Umbrales de limpieza de emergencia",
-    "automaticMemoryCleanupDescription": "La limpieza en segundo plano sigue los niveles de presión sobre los recursos. Estos umbrales determinan cuándo la poca memoria física o capacidad de compromiso restante activa la limpieza de emergencia.",
+    "automaticMemoryCleanupDescription": "La limpieza en segundo plano sigue los niveles de presión sobre los recursos. Estos umbrales determinan cuándo la poca memoria física o capacidad de compromiso restante activa la limpieza de emergencia. Solo se aplican cuando el modo de optimización incluye la gestión de memoria.",
     "physicalMemoryAutomaticCleanupLabel": "Memoria física libre %",
     "virtualMemoryAutomaticCleanupLabel": "Margen de memoria comprometida %",
     "memoryOptimizationTargetTitle": "Objetivo de optimización de memoria",
@@ -111,7 +111,7 @@ export default createSettingsLocale("es-ES", {
     "physicalMemoryOptimizationTargetLabel": "Uso objetivo de memoria física %",
     "virtualMemoryOptimizationTargetLabel": "Uso objetivo de memoria comprometida %",
     "moveDownDangerTitle": "Umbrales de peligro al trasladar memoria",
-    "moveDownDangerDescription": "Antes de trasladar datos de la VRAM a la memoria física, o de la memoria física a la virtual, la planificación estima cuánto quedará libre. Si queda por debajo de estos porcentajes, se omite el traslado de ese programa para no pasar la presión al nivel siguiente.",
+    "moveDownDangerDescription": "Márgenes de seguridad para trasladar datos de la VRAM a la memoria física, o de la memoria física a la virtual: si lo que se estima que quedará libre está por debajo de estos porcentajes, se omite el traslado de ese programa para no pasar la presión al nivel siguiente. Este tipo de traslado aún no está activado en esta versión; los valores solo se guardan.",
     "vramMoveDownPhysicalMemoryDangerLabel": "Desde VRAM: memoria física libre %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Desde memoria: margen de compromiso %",
     "refreshCadenceTitle": "Frecuencia de actualización",

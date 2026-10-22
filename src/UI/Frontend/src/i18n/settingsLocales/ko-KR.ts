@@ -103,7 +103,7 @@ export default createSettingsLocale("ko-KR", {
       }
     },
     "automaticMemoryCleanupTitle": "긴급 정리 임계값",
-    "automaticMemoryCleanupDescription": "백그라운드 정리는 리소스 부하에 따라 단계별로 수행됩니다. 실제 메모리 또는 커밋 용량의 잔여량이 이 값보다 낮아지면 긴급 정리를 수행합니다.",
+    "automaticMemoryCleanupDescription": "백그라운드 정리는 리소스 부하에 따라 단계별로 수행됩니다. 실제 메모리 또는 커밋 용량의 잔여량이 이 값보다 낮아지면 긴급 정리를 수행합니다. 최적화 모드에 메모리 관리가 포함된 경우에만 적용됩니다.",
     "physicalMemoryAutomaticCleanupLabel": "물리 메모리 여유 %",
     "virtualMemoryAutomaticCleanupLabel": "커밋 여유 %",
     "memoryOptimizationTargetTitle": "메모리 최적화 목표",
@@ -111,7 +111,7 @@ export default createSettingsLocale("ko-KR", {
     "physicalMemoryOptimizationTargetLabel": "물리 메모리 목표 사용률 %",
     "virtualMemoryOptimizationTargetLabel": "목표 커밋 사용률 %",
     "moveDownDangerTitle": "하위 계층 이동 위험 임계값",
-    "moveDownDangerDescription": "리소스 스케줄링은 VRAM 데이터를 물리 메모리로, 또는 물리 메모리 데이터를 가상 메모리로 옮기기 전에 이동 후 남는 양을 추정합니다. 남는 양이 이 비율보다 낮아지면 해당 소프트웨어의 이동을 건너뛰어 다음 계층으로 부담을 넘기지 않습니다.",
+    "moveDownDangerDescription": "VRAM 데이터를 물리 메모리로, 또는 물리 메모리 데이터를 가상 메모리로 옮길 때의 안전 여유입니다. 이동 후 남는 양의 추정치가 이 비율보다 낮으면 해당 소프트웨어의 이동을 건너뛰어 다음 계층으로 부담을 넘기지 않습니다. 이 버전에서는 이런 이동이 아직 활성화되지 않았으며 값은 저장만 됩니다.",
     "vramMoveDownPhysicalMemoryDangerLabel": "VRAM 이동 시: 물리 메모리 여유 %",
     "physicalMemoryMoveDownVirtualMemoryDangerLabel": "메모리 이동 시: 커밋 여유 %",
     "refreshCadenceTitle": "정보 갱신 빈도",
