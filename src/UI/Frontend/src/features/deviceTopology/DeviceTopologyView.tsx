@@ -1,5 +1,5 @@
 import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import {
   Bluetooth,
   BatteryCharging,
@@ -28,14 +28,12 @@ import {
 } from "./deviceTopologyPresentation";
 import {
   buildExternalInterfaceTree,
-  externalInterfaceRoleLabel,
   filterExternalInterfaceTree,
   type ExternalInterfaceNodeRole
 } from "./externalInterfaceTree";
 import {
   buildInternalInterfaceTree,
   filterInternalInterfaceTree,
-  internalInterfaceRoleLabel,
   type InternalInterfaceNodeRole
 } from "./internalInterfaceTree";
 import type { SpecializedDeviceModel } from "./adapters/adapterRegistry";
@@ -43,14 +41,20 @@ import { useDeviceTopologyState } from "./deviceTopologyStore";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
+import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
+import { deviceMetricFieldNames } from "./deviceMetricFields.ts";
 import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../../types";
 import {
   compactUserDetailSections,
   userDetailItem,
-  userDetailSection
+  userDetailSection,
+  type UserDetailItem
 } from "../../presentation/userDetails";
 import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
 import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
+import { DeviceMetricFieldDetails } from "./components/DeviceMetricFieldDetails";
 import { DeviceSpecializedSummary } from "./components/DeviceSpecializedSummary";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
@@ -86,6 +90,17 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
   const demandId = "details.device-topology";
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsDeviceTopology]);
   const topology = useDeviceTopologyState();
+  const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  const [metricFieldDevices, setMetricFieldDevices] = createSignal<readonly MetricFieldDevice[] | null>(null);
+  // NPU／AMD NPU 实时数值和设备拓扑同一生命周期订阅：所有订阅共用一条推送流，
+  // 跟着弹窗开关订阅会让整条流（含设备拓扑）反复重连。
+  createEffect(() => {
+    if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology)) {
+      return;
+    }
+    onCleanup(runtime.sources.metricFields.subscribe({ fields: deviceMetricFieldNames }, 1_000, setMetricFieldDevices));
+  });
   const snapshot = createMemo(() => topology.state().snapshot ?? null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const [detailsOpen, setDetailsOpen] = createSignal(false);
@@ -117,7 +132,6 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
     const parentId = selectedNode()?.parentId;
     return parentId ? sectionNodes().find((node) => node.id === parentId) ?? null : null;
   });
-  const selectedNodeIsDevice = createMemo(() => isDeviceRole(selectedNode()?.role));
   const selectedNodeIsInterface = createMemo(() => isInterfaceRole(selectedNode()?.role));
   const selectedNodeChildCount = createMemo(() => {
     const selected = selectedNode()?.id;
@@ -190,22 +204,22 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
       {...frontendVisibilitySurface("visible.details.device-topology.surface", [demandId])}
       class="device-topology-panel"
     >
-      <SegmentedControl
-        value={props.scope}
-        ariaLabel={uiText.deviceTopology.scopeNav}
-        class="device-scope-tabs"
-        itemClass="device-scope-tab"
-        options={[
-          { id: "external", label: uiText.deviceTopology.externalScope },
-          { id: "internal", label: uiText.deviceTopology.internalScope }
-        ]}
-        onChange={(scope) => props.onScopeRequested?.(scope)}
-      />
       <header class="device-topology-header">
-        <div>
+        <div class="device-topology-heading">
           <h2>{uiText.deviceTopology.panel}</h2>
           <span>{snapshot()?.system.brandDisplayName ?? uiText.deviceTopology.brandLoading}</span>
         </div>
+        <SegmentedControl
+          value={props.scope}
+          ariaLabel={uiText.deviceTopology.scopeNav}
+          class="device-scope-tabs"
+          itemClass="device-scope-tab"
+          options={[
+            { id: "external", label: uiText.deviceTopology.externalScope },
+            { id: "internal", label: uiText.deviceTopology.internalScope }
+          ]}
+          onChange={(scope) => props.onScopeRequested?.(scope)}
+        />
       </header>
 
       <ObservationStateNotice
@@ -345,226 +359,6 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                       <button class="secondary details-button device-details-button" type="button" onClick={() => setDetailsOpen(true)}>
                         {uiText.deviceTopology.details}
                       </button>
-                      <Show when={false}>
-                      <Show when={selectedNode()?.specializedDevice}>
-                        {(model) => <DeviceSpecializedDetails model={model()} />}
-                      </Show>
-                      <div class="device-detail-divider" role="separator">
-                        <span>{uiText.deviceTopology.allDetails}</span>
-                      </div>
-                      <div class="device-detail-grid">
-                        <DetailRow
-                          label={uiText.deviceTopology.label.category}
-                          value={selectedNodeIsDevice()
-                            ? uiText.deviceTopology.connectedDevice
-                            : scopeTitle()}
-                        />
-                        <Show when={selectedNode()?.role}>
-                          {(role) => <DetailRow label={uiText.deviceTopology.label.nodeRole} value={topologyRoleLabel(role())} />}
-                        </Show>
-                        <DetailRow
-                          label={selectedNodeIsDevice() ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType}
-                          value={selectedNodeIsDevice()
-                            ? selectedNode()?.specializedDevice?.deviceTypeLabel ?? hardwareKindLabel(port())
-                            : props.scope === "external"
-                              ? connectorLabel(port().connectorKind)
-                              : selectedNode()?.title ?? uiText.deviceTopology.internalScope}
-                        />
-                        <DetailRow label={uiText.deviceTopology.label.connectionState} value={connectionStateLabel(selectedNode()?.connectionState)} />
-                        <Show when={selectedNodeIsDevice() && selectedParentNode()?.title}>
-                          {(value) => <DetailRow label={uiText.deviceTopology.label.upstreamNode} value={value()} />}
-                        </Show>
-                        <Show when={selectedNodeIsInterface()}>
-                          <DetailRow label={uiText.deviceTopology.label.directChildren} value={uiText.deviceTopology.countSuffix(selectedNodeChildCount())} />
-                        </Show>
-                        <DetailRow label={uiText.deviceTopology.label.bus} value={busLabel(port().busKind)} />
-                        <Show when={!port().display}>
-                          <DetailRow
-                            label={selectedNodeIsDevice() ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed}
-                            value={port().speed ?? notReportedValue()}
-                          />
-                        </Show>
-                        <Show when={!port().display || port().physicalMaximumSpeed}>
-                          <DetailRow label={uiText.deviceTopology.label.physicalMaxSpeed} value={port().physicalMaximumSpeed ?? "--"} />
-                        </Show>
-                        <DetailRow label={uiText.deviceTopology.label.protocol} value={selectedNodeIsInterface() ? interfaceProtocol(selectedNode()!, props.scope) : port().protocol} />
-                        <Show when={port().advancedInterconnect}>
-                          {(interconnect) => (
-                            <>
-                              <DetailRow label={uiText.deviceTopology.label.interconnectRole} value={renderBackendMessage(interconnect().role)} />
-                              <DetailRow label={uiText.deviceTopology.label.interconnectTechnology} value={interconnect().technology} />
-                              <DetailRow label={uiText.deviceTopology.label.interconnectEvidence} value={renderBackendMessage(interconnect().evidence)} />
-                            </>
-                          )}
-                        </Show>
-                        <Show when={!selectedNodeIsInterface()}>
-                          <DetailRow label={uiText.deviceTopology.label.pnpClass} value={port().pnpClass ?? "--"} />
-                          <DetailRow label={uiText.deviceTopology.label.manufacturer} value={port().manufacturer ?? "--"} />
-                          <Show when={port().idResolution}>
-                            {(identity) => (
-                              <>
-                                <DetailRow label={uiText.deviceTopology.label.idDatabase} value={`${identity().database} · ${identity().version}`} />
-                                <Show when={distinctText(identity().vendorName, port().manufacturer)}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseVendor} value={value()} />}
-                                </Show>
-                                <Show when={distinctText(identity().deviceName, port().displayName)}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseDevice} value={value()} />}
-                                </Show>
-                                <Show when={identity().subsystemName}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.databaseSubsystem} value={value()} />}
-                                </Show>
-                              </>
-                            )}
-                          </Show>
-                          <DetailRow label={uiText.deviceTopology.label.driverService} value={port().service ?? "--"} />
-                          <DetailRow label={uiText.deviceTopology.label.deviceStatus} value={port().status ?? "--"} />
-                          <Show when={port().problemCode && port().problemCode !== 0}>
-                            {(value) => <DetailRow label={uiText.deviceTopology.label.deviceProblemCode} value={String(value())} />}
-                          </Show>
-                        </Show>
-                        <Show when={port().display}>
-                          {(display) => (
-                            <>
-                              <Show when={selectedNodeIsDevice()}>
-                                <DetailRow label={uiText.deviceTopology.label.deviceName} value={display().monitorName} />
-                                <Show when={display().resolution}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.activeResolution} value={value()} />}
-                                </Show>
-                                <DetailRow label={uiText.deviceTopology.label.activeRefreshRate} value={display().refreshRate ?? notReportedValue()} />
-                              </Show>
-                              <DetailRow label={uiText.deviceTopology.label.connectionLocation} value={display().internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external} />
-                              <Show when={display().connectorInstance > 0}>
-                                <DetailRow label={uiText.deviceTopology.label.connectorInstance} value={String(display().connectorInstance)} />
-                              </Show>
-                            </>
-                          )}
-                        </Show>
-                        <Show when={port().network}>
-                          {(network) => (
-                            <>
-                              <DetailRow label={uiText.deviceTopology.label.networkInterface} value={network().interfaceName ?? "--"} />
-                              <DetailRow label={uiText.deviceTopology.label.connectionState} value={userFacingNetworkState(network().connectionState)} />
-                              <Show when={network().transmitLinkSpeed && network().receiveLinkSpeed && network().transmitLinkSpeed !== network().receiveLinkSpeed}>
-                                <DetailRow label={uiText.deviceTopology.label.transmitSpeed} value={network().transmitLinkSpeed ?? "--"} />
-                                <DetailRow label={uiText.deviceTopology.label.receiveSpeed} value={network().receiveLinkSpeed ?? "--"} />
-                              </Show>
-                              <Show when={network().activeMtuBytes}>
-                                {(value) => <DetailRow label={uiText.deviceTopology.label.activeMtu} value={`${value()} B`} />}
-                              </Show>
-                              <Show when={network().permanentAddress}>
-                                {(value) => <DetailRow label={uiText.deviceTopology.label.macAddress} value={value()} />}
-                              </Show>
-                            </>
-                          )}
-                        </Show>
-                        <Show when={port().usb}>
-                          {(usb) => (
-                            <>
-                              <DetailRow label={selectedNodeIsDevice() ? uiText.deviceTopology.label.upstreamHubPort : uiText.deviceTopology.label.hubPort} value={formatUsbPort(usb())} />
-                              <Show when={props.scope === "internal"}>
-                                <DetailRow label={uiText.deviceTopology.label.usbConnection} value={renderBackendMessage(usb().connectionStatus)} />
-                              </Show>
-                              <Show when={!selectedNodeIsDevice()}>
-                                <DetailRow label={uiText.deviceTopology.label.connector} value={formatUsbConnector(usb())} />
-                                <DetailRow label={uiText.deviceTopology.label.portProtocols} value={usb().supportedProtocols} />
-                                <DetailRow label={uiText.deviceTopology.label.portCapability} value={formatUsbCapability(usb())} />
-                                <Show when={usb().portIsDebugCapable === true}>
-                                  <DetailRow label={uiText.deviceTopology.label.usbDebug} value={uiText.deviceTopology.label.supported} />
-                                </Show>
-                              </Show>
-                              <Show when={selectedNodeIsDevice() && usb().deviceConnected}>
-                                <DetailRow label={uiText.deviceTopology.label.deviceSpecification} value={usb().deviceSpecification} />
-                                <DetailRow label={uiText.deviceTopology.label.deviceRevision} value={usb().deviceRevision} />
-                                <DetailRow label={uiText.deviceTopology.label.usbClass} value={usb().deviceClass} />
-                                <DetailRow label="USB VID/PID" value={formatUsbVidPid(usb())} />
-                                <DetailRow label={uiText.deviceTopology.label.deviceAddress} value={String(usb().deviceAddress)} />
-                                <Show when={distinctText(usb().manufacturerName, port().manufacturer)}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.descriptorVendor} value={value()} />}
-                                </Show>
-                                <Show when={distinctText(usb().productName, port().displayName)}>
-                                  {(value) => <DetailRow label={uiText.deviceTopology.label.descriptorProduct} value={value()} />}
-                                </Show>
-                              </Show>
-                            </>
-                          )}
-                        </Show>
-                        <DetailRow label={uiText.deviceTopology.label.confidence} value={renderBackendMessage(port().confidence)} />
-                        <DetailRow label={uiText.deviceTopology.label.source} value={renderBackendMessage(port().source)} />
-                        <DetailRow label={uiText.deviceTopology.label.upstreamDevice} value={port().upstreamDisplayName ?? "--"} />
-                        <DetailRow label={uiText.deviceTopology.label.deviceParent} value={port().nativeParentDisplayName ?? "--"} />
-                        <DetailRow label={uiText.deviceTopology.label.locationText} value={port().locationInfo ?? "--"} />
-                        <DetailRow label={uiText.deviceTopology.label.classGuid} value={port().classGuid ?? "--"} />
-                      </div>
-                      <Show when={!selectedNodeIsInterface() && (port().usb?.interfaceProtocols ?? []).length > 0}>
-                        <div class="device-id-block">
-                          <strong>{uiText.deviceTopology.group.activeConfigurationInterface}</strong>
-                          <For each={port().usb?.interfaceProtocols ?? []}>
-                            {(protocol) => <code>{protocol}</code>}
-                          </For>
-                        </div>
-                      </Show>
-                      <Show when={!selectedNodeIsDevice() && (port().usb?.companionPorts ?? []).length > 0}>
-                        <div class="device-id-block">
-                          <strong>{uiText.deviceTopology.group.sharedConnectorCompanion}</strong>
-                          <For each={port().usb?.companionPorts ?? []}>
-                            {(companion) => (
-                              <code>
-                                #{companion.companionIndex} · {uiText.deviceTopology.label.hubPort} {companion.portNumber}
-                                {companion.hubSymbolicLinkName ? ` · ${companion.hubSymbolicLinkName}` : ""}
-                              </code>
-                            )}
-                          </For>
-                        </div>
-                      </Show>
-                      <Show when={selectedNodeIsDevice() && port().usb?.serialNumber}>
-                        {(serialNumber) => (
-                          <div class="device-id-block">
-                            <strong>{uiText.deviceTopology.group.usbSerialNumber}</strong>
-                            <code>{serialNumber()}</code>
-                          </div>
-                        )}
-                      </Show>
-                      <div class="device-id-block">
-                        <strong>{uiText.deviceTopology.group.relationChain}</strong>
-                        <code>{renderBackendMessage(port().topologyPath)}</code>
-                      </div>
-                      <Show when={(port().locationPaths ?? []).length > 0}>
-                        <div class="device-id-block">
-                          <strong>{uiText.deviceTopology.group.locationPath}</strong>
-                          <For each={port().locationPaths}>
-                            {(path) => <code>{path}</code>}
-                          </For>
-                        </div>
-                      </Show>
-                      <Show when={port().usb?.hubDevicePath}>
-                        <div class="device-id-block">
-                          <strong>{uiText.deviceTopology.group.hubDevicePath}</strong>
-                          <code>{port().usb?.hubDevicePath}</code>
-                        </div>
-                      </Show>
-                      <Show when={port().usb?.downstreamHubDevicePath}>
-                        {(path) => (
-                          <div class="device-id-block">
-                            <strong>{uiText.deviceTopology.group.downstreamHubPath}</strong>
-                            <code>{path()}</code>
-                          </div>
-                        )}
-                      </Show>
-                      <Show when={selectedNodeIsDevice() && port().display?.monitorDevicePath}>
-                        {(devicePath) => (
-                          <div class="device-id-block">
-                            <strong>{uiText.deviceTopology.group.displayDevicePath}</strong>
-                            <code>{devicePath()}</code>
-                          </div>
-                        )}
-                      </Show>
-                      <Show when={selectedNodeIsDevice()}>
-                        <div class="device-id-block">
-                          <strong>{selectedNodeIsDevice() ? uiText.deviceTopology.section.deviceIdentity : uiText.deviceTopology.label.hardwareId}</strong>
-                          <code>{port().deviceId}</code>
-                        </div>
-                      </Show>
-                      </Show>
                     </>
                   )}
                 </Show>
@@ -587,6 +381,9 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         <Show when={selectedNode()?.specializedDevice}>
           {(model) => <DeviceSpecializedDetails model={model()} />}
         </Show>
+        <Show when={selectedPort()?.deviceId}>
+          {(deviceId) => <DeviceMetricFieldDetails devices={metricFieldDevices()} deviceId={deviceId()} />}
+        </Show>
         <Show when={selectedPort()?.display}>
           {(display) => <DisplayEdidDetails display={display()} />}
         </Show>
@@ -608,28 +405,37 @@ function deviceUserDetailSections(
   const display = port.display;
   const network = port.network;
   const usb = port.usb;
+  // 概览先列和侧栏相同的关键信息；概览、连接两节里同一名称只出现一次，先出现的为准。
+  const shownLabels = new Set<string>();
+  const firstShown = (item: UserDetailItem | null) => {
+    if (!item || shownLabels.has(item.label)) {
+      return null;
+    }
+    shownLabels.add(item.label);
+    return item;
+  };
 
   return compactUserDetailSections([
     userDetailSection(uiText.deviceTopology.section.overview, [
       ...summary
         .filter((field) => isReportedDeviceValue(field.value))
-        .map((field) => userDetailItem(field.label, field.value)),
-      userDetailItem(uiText.deviceTopology.label.category, isDevice ? uiText.deviceTopology.connectedDevice : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope),
-      userDetailItem(isDevice ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType, isDevice
+        .map((field) => firstShown(userDetailItem(field.label, field.value))),
+      firstShown(userDetailItem(uiText.deviceTopology.label.category, isDevice ? uiText.deviceTopology.connectedDevice : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope)),
+      firstShown(userDetailItem(isDevice ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType, isDevice
         ? node.specializedDevice?.deviceTypeLabel ?? hardwareKindLabel(port)
-        : connectorLabel(port.connectorKind)),
-      userDetailItem(uiText.deviceTopology.label.connectionState, connectionStateLabel(node.connectionState)),
-      parent ? userDetailItem(uiText.deviceTopology.label.connectedTo, parent.title) : null,
-      isInterface ? userDetailItem(uiText.deviceTopology.label.directItems, uiText.deviceTopology.countSuffix(childCount)) : null
+        : connectorLabel(port.connectorKind))),
+      firstShown(userDetailItem(uiText.deviceTopology.label.connectionState, connectionStateLabel(node.connectionState))),
+      parent ? firstShown(userDetailItem(uiText.deviceTopology.label.connectedTo, parent.title)) : null,
+      isInterface ? firstShown(userDetailItem(uiText.deviceTopology.label.directChildren, uiText.deviceTopology.countSuffix(childCount))) : null
     ]),
     userDetailSection(uiText.deviceTopology.section.connection, [
-      userDetailItem(uiText.deviceTopology.label.bus, reportedDeviceValue(busLabel(port.busKind))),
-      userDetailItem(uiText.deviceTopology.label.currentSpeed, reportedDeviceValue(port.speed)),
-      userDetailItem(uiText.deviceTopology.label.maxSpeed, reportedDeviceValue(port.physicalMaximumSpeed)),
-      userDetailItem(uiText.deviceTopology.label.protocol, reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : port.protocol)),
-      userDetailItem(uiText.deviceTopology.label.manufacturer, reportedDeviceValue(port.manufacturer)),
+      firstShown(userDetailItem(uiText.deviceTopology.label.bus, reportedDeviceValue(busLabel(port.busKind)))),
+      firstShown(userDetailItem(isDevice ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed, reportedDeviceValue(port.speed))),
+      firstShown(userDetailItem(uiText.deviceTopology.label.maxSpeed, reportedDeviceValue(port.physicalMaximumSpeed))),
+      firstShown(userDetailItem(uiText.deviceTopology.label.protocol, reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : port.protocol))),
+      firstShown(userDetailItem(uiText.deviceTopology.label.manufacturer, reportedDeviceValue(port.manufacturer))),
       port.advancedInterconnect
-        ? userDetailItem(uiText.deviceTopology.label.interconnectTechnology, reportedDeviceValue(port.advancedInterconnect.technology))
+        ? firstShown(userDetailItem(uiText.deviceTopology.label.interconnectTechnology, reportedDeviceValue(port.advancedInterconnect.technology)))
         : null
     ]),
     display ? userDetailSection(uiText.deviceTopology.section.display, [
@@ -648,13 +454,13 @@ function deviceUserDetailSections(
     ]) : null,
     usb ? userDetailSection("USB", [
       userDetailItem(uiText.deviceTopology.label.port, formatUsbPort(usb)),
-      userDetailItem(uiText.deviceTopology.label.connectionState, renderBackendMessage(usb.connectionStatus)),
+      userDetailItem(uiText.deviceTopology.label.usbConnection, renderBackendMessage(usb.connectionStatus)),
       userDetailItem(uiText.deviceTopology.label.connector, formatUsbConnector(usb)),
       userDetailItem(uiText.deviceTopology.label.supportedProtocols, reportedDeviceValue(usb.supportedProtocols)),
       userDetailItem(uiText.deviceTopology.label.portCapability, reportedDeviceValue(formatUsbCapability(usb))),
       userDetailItem(uiText.deviceTopology.label.deviceSpecification, reportedDeviceValue(usb.deviceSpecification)),
       userDetailItem(uiText.deviceTopology.label.deviceRevision, reportedDeviceValue(usb.deviceRevision)),
-      userDetailItem(uiText.deviceTopology.label.deviceType, reportedDeviceValue(usb.deviceClass)),
+      userDetailItem(uiText.deviceTopology.label.usbClass, reportedDeviceValue(usb.deviceClass)),
       userDetailItem("VID / PID", reportedDeviceValue(formatUsbVidPid(usb))),
       userDetailItem(uiText.deviceTopology.label.serialNumber, reportedDeviceValue(usb.serialNumber))
     ]) : null,
@@ -683,24 +489,11 @@ function userFacingNetworkState(value?: string | null) {
   }
 }
 
-function notReportedValue() {
-  return uiText.deviceTopology.notReportedMarker;
-}
-
 // 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。
 function hardwareKindLabel(port: DeviceTopologyPort) {
   return port.advancedInterconnect
     ? renderBackendMessage(port.advancedInterconnect.role, portHardwareKind(port))
     : portHardwareKind(port);
-}
-
-function DetailRow(props: { label: string; value: string }) {
-  return (
-    <>
-      <span>{props.label}</span>
-      <strong>{props.value}</strong>
-    </>
-  );
 }
 
 function isDeviceRole(role?: DeviceTopologyNodeRole) {
@@ -715,12 +508,6 @@ function isInterfaceRole(role?: DeviceTopologyNodeRole) {
   return role === "host-interface"
     || role === "downstream-interface"
     || role === "internal-interface";
-}
-
-function topologyRoleLabel(role: DeviceTopologyNodeRole) {
-  return role.startsWith("internal-")
-    ? internalInterfaceRoleLabel(role as InternalInterfaceNodeRole)
-    : externalInterfaceRoleLabel(role as ExternalInterfaceNodeRole);
 }
 
 function interfaceProtocol(node: DeviceTopologyListNode, scope: DeviceTopologyScope) {
@@ -890,15 +677,6 @@ function formatUsbConnector(usb: DeviceTopologyUsbConnection) {
   }
 
   return usb.portConnectorIsTypeC ? connector : "--";
-}
-
-function distinctText(value?: string | null, reference?: string | null) {
-  const normalized = value?.trim();
-  if (!normalized || normalized.localeCompare(reference?.trim() ?? "", undefined, { sensitivity: "accent" }) === 0) {
-    return null;
-  }
-
-  return normalized;
 }
 
 function connectorLabel(kind: string) {

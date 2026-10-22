@@ -290,17 +290,18 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           </section>
         </Show>
 
-        {/*
-          重新检测这台机器。
+        {/* 页面级的两个操作都不常用，放在同一行、用小号次按钮。 */}
+        <div class="control-toolbar">
+          {/*
+            重新检测这台机器。
 
-          **为什么要有这个按钮**：每条通道能做什么是探出来的（问辅助进程、
-          起风扇核心、用一次空写问驱动），探一次要碰硬件，所以结果记了缓存。
-          可用户装上组件、插上外接显卡之后，缓存里还是旧答案 ——
-          没有这个按钮他只能重启整个程序。
-        */}
-        <div class="control-detect">
+            **为什么要有这个按钮**：每条通道能做什么是探出来的（问辅助进程、
+            起风扇核心、用一次空写问驱动），探一次要碰硬件，所以结果记了缓存。
+            可用户装上组件、插上外接显卡之后，缓存里还是旧答案 ——
+            没有这个按钮他只能重启整个程序。
+          */}
           <button
-            class="secondary"
+            class="panel-refresh-button secondary"
             type="button"
             disabled={detecting()}
             onClick={() => {
@@ -313,15 +314,13 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
           >
             {detecting() ? uiText.control.detecting : uiText.control.detect}
           </button>
-        </div>
 
-        {/*
-          实例管理平时收着。活动设备的卡片下面本来就会全部列出来，
-          这一块只在要清理插过的旧卡时才用得上，没必要一直占着页面顶部。
-        */}
-        <div class="control-instances-entry">
+          {/*
+            实例管理平时收着。活动设备的卡片下面本来就会全部列出来，
+            这一块只在要清理插过的旧卡时才用得上，没必要一直占着页面顶部。
+          */}
           <button
-            class="secondary"
+            class="panel-refresh-button secondary"
             type="button"
             aria-expanded={managingInstances()}
             onClick={() => setManagingInstances((open) => !open)}
@@ -561,12 +560,13 @@ function ControlObjectCard(props: {
     return props.object.capabilities.filter((capability) => !shown.has(capability.id));
   };
 
-  const itemStatus = (capabilityId: string) => controlItemStatusOf(
+  const itemView = (capabilityId: string) => controlItemStatusOf(
     capabilityId,
     edited(),
     saved(),
     outcomes(),
-    false).status;
+    false);
+  const itemStatus = (capabilityId: string) => itemView(capabilityId).status;
 
   return (
     <article
@@ -745,7 +745,7 @@ function ControlObjectCard(props: {
             >
               <span class="control-capability-label">
                 {/*
-                  勾上才是「下次应用真的会落实」，不勾就是「交还固件或回到默认」。
+                  （开关型以外的项）勾上才是「下次应用真的会落实」，不勾就是「交还固件或回到默认」。
                   这两件事本来就是期望状态里有没有这一项，所以勾选框直接读写它，
                   不另外存一份勾选状态 —— 存两份迟早对不上。
                 */}
@@ -825,16 +825,25 @@ function ControlObjectCard(props: {
                     </span>
                   }
                 >
-                  <input
-                    type="checkbox"
-                    class="control-capability-check"
-                    checked={props.edited.some(
-                      (entry) => entry.capabilityId === capability.id)}
-                    aria-label={controlCapabilityLabel(capability)}
-                    onChange={(event) => props.onEdit(
-                      capability.id,
-                      event.currentTarget.checked ? initialSettingFor(capability, actualOf(capability.id)?.number) : null)}
-                  />
+                  {/*
+                    开关型的「交还固件」本身就是右边三选一里的一项，
+                    行首只留同宽的空位，让名字和其他行对齐。
+                  */}
+                  <Show
+                    when={capability.valueKind !== "toggle"}
+                    fallback={<span class="control-capability-check" aria-hidden="true" />}
+                  >
+                    <input
+                      type="checkbox"
+                      class="control-capability-check"
+                      checked={props.edited.some(
+                        (entry) => entry.capabilityId === capability.id)}
+                      aria-label={controlCapabilityLabel(capability)}
+                      onChange={(event) => props.onEdit(
+                        capability.id,
+                        event.currentTarget.checked ? initialSettingFor(capability, actualOf(capability.id)?.number) : null)}
+                    />
+                  </Show>
                 </Show>
                 {controlCapabilityLabel(capability)}
                 {/*
@@ -891,6 +900,9 @@ function ControlObjectCard(props: {
                 <Show when={itemStatus(capability.id) !== "unset"}>
                   <span
                     class="control-capability-tag"
+                    // 失败或不支持时，后端给的原因停在标签上就有（交还固件失败也走这里）。
+                    title={itemView(capability.id).message
+                      ? controlDisplayText(itemView(capability.id).message!) : undefined}
                     classList={{
                       "control-capability-tag-live":
                         itemStatus(capability.id) === "edited"

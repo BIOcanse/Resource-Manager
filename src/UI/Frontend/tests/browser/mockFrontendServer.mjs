@@ -13,6 +13,11 @@ const recordedType3State = JSON.parse(await readFile(process.env.RM_EDID_UI_TYPE
 const typeXWirePath = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
 if (typeXWirePath && !isAbsolute(typeXWirePath)) throw new Error("TypeX wire path must be absolute");
 const recordedTypeXState = typeXWirePath ? JSON.parse(await readFile(typeXWirePath, "utf8")) : null;
+// DisplayID Type V/VI、Adaptive-Sync 与动态时序范围：真实 parser／生产 DTO 生成的仓库夹具，按场景名选用。
+const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.entries({
+  typeVVi: "displayEdidTypeVVi.json", typeVViClock: "displayEdidTypeVViClock.json", adaptiveSync: "displayEdidAdaptiveSync.json",
+  adaptiveSyncZero: "displayEdidAdaptiveSyncZero.json", dynamicRange: "displayEdidDynamicRange.json"
+}).map(async ([name, file]) => [name, JSON.parse(await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8"))])));
 const defaultScenario = {
   capabilities: "ready",
   settings: "ready",
@@ -43,6 +48,11 @@ const defaultScenario = {
   operations: "empty",
   operationCanceled: false,
   cpuTopologyEmpty: false,
+  // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
+  // 字段目录（/api/metrics/fields/catalog/subscribe）由同一份设备值生成。
+  metricFieldDevices: [],
+  // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
+  dashboardSettings: null,
   gpuPlacementEnabled: false,
   unknownGpuScore: false,
   pausedSubscriptionPaths: []
@@ -419,7 +429,16 @@ async function handleApi(request, response, url) {
     return json(response, 200, appSettingsResult());
   }
   if (path === "/api/settings/dashboard") {
-    return json(response, 200, dashboardSettingsResult);
+    if (request.method === "PUT") {
+      scenario.dashboardSettings = JSON.parse(await readBody(request));
+    }
+    return json(response, 200, scenario.dashboardSettings
+      ? { ...dashboardSettingsResult, settings: scenario.dashboardSettings, updatedAt: now() }
+      : dashboardSettingsResult);
+  }
+  // 软件详情里的定向录制控件会读录制列表；夹具里没有录制。
+  if (path === "/api/targeted-recordings" && request.method === "GET") {
+    return json(response, 200, []);
   }
   if (path === "/api/metrics/catalog") {
     return json(response, 200, metricCatalog);
@@ -1314,7 +1333,8 @@ function fixtureDisplayEdid() {
   const type3 = scenario.displayEdid.startsWith("type3");
   const typex = scenario.displayEdid === "typex";
   if (typex && !recordedTypeXState) throw new Error("TypeX real wire input missing");
-  const display = structuredClone((typex ? recordedTypeXState : type3 ? recordedType3State : recordedEdidState).snapshot.ports[0].display);
+  const declarations = Object.hasOwn(recordedDeclarationStates, scenario.displayEdid) ? recordedDeclarationStates[scenario.displayEdid] : null;
+  const display = structuredClone((typex ? recordedTypeXState : type3 ? recordedType3State : declarations ?? recordedEdidState).snapshot.ports[0].display);
   if (scenario.displayEdid === "type3Inactive") {
     display.active = false; display.targetAvailable = false; display.resolution = null; display.refreshRate = null;
     for (const key of ["currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) display[key] = null;
@@ -1338,7 +1358,7 @@ function fixtureDisplayEdid() {
     const bytes = Buffer.from(display.edidRawDeclaredBase64, "base64").subarray(0, 128); bytes.fill(0, 54, 126); for (const offset of [54, 72, 90, 108]) bytes[offset + 3] = 0x10; bytes[126] = 0; bytes[127] = 0;
     bytes[127] = (-bytes.subarray(0, 127).reduce((sum, value) => sum + value, 0)) & 255;
     display.edidRawDeclaredBase64 = bytes.toString("base64");
-    display.modeCapabilityDeclared = { modes: [], ranges: [], selectionDeclarations: [], edidRevision: 4, baseFeatures: 2, ctaFlags: null };
+    display.modeCapabilityDeclared = { modes: [], ranges: [], selectionDeclarations: [], dynamicTimingRanges: [], adaptiveSyncRanges: [], edidRevision: 4, baseFeatures: 2, ctaFlags: null };
   }
   if (scenario.displayEdid === "emptyRaw") { display.edidRawDeclaredBase64 = ""; display.modeCapabilityDeclared = null; }
   if (scenario.displayEdid === "legacy") for (const key of ["modeCapabilityDeclared", "edidRawDeclaredBase64", "currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) delete display[key];
@@ -1624,6 +1644,7 @@ async function subscriptionChannelStream(request, response) {
 const subscriptionChannelSelectors = new Set([
   "/api/control/actual/subscribe",
   "/api/metrics/subscribe",
+  "/api/metrics/fields/catalog/subscribe",
   "/api/metrics/gpu-specialized/subscribe",
   "/api/resource-monitor/subscribe",
   "/api/adapters/resource-manager/scheduling/subscribe",
@@ -1665,12 +1686,25 @@ function subscriptionPayloadFactory(url) {
         { objectId: "gpu:test", capabilityId: "gpu.voltage-offset", number: 0, unit: "mV" }
       ] });
     case "/api/metrics/subscribe": {
+      if (url.searchParams.has("fields")) {
+        // 按字段订阅：返回绑定了其中任一字段的设备，每台只含它绑定的那些字段。
+        const requested = new Set(url.searchParams.get("fields").split(",").filter(Boolean));
+        return () => scenario.metricFieldDevices
+          .map((device) => ({ ...device, fields: device.fields.filter((field) => requested.has(field.name)) }))
+          .filter((device) => device.fields.length > 0);
+      }
       const ids = url.searchParams.getAll("ids");
       return (publishedAt) => {
         metricSlot.observedAt = publishedAt;
         return metricSnapshot(ids);
       };
     }
+    case "/api/metrics/fields/catalog/subscribe":
+      return () => scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
+        deviceIdentity,
+        device,
+        fields: fields.map(({ name, unit, valueKind }) => ({ name, unit, valueKind, meaning: "" }))
+      }));
     case "/api/metrics/gpu-specialized/subscribe":
       return (publishedAt) => ({
         version: 2,

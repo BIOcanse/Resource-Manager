@@ -231,8 +231,13 @@ assert.doesNotMatch(cpuTopology, /role="button"/);
 assert.match(cpuTopology, /disabled=\{!logical\.affinitySelectable\}/);
 assert.match(
   cpuTopology,
-  /<CpuCoreSelectionButton[\s\S]*?\/>\s*<Show when=\{editing\(\)\}>\s*<input/,
+  /<CpuCoreSelectionButton[\s\S]*?\/>\s*<Show when=\{editing\(\)\}>\s*<CpuScoreInput/,
   "CPU score inputs must be siblings of the core selection button"
+);
+assert.match(
+  cpuTopology,
+  /function CpuScoreInput[\s\S]*?<label class="cpu-score-field">\s*<span>\{uiText\.cpuTopology\.scoreInputLabel\}<\/span>\s*<input[\s\S]*?aria-label=\{uiText\.cpuTopology\.setCoreScore\(coreName\(props\.core\)\)\}/,
+  "CPU score inputs keep a visible label and a per-core accessible name"
 );
 
 for (const source of settingsSources) {
@@ -262,7 +267,9 @@ assert.match(metricModal, /aria-selected=\{isSelected\(metric\.id\)\}/);
 assert.match(metricModal, /aria-multiselectable=\{props\.multiSelect \|\| undefined\}/);
 assert.match(metricModal, /userFacingMetricGroup\(metric\.group\)/);
 assert.match(metricModal, /resolveActiveDescendantTarget/);
-assert.match(controls, /button:not\(:disabled\):hover/);
+assert.match(controls, /:where\(button:not\(:disabled\)\):hover/);
+assert.doesNotMatch(controls, /^button:not\(:disabled\):hover/m,
+  "The shared button hover must stay below component .x:hover specificity.");
 assert.match(controls, /button:disabled:disabled[\s\S]*?--control-disabled-bg/);
 assert.match(resourceTable, /observation=\{props\.metricObservation\}/);
 assert.match(monitorPage, /metricObservation=\{monitor\.snapshotObservation\(\)\}/);

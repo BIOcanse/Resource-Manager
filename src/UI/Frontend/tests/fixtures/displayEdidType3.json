@@ -2,7 +2,7 @@
   "schemaVersion": "4.0.0",
   "state": "ready",
   "snapshot": {
-    "capturedAt": "2030-01-02T03:04:05Z",
+    "capturedAt": "2030-01-02T03:04:05+00:00",
     "system": {
       "manufacturer": "Frontend Harness",
       "model": "Fixture PC",
@@ -10,7 +10,9 @@
       "brandLogoText": "FH",
       "biosVersion": null,
       "baseBoardManufacturer": null,
-      "baseBoardProduct": null
+      "baseBoardProduct": null,
+      "biosManufacturer": null,
+      "baseBoardSerialNumber": null
     },
     "ports": [
       {
@@ -22,7 +24,6 @@
         "hardwareKind": "display-output",
         "protocol": "HDMI 2.1",
         "speed": null,
-        "physicalMaximumSpeed": "48 Gbps",
         "deviceId": "DISPLAY\\FIXTURE_HDMI_1",
         "pnpClass": null,
         "manufacturer": "Frontend Harness",
@@ -86,23 +87,35 @@
           "currentRefreshRateNumerator": 60000,
           "currentRefreshRateDenominator": 1001,
           "currentBitsPerColorChannel": 10,
-          "edidRawDeclaredBase64": "AP///////wAAAAAAAAAAAAAAAQS1AAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATtwEwkCAAUBBhTvuwgAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkA==",
+          "clockwiseRotationDegrees": null,
+          "hdrSupportedReported": null,
+          "hdrUserEnabledActual": null,
+          "hdrActiveActual": null,
+          "colorModeActual": null,
+          "edidRawDeclaredBase64": "AP///////wAAAAAAAAAAAAAAAQS1AAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAATtwEgkCAAUBBhTvuwgAABEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAkA==",
+          "chromaticityDeclared": null,
+          "hdrLuminanceDeclared": null,
           "modeCapabilityDeclared": {
             "modes": [
               {
                 "blockIndex": 1,
                 "byteOffset": 8,
+                "encoding": "displayid-iii",
+                "revision": 1,
                 "rawDescriptor": [
                   20,
                   239,
                   187
                 ],
-                "bitIndex": null,
-                "encoding": "displayid-iii",
-                "revision": 1,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": null,
+                "aspectRatioDeclared": {
+                  "code": 4,
+                  "horizontal": 16,
+                  "vertical": 9
+                },
                 "horizontalPixelRepetition": null,
                 "interlaced": true,
                 "nominalVerticalRateHz": 60,
@@ -113,32 +126,32 @@
                 "yCbCr420Supported": null,
                 "yCbCr420CapabilityMap": null,
                 "containerFlags": 1,
-                "containerRevision": 19,
+                "containerRevision": 18,
                 "dscPassThrough": null,
                 "formula": "cvt",
                 "reducedBlanking": true,
                 "timing": null,
-                "cvtParameters": null,
-                "aspectRatioDeclared": {
-                  "code": 4,
-                  "horizontal": 16,
-                  "vertical": 9
-                }
+                "cvtParameters": null
               },
               {
                 "blockIndex": 1,
                 "byteOffset": 11,
+                "encoding": "displayid-iii",
+                "revision": 1,
                 "rawDescriptor": [
                   8,
                   0,
                   0
                 ],
-                "bitIndex": null,
-                "encoding": "displayid-iii",
-                "revision": 1,
                 "code": null,
+                "bitIndex": null,
                 "width": 8,
                 "height": null,
+                "aspectRatioDeclared": {
+                  "code": 8,
+                  "horizontal": null,
+                  "vertical": null
+                },
                 "horizontalPixelRepetition": null,
                 "interlaced": false,
                 "nominalVerticalRateHz": 1,
@@ -149,24 +162,21 @@
                 "yCbCr420Supported": null,
                 "yCbCr420CapabilityMap": null,
                 "containerFlags": 1,
-                "containerRevision": 19,
+                "containerRevision": 18,
                 "dscPassThrough": null,
                 "formula": "cvt",
                 "reducedBlanking": false,
                 "timing": null,
-                "cvtParameters": null,
-                "aspectRatioDeclared": {
-                  "code": 8,
-                  "horizontal": null,
-                  "vertical": null
-                }
+                "cvtParameters": null
               }
             ],
             "ranges": [],
             "edidRevision": 4,
             "baseFeatures": 0,
             "ctaFlags": null,
-            "selectionDeclarations": []
+            "selectionDeclarations": [],
+            "dynamicTimingRanges": [],
+            "adaptiveSyncRanges": []
           }
         },
         "network": null,
@@ -177,19 +187,60 @@
         "compatibleIds": [],
         "devNodeStatus": null,
         "problemCode": null,
+        "physicalMaximumSpeed": "48 Gbps",
         "hid": null,
         "camera": null,
         "smartDevice": null,
-        "storage": null
+        "storage": null,
+        "displayNameCode": null,
+        "hardwareKindCode": null,
+        "pciIdentification": null,
+        "pciResourceRanges": null,
+        "pciInterrupts": null,
+        "pciDmaChannels": null
       }
     ],
-    "notes": []
+    "notes": [],
+    "npuInformation": null,
+    "driverInformation": [],
+    "memoryModules": [],
+    "firmwareDeclarations": {
+      "biosReleaseDate": null,
+      "slots": [],
+      "processorSockets": []
+    },
+    "batteries": [],
+    "storageInformation": [],
+    "nvidiaGpuInformation": [],
+    "amdGpuInformation": [],
+    "gpuInformation": [],
+    "hidInformation": [],
+    "networkInterfaceInformation": [],
+    "networkEndpointInformation": {
+      "tcpIpv4": null,
+      "tcpIpv6": null,
+      "udpIpv4": null,
+      "udpIpv6": null
+    },
+    "securityInformation": {
+      "antivirusHealthReported": null,
+      "firewallHealthReported": null,
+      "activeFirewallProfiles": null,
+      "domainFirewallEnabledConfigured": null,
+      "privateFirewallEnabledConfigured": null,
+      "publicFirewallEnabledConfigured": null,
+      "antivirusProductsReported": null,
+      "firewallProductsReported": null
+    },
+    "volumeSpaceInformation": [],
+    "diskLayoutInformation": [],
+    "pageFileInformation": []
   },
   "contentGeneration": 1,
   "stateRevision": 1,
   "source": "live",
-  "lastSuccessAt": "2030-01-02T03:04:05Z",
-  "lastAttemptAt": "2030-01-02T03:04:05Z",
+  "lastSuccessAt": "2030-01-02T03:04:05+00:00",
+  "lastAttemptAt": "2030-01-02T03:04:05+00:00",
   "failureCode": null,
   "attemptDiagnostics": []
 }

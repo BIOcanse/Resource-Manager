@@ -8,9 +8,13 @@ import type {
   ResourceTableViewMode
 } from "../types";
 import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
+import { deviceFieldScopeKind, fieldCardSlot } from "../features/monitor/fieldCards.ts";
 import { textOrEmpty } from "../utils";
 
 export const dashboardSettingsVersion = 15;
+
+/** 一张卡片最多几个小指标。前端各处只读这一个数；后端 normalizer 的上限需与它一致。 */
+export const dashboardSmallMetricLimit = 6;
 
 export const defaultCards: DashboardCardSettings[] = [
   { id: "cpu", main: "cpu.usage", small: ["cpu.frequency", "cpu.frequencyPercent"] },
@@ -68,7 +72,7 @@ export function normalizeCards(candidateCards?: DashboardCardSettings[] | null):
       const main = textOrEmpty(card.main) || null;
       const small: string[] = [];
       const smallBindings: Array<DashboardMetricBinding | null> = [];
-      for (let index = 0; index < (card.small ?? []).length && small.length < 3; index += 1) {
+      for (let index = 0; index < (card.small ?? []).length && small.length < dashboardSmallMetricLimit; index += 1) {
         const metricId = textOrEmpty(card.small[index]);
         if (!metricId) {
           continue;
@@ -93,6 +97,10 @@ export function normalizeCards(candidateCards?: DashboardCardSettings[] | null):
 export function metricBindingForDefinition(
   metric: MetricDefinition | null | undefined
 ): DashboardMetricBinding | null {
+  if (metric?.scopeKind === deviceFieldScopeKind && metric.scopeKey) {
+    // 设备身份是不透明字符串，原样保存，不修剪。
+    return { scopeKind: deviceFieldScopeKind, scopeKey: metric.scopeKey };
+  }
   return metric?.scopeKind === "gpu" && textOrEmpty(metric.scopeKey)
     ? { scopeKind: "gpu", scopeKey: metric.scopeKey!.trim() }
     : null;
@@ -102,6 +110,9 @@ function normalizeMetricBinding(
   metricId: string | null | undefined,
   binding: DashboardMetricBinding | null | undefined
 ): DashboardMetricBinding | null {
+  if (fieldCardSlot(metricId, binding)) {
+    return { scopeKind: deviceFieldScopeKind, scopeKey: binding!.scopeKey };
+  }
   return /^gpu\.\d+\./i.test(textOrEmpty(metricId))
     && binding?.scopeKind === "gpu"
     && textOrEmpty(binding.scopeKey)

@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { AlertTriangle, Info, MoreHorizontal, Settings } from "lucide-solid";
+import { AlertTriangle, Check, Info, MoreHorizontal, Settings } from "lucide-solid";
 import { sharedBrowserRuntimeComponentId } from "../../browserRuntimes/browserRuntimeTypes";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import {
@@ -257,7 +257,7 @@ function ComponentCard(props: {
       <div class="component-actions">
         <Show
           when={!activeLabel()}
-          fallback={<button class="management-action-button" type="button" disabled>{activeLabel()}</button>}
+          fallback={<ManagementStatusTag label={activeLabel()} pending />}
         >
           <Show
             when={isComponentInstalled(props.component)}
@@ -275,7 +275,7 @@ function ComponentCard(props: {
           >
             <Show
               when={dependencySoftware()?.operations?.canUninstall}
-              fallback={<button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>}
+              fallback={<ManagementStatusTag label={uiText.management.installed} />}
             >
               <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
                 {uiText.management.uninstall}
@@ -311,16 +311,20 @@ function SoftwareCard(props: {
   const demandId = frontendVisibilityDemandId("management.software", props.software.id);
   const key = () => managementActionKey("software", props.software.id);
   const activeLabel = () => props.actionLabels[key()];
-  // 这张卡要不要说话：状态已经由按钮表达，只复述状态的消息一律不显示。
+  const canUninstall = () => Boolean(props.software.operations?.canUninstall) && !activeLabel();
+  // 右侧状态标签的文字；能卸载时由"卸载"按钮表达，没有标签。
+  const statusLabel = () => activeLabel() || (canUninstall() ? "" : uiText.management.installed);
+  // 这张卡要不要说话：状态已经由右侧表达，只复述状态的消息一律不显示。
   const cardPurpose = () => {
     if (isSettledDependencyMessage(props.software.messageCode)) {
       return "";
     }
-    return props.software.messageCode
+    const purpose = props.software.messageCode
       ? softwareSummary(props.software)
       : userFacingMessage(
         props.software.message,
         softwareDisplayKindLabel(props.software.kind, props.software.displayKind));
+    return repeatsStatus(purpose, statusLabel()) ? "" : purpose;
   };
 
   return (
@@ -346,7 +350,7 @@ function SoftwareCard(props: {
         </div>
         <SoftwareIssueTagStrip issues={props.software.issues} />
         {/*
-          这一行**只在有话要说时才出现**。状态由右边的按钮表达，
+          这一行**只在有话要说时才出现**。状态由右边的标签或按钮表达，
           再用一句话复述"已安装在哪个目录"、"可以从官方下载"只是重复。
         */}
         <Show when={cardPurpose()}>
@@ -355,17 +359,12 @@ function SoftwareCard(props: {
       </div>
       <div class="software-actions">
         <Show
-          when={!activeLabel()}
-          fallback={<button class="management-action-button" type="button" disabled>{activeLabel()}</button>}
+          when={canUninstall()}
+          fallback={<ManagementStatusTag label={statusLabel()} pending={Boolean(activeLabel())} />}
         >
-          <Show
-            when={props.software.operations?.canUninstall}
-            fallback={<button class="management-action-button" type="button" disabled>{uiText.management.installed}</button>}
-          >
-            <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(props.software, key())}>
-              {uiText.management.uninstall}
-            </button>
-          </Show>
+          <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(props.software, key())}>
+            {uiText.management.uninstall}
+          </button>
         </Show>
         <SettingsButton onClick={() => props.onOpenDetail(props.software)} />
         <MoreActionsButton
@@ -376,6 +375,24 @@ function SoftwareCard(props: {
       </div>
     </article>
   );
+}
+
+// 状态只是告知，不是可点的动作，所以用标签而不是禁用按钮。
+function ManagementStatusTag(props: { label: string; pending?: boolean }) {
+  return (
+    <span class="management-status-tag" classList={{ pending: props.pending === true }}>
+      <Show when={!props.pending}>
+        <Check aria-hidden="true" size={14} strokeWidth={2.5} />
+      </Show>
+      {props.label}
+    </span>
+  );
+}
+
+// 消息只复述状态（"已安装。"对"已安装"）时算重复。
+function repeatsStatus(message: string, status: string) {
+  const plain = (text: string) => text.trim().replace(/[。！？.!?]+$/, "").toLocaleLowerCase();
+  return Boolean(status) && plain(message) === plain(status);
 }
 
 function SettingsButton(props: { onClick: () => void }) {

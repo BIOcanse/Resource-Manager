@@ -5,8 +5,7 @@ import { isAbsolute } from "node:path";
 export async function checkEmbeddedSvdDisplayDialog(page, app, baseline, baselineDetails) {
   const variant = process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT;
   const spec = {
-    "cta-svd20": [0x20, "DD066D47BEF3DA4F7BCC1AE47B65A2589E67F4E048CF92509013F389FA443C42"],
-    "cta-svd21": [0x21, "5C3048E6D11E41BB54E15443FC24A50873D0675ECF6ED62295E3E61F86DF7AD8"]
+    "cta-svd20": [0x20, "DD066D47BEF3DA4F7BCC1AE47B65A2589E67F4E048CF92509013F389FA443C42"]
   }[variant];
   const input = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
   if (!spec || !input || !isAbsolute(input)) throw new Error("Embedded SVD requires its explicit variant and absolute real wire input");

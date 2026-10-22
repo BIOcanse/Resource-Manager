@@ -237,7 +237,17 @@
   opacity: 0.35;
 }
 
-.resource-table-head-cell:first-child .resource-table-sort-button {
+/*
+  表头和单元格同侧对齐：文本列（名称、状态、PID、用户、架构）靠左，数值列靠右。
+  列 id 取自表头上拖动排序用的 data-pointer-reorder-id，列被拖到别的位置时照样对得上。
+*/
+.resource-table-head-cell:is(
+  [data-pointer-reorder-id="name"],
+  [data-pointer-reorder-id="status"],
+  [data-pointer-reorder-id="pid"],
+  [data-pointer-reorder-id="user"],
+  [data-pointer-reorder-id="architecture"]
+) .resource-table-sort-button {
   justify-content: flex-start;
 }
 
@@ -292,12 +302,14 @@
   outline-offset: -2px;
 }
 
+/* 行少时表格按行数收缩（行容器的高度由行数给出），行多时到上限后滚动；至少留 4 行高。 */
 .resource-table-viewport {
   position: relative;
-  height: var(--resource-table-viewport-height);
+  min-height: 152px;
+  max-height: var(--resource-table-viewport-height);
   overflow: auto;
   scrollbar-gutter: stable;
-  contain: strict;
+  contain: layout paint style;
   background: var(--surface);
 }
 

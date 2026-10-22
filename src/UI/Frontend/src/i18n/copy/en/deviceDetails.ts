@@ -2,6 +2,12 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enDeviceDetailsCopy: Pick<AppCopy, "deviceSpecialized" | "deviceInterface"> = {
   deviceSpecialized: {
+    metricFields: {
+      npuTitle: "NPU activity",
+      amdNpuTitle: "NPU values reported by AMD",
+      amdNpuHint: "Vendor values that AMD ADLX reports for this graphics card. They are measured differently from the NPU device's system busy rate and do not identify which NPU device they belong to.",
+      unavailable: "Unavailable"
+    },
     sectionLabel: (deviceType: string) => `${deviceType} specific information`,
     keyboardInput: "Keyboard input",
     pointerInput: "Pointer input",

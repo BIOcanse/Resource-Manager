@@ -10,7 +10,7 @@ function Rows(props: { values: UserDetailItem[] }) {
 function Declarations(props: { title: string; values: { title: string; rows: UserDetailItem[] }[] }) {
   return <section class="user-details-section">
     <h3>{props.title}</h3>
-    <Show when={props.values.length > 0} fallback={<p>{uiText.deviceTopology.edid.empty}</p>}>
+    <Show when={props.values.length > 0} fallback={<p class="user-details-note">{uiText.deviceTopology.edid.empty}</p>}>
       <Index each={props.values}>{value => <details><summary>{value().title}</summary><Rows values={value().rows} /></details>}</Index>
     </Show>
   </section>;
@@ -23,12 +23,18 @@ export function DisplayEdidDetails(props: { display: DeviceTopologyDisplayConnec
       <h3>{uiText.deviceTopology.edid.current}</h3><Rows values={value().current} />
     </section>
     <section class="user-details-section" data-display-edid>
-      <h3>{uiText.deviceTopology.edid.declared}</h3><p>{uiText.deviceTopology.edid.hint}</p>
-      <Show when={value().available} fallback={<p>{uiText.deviceTopology.edid.unavailable}</p>}>
+      <h3>{uiText.deviceTopology.edid.declared}</h3><p class="user-details-note">{uiText.deviceTopology.edid.hint}</p>
+      <Show when={value().available} fallback={<p class="user-details-note">{uiText.deviceTopology.edid.unavailable}</p>}>
         <Rows values={value().declaration} />
         <Declarations title={uiText.deviceTopology.edid.modes} values={value().modes} />
         <Declarations title={uiText.deviceTopology.edid.ranges} values={value().ranges} />
-        <Show when={value().selectionsReported} fallback={<p>{uiText.deviceTopology.edid.unavailable}</p>}>
+        <Show when={value().dynamicRangesReported}>
+          <Declarations title={uiText.deviceTopology.edid.dynamicRanges} values={value().dynamicRanges} />
+        </Show>
+        <Show when={value().adaptiveSyncReported}>
+          <Declarations title={uiText.deviceTopology.edid.adaptiveSync} values={value().adaptiveSyncRanges} />
+        </Show>
+        <Show when={value().selectionsReported} fallback={<p class="user-details-note">{uiText.deviceTopology.edid.unavailable}</p>}>
           <Declarations title={uiText.deviceTopology.edid.selections} values={value().selections} />
         </Show>
       </Show>

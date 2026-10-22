@@ -22,9 +22,9 @@ if (hasCodeTiming && (!isDeepStrictEqual(recordedModes.slice(0, 7), original.sna
     || !isDeepStrictEqual(recorded.snapshot.ports[0].display.modeCapabilityDeclared.selectionDeclarations, original.snapshot.ports[0].display.modeCapabilityDeclared.selectionDeclarations)))
   throw new Error("VIII input changed the original7 modes or ordered selection declarations");
 
-if (hasBitmap && (!legacy || ![0x12, 0x13].includes(recordedModes[13].containerRevision)
+if (hasBitmap && (!legacy || recordedModes[13].containerRevision !== 0x12
     || recordedModes.slice(7).some(mode => mode.containerRevision !== recordedModes[13].containerRevision)))
-  throw new Error("Bitmap17 input must explicitly retain either legacy1.2 or1.3 across all DisplayID declarations");
+  throw new Error("Bitmap17 input must explicitly retain legacy structure 0x12 (DisplayID 1.2/1.3) across all DisplayID declarations");
 
 export async function checkRecordedDisplayDialog(page, app) {
   const topology = page.locator(".device-topology-panel");
@@ -184,7 +184,7 @@ export async function checkDisplayVariant(page, app, variant) {
 const type3Recording = JSON.parse(readFileSync(process.env.RM_EDID_UI_TYPE3_STATE_JSON || new URL("../fixtures/displayEdidType3.json", import.meta.url), "utf8"));
 const type3Display = type3Recording.snapshot.ports[0].display;
 const type3Raw = Buffer.from(type3Display.edidRawDeclaredBase64, "base64");
-if (createHash("sha256").update(type3Raw).digest("hex").toUpperCase() !== "38614C847B1F98DDFCD61D60E7081DAF90DB169DAD163B3CD51EE97C2EE14F8B")
+if (createHash("sha256").update(type3Raw).digest("hex").toUpperCase() !== "CF0102DCF20A2A973593B1DBE33E4212EC73E4A892EEB2B5185E7AB7C84C293C")
   throw new Error("TypeIII browser input is not the bound independent256B EDID");
 const type3Modes = type3Display.modeCapabilityDeclared.modes;
 if (type3Modes.length !== 2 || type3Modes[0].width !== 1920 || type3Modes[1].width !== 8
@@ -193,7 +193,7 @@ if (type3Modes.length !== 2 || type3Modes[0].width !== 1920 || type3Modes[1].wid
     || !isDeepStrictEqual(type3Modes[0].aspectRatioDeclared, { code: 4, horizontal: 16, vertical: 9 })
     || !isDeepStrictEqual(type3Modes[1].aspectRatioDeclared, { code: 8, horizontal: null, vertical: null })
     || type3Modes.some((mode, index) => mode.encoding !== "displayid-iii" || mode.blockIndex !== 1 || mode.byteOffset !== 8 + index * 3
-      || mode.height !== null || mode.timing !== null || mode.revision !== 1 || mode.containerFlags !== 1 || mode.containerRevision !== 19
+      || mode.height !== null || mode.timing !== null || mode.revision !== 1 || mode.containerFlags !== 1 || mode.containerRevision !== 18
       || !isDeepStrictEqual(mode.rawDescriptor, index === 0 ? [20, 239, 187] : [8, 0, 0])))
   throw new Error("TypeIII browser wire lost its independent declaration/source/nominal/aspect facts");
 
@@ -236,7 +236,7 @@ export async function checkType3DisplayDialog(page, app, variant = "type3") {
         [c.declaredAspect, i === 0 ? "16:9" : c.undefinedAspect], [c.declaredAspectCode, i === 0 ? "4" : "8"],
         [i === 0 ? c.nominalFieldRate : c.nominalFrameRate, i === 0 ? "60 Hz" : "1 Hz"], [c.frameRate, c.unavailable],
         [c.scan, i === 0 ? c.interlaced : c.progressive], [c.formula, "cvt"], [c.reduced, i === 0 ? app.shellBridge.yes : app.shellBridge.no],
-        [c.preferred, app.shellBridge.no], [c.revision, "1"], [c.containerFlags, "1"], [c.containerRevision, "19"],
+        [c.preferred, app.shellBridge.no], [c.revision, "1"], [c.containerFlags, "1"], [c.containerRevision, "18"],
         [c.descriptor, i === 0 ? "14 EF BB" : "08 00 00"]];
       for (const [label, value] of expected) {
         const actual = mode.locator(".user-details-row").filter({ has: page.getByText(label, { exact: true }) }).locator("dd");
@@ -265,11 +265,11 @@ export async function checkType3DisplayDialog(page, app, variant = "type3") {
 
 // TypeX is accepted only from the real FrontendWire producer output supplied by the execution controller.
 export async function checkTypeXDisplayDialog(page, app) {
-  if (["cta-hdmi20", "cta-hdmi21"].includes(process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT))
+  if (process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT === "cta-hdmi20")
     return checkEmbeddedHdmiDisplayDialog(page, app, recorded, expectedDetails);
-  if (["cta-colour20", "cta-colour21"].includes(process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT))
+  if (process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT === "cta-colour20")
     return checkEmbeddedColourDisplayDialog(page, app, recorded, expectedDetails);
-  if (["cta-svd20", "cta-svd21"].includes(process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT))
+  if (process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT === "cta-svd20")
     return checkEmbeddedSvdDisplayDialog(page, app, recorded, expectedDetails);
   const input = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
   if (!input || !isAbsolute(input)) throw new Error("TypeX requires an absolute real RM_EDID_UI_TYPEX_STATE_JSON; no fallback");

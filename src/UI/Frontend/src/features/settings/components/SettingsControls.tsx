@@ -66,6 +66,8 @@ export function MultiSegmentedControl<T extends string>(props: {
 
 export function NumberField(props: {
   label: string;
+  // 可见标签很短时，用它给读屏和测试一个能区分各行的完整名称；不填就用可见标签。
+  ariaLabel?: string;
   value: number;
   min: number;
   max: number;
@@ -104,6 +106,7 @@ export function NumberField(props: {
       <input
         type="text"
         inputMode={props.step < 1 ? "decimal" : "numeric"}
+        aria-label={props.ariaLabel}
         value={draft()}
         disabled={props.disabled}
         onFocus={() => setEditing(true)}

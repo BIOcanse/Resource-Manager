@@ -1,5 +1,11 @@
 export const zhDeviceDetailsCopy = {
   deviceSpecialized: {
+    metricFields: {
+      npuTitle: "NPU 运行状态",
+      amdNpuTitle: "AMD 报告的 NPU 数值",
+      amdNpuHint: "AMD ADLX 针对这块显卡报告的厂商值，和 NPU 设备的系统忙碌率不是同一口径，也不表示对应哪一个 NPU 设备。",
+      unavailable: "不可用"
+    },
     sectionLabel: (deviceType: string) => `${deviceType}专属信息`,
     keyboardInput: "键盘输入",
     pointerInput: "指针输入",

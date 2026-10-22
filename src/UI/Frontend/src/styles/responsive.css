@@ -1,9 +1,5 @@
 /* Responsive Layout */
 @media (max-width: 820px) {
-  .metric-option-group-grid {
-    grid-template-columns: 1fr;
-  }
-
   .metric-picker-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -81,16 +77,6 @@
     width: 36px;
   }
 
-  .shell-pages {
-    gap: 4px;
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .shell-page {
-    padding: 0 9px;
-  }
-
   .management-tabs {
     padding: 0 8px;
   }
@@ -153,10 +139,6 @@
 
   .migration-form {
     grid-template-columns: 1fr;
-  }
-
-  .metric-value {
-    font-size: 32px;
   }
 
   .management-card {
@@ -254,11 +236,5 @@
 
   .settings-segment:nth-last-child(-n + 2) {
     border-bottom: 0;
-  }
-}
-
-@media (max-width: 720px) {
-  .dashboard {
-    grid-template-columns: 1fr;
   }
 }

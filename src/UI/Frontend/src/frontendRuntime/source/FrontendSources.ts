@@ -108,6 +108,16 @@ import {
   type GpuSchedulingModelSnapshot,
   type GpuSpecializedTelemetryQuery
 } from "../../data/gpu/gpuSchedulingModelSource.ts";
+import {
+  buildMetricFieldCatalogSubscriptionUrl,
+  buildMetricFieldSubscriptionUrl,
+  metricFieldCatalogDecoder,
+  metricFieldDevicesDecoder,
+  normalizeMetricFieldQuery,
+  type MetricFieldCatalogDevice,
+  type MetricFieldDevice,
+  type MetricFieldQuery
+} from "../../data/metricFields/metricFieldSource.ts";
 import type { SourceFamily, SourceHandle } from "./SourceDescriptor.ts";
 import {
   canonicalizeSourceQuery,
@@ -131,6 +141,10 @@ export interface FrontendSources {
   readonly optimizationReports: SourceHandle<OptimizationReportOverview>;
   readonly gpuPerformanceScores: SourceHandle<GpuPerformanceScoreSnapshot>;
   readonly metricSnapshot: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
+  /** 规范字段的设备目录：每台设备是谁、绑定了哪些字段。 */
+  readonly metricFieldCatalog: PushValueSource<readonly MetricFieldCatalogDevice[]>;
+  /** 规范字段的设备值，按字段集合订阅。 */
+  readonly metricFields: PushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>;
   readonly resourceMonitor: PushValueSourceFamily<
     ResourceMonitorQuery,
     ResourceMonitorSnapshot
@@ -254,6 +268,19 @@ export function createFrontendSources(
       canonicalizeQuery: (query) => canonicalizeSourceQuery(
         normalizeMetricSnapshotQuery(query)).key,
       decoder: metricSnapshotDecoder
+    }),
+    metricFieldCatalog: new BackendPushValueSource<readonly MetricFieldCatalogDevice[]>({
+      key: "metric-fields.catalog",
+      channel: subscriptionChannel,
+      buildUrl: buildMetricFieldCatalogSubscriptionUrl,
+      decoder: metricFieldCatalogDecoder
+    }),
+    metricFields: new BackendPushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>({
+      key: "metric-fields.devices",
+      channel: subscriptionChannel,
+      buildUrl: buildMetricFieldSubscriptionUrl,
+      canonicalizeQuery: (query) => canonicalizeSourceQuery(normalizeMetricFieldQuery(query)).key,
+      decoder: metricFieldDevicesDecoder
     }),
     resourceMonitor: new BackendPushValueSourceFamily<
       ResourceMonitorQuery,

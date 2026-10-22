@@ -2,7 +2,7 @@
   "schemaVersion": "4.0.0",
   "state": "ready",
   "snapshot": {
-    "capturedAt": "2030-01-02T03:04:05Z",
+    "capturedAt": "2030-01-02T03:04:05+00:00",
     "system": {
       "manufacturer": "Frontend Harness",
       "model": "Fixture PC",
@@ -10,7 +10,9 @@
       "brandLogoText": "FH",
       "biosVersion": null,
       "baseBoardManufacturer": null,
-      "baseBoardProduct": null
+      "baseBoardProduct": null,
+      "biosManufacturer": null,
+      "baseBoardSerialNumber": null
     },
     "ports": [
       {
@@ -22,7 +24,6 @@
         "hardwareKind": "display-output",
         "protocol": "HDMI 2.1",
         "speed": null,
-        "physicalMaximumSpeed": "48 Gbps",
         "deviceId": "DISPLAY\\FIXTURE_HDMI_1",
         "pnpClass": null,
         "manufacturer": "Frontend Harness",
@@ -86,12 +87,21 @@
           "currentRefreshRateNumerator": 60000,
           "currentRefreshRateDenominator": 1001,
           "currentBitsPerColorChannel": 10,
+          "clockwiseRotationDegrees": null,
+          "hdrSupportedReported": null,
+          "hdrUserEnabledActual": null,
+          "hdrActiveActual": null,
+          "colorModeActual": null,
           "edidRawDeclaredBase64": "AP///////wAAAAAAAAAAAAAAAQS1AAAAAgAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAjqAGHE4LUBYLEUAAAAAAAAe8zmAGHE4LUBYLEUAAAAAAAAeAAAAEAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAA4UCAxMA5g2SgRCSgucIkYH///7/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwgIDMgD2IgITRAKEfwcXAVeAKwA3BCwAA4AEAPYiAn1DAoR/BxcBV4ArADcELAADgAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABWAgMZAOYjKQQAWADqKiCbfwc3BDtYAeINkwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK4=",
+          "chromaticityDeclared": null,
+          "hdrLuminanceDeclared": null,
           "modeCapabilityDeclared": {
             "modes": [
               {
                 "blockIndex": 0,
                 "byteOffset": 54,
+                "encoding": "edid-detailed",
+                "revision": 4,
                 "rawDescriptor": [
                   2,
                   58,
@@ -112,10 +122,8 @@
                   0,
                   30
                 ],
-                "bitIndex": null,
-                "encoding": "edid-detailed",
-                "revision": 4,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": 1080,
                 "horizontalPixelRepetition": null,
@@ -156,6 +164,8 @@
               {
                 "blockIndex": 0,
                 "byteOffset": 72,
+                "encoding": "edid-detailed",
+                "revision": 4,
                 "rawDescriptor": [
                   243,
                   57,
@@ -176,10 +186,8 @@
                   0,
                   30
                 ],
-                "bitIndex": null,
-                "encoding": "edid-detailed",
-                "revision": 4,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": 1080,
                 "horizontalPixelRepetition": null,
@@ -220,6 +228,8 @@
               {
                 "blockIndex": 2,
                 "byteOffset": 7,
+                "encoding": "cta-vtdb-vii",
+                "revision": 2,
                 "rawDescriptor": [
                   19,
                   68,
@@ -242,10 +252,8 @@
                   4,
                   0
                 ],
-                "bitIndex": null,
-                "encoding": "cta-vtdb-vii",
-                "revision": 2,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": 1080,
                 "horizontalPixelRepetition": null,
@@ -286,6 +294,8 @@
               {
                 "blockIndex": 2,
                 "byteOffset": 30,
+                "encoding": "cta-vtdb-vii",
+                "revision": 2,
                 "rawDescriptor": [
                   125,
                   67,
@@ -308,10 +318,8 @@
                   4,
                   0
                 ],
-                "bitIndex": null,
-                "encoding": "cta-vtdb-vii",
-                "revision": 2,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": 1080,
                 "horizontalPixelRepetition": null,
@@ -352,14 +360,14 @@
               {
                 "blockIndex": 3,
                 "byteOffset": 7,
+                "encoding": "cta-dmt-code",
+                "revision": 1,
                 "rawDescriptor": [
                   4,
                   0
                 ],
-                "bitIndex": null,
-                "encoding": "cta-dmt-code",
-                "revision": 1,
                 "code": 4,
+                "bitIndex": null,
                 "width": 640,
                 "height": 480,
                 "horizontalPixelRepetition": null,
@@ -382,14 +390,14 @@
               {
                 "blockIndex": 3,
                 "byteOffset": 9,
+                "encoding": "cta-dmt-code",
+                "revision": 1,
                 "rawDescriptor": [
                   88,
                   0
                 ],
-                "bitIndex": null,
-                "encoding": "cta-dmt-code",
-                "revision": 1,
                 "code": 88,
+                "bitIndex": null,
                 "width": 4096,
                 "height": 2160,
                 "horizontalPixelRepetition": null,
@@ -412,6 +420,8 @@
               {
                 "blockIndex": 3,
                 "byteOffset": 14,
+                "encoding": "cta-vtdb-x",
+                "revision": 0,
                 "rawDescriptor": [
                   155,
                   127,
@@ -422,10 +432,8 @@
                   88,
                   1
                 ],
-                "bitIndex": null,
-                "encoding": "cta-vtdb-x",
-                "revision": 0,
                 "code": null,
+                "bitIndex": null,
                 "width": 1920,
                 "height": 1080,
                 "horizontalPixelRepetition": null,
@@ -472,8 +480,6 @@
                   146,
                   130
                 ],
-                "flags": null,
-                "imageSize": null,
                 "references": [
                   {
                     "byteOffset": 6,
@@ -610,7 +616,9 @@
                       "bitIndex": null
                     }
                   }
-                ]
+                ],
+                "flags": null,
+                "imageSize": null
               },
               {
                 "blockIndex": 1,
@@ -625,7 +633,6 @@
                   254,
                   255
                 ],
-                "flags": 129,
                 "references": [
                   {
                     "byteOffset": 13,
@@ -661,6 +668,7 @@
                     }
                   }
                 ],
+                "flags": 129,
                 "imageSize": {
                   "widthCode": 65535,
                   "heightCode": 65534,
@@ -675,8 +683,6 @@
                 "rawDescriptor": [
                   147
                 ],
-                "flags": null,
-                "imageSize": null,
                 "references": [
                   {
                     "byteOffset": 24,
@@ -699,9 +705,13 @@
                       "bitIndex": null
                     }
                   }
-                ]
+                ],
+                "flags": null,
+                "imageSize": null
               }
-            ]
+            ],
+            "dynamicTimingRanges": [],
+            "adaptiveSyncRanges": []
           }
         },
         "network": null,
@@ -712,19 +722,60 @@
         "compatibleIds": [],
         "devNodeStatus": null,
         "problemCode": null,
+        "physicalMaximumSpeed": "48 Gbps",
         "hid": null,
         "camera": null,
         "smartDevice": null,
-        "storage": null
+        "storage": null,
+        "displayNameCode": null,
+        "hardwareKindCode": null,
+        "pciIdentification": null,
+        "pciResourceRanges": null,
+        "pciInterrupts": null,
+        "pciDmaChannels": null
       }
     ],
-    "notes": []
+    "notes": [],
+    "npuInformation": null,
+    "driverInformation": [],
+    "memoryModules": [],
+    "firmwareDeclarations": {
+      "biosReleaseDate": null,
+      "slots": [],
+      "processorSockets": []
+    },
+    "batteries": [],
+    "storageInformation": [],
+    "nvidiaGpuInformation": [],
+    "amdGpuInformation": [],
+    "gpuInformation": [],
+    "hidInformation": [],
+    "networkInterfaceInformation": [],
+    "networkEndpointInformation": {
+      "tcpIpv4": null,
+      "tcpIpv6": null,
+      "udpIpv4": null,
+      "udpIpv6": null
+    },
+    "securityInformation": {
+      "antivirusHealthReported": null,
+      "firewallHealthReported": null,
+      "activeFirewallProfiles": null,
+      "domainFirewallEnabledConfigured": null,
+      "privateFirewallEnabledConfigured": null,
+      "publicFirewallEnabledConfigured": null,
+      "antivirusProductsReported": null,
+      "firewallProductsReported": null
+    },
+    "volumeSpaceInformation": [],
+    "diskLayoutInformation": [],
+    "pageFileInformation": []
   },
   "contentGeneration": 1,
   "stateRevision": 1,
   "source": "live",
-  "lastSuccessAt": "2030-01-02T03:04:05Z",
-  "lastAttemptAt": "2030-01-02T03:04:05Z",
+  "lastSuccessAt": "2030-01-02T03:04:05+00:00",
+  "lastAttemptAt": "2030-01-02T03:04:05+00:00",
   "failureCode": null,
   "attemptDiagnostics": []
 }

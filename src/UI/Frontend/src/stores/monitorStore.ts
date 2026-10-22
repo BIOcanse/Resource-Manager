@@ -44,12 +44,24 @@ import {
   sourceCanRender,
   type SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot";
-import type { PushValueSourceFamily } from
+import type { PushValueSource, PushValueSourceFamily } from
   "../frontendRuntime/push/PushValueSourceFamily";
+import type {
+  MetricFieldCatalogDevice,
+  MetricFieldDevice,
+  MetricFieldQuery
+} from "../data/metricFields/metricFieldSource.ts";
+import {
+  fieldCardDefinitions,
+  fieldCardSlot,
+  fieldCardSlots,
+  fieldCardValues
+} from "../features/monitor/fieldCards.ts";
 import {
   allCatalogMetricIds,
   clampResourceTableColumnWidth,
   dashboardSettingsVersion,
+  dashboardSmallMetricLimit,
   defaultCards,
   defaultResourceTableColumns,
   isProcessDetailResourceTableColumn,
@@ -79,6 +91,10 @@ export interface MonitorStoreOptions {
   metricCatalogSource: SourceHandle<MetricDefinition[]>;
   dashboardSettingsSource: SourceHandle<DashboardSettingsResult>;
   metricSnapshotSource: PushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>;
+  /** 规范字段的设备目录：卡片选择器的设备字段条目、卡片上的设备名和「设备不在」都从这里来。 */
+  metricFieldCatalogSource: PushValueSource<readonly MetricFieldCatalogDevice[]>;
+  /** 卡片上设备字段的当前值，按字段集合订阅。 */
+  metricFieldsSource: PushValueSourceFamily<MetricFieldQuery, readonly MetricFieldDevice[]>;
   resourceMonitorSource: PushValueSourceFamily<
     ResourceMonitorQuery,
     ResourceMonitorSnapshot
@@ -104,6 +120,10 @@ export interface MonitorStore {
   catalogObservation: Accessor<ObservationState>;
   snapshot: Accessor<MetricSnapshot | null>;
   snapshotObservation: Accessor<ObservationState>;
+  /** 卡片可选的全部指标：原有指标目录加上每台设备的规范字段。 */
+  cardCatalog: Accessor<MetricDefinition[]>;
+  /** 卡片显示用的当前值：原有指标快照加上卡片上设备字段的值。 */
+  cardSnapshot: Accessor<MetricSnapshot | null>;
   activeCards: Accessor<DashboardCardSettings[]>;
   resourceBarEditing: Accessor<boolean>;
   activeResourceBars: Accessor<ResourceBarSettings[]>;
@@ -221,14 +241,15 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const currentMetricIds = createMemo(() => {
     const ids = new Set<string>();
     for (const card of activeCards()) {
-      if (card.main) {
+      // 设备字段走按字段订阅，不进原有指标订阅。
+      if (card.main && !fieldCardSlot(card.main, card.mainBinding)) {
         ids.add(card.main);
       }
-      for (const metricId of card.small ?? []) {
-        if (metricId) {
+      (card.small ?? []).forEach((metricId, index) => {
+        if (metricId && !fieldCardSlot(metricId, card.smallBindings?.[index])) {
           ids.add(metricId);
         }
-      }
+      });
     }
     if (resourceTableMode() === "performance") {
       for (const metricId of defaultPerformanceMetricIds(catalog())) {
@@ -286,6 +307,23 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     intervalMs: options.resourceTableIntervalMs()
   }));
   let activeMetricQueryKey: string | null = null;
+  const [fieldCatalog, setFieldCatalog] = createSignal<readonly MetricFieldCatalogDevice[] | null>(null);
+  const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldDevice[] | null>(null);
+  const fieldSlots = createMemo(() => fieldCardSlots(activeCards()));
+  const fieldSubscriptionKey = createMemo(() => JSON.stringify({
+    active: options.metricSnapshotActive(),
+    fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort(),
+    intervalMs: options.metricSnapshotIntervalMs()
+  }));
+  const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
+  const cardSnapshot = createMemo<MetricSnapshot | null>(() => {
+    const items = fieldCardValues(fieldSlots(), fieldCatalog(), fieldDevices());
+    const legacy = snapshot();
+    if (Object.keys(items).length === 0) {
+      return legacy;
+    }
+    return { version: 4, capturedAt: legacy?.capturedAt ?? null, items: { ...legacy?.items, ...items } };
+  });
   let activeResourceBarsQueryKey: string | null = null;
   let activeResourceTableQueryKey: string | null = null;
 
@@ -309,6 +347,37 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       (value) => {
         if (accepting && activeMetricQueryKey === queryKey) {
           setSnapshot(value);
+        }
+      });
+    onCleanup(() => {
+      accepting = false;
+      unsubscribe();
+    });
+  });
+  // 设备目录变化很慢，监视页可见时 5 秒推一次就够。
+  createEffect(() => {
+    if (!options.metricSnapshotActive()) {
+      return;
+    }
+    const unsubscribe = options.metricFieldCatalogSource.subscribe(5_000, setFieldCatalog);
+    onCleanup(unsubscribe);
+  });
+  createEffect(() => {
+    const binding = JSON.parse(fieldSubscriptionKey()) as {
+      active: boolean;
+      fields: string[];
+      intervalMs: number;
+    };
+    if (!binding.active || binding.fields.length === 0) {
+      return;
+    }
+    let accepting = true;
+    const unsubscribe = options.metricFieldsSource.subscribe(
+      { fields: binding.fields },
+      binding.intervalMs,
+      (value) => {
+        if (accepting) {
+          setFieldDevices(value);
         }
       });
     onCleanup(() => {
@@ -630,7 +699,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       return;
     }
     const binding = metricBindingForDefinition(
-      catalog().find((metric) => metric.id === metricId));
+      cardCatalog().find((metric) => metric.id === metricId));
 
     updateCards((items) => items.map((card) => {
       if (card.id !== target.cardId) {
@@ -652,7 +721,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       return normalizeCards([{
         ...card,
         small,
-        smallBindings: smallBindings.slice(0, 3)
+        smallBindings: smallBindings.slice(0, dashboardSmallMetricLimit)
       }])[0];
     }));
     closeMetricModal();
@@ -728,8 +797,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
           const [movedBinding] = smallBindings.splice(source.index, 1);
           small.splice(target.index, 0, moved);
           smallBindings.splice(target.index, 0, movedBinding ?? null);
-          sourceCard.small = small.slice(0, 3);
-          sourceCard.smallBindings = smallBindings.slice(0, 3);
+          sourceCard.small = small.slice(0, dashboardSmallMetricLimit);
+          sourceCard.smallBindings = smallBindings.slice(0, dashboardSmallMetricLimit);
           return next;
         }
       }
@@ -1034,6 +1103,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     catalogObservation,
     snapshot,
     snapshotObservation,
+    cardCatalog,
+    cardSnapshot,
     activeCards,
     resourceBarEditing,
     activeResourceBars,

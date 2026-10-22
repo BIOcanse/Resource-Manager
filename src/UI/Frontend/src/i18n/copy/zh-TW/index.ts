@@ -3,6 +3,7 @@ import { zhDetailsCopy } from "./details.ts";
 import { zhDeviceAdaptersCopy } from "./deviceAdapters.ts";
 import { zhDeviceDetailsCopy } from "./deviceDetails.ts";
 import { zhDeviceTopologyCopy } from "./deviceTopology.ts";
+import { zhTwFieldLabelsCopy } from "./fieldLabels.ts";
 import { zhHotkeysCopy } from "./hotkeys.ts";
 import { zhMetricLabelsCopy } from "./metricLabels.ts";
 import { zhMonitorCopy } from "./monitor.ts";
@@ -40,7 +41,8 @@ export const zhAppCopy = {
   ...zhRuntimeAndReportsCopy,
   ...zhStoresCopy,
   ...zhRuntimeErrorsCopy,
-  ...zhMetricLabelsCopy
+  ...zhMetricLabelsCopy,
+  ...zhTwFieldLabelsCopy
 };
 
 export type AppCopy = typeof zhAppCopy;

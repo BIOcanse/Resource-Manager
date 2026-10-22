@@ -166,8 +166,7 @@ export function TaskCenterDialog(props: {
           </For>
         </TabsRoot>
       </DialogBody>
-      <DialogActions class="task-center-actions">
-        <span>{uiText.taskCenter.itemCount(itemsFor(activeTab()).length)}</span>
+      <DialogActions>
         <button class="secondary" type="button" onClick={props.onClose}>{uiText.taskCenter.close}</button>
       </DialogActions>
     </DialogRoot>
@@ -222,8 +221,9 @@ function TaskCenterList(props: {
                         />
                         <span>{formatPercent(progress().percent)}</span>
                       </Show>
-                      <Show when={progress().stage || progress().message}>
-                        <p>{[progress().stage, progress().message].filter(Boolean).join(" · ")}</p>
+                      {/* 阶段是后端内部 id（如 install），任务类型已在上一行本地化显示，这里只放进度说明 */}
+                      <Show when={progress().message}>
+                        {(message) => <p>{message()}</p>}
                       </Show>
                     </div>
                   )}

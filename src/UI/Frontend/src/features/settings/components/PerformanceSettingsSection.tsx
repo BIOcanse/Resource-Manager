@@ -1,4 +1,4 @@
-import { For } from "solid-js";
+import { For, Match, Switch } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect";
 import {
   defaultLogicRefreshIntervalSetting,
@@ -247,26 +247,34 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
                     ariaLabel={itemText().label}
                     onChange={(mode) => selectLogicRefreshMode(key, mode)}
                   />
-                  <label class="settings-select settings-inline-select">
-                    <span>{props.text.performance.refreshCadencePresetLabel}</span>
-                    <StandardSelect<AppLogicRefreshIntervalPreset>
-                      value={setting().preset}
-                      ariaLabel={`${itemText().label} ${props.text.performance.refreshCadencePresetLabel}`}
-                      options={props.text.performance.refreshCadencePresetOptions.map((option) => ({
-                        value: option.id,
-                        label: presetOptionLabel(key, option.id)
-                      }))}
-                      onChange={(value) => selectLogicRefreshPreset(key, value)}
-                    />
-                  </label>
-                  <NumberField
-                    label={`${itemText().label} ${props.text.performance.refreshCadenceCustomLabel}`}
-                    value={setting().customValue}
-                    min={500}
-                    max={300000}
-                    step={100}
-                    onChange={(value) => updateLogicRefreshCustomValue(key, value)}
-                  />
+                  {/* 只显示当前模式真正生效的输入：锁定预设显示预设下拉框，自定义显示毫秒输入框，自动调度两者都不显示。 */}
+                  <Switch>
+                    <Match when={setting().mode === "preset"}>
+                      <label class="settings-select settings-inline-select">
+                        <span>{props.text.performance.refreshCadencePresetLabel}</span>
+                        <StandardSelect<AppLogicRefreshIntervalPreset>
+                          value={setting().preset}
+                          ariaLabel={`${itemText().label} ${props.text.performance.refreshCadencePresetLabel}`}
+                          options={props.text.performance.refreshCadencePresetOptions.map((option) => ({
+                            value: option.id,
+                            label: presetOptionLabel(key, option.id)
+                          }))}
+                          onChange={(value) => selectLogicRefreshPreset(key, value)}
+                        />
+                      </label>
+                    </Match>
+                    <Match when={setting().mode === "custom"}>
+                      <NumberField
+                        label={props.text.performance.refreshCadenceCustomLabel}
+                        ariaLabel={`${itemText().label} ${props.text.performance.refreshCadenceCustomLabel}`}
+                        value={setting().customValue}
+                        min={500}
+                        max={300000}
+                        step={100}
+                        onChange={(value) => updateLogicRefreshCustomValue(key, value)}
+                      />
+                    </Match>
+                  </Switch>
                 </div>
               );
             }}

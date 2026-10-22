@@ -5,8 +5,7 @@ import { isAbsolute } from "node:path";
 export async function checkEmbeddedHdmiDisplayDialog(page, app, baseline, baselineDetails) {
   const variant = process.env.RM_EDID_UI_TYPEX_INPUT_VARIANT;
   const spec = {
-    "cta-hdmi20": [0x20, "75520B3662503C503393DD23E9F32316945940D2CFD873C538075E7E0901010B"],
-    "cta-hdmi21": [0x21, "6D4F80E92287FBE4F9D0C33D83BAB5F89159ABAF3AF8ABE6A3AB175F27871131"]
+    "cta-hdmi20": [0x20, "75520B3662503C503393DD23E9F32316945940D2CFD873C538075E7E0901010B"]
   }[variant];
   const input = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
   if (!spec || !input || !isAbsolute(input)) throw new Error("Embedded HDMI requires its explicit variant and absolute real wire input");

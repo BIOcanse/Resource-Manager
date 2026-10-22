@@ -25,10 +25,23 @@
   min-width: 0;
 }
 
+/* 节里再套的节（EDID 的模式、范围等声明）与上一块内容拉开距离。 */
+.user-details-section .user-details-section {
+  margin-top: 14px;
+}
+
 .user-details-section h3 {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* 节内说明：比节标题弱，不和数值行抢视线。 */
+.user-details-note {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .user-details-section dl {
@@ -40,8 +53,9 @@
   display: grid;
   grid-template-columns: minmax(120px, 0.32fr) minmax(0, 1fr);
   gap: 16px;
-  padding: 10px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--divider);
+  font-size: 13px;
 }
 
 .user-details-row dt,
@@ -58,6 +72,40 @@
   min-width: 0;
   overflow-wrap: anywhere;
   user-select: text;
+}
+
+/* 可展开项按行显示，展开后的明细缩进一级。 */
+.user-details-modal details > summary {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.user-details-section h3 + details > summary {
+  border-top: 1px solid var(--divider);
+}
+
+.user-details-modal details[open] > summary {
+  font-weight: 600;
+}
+
+.user-details-modal details > dl {
+  border-top: 0;
+  padding-left: 16px;
+}
+
+details.user-details-section > summary {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.device-display-declarations {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
 }
 
 .details-button {

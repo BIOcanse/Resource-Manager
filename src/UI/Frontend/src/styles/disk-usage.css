@@ -9,6 +9,24 @@
   border-bottom: none;
 }
 
+.disk-usage-setup .settings-row {
+  min-height: 52px;
+  padding: 6px 4px;
+}
+
+.disk-usage-setup .settings-row-copy span {
+  overflow-wrap: anywhere;
+}
+
+/* 设置项是"标签 + 选择"，控件紧跟标签，不拉到行尾。窄窗口沿用 responsive.css 的单列。 */
+@media (min-width: 681px) {
+  .disk-usage-setup .settings-row {
+    grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+    justify-items: start;
+    gap: 24px;
+  }
+}
+
 .disk-usage-warning {
   margin: 0;
   padding: 10px 12px;

@@ -20,6 +20,9 @@ import controlReadingsJourney from "./controlReadingsJourney.js";
 import controlCardJourney from "./controlCardJourney.js";
 import controlNumberInitialJourney from "./controlNumberInitialJourney.js";
 import controlSlowRequestJourney from "./controlSlowRequestJourney.js";
+import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
+import metricFieldsJourney from "./metricFieldsJourney.js";
+import metricFieldCardsJourney from "./metricFieldCardsJourney.js";
 import gpuUnknownRuntimeJourney from "./gpuUnknownRuntimeJourney.js";
 import performanceHistoryJourney from "./performanceHistoryJourney.js";
 import resourceLayoutTaskJourney from "./resourceLayoutTaskJourney.js";
@@ -46,6 +49,9 @@ const allJourneys = [
   ["control-card", controlCardJourney],
   ["control-number-initial", controlNumberInitialJourney],
   ["control-slow-request", controlSlowRequestJourney],
+  ["control-toggle-choice", controlToggleChoiceJourney],
+  ["metric-fields", metricFieldsJourney],
+  ["metric-field-cards", metricFieldCardsJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],

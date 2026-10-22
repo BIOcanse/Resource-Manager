@@ -111,6 +111,11 @@ for (const language of ["zh-CN", "en-US"] as const) {
   assert.ok(all.every((item) => item.links.length > 0));
   assert.ok(all.every((item) => item.name !== atob("S2luZ3M=")));
   assert.ok(all.flatMap(item => item.links).every(link => !/star|点星|點星/i.test(link.label)));
+  // 同一项里的链接文字必须能区分（不能出现“官网 官网”）。
+  for (const item of all) {
+    assert.equal(new Set(item.links.map((link) => link.label)).size, item.links.length,
+      `${language}: duplicate link labels in ${item.name}`);
+  }
   for (const name of ["Khronos / Vulkan-Headers / Valve / LunarG", "Mesa / WGL contributors",
     "UL Solutions / 3DMark Steel Nomad", "GCC / MinGW-w64 / winpthreads / WinLibs"]) {
     assert.ok(all.some((item) => item.name === name), `Missing upstream thanks: ${name}`);

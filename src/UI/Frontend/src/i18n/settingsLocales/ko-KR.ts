@@ -8,7 +8,6 @@ export default createSettingsLocale("ko-KR", {
     "unknownVersion": "알 수 없음",
     "checking": "확인 중…",
     "checkForUpdates": "업데이트 확인",
-    "catalogFailed": "릴리스 목록을 읽을 수 없음: ",
     "historyIncomplete": "릴리스 기록을 아직 모두 읽지 못했습니다.",
     "historyStale": "이전에 읽은 릴리스 목록을 표시합니다. 다시 연결한 후 재시도하세요.",
     "versionsTitle": "제품 버전",
@@ -157,7 +156,7 @@ export default createSettingsLocale("ko-KR", {
       }
     ],
     "refreshCadencePresetLabel": "프리셋",
-    "refreshCadenceCustomLabel": "사용자 지정 ms",
+    "refreshCadenceCustomLabel": "사용자 지정 (ms)",
     "refreshCadencePresetOptions": [
       {
         "id": "responsive",

@@ -108,10 +108,9 @@ function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint
     }
     for (let bucket = 0; bucket < minima.length; bucket++) {
       if (!Number.isFinite(minima[bucket])) continue;
-      context.beginPath();
-      context.moveTo(left + bucket + 0.5, y(minima[bucket]));
-      context.lineTo(left + bucket + 0.5, y(maxima[bucket]));
-      context.stroke();
+      // 一个像素里只有一帧时上下沿重合，至少画一个线宽高；否则低帧率或短录制的图是空的。
+      const upper = y(maxima[bucket]);
+      context.fillRect(left + bucket, upper, 1.5, Math.max(1.5, y(minima[bucket]) - upper));
     }
   } else if (mode === "bars") {
     const barWidth = Math.max(1, chartWidth * 10 / Math.max(10, to - from) - 2);

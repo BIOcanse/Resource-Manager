@@ -7,7 +7,6 @@ export default createSettingsLocale("zh-TW", {
     "unknownVersion": "無法識別",
     "checking": "檢查中…",
     "checkForUpdates": "檢查更新",
-    "catalogFailed": "無法讀取版本目錄：",
     "historyIncomplete": "版本歷史尚未完整讀取。",
     "historyStale": "正在顯示上次讀取的版本目錄；請聯網後重試。",
     "versionsTitle": "產品版本",
@@ -152,7 +151,7 @@ export default createSettingsLocale("zh-TW", {
       }
     ],
     "refreshCadencePresetLabel": "預設",
-    "refreshCadenceCustomLabel": "自定義 ms",
+    "refreshCadenceCustomLabel": "自定義 (ms)",
     "refreshCadencePresetOptions": [
       {
         "id": "responsive",

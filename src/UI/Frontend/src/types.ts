@@ -967,9 +967,27 @@ export interface DisplayEdidCvtParameters {
   alternativeMinimumVerticalBlanking: boolean | null;
 }
 export interface DisplayEdidAspectRatio { code: number; horizontal: number | null; vertical: number | null }
+/** DisplayID 1.3 Type V 选项字节里的原始声明；Type V 不生成时序。 */
+export interface DisplayEdidTypeVOptions { formulaCode: number; stereoSupportCode: number; fractionalRefreshSupported: boolean }
+/** DisplayID 1.3 Type VI 的声明值；时钟高位与规范上限矛盾时 pixelClockHz 为 null，其余值照常有效。 */
+export interface DisplayEdidTypeViTiming {
+  pixelClockHz: number | null;
+  horizontalBlankingPixels: number; horizontalFrontPorchPixels: number; horizontalSyncWidthPixels: number;
+  verticalBlankingLines: number; verticalFrontPorchLines: number; verticalSyncWidthLines: number;
+  positiveHorizontalSync: boolean; positiveVerticalSync: boolean; stereoSupportCode: number;
+}
+/** Type VI 17 字节记录的可选尾部：宽高比倍率（比值 = 倍率×3:256）与垂直图像尺寸（毫米）。 */
+export interface DisplayEdidTypeViImageSize {
+  aspectMultiplier: number; verticalImageBaseSizeMillimeters: number;
+  sizeMultiplier: number; verticalImageSizeMillimeters: number;
+}
 export interface DisplayEdidMode extends DisplayEdidReference {
   encoding: string; revision: number; code: number | null; width: number | null; height: number | null;
   aspectRatioDeclared?: DisplayEdidAspectRatio | null;
+  /** 以下三项只在对应 Type V／VI 声明存在时由后端输出；旧载荷缺属性保持缺失。 */
+  displayIdTypeVOptions?: DisplayEdidTypeVOptions | null;
+  displayIdTypeViTiming?: DisplayEdidTypeViTiming | null;
+  displayIdTypeViImageSize?: DisplayEdidTypeViImageSize | null;
   horizontalPixelRepetition: number | null; interlaced: boolean | null; nominalVerticalRateHz: number | null;
   native: boolean | null; preferred: boolean | null; yCbCr420Only: boolean | null;
   yCbCr420Encoding: boolean | null; yCbCr420Supported: boolean | null;
@@ -991,9 +1009,33 @@ export interface DisplayEdidSelection extends Omit<DisplayEdidReference, "bitInd
     code: number | null; target: DisplayEdidReference | null }[];
   imageSize: { widthCode: number; heightCode: number; unitMicrometers: number } | null;
 }
+/** DisplayID 声明块里一条描述符的原位置与容器来源。 */
+export interface DisplayEdidDisplayIdSource extends Omit<DisplayEdidReference, "bitIndex"> {
+  revision: number; containerFlags: number; containerRevision: number;
+}
+/** DisplayID 2.0 tag 0x25 动态时序范围声明；不是实测刷新率或系统可用模式。 */
+export interface DisplayEdidDynamicTimingRange extends DisplayEdidDisplayIdSource {
+  minimumPixelClockHz: number; maximumPixelClockHz: number;
+  minimumVerticalRateHz: number; maximumVerticalRateHz: number;
+  seamlessWithFixedHorizontalPixelRateAndDynamicVerticalBlanking: boolean;
+}
+/** 帧时长单步变化上限（精确微秒）；null 即零码：整个范围内任意变化都满足无抖动要求。 */
+export interface DisplayEdidAdaptiveSyncTolerance {
+  flickerRestrictedToSingleStep: boolean; maximumSingleStepMicroseconds: number | null;
+  zeroCodeMeansNoJitterThroughoutRange: boolean;
+}
+/** DisplayID tag 0x2B Adaptive-Sync 声明；基础最小／最大值不是选定时序后的实际范围。 */
+export interface DisplayEdidAdaptiveSyncRange extends DisplayEdidDisplayIdSource {
+  baseMinimumRefreshRateHz: number; baseMaximumRefreshRateHz: number;
+  nativePanelRange: boolean; adaptiveVTotalSupported: boolean; seamlessTransitionSupported: boolean;
+  frameDurationIncrease: DisplayEdidAdaptiveSyncTolerance; frameDurationDecrease: DisplayEdidAdaptiveSyncTolerance;
+}
 export interface DisplayEdidCapability {
   modes: DisplayEdidMode[]; ranges: DisplayEdidRange[]; edidRevision: number; baseFeatures: number;
   ctaFlags: number | null; selectionDeclarations: DisplayEdidSelection[] | null;
+  /** 旧载荷没有这两个集合时保持缺失，界面按旧载荷显示。 */
+  dynamicTimingRanges?: DisplayEdidDynamicTimingRange[];
+  adaptiveSyncRanges?: DisplayEdidAdaptiveSyncRange[];
 }
 
 

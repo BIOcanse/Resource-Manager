@@ -8,7 +8,6 @@ export default createSettingsLocale("ja-JP", {
     "unknownVersion": "不明",
     "checking": "確認中…",
     "checkForUpdates": "更新を確認",
-    "catalogFailed": "リリース一覧を読み込めません：",
     "historyIncomplete": "リリース履歴の読み込みが完了していません。",
     "historyStale": "以前に読み込んだリリース一覧を表示しています。接続を復旧して再試行してください。",
     "versionsTitle": "製品バージョン",

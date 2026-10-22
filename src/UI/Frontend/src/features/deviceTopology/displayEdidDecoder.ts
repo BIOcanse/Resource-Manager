@@ -1,5 +1,6 @@
 import { requireArray, requireBoolean, requireNonNegativeSafeInteger, requireRecord, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
-import type { DisplayEdidCapability, DisplayEdidMode, DisplayEdidRange, DisplayEdidReference, DisplayEdidSelection, DisplayEdidTiming } from "../../types.ts";
+import type { DisplayEdidAdaptiveSyncRange, DisplayEdidAdaptiveSyncTolerance, DisplayEdidCapability, DisplayEdidDisplayIdSource, DisplayEdidDynamicTimingRange, DisplayEdidMode, DisplayEdidRange, DisplayEdidReference, DisplayEdidSelection, DisplayEdidTiming,
+  DisplayEdidTypeViImageSize, DisplayEdidTypeViTiming, DisplayEdidTypeVOptions } from "../../types.ts";
 
 type RecordValue = Record<string, unknown>;
 const number = requireNonNegativeSafeInteger;
@@ -49,10 +50,34 @@ function aspectRatio(value: unknown, path: string) {
   const r = requireRecord(value, path);
   return { code: byte(r.code, `${path}.code`), horizontal: n(r, "horizontal", path), vertical: n(r, "vertical", path) };
 }
+function typeVOptions(value: unknown, path: string): DisplayEdidTypeVOptions {
+  const r = requireRecord(value, path);
+  return { formulaCode: byte(r.formulaCode, `${path}.formulaCode`), stereoSupportCode: byte(r.stereoSupportCode, `${path}.stereoSupportCode`),
+    fractionalRefreshSupported: requireBoolean(r.fractionalRefreshSupported, `${path}.fractionalRefreshSupported`) };
+}
+function typeViTiming(value: unknown, path: string): DisplayEdidTypeViTiming {
+  const r = requireRecord(value, path);
+  return { pixelClockHz: optionalEdidValue(r.pixelClockHz, `${path}.pixelClockHz`, number),
+    horizontalBlankingPixels: integer(r.horizontalBlankingPixels, `${path}.horizontalBlankingPixels`), horizontalFrontPorchPixels: integer(r.horizontalFrontPorchPixels, `${path}.horizontalFrontPorchPixels`),
+    horizontalSyncWidthPixels: integer(r.horizontalSyncWidthPixels, `${path}.horizontalSyncWidthPixels`), verticalBlankingLines: integer(r.verticalBlankingLines, `${path}.verticalBlankingLines`),
+    verticalFrontPorchLines: integer(r.verticalFrontPorchLines, `${path}.verticalFrontPorchLines`), verticalSyncWidthLines: integer(r.verticalSyncWidthLines, `${path}.verticalSyncWidthLines`),
+    positiveHorizontalSync: requireBoolean(r.positiveHorizontalSync, `${path}.positiveHorizontalSync`), positiveVerticalSync: requireBoolean(r.positiveVerticalSync, `${path}.positiveVerticalSync`),
+    stereoSupportCode: byte(r.stereoSupportCode, `${path}.stereoSupportCode`) };
+}
+function typeViImageSize(value: unknown, path: string): DisplayEdidTypeViImageSize {
+  const r = requireRecord(value, path);
+  return { aspectMultiplier: byte(r.aspectMultiplier, `${path}.aspectMultiplier`), verticalImageBaseSizeMillimeters: integer(r.verticalImageBaseSizeMillimeters, `${path}.verticalImageBaseSizeMillimeters`),
+    sizeMultiplier: byte(r.sizeMultiplier, `${path}.sizeMultiplier`), verticalImageSizeMillimeters: integer(r.verticalImageSizeMillimeters, `${path}.verticalImageSizeMillimeters`) };
+}
+/** 只在后端输出了该成员时解码；旧载荷缺属性保持缺失，显式 null 保留为 null。 */
+function present<K extends string, T>(r: RecordValue, key: K, path: string, decode: (value: unknown, path: string) => T): { [P in K]?: T | null } {
+  return (r[key] === undefined ? {} : { [key]: optionalEdidValue(r[key], `${path}.${key}`, decode) }) as { [P in K]?: T | null };
+}
 function mode(value: unknown, path: string): DisplayEdidMode {
   const r = requireRecord(value, path);
   return { ...reference(r, path), encoding: requireString(r.encoding, `${path}.encoding`), revision: byte(r.revision, `${path}.revision`),
-    ...(r.aspectRatioDeclared === undefined ? {} : { aspectRatioDeclared: optionalEdidValue(r.aspectRatioDeclared, `${path}.aspectRatioDeclared`, aspectRatio) }),
+    ...present(r, "aspectRatioDeclared", path, aspectRatio), ...present(r, "displayIdTypeVOptions", path, typeVOptions),
+    ...present(r, "displayIdTypeViTiming", path, typeViTiming), ...present(r, "displayIdTypeViImageSize", path, typeViImageSize),
     code: n(r, "code", path), width: n(r, "width", path), height: n(r, "height", path), horizontalPixelRepetition: n(r, "horizontalPixelRepetition", path),
     interlaced: b(r, "interlaced", path), nominalVerticalRateHz: n(r, "nominalVerticalRateHz", path), native: b(r, "native", path), preferred: b(r, "preferred", path),
     yCbCr420Only: b(r, "yCbCr420Only", path), yCbCr420Encoding: b(r, "yCbCr420Encoding", path), yCbCr420Supported: b(r, "yCbCr420Supported", path),
@@ -86,10 +111,45 @@ function selection(value: unknown, path: string): DisplayEdidSelection {
       const s = requireRecord(value, p); return { widthCode: integer(s.widthCode, `${p}.widthCode`, 65535), heightCode: integer(s.heightCode, `${p}.heightCode`, 65535), unitMicrometers: integer(s.unitMicrometers, `${p}.unitMicrometers`) };
     }) };
 }
+function displayIdSource(r: RecordValue, path: string): DisplayEdidDisplayIdSource {
+  return { ...source(r, path), revision: byte(r.revision, `${path}.revision`), containerFlags: byte(r.containerFlags, `${path}.containerFlags`),
+    containerRevision: byte(r.containerRevision, `${path}.containerRevision`) };
+}
+function dynamicTimingRange(value: unknown, path: string): DisplayEdidDynamicTimingRange {
+  const r = requireRecord(value, path);
+  return { ...displayIdSource(r, path), minimumPixelClockHz: number(r.minimumPixelClockHz, `${path}.minimumPixelClockHz`),
+    maximumPixelClockHz: number(r.maximumPixelClockHz, `${path}.maximumPixelClockHz`), minimumVerticalRateHz: integer(r.minimumVerticalRateHz, `${path}.minimumVerticalRateHz`),
+    maximumVerticalRateHz: integer(r.maximumVerticalRateHz, `${path}.maximumVerticalRateHz`),
+    seamlessWithFixedHorizontalPixelRateAndDynamicVerticalBlanking: requireBoolean(r.seamlessWithFixedHorizontalPixelRateAndDynamicVerticalBlanking, `${path}.seamlessWithFixedHorizontalPixelRateAndDynamicVerticalBlanking`) };
+}
+function adaptiveSyncTolerance(value: unknown, path: string): DisplayEdidAdaptiveSyncTolerance {
+  const r = requireRecord(value, path);
+  const maximumSingleStepMicroseconds = n(r, "maximumSingleStepMicroseconds", path);
+  const zeroCodeMeansNoJitterThroughoutRange = requireBoolean(r.zeroCodeMeansNoJitterThroughoutRange, `${path}.zeroCodeMeansNoJitterThroughoutRange`);
+  // 零码语义与 null 时长是同一事实的两种写法；不一致说明载荷损坏，不能任选一个显示。
+  if (zeroCodeMeansNoJitterThroughoutRange !== (maximumSingleStepMicroseconds === null))
+    throw new ResponseDecodeError(`${path}.zeroCodeMeansNoJitterThroughoutRange`, "true exactly when maximumSingleStepMicroseconds is null");
+  return { flickerRestrictedToSingleStep: requireBoolean(r.flickerRestrictedToSingleStep, `${path}.flickerRestrictedToSingleStep`),
+    maximumSingleStepMicroseconds, zeroCodeMeansNoJitterThroughoutRange };
+}
+function adaptiveSyncRange(value: unknown, path: string): DisplayEdidAdaptiveSyncRange {
+  const r = requireRecord(value, path);
+  return { ...displayIdSource(r, path), baseMinimumRefreshRateHz: integer(r.baseMinimumRefreshRateHz, `${path}.baseMinimumRefreshRateHz`),
+    baseMaximumRefreshRateHz: integer(r.baseMaximumRefreshRateHz, `${path}.baseMaximumRefreshRateHz`),
+    nativePanelRange: requireBoolean(r.nativePanelRange, `${path}.nativePanelRange`), adaptiveVTotalSupported: requireBoolean(r.adaptiveVTotalSupported, `${path}.adaptiveVTotalSupported`),
+    seamlessTransitionSupported: requireBoolean(r.seamlessTransitionSupported, `${path}.seamlessTransitionSupported`),
+    frameDurationIncrease: adaptiveSyncTolerance(r.frameDurationIncrease, `${path}.frameDurationIncrease`),
+    frameDurationDecrease: adaptiveSyncTolerance(r.frameDurationDecrease, `${path}.frameDurationDecrease`) };
+}
+/** 后端集合恒为数组；旧载荷缺该集合时保持缺失，不补成空集合。 */
+function presentList<K extends string, T>(r: RecordValue, key: K, path: string, decode: (value: unknown, path: string) => T): { [P in K]?: T[] } {
+  return (r[key] === undefined ? {} : { [key]: requireArray(r[key], `${path}.${key}`).map((item, i) => decode(item, `${path}.${key}[${i}]`)) }) as { [P in K]?: T[] };
+}
 export function decodeDisplayEdidCapability(value: unknown, path: string): DisplayEdidCapability {
   const r = requireRecord(value, path);
   return { modes: requireArray(r.modes, `${path}.modes`).map((item, i) => mode(item, `${path}.modes[${i}]`)),
     ranges: requireArray(r.ranges, `${path}.ranges`).map((item, i) => range(item, `${path}.ranges[${i}]`)),
     edidRevision: byte(r.edidRevision, `${path}.edidRevision`), baseFeatures: byte(r.baseFeatures, `${path}.baseFeatures`), ctaFlags: nb(r, "ctaFlags", path),
-    selectionDeclarations: optionalEdidValue(r.selectionDeclarations, `${path}.selectionDeclarations`, (value, p) => requireArray(value, p).map((item, i) => selection(item, `${p}[${i}]`))) };
+    selectionDeclarations: optionalEdidValue(r.selectionDeclarations, `${path}.selectionDeclarations`, (value, p) => requireArray(value, p).map((item, i) => selection(item, `${p}[${i}]`))),
+    ...presentList(r, "dynamicTimingRanges", path, dynamicTimingRange), ...presentList(r, "adaptiveSyncRanges", path, adaptiveSyncRange) };
 }

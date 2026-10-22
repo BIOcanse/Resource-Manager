@@ -224,6 +224,25 @@
   box-shadow: var(--elev-2), var(--edge-highlight);
 }
 
+/* 状态标签：只说明现在的状态，没有边框和阴影，不像可点的按钮。 */
+.management-status-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 6px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 正在进行的操作（安装中、卸载中）用弱化色，等结果出来再换成确定的状态。 */
+.management-status-tag.pending {
+  color: var(--muted);
+}
+
 .management-settings-button {
   width: 34px;
   min-width: 34px;

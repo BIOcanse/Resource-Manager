@@ -74,7 +74,7 @@ const zhCnSettingsCopy: SettingsCopy = {
       { id: "custom", label: "自定义", description: "用手填的毫秒值。" }
     ],
     refreshCadencePresetLabel: "预设",
-    refreshCadenceCustomLabel: "自定义 ms",
+    refreshCadenceCustomLabel: "自定义 (ms)",
     refreshCadencePresetOptions: [
       { id: "responsive", label: "响应", description: "前台交互优先，刷新更快。" },
       { id: "balanced", label: "平衡", description: "日常用这个。" },
@@ -372,7 +372,7 @@ const enSettingsCopy: SettingsCopy = {
       { id: "custom", label: "Custom", description: "Always use the manually entered millisecond value." }
     ],
     refreshCadencePresetLabel: "Preset",
-    refreshCadenceCustomLabel: "Custom ms",
+    refreshCadenceCustomLabel: "Custom (ms)",
     refreshCadencePresetOptions: [
       { id: "responsive", label: "Responsive", description: "Prioritizes foreground interaction with faster refreshes." },
       { id: "balanced", label: "Balanced", description: "A practical update rate for everyday use." },

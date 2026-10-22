@@ -27,7 +27,7 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 11);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 13);
 assert.match(pushValueSources, /this\.channel\.subscribe\(/);
 assert.doesNotMatch(pushValueSources, /BackendSessionOwner|\bfetch\s*\(/);
 assert.match(subscriptionChannel, /const subscriptionEndpoint = "\/api\/subscriptions\/stream"/);
@@ -49,6 +49,11 @@ assert.match(sources, /key:\s*"app\.settings"[\s\S]*getAppSettings\(requestClien
 assert.match(sources, /metricSnapshot:\s*new BackendPushValueSourceFamily/);
 assert.match(sources, /resourceMonitor:\s*new BackendPushValueSourceFamily/);
 assert.match(sources, /gpuSpecializedTelemetry:\s*new BackendPushValueSourceFamily/);
+// 规范字段的设备目录和设备值同样走统一订阅通道。
+assert.match(sources, /metricFieldCatalog:\s*new BackendPushValueSource</);
+assert.match(sources, /metricFields:\s*new BackendPushValueSourceFamily/);
+assert.match(monitorStore, /options\.metricFieldCatalogSource\.subscribe/);
+assert.match(monitorStore, /options\.metricFieldsSource\.subscribe/);
 assert.doesNotMatch(sources, /getMetricSnapshotSource|getResourceMonitorState/);
 assert.match(monitorStore, /options\.metricSnapshotSource\.subscribe/);
 assert.match(monitorStore, /options\.resourceMonitorSource\.subscribe/);

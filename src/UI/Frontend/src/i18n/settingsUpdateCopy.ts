@@ -2,7 +2,7 @@ import type { UpdatesCopy } from "./settingsTypes.ts";
 
 export const loadingUpdatesCopy: UpdatesCopy = {
   autoUpdateTitle: "", autoUpdateDescription: "", installedVersionTitle: "", unknownVersion: "",
-  checking: "", checkForUpdates: "", catalogFailed: "", historyIncomplete: "", historyStale: "",
+  checking: "", checkForUpdates: "", historyIncomplete: "", historyStale: "",
   versionsTitle: "", versionsDescription: "", lastChecked: "", selectedTarget: "", prepare: "",
   confirmPrepare: () => "", prepareFailed: "", waitingForExit: "", stageLabel: "", unknownStage: "",
   stages: {}, otherVersions: "", installedUnknown: "", stable: "", preview: "", noLatest: "",
@@ -16,7 +16,6 @@ export const enUpdatesCopy: UpdatesCopy = {
   unknownVersion: "Unknown",
   checking: "Checking…",
   checkForUpdates: "Check for updates",
-  catalogFailed: "Unable to read release catalog: ",
   historyIncomplete: "Release history is incomplete.",
   historyStale: "Showing the previous release catalog; reconnect and retry.",
   versionsTitle: "Product versions",
@@ -52,7 +51,6 @@ export const zhCnUpdatesCopy: UpdatesCopy = {
   unknownVersion: "无法识别",
   checking: "检查中…",
   checkForUpdates: "检查更新",
-  catalogFailed: "无法读取版本目录：",
   historyIncomplete: "版本历史尚未完整读取。",
   historyStale: "正在显示上次读取的版本目录；请联网后重试。",
   versionsTitle: "产品版本",

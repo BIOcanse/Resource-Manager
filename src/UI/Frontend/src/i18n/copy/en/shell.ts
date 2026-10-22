@@ -63,6 +63,10 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
       app: "App-managed",
       firmwareNote: "The firmware is managing this right now; the settings below have no effect."
     },
+    toggleChoice: {
+      firmware: "Return to firmware",
+      firmwareHint: "Keeps no setting for this item. Saving restores the state from before the app took over and returns control to the firmware; it does not switch the item off."
+    },
     notice: {
       warrantyTitle: "About your warranty",
       warrantyBody: [
@@ -255,6 +259,8 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     taskCenterUnavailable: "Task center · backend task state unavailable",
     minimize: "Minimize",
     maximize: "Maximize",
-    closeWindow: "Close"
+    closeWindow: "Close",
+    uptime: "Uptime",
+    uptimeTitle: "Time since this PC last started"
   }
 };

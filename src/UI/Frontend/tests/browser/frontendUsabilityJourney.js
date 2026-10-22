@@ -167,7 +167,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await managementNavigation.waitFor({ state: "visible", timeout: 5000 });
   const generalAppsButton = managementNavigation.getByRole("button", { name: /一般应用/ });
   await generalAppsButton.click();
-  const settingsButton = page.getByRole("button", { name: "设置和迁移" }).first();
+  const settingsButton = page.getByRole("button", { name: "软件设置", exact: true }).first();
   await settingsButton.waitFor({ state: "visible", timeout: 5000 });
   await settingsButton.focus();
   await settingsButton.click();
@@ -189,7 +189,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await page.keyboard.press("Escape");
   await detailDialog.waitFor({ state: "hidden", timeout: 3000 });
   const dialogFocusRestored = await page.evaluate(() => document.activeElement?.getAttribute("aria-label"));
-  assert(dialogFocusRestored === "设置和迁移",
+  assert(dialogFocusRestored === "软件设置",
     `Dialog did not restore its opener: ${dialogFocusRestored}`);
 
   await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -197,7 +197,9 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
   await settingsBoundary.waitFor({ state: "visible", timeout: 5000 });
   assert(await settingsBoundary.isEnabled(), "Ready settings boundary is unexpectedly disabled");
 
-  const selectTrigger = page.locator(".standard-select-trigger").first();
+  // 性能分区的下拉框只在对应模式下显示；用外观分区的语言下拉框。
+  await page.getByRole("button", { name: "外观", exact: true }).click();
+  const selectTrigger = page.getByRole("button", { name: "语言", exact: true });
   await selectTrigger.waitFor({ state: "visible", timeout: 3000 });
   await selectTrigger.click();
   const listbox = page.getByRole("listbox").last();

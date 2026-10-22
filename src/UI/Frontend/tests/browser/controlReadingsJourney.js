@@ -13,24 +13,27 @@ export default async function controlReadingsJourney(page, baseUrl) {
     return { top, toggles, reading: reading.textContent };
   });
   await page.getByRole("radio", { name: "软件管理", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).waitFor();
+  const boost = page.getByRole("radiogroup", { name: "Dynamic Boost 开关", exact: true });
+  await boost.getByRole("radio", { name: "开启", exact: true }).waitFor();
+  if (await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).count() !== 0)
+    throw new Error("Toggle capability must not keep the row checkbox next to its three-way choice");
   const refresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await refresh;
   await page.waitForTimeout(100);
-  if (await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).count() !== 1)
+  if (await boost.getByRole("radio", { name: "开启", exact: true }).isDisabled())
     throw new Error("Catalog refresh lost software-management intent and relocked the control");
-  await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).check();
+  await boost.getByRole("radio", { name: "开启", exact: true }).click();
   const editedRefresh = page.waitForResponse(response => response.url().endsWith("/api/control/objects"));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await editedRefresh;
   await page.waitForTimeout(100);
-  if (!await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).isChecked())
+  if (await boost.getByRole("radio", { name: "开启", exact: true }).getAttribute("aria-checked") !== "true")
     throw new Error("Catalog refresh discarded the edited setting");
   if (await page.getByRole("checkbox", { name: "Voltage", exact: true }).count() !== 0)
     throw new Error("Normal mode exposed Root-only setting");
   await page.getByRole("radio", { name: "固件自动管理", exact: true }).click();
-  if (await page.getByRole("checkbox", { name: "Dynamic Boost 开关", exact: true }).count() !== 0)
+  if (!await boost.getByRole("radio", { name: "开启", exact: true }).isDisabled())
     throw new Error("Explicit firmware ownership did not lock controls");
   return { ...result, takeoverSurvivesRefresh: true };
 }

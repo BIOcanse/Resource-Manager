@@ -261,8 +261,7 @@ export function DiskUsageTreemapPlane(props: {
     const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(rect.width * ratio));
     canvas.height = Math.max(1, Math.round(rect.height * ratio));
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    // 显示尺寸交给 CSS（铺满容器）。写死像素宽会把容器撑住，窗口缩窄后图跟着溢出。
     setSize({ width: rect.width, height: rect.height });
   }
 

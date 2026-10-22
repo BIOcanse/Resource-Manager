@@ -8,7 +8,6 @@ export default createSettingsLocale("ru-RU", {
     "unknownVersion": "Неизвестно",
     "checking": "Проверка…",
     "checkForUpdates": "Проверить обновления",
-    "catalogFailed": "Не удалось прочитать каталог выпусков: ",
     "historyIncomplete": "История выпусков неполна.",
     "historyStale": "Показан предыдущий каталог выпусков; восстановите подключение и повторите попытку.",
     "versionsTitle": "Версии продукта",
@@ -157,7 +156,7 @@ export default createSettingsLocale("ru-RU", {
       }
     ],
     "refreshCadencePresetLabel": "Профиль",
-    "refreshCadenceCustomLabel": "Вручную, мс",
+    "refreshCadenceCustomLabel": "Вручную (мс)",
     "refreshCadencePresetOptions": [
       {
         "id": "responsive",
