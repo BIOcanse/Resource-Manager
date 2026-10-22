@@ -10,7 +10,9 @@ import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapsho
 import {
   createSettingsStore,
   defaultAppSettings,
-  normalizeAppSettings
+  logicRefreshIntervalPresetValues,
+  normalizeAppSettings,
+  resolveLogicRefreshIntervalMs
 } from "../src/stores/settingsStore.ts";
 
 const canonicalDefaults = defaultAppSettings();
@@ -230,6 +232,18 @@ await new Promise<void>((resolve, reject) => {
     })().catch((error) => { dispose(); reject(error); });
   });
 });
+
+// 监控和资源表的“自动调度”：本程序处在节能档且窗口不在前台时放慢到低功耗间隔，否则按响应优先。
+// App.tsx 经刷新调度器把这两个条件传进来（frontendWorkContract 检查这条接线）。
+{
+  const auto = canonicalDefaults.performance!.monitorRefreshIntervalMs;
+  assert.equal(resolveLogicRefreshIntervalMs("monitor", auto, "optimize", false),
+    logicRefreshIntervalPresetValues.monitor.lowPower);
+  assert.equal(resolveLogicRefreshIntervalMs("resourceTable", auto, "optimize", false),
+    logicRefreshIntervalPresetValues.resourceTable.lowPower);
+  assert.equal(resolveLogicRefreshIntervalMs("monitor", auto, "optimize", true),
+    logicRefreshIntervalPresetValues.monitor.responsive);
+}
 
 function result(
   revision: string,

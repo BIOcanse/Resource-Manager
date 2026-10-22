@@ -23,8 +23,7 @@ import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
   normalizeBarColorMode,
-  resolveAdaptiveBooleanMode,
-  resolveLogicRefreshIntervalMs
+  resolveAdaptiveBooleanMode
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
@@ -73,14 +72,43 @@ export default function App() {
     runtimeEffectsEnabled: runtimeCapabilities.runtimeEffectsEnabled,
     operations: frontendRuntime.operationRegistry
   });
+  const optimization = createOptimizationStore({
+    showToast,
+    enabled: runtimeCapabilities.optimizationEnabled,
+    reportSource: frontendRuntime.sources.optimizationReports,
+    statusSource: frontendRuntime.sources.smartCoordinatorStatus,
+    statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
+    requestClient: frontendRuntime.requestClient
+  });
+  // 刷新间隔的“自动调度”要看本程序的 CPU 档位和窗口是否在前台，这两样由刷新调度器持有，
+  // 所以它先于监控存储创建，监控按它算好的间隔订阅。
+  const pageRefresh = usePageRefreshScheduler({
+    activePage,
+    localSystemSource: frontendRuntime.sources.localSystemStatus,
+    selfSchedulingSource: frontendRuntime.sources.selfScheduling,
+    frontendWork,
+    runtimeCapabilities,
+    performanceSettings: () => {
+      const loadState = settings.loadState();
+      return loadState === "ready" || loadState === "refreshing"
+        ? settings.settings().performance
+        : undefined;
+    },
+    optimizationMode: optimization.optimizationMode,
+    management: {
+      activeSubpage: management.activeSubpage,
+      refreshState: management.refreshState,
+      refreshBrowserRuntimes: management.refreshBrowserRuntimes
+    },
+    optimization: {
+      refreshReports: optimization.refreshReports,
+      refreshHostManagerStatus: optimization.refreshHostManagerStatus
+    }
+  });
   const metricSnapshotIntervalMs = createMemo(() =>
-    resolveLogicRefreshIntervalMs(
-      "monitor",
-      settings.settings().performance?.monitorRefreshIntervalMs));
+    pageRefresh.cpuRuntimePlan().refreshIntervalMs.monitor);
   const resourceTableIntervalMs = createMemo(() =>
-    resolveLogicRefreshIntervalMs(
-      "resourceTable",
-      settings.settings().performance?.resourceTableRefreshIntervalMs));
+    pageRefresh.cpuRuntimePlan().refreshIntervalMs.resourceTable);
   const monitor = createMonitorStore({
     smartMonitoringEnabled: () => resolveAdaptiveBooleanMode(settings.settings().performance?.smartMonitoringMode, true),
     onMetricDependenciesRequested: () => void management.refreshComponents(),
@@ -99,14 +127,6 @@ export default function App() {
     metricSnapshotIntervalMs,
     resourceBarsIntervalMs: metricSnapshotIntervalMs,
     resourceTableIntervalMs
-  });
-  const optimization = createOptimizationStore({
-    showToast,
-    enabled: runtimeCapabilities.optimizationEnabled,
-    reportSource: frontendRuntime.sources.optimizationReports,
-    statusSource: frontendRuntime.sources.smartCoordinatorStatus,
-    statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
-    requestClient: frontendRuntime.requestClient
   });
   onCleanup(() => {
     unsubscribeTaskCenter();
@@ -173,29 +193,6 @@ export default function App() {
     return uiText.page.monitor;
   });
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled !== false);
-  const pageRefresh = usePageRefreshScheduler({
-    activePage,
-    localSystemSource: frontendRuntime.sources.localSystemStatus,
-    selfSchedulingSource: frontendRuntime.sources.selfScheduling,
-    frontendWork,
-    runtimeCapabilities,
-    performanceSettings: () => {
-      const loadState = settings.loadState();
-      return loadState === "ready" || loadState === "refreshing"
-        ? settings.settings().performance
-        : undefined;
-    },
-    optimizationMode: optimization.optimizationMode,
-    management: {
-      activeSubpage: management.activeSubpage,
-      refreshState: management.refreshState,
-      refreshBrowserRuntimes: management.refreshBrowserRuntimes
-    },
-    optimization: {
-      refreshReports: optimization.refreshReports,
-      refreshHostManagerStatus: optimization.refreshHostManagerStatus
-    }
-  });
   const systemUptime = pageRefresh.systemUptime;
   const currentSelfScheduling = pageRefresh.selfScheduling;
   const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(

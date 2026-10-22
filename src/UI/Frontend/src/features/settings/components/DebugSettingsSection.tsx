@@ -73,6 +73,9 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
             </label>
           </div>
         </Show>
+      </Show>
+      {/* 仅分析不跟随调试模式关闭（见 optimization_runtime_corrections_2026-10-22.md），开着时这一行始终可见，才能看到并关掉它。 */}
+      <Show when={debug().debugModeEnabled || debug().hostManagerSmartCoordinatorScoreOnlyEnabled}>
         <div class="settings-row settings-debug-option">
           <div class="settings-row-copy">
             <strong>{props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle}</strong>
