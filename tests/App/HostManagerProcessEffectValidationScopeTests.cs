@@ -1448,38 +1448,66 @@ public sealed class HostManagerProcessEffectValidationScopeTests
         Assert.False(restarted.Capture().IsProductionUnscoped);
     }
 
-    [Fact]
-    public void ExtraFileAceAndInheritedParentAclBothFailClosedOnRestart()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExtraFileAceAndInheritedParentAclBothFailClosedOnRestart(bool closeBeforeTampering)
     {
         using var fileFixture = ScopeFixture.Create();
         var fileIdentity = new HostManagerComputeProcessIdentity(106, 10601);
         fileFixture.Probe.Set(fileIdentity, WindowsJobMembershipStatus.ExactMember);
-        _ = fileFixture.Open(fileIdentity);
+        var fileScope = fileFixture.Open(fileIdentity);
+        if (closeBeforeTampering)
+        {
+            Assert.Equal("closed", fileFixture.Authority.Close(new(
+                fileScope.ScopeId!.Value,
+                fileFixture.RunNonce,
+                fileFixture.ReleaseToken)).State);
+        }
         var fileSecurity = new FileInfo(fileFixture.StatePath).GetAccessControl();
         fileSecurity.AddAccessRule(new FileSystemAccessRule(
             new SecurityIdentifier(WellKnownSidType.WorldSid, null),
             FileSystemRights.ReadData,
             AccessControlType.Allow));
         new FileInfo(fileFixture.StatePath).SetAccessControl(fileSecurity);
-        Assert.Equal(
-            "faultedBlocked",
-            fileFixture.CreateRestartedAuthority().GetStatus().State);
+        var fileRestart = fileFixture.CreateRestartedAuthority();
+        Assert.Equal("faultedBlocked", fileRestart.GetStatus().State);
+        Assert.False(fileRestart.Capture().IsProductionUnscoped);
+        Assert.False(fileRestart.TryBeginAdmission(
+            fileRestart.Capture(),
+            HostManagerProcessEffectValidationFamily.NonAdaptedMemoryTransaction,
+            "untrusted-storage",
+            fileIdentity,
+            out _));
 
         using var directoryFixture = ScopeFixture.Create();
         var directoryIdentity = new HostManagerComputeProcessIdentity(107, 10701);
         directoryFixture.Probe.Set(
             directoryIdentity,
             WindowsJobMembershipStatus.ExactMember);
-        _ = directoryFixture.Open(directoryIdentity);
+        var directoryScope = directoryFixture.Open(directoryIdentity);
+        if (closeBeforeTampering)
+        {
+            Assert.Equal("closed", directoryFixture.Authority.Close(new(
+                directoryScope.ScopeId!.Value,
+                directoryFixture.RunNonce,
+                directoryFixture.ReleaseToken)).State);
+        }
         var directory = new DirectoryInfo(directoryFixture.Root);
         var directorySecurity = directory.GetAccessControl();
         directorySecurity.SetAccessRuleProtection(
             isProtected: false,
             preserveInheritance: true);
         directory.SetAccessControl(directorySecurity);
-        Assert.Equal(
-            "faultedBlocked",
-            directoryFixture.CreateRestartedAuthority().GetStatus().State);
+        var directoryRestart = directoryFixture.CreateRestartedAuthority();
+        Assert.Equal("faultedBlocked", directoryRestart.GetStatus().State);
+        Assert.False(directoryRestart.Capture().IsProductionUnscoped);
+        Assert.False(directoryRestart.TryBeginAdmission(
+            directoryRestart.Capture(),
+            HostManagerProcessEffectValidationFamily.NonAdaptedMemoryTransaction,
+            "untrusted-storage",
+            directoryIdentity,
+            out _));
     }
 
     private static NativeTransactionJournalIdentity CreateJournalIdentity(

@@ -50,6 +50,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Null(decoded.Result);
             Assert.Single(state.AppliedPlacements[0].Records);
             Assert.Equal(2, pending.AppliedPlacements[0].Records.Count);
+            var persistedBeforeObservation = File.ReadAllBytes(path);
+            var observedState = await fixture.Coordinator.GetStateAsync(CancellationToken.None);
+            var observedStatus = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+            Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(
+                JsonSerializer.SerializeToNode(disk.AppliedPlacements),
+                JsonSerializer.SerializeToNode(observedState.AppliedPlacements)));
+            Assert.NotNull(observedStatus);
+            Assert.Equal(persistedBeforeObservation, File.ReadAllBytes(path));
+            Assert.NotNull(typeof(HostManagerSmartCoordinator)
+                .GetField("gpuActionCheckpoint", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(fixture.Coordinator));
             await Assert.ThrowsAsync<InvalidOperationException>(() => InvokeWindowOwner(fixture.Coordinator,
                 "SaveGpuWindowPreparationAsync", pending, key, prepared with
                 { Worker = prepared.Worker with { ProcessId = 30000 } }, CancellationToken.None));

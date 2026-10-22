@@ -312,14 +312,14 @@ public sealed class RuntimePlanCompiler(
             : null;
     }
 
-    private static CompiledDiagnosticsPlan CompileDiagnosticsPlan(AppDebugSettings debug)
+    internal static CompiledDiagnosticsPlan CompileDiagnosticsPlan(AppDebugSettings debug)
     {
         var debugModeEnabled = debug.DebugModeEnabled;
         var debugLogEnabled = debugModeEnabled && debug.DebugLogEnabled;
         return new CompiledDiagnosticsPlan(
             debugModeEnabled,
             debugLogEnabled,
-            debugModeEnabled && debug.HostManagerSmartCoordinatorScoreOnlyEnabled,
+            debug.HostManagerSmartCoordinatorScoreOnlyEnabled,
             debugLogEnabled && debug.HostManagerSmartCoordinatorPerformanceLogEnabled);
     }
 

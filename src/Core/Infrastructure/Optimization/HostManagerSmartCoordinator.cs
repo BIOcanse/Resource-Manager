@@ -116,7 +116,8 @@ public sealed partial class HostManagerSmartCoordinator(
         try
         {
             RequireOperationAdmission();
-            var state = await LoadRollbackStateAsync(cancellationToken);
+            // Observation uses the store's synchronized snapshot; it does not settle or mutate GPU work.
+            var state = await stateStore.LoadAsync(cancellationToken);
             return await CreateStatusAsync(
                 runtimePlanProvider.Current.OptimizationMode.Mode,
                 ProjectNativeState(state),
@@ -135,7 +136,7 @@ public sealed partial class HostManagerSmartCoordinator(
         try
         {
             RequireOperationAdmission();
-            var state = await LoadRollbackStateAsync(cancellationToken);
+            var state = await stateStore.LoadAsync(cancellationToken);
             return ProjectNativeState(state);
         }
         finally

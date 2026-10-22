@@ -1,9 +1,12 @@
 using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -48,6 +51,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuTopology: topology,
             cpuScoring: cpuScoring,
             automaticPlacementTopology: topology);
+        var placementScope = ReadPrivateField<HostManagerProcessEffectValidationScopeAuthority>(
+            fixture.Coordinator,
+            "processEffectValidationScopeAuthorityOwner");
+        Assert.True(placementScope!.Capture().IsProductionUnscoped);
 
         IReadOnlyList<uint> currentCpuSetIds = [1, 2, 3, 4];
         var boundaryEvents = new List<string>();
@@ -156,6 +163,266 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Equal(0, fixture.ProcessPolicyWriter.DefaultCpuSetWriteCalls);
         Assert.Contains("restore:1,2,3,4", boundaryEvents);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AutomaticCpuPlacementDoesNotWriteInsideOrOutsideActiveValidationJob(
+        bool scopeContainsCandidate)
+    {
+        const int processId = 42_411;
+        const ulong processStartKey = 133_900_000_000_000_002;
+        var startedAt = DateTimeOffset.FromFileTime(checked((long)processStartKey));
+        var topology = CreateAutomaticPlacementTopology();
+        var cpuScoring = HostManagerTestPlanFactory.CreateCpuScoring(topology);
+        var processFacts = CreateCompleteProcessFacts(
+            processId,
+            processStartKey,
+            "software:validation-job-candidate",
+            baseScore: 80,
+            cpuUsagePercent: 50,
+            memoryUsagePercent: 25);
+        var residency = CpuCoreResidencyTestValues.Create(
+            92,
+            DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(
+                processId,
+                processStartKey,
+                ("core:0", 50)));
+        var scopeIdentity = scopeContainsCandidate
+            ? new HostManagerComputeProcessIdentity(processId, processStartKey)
+            : new HostManagerComputeProcessIdentity(processId + 1, processStartKey + 1);
+        using var validation = CoordinatorValidationScopeFixture.Create(scopeIdentity);
+
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            processFactsSnapshot: processFacts,
+            policyExecutionEnabled: false,
+            automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.CpuOnly,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
+            cpuTopology: topology,
+            cpuScoring: cpuScoring,
+            automaticPlacementTopology: topology,
+            processEffectValidationScopeAuthority: validation.Authority);
+        fixture.ProcessPolicyWriter.PlacementReadHandler = (actualProcessId, fields) =>
+        {
+            Assert.Equal(processId, actualProcessId);
+            Assert.Equal(ProcessPlacementReadFields.DefaultCpuSets, fields);
+            return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(
+                new ProcessPlacementRecoverySnapshot(
+                    processId,
+                    startedAt,
+                    "validation-job-candidate",
+                    @"c:\tests\validation-job-candidate.exe",
+                    null,
+                    [1, 2, 3, 4],
+                    null,
+                    null));
+        };
+
+        _ = await fixture.RunRealtimeCycleAsync();
+
+        var placementWorkspace = Assert.IsType<NativePlacementCoordinatorWorkspace>(
+            ReadPrivateField<NativePlacementCoordinatorWorkspace>(
+                fixture.Coordinator,
+                "placementCoordinatorWorkspace"));
+        Assert.All(placementWorkspace.Desired, row => Assert.Equal(0UL, row.TargetKey));
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.StateStore.SaveCalls);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+    }
+
+    [Fact]
+    public async Task ActiveValidationScopeStillRestoresExistingOwnedCpuPlacement()
+    {
+        const int processId = 42_413;
+        const ulong processStartKey = 133_900_000_000_000_004;
+        var startedAt = DateTimeOffset.FromFileTime(checked((long)processStartKey));
+        const string processName = "existing-owned-placement";
+        const string executablePath = @"c:\tests\existing-owned-placement.exe";
+        const string softwareId = "software:existing-owned-placement";
+        var topology = CreateAutomaticPlacementTopology();
+        var cpuScoring = HostManagerTestPlanFactory.CreateCpuScoring(topology);
+        var processFacts = CreateCompleteProcessFacts(
+            processId,
+            processStartKey,
+            softwareId,
+            baseScore: 80,
+            cpuUsagePercent: 50,
+            memoryUsagePercent: 25);
+        using var validation = CoordinatorValidationScopeFixture.Create(new(
+            processId,
+            processStartKey));
+
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            processFactsSnapshot: processFacts,
+            policyExecutionEnabled: false,
+            automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.CpuOnly,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() =>
+                CpuCoreResidencyTestValues.Create(
+                    94,
+                    DateTimeOffset.UtcNow,
+                    CpuCoreResidencyTestValues.Process(
+                        processId,
+                        processStartKey,
+                        ("core:0", 50)))),
+            cpuTopology: topology,
+            cpuScoring: cpuScoring,
+            automaticPlacementTopology: topology,
+            processEffectValidationScopeAuthority: validation.Authority);
+
+        // Establish the initialized coordinator before adding its existing owned receipt.
+        // A cold-start legacy receipt has a separate admission policy.
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        var targetId = HostManagerTargetIdentity.CreateProcessTargetId(processId, processStartKey);
+        var now = DateTimeOffset.UtcNow;
+        var record = new HostManagerAppliedRecord(
+            HostManagerAppliedRecordKinds.CpuAffinity,
+            "existing-owned-cpu-placement",
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["owner"] = "host-manager-automatic-placement-v1",
+                ["processId"] = processId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["processStartKey"] = processStartKey.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["processStartedAt"] = startedAt.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["processName"] = processName,
+                ["executablePath"] = executablePath,
+                ["affinityKind"] = "cpu-sets",
+                ["previousCpuSetIds"] = "1,2,3,4",
+                ["appliedCpuSetIds"] = "1,2"
+            });
+        fixture.StateStore.Current = fixture.StateStore.Current with
+        {
+            AppliedPlacements =
+            [
+                new HostManagerAppliedPlacementReceipt(
+                    targetId,
+                    processName,
+                    softwareId,
+                    OptimizationResourceKinds.Cpu,
+                    [record],
+                    now,
+                    now)
+            ]
+        };
+
+        IReadOnlyList<uint> currentCpuSetIds = [1, 2];
+        fixture.ProcessPolicyWriter.PlacementReadHandler = (actualProcessId, fields) =>
+        {
+            Assert.Equal(processId, actualProcessId);
+            Assert.Equal(ProcessPlacementReadFields.DefaultCpuSets, fields);
+            return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Found(
+                new ProcessPlacementRecoverySnapshot(
+                    processId,
+                    startedAt,
+                    processName,
+                    executablePath,
+                    null,
+                    currentCpuSetIds.ToArray(),
+                    null,
+                    null));
+        };
+        fixture.ProcessPolicyWriter.BatchHandler = requests =>
+        {
+            var request = Assert.Single(requests);
+            Assert.Equal(processId, request.ProcessId);
+            Assert.Equal([1U, 2U, 3U, 4U], request.CpuSetIds);
+            currentCpuSetIds = request.CpuSetIds!.ToArray();
+            return
+            [
+                new ProcessResourcePolicyBatchWriteResult(
+                    processId,
+                    [
+                        new ProcessResourcePolicyBatchFieldResult(
+                            ProcessResourcePolicyBatchFields.CpuSets,
+                            Succeeded: true,
+                            "restored")
+                    ])
+            ];
+        };
+
+        _ = await fixture.RunRealtimeCycleAsync();
+
+        Assert.Equal([1U, 2U, 3U, 4U], currentCpuSetIds);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(1, fixture.StateStore.SaveCalls);
+    }
+
+    [Fact]
+    public async Task CompiledScoreOnlyWithoutDebugModeKeepsPlacementCleanupAndPersistenceEffectFree()
+    {
+        const int processId = 42_412;
+        const ulong processStartKey = 133_900_000_000_000_003;
+        var topology = CreateAutomaticPlacementTopology();
+        var cpuScoring = HostManagerTestPlanFactory.CreateCpuScoring(topology);
+        var processFacts = CreateCompleteProcessFacts(
+            processId,
+            processStartKey,
+            "software:compiled-score-only",
+            baseScore: 20,
+            cpuUsagePercent: 1,
+            memoryUsagePercent: 25);
+        var settings = AppSettingsDefaults.Create() with
+        {
+            Debug = new AppDebugSettings(
+                DebugModeEnabled: false,
+                DebugLogEnabled: false,
+                HostManagerSmartCoordinatorScoreOnlyEnabled: true,
+                HostManagerSmartCoordinatorPerformanceLogEnabled: false)
+        };
+        var projection = AppSettingsRuntimeCapabilityProjector.Evaluate(
+            AppSettingsNormalizer.Normalize(settings),
+            new RuntimeExecutionCapabilityPolicy(true, true, true));
+        var diagnostics = RuntimePlanCompiler.CompileDiagnosticsPlan(
+            projection.Settings.Debug);
+        Assert.False(diagnostics.DebugModeEnabled);
+        Assert.True(diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled);
+
+        var residency = CpuCoreResidencyTestValues.Create(
+            93,
+            DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(
+                processId,
+                processStartKey,
+                ("core:0", 1)));
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            scoreOnlyEnabled: false,
+            processFactsSnapshot: processFacts,
+            optimizationMode: AppOptimizationModes.Smart,
+            automaticMemoryCleanupEnabled: true,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
+            cpuTopology: topology,
+            cpuScoring: cpuScoring,
+            automaticPlacementTopology: topology);
+        fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
+        {
+            Version = checked(fixture.RuntimePlan.Version + 1),
+            Reason = "compiled-score-only-with-debug-mode-off",
+            Diagnostics = diagnostics
+        });
+        var durableBefore = CaptureDurableFiles(fixture.Root);
+
+        _ = await fixture.RunRealtimeCycleAsync();
+
+        Assert.True(fixture.Workspace.Snapshot.Flags.HasFlag(
+            NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Equal(0, fixture.PublicResourceManager.TickAttemptCalls);
+        Assert.Equal(0, fixture.StateStore.SaveCalls);
+        Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
+        fixture.AssertNoEffectCollaboratorCalls();
     }
 
     private static CpuTopologySnapshot CreateAutomaticPlacementTopology()

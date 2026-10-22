@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.Monitoring;
+using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Adaptation.Scheduling;
@@ -265,6 +266,42 @@ public sealed class RuntimeSpecializationPlanTests
         Assert.True(enabled.DebugLogEnabled);
         Assert.True(enabled.HostManagerSmartCoordinatorScoreOnlyEnabled);
         Assert.True(enabled.HostManagerSmartCoordinatorPerformanceLogEnabled);
+    }
+
+    [Fact]
+    public void ScoreOnlyDiagnosticIsIndependentOfDebugModeButRemainsRuntimeCapabilityConstrained()
+    {
+        var persisted = AppSettingsDefaults.Create() with
+        {
+            Debug = new AppDebugSettings(
+                DebugModeEnabled: false,
+                DebugLogEnabled: true,
+                HostManagerSmartCoordinatorScoreOnlyEnabled: true,
+                HostManagerSmartCoordinatorPerformanceLogEnabled: true)
+        };
+        var normalized = AppSettingsNormalizer.Normalize(persisted);
+        var enabledProjection = AppSettingsRuntimeCapabilityProjector.Evaluate(
+            normalized,
+            new RuntimeExecutionCapabilityPolicy(true, true, true));
+
+        var diagnostics = RuntimePlanCompiler.CompileDiagnosticsPlan(
+            enabledProjection.Settings.Debug);
+
+        Assert.False(diagnostics.DebugModeEnabled);
+        Assert.False(diagnostics.DebugLogEnabled);
+        Assert.True(diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled);
+        Assert.False(diagnostics.HostManagerSmartCoordinatorPerformanceLogEnabled);
+
+        var constrainedProjection = AppSettingsRuntimeCapabilityProjector.Evaluate(
+            normalized,
+            new RuntimeExecutionCapabilityPolicy(false, false, false));
+        Assert.Contains(
+            "debug.hostManagerSmartCoordinatorScoreOnlyEnabled",
+            constrainedProjection.ConstrainedPaths);
+        Assert.False(
+            RuntimePlanCompiler.CompileDiagnosticsPlan(
+                constrainedProjection.Settings.Debug)
+                .HostManagerSmartCoordinatorScoreOnlyEnabled);
     }
 
     [Fact]

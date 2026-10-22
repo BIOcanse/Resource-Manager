@@ -128,6 +128,104 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
     }
 
     [Fact]
+    public void OnlyProductionUnscopedAllowsNewAutomaticPlacement()
+    {
+        var allowed = new HostManagerComputeProcessIdentity(24_901, 132_537_600_000_000_001);
+        var outside = new HostManagerComputeProcessIdentity(24_902, 132_537_600_000_000_002);
+        var active = new HostManagerProcessEffectValidationCycleSnapshot(
+            HostManagerProcessEffectValidationScopeState.Active,
+            Guid.NewGuid(),
+            generation: 1,
+            jobName: "Global\\ResourceManager-NonAdaptedOptimizationLab-placement-test",
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            new HashSet<HostManagerComputeProcessIdentity> { allowed },
+            TimeProvider.System);
+
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            active,
+            allowed.ProcessId,
+            allowed.ProcessStartKey));
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            active,
+            outside.ProcessId,
+            outside.ProcessStartKey));
+
+        var faulted = new HostManagerProcessEffectValidationCycleSnapshot(
+            HostManagerProcessEffectValidationScopeState.FaultedBlocked,
+            active.ScopeId,
+            active.Generation,
+            active.JobName,
+            active.ExpiresAt,
+            active.AllowedProcesses,
+            TimeProvider.System);
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            faulted,
+            allowed.ProcessId,
+            allowed.ProcessStartKey));
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            faulted,
+            outside.ProcessId,
+            outside.ProcessStartKey));
+        Assert.True(HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
+            faulted,
+            HostManagerCycleEffectKind.NativeActionTransaction));
+        var faultedAdmission = HostManagerCycleEffectAdmission.CreateForValidation(
+            scoreOnly: false,
+            faulted);
+        faultedAdmission.InitializeBudgets(
+            newPointOfNoReturnCapacity: 1,
+            recoveryCapacity: 1);
+        Assert.True(faultedAdmission.TryAcquire(
+            HostManagerCycleEffectKind.NativeActionTransaction,
+            out var restorePermit));
+        Assert.True(restorePermit.TryReserveOwnedNativeRestore(out var restoreReservation));
+        restoreReservation!.Dispose();
+
+        var expired = new HostManagerProcessEffectValidationCycleSnapshot(
+            HostManagerProcessEffectValidationScopeState.ExpiredBlocked,
+            active.ScopeId,
+            active.Generation,
+            active.JobName,
+            active.ExpiresAt,
+            active.AllowedProcesses,
+            TimeProvider.System);
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            expired,
+            allowed.ProcessId,
+            allowed.ProcessStartKey));
+        Assert.True(HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
+            expired,
+            HostManagerCycleEffectKind.NativeActionTransaction));
+
+        var unknown = new HostManagerProcessEffectValidationCycleSnapshot(
+            (HostManagerProcessEffectValidationScopeState)byte.MaxValue,
+            Guid.NewGuid(),
+            generation: 1,
+            jobName: null,
+            DateTimeOffset.MaxValue,
+            allowedProcesses: null,
+            timeProvider: null);
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            unknown,
+            allowed.ProcessId,
+            allowed.ProcessStartKey));
+        Assert.Equal(0UL,
+            HostManagerProcessEffectValidationCyclePolicy.CreateAllowedEffectMask(unknown));
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNativeAction(
+            unknown,
+            NativeSmartCoordinatorActionScope.ProcessPolicy));
+
+        Assert.True(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            HostManagerProcessEffectValidationCycleSnapshot.ProductionUnscoped,
+            outside.ProcessId,
+            outside.ProcessStartKey));
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+            HostManagerProcessEffectValidationCycleSnapshot.ProductionUnscoped,
+            processId: 0,
+            outside.ProcessStartKey));
+    }
+
+    [Fact]
     public void ValidationAdmissionAllowsAutomaticMemoryCleanupOnlyWhenExplicitlyScoped()
     {
         var identity = new HostManagerComputeProcessIdentity(

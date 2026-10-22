@@ -83,7 +83,8 @@ public sealed partial class HostManagerSmartCoordinator
             restoreWork.Add(new(restore.Decision, restore.Ownership, actionId));
         }
 
-        var resolutionBlocked = false;
+        var unavailableOwnedProcessIncarnations =
+            new HashSet<NativeAppliedOwnershipProcessIncarnation>();
         if (admitted is not null)
         {
             for (var index = 0; index < admitted.Processes.Length; index++)
@@ -152,7 +153,9 @@ public sealed partial class HostManagerSmartCoordinator
                     }
                     if (inspection == HostManagerProcessPolicyInspectionStatus.Unavailable)
                     {
-                        resolutionBlocked = true;
+                        // Only this exact process read is unavailable; keep its durable owner untouched
+                        // while allowing independent process-memory work to use the shared cycle budget.
+                        unavailableOwnedProcessIncarnations.Add(incarnation);
                         continue;
                     }
                     if (inspection is HostManagerProcessPolicyInspectionStatus.InvalidPayload
@@ -205,6 +208,17 @@ public sealed partial class HostManagerSmartCoordinator
                 }
             }
         }
+        if (unavailableOwnedProcessIncarnations.Count != 0)
+        {
+            freshApplyWork.RemoveAll(work =>
+            {
+                var directive = work.Decision.TransactionDirective;
+                return unavailableOwnedProcessIncarnations.Contains(
+                    new NativeAppliedOwnershipProcessIncarnation(
+                        checked((uint)directive.ProcessId),
+                        directive.ProcessStartKey));
+            });
+        }
 
         uint transactionCount = 0;
         uint restoreTransactionCount = 0;
@@ -235,11 +249,6 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 return new(transactionCount, true);
             }
-        }
-
-        if (resolutionBlocked)
-        {
-            return new(transactionCount, true);
         }
 
         uint freshTransactionCount = 0;
