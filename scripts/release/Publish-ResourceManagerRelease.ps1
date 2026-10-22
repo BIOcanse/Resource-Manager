@@ -41,10 +41,11 @@ foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
     if (Test-Path -LiteralPath $destination) { throw "Publish directory already exists: $destination" }
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
+    # The Ledger native build only runs inside a registered workspace; the caller's build root is one.
     & dotnet publish $project.Project -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
         -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true `
-        -p:SkipClientAppBuild=true `
+        -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$(Join-Path $OutputRoot 'ledger')" `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
 }
