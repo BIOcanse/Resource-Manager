@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import type { MetricFieldDevice } from "../../../data/metricFields/metricFieldSource.ts";
 import { deviceMetricSections } from "../deviceMetricFields.ts";
+import { ReadingSourceMark } from "../../../components/ReadingSourceMark.tsx";
 
 /**
  * 设备详情弹窗里的实时数值。订阅由 DeviceTopologyView 持有（和设备拓扑同一生命周期），
@@ -19,7 +20,7 @@ export function DeviceMetricFieldDetails(props: { devices: readonly MetricFieldD
             <For each={section.rows}>
               {(row) => (
                 <div class="user-details-row">
-                  <dt title={row.hint ?? undefined}>{row.label}</dt>
+                  <dt title={row.hint ?? undefined}>{row.label}<ReadingSourceMark mark={row.mark} /></dt>
                   <dd>{row.value}</dd>
                 </div>
               )}

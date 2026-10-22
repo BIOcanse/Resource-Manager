@@ -246,6 +246,20 @@ export default createSettingsLocale("zh-TW", {
     "barColorDescription": "按軟體型別使用固定顏色，或為每個軟體分配不同顏色。",
     "byteUnitTitle": "容量單位",
     "byteUnitDescription": "1 GiB = 1024 MiB，1 GB = 1000 MB。切換後所有容量數字一起變，不只是改標籤。",
+    "readingSourceTitle": "讀數來源",
+    "readingSourceDescription": "監視控制檯和裝置詳細資訊中，同一讀數有多個來源時如何列出。預設只列本機最準確的來源；顯示所有可用來源時，最準確的標為「首選」。排程一律使用最準確的來源，不受此處影響。",
+    "readingSourceModeOptions": [
+      {
+        "id": "preferred",
+        "label": "僅最準確",
+        "description": "每個讀數只列出本機最準確的來源。"
+      },
+      {
+        "id": "all",
+        "label": "所有可用",
+        "description": "列出每個讀數的所有可用來源，並標出最準確的。"
+      }
+    ],
     "fontSmoothingTitle": "文字平滑",
     "fontSmoothingDescription": "自動平衡文字清晰度和介面開銷，也可以固定渲染方式。",
     "languageTitle": "介面語言",

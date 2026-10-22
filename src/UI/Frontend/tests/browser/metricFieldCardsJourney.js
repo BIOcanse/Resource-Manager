@@ -1,11 +1,15 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { uiStyles } from "../../src/presentation/uiStyles.ts";
 import {
   checkFieldCardDisplay,
   enableMetricFields,
   metricFieldDevices,
   npuBusyCardId,
+  readingSourceDevices,
+  readingSourceIds,
   readScenario,
-  seedFieldCards
+  seedFieldCards,
+  setDashboardSettings
 } from "./metricFieldsProbe.js";
 
 /**
@@ -87,5 +91,170 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   await seedFieldCards(baseUrl);
   await page.reload({ waitUntil: "domcontentloaded" });
   const display = await checkFieldCardDisplay(page, app, "zh-CN");
-  return { picker: { group, label }, savedBinding: memory.smallBindings[1], legacyPaths: legacyPaths.length, display };
+  const readingSources = await checkReadingSources(page, baseUrl, app);
+  return { picker: { group, label }, savedBinding: memory.smallBindings[1], legacyPaths: legacyPaths.length, display, readingSources };
+}
+
+/**
+ * 读数来源：默认每个读取项只列首选来源，非首选和不支持的不列，待确认的标「待确认」；
+ * 设置「读数来源」改成所有可用后，次选和跨设备别名也列出，首选标「首选」。
+ * 卡片上已放的非首选字段一直显示它自己的值。最后核对标记在四种风格的各配色下都看得清。
+ */
+async function checkReadingSources(page, baseUrl, app) {
+  const response = await fetch(`${baseUrl}/__test/scenario`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices] })
+  });
+  if (!response.ok) throw new Error("Unable to enable the reading-source fixture");
+  const binding = (id) => ({ scopeKind: "device-field", scopeKey: id.slice(id.indexOf("@") + 1) });
+  await setDashboardSettings(baseUrl, [{
+    id: "sources", main: readingSourceIds.preferred, mainBinding: binding(readingSourceIds.preferred),
+    small: [readingSourceIds.alternate, readingSourceIds.pending],
+    smallBindings: [binding(readingSourceIds.alternate), binding(readingSourceIds.pending)]
+  }]);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const marks = app.dashboard.readingSource;
+  const card = page.locator(".metric-card").filter({ hasText: app.fieldLabel.gpu_amd_apu_temperature_reported_celsius.label }).first();
+  const main = card.locator(".metric-main-content");
+  const row = (fieldName) => card.locator(".metric-small-row").filter({ hasText: app.fieldLabel[fieldName].label });
+  const markText = async (locator) => (await locator.locator(".reading-source-mark").allTextContents()).map((text) => text.trim());
+  const expectCard = async (expected, phase) => {
+    await main.locator(".metric-value").filter({ hasText: "51.0 °C" }).waitFor({ timeout: 15_000 });
+    // 卡片上已放的次选来源照常显示它自己的值，不换成首选、不隐藏。
+    await row("gpu_amd_edge_temperature_celsius").locator(".metric-value").filter({ hasText: "50.0 °C" }).waitFor();
+    await row("storage_all_nvme_composite_temperature_celsius").locator(".metric-value").filter({ hasText: "40.0 °C" }).waitFor();
+    // 标记跟着字段目录来：设备名出现说明目录到了。
+    await main.locator(".metric-device").waitFor({ timeout: 15_000 });
+    if (expected.main.length > 0) await main.locator(".reading-source-mark").waitFor();
+    const actual = {
+      main: await markText(main),
+      alternate: await markText(row("gpu_amd_edge_temperature_celsius")),
+      pending: await markText(row("storage_all_nvme_composite_temperature_celsius"))
+    };
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(`${phase}: card marks ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+    }
+  };
+  const picker = page.locator("#metricModal");
+  const option = (id) => picker.locator(`[data-metric-id="${id}"]`);
+  const openPicker = async () => {
+    await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
+    await page.getByRole("button", { name: app.dashboard.addMetric(app.dashboard.detailSlot(1, 3)), exact: true }).click();
+    // 字段目录 5 秒推一次。
+    await option(readingSourceIds.preferred).waitFor({ timeout: 15_000 });
+  };
+  const closePicker = async () => {
+    await picker.getByRole("button", { name: app.metricPicker.cancel, exact: true }).click();
+    await page.getByRole("button", { name: app.monitorPage.cancelEditLabel, exact: true }).click();
+  };
+  const expectPicker = async (expected, phase) => {
+    const actual = {};
+    for (const [kind, id] of Object.entries(readingSourceIds)) {
+      actual[kind] = await option(id).count() === 0 ? null : await markText(option(id));
+    }
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(`${phase}: picker ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+    }
+  };
+
+  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
+  await expectCard({ main: [], alternate: [], pending: [marks.pending] }, "default");
+  await openPicker();
+  await expectPicker({ preferred: [], alternate: null, alias: null, pending: [marks.pending], unsupported: null }, "default");
+  await closePicker();
+
+  // 设置 → 外观 → 读数来源：所有可用。
+  await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
+  await page.getByRole("button", { name: "外观", exact: true }).click();
+  const choice = page.getByRole("radiogroup", { name: "读数来源" });
+  if (await choice.getByRole("radio", { name: "仅最准确" }).getAttribute("aria-checked") !== "true") {
+    throw new Error("Reading sources do not default to the most accurate source only");
+  }
+  await choice.getByRole("radio", { name: "所有可用" }).click();
+  const saved = page.waitForResponse((answer) => answer.request().method() === "PATCH"
+    && new URL(answer.url()).pathname === "/api/settings/app");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  const patch = JSON.parse((await saved).request().postData() ?? "{}");
+  if (patch.changes?.appearance?.readingSourceMode !== "all") {
+    throw new Error(`The reading-source choice was not saved: ${JSON.stringify(patch)}`);
+  }
+
+  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
+  await expectCard({ main: [marks.preferred], alternate: [], pending: [marks.pending] }, "all");
+  await openPicker();
+  await expectPicker({ preferred: [marks.preferred], alternate: [], alias: [], pending: [marks.pending], unsupported: null }, "all");
+  const titles = await picker.locator(".reading-source-mark").evaluateAll((elements) => [...new Set(elements.map((element) => element.title))]);
+  if (!titles.includes(marks.preferredHint) || !titles.includes(marks.pendingHint)) {
+    throw new Error(`Reading-source marks lack their hints: ${JSON.stringify(titles)}`);
+  }
+  const contrast = await checkMarkContrast(page, picker);
+  await closePicker();
+  return { contrast };
+}
+
+/** 每种风格的每个配色（跟随系统再分浅、深两种）下，两种标记的文字与底色的对比度。 */
+async function checkMarkContrast(page, picker) {
+  const preferred = picker.locator(`[data-metric-id="${readingSourceIds.preferred}"] .reading-source-mark`);
+  const pending = picker.locator(`[data-metric-id="${readingSourceIds.pending}"] .reading-source-mark`);
+  const results = [];
+  for (const style of uiStyles) {
+    for (const palette of style.palettes) {
+      for (const scheme of palette === "system" ? ["light", "dark"] : [null]) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.evaluate(({ uiStyle, theme }) => {
+          document.documentElement.dataset.uiStyle = uiStyle;
+          document.documentElement.dataset.theme = theme;
+        }, { uiStyle: style.id, theme: palette });
+        for (const [kind, locator] of [["preferred", preferred], ["pending", pending]]) {
+          const ratio = await locator.evaluate(contrastRatio);
+          results.push({ style: style.id, palette, scheme, kind, ratio: Math.round(ratio * 100) / 100 });
+        }
+      }
+    }
+  }
+  await page.emulateMedia({ colorScheme: null });
+  const weak = results.filter((result) => result.ratio < minimumMarkContrast);
+  if (weak.length > 0) throw new Error(`Reading-source marks are hard to read: ${JSON.stringify(weak)}`);
+  return { minimum: Math.min(...results.map((result) => result.ratio)), checked: results.length };
+}
+
+// 11 px 粗体小字按 WCAG AA 正文的 4.5:1。
+const minimumMarkContrast = 4.5;
+
+/** 在页面里算文字与它实际底色（逐层合成到第一个不透明背景）的 WCAG 对比度。 */
+function contrastRatio(element) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const rgba = (color) => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+    return [r, g, b, a / 255];
+  };
+  const over = (top, bottom) => [0, 1, 2].map((index) => top[index] * top[3] + bottom[index] * (1 - top[3])).concat(1);
+  const layers = [];
+  let node = element;
+  let depth = 0;
+  while (node && depth < 64) {
+    const layer = rgba(getComputedStyle(node).backgroundColor);
+    if (layer[3] > 0) layers.push(layer);
+    if (layer[3] >= 1) break;
+    node = node.parentElement;
+    depth += 1;
+  }
+  let background = [255, 255, 255, 1];
+  for (let index = layers.length - 1; index >= 0; index -= 1) background = over(layers[index], background);
+  const text = over(rgba(getComputedStyle(element).color), background);
+  const luminance = ([r, g, b]) => {
+    const channel = (value) => {
+      const scaled = value / 255;
+      return scaled <= 0.04045 ? scaled / 12.92 : ((scaled + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const [light, dark] = [luminance(text), luminance(background)].sort((left, right) => right - left);
+  return (light + 0.05) / (dark + 0.05);
 }

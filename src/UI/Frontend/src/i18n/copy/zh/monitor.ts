@@ -37,6 +37,12 @@ export const zhMonitorCopy = {
     notInCatalogHint: "指标目录里没有这一项",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "首选",
+      preferredHint: "本机这一读数最准确的来源。",
+      pending: "待确认",
+      pendingHint: "本机这一读数哪个来源最准确，还没有确认。"
+    },
     deviceKind: {
       host: "整机",
       cpu: "处理器",

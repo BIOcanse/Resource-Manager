@@ -77,7 +77,8 @@ public static class AppSettingsDefaults
                 AppBarColorModes.Type,
                 AppFontSmoothingModes.Auto,
                 AppLanguageModes.System,
-                AppByteUnitModes.Native),
+                AppByteUnitModes.Native,
+                AppReadingSourceModes.Preferred),
             new AppSystemIntegrationSettings(
                 TaskManagerShortcutReplacementEnabled: false,
                 Hotkeys:

@@ -451,6 +451,12 @@ const esEsAppCopy: AppCopy = {
     notInCatalogHint: "Este elemento no está en el catálogo de métricas",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "Preferida",
+      preferredHint: "La fuente más precisa para esta lectura en este equipo.",
+      pending: "Pendiente",
+      pendingHint: "Aún no se ha confirmado qué fuente es la más precisa para esta lectura en este equipo."
+    },
     deviceKind: {
       host: "Sistema",
       cpu: "Procesador",

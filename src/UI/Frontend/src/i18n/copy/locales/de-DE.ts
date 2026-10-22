@@ -451,6 +451,12 @@ const deDeAppCopy: AppCopy = {
     notInCatalogHint: "Dieser Eintrag fehlt im Metrikkatalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
+    readingSource: {
+      preferred: "Bevorzugt",
+      preferredHint: "Die genaueste Quelle für diesen Messwert auf diesem Computer.",
+      pending: "Ausstehend",
+      pendingHint: "Welche Quelle für diesen Messwert auf diesem Computer am genauesten ist, ist noch nicht bestätigt."
+    },
     deviceKind: {
       host: "System",
       cpu: "Prozessor",

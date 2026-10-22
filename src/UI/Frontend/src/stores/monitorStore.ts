@@ -122,6 +122,8 @@ export interface MonitorStore {
   snapshotObservation: Accessor<ObservationState>;
   /** 卡片可选的全部指标：原有指标目录加上每台设备的规范字段。 */
   cardCatalog: Accessor<MetricDefinition[]>;
+  /** 选择器里列出的指标：cardCatalog 去掉当前读数来源设置下不列出的设备字段来源。 */
+  pickerCatalog: Accessor<MetricDefinition[]>;
   /** 卡片显示用的当前值：原有指标快照加上卡片上设备字段的值。 */
   cardSnapshot: Accessor<MetricSnapshot | null>;
   activeCards: Accessor<DashboardCardSettings[]>;
@@ -319,6 +321,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     intervalMs: options.metricSnapshotIntervalMs()
   }));
   const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
+  // 卡片上已经放了的字段照常从 cardCatalog 取设备名和标记；只有选择器按设置少列。
+  const pickerCatalog = createMemo(() => cardCatalog().filter((metric) => metric.readingSource?.listed !== false));
   const cardSnapshot = createMemo<MetricSnapshot | null>(() => {
     const items = fieldCardValues(fieldSlots(), fieldCatalog(), fieldDevices());
     const legacy = snapshot();
@@ -1107,6 +1111,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     snapshot,
     snapshotObservation,
     cardCatalog,
+    pickerCatalog,
     cardSnapshot,
     activeCards,
     resourceBarEditing,

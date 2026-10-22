@@ -1,7 +1,12 @@
 import {
   defineResponseDecoder,
   requireArray,
+  requireBoolean,
+  requireFiniteNumber,
+  requireNonEmptyString,
   requireNonNegativeSafeInteger,
+  requireNullable,
+  requireOneOf,
   requireRecord,
   requireString,
   ResponseDecodeError
@@ -25,10 +30,32 @@ export type MetricFieldAddress =
   /** 显卡引擎的地址带所属显卡的 PnP 实例 ID（后端 MetricDeviceAddress.GpuEngine 从显卡地址复制），卡片名用它找显卡名。 */
   | { readonly kind: "gpu_engine"; readonly pnpInstanceId: string };
 
+/*
+ * 字段属于哪个读取项（同一台设备的同一物理量），以及它在这个读取项里是哪个来源。
+ * 合同见 docs/metric_reading_source_selection.md。这里按 wire 原样保留，不推断：
+ * id 只做相等比较（同一读取项的所有来源和跨设备的显示别名共用一个 id）；sourceRank 越小越优先；
+ * 本机首选由后端核定（isPreferredSource 与 preferred 引用），没有首选时两个引用为 null。
+ * 显示怎么用这些事实见 presentation/readingSources.ts。
+ */
+export const metricFieldSourceAvailabilities = ["available", "unsupported", "unverified"] as const;
+export type MetricFieldSourceAvailability = typeof metricFieldSourceAvailabilities[number];
+
+export interface MetricFieldReading {
+  readonly id: string;
+  readonly quantity: string;
+  readonly sourceRank: number;
+  readonly sourceAvailability: MetricFieldSourceAvailability;
+  readonly isPreferredSource: boolean;
+  readonly preferredDeviceIdentity: string | null;
+  readonly preferredFieldName: string | null;
+}
+
 export interface MetricFieldValue {
   readonly name: string;
   readonly unit: string;
   readonly valueKind: string;
+  /** 没有读取项的字段为 null（含后端还没发这个对象时）。 */
+  readonly reading: MetricFieldReading | null;
   /** float64 字段的当前值；不可用或不是浮点字段时为 null。 */
   readonly numericValue: number | null;
   /** 整数字段的当前值；不可用或不是整数字段时为 null。 */
@@ -60,6 +87,8 @@ export interface MetricFieldDefinition {
   readonly name: string;
   readonly unit: string;
   readonly valueKind: string;
+  /** 和同一字段的值上的 reading 相同；没有读取项为 null。 */
+  readonly reading: MetricFieldReading | null;
 }
 
 export interface MetricFieldCatalogDevice extends MetricFieldDeviceInfo {
@@ -115,7 +144,8 @@ export const metricFieldCatalogDecoder = defineResponseDecoder<readonly MetricFi
         return {
           name: requireString(definition.name, `${fieldPath}.name`),
           unit: requireString(definition.unit, `${fieldPath}.unit`),
-          valueKind: requireString(definition.valueKind, `${fieldPath}.valueKind`)
+          valueKind: requireString(definition.valueKind, `${fieldPath}.valueKind`),
+          reading: decodeReading(definition.reading, `${fieldPath}.reading`)
         };
       })
     };
@@ -165,10 +195,26 @@ function decodeValue(value: unknown, path: string): MetricFieldValue {
     name: requireString(record.name, `${path}.name`),
     unit: requireString(record.unit, `${path}.unit`),
     valueKind: requireString(record.valueKind, `${path}.valueKind`),
+    reading: decodeReading(record.reading, `${path}.reading`),
     numericValue: current ? optionalFiniteNumber(record.numericValue, `${path}.numericValue`) : null,
     integerValue: current ? optionalInteger(record.integerValue, `${path}.integerValue`) : null,
     booleanValue: current && typeof record.booleanValue === "boolean" ? record.booleanValue : null,
     observedAt: current && typeof record.observedAt === "string" ? record.observedAt : null
+  };
+}
+
+/** 读取项可空；还没发这个对象的后端（字段上没有 reading）同样当作没有读取项。 */
+function decodeReading(value: unknown, path: string): MetricFieldReading | null {
+  if (value === undefined || value === null) return null;
+  const record = requireRecord(value, path);
+  return {
+    id: requireNonEmptyString(record.id, `${path}.id`),
+    quantity: requireString(record.quantity, `${path}.quantity`),
+    sourceRank: requireFiniteNumber(record.sourceRank, `${path}.sourceRank`),
+    sourceAvailability: requireOneOf(record.sourceAvailability, `${path}.sourceAvailability`, metricFieldSourceAvailabilities),
+    isPreferredSource: requireBoolean(record.isPreferredSource, `${path}.isPreferredSource`),
+    preferredDeviceIdentity: requireNullable(record.preferredDeviceIdentity, `${path}.preferredDeviceIdentity`, requireString),
+    preferredFieldName: requireNullable(record.preferredFieldName, `${path}.preferredFieldName`, requireString)
   };
 }
 

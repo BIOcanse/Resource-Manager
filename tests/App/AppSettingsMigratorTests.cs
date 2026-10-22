@@ -526,6 +526,41 @@ public sealed class AppSettingsMigratorTests
         Assert.Equal(expectedFrameRate, appearance.ResourceBarFrameRate);
     }
 
+    [Fact]
+    public void Defaults_ListOnlyThePreferredReadingSource()
+    {
+        Assert.Equal(AppReadingSourceModes.Preferred, AppSettingsDefaults.Create().Appearance.ReadingSourceMode);
+    }
+
+    [Fact]
+    public void RequiresRewrite_AddsMissingReadingSourceModeToCurrentShape()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["appearance"]!.AsObject().Remove("readingSourceMode");
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        Assert.Equal(
+            AppReadingSourceModes.Preferred,
+            AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.ReadingSourceMode);
+    }
+
+    [Theory]
+    [InlineData("\"preferred\"", AppReadingSourceModes.Preferred)]
+    [InlineData("\"all\"", AppReadingSourceModes.All)]
+    [InlineData("\"All\"", AppReadingSourceModes.Preferred)]
+    [InlineData("\"unknown\"", AppReadingSourceModes.Preferred)]
+    [InlineData("true", AppReadingSourceModes.Preferred)]
+    [InlineData("null", AppReadingSourceModes.Preferred)]
+    public void MigrateForRead_NormalizesTheReadingSourceMode(string modeJson, string expectedMode)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["appearance"]!["readingSourceMode"] = JsonNode.Parse(modeJson);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        Assert.Equal(expectedMode, AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.ReadingSourceMode);
+    }
+
     private const string CurrentShapeJson =
         """
         {
@@ -558,7 +593,8 @@ public sealed class AppSettingsMigratorTests
             "resourceBarFrameRate": 60,
             "barColorMode": "type",
             "fontSmoothing": "system",
-            "language": "system"
+            "language": "system",
+            "readingSourceMode": "preferred"
           },
           "systemIntegration": {
             "autoStartEnabled": false,

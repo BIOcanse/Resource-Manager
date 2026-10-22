@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   buildMetricFieldSubscriptionUrl,
   findMetricField,
+  metricFieldCatalogDecoder,
   metricFieldDevicesDecoder
 } from "../src/data/metricFields/metricFieldSource.ts";
 import { effectiveFrequencyRows, numaNodeRows } from "../src/features/details/cpuMetricFields.ts";
@@ -48,6 +49,47 @@ assert.equal(devices[5].address, null);
 assert.throws(() => metricFieldDevicesDecoder.decode([
   { deviceIdentity: "x", device: { kind: "platform", address: null, displayName: null, ordinal: 1 }, fields: [value("f", "B", "unsigned64", { integerValue: "1.5" })] }
 ]), /integerValue/);
+
+// 读取项：目录和值上都按 wire 原样保留；没有这个对象（还没交付的后端）或为 null 都是没有读取项。
+const wireReading = {
+  id: "opaque|reading|1", quantity: "gpu.edge_temperature", sourceRank: 10, sourceAvailability: "available",
+  isPreferredSource: true, preferredDeviceIdentity: "gpu|apu", preferredFieldName: "gpu_amd_apu_temperature_reported_celsius"
+};
+assert.equal(devices[0].fields[0].reading, null, "a value without a reading object has no reading");
+const readingCatalog = metricFieldCatalogDecoder.decode([
+  { deviceIdentity: "gpu|apu", device: { kind: "gpu_adapter", address: null, displayName: null, ordinal: 0 }, fields: [
+    { name: "gpu_amd_apu_temperature_reported_celsius", unit: "°C", valueKind: "float64", reading: wireReading },
+    { name: "gpu_amd_edge_temperature_celsius", unit: "°C", valueKind: "float64", reading: {
+      ...wireReading, sourceRank: 20, sourceAvailability: "unverified", isPreferredSource: false, preferredDeviceIdentity: null, preferredFieldName: null } },
+    { name: "gpu_all_usage_percent", unit: "%", valueKind: "float64", reading: null },
+    { name: "gpu_all_memory_used", unit: "B", valueKind: "unsigned64" }
+  ] }
+]);
+assert.deepEqual(readingCatalog[0].fields.map((field) => field.reading), [
+  wireReading,
+  { ...wireReading, sourceRank: 20, sourceAvailability: "unverified", isPreferredSource: false, preferredDeviceIdentity: null, preferredFieldName: null },
+  null,
+  null
+], "catalog readings are kept exactly as sent");
+const readingValues = metricFieldDevicesDecoder.decode([
+  { deviceIdentity: "gpu|apu", device: { kind: "gpu_adapter", address: null, displayName: null, ordinal: 0 }, fields: [
+    value("gpu_amd_apu_temperature_reported_celsius", "°C", "float64", { numericValue: 51, reading: wireReading }),
+    value("gpu_amd_edge_temperature_celsius", "°C", "float64", { numericValue: 50, status: unavailable, reading: wireReading })
+  ] }
+]);
+assert.deepEqual(readingValues[0].fields[0].reading, wireReading, "value readings are kept exactly as sent");
+assert.deepEqual(readingValues[0].fields[1].reading, wireReading, "an unavailable value keeps its reading");
+assert.equal(readingValues[0].fields[1].numericValue, null);
+const badReading = (patch: Record<string, unknown>) => () => metricFieldDevicesDecoder.decode([
+  { deviceIdentity: "x", device: { kind: "platform", address: null, displayName: null, ordinal: 0 }, fields: [
+    value("f", "%", "float64", { reading: { ...wireReading, ...patch } })
+  ] }
+]);
+assert.throws(badReading({ sourceAvailability: "Available" }), /sourceAvailability/, "availability values are the contract's lower-case words");
+assert.throws(badReading({ id: "" }), /reading\.id/);
+assert.throws(badReading({ isPreferredSource: "true" }), /isPreferredSource/);
+assert.throws(badReading({ preferredFieldName: undefined }), /preferredFieldName/, "preferred references are present, null when there is none");
+assert.throws(badReading({ sourceRank: "10" }), /sourceRank/);
 
 applyByteUnitMode("binary");
 const numa = numaNodeRows(devices);

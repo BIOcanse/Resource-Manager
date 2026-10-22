@@ -46,6 +46,24 @@ public sealed class AppSettingsPatchTests
     }
 
     [Fact]
+    public void Apply_RoundTripsTheReadingSourceModeAndNormalizesUnknownValues()
+    {
+        var current = AppSettingsDefaults.Create();
+        using var all = JsonDocument.Parse("""{"appearance":{"readingSourceMode":"all"}}""");
+        using var unknown = JsonDocument.Parse("""{"appearance":{"readingSourceMode":"everything"}}""");
+
+        var patched = AppSettingsPatchApplier.Apply(current, all.RootElement);
+        var normalized = AppSettingsPatchApplier.Apply(patched, unknown.RootElement);
+        var persisted = JsonSerializer.SerializeToElement(patched, JsonSerializerOptions.Web)
+            .GetProperty("appearance");
+
+        Assert.Equal(AppReadingSourceModes.All, patched.Appearance.ReadingSourceMode);
+        Assert.Equal("all", persisted.GetProperty("readingSourceMode").GetString());
+        Assert.Equal(AppReadingSourceModes.Preferred, normalized.Appearance.ReadingSourceMode);
+        Assert.Equal(current.Appearance.ByteUnitMode, patched.Appearance.ByteUnitMode);
+    }
+
+    [Fact]
     public void Apply_RoundTripsTheResourceBarFrameRateAndClampsIt()
     {
         var current = AppSettingsDefaults.Create();

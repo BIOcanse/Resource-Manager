@@ -60,6 +60,15 @@ public static class AppBarColorModes
     public const string Distinct = "distinct";
 }
 
+// 读数来源怎么列：preferred = 每个读取项只列本机首选来源（默认），all = 列出所有可用来源并标出首选。
+// 后端只存和校验这个值；首选由后端核定，按它筛选和加标记在前端（src/UI/Frontend/src/presentation/readingSources.ts）。
+// 调度不读这个设置，始终用后端核定的首选。
+public static class AppReadingSourceModes
+{
+    public const string Preferred = "preferred";
+    public const string All = "all";
+}
+
 public static class AppFontSmoothingModes
 {
     public const string Auto = "auto";
@@ -234,7 +243,9 @@ public sealed record AppAppearanceSettings(
     // native = 每个量按它本来的进制（内存类 1024、存储类 1000）；
     // binary = 一律 1024；decimal = 一律 1000。
     // 后端只存和校验这个值，不按它做任何换算 —— 换算在前端。
-    string ByteUnitMode);
+    string ByteUnitMode,
+    // 见 AppReadingSourceModes。
+    string ReadingSourceMode);
 
 public sealed record AppSystemIntegrationSettings(
     bool TaskManagerShortcutReplacementEnabled,

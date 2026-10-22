@@ -7,6 +7,7 @@ import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "..
 import { dashboardSmallMetricLimit } from "../../stores/monitorConfig";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
+import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -277,8 +278,9 @@ function MetricView(props: {
     <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
       <div class="metric-label" title={labelTitle()}>
         <span class="metric-label-text">{label()}</span>
+        {/* 设备名前面是读数来源标记（首选／待确认），设备名过长时只截设备名。 */}
         <Show when={deviceName()}>
-          {(name) => <span class="metric-device">{name()}</span>}
+          {(name) => <span class="metric-device"><ReadingSourceMark mark={definition()?.readingSource?.mark} />{name()}</span>}
         </Show>
       </div>
       <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
