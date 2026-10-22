@@ -232,6 +232,21 @@ export default createSettingsLocale("ko-KR", {
         "description": "리소스 막대에 호환 렌더링을 항상 사용합니다."
       }
     ],
+    "resourceBarFrameRateTitle": "리소스 막대 애니메이션 프레임 속도",
+    "resourceBarFrameRateDescription": "리소스 막대 전환 애니메이션을 초당 몇 프레임 그릴지 정합니다. 화면에 맞춤은 모니터 주사율로 그리고, 사용자 지정은 프레임 수를 제한해 부하를 줄입니다. 일반 애니메이션일 때만 적용됩니다.",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "화면에 맞춤",
+        "description": "화면이 새로 고쳐질 때마다 한 프레임을 그립니다."
+      },
+      {
+        "id": "custom",
+        "label": "사용자 지정",
+        "description": "초당 설정한 프레임 수(10–240)까지만 그립니다."
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "프레임 속도 (FPS)",
     "barColorTitle": "막대 색상",
     "barColorDescription": "소프트웨어 유형별 고정 색상 또는 소프트웨어별 다른 색상을 사용합니다.",
     "byteUnitTitle": "용량 단위",

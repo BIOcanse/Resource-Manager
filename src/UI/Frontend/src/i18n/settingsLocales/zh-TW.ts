@@ -227,6 +227,21 @@ export default createSettingsLocale("zh-TW", {
         "description": "資源條走相容渲染。"
       }
     ],
+    "resourceBarFrameRateTitle": "資源條動畫幀率",
+    "resourceBarFrameRateDescription": "資源條過渡動畫每秒繪製幾幀。跟隨螢幕依顯示器更新率繪製；自定義可限制幀數以降低開銷。只在正常動畫下生效。",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "跟隨螢幕",
+        "description": "每次螢幕更新都繪製一幀。"
+      },
+      {
+        "id": "custom",
+        "label": "自定義",
+        "description": "每秒最多繪製設定的幀數（10–240）。"
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "幀率 (FPS)",
     "barColorTitle": "條形圖配色",
     "barColorDescription": "按軟體型別使用固定顏色，或為每個軟體分配不同顏色。",
     "byteUnitTitle": "容量單位",

@@ -88,7 +88,7 @@ assert.match(appearanceSettings, /value=\{appearance\(\)\.barColorMode \?\? "typ
 assert.match(appearanceSettings, /options=\{props\.text\.barColorOptions\}/);
 assert.match(appearanceSettings, /onChange=\{props\.onBarColorModeChange\}/);
 assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(settings\.settings\(\)\.appearance\?\.barColorMode\)/);
-assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused"\]/);
+assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused", "data-resource-bar-frame-rate"\]/);
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
 assert.match(resourcePaintPlane, /presentation\.barColor !== "distinct"/);
 assert.match(systemIntegrationSettings, /uiText\.misc\.publicServicesNotRunning/);

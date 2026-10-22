@@ -89,6 +89,51 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadAsync_WritesExplicitResourceBarFrameRateAndKeepsACustomChoice()
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var configRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
+        var settingsPath = Path.Combine(configRoot, "app-settings.json");
+        var environment = new TestHostEnvironment(appRoot);
+        var source = JsonNode.Parse(JsonSerializer.Serialize(
+            AppSettingsDefaults.Create(),
+            JsonSerializerOptions.Web))!.AsObject();
+        var appearance = source["appearance"]!.AsObject();
+        appearance.Remove("resourceBarFrameRateMode");
+        appearance.Remove("resourceBarFrameRate");
+        appearance["theme"] = "dark";
+        await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
+
+        var store = new JsonAppSettingsStore(environment);
+        var loaded = await store.LoadAsync(CancellationToken.None);
+
+        Assert.True(loaded.Source.RewritePerformed);
+        Assert.Equal(AppResourceBarFrameRateModes.Display, loaded.Settings.Appearance.ResourceBarFrameRateMode);
+        Assert.Equal(60, loaded.Settings.Appearance.ResourceBarFrameRate);
+        Assert.Equal("dark", loaded.Settings.Appearance.Theme);
+        using (var rewritten = JsonDocument.Parse(await File.ReadAllBytesAsync(settingsPath)))
+        {
+            var persisted = rewritten.RootElement.GetProperty("appearance");
+            Assert.Equal("display", persisted.GetProperty("resourceBarFrameRateMode").GetString());
+            Assert.Equal(60, persisted.GetProperty("resourceBarFrameRate").GetInt32());
+        }
+
+        await store.SaveAsync(loaded.Settings with
+        {
+            Appearance = loaded.Settings.Appearance with
+            {
+                ResourceBarFrameRateMode = AppResourceBarFrameRateModes.Custom,
+                ResourceBarFrameRate = 75
+            }
+        }, CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
+
+        Assert.False(reloaded.Source.RewritePerformed);
+        Assert.Equal(AppResourceBarFrameRateModes.Custom, reloaded.Settings.Appearance.ResourceBarFrameRateMode);
+        Assert.Equal(75, reloaded.Settings.Appearance.ResourceBarFrameRate);
+    }
+
+    [Fact]
     public async Task SaveAsync_NativeUiReaderDoesNotBlockAtomicReplacement()
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;

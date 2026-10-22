@@ -20,6 +20,7 @@ import type {
   AppPresetNumericSetting,
   AppSettings,
   AppPalette,
+  AppResourceBarFrameRateMode,
   AppUiStyle,
   SettingsSection
 } from "../../types";
@@ -52,6 +53,8 @@ interface SettingsPageProps {
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
   onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
+  onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
+  onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
   onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
@@ -257,6 +260,8 @@ export function SettingsPage(props: SettingsPageProps) {
               onThemeChange={props.onThemeChange}
               onAnimationsChange={props.onAnimationsChange}
               onResourceBarHardwareAccelerationModeChange={props.onResourceBarHardwareAccelerationModeChange}
+              onResourceBarFrameRateModeChange={props.onResourceBarFrameRateModeChange}
+              onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}
               onByteUnitModeChange={props.onByteUnitModeChange}
               onFontSmoothingChange={props.onFontSmoothingChange}

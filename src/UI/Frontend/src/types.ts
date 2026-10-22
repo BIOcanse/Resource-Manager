@@ -42,6 +42,8 @@ export type AppPalette =
 export type AppAdaptiveBooleanMode = "auto" | "enabled" | "disabled";
 export type AppFrontendHiddenRefreshMode = "auto" | "pauseWhenHidden" | "continueWhenHidden";
 export type AppAnimationMode = "auto" | "normal" | "none" | "ultra";
+// 资源条动画帧率：display = 跟随屏幕，custom = 按 resourceBarFrameRate 限帧；见 presentation/resourceBarFrameRate.ts。
+export type AppResourceBarFrameRateMode = "display" | "custom";
 export type AppBarColorMode = "type" | "distinct";
 export type AppFontSmoothing = "auto" | "system" | "grayscale" | "disabled";
 export type AppLanguageMode =
@@ -298,6 +300,9 @@ export interface AppAppearanceSettings {
   animations?: AppAnimationMode;
   resourceBarHardwareAccelerationEnabled?: boolean;
   resourceBarHardwareAccelerationMode?: AppAdaptiveBooleanMode;
+  resourceBarFrameRateMode?: AppResourceBarFrameRateMode;
+  // custom 时的帧/秒（10–240）；display 时保留不用。
+  resourceBarFrameRate?: number;
   barColorMode?: AppBarColorMode;
   fontSmoothing?: AppFontSmoothing;
   language?: AppLanguageMode;

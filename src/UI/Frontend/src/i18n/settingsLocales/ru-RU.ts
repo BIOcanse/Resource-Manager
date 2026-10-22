@@ -232,6 +232,21 @@ export default createSettingsLocale("ru-RU", {
         "description": "Всегда использовать совместимый способ отрисовки полос ресурсов."
       }
     ],
+    "resourceBarFrameRateTitle": "Частота кадров анимации полос",
+    "resourceBarFrameRateDescription": "Сколько кадров в секунду рисуют переходы полос ресурсов. «Как у экрана» использует частоту обновления монитора; «Вручную» ограничивает кадры и снижает нагрузку. Действует только при обычной анимации.",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "Как у экрана",
+        "description": "Рисовать кадр при каждом обновлении экрана."
+      },
+      {
+        "id": "custom",
+        "label": "Вручную",
+        "description": "Рисовать не больше заданного числа кадров в секунду (10–240)."
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "Кадров/с (FPS)",
     "barColorTitle": "Цвета полос",
     "barColorDescription": "Используйте фиксированные цвета по типу программы или отдельный цвет для каждой программы.",
     "byteUnitTitle": "Единицы объёма",

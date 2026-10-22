@@ -1,6 +1,12 @@
+import { Show } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect";
 import { languageOptions, normalizeLanguageMode } from "../../../text.ts";
 import { uiStylePalettes } from "../../../presentation/uiStyles.ts";
+import {
+  resourceBarFrameRateDefault,
+  resourceBarFrameRateMax,
+  resourceBarFrameRateMin
+} from "../../../presentation/resourceBarFrameRate.ts";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
@@ -9,11 +15,12 @@ import type {
   AppFontSmoothing,
   AppLanguageMode,
   AppPalette,
+  AppResourceBarFrameRateMode,
   AppSettings,
   AppUiStyle,
   ByteUnitMode
 } from "../../../types";
-import { SegmentedControl } from "./SettingsControls";
+import { NumberField, SegmentedControl } from "./SettingsControls";
 
 interface AppearanceSettingsSectionProps {
   settings: AppSettings["appearance"] | undefined;
@@ -22,6 +29,8 @@ interface AppearanceSettingsSectionProps {
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
   onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
+  onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
+  onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
   onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
@@ -93,6 +102,32 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           ariaLabel={props.text.appearance.resourceBarHardwareAccelerationTitle}
           onChange={props.onResourceBarHardwareAccelerationModeChange}
         />
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.appearance.resourceBarFrameRateTitle}</strong>
+          <span>{props.text.appearance.resourceBarFrameRateDescription}</span>
+        </div>
+        {/* 帧率输入只在自定义时显示，跟随屏幕时它不生效。 */}
+        <div class="settings-frame-rate-control">
+          <SegmentedControl
+            value={appearance().resourceBarFrameRateMode ?? "display"}
+            options={props.text.appearance.resourceBarFrameRateModeOptions}
+            ariaLabel={props.text.appearance.resourceBarFrameRateTitle}
+            onChange={props.onResourceBarFrameRateModeChange}
+          />
+          <Show when={appearance().resourceBarFrameRateMode === "custom"}>
+            <NumberField
+              label={props.text.appearance.resourceBarFrameRateCustomLabel}
+              ariaLabel={`${props.text.appearance.resourceBarFrameRateTitle} ${props.text.appearance.resourceBarFrameRateCustomLabel}`}
+              value={appearance().resourceBarFrameRate ?? resourceBarFrameRateDefault}
+              min={resourceBarFrameRateMin}
+              max={resourceBarFrameRateMax}
+              step={1}
+              onChange={props.onResourceBarFrameRateChange}
+            />
+          </Show>
+        </div>
       </div>
       <div class="settings-row">
         <div class="settings-row-copy">

@@ -76,6 +76,8 @@ public static class AppSettingsNormalizer
             NormalizeAnimations(appearance?.Animations),
             appearance?.ResourceBarHardwareAccelerationEnabled ?? true,
             NormalizeAdaptiveBooleanMode(appearance?.ResourceBarHardwareAccelerationMode),
+            NormalizeResourceBarFrameRateMode(appearance?.ResourceBarFrameRateMode),
+            NormalizeResourceBarFrameRate(appearance?.ResourceBarFrameRate),
             NormalizeBarColorMode(appearance?.BarColorMode),
             NormalizeFontSmoothing(appearance?.FontSmoothing),
             NormalizeLanguage(appearance?.Language),
@@ -282,6 +284,21 @@ public static class AppSettingsNormalizer
         return AppLogicRefreshIntervalPresets.Supported.Contains(fallbackPreset)
             ? fallbackPreset
             : AppLogicRefreshIntervalPresets.Balanced;
+    }
+
+    private static string NormalizeResourceBarFrameRateMode(string? mode)
+    {
+        return mode == AppResourceBarFrameRateModes.Custom
+            ? AppResourceBarFrameRateModes.Custom
+            : AppResourceBarFrameRateModes.Display;
+    }
+
+    private static int NormalizeResourceBarFrameRate(int? framesPerSecond)
+    {
+        return Math.Clamp(
+            framesPerSecond ?? AppSettingsDefaults.ResourceBarFrameRate,
+            AppSettingsDefaults.MinResourceBarFrameRate,
+            AppSettingsDefaults.MaxResourceBarFrameRate);
     }
 
     private static string NormalizeBarColorMode(string? barColorMode)

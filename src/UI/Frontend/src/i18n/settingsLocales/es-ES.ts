@@ -232,6 +232,21 @@ export default createSettingsLocale("es-ES", {
         "description": "Usar siempre el renderizado de compatibilidad en las barras."
       }
     ],
+    "resourceBarFrameRateTitle": "Fotogramas de las barras de recursos",
+    "resourceBarFrameRateDescription": "Cuántos fotogramas por segundo dibujan las transiciones de las barras. Seguir la pantalla usa la frecuencia de actualización del monitor; Personalizado limita los fotogramas para reducir la carga. Solo se aplica con animaciones normales.",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "Seguir la pantalla",
+        "description": "Dibujar un fotograma en cada actualización de la pantalla."
+      },
+      {
+        "id": "custom",
+        "label": "Personalizado",
+        "description": "Dibujar como máximo los fotogramas por segundo elegidos (10–240)."
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "Fotogramas/s (FPS)",
     "barColorTitle": "Colores de las barras",
     "barColorDescription": "Usa colores fijos por tipo de programa o un color distinto para cada programa.",
     "byteUnitTitle": "Unidades de capacidad",

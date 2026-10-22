@@ -1,5 +1,10 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import {
+  parseResourceBarFrameRate,
+  shouldDrawResourceBarFrame,
+  type ResourceBarFrameRate
+} from "../../presentation/resourceBarFrameRate";
 import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
 
 export interface ResourcePaintSegment {
@@ -30,6 +35,7 @@ interface ResourceBarPresentation {
   barColor: string;
   selfGpuGrade: string;
   frontendFocused: string;
+  frameRate: ResourceBarFrameRate;
 }
 
 interface PaintGeometry {
@@ -60,7 +66,7 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   const observer = new MutationObserver(refreshPresentation);
   observer.observe(document.body, {
     attributes: true,
-    attributeFilter: ["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused"]
+    attributeFilter: ["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused", "data-resource-bar-frame-rate"]
   });
   const stopObservingAppearance = observeDocumentAppearance(refreshPresentation);
 
@@ -155,9 +161,15 @@ function animateSegments(
     return;
   }
   let drawnPixelKey: string | null = null;
+  let drawnAt: number | null = null;
 
   const step = (now: number) => {
     const progress = clampNumber((now - startedAt) / animationDurationMs, 0, 1);
+    // 自选帧率时没到点的中间帧整帧跳过；画面和 lastDrawnSegments 都停在上次画出的那一帧。
+    if (progress < 1 && !shouldDrawResourceBarFrame(presentation.frameRate, drawnAt, now)) {
+      setAnimationFrame(requestAnimationFrame(step));
+      return;
+    }
     const eased = easeBar(progress);
     const interpolated = toSegments.map((target) => {
       const source = fromByKey.get(target.key) ?? target;
@@ -174,6 +186,7 @@ function animateSegments(
       if (pixelKey !== drawnPixelKey) {
         drawSegments(canvas, interpolated, geometry, presentation, { drawDividers: false }, paintStyle);
         drawnPixelKey = pixelKey;
+        drawnAt = now;
       }
       setLastDrawnSegments(interpolated);
       setAnimationFrame(requestAnimationFrame(step));
@@ -477,7 +490,8 @@ function readResourceBarPresentation(): ResourceBarPresentation {
     animations: document.body.dataset.animations ?? "normal",
     barColor: document.body.dataset.barColor ?? "type",
     selfGpuGrade: document.body.dataset.selfGpuGrade ?? "normal",
-    frontendFocused: document.body.dataset.frontendFocused ?? "yes"
+    frontendFocused: document.body.dataset.frontendFocused ?? "yes",
+    frameRate: parseResourceBarFrameRate(document.body.dataset.resourceBarFrameRate)
   };
 }
 

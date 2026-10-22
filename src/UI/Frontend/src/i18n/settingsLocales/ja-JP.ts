@@ -232,6 +232,21 @@ export default createSettingsLocale("ja-JP", {
         "description": "リソースバーで常に互換描画を使います。"
       }
     ],
+    "resourceBarFrameRateTitle": "リソースバーのアニメーションのフレームレート",
+    "resourceBarFrameRateDescription": "リソースバーの切り替えアニメーションを 1 秒間に何フレーム描くかを決めます。画面に合わせるとディスプレイのリフレッシュレートで描きます。カスタムではフレーム数を抑えて負荷を減らせます。標準アニメーションのときだけ有効です。",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "画面に合わせる",
+        "description": "画面が更新されるたびに 1 フレーム描きます。"
+      },
+      {
+        "id": "custom",
+        "label": "カスタム",
+        "description": "1 秒あたり設定したフレーム数（10–240）まで描きます。"
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "フレームレート（FPS）",
     "barColorTitle": "バーの色",
     "barColorDescription": "ソフトウェア種別ごとの固定色、またはソフトウェアごとの個別色を選びます。",
     "byteUnitTitle": "容量の単位",

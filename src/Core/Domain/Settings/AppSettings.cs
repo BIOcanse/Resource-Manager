@@ -17,6 +17,13 @@ public static class AppAdaptiveBooleanModes
     public const string Disabled = "disabled";
 }
 
+// 资源条过渡动画的帧率：display = 跟随屏幕刷新（每个动画帧都画），custom = 按 ResourceBarFrameRate 限帧。
+public static class AppResourceBarFrameRateModes
+{
+    public const string Display = "display";
+    public const string Custom = "custom";
+}
+
 public static class AppFrontendHiddenRefreshModes
 {
     public const string Auto = "auto";
@@ -216,6 +223,10 @@ public sealed record AppAppearanceSettings(
     string Animations,
     bool ResourceBarHardwareAccelerationEnabled,
     string ResourceBarHardwareAccelerationMode,
+    // 见 AppResourceBarFrameRateModes；ResourceBarFrameRate 是 custom 时的帧/秒，
+    // 范围 AppSettingsDefaults.MinResourceBarFrameRate–MaxResourceBarFrameRate，display 时保留不用。
+    string ResourceBarFrameRateMode,
+    int ResourceBarFrameRate,
     string BarColorMode,
     string FontSmoothing,
     string Language,

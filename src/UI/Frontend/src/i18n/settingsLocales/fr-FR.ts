@@ -232,6 +232,21 @@ export default createSettingsLocale("fr-FR", {
         "description": "Toujours utiliser le rendu de compatibilité pour les barres."
       }
     ],
+    "resourceBarFrameRateTitle": "Fréquence d’images des barres de ressources",
+    "resourceBarFrameRateDescription": "Nombre d’images par seconde dessinées pendant les transitions des barres. Suivre l’écran utilise la fréquence de rafraîchissement du moniteur ; Personnalisé limite les images pour réduire la charge. S’applique uniquement avec les animations normales.",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "Suivre l’écran",
+        "description": "Dessiner une image à chaque rafraîchissement de l’écran."
+      },
+      {
+        "id": "custom",
+        "label": "Personnalisé",
+        "description": "Dessiner au plus le nombre d’images par seconde choisi (10–240)."
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "Images/s (FPS)",
     "barColorTitle": "Couleurs des barres",
     "barColorDescription": "Utilisez des couleurs fixes par type de logiciel ou une couleur différente pour chaque logiciel.",
     "byteUnitTitle": "Unités de capacité",
