@@ -11,6 +11,7 @@ public static class HostManagerAppliedRecordKinds
     public const string GpuRemoteCall = "GpuRemoteCall";
     public const string CpuAffinity = "CpuAffinity";
     public const string CpuThreadCpuSets = "CpuThreadCpuSets";
+    public const string CpuThreadIdealProcessor = "CpuThreadIdealProcessor";
     public const string ProcessPriority = "ProcessPriority";
     public const string ProcessMemoryPriority = "ProcessMemoryPriority";
     public const string A1 = "A1";

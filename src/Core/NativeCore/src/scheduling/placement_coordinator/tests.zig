@@ -4,7 +4,7 @@ const session_module = @import("session.zig");
 const corpus = @import("golden_corpus.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
-test "placement coordinator accepts distinct shim policy kind and rejects the next unknown kind" {
+test "placement coordinator accepts distinct shim and ideal processor kinds and rejects the next unknown kind" {
     var desired = corpus.desired(101, 201, 301);
     desired.resource_kind = @intFromEnum(protocol.ResourceKind.gpu);
     desired.placement_kind = @intFromEnum(protocol.PlacementKind.gpu_shim_policy);
@@ -15,8 +15,36 @@ test "placement coordinator accepts distinct shim policy kind and rejects the ne
     try std.testing.expect(protocol.validApplied(&applied));
     desired.placement_kind += 1;
     applied.placement_kind += 1;
+    desired.resource_kind = @intFromEnum(protocol.ResourceKind.cpu);
+    applied.resource_kind = desired.resource_kind;
+    try std.testing.expect(protocol.validDesired(&desired));
+    try std.testing.expect(protocol.validApplied(&applied));
+    desired.placement_kind += 1;
+    applied.placement_kind += 1;
     try std.testing.expect(!protocol.validDesired(&desired));
     try std.testing.expect(!protocol.validApplied(&applied));
+}
+
+test "placement coordinator preserves ideal processor kind through apply and owned restore" {
+    var config = corpus.config(7);
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)} ** 8;
+    var desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301)};
+    desired[0].placement_kind = @intFromEnum(protocol.PlacementKind.thread_ideal_processor);
+    var cycle = corpus.cycle(7, 1, 1000, 1, 0);
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &desired, 1, null, 0, &actions, 8));
+    try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
+    try std.testing.expectEqual(desired[0].placement_kind, actions[0].placement_kind);
+    var feedback = [_]protocol.FeedbackInput{corpus.feedback(actions[0], .applied, 1010)};
+    try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(session, &feedback, 1));
+    var applied = [_]protocol.AppliedInput{corpus.applied(101, 201, 301, 111, 301)};
+    applied[0].placement_kind = desired[0].placement_kind;
+    cycle = corpus.cycle(7, 2, 1100, 0, 1);
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, null, 0, &applied, 1, &actions, 8));
+    try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
+    try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), actions[0].disposition);
+    try std.testing.expectEqual(desired[0].placement_kind, actions[0].placement_kind);
 }
 
 test "placement coordinator applies retains restores and clears exact receipt" {

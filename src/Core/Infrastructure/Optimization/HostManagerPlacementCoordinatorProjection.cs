@@ -296,6 +296,8 @@ internal static class HostManagerPlacementCoordinatorProjection
     {
         (resourceKind, placementKind) = record.Kind switch
         {
+            HostManagerAppliedRecordKinds.CpuThreadIdealProcessor =>
+                (NativePlacementResourceKind.Cpu, NativePlacementKind.ThreadIdealProcessor),
             HostManagerAppliedRecordKinds.CpuThreadCpuSets =>
                 (NativePlacementResourceKind.Cpu, NativePlacementKind.CpuSets),
             HostManagerAppliedRecordKinds.CpuAffinity when

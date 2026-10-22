@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.Optimization;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerPlacementRollbackExecutorTests
+public sealed partial class HostManagerPlacementRollbackExecutorTests
 {
     [Fact]
     public void GpuUnavailableRetainsRecordWithoutWrite()
@@ -342,6 +342,20 @@ public sealed class HostManagerPlacementRollbackExecutorTests
         : IProcessResourcePolicyWriter
     {
         private readonly Queue<RecoveryReadResult<ProcessPlacementRecoverySnapshot>> reads = new(reads);
+
+        public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> IdealRead { get; set; }
+            = RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(50, "not scripted");
+        public int IdealWrites { get; private set; }
+        public bool IgnoreIdealWrite { get; init; }
+        public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> ReadThreadIdealProcessor(int processId, ulong processStartKey, int threadId)
+            => IdealRead;
+        public ProcessResourcePolicyWriteResult TrySetThreadIdealProcessor(ThreadIdealProcessorPolicySnapshot expected, ThreadIdealProcessor desired)
+        {
+            IdealWrites++;
+            Assert.Equal(IdealRead.Value, expected);
+            if (!IgnoreIdealWrite) IdealRead = RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Found(expected with { IdealProcessor = desired });
+            return new(!IgnoreIdealWrite, "recording writer");
+        }
 
         public int AffinityWriteCount { get; private set; }
 

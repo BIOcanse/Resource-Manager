@@ -4,6 +4,18 @@ namespace ResourceManager.App.Application.Optimization;
 
 public interface IProcessResourcePolicyWriter
 {
+    RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>> ReadProcessThreadIdealProcessors(
+        int processId, ulong processStartKey, int maximumThreadCount)
+        => RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Unavailable(50, "Thread ideal processor access is not supported by this writer.");
+
+    RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> ReadThreadIdealProcessor(
+        int processId, ulong processStartKey, int threadId)
+        => RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(50, "Thread ideal processor access is not supported by this writer.");
+
+    ProcessResourcePolicyWriteResult TrySetThreadIdealProcessor(
+        ThreadIdealProcessorPolicySnapshot expected, ThreadIdealProcessor desired)
+        => new(false, "Thread ideal processor access is not supported by this writer.");
+
     ProcessResourcePolicySnapshot? TryReadProcess(int processId);
 
     DateTimeOffset? TryReadProcessStartedAt(int processId);

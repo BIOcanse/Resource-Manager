@@ -17,6 +17,7 @@ pub const PlacementKind = enum(u32) {
     gpu_preference = 5,
     gpu_runtime_rebuild = 6,
     gpu_shim_policy = 7,
+    thread_ideal_processor = 8,
 };
 
 pub const ObservationStatus = enum(u32) {
@@ -340,7 +341,7 @@ fn validKnownResourceKind(value: u32) bool {
 
 fn validKnownPlacementKind(value: u32) bool {
     return value >= @intFromEnum(PlacementKind.cpu_sets) and
-        value <= @intFromEnum(PlacementKind.gpu_shim_policy);
+        value <= @intFromEnum(PlacementKind.thread_ideal_processor);
 }
 
 fn validObservationStatus(value: u32) bool {

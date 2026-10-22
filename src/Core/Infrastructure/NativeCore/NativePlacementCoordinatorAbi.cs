@@ -36,7 +36,8 @@ internal enum NativePlacementKind : uint
     ProcessMemoryPriority = 4,
     GpuPreference = 5,
     GpuRuntimeRebuild = 6,
-    GpuShimPolicy = 7
+    GpuShimPolicy = 7,
+    ThreadIdealProcessor = 8
 }
 
 internal enum NativePlacementObservationStatus : uint
