@@ -175,12 +175,6 @@ function normalizeSoftwarePolicyForProvider(
   return policy;
 }
 
-function resolveCpuMaximumOccupancyMode(policy: GpuPlacementSoftwarePolicy): CpuMaximumOccupancyMode {
-  return policy.cpuMaximumOccupancyMode === "AllCores"
-    ? "AllCores"
-    : "SingleCcd";
-}
-
 function normalizeProcessPolicyForProvider(
   _preciseGpuPlacementEnabled: boolean,
   policy: GpuPlacementProcessPolicy): GpuPlacementProcessPolicy {
@@ -665,7 +659,7 @@ function GpuPlacementPolicySection(props: {
                 </label>
                 <PolicySelect
                   label={uiText.softwareDetail.label.cpuUsageRange}
-                  value={resolveCpuMaximumOccupancyMode(current())}
+                  value={current().cpuMaximumOccupancyMode}
                   options={cpuMaximumOccupancyOptions()}
                   onChange={(value) => {
                     const cpuMaximumOccupancyMode = value as CpuMaximumOccupancyMode;
