@@ -19,6 +19,7 @@ public sealed partial class HostManagerSmartCoordinator
 
     private async Task<bool> RunAutomaticPlacementCycleAsync(
         HostManagerCycleEffectAdmission effectAdmission,
+        HostManagerProcessEffectValidationCycleSnapshot processEffectValidationScope,
         HostManagerSmartCoordinatorRuntimePlan desiredRuntime,
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
@@ -57,6 +58,12 @@ public sealed partial class HostManagerSmartCoordinator
             var topology = desiredRuntime.RuntimePlan.CpuPlacementTopology;
             var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
             var processes = CreateAutomaticPlacementProcesses(sample, computeScoring, state.AppliedPlacements, protectionLevels);
+            processes = processes
+                .Where(process => HostManagerProcessEffectValidationCyclePolicy.AllowsNewAutomaticPlacement(
+                    processEffectValidationScope,
+                    process.ProcessId,
+                    process.ProcessStartKey))
+                .ToArray();
             var cpuReservations = cpuPlacementEnabled && topology is not null
                 ? PlanCpuReservations(topology, sample, processes) : null;
             cpuReservationsAvailable = !cpuPlacementEnabled || cpuReservations is not null;

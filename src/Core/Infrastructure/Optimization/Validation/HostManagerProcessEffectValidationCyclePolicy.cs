@@ -18,13 +18,22 @@ internal static class HostManagerProcessEffectValidationCyclePolicy
             return ulong.MaxValue;
         }
 
+        var state = scope.State;
+        if (state is not (
+                HostManagerProcessEffectValidationScopeState.Active or
+                HostManagerProcessEffectValidationScopeState.ExpiredBlocked or
+                HostManagerProcessEffectValidationScopeState.FaultedBlocked))
+        {
+            return 0;
+        }
+
         var mask = BaseScopedEffectMask;
-        if (scope.State == HostManagerProcessEffectValidationScopeState.Active
+        if (state == HostManagerProcessEffectValidationScopeState.Active
             && scope.AutomaticMemoryCleanupAllowed)
         {
             mask |= 1UL << ((int)HostManagerCycleEffectKind.AutomaticMemoryCleanup - 1);
         }
-        if (scope.State == HostManagerProcessEffectValidationScopeState.Active
+        if (state == HostManagerProcessEffectValidationScopeState.Active
             && scope.NonAdaptedMemoryTransactionAllowed)
         {
             mask |= 1UL << ((int)HostManagerCycleEffectKind.NonAdaptedMemoryTransaction - 1);
@@ -44,5 +53,17 @@ internal static class HostManagerProcessEffectValidationCyclePolicy
         in HostManagerProcessEffectValidationCycleSnapshot scope,
         NativeSmartCoordinatorActionScope actionScope)
         => scope.IsProductionUnscoped
-            || actionScope == NativeSmartCoordinatorActionScope.ProcessPolicy;
+            || (scope.State is
+                    HostManagerProcessEffectValidationScopeState.Active or
+                    HostManagerProcessEffectValidationScopeState.ExpiredBlocked or
+                    HostManagerProcessEffectValidationScopeState.FaultedBlocked)
+                && actionScope == NativeSmartCoordinatorActionScope.ProcessPolicy;
+
+    internal static bool AllowsNewAutomaticPlacement(
+        in HostManagerProcessEffectValidationCycleSnapshot scope,
+        int processId,
+        ulong processStartKey)
+        => processId > 0
+            && processStartKey != 0
+            && scope.IsProductionUnscoped;
 }

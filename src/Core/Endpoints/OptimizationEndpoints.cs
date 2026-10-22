@@ -10,6 +10,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         app.MapOptimizationReportEndpoints();
         app.MapHostManagerSmartCoordinatorEndpoints(loopbackApiPipelineMode);
+        app.MapSoftwareProtectionEndpoints();
 
         return app;
     }

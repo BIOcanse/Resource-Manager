@@ -243,6 +243,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
         var placementCompleted = await RunAutomaticPlacementCycleAsync(
             effectAdmission,
+            processEffectValidationScope,
             desired,
             sample,
             computeScoring,

@@ -14,19 +14,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await reportService.GetTrustedTargetsAsync(cancellationToken));
         });
 
-        app.MapGet("/api/optimization/protection", async (
-            IOptimizationProtectionService protectionService,
-            CancellationToken cancellationToken) =>
-        {
-            return Results.Ok(await protectionService.GetProtectedTargetsAsync(cancellationToken));
-        });
-        app.MapPut("/api/optimization/protection/software/{softwareId}", async (
-            string softwareId, SoftwareProtectionRequest request, IOptimizationProtectionService protectionService,
-            CancellationToken cancellationToken) =>
-        {
-            try { return Results.Ok(await protectionService.SetSoftwareProtectionAsync(softwareId, request.Enabled, cancellationToken)); }
-            catch (KeyNotFoundException) { return Results.NotFound(); }
-        });
 
         app.MapPost("/api/optimization/trust/refresh", async (
             IHostManagerReportService reportService,
