@@ -13,8 +13,9 @@ import type { AppReadingSourceMode, ReadingSourceDisplay } from "../types.ts";
  *   待确认：读取项还没有首选引用。
  * 只显示首选（设置 preferred，默认）：列出首选和待确认；显示所有可用来源（all）：再列出次选。
  * 不支持的来源两种模式都不列。
- * 标记：待确认的来源两种模式都标「待确认」；显示所有可用来源时，同一读取项在这批字段里
- * 还列出了别的来源，首选标「首选」（只有一个来源的读取项不标）。
+ * 标记只用在这批字段里能列出两个以上来源的读取项上，单来源的读取项没有可选的，不标：
+ * 还没有首选的，各来源两种模式都标「待确认」；显示所有可用来源时，首选标「首选」。
+ * 真实目录里大多数字段是单来源、在首次核定前都是 unverified，标出来只是噪音。
  * reading 为 null 的字段照原样列出，不加标记。
  * 已经放到卡片上的字段一直显示它自己的原值，不因模式隐藏或换成别的来源，只按同样规则加标记。
  * 调度用的来源由后端决定，不读这里。
@@ -67,9 +68,9 @@ export function readingSourceDisplays(
     const role = sourceRole(reading);
     return {
       listed: role === "preferred" || role === "pending" || (role === "alternate" && mode === "all"),
-      mark: role === "pending"
-        ? "pending"
-        : role === "preferred" && mode === "all" && (listedSources.get(reading.id) ?? 0) > 1 ? "preferred" : null
+      mark: (listedSources.get(reading.id) ?? 0) < 2
+        ? null
+        : role === "pending" ? "pending" : role === "preferred" && mode === "all" ? "preferred" : null
     };
   };
 }
