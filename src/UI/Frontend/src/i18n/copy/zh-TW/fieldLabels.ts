@@ -152,7 +152,7 @@ export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"
     gpu_amd_activity_percent: { label: "GPU 活動率（ADLX）", hint: "AMD ADLX 回報的 GPU 佔用取樣；廠商取樣時間範圍長度未說明，缺少時不以其他來源代替。" },
     gpu_amd_voltage_reported_volts: { label: "GPU 電壓（ADLX）", hint: "AMD ADLX 回報的 GPU 電壓，由 mV 換算為 V；對應哪一路供電未說明，不是 VID，也不是調校偏移。" },
     gpu_amd_sample_timestamp_reported_ms: { label: "取樣時間戳記（ADLX）", hint: "ADLX 原始時間戳記，單位毫秒；起點未指定，不是擷取時間，也不是取樣時長。" },
-    gpu_amd_adlx_dedicated_memory_mb: { label: "專用視訊記憶體（ADLX MB）", hint: "AMD ADLX 以其自身 MB 單位回報的專用視訊記憶體數值；每單位的確切位元組數以及是否實際常駐均未說明。" },
+    gpu_amd_adlx_dedicated_memory_mb: { label: "專用視訊記憶體已用（ADLX）", hint: "AMD ADLX（GPUVRAM）回報的這張 GPU 已用專用視訊記憶體，為所有處理程序合計，對應工作管理員的「專用 GPU 記憶體」；單位 MB，以 1024×1024 位元組計。" },
     memory_all_numa_node_capacity_mib: { label: "NUMA 節點容量", hint: "Windows 回報的該 NUMA 節點記憶體大小，以整數 MiB 無條件捨去；是系統依節點的檢視，不是精確位元組數或已安裝記憶體模組容量。" },
     cpu_intel_effective_frequency_mhz: { label: "執行緒有效頻率", hint: "該邏輯處理器在最近一個間隔內執行（C0）期間的平均頻率，由 APERF/MPERF 與宣告的基準頻率算出；不含閒置時間。" },
     gpu_amd_npu_activity_percent: { label: "NPU 活動率（ADLX）", hint: "AMD ADLX 針對這張顯示卡裝置回報的 NPU 活動率；是廠商數值，與 NPU 裝置的系統忙碌率不是同一口徑，也不對應某個具體 NPU 裝置。" },

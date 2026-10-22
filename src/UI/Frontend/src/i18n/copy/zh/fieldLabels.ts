@@ -152,7 +152,7 @@ export const zhFieldLabelsCopy = {
     gpu_amd_activity_percent: { label: "GPU 活动率（ADLX）", hint: "AMD ADLX 报告的 GPU 占用采样；厂商采样窗口长度未说明，缺失时不拿其他来源代替。" },
     gpu_amd_voltage_reported_volts: { label: "GPU 电压（ADLX）", hint: "AMD ADLX 报告的 GPU 电压，由 mV 换算为 V；对应哪路供电未说明，不是 VID，也不是调校偏移。" },
     gpu_amd_sample_timestamp_reported_ms: { label: "采样时间戳（ADLX）", hint: "ADLX 原始时间戳，单位毫秒；起点未指定，不是采集时间，也不是采样时长。" },
-    gpu_amd_adlx_dedicated_memory_mb: { label: "专用显存（ADLX MB）", hint: "AMD ADLX 以其自身 MB 单位报告的专用显存数值；每单位的确切字节数以及是否实际驻留均未说明。" },
+    gpu_amd_adlx_dedicated_memory_mb: { label: "专用显存已用（ADLX）", hint: "AMD ADLX（GPUVRAM）报告的这块 GPU 已用专用显存，为所有进程合计，对应任务管理器的“专用 GPU 内存”；单位 MB，按 1024×1024 字节计。" },
     memory_all_numa_node_capacity_mib: { label: "NUMA 节点容量", hint: "Windows 报告的该 NUMA 节点内存大小，按整数 MiB 向下取整；是系统按节点的视图，不是精确字节数或已安装内存条容量。" },
     cpu_intel_effective_frequency_mhz: { label: "线程有效频率", hint: "该逻辑处理器在最近一个间隔内运行（C0）期间的平均频率，由 APERF/MPERF 与声明的基准频率算出；不含空闲时间。" },
     gpu_amd_npu_activity_percent: { label: "NPU 活动率（ADLX）", hint: "AMD ADLX 针对这块显卡设备报告的 NPU 活动率；是厂商值，和 NPU 设备的系统忙碌率不是同一口径，也不对应某个具体 NPU 设备。" },
