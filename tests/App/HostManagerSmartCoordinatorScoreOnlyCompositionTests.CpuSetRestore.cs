@@ -44,7 +44,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
             cpuTopology: topology,
             cpuScoring: cpuScoring,
-            automaticPlacementTopology: topology);
+            automaticPlacementTopology: topology, singleCcdSoftwareIds: ["software:no-previous-cpu-sets"]);
         var placementScope = ReadPrivateField<HostManagerProcessEffectValidationScopeAuthority>(
             fixture.Coordinator,
             "processEffectValidationScopeAuthorityOwner");

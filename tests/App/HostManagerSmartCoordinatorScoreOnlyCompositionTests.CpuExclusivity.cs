@@ -27,7 +27,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency), cpuTopology: topology,
-            cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
+            cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology, singleCcdSoftwareIds: ["game", "background"]);
         var allowed = new Dictionary<int, IReadOnlyList<uint>> { [gameId] = [1, 2, 3, 4], [backgroundId] = [1, 2, 3, 4] };
         fixture.ProcessPolicyWriter.PlacementReadHandler = (pid, fields) =>
         {

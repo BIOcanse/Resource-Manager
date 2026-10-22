@@ -7,6 +7,37 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuPlacementPolicyResolverTests
 {
+    [Theory]
+    [InlineData(null, CpuMaximumOccupancyModes.AllCores)]
+    [InlineData("", CpuMaximumOccupancyModes.AllCores)]
+    [InlineData("unknown", CpuMaximumOccupancyModes.AllCores)]
+    [InlineData(CpuMaximumOccupancyModes.AllCores, CpuMaximumOccupancyModes.AllCores)]
+    [InlineData(CpuMaximumOccupancyModes.SingleCcd, CpuMaximumOccupancyModes.SingleCcd)]
+    public void CpuOccupancyDefaultsToUnboundedAndPreservesExplicitSingleCcd(string? value, string expected)
+    {
+        Assert.Equal(expected, CpuMaximumOccupancyModes.Normalize(value));
+        var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
+        { CpuMaximumOccupancyMode = value! };
+        var resolved = ResolvedGpuPlacementPolicy.FromSoftware(policy);
+        Assert.Equal(expected, resolved.CpuMaximumOccupancyMode);
+        Assert.Equal(expected == CpuMaximumOccupancyModes.SingleCcd, resolved.KeepCpuProcessesOnMainCcd);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MissingPersistedOccupancyUsesAllCoresWhileExplicitSingleCcdSurvives(bool explicitSingle)
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
+        { CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.SingleCcd };
+        var json = System.Text.Json.JsonSerializer.SerializeToNode(policy, options)!.AsObject();
+        if (!explicitSingle) json.Remove("cpuMaximumOccupancyMode");
+        var reloaded = System.Text.Json.JsonSerializer.Deserialize<GpuPlacementSoftwarePolicy>(json.ToJsonString(), options)!;
+        Assert.Equal(explicitSingle ? CpuMaximumOccupancyModes.SingleCcd : CpuMaximumOccupancyModes.AllCores,
+            reloaded.CpuMaximumOccupancyMode);
+    }
+
     [Fact]
     public void CreateSoftwarePolicy_DefaultsToAuto()
     {
@@ -20,10 +51,10 @@ public sealed class GpuPlacementPolicyResolverTests
         Assert.True(policy.RuntimeHotSwitchEnabled == true);
         Assert.Contains(GpuPlacementProviderIds.D3dDeviceCreateShim, policy.AllowedProviders);
         Assert.Equal(GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover, policy.PreferredRuntimeSwitchMethod);
-        Assert.True(policy.KeepCpuProcessesOnMainCcd == true);
+        Assert.False(policy.KeepCpuProcessesOnMainCcd == true);
         Assert.False(policy.GpuExclusive);
         Assert.False(policy.AbsolutePerformanceModeEnabled);
-        Assert.Equal(CpuMaximumOccupancyModes.SingleCcd, policy.CpuMaximumOccupancyMode);
+        Assert.Equal(CpuMaximumOccupancyModes.AllCores, policy.CpuMaximumOccupancyMode);
         Assert.False(policy.CpuExclusiveLocksAffinity);
     }
 
@@ -211,7 +242,8 @@ public sealed class GpuPlacementPolicyResolverTests
             RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
             RuntimeHotSwitchEnabled = false,
             PreferredRuntimeSwitchMethod = GpuPlacementRuntimeSwitchMethods.WindowRerender,
-            GpuExclusive = true
+            GpuExclusive = true,
+            CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.SingleCcd
         };
         var processPolicy = GpuPlacementPolicyDefaults.CreateProcessPolicy(
             "software-a",

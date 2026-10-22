@@ -13,6 +13,30 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task DefaultAllCoresDoesNotReadOrWriteAnExtraProcessCpuSelector()
+    {
+        const int pid = 42_430;
+        const ulong startKey = 133_900_000_000_000_030;
+        var topology = CreateAutomaticPlacementTopology();
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false,
+            processFactsSnapshot: CreateCompleteProcessFacts(
+                pid, startKey, "software:unbounded-default", 80, 50, 25),
+            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.CpuOnly,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+            cpuCoreReader: new RecordingCpuCoreResidencyReader(() => CpuCoreResidencyTestValues.Create(
+                95, DateTimeOffset.UtcNow, CpuCoreResidencyTestValues.Process(pid, startKey, ("core:0", 50)))),
+            cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology),
+            automaticPlacementTopology: topology);
+        fixture.ProcessPolicyWriter.PlacementReadHandler = (_, _) =>
+            throw new InvalidOperationException("The unbounded default must not build a new CPU selector.");
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -50,7 +74,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
             cpuTopology: topology,
             cpuScoring: cpuScoring,
-            automaticPlacementTopology: topology);
+            automaticPlacementTopology: topology,
+            singleCcdSoftwareIds: ["software:automatic-placement"]);
         var placementScope = ReadPrivateField<HostManagerProcessEffectValidationScopeAuthority>(
             fixture.Coordinator,
             "processEffectValidationScopeAuthorityOwner");
@@ -207,6 +232,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuTopology: topology,
             cpuScoring: cpuScoring,
             automaticPlacementTopology: topology,
+            singleCcdSoftwareIds: ["software:validation-job-candidate"],
             processEffectValidationScopeAuthority: validation.Authority);
         fixture.ProcessPolicyWriter.PlacementReadHandler = (actualProcessId, fields) =>
         {
@@ -277,6 +303,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuTopology: topology,
             cpuScoring: cpuScoring,
             automaticPlacementTopology: topology,
+            singleCcdSoftwareIds: ["software:existing-owned-placement"],
             processEffectValidationScopeAuthority: validation.Authority);
 
         // Establish the initialized coordinator before adding its existing owned receipt.
@@ -404,7 +431,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => residency),
             cpuTopology: topology,
             cpuScoring: cpuScoring,
-            automaticPlacementTopology: topology);
+            automaticPlacementTopology: topology,
+            singleCcdSoftwareIds: ["software:compiled-score-only"]);
         fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with
         {
             Version = checked(fixture.RuntimePlan.Version + 1),

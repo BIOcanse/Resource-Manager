@@ -10,6 +10,49 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
     [Fact]
+    public async Task NormalRestoresOwnedParentWithoutAdoptingAnUnownedChildsInheritedMemoryPriority()
+    {
+        const int parentId = 24_320, childId = 24_321;
+        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var startKey = checked((ulong)startedAt.ToFileTime());
+        const string software = "software:memory-inheritance-parent";
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true, scoreOnlyEnabled: false,
+            processFactsSnapshot: CreateCompleteProcessFacts(
+                (parentId, startKey, software, 35D, 1D, 25D),
+                (childId, startKey, software + ":child", 35D, 1D, 25D)),
+            processRecoveryRead: pid => RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
+                new(pid, startedAt)),
+            automaticMemoryCleanupEnabled: false,
+            optimizationMode: AppOptimizationModes.Normal);
+        _ = await fixture.SeedProcessOwnershipAsync(
+            parentId, startKey, software, memoryPolicy: true, actionId: 24_320);
+        // The child starts with an inherited value but has no product owner/baseline.
+        var states = new[] { parentId, childId }.ToDictionary(pid => pid,
+            pid => new ProcessResourcePolicySnapshot(pid, $"inheritance-{pid}",
+                $@"c:\tests\inheritance-{pid}.exe", startedAt, "Normal",
+                ProcessorAffinityMask: 1, LogicalProcessorCount: 1, MemoryPriority: 3));
+        fixture.ProcessPolicyWriter.ProcessReadHandler = pid => states[pid];
+        fixture.ProcessPolicyWriter.BatchHandler = requests =>
+        {
+            var request = Assert.Single(requests);
+            Assert.Equal(parentId, request.ProcessId);
+            Assert.Equal(5U, request.MemoryPriority);
+            Assert.False(request.TrimWorkingSet);
+            states[parentId] = states[parentId] with { MemoryPriority = request.MemoryPriority };
+            return [new ProcessResourcePolicyBatchWriteResult(parentId,
+                [new ProcessResourcePolicyBatchFieldResult(
+                    ProcessResourcePolicyBatchFields.MemoryPriority, true, "restored owned parent")])];
+        };
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(1, fixture.ProcessPolicyWriter.BatchCalls);
+        Assert.Equal(5U, states[parentId].MemoryPriority);
+        Assert.Equal(3U, states[childId].MemoryPriority);
+        Assert.Empty((await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
+            CancellationToken.None)).Records);
+    }
+
+    [Fact]
     public async Task UnavailableOwnedMemoryOwnerDoesNotStarveFreshPeersOrFollowingEffectRound()
     {
         const int ownerProcessId = 24_300;

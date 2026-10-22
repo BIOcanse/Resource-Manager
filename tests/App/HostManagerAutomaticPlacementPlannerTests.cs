@@ -11,6 +11,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerAutomaticPlacementPlannerTests
 {
     [Fact]
+    public void DefaultAllCoresAddsNoSelectorAndExplicitSingleCcdKeepsItsExistingSelection()
+    {
+        var policy = ResolvedGpuPlacementPolicy.FromSoftware(
+            GpuPlacementPolicyDefaults.CreateSoftwarePolicy("default", "Default"));
+        var process = CreateProcess("default", 10, 80, null, policy);
+        var unbounded = HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
+            [process], CreateCapacity(), cpuPlacementEnabled: true, gpuPlacementEnabled: false);
+        Assert.Empty(unbounded.Cpu);
+        var single = HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
+            [process with { Policy = policy with { CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.SingleCcd } }],
+            CreateCapacity(), cpuPlacementEnabled: true, gpuPlacementEnabled: false);
+        Assert.Equal("automatic-single-ccd", Assert.Single(single.Cpu).Source);
+    }
+
+    [Fact]
     public void PlacementPlanningOnlyProducesSelectedHardwareDomain()
     {
         var process = CreateProcess("renderer", 10, 40, 40, AutoPolicy());
