@@ -13,12 +13,17 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private static readonly HostManagerCycleEffectKind[] NewEffectOrder =
+    // Work order and effect permission are separate: policy and placement both
+    // require the original NativeActionTransaction permit, but neither may
+    // consume the other's opportunity indefinitely while its backlog remains.
+    private enum NewEffectStage { MemoryTransaction, NativePolicy, Placement, PublicResource, MemoryCleanup }
+    private static readonly NewEffectStage[] NewEffectOrder =
     [
-        HostManagerCycleEffectKind.NonAdaptedMemoryTransaction,
-        HostManagerCycleEffectKind.NativeActionTransaction,
-        HostManagerCycleEffectKind.PublicResourceLifecycle,
-        HostManagerCycleEffectKind.AutomaticMemoryCleanup
+        NewEffectStage.MemoryTransaction,
+        NewEffectStage.NativePolicy,
+        NewEffectStage.Placement,
+        NewEffectStage.PublicResource,
+        NewEffectStage.MemoryCleanup
     ];
     private int nextRealtimeNewEffectIndex;
 
@@ -393,9 +398,9 @@ public sealed partial class HostManagerSmartCoordinator
                     (firstEffectIndex + offset) % NewEffectOrder.Length];
                 switch (effectKind)
                 {
-                    case HostManagerCycleEffectKind.NonAdaptedMemoryTransaction:
+                    case NewEffectStage.MemoryTransaction:
                         var memoryTransactions = default(NonAdaptedMemoryTransactionBatchResult);
-                        if (effectAdmission.TryAcquire(effectKind, out var memoryTransactionPermit))
+                        if (effectAdmission.TryAcquire(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction, out var memoryTransactionPermit))
                         {
                             memoryTransactions = await ApplyNonAdaptedMemoryModeTransactionsAsync(
                                 memoryTransactionPermit,
@@ -424,7 +429,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 .ReadSnapshotAsync(cancellationToken);
                         }
                         break;
-                    case HostManagerCycleEffectKind.NativeActionTransaction:
+                    case NewEffectStage.NativePolicy:
                         if (!await RunNativePlanningAndActionsAsync(
                                 effectAdmission,
                                 processEffectValidationScope,
@@ -440,10 +445,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 sequence,
                                 trigger,
                                 cycleDiagnostics,
-                                cancellationToken,
-                                firstUse,
-                                placementStateAvailable,
-                                gpuControlAvailable))
+                                cancellationToken))
                         {
                             return new(TimeSpan.FromMilliseconds(
                                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
@@ -454,18 +456,36 @@ public sealed partial class HostManagerSmartCoordinator
                                 .ReadSnapshotAsync(cancellationToken);
                         }
                         break;
-                    case HostManagerCycleEffectKind.PublicResourceLifecycle:
-                    case HostManagerCycleEffectKind.AutomaticMemoryCleanup:
+                    case NewEffectStage.Placement:
+                        // A shared-journal recovery cannot be bypassed by moving
+                        // placement ahead of policy in this cycle's rotation.
+                        if (authoritativeAppliedFactsRequired || !placementStateAvailable)
+                        {
+                            cycleDiagnostics?.Mark("placement-ledger-busy");
+                            break;
+                        }
+                        var placementCompleted = await RunAutomaticPlacementCycleAsync(
+                            effectAdmission, processEffectValidationScope, desired, sample, computeScoring,
+                            cpuPlacementEnabled, gpuPlacementEnabled, cancellationToken, firstUse, gpuControlAvailable);
+                        if (!placementCompleted && !HasPendingGpuOwnerWork())
+                            return new(TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
+                        if (!placementCompleted) cycleDiagnostics?.Mark("gpu-placement-pending");
+                        break;
+                    case NewEffectStage.PublicResource:
+                    case NewEffectStage.MemoryCleanup:
+                        var externalEffectKind = effectKind == NewEffectStage.PublicResource
+                            ? HostManagerCycleEffectKind.PublicResourceLifecycle
+                            : HostManagerCycleEffectKind.AutomaticMemoryCleanup;
                         await HostManagerNativeExternalEffectDispatcher.RunAsync(
                             effectAdmission,
                             modePlan.AutomaticMemoryCleanupEnabled,
                             policyExecutionEnabled,
-                            effectKind,
+                            externalEffectKind,
                             externalCycle.Sink);
-                        cycleDiagnostics?.Mark(effectKind == HostManagerCycleEffectKind.PublicResourceLifecycle
+                        cycleDiagnostics?.Mark(effectKind == NewEffectStage.PublicResource
                             ? "public-resources"
                             : "memory-cleanup");
-                        if (effectKind == HostManagerCycleEffectKind.AutomaticMemoryCleanup
+                        if (effectKind == NewEffectStage.MemoryCleanup
                             && externalCycle.Sink.MemoryCleanupResult.HasUnresolvedCurrentEffects)
                         {
                             cycleDiagnostics?.Defer("memory-cleanup-unresolved-effects");
