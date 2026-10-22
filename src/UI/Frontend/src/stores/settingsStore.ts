@@ -47,10 +47,16 @@ import type {
   AppSettings,
   AppSystemIntegrationSettings,
   AppPalette,
+  AppResourceBarFrameRateMode,
   AppUiStyle,
   SettingsSection
 } from "../types";
 import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
+import {
+  normalizeResourceBarFrameRate,
+  normalizeResourceBarFrameRateMode,
+  resourceBarFrameRateDefault
+} from "../presentation/resourceBarFrameRate.ts";
 import { postShellMessage } from "../utils.ts";
 import { normalizeEditableHotkeys } from "../features/settings/editableHotkeys.ts";
 import { normalizeOptimizationModeValue } from "../features/settings/optimizationMode.ts";
@@ -110,6 +116,8 @@ export interface SettingsStore {
   updateTheme: (theme: AppPalette) => void;
   updateAnimations: (animations: AppAnimationMode) => void;
   updateResourceBarHardwareAccelerationMode: (mode: AppAdaptiveBooleanMode) => void;
+  updateResourceBarFrameRateMode: (mode: AppResourceBarFrameRateMode) => void;
+  updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
   updateByteUnitMode: (byteUnitMode: ByteUnitMode) => void;
   updateFontSmoothing: (fontSmoothing: AppFontSmoothing) => void;
@@ -459,6 +467,24 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         }
       }));
     },
+    updateResourceBarFrameRateMode: (mode) => {
+      updateDraft((currentSettings) => ({
+        ...currentSettings,
+        appearance: {
+          ...normalizeAppSettings(currentSettings).appearance!,
+          resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(mode)
+        }
+      }));
+    },
+    updateResourceBarFrameRate: (framesPerSecond) => {
+      updateDraft((currentSettings) => ({
+        ...currentSettings,
+        appearance: {
+          ...normalizeAppSettings(currentSettings).appearance!,
+          resourceBarFrameRate: normalizeResourceBarFrameRate(framesPerSecond)
+        }
+      }));
+    },
     updateBarColorMode: (barColorMode) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
@@ -608,6 +634,8 @@ export function defaultAppSettings(): AppSettings {
       animations: "auto",
       resourceBarHardwareAccelerationEnabled: true,
       resourceBarHardwareAccelerationMode: "auto",
+      resourceBarFrameRateMode: "display",
+      resourceBarFrameRate: resourceBarFrameRateDefault,
       barColorMode: "type",
       fontSmoothing: "auto",
       language: "system"
@@ -950,6 +978,8 @@ function normalizeAppearanceSettings(
       settings?.resourceBarHardwareAccelerationEnabled),
     resourceBarHardwareAccelerationMode: normalizeAdaptiveBooleanMode(
       settings?.resourceBarHardwareAccelerationMode),
+    resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(settings?.resourceBarFrameRateMode),
+    resourceBarFrameRate: normalizeResourceBarFrameRate(settings?.resourceBarFrameRate),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),
     byteUnitMode: normalizeByteUnitMode(settings?.byteUnitMode),
     fontSmoothing: normalizeFontSmoothing(settings?.fontSmoothing),

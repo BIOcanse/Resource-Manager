@@ -104,6 +104,13 @@ const zhCnSettingsCopy: SettingsCopy = {
       { id: "enabled", label: "始终开启", description: "资源条走硬件加速。" },
       { id: "disabled", label: "始终关闭", description: "资源条走兼容渲染。" }
     ],
+    resourceBarFrameRateTitle: "资源条动画帧率",
+    resourceBarFrameRateDescription: "资源条过渡动画每秒画几帧。跟随屏幕按显示器刷新率画；自定义可限制帧数以降低开销。只在正常动画下生效。",
+    resourceBarFrameRateModeOptions: [
+      { id: "display", label: "跟随屏幕", description: "每次屏幕刷新都画一帧。" },
+      { id: "custom", label: "自定义", description: "每秒最多画设定的帧数（10–240）。" }
+    ],
+    resourceBarFrameRateCustomLabel: "帧率 (FPS)",
     barColorTitle: "条形图配色",
     barColorDescription: "按软件类型使用固定颜色，或为每个软件分配不同颜色。",
     byteUnitTitle: "容量单位",
@@ -416,6 +423,13 @@ const enSettingsCopy: SettingsCopy = {
       { id: "enabled", label: "Always On", description: "Always use hardware acceleration for resource bars." },
       { id: "disabled", label: "Always Off", description: "Always use compatibility rendering for resource bars." }
     ],
+    resourceBarFrameRateTitle: "Resource Bar Frame Rate",
+    resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Applies only with Normal motion.",
+    resourceBarFrameRateModeOptions: [
+      { id: "display", label: "Follow display", description: "Draw a frame on every screen refresh." },
+      { id: "custom", label: "Custom", description: "Draw at most the set number of frames per second (10–240)." }
+    ],
+    resourceBarFrameRateCustomLabel: "Frame rate (FPS)",
     barColorTitle: "Bar Colours",
     barColorDescription: "Use fixed colours by software type or assign a different colour to each software item.",
     byteUnitTitle: "Capacity Units",

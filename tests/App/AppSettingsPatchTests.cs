@@ -45,6 +45,33 @@ public sealed class AppSettingsPatchTests
         Assert.Equal(("terminal", "phosphor"), (terminal.Appearance.UiStyle, terminal.Appearance.Theme));
     }
 
+    [Fact]
+    public void Apply_RoundTripsTheResourceBarFrameRateAndClampsIt()
+    {
+        var current = AppSettingsDefaults.Create();
+        using var custom = JsonDocument.Parse(
+            """{"appearance":{"resourceBarFrameRateMode":"custom","resourceBarFrameRate":90}}""");
+        using var tooHigh = JsonDocument.Parse("""{"appearance":{"resourceBarFrameRate":500}}""");
+        using var display = JsonDocument.Parse("""{"appearance":{"resourceBarFrameRateMode":"display"}}""");
+
+        var patched = AppSettingsPatchApplier.Apply(current, custom.RootElement);
+        var clamped = AppSettingsPatchApplier.Apply(patched, tooHigh.RootElement);
+        var following = AppSettingsPatchApplier.Apply(clamped, display.RootElement);
+        var persisted = JsonSerializer.SerializeToElement(patched, JsonSerializerOptions.Web)
+            .GetProperty("appearance");
+
+        Assert.Equal(
+            (AppResourceBarFrameRateModes.Custom, 90),
+            (patched.Appearance.ResourceBarFrameRateMode, patched.Appearance.ResourceBarFrameRate));
+        Assert.Equal("custom", persisted.GetProperty("resourceBarFrameRateMode").GetString());
+        Assert.Equal(90, persisted.GetProperty("resourceBarFrameRate").GetInt32());
+        Assert.Equal(240, clamped.Appearance.ResourceBarFrameRate);
+        Assert.Equal(
+            (AppResourceBarFrameRateModes.Display, 240),
+            (following.Appearance.ResourceBarFrameRateMode, following.Appearance.ResourceBarFrameRate));
+        Assert.Equal(current.Appearance.Theme, following.Appearance.Theme);
+    }
+
     [Theory]
     [InlineData("{\"version\":\"0.0.0\"}")]
     [InlineData("{\"appearance\":{\"unknownField\":true}}")]

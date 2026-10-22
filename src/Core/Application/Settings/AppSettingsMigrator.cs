@@ -101,6 +101,8 @@ public static class AppSettingsMigrator
                 ReadString(root, "appearance", "animations", defaults.Appearance.Animations),
                 ReadBoolean(root, "appearance", "resourceBarHardwareAccelerationEnabled", defaults.Appearance.ResourceBarHardwareAccelerationEnabled),
                 ReadString(root, "appearance", "resourceBarHardwareAccelerationMode", defaults.Appearance.ResourceBarHardwareAccelerationMode),
+                ReadString(root, "appearance", "resourceBarFrameRateMode", defaults.Appearance.ResourceBarFrameRateMode),
+                ReadInt32(root, "appearance", "resourceBarFrameRate", defaults.Appearance.ResourceBarFrameRate),
                 ReadString(root, "appearance", "barColorMode", defaults.Appearance.BarColorMode),
                 ReadString(root, "appearance", "fontSmoothing", defaults.Appearance.FontSmoothing),
                 ReadString(root, "appearance", "language", defaults.Appearance.Language),
@@ -140,6 +142,8 @@ public static class AppSettingsMigrator
             || !appearance.TryGetProperty("animations", out _)
             || !appearance.TryGetProperty("resourceBarHardwareAccelerationEnabled", out _)
             || !appearance.TryGetProperty("resourceBarHardwareAccelerationMode", out var resourceBarHardwareAccelerationMode)
+            || !appearance.TryGetProperty("resourceBarFrameRateMode", out _)
+            || !appearance.TryGetProperty("resourceBarFrameRate", out _)
             || !appearance.TryGetProperty("barColorMode", out _)
             || !appearance.TryGetProperty("fontSmoothing", out _)
             || !appearance.TryGetProperty("language", out var language)

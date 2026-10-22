@@ -473,6 +473,59 @@ public sealed class AppSettingsMigratorTests
         Assert.Equal(expectedTheme, appearance.Theme);
     }
 
+    [Fact]
+    public void Defaults_FollowTheDisplayWithSixtyFramesForCustom()
+    {
+        var appearance = AppSettingsDefaults.Create().Appearance;
+
+        Assert.Equal(AppResourceBarFrameRateModes.Display, appearance.ResourceBarFrameRateMode);
+        Assert.Equal(60, appearance.ResourceBarFrameRate);
+    }
+
+    [Theory]
+    [InlineData("resourceBarFrameRateMode")]
+    [InlineData("resourceBarFrameRate")]
+    public void RequiresRewrite_AddsMissingResourceBarFrameRateToCurrentShape(string field)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["appearance"]!.AsObject().Remove(field);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
+
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        Assert.Equal(AppResourceBarFrameRateModes.Display, appearance.ResourceBarFrameRateMode);
+        Assert.Equal(60, appearance.ResourceBarFrameRate);
+    }
+
+    [Theory]
+    [InlineData("\"custom\"", "144", AppResourceBarFrameRateModes.Custom, 144)]
+    [InlineData("\"custom\"", "10", AppResourceBarFrameRateModes.Custom, 10)]
+    [InlineData("\"custom\"", "240", AppResourceBarFrameRateModes.Custom, 240)]
+    [InlineData("\"custom\"", "5", AppResourceBarFrameRateModes.Custom, 10)]
+    [InlineData("\"custom\"", "1000", AppResourceBarFrameRateModes.Custom, 240)]
+    [InlineData("\"custom\"", "59.5", AppResourceBarFrameRateModes.Custom, 60)]
+    [InlineData("\"custom\"", "\"90\"", AppResourceBarFrameRateModes.Custom, 60)]
+    [InlineData("\"display\"", "30", AppResourceBarFrameRateModes.Display, 30)]
+    [InlineData("\"unknown\"", "30", AppResourceBarFrameRateModes.Display, 30)]
+    [InlineData("7", "30", AppResourceBarFrameRateModes.Display, 30)]
+    public void MigrateForRead_NormalizesTheResourceBarFrameRate(
+        string modeJson,
+        string frameRateJson,
+        string expectedMode,
+        int expectedFrameRate)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["appearance"]!["resourceBarFrameRateMode"] = JsonNode.Parse(modeJson);
+        root["appearance"]!["resourceBarFrameRate"] = JsonNode.Parse(frameRateJson);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+
+        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
+
+        Assert.Equal(expectedMode, appearance.ResourceBarFrameRateMode);
+        Assert.Equal(expectedFrameRate, appearance.ResourceBarFrameRate);
+    }
+
     private const string CurrentShapeJson =
         """
         {
@@ -501,6 +554,8 @@ public sealed class AppSettingsMigratorTests
             "animations": "auto",
             "resourceBarHardwareAccelerationEnabled": true,
             "resourceBarHardwareAccelerationMode": "auto",
+            "resourceBarFrameRateMode": "display",
+            "resourceBarFrameRate": 60,
             "barColorMode": "type",
             "fontSmoothing": "system",
             "language": "system"

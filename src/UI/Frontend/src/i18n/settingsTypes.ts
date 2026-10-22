@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -105,6 +105,10 @@ export interface SettingsCopy {
     resourceBarHardwareAccelerationTitle: string;
     resourceBarHardwareAccelerationDescription: string;
     resourceBarHardwareAccelerationModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description: string }>;
+    resourceBarFrameRateTitle: string;
+    resourceBarFrameRateDescription: string;
+    resourceBarFrameRateModeOptions: Array<{ id: AppResourceBarFrameRateMode; label: string; description: string }>;
+    resourceBarFrameRateCustomLabel: string;
     barColorTitle: string;
     barColorDescription: string;
     byteUnitTitle: string;

@@ -232,6 +232,21 @@ export default createSettingsLocale("de-DE", {
         "description": "Für Ressourcenleisten immer Kompatibilitätsdarstellung verwenden."
       }
     ],
+    "resourceBarFrameRateTitle": "Bildrate der Ressourcenleisten",
+    "resourceBarFrameRateDescription": "Wie viele Bilder pro Sekunde die Übergänge der Ressourcenleisten zeichnen. Bildschirm folgen nutzt die Bildwiederholrate des Monitors; Benutzerdefiniert begrenzt die Bilder und senkt die Last. Gilt nur bei normalen Animationen.",
+    "resourceBarFrameRateModeOptions": [
+      {
+        "id": "display",
+        "label": "Bildschirm folgen",
+        "description": "Bei jeder Bildschirmaktualisierung ein Bild zeichnen."
+      },
+      {
+        "id": "custom",
+        "label": "Benutzerdefiniert",
+        "description": "Höchstens die eingestellte Anzahl Bilder pro Sekunde zeichnen (10–240)."
+      }
+    ],
+    "resourceBarFrameRateCustomLabel": "Bildrate (FPS)",
     "barColorTitle": "Leistenfarben",
     "barColorDescription": "Feste Farben je Softwaretyp oder eine eigene Farbe pro Software verwenden.",
     "byteUnitTitle": "Kapazitätseinheiten",

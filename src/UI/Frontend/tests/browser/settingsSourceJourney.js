@@ -166,10 +166,21 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     assert(await autoStart.isChecked() === enabled, `Autostart ${enabled} did not survive reload`);
   }
   await page.getByRole("button", { name: "外观", exact: true }).click();
-  for (const name of ["动画效果", "资源条硬件加速", "文字平滑"]) {
+  for (const name of ["动画效果", "资源条硬件加速", "资源条动画帧率", "文字平滑"]) {
     assert(await page.getByRole("radiogroup", { name }).isVisible(),
       `${name} has a persisted setting but no usable control`);
   }
+  // 帧率输入只在自定义时出现；跟随屏幕是默认值。
+  assert(await page.evaluate(() => document.body.dataset.resourceBarFrameRate) === "display",
+    "Resource bars do not follow the display by default");
+  const frameRateInput = page.getByRole("textbox", { name: "资源条动画帧率 帧率 (FPS)" });
+  assert(await frameRateInput.count() === 0, "The frame-rate input is visible while following the display");
+  await page.getByRole("radiogroup", { name: "资源条动画帧率" })
+    .getByRole("radio", { name: "自定义" }).click();
+  await frameRateInput.waitFor({ state: "visible" });
+  assert(await frameRateInput.inputValue() === "60", "Custom frame rate does not start from the saved default");
+  await frameRateInput.fill("90");
+  await frameRateInput.press("Enter");
   await page.getByRole("radiogroup", { name: "动画效果" })
     .getByRole("radio", { name: "无动画" }).click();
   await page.getByRole("radiogroup", { name: "资源条硬件加速" })
@@ -183,8 +194,12 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
   const appearancePatch = settingsPatchBodies.at(-1)?.changes?.appearance;
   assert(appearancePatch?.animations === "none"
     && appearancePatch?.resourceBarHardwareAccelerationMode === "disabled"
+    && appearancePatch?.resourceBarFrameRateMode === "custom"
+    && appearancePatch?.resourceBarFrameRate === 90
     && appearancePatch?.fontSmoothing === "grayscale",
     `Restored appearance controls did not save their values: ${JSON.stringify(appearancePatch)}`);
+  // 保存后资源条画布读到的生效帧率随之变成 90。
+  await page.waitForFunction(() => document.body.dataset.resourceBarFrameRate === "90");
   await page.getByRole("button", { name: "性能", exact: true }).click();
   assert(await page.getByText("自动调度性能优化", { exact: true }).count() === 0
     && await page.getByText("单显卡启动拦截", { exact: true }).count() === 0,

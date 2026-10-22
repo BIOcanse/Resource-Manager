@@ -16,6 +16,7 @@ import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
 import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
 import { normalizeUiAppearance } from "./presentation/uiStyles";
+import { resolveResourceBarFrameRate } from "./presentation/resourceBarFrameRate.ts";
 import { createManagementStore } from "./stores/managementStore";
 import { createMonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
@@ -242,6 +243,10 @@ export default function App() {
 
   createEffect(() => {
     document.body.dataset.barColor = normalizeBarColorMode(settings.settings().appearance?.barColorMode);
+  });
+
+  createEffect(() => {
+    document.body.dataset.resourceBarFrameRate = String(resolveResourceBarFrameRate(settings.settings().appearance));
   });
 
   createEffect(() => {

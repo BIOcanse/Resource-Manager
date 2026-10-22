@@ -114,6 +114,8 @@ const defaultAppSettings = {
     uiStyle: scenario.settingsUiStyle,
     theme: scenario.settingsTheme,
     animations: scenario.animations,
+    resourceBarFrameRateMode: "display",
+    resourceBarFrameRate: 60,
     language: "zh-CN"
   },
   debug: {

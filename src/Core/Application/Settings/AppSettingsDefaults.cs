@@ -24,6 +24,9 @@ public static class AppSettingsDefaults
     public const byte VirtualMemoryOptimizationTargetUsagePercent = 70;
     public const byte MinAdaptedResourceDangerPercent = 0;
     public const byte MaxAdaptedResourceDangerPercent = 95;
+    public const int ResourceBarFrameRate = 60;
+    public const int MinResourceBarFrameRate = 10;
+    public const int MaxResourceBarFrameRate = 240;
 
     public static AppSettings Create()
     {
@@ -69,6 +72,8 @@ public static class AppSettingsDefaults
                 AppAnimationModes.Auto,
                 true,
                 AppAdaptiveBooleanModes.Auto,
+                AppResourceBarFrameRateModes.Display,
+                ResourceBarFrameRate,
                 AppBarColorModes.Type,
                 AppFontSmoothingModes.Auto,
                 AppLanguageModes.System,
