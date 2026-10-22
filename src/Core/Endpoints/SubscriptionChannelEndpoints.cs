@@ -333,7 +333,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             await foreach (var snapshot in source.SubscribeAsync($"frontend-channel:{subscription.Id}",
                 MetricSampleRequest.CatalogProbe, interval, cancellationToken))
-                await writer.WriteAsync(subscription.Id, MetricDeviceFields.Catalog(snapshot), cancellationToken);
+                await writer.WriteAsync(subscription.Id, ReadMetricFieldCatalog(snapshot, services), cancellationToken);
         });
     }
 
@@ -342,8 +342,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         IServiceProvider services,
         TimeSpan interval)
     {
-        var device = subscription.Query["device"].ToString();
         var useFields = subscription.Query.ContainsKey("device") || subscription.Query.ContainsKey("fields");
+        var device = useFields ? ParseMetricFieldDevice(subscription.Query) : null;
         var fields = ParseMetricFieldNames(subscription.Query);
         var snapshotRequest = useFields
             ? MetricDeviceFields.CreateRequest(services.GetRequiredService<DashboardMonitoringCatalogState>().Current, device, fields)
@@ -353,6 +353,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var source = services.GetRequiredService<IMetricSnapshotPushSource>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
+            if (useFields && snapshotRequest.IsEmpty)
+            {
+                await writer.WriteAsync(subscription.Id, Array.Empty<DeviceMetricFieldSnapshot>(), cancellationToken);
+                return;
+            }
             await foreach (var snapshot in source.SubscribeAsync(
                 $"frontend-channel:{subscription.Id}",
                 snapshotRequest,
@@ -363,7 +368,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 await writer.WriteAsync(
                     subscription.Id,
                     useFields
-                        ? (object)MetricDeviceFields.Read(snapshot, device, fields)
+                        ? (object)ReadMetricFields(snapshot, device, fields, services)
                         : MetricSnapshotWireSnapshot.From(presentation, snapshotRequest),
                     cancellationToken);
             }

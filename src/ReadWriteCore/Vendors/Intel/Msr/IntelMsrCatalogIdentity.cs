@@ -18,7 +18,12 @@ public sealed record IntelMsrCatalogIdentity(int DisplayIndex, string ExactIdent
     public ushort? IntelProcessorBaseFrequencyDeclaredMhz { get; init; }
     public IntelRaplProfile RaplProfile { get; init; }
     public IntelThermalStatusCapabilities ThermalStatusCapabilities { get; init; }
-    public string BindingKey => $"{ExactIdentityKey}|{Processor.ProcessorGroup}:{Processor.GroupRelativeIndex}|{Signature}|{X2ApicId}|{Kind}|{SupportsDts}|{SupportsTemperatureTarget}|{SupportsPerformanceFeedback}|{IntelProcessorBaseFrequencyDeclaredMhz}|{(int)RaplProfile.Domains}|{(int)RaplProfile.PowerInformationDomains}|{RaplProfile.DramPowerUsesRaplUnits}|{RaplProfile.FixedDramUnitJoules?.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}|{(int)ThermalStatusCapabilities}";
+    public string? CoreId { get; init; }
+    public string? PackageId { get; init; }
+    public string? DieId { get; init; }
+    public string? NameDeclared { get; init; }
+    public IReadOnlyList<CpuProcessorAddress> ProcessorAddresses { get; init; } = [];
+    public string BindingKey => $"{ExactIdentityKey}|{Processor.ProcessorGroup}:{Processor.GroupRelativeIndex}|{Signature}|{X2ApicId}|{Kind}|{SupportsDts}|{SupportsTemperatureTarget}|{SupportsPerformanceFeedback}|{IntelProcessorBaseFrequencyDeclaredMhz}|{(int)RaplProfile.Domains}|{(int)RaplProfile.PowerInformationDomains}|{RaplProfile.DramPowerUsesRaplUnits}|{RaplProfile.FixedDramUnitJoules?.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}|{(int)ThermalStatusCapabilities}|core:{CoreId}|package:{PackageId}|die:{DieId}|members:{string.Join(',', ProcessorAddresses.Select(static address => $"{address.ProcessorGroup}:{address.GroupRelativeIndex}"))}";
 
     public bool AppliesTo(MetricFieldCode code) => IntelThermalStatusCatalog.Find(code) is { } status
         ? (IsCore || IsPackage) && status.IsPackage == IsPackage && (ThermalStatusCapabilities & status.Capability) != 0

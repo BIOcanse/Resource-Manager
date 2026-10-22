@@ -187,9 +187,15 @@ public sealed partial class WindowsHardwareMetricResources
 
         static NativeMetricSnapshotOrdinalCatalogIdentity Ordinal(StorageOwnerIdentity identity, ulong generation)
             => new(identity.DisplayIndex, identity.ExactIdentityKey, generation)
-            { SupportsNvmeHealth = identity.SupportsNvmeHealth, SupportsAtaSmart = identity.SupportsAtaSmart };
+            {
+                SupportsNvmeHealth = identity.SupportsNvmeHealth,
+                SupportsAtaSmart = identity.SupportsAtaSmart,
+                Device = new("storage", MetricDeviceAddress.StorageDevice(identity.DisplayIndex,
+                    identity.UniqueId, identity.SerialNumber), Clean(identity.NameDeclared), identity.DisplayIndex)
+            };
         static StorageSensorSnapshot Project(StorageOwnerSensorSnapshot snapshot)
             => new(snapshot.ProviderState, snapshot.Disks)
             { Identities = snapshot.Identities?.Select(identity => Ordinal(identity, 0)).ToArray() };
+        static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

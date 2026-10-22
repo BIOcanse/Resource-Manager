@@ -198,6 +198,12 @@ internal static class DashboardSettingsBindingResolver
         IReadOnlyDictionary<string, int> gpuIndexesByIdentity,
         IReadOnlyDictionary<int, string> gpuIdentitiesByIndex)
     {
+        if (binding is not null
+            && string.Equals(binding.ScopeKind, "device-field", StringComparison.OrdinalIgnoreCase))
+        {
+            return new ResolvedSlot(metricId, binding);
+        }
+
         if (!TryParseGpuMetric(metricId, out var currentIndex, out var suffix))
         {
             return new ResolvedSlot(metricId, null);

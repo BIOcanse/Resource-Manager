@@ -57,7 +57,7 @@ public sealed partial class WindowsStorageOwner
     public StorageIdentityRead ReadIdentities()
     {
         var result = query(@"root\Microsoft\Windows\Storage",
-            "SELECT DeviceId, UniqueId, SerialNumber, BusType FROM MSFT_PhysicalDisk");
+            "SELECT DeviceId, FriendlyName, UniqueId, SerialNumber, BusType FROM MSFT_PhysicalDisk");
         return new(result.Error, result.Error is null ? ProjectIdentities(result.Rows) : []);
     }
 
@@ -67,6 +67,9 @@ public sealed partial class WindowsStorageOwner
         var declared = rows.Select(row => new
             {
                 Index = ParseInt(row.GetValueOrDefault("DeviceId")),
+                UniqueId = ReadString(row, "UniqueId"),
+                SerialNumber = ReadString(row, "SerialNumber"),
+                Name = ReadString(row, "FriendlyName"),
                 Identity = WindowsStorageDeviceIdentity.Create(ReadString(row, "UniqueId"), ReadString(row, "SerialNumber")),
                 Nvme = ParseInt(row.GetValueOrDefault("BusType")) == 17,
                 Ata = WindowsAtaSmartReader.IsAtaBus(ParseInt(row.GetValueOrDefault("BusType")))
@@ -77,7 +80,13 @@ public sealed partial class WindowsStorageOwner
             .Where(static group => group.Count() == 1).Select(static group => group.Key).ToHashSet();
         return declared.Where(row => row.Index is { } index && indexes.Contains(index) && identities.Contains(row.Identity))
             .Select(row => new StorageOwnerIdentity(row.Index!.Value, row.Identity)
-                { SupportsNvmeHealth = row.Nvme, SupportsAtaSmart = row.Ata })
+            {
+                UniqueId = row.UniqueId,
+                SerialNumber = row.SerialNumber,
+                NameDeclared = row.Name,
+                SupportsNvmeHealth = row.Nvme,
+                SupportsAtaSmart = row.Ata
+            })
             .OrderBy(static row => row.DisplayIndex).ToArray();
     }
 

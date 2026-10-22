@@ -18,13 +18,17 @@ public readonly record struct NativeMetricSnapshotGpuCatalogIdentity(
     ulong AdapterLuid,
     ulong InventoryGeneration,
     uint VendorMask,
-    bool SupportsDedicatedMetrics);
+    bool SupportsDedicatedMetrics)
+{
+    public IReadOnlyList<string> PhysicalPnpInstanceIds { get; init; } = [];
+}
 
 public readonly record struct NativeMetricSnapshotOrdinalCatalogIdentity(
     int DisplayIndex,
     string ExactIdentityKey,
     ulong TopologyGeneration)
 {
+    public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
     public bool SupportsNvmeHealth { get; init; }
     public bool SupportsAtaSmart { get; init; }
     public NotebookOemPhysicalFanRole? NotebookOemRole { get; init; }
@@ -39,7 +43,10 @@ public readonly record struct NativeMetricSnapshotGpuScopeBinding(
     ulong AdapterLuid,
     ulong InventoryGeneration,
     string ExactIdentityKey,
-    bool SupportsDedicatedMetrics);
+    bool SupportsDedicatedMetrics)
+{
+    public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
+}
 
 public readonly record struct NativeMetricSnapshotRuleCatalogBinding(
     ulong RuleHandle,
@@ -63,6 +70,7 @@ public readonly record struct NativeMetricSnapshotRuleCatalogBinding(
     public NvidiaNvmlFanIdentity? NvmlFan { get; init; }
     public IntelGclFanIdentity? IgclFan { get; init; }
     public NpuEngineCatalogIdentity? NpuEngine { get; init; }
+    public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
 }
 
 public sealed record NativeMetricSnapshotCatalogProjection(
@@ -213,8 +221,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 NativeMetricSnapshotCatalogHandleKind.Scope,
                 $"fan|{identity.ExactIdentityKey}");
         }
-        var resolvedGpuAdapters = gpuAdapters
-            .Select(adapter => new ResolvedGpuIdentity(
+        var resolvedGpuAdapters = gpuAdapters.OrderBy(static adapter => adapter.DisplayIndex)
+            .Select((adapter, ordinal) => new ResolvedGpuIdentity(
                 adapter.DisplayIndex,
                 adapter.DisplayName,
                 allocator.GetOrAdd(
@@ -224,45 +232,69 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 adapter.AdapterLuid,
                 adapter.InventoryGeneration,
                 adapter.VendorMask,
-                adapter.SupportsDedicatedMetrics))
+                adapter.SupportsDedicatedMetrics,
+                new MetricDeviceDescriptor("gpu_adapter",
+                    MetricDeviceAddress.GpuAdapter(adapter.AdapterLuid, adapter.PhysicalPnpInstanceIds),
+                    CleanDisplayName(adapter.DisplayName), ordinal)))
             .ToArray();
-        var resolvedStorageSensors = storageSensors
-            .Select(identity => ResolveOrdinalIdentity(
+        var resolvedStorageSensors = storageSensors.OrderBy(static identity => identity.DisplayIndex)
+            .Select((identity, ordinal) => ResolveOrdinalIdentity(
                 allocator,
                 identity,
-                "storage"))
+                "storage",
+                ordinal))
             .ToArray();
-        var resolvedSystemFans = systemFans
-            .Select(identity => ResolveOrdinalIdentity(
+        var resolvedSystemFans = systemFans.OrderBy(static identity => identity.DisplayIndex)
+            .Select((identity, ordinal) => ResolveOrdinalIdentity(
                 allocator,
                 identity,
-                "fan"))
+                "fan",
+                ordinal))
             .ToArray();
 
-        var resolvedBatteries = batteries.OrderBy(static battery => battery.ExactIdentityKey, StringComparer.Ordinal)
-            .Select(battery => new ResolvedBatteryIdentity(battery.DisplayIndex,
+        var resolvedBatteries = batteries.OrderBy(static battery => battery.DisplayIndex)
+            .Select((battery, ordinal) => new ResolvedBatteryIdentity(battery.DisplayIndex,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"battery|{battery.ExactIdentityKey}"),
-                battery.ExactIdentityKey, battery.Information.IsRelative)).ToArray();
+                battery.ExactIdentityKey, battery.Information.IsRelative,
+                new MetricDeviceDescriptor("battery", MetricDeviceAddress.Battery(battery.DevicePath, battery.UniqueId), null,
+                    ordinal))).ToArray();
         var resolvedNumaNodes = numaNodes.OrderBy(static node => node.NodeNumber)
-            .Select(node => new ResolvedNumaIdentity(node.NodeNumber,
+            .Select((node, ordinal) => new ResolvedNumaIdentity(node.NodeNumber,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"numa|{node.ExactIdentityKey}"),
-                node.ExactIdentityKey)).ToArray();
-        var resolvedIntelCpus = intelCpus.OrderBy(static cpu => cpu.ExactIdentityKey, StringComparer.Ordinal)
+                node.ExactIdentityKey, node.NodeNumber,
+                new MetricDeviceDescriptor("numa_node", MetricDeviceAddress.NumaNode(node.NodeNumber), null,
+                    ordinal))).ToArray();
+        var intelOrdinals = intelCpus.GroupBy(static cpu => cpu.Kind)
+            .SelectMany(group => group.OrderBy(static cpu => cpu.DisplayIndex)
+                .ThenBy(static cpu => cpu.ExactIdentityKey, StringComparer.Ordinal)
+                .Select((cpu, ordinal) => (cpu.ExactIdentityKey, Ordinal: ordinal)))
+            .ToDictionary(static row => row.ExactIdentityKey, static row => row.Ordinal, StringComparer.Ordinal);
+        var resolvedIntelCpus = intelCpus.OrderBy(static cpu => cpu.Kind)
+            .ThenBy(static cpu => cpu.DisplayIndex)
+            .ThenBy(static cpu => cpu.ExactIdentityKey, StringComparer.Ordinal)
             .Select(cpu => new ResolvedIntelCpuIdentity(cpu.DisplayIndex,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"intel-cpu|{cpu.ExactIdentityKey}"),
-                cpu.ExactIdentityKey, cpu)).ToArray();
-        var resolvedNetworkInterfaces = networkInterfaces.OrderBy(static row => row.ExactIdentityKey, StringComparer.Ordinal)
-            .Select(row => new ResolvedNetworkInterfaceIdentity(row.DisplayIndex,
+                cpu.ExactIdentityKey, cpu, CreateIntelDevice(cpu, intelOrdinals[cpu.ExactIdentityKey]))).ToArray();
+        var resolvedNetworkInterfaces = networkInterfaces.OrderBy(static row => row.DisplayIndex)
+            .Select((row, ordinal) => new ResolvedNetworkInterfaceIdentity(row.DisplayIndex,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"network-interface|{row.ExactIdentityKey}"),
-                row.ExactIdentityKey, row.BindingKey)).ToArray();
+                row.ExactIdentityKey, row.BindingKey,
+                new MetricDeviceDescriptor("network_interface",
+                    MetricDeviceAddress.NetworkInterface(row.Guid, row.Luid, row.Index), null,
+                    ordinal))).ToArray();
         var resolvedNpus = npuMemoryIdentities.OrderBy(static row => row.ExactIdentityKey, StringComparer.Ordinal)
             .Select((row, index) => new ResolvedNpuIdentity(index,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"npu|{row.ExactIdentityKey}"),
-                row.ExactIdentityKey)).ToArray();
+                row.ExactIdentityKey, row.PnpInstanceId,
+                new MetricDeviceDescriptor("npu", MetricDeviceAddress.Npu(row.PnpInstanceId),
+                    CleanDisplayName(row.NameDeclared), index))).ToArray();
         var resolvedNpuEngines = npuEngineIdentities.OrderBy(static row => row.ExactIdentityKey, StringComparer.Ordinal)
             .Select((row, index) => new ResolvedNpuEngineIdentity(index,
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"npu-engine|{row.ExactIdentityKey}"),
-                row.ExactIdentityKey, row)).ToArray();
+                row.ExactIdentityKey, row, row.PnpInstanceId,
+                new MetricDeviceDescriptor("npu_engine",
+                    MetricDeviceAddress.NpuEngine(row.PnpInstanceId, row.PhysicalAdapterIndex, row.EngineIndex),
+                    CleanDisplayName(row.NameDeclared), index))).ToArray();
         var sources = plan.SourcePolicies
             .OrderBy(static policy => policy.SourceHandle)
             .Select(static policy => new NativeMetricSnapshotSourcePolicyInput
@@ -389,7 +421,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                     DeviceIdentity = rule.DeviceIdentity,
                     DisplayIndex = rule.DisplayIndex,
                     LegacyMetricId = rule.LegacyMetricId,
-                    NvmlFan = rule.NvmlFan, IgclFan = rule.IgclFan, NpuEngine = rule.NpuEngine
+                    NvmlFan = rule.NvmlFan, IgclFan = rule.IgclFan, NpuEngine = rule.NpuEngine,
+                    Device = rule.Device
                 });
             rules.Add(new NativeMetricSnapshotMetricDefinitionInput
             {
@@ -427,17 +460,17 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 sourceRows,
                 ruleRows);
         var activeTopologyKeys = resolvedGpuAdapters
-            .Select(static identity => $"gpu|{identity.ExactIdentityKey}")
+            .Select(static identity => $"gpu|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}")
             .Concat(resolvedStorageSensors.Select(
-                static identity => $"storage|{identity.ExactIdentityKey}"))
+                static identity => $"storage|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
             .Concat(resolvedSystemFans.Select(
-                static identity => $"fan|{identity.ExactIdentityKey}"))
-            .Concat(resolvedBatteries.Select(static identity => $"battery|{identity.ExactIdentityKey}"))
-            .Concat(resolvedNumaNodes.Select(static identity => $"numa|{identity.ExactIdentityKey}"))
-            .Concat(resolvedNpuEngines.Select(static identity => $"npu-engine|{identity.Engine.BindingKey}"))
-            .Concat(resolvedNpus.Select(static identity => $"npu|{identity.ExactIdentityKey}"))
-            .Concat(resolvedNetworkInterfaces.Select(static identity => $"network-interface|{identity.BindingKey}"))
-            .Concat(resolvedIntelCpus.Select(static identity => $"intel-cpu|{identity.Cpu.BindingKey}"))
+                static identity => $"fan|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedBatteries.Select(static identity => $"battery|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedNumaNodes.Select(static identity => $"numa|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedNpuEngines.Select(static identity => $"npu-engine|{identity.Engine.BindingKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedNpus.Select(static identity => $"npu|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedNetworkInterfaces.Select(static identity => $"network-interface|{identity.BindingKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedIntelCpus.Select(static identity => $"intel-cpu|{identity.Cpu.BindingKey}|{DeviceFingerprint(identity.Device)}"))
             .Concat(allocated.Where(static row => row.Rule.LegacyMetricId.Length != 0)
                 .GroupBy(static row => row.Rule.LegacyMetricId, StringComparer.Ordinal)
                 .Select(static group => group.OrderBy(static row => row.Rule.Template.SourcePriority)
@@ -461,7 +494,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 identity.AdapterLuid,
                 identity.InventoryGeneration,
                 identity.ExactIdentityKey,
-                identity.SupportsDedicatedMetrics));
+                identity.SupportsDedicatedMetrics)
+            { Device = identity.Device });
         return new NativeMetricSnapshotCatalogProjection(
             sources,
             rules.MoveToImmutable(),
@@ -575,7 +609,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         NativeMetricSnapshotRuleTemplate template,
         ulong scopeHandle,
         string exactScopeKey)
-        => CreateExpanded(template, scopeHandle, exactScopeKey, -1, template.MetricIdTemplate);
+        => CreateExpanded(template, scopeHandle, exactScopeKey, -1, template.MetricIdTemplate) with
+        { Device = CreateStaticDevice(template.ScopeExpansion) };
 
     private static ExpandedRule CreateIndexed(
         NativeMetricSnapshotRuleTemplate template,
@@ -637,13 +672,20 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             placeholder,
             identity.DisplayIndex,
             identity.ScopeHandle,
-            identity.ExactIdentityKey) with { NvmlFan = identity is ResolvedOrdinalIdentity ordinal ? ordinal.NvmlFan : null, IgclFan = identity is ResolvedOrdinalIdentity intelOrdinal ? intelOrdinal.IgclFan : null, NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null });
+            identity.ExactIdentityKey) with
+        {
+            Device = identity.Device,
+            NvmlFan = identity is ResolvedOrdinalIdentity ordinal ? ordinal.NvmlFan : null,
+            IgclFan = identity is ResolvedOrdinalIdentity intelOrdinal ? intelOrdinal.IgclFan : null,
+            NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null
+        });
     }
 
     private static ResolvedOrdinalIdentity ResolveOrdinalIdentity(
         NativeMetricSnapshotCatalogHandleMap.Allocator allocator,
         NativeMetricSnapshotOrdinalCatalogIdentity identity,
-        string kind)
+        string kind,
+        int ordinal)
         => new(
             identity.DisplayIndex,
             allocator.GetOrAdd(
@@ -654,7 +696,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             identity.SupportsNvmeHealth,
             identity.SupportsAtaSmart,
             identity.NotebookOemRole,
-            identity.NvmlFan, identity.IgclFan);
+            identity.NvmlFan, identity.IgclFan, identity.Device with { Ordinal = ordinal });
 
     private static NativeMetricIdentityKey CreateMetricIdentity(
         NativeMetricSnapshotRuleTemplate template,
@@ -774,6 +816,63 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         return result == 0 ? 1UL : result;
     }
 
+    private static MetricDeviceDescriptor CreateStaticDevice(uint scopeExpansion)
+        => scopeExpansion switch
+        {
+            1 => new("host", null, null, 0),
+            2 => new("cpu", null, null, 0),
+            3 => new("memory", null, null, 0),
+            7 => new("virtual_memory", null, null, 0),
+            _ => throw new InvalidOperationException("A bounded metric scope cannot use a static device descriptor.")
+        };
+
+    private static MetricDeviceDescriptor CreateIntelDevice(IntelMsrCatalogIdentity cpu, int ordinal)
+    {
+        var members = cpu.ProcessorAddresses.Select(static address =>
+            new MetricProcessorAddress(address.ProcessorGroup, address.GroupRelativeIndex)).ToArray();
+        if (members.Length == 0)
+            members = [new(cpu.Processor.ProcessorGroup, cpu.Processor.GroupRelativeIndex)];
+        var address = cpu.Kind switch
+        {
+            IntelMsrTargetKind.PhysicalCore when !string.IsNullOrWhiteSpace(cpu.CoreId)
+                => MetricDeviceAddress.CpuCore(cpu.CoreId, members),
+            IntelMsrTargetKind.Package when !string.IsNullOrWhiteSpace(cpu.PackageId)
+                => MetricDeviceAddress.CpuPackage(cpu.PackageId, members),
+            IntelMsrTargetKind.PhysicalDie when !string.IsNullOrWhiteSpace(cpu.DieId)
+                => MetricDeviceAddress.CpuDie(cpu.DieId, members),
+            IntelMsrTargetKind.Platform => MetricDeviceAddress.CpuPlatform(members),
+            IntelMsrTargetKind.LogicalProcessor => MetricDeviceAddress.LogicalProcessor(
+                cpu.Processor.ProcessorGroup, cpu.Processor.GroupRelativeIndex),
+            IntelMsrTargetKind.PhysicalCore or IntelMsrTargetKind.Package or IntelMsrTargetKind.PhysicalDie
+                => MetricDeviceAddress.ProcessorMembers(members) with
+                {
+                    Kind = cpu.Kind switch
+                    {
+                        IntelMsrTargetKind.PhysicalCore => "cpu_core",
+                        IntelMsrTargetKind.Package => "cpu_package",
+                        _ => "cpu_die"
+                    }
+                },
+            _ => null
+        };
+        var kind = cpu.Kind switch
+        {
+            IntelMsrTargetKind.PhysicalCore => "cpu_core",
+            IntelMsrTargetKind.Package => "cpu_package",
+            IntelMsrTargetKind.LogicalProcessor => "cpu_logical_processor",
+            IntelMsrTargetKind.PhysicalDie => "cpu_die",
+            IntelMsrTargetKind.Platform => "cpu_platform",
+            _ => throw new InvalidOperationException("Unknown Intel CPU metric scope.")
+        };
+        return new(kind, address, CleanDisplayName(cpu.NameDeclared), ordinal);
+    }
+
+    private static string? CleanDisplayName(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string DeviceFingerprint(MetricDeviceDescriptor device)
+        => System.Text.Json.JsonSerializer.Serialize(device);
+
     private static uint SizeOf<T>()
         where T : unmanaged
         => checked((uint)Unsafe.SizeOf<T>());
@@ -805,8 +904,9 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         public int DisplayIndex { get; init; } = -1;
         public string LegacyMetricId { get; init; } = string.Empty;
         public NvidiaNvmlFanIdentity? NvmlFan { get; init; }
-    public IntelGclFanIdentity? IgclFan { get; init; }
-    public NpuEngineCatalogIdentity? NpuEngine { get; init; }
+        public IntelGclFanIdentity? IgclFan { get; init; }
+        public NpuEngineCatalogIdentity? NpuEngine { get; init; }
+        public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
     }
 
     private sealed record AllocatedRule(
@@ -821,6 +921,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         ulong ScopeHandle { get; }
 
         string ExactIdentityKey { get; }
+
+        MetricDeviceDescriptor Device { get; }
     }
 
     private readonly record struct ResolvedGpuIdentity(
@@ -831,7 +933,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         ulong AdapterLuid,
         ulong InventoryGeneration,
         uint VendorMask,
-        bool SupportsDedicatedMetrics) : IResolvedOrdinalIdentity;
+        bool SupportsDedicatedMetrics,
+        MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedOrdinalIdentity(
         int DisplayIndex,
@@ -841,25 +944,28 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         bool SupportsNvmeHealth,
         bool SupportsAtaSmart,
         NotebookOemPhysicalFanRole? NotebookOemRole,
-        NvidiaNvmlFanIdentity? NvmlFan, IntelGclFanIdentity? IgclFan) : IResolvedOrdinalIdentity;
+        NvidiaNvmlFanIdentity? NvmlFan, IntelGclFanIdentity? IgclFan,
+        MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedBatteryIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey, bool IsRelative) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, bool IsRelative, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedIntelCpuIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey, IntelMsrCatalogIdentity Cpu) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, IntelMsrCatalogIdentity Cpu,
+        MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedNetworkInterfaceIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey, string BindingKey) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, string BindingKey, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedNpuEngineIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey, NpuEngineCatalogIdentity Engine) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, NpuEngineCatalogIdentity Engine,
+        string PnpInstanceId, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedNpuIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, string PnpInstanceId, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedNumaIdentity(int DisplayIndex, ulong ScopeHandle,
-        string ExactIdentityKey) : IResolvedOrdinalIdentity;
+        string ExactIdentityKey, ushort NodeNumber, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct NativeMetricIdentityKey(
         ulong ScopeHandle,

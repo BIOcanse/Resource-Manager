@@ -5,6 +5,7 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Npu;
 
 public sealed record NpuMemoryCatalogIdentity(string PnpInstanceId)
 {
+    public string? NameDeclared { get; init; }
     public string ExactIdentityKey => "windows-npu|" + PnpInstanceId.Trim().ToUpperInvariant();
     public string BindingKey => ExactIdentityKey;
 }

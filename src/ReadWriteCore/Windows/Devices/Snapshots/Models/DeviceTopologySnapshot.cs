@@ -163,7 +163,11 @@ public sealed record DeviceTopologyNetworkConnection(
     bool? ConnectorPresent,
     ulong? TransmitLinkSpeedBitsPerSecond = null,
     ulong? ReceiveLinkSpeedBitsPerSecond = null,
-    uint? MediaConnectState = null);
+    uint? MediaConnectState = null)
+{
+    public string? InterfaceGuid { get; init; }
+    public string? InterfaceDescription { get; init; }
+}
 
 public sealed record DeviceTopologyIdResolution(
     string Database,

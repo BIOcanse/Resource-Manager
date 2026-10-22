@@ -29,7 +29,8 @@ public static class WindowsNpuMemoryTopology
             return new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []);
         if (rows is null || rows.Count > effectiveMaximumInstanceCount)
             return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
-        var identities = rows.Select(static row => new NpuMemoryCatalogIdentity(row.PnpInstanceId ?? string.Empty)).ToArray();
+        var identities = rows.Select(static row => new NpuMemoryCatalogIdentity(row.PnpInstanceId ?? string.Empty)
+        { NameDeclared = row.NameDeclared }).ToArray();
         if (identities.Any(static identity => string.IsNullOrWhiteSpace(identity.PnpInstanceId)
                 || identity.ExactIdentityKey.Contains('\0')
                 || System.Text.Encoding.UTF8.GetByteCount(identity.ExactIdentityKey) > NativeMetricSnapshotCatalogHandleMap.MaximumExactKeyByteCount)

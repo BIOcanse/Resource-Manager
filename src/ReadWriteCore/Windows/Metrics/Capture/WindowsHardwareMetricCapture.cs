@@ -293,11 +293,13 @@ internal sealed partial class WindowsHardwareMetricCapture
             .ThenBy(static identity => identity.PhysicalIndex)
             .ThenBy(static identity => identity.EngineIndex)
             .ThenBy(static identity => identity.EngineClass)
-            .Select(identity =>
+            .Select(identity => (Identity: identity,
+                Trigger: triggerBindings.FirstOrDefault(binding => binding.AdapterKey == identity.AdapterLuid)))
+            .Where(static row => row.Trigger is not null)
+            .Select((row, ordinal) =>
             {
-                var trigger = triggerBindings.FirstOrDefault(binding => binding.AdapterKey == identity.AdapterLuid);
-                if (trigger is null)
-                    return null;
+                var identity = row.Identity;
+                var trigger = row.Trigger!;
                 var deviceIdentity = $"gpu-engine|{identity.AdapterLuid:X16}|{identity.PhysicalIndex}|{identity.EngineIndex}|{(uint)identity.EngineClass}";
                 var address = $"gpu-engine/{identity.AdapterLuid:X16}/{identity.PhysicalIndex}/{identity.EngineIndex}/{(uint)identity.EngineClass}/busyPercent";
                 return new MetricDeviceFieldBinding(deviceIdentity, definition,
@@ -305,11 +307,13 @@ internal sealed partial class WindowsHardwareMetricCapture
                 {
                     AdapterKey = identity.AdapterLuid,
                     PdhGpuEngineIdentity = identity,
-                    SampleRequestAddress = trigger.RequestAddress
+                    SampleRequestAddress = trigger.RequestAddress,
+                    Device = new("gpu_engine", MetricDeviceAddress.GpuEngine(trigger.Device.Address
+                        ?? throw new InvalidOperationException("A GPU engine trigger must have its adapter locator."),
+                        identity.AdapterLuid, identity.PhysicalIndex, identity.EngineIndex, (uint)identity.EngineClass),
+                        null, ordinal)
                 };
             })
-            .Where(static binding => binding is not null)
-            .Cast<MetricDeviceFieldBinding>()
             .ToArray();
     }
     public void SynchronizePlatformSensorDemand(IReadOnlyCollection<ulong> activeHandles, NativeMetricSnapshotCatalogProjection catalog)

@@ -80,9 +80,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/metrics/fields/capabilities", ([Microsoft.AspNetCore.Mvc.FromServices] ResourceManager.ReadWrite.ReadWriteCore core)
             => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
 
-        app.MapGet("/api/metrics/fields/catalog", (DashboardMonitoringCatalogState catalogState)
+        app.MapGet("/api/metrics/fields/catalog", (DashboardMonitoringCatalogState catalogState, HttpContext context)
             => catalogState.Current is { } snapshot
-                ? Results.Ok(MetricDeviceFields.Catalog(snapshot))
+                ? Results.Ok(ReadMetricFieldCatalog(snapshot, context.RequestServices))
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
 
         app.MapGet("/api/metrics/fields/snapshot", async (
@@ -90,15 +90,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IMetricSampler sampler, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var device = request.Query["device"].ToString();
-            if (string.IsNullOrWhiteSpace(device)) return Results.BadRequest();
+            string? device;
+            try { device = ParseMetricFieldDevice(request.Query); }
+            catch (ArgumentException) { return Results.BadRequest(); }
             var fields = ParseMetricFieldNames(request.Query);
             if (catalogState.Current is not { } catalog) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
             MetricSampleRequest selection;
             try { selection = MetricDeviceFields.CreateRequest(catalog, device, fields); }
             catch (ArgumentException) { return Results.BadRequest(); }
             var snapshot = await sampler.GetSnapshotAsync(selection, cancellationToken);
-            return Results.Ok(MetricDeviceFields.Read(snapshot, device, fields));
+            return Results.Ok(ReadMetricFields(snapshot, device, fields, request.HttpContext.RequestServices));
         }).AllowAnonymous();
 
         return app;
@@ -121,6 +122,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             milliseconds = defaultIntervalMilliseconds;
         }
         return TimeSpan.FromMilliseconds(Math.Clamp(milliseconds, 100, 60_000));
+    }
+
+    private static string? ParseMetricFieldDevice(IQueryCollection query)
+    {
+        if (!query.TryGetValue("device", out var values)) return null;
+        if (values.Count != 1 || string.IsNullOrWhiteSpace(values[0]))
+            throw new ArgumentException("metric-field-device-invalid", nameof(query));
+        return values[0];
     }
 
     private static IReadOnlySet<string> ParseMetricFieldNames(IQueryCollection query)

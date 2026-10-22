@@ -1,4 +1,5 @@
 using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Native;
 using ResourceManager.ReadWrite.Vendors.Intel;
 using ResourceManager.ReadWrite.Windows.Gpu;
@@ -57,7 +58,14 @@ public static class WindowsIntelFanTopology
             var fans = topology.SystemFans.ToList();
             var index = fans.Count == 0 ? 0 : checked(fans.Max(static fan => fan.DisplayIndex) + 1);
             foreach (var fan in identities.OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
-                fans.Add(new(index++, fan.ExactIdentityKey, topology.Generation) { IgclFan = fan });
+            {
+                var displayIndex = index++;
+                fans.Add(new(displayIndex, fan.ExactIdentityKey, topology.Generation)
+                {
+                    IgclFan = fan,
+                    Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, displayIndex)
+                });
+            }
             var result = topology with { SystemFans = fans, IgclFanStatus = NativeMetricSnapshotCatalogTopologyStatus.Complete,
                 IgclFanDirectoryReference = directory };
             directory = null;
