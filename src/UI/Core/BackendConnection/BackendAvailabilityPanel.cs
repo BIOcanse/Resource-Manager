@@ -10,11 +10,12 @@ internal sealed class BackendAvailabilityPanel : UserControl
     private readonly Button diagnosticsButton;
     private readonly Button exitButton;
 
-    public BackendAvailabilityPanel()
+    // background 是界面风格的启动底色（和 WebView 底色相同），连接和加载期间窗口不会先闪一块别的颜色。
+    public BackendAvailabilityPanel(Color background)
     {
         AccessibleName = NativeUiText.Current.AvailabilityPanelName;
         AccessibleRole = AccessibleRole.Pane;
-        BackColor = SystemColors.Window;
+        BackColor = background;
         Dock = DockStyle.Fill;
         Padding = new Padding(48);
 
@@ -68,6 +69,7 @@ internal sealed class BackendAvailabilityPanel : UserControl
         layout.Controls.Add(detailLabel, 0, 1);
         layout.Controls.Add(actions, 0, 2);
         Controls.Add(layout);
+        ApplyColors(background);
         Resize += (_, _) => UpdateTextWidth();
         UpdateTextWidth();
     }
@@ -132,6 +134,51 @@ internal sealed class BackendAvailabilityPanel : UserControl
         retryButton.Enabled = true;
         Visible = true;
         BringToFront();
+    }
+
+    // 高对比度模式保留系统颜色。浅色底色保留系统文字和按钮；深色底色用浅色文字和平面按钮。
+    private void ApplyColors(Color background)
+    {
+        if (SystemInformation.HighContrast)
+        {
+            BackColor = SystemColors.Window;
+            return;
+        }
+
+        if (background.GetBrightness() >= 0.5f)
+        {
+            return;
+        }
+
+        var foreground = Color.FromArgb(232, 234, 237);
+        var muted = Color.FromArgb(
+            (background.R + foreground.R) / 2,
+            (background.G + foreground.G) / 2,
+            (background.B + foreground.B) / 2);
+        stateLabel.ForeColor = foreground;
+        detailLabel.ForeColor = foreground;
+        foreach (var button in new[] { retryButton, diagnosticsButton, exitButton })
+        {
+            button.UseVisualStyleBackColor = false;
+            button.FlatStyle = FlatStyle.Flat;
+            button.BackColor = background;
+            button.ForeColor = foreground;
+            button.FlatAppearance.BorderColor = muted;
+            // WinForms 用比底色更暗的颜色画禁用文字，深色底上看不见；禁用时改用中间色重画文字。
+            button.Paint += (_, e) =>
+            {
+                if (!button.Enabled)
+                {
+                    TextRenderer.DrawText(
+                        e.Graphics,
+                        button.Text,
+                        button.Font,
+                        button.ClientRectangle,
+                        muted,
+                        TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                }
+            };
+        }
     }
 
     private static Button CreateButton(string text, string accessibleDescription) =>
