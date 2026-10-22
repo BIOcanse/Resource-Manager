@@ -8,7 +8,7 @@ namespace ResourceManager.Updater;
 internal static class PackageSwitchTransaction
 {
     internal sealed record PendingUpdate(string Workspace, string Stage, string PreviousVersion,
-        string TargetVersion, bool ServiceWasRunning, bool PreserveManagement = false);
+        string TargetVersion, bool ServiceWasRunning, bool PreserveManagement = false, bool PreserveAuthority = false);
 
     public static async Task<string> ApplyAsync(
         UpdatePlan plan, IUpdateRuntime runtime, CancellationToken cancellationToken)
@@ -25,7 +25,7 @@ internal static class PackageSwitchTransaction
         void Journal(string value)
         {
             WriteJournal(workspace, plan.InstallRoot, plan.PreviousVersion,
-                plan.Package.Version, plan.ServiceWasRunning, value, preserveManagement: true);
+                plan.Package.Version, plan.ServiceWasRunning, value, preserveManagement: true, preserveAuthority: true);
             stage = value;
         }
         try
@@ -43,10 +43,10 @@ internal static class PackageSwitchTransaction
             // Record intent before each potentially partial move. The root and
             // Internal/Management (including the running EXE/lock) stay in place.
             Journal("previousMoving");
-            PackagePayloadSwitch.Move(plan.InstallRoot, previous);
+            PackagePayloadSwitch.Move(plan.InstallRoot, previous, preserveAuthority: true);
             Journal("previousMoved");
             Journal("nextPromoting");
-            PackagePayloadSwitch.Move(next, plan.InstallRoot);
+            PackagePayloadSwitch.Move(next, plan.InstallRoot, preserveAuthority: true);
             Journal("nextPromoted");
 
             runtime.StartService(plan.InstallRoot);
@@ -62,7 +62,7 @@ internal static class PackageSwitchTransaction
             {
                 if (stage is "nextPromoting" or "nextPromoted") runtime.StopService(plan.InstallRoot);
                 if (stage is not ("verified" or "dataCopied"))
-                    PackagePayloadSwitch.Restore(plan.InstallRoot, workspace, stage, Journal);
+                    PackagePayloadSwitch.Restore(plan.InstallRoot, workspace, stage, Journal, preserveAuthority: true);
                 if (registeredVersionChanged)
                     runtime.WriteInstalledVersion(plan.InstallRoot, plan.PreviousVersion);
                 if (serviceStopped && plan.ServiceWasRunning)
@@ -111,7 +111,8 @@ internal static class PackageSwitchTransaction
             pending.Add(new PendingUpdate(workspace, stage,
                 data.GetProperty("PreviousVersion").GetString() ?? "",
                 data.GetProperty("targetVersion").GetString() ?? "", wasRunning,
-                data.TryGetProperty("preserveManagement", out var preserve) && preserve.GetBoolean()));
+                data.TryGetProperty("preserveManagement", out var preserve) && preserve.GetBoolean(),
+                data.TryGetProperty("preserveAuthority", out var authority) && authority.GetBoolean()));
             if (pending.Count > 1000) throw new InvalidDataException("待检查的更新事务超过上限。");
         }
         return pending;
@@ -167,7 +168,8 @@ internal static class PackageSwitchTransaction
                         runtime.StopService(root);
                         PackagePayloadSwitch.Restore(root, entry.Workspace, entry.Stage, value =>
                             WriteJournal(entry.Workspace, root, entry.PreviousVersion,
-                                entry.TargetVersion, entry.ServiceWasRunning, value, preserveManagement: true));
+                                entry.TargetVersion, entry.ServiceWasRunning, value, preserveManagement: true, preserveAuthority: entry.PreserveAuthority),
+                            entry.PreserveAuthority);
                     }
                 }
                 else if (Directory.Exists(previous))
@@ -189,7 +191,7 @@ internal static class PackageSwitchTransaction
                 runtime.WriteInstalledVersion(root, entry.PreviousVersion);
                 if (entry.ServiceWasRunning) runtime.StartService(root);
                 WriteJournal(entry.Workspace, root, entry.PreviousVersion,
-                    entry.TargetVersion, entry.ServiceWasRunning, "recovered", entry.PreserveManagement);
+                    entry.TargetVersion, entry.ServiceWasRunning, "recovered", entry.PreserveManagement, entry.PreserveAuthority);
                 recovered.Add(entry.Workspace);
             }
             catch (Exception failure)
@@ -226,7 +228,8 @@ internal static class PackageSwitchTransaction
             var destination = Path.Combine(next, name);
             if (Directory.Exists(destination) && Directory.EnumerateFileSystemEntries(destination).Any())
                 throw new InvalidDataException($"目标发行包含有不该携带的运行数据：{name}");
-            CopyTree(source, destination, preserveAccessRules: true);
+            CopyTree(source, destination, preserveAccessRules: true,
+                preserveHostManager: includeDependencies && name == "UserData");
         }
         // Older control stores used ContentRoot (Bin/ResourceManager), which is replaced by an update.
         var legacyControl = Path.Combine(installed, "Bin", "ResourceManager", "UserData", "Control");
@@ -246,7 +249,7 @@ internal static class PackageSwitchTransaction
         }
     }
 
-    private static void CopyTree(string source, string target, bool preserveAccessRules = false)
+    private static void CopyTree(string source, string target, bool preserveAccessRules = false, bool preserveHostManager = false)
     {
         var pending = new Queue<(string Source, string Target)>();
         var directoryPermissions = new Stack<(string Source, string Target)>();
@@ -270,6 +273,8 @@ internal static class PackageSwitchTransaction
             foreach (var child in Directory.EnumerateDirectories(item.Source))
             {
                 ReleasePackageLayout.RejectReparse(child);
+                if (preserveHostManager && string.Equals(item.Source, source, StringComparison.OrdinalIgnoreCase)
+                    && Path.GetFileName(child).Equals("HostManager", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!visited.Add(Path.GetFullPath(child))) throw new IOException("Update copy encountered a duplicate directory.");
                 if (++entries > 100_000) throw new IOException("Update copy exceeds the entry limit.");
                 pending.Enqueue((child, Path.Combine(item.Target, Path.GetFileName(child))));
@@ -323,7 +328,7 @@ internal static class PackageSwitchTransaction
             plan.Package.Version, plan.ServiceWasRunning, stage);
 
     private static void WriteJournal(string workspace, string installRoot, string previousVersion,
-        string targetVersion, bool serviceWasRunning, string stage, bool preserveManagement = false)
+        string targetVersion, bool serviceWasRunning, string stage, bool preserveManagement = false, bool preserveAuthority = false)
     {
         var path = Path.Combine(workspace, "update-transaction.json");
         var temp = path + ".writing";
@@ -335,6 +340,7 @@ internal static class PackageSwitchTransaction
             targetVersion,
             serviceWasRunning,
             preserveManagement,
+            preserveAuthority,
             updatedAt = DateTimeOffset.UtcNow
         });
         using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))

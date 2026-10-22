@@ -10,6 +10,21 @@ public sealed class HardwareMonitorWmiReaderLibraryIntegrationTests
         => new(StringComparer.OrdinalIgnoreCase) { ["Identifier"] = id, ["Name"] = name, ["SensorType"] = type, ["Value"] = value, ["Parent"] = parent };
 
     [Fact]
+    public void DimmTemperatureExcludesSpdAlarmLimitsAndResolution()
+    {
+        var rows = new[] {
+            Row("/memory/dimm/1/temperature/0", "DIMM #1", "Temperature", 55.6, "/memory/dimm/1"),
+            Row("/memory/dimm/2/temperature/0", "DIMM #2", "Temperature", 57.8, "/memory/dimm/2"),
+            Row("/memory/dimm/1/temperature/1", "Temperature Sensor Resolution", "Temperature", 0.3, "/memory/dimm/1"),
+            Row("/memory/dimm/1/temperature/3", "Thermal Sensor High Limit", "Temperature", 55, "/memory/dimm/1"),
+            Row("/memory/dimm/1/temperature/5", "Thermal Sensor Critical High Limit", "Temperature", 85, "/memory/dimm/1") };
+        var value = HardwareMonitorWmiReader.BuildHardwareMonitorSnapshot("core", new(rows, null), new([], null));
+        Assert.Equal(57.8, value.MemoryTemperatureCelsius);
+        var limitsOnly = HardwareMonitorWmiReader.BuildHardwareMonitorSnapshot("core", new(rows.Skip(2).ToArray(), null), new([], null));
+        Assert.Null(limitsOnly.MemoryTemperatureCelsius);
+    }
+
+    [Fact]
     public void ReaderAndSharedLeavesBelongToIndependentLibrary()
     {
         var assembly = typeof(ResourceManager.ReadWrite.ReadWriteCore).Assembly;

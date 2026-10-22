@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Security.AccessControl;
+using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.Shared.Localization;
 using ResourceManager.Shared.Packages;
 using ResourceManager.Updater;
@@ -39,6 +41,9 @@ public sealed class InsideRootUpdateManagerTests
         var previous = Path.Combine(workspace, "previous");
         Directory.CreateDirectory(previous);
         File.WriteAllText(Path.Combine(previous, "a.txt"), "old-a");
+        var oldAuthority = Path.Combine(previous, "UserData", "HostManager", "Validation");
+        Directory.CreateDirectory(oldAuthority);
+        File.WriteAllText(Path.Combine(oldAuthority, "old-scope"), "old-authority");
         if (stage is "previousMoving" or "restoringPrevious")
             File.WriteAllText(Path.Combine(fixture.Root, "b.txt"), "old-b");
         else
@@ -55,6 +60,7 @@ public sealed class InsideRootUpdateManagerTests
         Assert.Single(await PackageSwitchTransaction.RecoverPendingAsync(fixture.Root, new Runtime(), CancellationToken.None));
         Assert.Equal("old-a", File.ReadAllText(Path.Combine(fixture.Root, "a.txt")));
         Assert.Equal("old-b", File.ReadAllText(Path.Combine(fixture.Root, "b.txt")));
+        Assert.Equal("old-authority", File.ReadAllText(Path.Combine(fixture.Root, "UserData", "HostManager", "Validation", "old-scope")));
         Assert.Equal("stable-manager", File.ReadAllText(fixture.Manager));
         Assert.Empty(PackageSwitchTransaction.ListPending(fixture.Root));
     }
@@ -79,6 +85,34 @@ public sealed class InsideRootUpdateManagerTests
         Assert.Equal("old-a", File.ReadAllText(Path.Combine(fixture.Root, "a.txt")));
         Assert.Equal("old-z", File.ReadAllText(Path.Combine(fixture.Root, "z.txt")));
         Assert.Equal("new-a", File.ReadAllText(Path.Combine(workspace, "failed", "a.txt")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UpdateAndRecoveryKeepServiceAuthorityAtItsOriginalPathAndSecurity(bool failHealth)
+    {
+        using var fixture = new Fixture();
+        var package = Path.Combine(fixture.Parent, "package");
+        PackageSwitchTransactionTests.CreatePackage(package, "0.3.0");
+        var state = Path.Combine(fixture.Root, "UserData", "HostManager", "Validation", "generation-00000001", "scope.json");
+        var authority = Path.Combine(fixture.Root, ".resource-manager-validation-authority", "scope.json");
+        using var scopeDirectory = WindowsProcessEffectValidationScopeStorage.AcquireDirectory(state, true);
+        using var authorityDirectory = WindowsProcessEffectValidationScopeStorage.AcquireDirectory(authority, true);
+        File.WriteAllText(state, "owned-scope"); File.WriteAllText(authority, "owned-authority");
+        var scopeAcl = new DirectoryInfo(Path.GetDirectoryName(state)!).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        var authorityAcl = new DirectoryInfo(Path.GetDirectoryName(authority)!).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All);
+        using var lockedScope = new FileStream(state, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var lockedAuthority = new FileStream(authority, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var operation = PackageOperationLock.Acquire(fixture.Root);
+        var apply = PackageSwitchTransaction.ApplyAsync(new(ReleasePackageLayout.Verify(package), fixture.Root, "0.2.0", true),
+            new Runtime { FailHealth = failHealth }, CancellationToken.None);
+        if (failHealth) await Assert.ThrowsAsync<InvalidOperationException>(() => apply);
+        else await apply;
+        Assert.Equal("owned-scope", File.ReadAllText(state)); Assert.Equal("owned-authority", File.ReadAllText(authority));
+        Assert.Equal(scopeAcl, new DirectoryInfo(Path.GetDirectoryName(state)!).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        Assert.Equal(authorityAcl, new DirectoryInfo(Path.GetDirectoryName(authority)!).GetAccessControl().GetSecurityDescriptorSddlForm(AccessControlSections.All));
+        Assert.Empty(PackageSwitchTransaction.ListPending(fixture.Root));
     }
 
     [Fact]
@@ -136,10 +170,11 @@ public sealed class InsideRootUpdateManagerTests
     }
     private sealed class Runtime : IUpdateRuntime
     {
+        public bool FailHealth;
         public Task WaitForNativeUiExitAsync(string root, CancellationToken token) => Task.CompletedTask;
         public void StopService(string root) { }
         public void StartService(string root) { }
-        public Task WaitForHealthAsync(CancellationToken token) => Task.CompletedTask;
+        public Task WaitForHealthAsync(CancellationToken token) => FailHealth ? Task.FromException(new IOException("health failure")) : Task.CompletedTask;
         public void WriteInstalledVersion(string root, string version) { }
     }
 }

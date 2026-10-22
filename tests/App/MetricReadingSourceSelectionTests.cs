@@ -183,6 +183,101 @@ public sealed class MetricReadingSourceSelectionTests
         Assert.Equal(new[] { first.MetricId }, tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds(["cpu.temperature"]), frame, 1).Ids);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AdlxRawChipPowerDoesNotBecomeIntegratedGraphicsComponentPower(bool dedicated)
+    {
+        var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
+            HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
+            [new NativeMetricSnapshotGpuCatalogIdentity(0, "AMD", "exact-amd", 1, 1, 2, dedicated)],
+            [], [], NativeMetricSnapshotCatalogHandleMap.Empty);
+        var raw = Assert.Single(projection.MetricBindings.Values, row => row.SourceId == "amd.adlx"
+            && row.FieldCode == MetricFieldCode.GpuPower);
+        Assert.Equal(dedicated ? "gpu.0.power" : string.Empty, raw.LegacyMetricId);
+        Assert.Equal(dedicated, projection.LegacyMetricHandles.ContainsKey("gpu.0.power"));
+        Assert.NotNull(raw.Field);
+    }
+
+    [Fact]
+    public void RealNativeCpuCounterCommitPublishesTheSamePreferredRawAndComponentReading()
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"cpu-preferred-counter-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], workspace.CreateCatalogHandleMap());
+        var binding = Assert.Single(catalog.MetricBindings.Values, row => row.FieldCode == MetricFieldCode.CpuUsage);
+        var tracker = new MetricReadingSourceTracker();
+        var at = DateTimeOffset.UtcNow;
+        workspace.ReplaceCatalog(catalog, at);
+        var runtime = new NativeMetricSnapshotSourceRuntimeFacts(static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
+        for (ulong step = 1; step <= 2; step++)
+        {
+            var time = at.AddSeconds(step);
+            var plan = workspace.PlanCollection([binding.MetricHandle], runtime.CaptureModes(catalog, time), false, time);
+            var source = Assert.Single(plan.Sources);
+            var identity = new NativeMetricSnapshotSourceObservationIdentity(source.SourceHandle, 1, step);
+            var metric = Assert.Single(plan.Metrics);
+            var counter = NativeMetricSnapshotObservationProjection.CreateCpuCounter(metric, binding, identity,
+                new(true, step == 1 ? 50UL : 70UL, step == 1 ? 80UL : 130UL, step == 1 ? 20UL : 70UL,
+                    step * 1000, 1000, time));
+            var completion = new NativeMetricSnapshotSourceCompletion(source.SourceHandle, 1, step, time,
+                NativeMetricSnapshotSourceStatus.Complete, [], counter, [], 0, 0);
+            workspace.CompleteSource(plan, completion, time);
+            tracker.Observe(workspace.ReadCommitted(), 1, [completion]);
+        }
+        var frame = workspace.ReadCommitted();
+        var selected = tracker.Select(frame, 1);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1, "", null, selected);
+        Assert.True(snapshot.Cpu.IsUsageAvailable);
+        Assert.Equal(80d, snapshot.Cpu.UsagePercent);
+        Assert.True(snapshot.FieldBindings[binding.MetricId].Field.Reading!.IsPreferredSource);
+        Assert.Equal("available", snapshot.FieldBindings[binding.MetricId].Field.Reading!.SourceAvailability);
+        Assert.Equal(binding.MetricHandle, selected.LegacyHandles["cpu.usage"]);
+    }
+
+    [Fact]
+    public void CommittedCpuCounterEstablishesSupportAndKeepsTheComponentAliasThroughMissingSamples()
+    {
+        var binding = Binding(1, 10, "windows.cpu", MetricFieldCode.CpuUsage, "static|cpu")
+            with { LegacyMetricId = "cpu.usage" };
+        var frame = Frame(binding);
+        var tracker = new MetricReadingSourceTracker();
+        // CPU native completion contains a counter, not ordinary observations.
+        frame = frame with { Metrics = [new NativeMetricSnapshotMetricOutput
+            { MetricHandle = 1, SourceHandle = 10, SourceGeneration = 7,
+                Status = (uint)NativeMetricSnapshotMetricStatus.Current }],
+            Sources = frame.Sources.Select(row => row with { SourceGeneration = 7 }).ToImmutableArray() };
+        tracker.Observe(frame, 1, [Complete(10)]);
+        var selected = tracker.Select(frame, 1);
+        Assert.True(selected.Fields[1].IsPreferredSource);
+        Assert.Equal("available", selected.Fields[1].SourceAvailability);
+        Assert.Equal(1UL, selected.LegacyHandles["cpu.usage"]);
+        var projected = NativeMetricSnapshotCommittedProjection.Create(frame, "CPU", "RAM", 1, "", null, selected);
+        Assert.True(projected.FieldBindings[binding.MetricId].Field.Reading!.IsPreferredSource);
+        tracker.Observe(frame with { Metrics = [] }, 1,
+            [Complete(10) with { Status = NativeMetricSnapshotSourceStatus.Unavailable }]);
+        Assert.Equal(1UL, tracker.Select(frame, 1).LegacyHandles["cpu.usage"]);
+        var changed = frame with { Sources = frame.Sources.Select(row => row with { CapabilityGeneration = 2 }).ToImmutableArray() };
+        Assert.Equal("unverified", tracker.Select(changed, 1).Fields[1].SourceAvailability);
+    }
+
+    [Fact]
+    public void OldCounterOrUnacceptedCompletionCannotConfirmSupport()
+    {
+        var frame = Frame(Binding(1, 10, "windows.cpu", MetricFieldCode.CpuUsage, "static|cpu"));
+        frame = frame with { Metrics = [new NativeMetricSnapshotMetricOutput
+            { MetricHandle = 1, SourceHandle = 10, SourceGeneration = 6,
+                Status = (uint)NativeMetricSnapshotMetricStatus.Current }],
+            Sources = frame.Sources.Select(row => row with { SourceGeneration = 7 }).ToImmutableArray() };
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10)]);
+        Assert.Equal("unverified", tracker.Select(frame, 1).Fields[1].SourceAvailability);
+        frame = frame with { Metrics = frame.Metrics.Select(row => row with { SourceGeneration = 7 }).ToImmutableArray() };
+        tracker.Observe(frame, 1, [Complete(10) with { SourceObservationSequence = 99 }]);
+        Assert.Equal("unverified", tracker.Select(frame, 1).Fields[1].SourceAvailability);
+    }
+
     private static NativeMetricSnapshotRuleCatalogBinding Temperature(ulong handle, ulong source, string sourceId)
         => Binding(handle, source, sourceId, MetricFieldCode.GpuTemperature, "gpu-opaque") with { LegacyMetricId = "gpu.0.temperature" };
 

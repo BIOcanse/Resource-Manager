@@ -1878,10 +1878,13 @@ public sealed class HostManagerProcessEffectValidationScopeAuthority
             out HostManagerProcessEffectValidationAuthorityManifest? manifest);
         if (!manifestExists || manifest is null)
         {
+            // Do not repair a manifest namespace or an established/closed scope.
+            // A legacy install may contain only an empty inherited directory.
+            if (!Directory.Exists(Path.GetDirectoryName(authorityManifestPath))
+                && !PathExistsExact(statePath) && !PathExistsExact(auditFencePath))
+                WindowsProcessEffectValidationScopeStorage.InitializeUnclaimedEmptyDirectoryIfPresent(statePath);
             if (WindowsProcessEffectValidationScopeStorage.ProbeDirectoryExistsExact(
                     authorityManifestPath)
-                || WindowsProcessEffectValidationScopeStorage.ProbeDirectoryExistsExact(
-                    statePath)
                 || PathExistsExact(statePath)
                 || PathExistsExact(auditFencePath))
             {

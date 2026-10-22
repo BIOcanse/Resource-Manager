@@ -667,7 +667,9 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             throw new InvalidOperationException(
                 $"Metric-snapshot template '{template.TemplateId}' exceeds its maximum instance count.");
         }
-        return values.Select(identity => CreateIndexed(
+        return values.Select(identity =>
+        {
+            var expanded = CreateIndexed(
             template,
             placeholder,
             identity.DisplayIndex,
@@ -678,6 +680,14 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             NvmlFan = identity is ResolvedOrdinalIdentity ordinal ? ordinal.NvmlFan : null,
             IgclFan = identity is ResolvedOrdinalIdentity intelOrdinal ? intelOrdinal.IgclFan : null,
             NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null
+        };
+            // ADLX's chip report on APUs is not a confirmed graphics-only
+            // power domain. Keep the raw field, but do not label it GPU power.
+            if (identity is ResolvedGpuIdentity gpu && !gpu.SupportsDedicatedMetrics
+                && template.SourceId == NativeMetricSnapshotSources.AmdAdlx
+                && expanded.Field?.Code == MetricFieldCode.GpuPower)
+                expanded = expanded with { LegacyMetricId = string.Empty };
+            return expanded;
         });
     }
 

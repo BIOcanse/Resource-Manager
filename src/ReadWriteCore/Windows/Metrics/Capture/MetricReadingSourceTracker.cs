@@ -65,6 +65,17 @@ internal sealed class MetricReadingSourceTracker
                     SetCapability(observation.MetricHandle, "available");
                 // Missing, skipped and unavailable values do not change support or preference.
             }
+            // Counter-based sources (including Windows CPU) produce their value
+            // inside the original native commit, not in completion.Observations.
+            // Learn from that same accepted source generation as well.
+            foreach (var metric in frame.Metrics)
+                if (metric.SourceHandle == source.SourceHandle && metric.SourceGeneration == source.SourceGeneration)
+                {
+                    if (metric.Status == (uint)NativeMetricSnapshotMetricStatus.Current)
+                        SetCapability(metric.MetricHandle, "available");
+                    else if (metric.Status == (uint)NativeMetricSnapshotMetricStatus.Unsupported)
+                        SetCapability(metric.MetricHandle, "unsupported");
+                }
             void SetCapability(ulong handle, string availability)
             {
                 if (frame.Catalog.MetricBindings.TryGetValue(handle, out var binding)
