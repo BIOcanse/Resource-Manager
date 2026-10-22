@@ -8,10 +8,14 @@ export default async function optimizationReportsJourney(page, baseUrl) {
       failures.push(`console: ${message.text()}`);
     }
   });
+  const statusReads = [];
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/api/optimization/reports")) {
       reportRequests.push({ path, method: request.method() });
+    }
+    if (path === "/api/optimization/smart/status" && request.method() === "GET") {
+      statusReads.push(path);
     }
     if (path.startsWith("/api/gpu/performance-")) {
       gpuScoreRequests.push(path);
@@ -117,11 +121,60 @@ export default async function optimizationReportsJourney(page, baseUrl) {
       && request.method === "POST").length;
   assert(refreshPosts === 2,
     `Manual refresh did not publish through POST twice: ${JSON.stringify(reportRequests)}`);
+
+  // 调度状态跟随后端：不离开页面、不点刷新，后端的模式、运行与已优化对象数也会推到页面上。
+  const modeStatus = page.locator(".optimization-mode-status");
+  const statusReadsBeforePush = statusReads.length;
+  await postScenario({
+    smartStatus: { mode: "limited", schedulerRunning: true, appliedTargetCount: 92 }
+  });
+  await modeStatus.getByText("调度运行中 · 92 个对象已优化", { exact: true })
+    .waitFor({ state: "visible", timeout: 8000 });
+  assert(await memoryMode.getAttribute("aria-pressed") === "true",
+    "The pushed backend mode did not select Memory scheduling");
+  assert(statusReads.length === statusReadsBeforePush,
+    "The status update must arrive by push, not by an extra read");
+
+  // 运行时故障关闭：状态如实显示未运行，并给出故障提示和原因码。
+  await postScenario({
+    smartStatus: {
+      mode: "limited",
+      schedulerRunning: false,
+      faultClosedReason: "effect-scope-load-failed:UnauthorizedAccessException"
+    }
+  });
+  const faultNotice = page.getByRole("alert").filter({ hasText: "优化运行时已故障关闭" });
+  await faultNotice.waitFor({ state: "visible", timeout: 8000 });
+  assert((await faultNotice.textContent()).includes(
+    "effect-scope-load-failed:UnauthorizedAccessException"),
+  "The fault-closed notice must show the backend reason code");
+  assert(await modeStatus.textContent() === "调度未运行",
+    `A fault-closed runtime must not read as running: ${await modeStatus.textContent()}`);
+
+  // 刷新按钮同时重新读取调度状态：暂停推送后，只有刷新能带来后端切回普通模式的结果。
+  await postScenario({
+    pausedSubscriptionPaths: ["/api/optimization/smart/status/subscribe"],
+    smartStatus: { mode: "normal", pendingChangeCount: 136, appliedTargetCount: 1 }
+  });
+  const statusReadsBeforeRefresh = statusReads.length;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await modeStatus.getByText("136 项调整待确认 · 1 个对象已优化", { exact: true })
+    .waitFor({ state: "visible", timeout: 5000 });
+  assert(statusReads.length === statusReadsBeforeRefresh + 1,
+    `Refresh did not read the scheduling status once: ${statusReads.length - statusReadsBeforeRefresh}`);
+  assert(await normalMode.getAttribute("aria-pressed") === "true",
+    "Refreshed backend mode did not select Normal mode");
+  assert(await faultNotice.count() === 0,
+    "The fault-closed notice must disappear once the backend clears the fault");
+  await postScenario({ pausedSubscriptionPaths: [], smartStatus: {} });
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {
     initialSourceGetCount: initialReadCount,
     manualRefreshPostCount: 2,
+    statusFollowsBackendPush: true,
+    faultClosedNoticeShown: true,
+    refreshReadsSchedulingStatus: true,
     failedRefreshPreservedLastGood: true,
     retiredRecorderStateAbsent: true,
     pageErrors: failures

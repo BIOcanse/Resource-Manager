@@ -1,4 +1,5 @@
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
+import { portProtocol } from "../deviceVocabulary.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -19,7 +20,7 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
     const title = deviceTitle(context, uiText.deviceAdapters.externalMonitor);
     const resolution = displayValue(display.resolution);
     const refreshRate = displayValue(display.refreshRate);
-    const connectorTechnology = displayValue(display.connectorTechnology, context.port.protocol);
+    const connectorTechnology = displayValue(display.connectorTechnology, portProtocol(context.port));
     const hdrState = resolveHdrState(display);
     const bitDepth = display.bitsPerColorChannel
       ? uiText.deviceAdapters.bitsPerChannel(String(display.bitsPerColorChannel))

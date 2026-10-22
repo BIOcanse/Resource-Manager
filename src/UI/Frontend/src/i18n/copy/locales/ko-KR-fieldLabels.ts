@@ -327,3 +327,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   cpu_amd_smu_temperature_reported_celsius: { label: "CPU 온도 (SMU)", hint: "AMD SMU가 보고한 CPU 온도로, Tctl/Tdie 중 어느 것인지는 확인되지 않았습니다." },
   gpu_amd_apu_temperature_reported_celsius: { label: "APU 그래픽 온도 (SMU)", hint: "SMU가 보고한 이 AMD APU 내장 그래픽의 온도입니다." }
 };
+
+export const fieldValueLabel: AppCopy["fieldValueLabel"] = {
+  batteryPowerState: { onLine: "AC 전원 연결됨", discharging: "방전 중", charging: "충전 중", critical: "위험 수준" }
+};

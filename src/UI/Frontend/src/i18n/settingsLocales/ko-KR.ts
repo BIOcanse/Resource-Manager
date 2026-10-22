@@ -207,8 +207,10 @@ export default createSettingsLocale("ko-KR", {
     }
   },
   "appearance": {
-    "themeTitle": "색상 모드",
-    "themeDescription": "시스템, 밝게, 어둡게 또는 낮은 대비 테마를 선택합니다.",
+    "uiStyleTitle": "인터페이스 스타일",
+    "uiStyleDescription": "컨트롤의 모서리, 선, 그림자, 글꼴을 바꿉니다. 레이아웃은 그대로입니다. 스타일마다 고유한 색 구성이 있습니다.",
+    "themeTitle": "색 구성",
+    "themeDescription": "현재 스타일의 색 구성 중에서 선택합니다. 시스템은 Windows의 밝게/어둡게 설정을 따릅니다.",
     "animationTitle": "애니메이션",
     "animationDescription": "전체 애니메이션, 애니메이션 없음 또는 UI 부하를 줄이는 간소화된 효과를 선택합니다.",
     "resourceBarHardwareAccelerationTitle": "리소스 막대 하드웨어 가속",
@@ -241,11 +243,23 @@ export default createSettingsLocale("ko-KR", {
     "settingsLanguageTitle": "인터페이스 언어",
     "settingsLanguageDescription": "트레이와 창 제목을 포함한 전체 인터페이스의 언어를 변경합니다. 시스템을 선택하면 Windows 표시 언어를 사용합니다.",
     "languageSelectLabel": "언어",
+    "uiStyleOptions": {
+      "standard": "표준",
+      "soft": "부드럽게",
+      "outline": "윤곽선",
+      "terminal": "터미널"
+    },
     "themeOptions": {
       "system": "시스템",
       "light": "밝게",
       "dark": "어둡게",
-      "lowContrast": "낮은 대비"
+      "lowContrast": "낮은 대비",
+      "paper": "종이",
+      "graphite": "흑연",
+      "blueprint": "청사진",
+      "phosphor": "형광 녹색",
+      "amber": "호박색",
+      "ice": "아이스"
     },
     "animationOptions": {
       "auto": {

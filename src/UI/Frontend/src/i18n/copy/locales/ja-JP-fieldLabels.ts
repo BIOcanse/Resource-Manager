@@ -327,3 +327,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   cpu_amd_smu_temperature_reported_celsius: { label: "CPU 温度（SMU）", hint: "AMD SMU が報告する CPU 温度で、Tctl と Tdie のどちらであるかは確認されていません。" },
   gpu_amd_apu_temperature_reported_celsius: { label: "APU グラフィックス温度（SMU）", hint: "SMU が報告する、この AMD APU の内蔵グラフィックスの温度です。" },
 };
+
+export const fieldValueLabel: AppCopy["fieldValueLabel"] = {
+  batteryPowerState: { onLine: "AC 電源接続中", discharging: "放電中", charging: "充電中", critical: "残量危険" }
+};

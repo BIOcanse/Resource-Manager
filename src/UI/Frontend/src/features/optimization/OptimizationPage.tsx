@@ -184,6 +184,14 @@ export function OptimizationPage(props: OptimizationPageProps) {
           </Show>
         </div>
       </nav>
+      <Show when={props.hostManagerStatus?.faultClosedReason}>
+        {(reason) => (
+          <div class="observation-state error" role="alert">
+            <strong>{uiText.optimization.runtimeFaultClosedTitle}</strong>
+            <span>{uiText.optimization.runtimeFaultClosedDetail(reason())}</span>
+          </div>
+        )}
+      </Show>
 
       <section class="optimization-surface">
         <div

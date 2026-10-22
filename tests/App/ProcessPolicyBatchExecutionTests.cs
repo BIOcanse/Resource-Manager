@@ -440,6 +440,20 @@ public sealed class ProcessPolicyBatchExecutionTests
             Assert.Equal(ProcessResourcePolicyBatchFields.CpuSets, appliedField.Field);
             Assert.True(appliedField.Succeeded, appliedField.Message);
             Assert.Equal([cpuSetId.Value], writer.TryReadProcessDefaultCpuSets(process.Id));
+
+            // 恢复走同一个精确批量边界；新进程原本通常没有 CPU Sets，此时恢复写入空集合。
+            Assert.NotNull(originalCpuSets);
+            var restored = Assert.Single(writer.TryApplyBatch(
+            [
+                new ProcessResourcePolicyBatchRequest(
+                    process.Id,
+                    snapshot.StartedAt,
+                    CpuSetIds: originalCpuSets)
+            ]));
+            var restoredField = Assert.Single(restored.Fields);
+            Assert.Equal(ProcessResourcePolicyBatchFields.CpuSets, restoredField.Field);
+            Assert.True(restoredField.Succeeded, restoredField.Message);
+            Assert.Equal(originalCpuSets, writer.TryReadProcessDefaultCpuSets(process.Id));
         }
         finally
         {
@@ -453,6 +467,38 @@ public sealed class ProcessPolicyBatchExecutionTests
                 process.Kill(entireProcessTree: true);
                 process.WaitForExit();
             }
+        }
+    }
+
+    [Fact]
+    public void BatchWriterTreatsEmptyCpuSetsAsClearAndStillRejectsInvalidIds()
+    {
+        var writer = CreateWriter();
+
+        // 空集合（恢复到“没有 CPU Sets”）必须越过校验到达 Windows 边界；
+        // 不存在的 PID 让 OpenProcess 失败，不会写任何真实进程。
+        var clear = Assert.Single(writer.TryApplyBatch(
+        [
+            new ProcessResourcePolicyBatchRequest(int.MaxValue, null, CpuSetIds: [])
+        ]));
+        var clearField = Assert.Single(clear.Fields);
+        Assert.Equal(ProcessResourcePolicyBatchFields.CpuSets, clearField.Field);
+        Assert.False(clearField.Succeeded);
+        Assert.NotEqual(0U, clearField.ErrorCode);
+        Assert.DoesNotContain("CPU Set ID 集合", clearField.Message, StringComparison.Ordinal);
+
+        var invalidRequests = new IReadOnlyList<uint>[] { [0U], [256U, 256U] };
+        foreach (var cpuSetIds in invalidRequests)
+        {
+            var invalid = Assert.Single(writer.TryApplyBatch(
+            [
+                new ProcessResourcePolicyBatchRequest(int.MaxValue, null, CpuSetIds: cpuSetIds)
+            ]));
+            var invalidField = Assert.Single(invalid.Fields);
+            Assert.Equal(ProcessResourcePolicyBatchFields.CpuSets, invalidField.Field);
+            Assert.False(invalidField.Succeeded);
+            Assert.Equal(0U, invalidField.ErrorCode);
+            Assert.Contains("CPU Set ID 集合", invalidField.Message, StringComparison.Ordinal);
         }
     }
 

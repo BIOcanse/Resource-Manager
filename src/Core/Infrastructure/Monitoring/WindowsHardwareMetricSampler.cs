@@ -58,6 +58,8 @@ public sealed partial class WindowsHardwareMetricSampler :
     private readonly SemaphoreSlim sampleGate;
     private readonly SamplingPublicationSignal publicationSignal = new();
     private readonly LastSuccessfulHardwareMetricSnapshot publishedSnapshot = new("Host Manager metric snapshot");
+    // 当前处于“被拒绝”状态的 dataset；只在持有 sampleGate 的发布路径上读写，用于只在状态变化时记日志。
+    private readonly HashSet<string> rejectedDatasetIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly NativeItemSamplingSubscriptionTracker<MetricSampleRequest>
         subscriptions;
     private readonly NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken> samplingWorker;
@@ -626,13 +628,20 @@ public sealed partial class WindowsHardwareMetricSampler :
             }
             completeFieldResult(fieldSubscriptionDelivery.CaptureCompleted(
                 triggers, queriedAddresses, publication.IsSuccessful));
-            if (!publication.IsSuccessful)
+            var (newlyRejected, recovered) = TrackRejectedDatasets(rejectedDatasetIds, publication);
+            if (newlyRejected.Count != 0)
             {
                 logger.LogWarning(
-                    "Hardware sampling committed {CommittedCount} datasets but rejected {RejectedCount}: {RejectedDatasets}.",
-                    publication.CommittedDatasetCount,
-                    publication.RejectedDatasetCount,
-                    string.Join(", ", publication.RejectedDatasetIds));
+                    "Hardware sampling started rejecting {RejectedCount} datasets: {RejectedDatasets}. " +
+                    "Repeated rejections are not logged again until the dataset publishes successfully.",
+                    newlyRejected.Count,
+                    string.Join(", ", newlyRejected));
+            }
+            if (recovered.Count != 0)
+            {
+                logger.LogInformation(
+                    "Hardware sampling published previously rejected datasets again: {RecoveredDatasets}.",
+                    string.Join(", ", recovered));
             }
             if (request.IncludesCatalog)
             {
@@ -675,6 +684,25 @@ public sealed partial class WindowsHardwareMetricSampler :
         {
             sampleGate.Release();
         }
+    }
+
+    // 同一 dataset 持续被拒绝只在进入拒绝状态时报告一次；重新发布成功时报告恢复，之后再被拒绝会再次报告。
+    // 本次发布没有涉及的 dataset 保持原状态。
+    internal static (IReadOnlyList<string> NewlyRejected, IReadOnlyList<string> Recovered) TrackRejectedDatasets(
+        ISet<string> rejectedDatasetIds,
+        HardwareMetricPublicationResult publication)
+    {
+        var newlyRejected = new List<string>();
+        foreach (var datasetId in publication.RejectedDatasetIds)
+        {
+            if (rejectedDatasetIds.Add(datasetId)) newlyRejected.Add(datasetId);
+        }
+        var recovered = new List<string>();
+        foreach (var datasetId in publication.CommittedDatasetIds)
+        {
+            if (rejectedDatasetIds.Remove(datasetId)) recovered.Add(datasetId);
+        }
+        return (newlyRejected, recovered);
     }
 
     private void ReportSamplingWorkerFailure(SubscriptionWorkerFailure failure)

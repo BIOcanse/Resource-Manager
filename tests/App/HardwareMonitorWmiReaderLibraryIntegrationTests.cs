@@ -46,6 +46,27 @@ public sealed class HardwareMonitorWmiReaderLibraryIntegrationTests
     }
 
     [Fact]
+    public void CoreHostWmiFanIdentitiesCarryTheFanDeviceDescriptor()
+    {
+        // The Core host reads fan identities through this zone; it must publish the same fan descriptor as the
+        // ReadWriteCore default resources instead of the "unknown" placeholder.
+        var fans = HardwareMonitorWmiMonitoringZone.ReadFanIdentities(1,
+            (_, _) => new([Row("/lpc/nct6798d/fan/1", " System Fan #1 ", "Fan", 1200, "/lpc/nct6798d")], null));
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Complete, fans.Status);
+        var fan = Assert.Single(fans.Identities);
+        Assert.Equal("fan", fan.Device.Kind);
+        var address = Assert.IsType<ResourceManager.App.Domain.Metrics.MetricDeviceAddress>(fan.Device.Address);
+        Assert.Equal("fan", address.Kind);
+        Assert.Equal(@"root\LibreHardwareMonitor", address.FanProvider);
+        Assert.Equal("/lpc/nct6798d/fan/1", address.SensorIdentifier);
+        Assert.Equal("System Fan #1", fan.Device.DisplayName);
+        Assert.Null(fan.NotebookOemRole);
+        var failed = HardwareMonitorWmiMonitoringZone.ReadFanIdentities(1, (_, _) => new([], "missing provider"));
+        Assert.Equal(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, failed.Status);
+        Assert.Empty(failed.Identities);
+    }
+
+    [Fact]
     public void SensorRowsWithErrorKeepLibreButTopologySkipsItsError()
     {
         var calls = new List<string>();

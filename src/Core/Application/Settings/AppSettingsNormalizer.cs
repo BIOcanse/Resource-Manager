@@ -1,5 +1,6 @@
 ﻿using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Units;
+using ResourceManager.Shared.Appearance;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -68,8 +69,10 @@ public static class AppSettingsNormalizer
 
     private static AppAppearanceSettings NormalizeAppearance(AppAppearanceSettings? appearance)
     {
+        var choice = UiStyleCatalog.Normalize(appearance?.UiStyle, appearance?.Theme);
         return new AppAppearanceSettings(
-            NormalizeTheme(appearance?.Theme),
+            choice.UiStyle,
+            choice.Theme,
             NormalizeAnimations(appearance?.Animations),
             appearance?.ResourceBarHardwareAccelerationEnabled ?? true,
             NormalizeAdaptiveBooleanMode(appearance?.ResourceBarHardwareAccelerationMode),
@@ -319,17 +322,6 @@ public static class AppSettingsNormalizer
             debug?.DebugLogEnabled == true,
             debug?.HostManagerSmartCoordinatorScoreOnlyEnabled == true,
             debug?.HostManagerSmartCoordinatorPerformanceLogEnabled == true);
-    }
-
-    private static string NormalizeTheme(string? theme)
-    {
-        return theme switch
-        {
-            AppThemeModes.Light => AppThemeModes.Light,
-            AppThemeModes.Dark => AppThemeModes.Dark,
-            AppThemeModes.LowContrast => AppThemeModes.LowContrast,
-            _ => AppThemeModes.System
-        };
     }
 
     private static string NormalizeOptimizationMode(string? mode)

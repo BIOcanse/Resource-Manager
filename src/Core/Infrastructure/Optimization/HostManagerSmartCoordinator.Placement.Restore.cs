@@ -79,6 +79,7 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "GPU preference 已被其他来源修改。");
         }
 
+        string? writeFailure = null;
         try
         {
             if (hadValue)
@@ -93,6 +94,7 @@ internal sealed class HostManagerPlacementRollbackExecutor(
         catch (InvalidOperationException ex)
         {
             logger.LogDebug(ex, "Host Manager GPU preference restore write reported failure for {ExecutablePath}.", path);
+            writeFailure = ex.Message;
         }
 
         var readBack = graphicsPreferenceStore.ReadValueForRecovery(path);
@@ -115,7 +117,12 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.Restored, "GPU preference 已恢复并读回确认。");
         }
         return string.Equals(readBack.Value, appliedValue, StringComparison.Ordinal)
-            ? Settlement(record, HostManagerPlacementSettlementKind.RetryableFailure, "GPU preference 写后仍是 applied 值。")
+            ? Settlement(
+                record,
+                HostManagerPlacementSettlementKind.RetryableFailure,
+                writeFailure is null
+                    ? "GPU preference 写后仍是 applied 值。"
+                    : $"GPU preference 恢复写入失败：{writeFailure}（读回仍是 applied 值）。")
             : Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "GPU preference 写后出现第三方值。");
     }
 
@@ -157,13 +164,15 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Thread CPU Sets 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TrySetThreadSelectedCpuSets(
-            processId,
-            threadId,
-            current.CreatedAt,
-            previousIds);
+        var write = FromWriteResult(
+            ProcessResourcePolicyBatchFields.CpuSets,
+            processPolicyWriter.TrySetThreadSelectedCpuSets(
+                processId,
+                threadId,
+                current.CreatedAt,
+                previousIds));
         var readBack = processPolicyWriter.ReadThreadPlacementStateForRecovery(processId, threadId);
-        return SettleThreadReadBack(record, readBack, createdAtMilliseconds, appliedIds, previousIds);
+        return SettleThreadReadBack(record, readBack, createdAtMilliseconds, appliedIds, previousIds, write);
     }
 
     private HostManagerPlacementRecordSettlement RestoreCpuAffinityRecord(HostManagerAppliedRecord record)
@@ -234,8 +243,12 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Process CPU Sets 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TryApplyBatch(
-            [new(processId, current.StartedAt, CpuSetIds: previousIds)]);
+        // previous 为空表示原本没有 CPU Sets；空集合请求由写入器清除进程默认 CPU Sets。
+        var write = FindBatchField(
+            processPolicyWriter.TryApplyBatch(
+                [new(processId, current.StartedAt, CpuSetIds: previousIds)]),
+            processId,
+            ProcessResourcePolicyBatchFields.CpuSets);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.DefaultCpuSets);
         var gate = SettleProcessReadGate(
             record,
@@ -250,7 +263,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             record,
             CpuSetIdsEqual(readBack.Value!.DefaultCpuSetIds!, previousIds),
             CpuSetIdsEqual(readBack.Value!.DefaultCpuSetIds!, appliedIds),
-            "Process CPU Sets");
+            "Process CPU Sets",
+            write);
     }
 
     private HostManagerPlacementRecordSettlement RestoreAffinityMaskRecord(
@@ -275,8 +289,11 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "CPU affinity 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TryApplyBatch(
-            [new(processId, current.StartedAt, AffinityMask: previousMask)]);
+        var write = FindBatchField(
+            processPolicyWriter.TryApplyBatch(
+                [new(processId, current.StartedAt, AffinityMask: previousMask)]),
+            processId,
+            ProcessResourcePolicyBatchFields.AffinityMask);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.Affinity);
         var gate = SettleProcessReadGate(
             record,
@@ -291,7 +308,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             record,
             readBack.Value!.ProcessorAffinityMask == previousMask,
             readBack.Value!.ProcessorAffinityMask == appliedMask,
-            "CPU affinity");
+            "CPU affinity",
+            write);
     }
 
     private HostManagerPlacementRecordSettlement RestoreProcessPriorityRecord(HostManagerAppliedRecord record)
@@ -331,8 +349,11 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Process priority 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TryApplyBatch(
-            [new(processId, initial.Value!.StartedAt, PriorityClass: previous)]);
+        var write = FindBatchField(
+            processPolicyWriter.TryApplyBatch(
+                [new(processId, initial.Value!.StartedAt, PriorityClass: previous)]),
+            processId,
+            ProcessResourcePolicyBatchFields.PriorityClass);
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.PriorityClass);
         gate = SettleProcessReadGate(
             record,
@@ -347,7 +368,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             record,
             string.Equals(readBack.Value!.PriorityClass, previous, StringComparison.OrdinalIgnoreCase),
             string.Equals(readBack.Value!.PriorityClass, applied, StringComparison.OrdinalIgnoreCase),
-            "Process priority");
+            "Process priority",
+            write);
     }
 
     private HostManagerPlacementRecordSettlement RestoreProcessMemoryPriorityRecord(HostManagerAppliedRecord record)
@@ -385,11 +407,13 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Process memory priority 已被其他来源修改。");
         }
 
-        _ = processPolicyWriter.TrySetMemoryPriority(
-            processId,
-            initial.Value.StartedAt,
-            applied,
-            previous);
+        var write = FromWriteResult(
+            ProcessResourcePolicyBatchFields.MemoryPriority,
+            processPolicyWriter.TrySetMemoryPriority(
+                processId,
+                initial.Value.StartedAt,
+                applied,
+                previous));
         var readBack = processPolicyWriter.ReadPlacementStateForRecovery(processId, ProcessPlacementReadFields.MemoryPriority);
         gate = SettleProcessReadGate(
             record,
@@ -404,7 +428,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             record,
             readBack.Value!.MemoryPriority == previous,
             readBack.Value!.MemoryPriority == applied,
-            "Process memory priority");
+            "Process memory priority",
+            write);
     }
 
     private static HostManagerPlacementRecordSettlement? SettleProcessReadGate(
@@ -437,7 +462,8 @@ internal sealed class HostManagerPlacementRollbackExecutor(
         RecoveryReadResult<ThreadCpuSetPolicySnapshot> read,
         long expectedCreatedAtMilliseconds,
         IReadOnlyList<uint> applied,
-        IReadOnlyList<uint> previous)
+        IReadOnlyList<uint> previous,
+        ProcessResourcePolicyBatchFieldResult write)
     {
         if (read.Status == RecoveryReadStatus.Unavailable)
         {
@@ -453,21 +479,55 @@ internal sealed class HostManagerPlacementRollbackExecutor(
             record,
             CpuSetIdsEqual(read.Value.CpuSetIds, previous),
             CpuSetIdsEqual(read.Value.CpuSetIds, applied),
-            "Thread CPU Sets");
+            "Thread CPU Sets",
+            write);
     }
 
+    // 读回决定结算；读回仍是 applied 时，恢复写入的失败原因和错误码随 RetryableFailure 一起上报。
     private static HostManagerPlacementRecordSettlement SettleValueReadBack(
         HostManagerAppliedRecord record,
         bool isPrevious,
         bool isApplied,
-        string label)
+        string label,
+        ProcessResourcePolicyBatchFieldResult write)
     {
-        return isPrevious
-            ? Settlement(record, HostManagerPlacementSettlementKind.Restored, $"{label} 已恢复并读回确认。")
-            : isApplied
-                ? Settlement(record, HostManagerPlacementSettlementKind.RetryableFailure, $"{label} 写后仍是 applied 值。")
-                : Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, $"{label} 写后出现第三方值。");
+        if (isPrevious)
+        {
+            return Settlement(record, HostManagerPlacementSettlementKind.Restored, $"{label} 已恢复并读回确认。");
+        }
+        if (!isApplied)
+        {
+            return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, $"{label} 写后出现第三方值。");
+        }
+        return write.Succeeded
+            ? Settlement(record, HostManagerPlacementSettlementKind.RetryableFailure, $"{label} 写后仍是 applied 值。")
+            : Settlement(
+                record,
+                HostManagerPlacementSettlementKind.RetryableFailure,
+                $"{label} 恢复写入失败：{write.Message}（读回仍是 applied 值）。",
+                unchecked((int)write.ErrorCode));
     }
+
+    private static ProcessResourcePolicyBatchFieldResult FindBatchField(
+        IReadOnlyList<ProcessResourcePolicyBatchWriteResult> results,
+        int processId,
+        ProcessResourcePolicyBatchFields field)
+    {
+        foreach (var result in results)
+        {
+            if (result.ProcessId == processId && result.Find(field) is { } fieldResult)
+            {
+                return fieldResult;
+            }
+        }
+
+        return new ProcessResourcePolicyBatchFieldResult(field, false, "写入器没有返回该字段的结果。");
+    }
+
+    private static ProcessResourcePolicyBatchFieldResult FromWriteResult(
+        ProcessResourcePolicyBatchFields field,
+        ProcessResourcePolicyWriteResult result)
+        => new(field, result.Succeeded, result.Message);
 
     private static HostManagerPlacementRecordSettlement SettleRuntimeRebuildRecord(HostManagerAppliedRecord record)
     {

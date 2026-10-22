@@ -1,4 +1,3 @@
-import { displayConnectorTechnology, portDisplayName, portHardwareKind } from "./deviceVocabulary.ts";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import {
   Bluetooth,
@@ -22,21 +21,23 @@ import {
   Usb,
   Zap
 } from "lucide-solid";
-import {
-  describeDeviceTopologyNode,
-  deviceTopologySummaryFields
-} from "./deviceTopologyPresentation";
+import { describeDeviceTopologyNode } from "./deviceTopologyPresentation";
 import {
   buildExternalInterfaceTree,
-  filterExternalInterfaceTree,
-  type ExternalInterfaceNodeRole
+  filterExternalInterfaceTree
 } from "./externalInterfaceTree";
 import {
   buildInternalInterfaceTree,
-  filterInternalInterfaceTree,
-  type InternalInterfaceNodeRole
+  filterInternalInterfaceTree
 } from "./internalInterfaceTree";
-import type { SpecializedDeviceModel } from "./adapters/adapterRegistry";
+import {
+  attachedDisplay,
+  deviceUserDetailSections,
+  isDeviceRole,
+  nodeSummaryFields,
+  type DeviceTopologyListNode,
+  type DeviceTopologyScope
+} from "./deviceDetailSections.ts";
 import { useDeviceTopologyState } from "./deviceTopologyStore";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
@@ -45,13 +46,6 @@ import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
 import { deviceMetricFieldNames } from "./deviceMetricFields.ts";
-import type { DeviceTopologyPort, DeviceTopologyUsbConnection } from "../../types";
-import {
-  compactUserDetailSections,
-  userDetailItem,
-  userDetailSection,
-  type UserDetailItem
-} from "../../presentation/userDetails";
 import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
 import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
 import { DeviceMetricFieldDetails } from "./components/DeviceMetricFieldDetails";
@@ -59,27 +53,9 @@ import { DeviceSpecializedSummary } from "./components/DeviceSpecializedSummary"
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
-import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import { uiText } from "../../text.ts";
 
-interface DeviceTopologyListNode {
-  id: string;
-  port: DeviceTopologyPort;
-  title: string;
-  subtitle: string;
-  badge: string;
-  connectorKind: string;
-  iconKind?: string;
-  connectionState?: "connected" | "disconnected" | "unknown";
-  depth: number;
-  role?: DeviceTopologyNodeRole;
-  parentId?: string;
-  path?: string[];
-  specializedDevice?: SpecializedDeviceModel;
-}
-
-export type DeviceTopologyScope = "external" | "internal";
-type DeviceTopologyNodeRole = ExternalInterfaceNodeRole | InternalInterfaceNodeRole;
+export type { DeviceTopologyScope };
 
 interface DeviceTopologyViewProps {
   scope: DeviceTopologyScope;
@@ -132,21 +108,13 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
     const parentId = selectedNode()?.parentId;
     return parentId ? sectionNodes().find((node) => node.id === parentId) ?? null : null;
   });
-  const selectedNodeIsInterface = createMemo(() => isInterfaceRole(selectedNode()?.role));
   const selectedNodeChildCount = createMemo(() => {
     const selected = selectedNode()?.id;
     return selected ? sectionNodes().filter((node) => node.parentId === selected).length : 0;
   });
   const selectedPortSummary = createMemo(() => {
-    const port = selectedPort();
-    if (!port) {
-      return [];
-    }
-
-    if (selectedNodeIsInterface()) {
-      return interfaceSummaryFields(selectedNode()!, selectedNodeChildCount(), props.scope);
-    }
-    return selectedNode()?.specializedDevice?.summaryFields ?? deviceTopologySummaryFields(port);
+    const node = selectedNode();
+    return node ? nodeSummaryFields(node, selectedNodeChildCount(), props.scope) : [];
   });
   const selectedDetailSections = createMemo(() => {
     const port = selectedPort();
@@ -384,168 +352,12 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         <Show when={selectedPort()?.deviceId}>
           {(deviceId) => <DeviceMetricFieldDetails devices={metricFieldDevices()} deviceId={deviceId()} />}
         </Show>
-        <Show when={selectedPort()?.display}>
+        <Show when={attachedDisplay(selectedPort())}>
           {(display) => <DisplayEdidDetails display={display()} />}
         </Show>
       </UserDetailsDialog>
     </section>
   );
-}
-
-function deviceUserDetailSections(
-  port: DeviceTopologyPort,
-  node: DeviceTopologyListNode,
-  parent: DeviceTopologyListNode | null,
-  scope: DeviceTopologyScope,
-  childCount: number,
-  summary: readonly { label: string; value: string }[])
-{
-  const isDevice = isDeviceRole(node.role);
-  const isInterface = isInterfaceRole(node.role);
-  const display = port.display;
-  const network = port.network;
-  const usb = port.usb;
-  // 概览先列和侧栏相同的关键信息；概览、连接两节里同一名称只出现一次，先出现的为准。
-  const shownLabels = new Set<string>();
-  const firstShown = (item: UserDetailItem | null) => {
-    if (!item || shownLabels.has(item.label)) {
-      return null;
-    }
-    shownLabels.add(item.label);
-    return item;
-  };
-
-  return compactUserDetailSections([
-    userDetailSection(uiText.deviceTopology.section.overview, [
-      ...summary
-        .filter((field) => isReportedDeviceValue(field.value))
-        .map((field) => firstShown(userDetailItem(field.label, field.value))),
-      firstShown(userDetailItem(uiText.deviceTopology.label.category, isDevice ? uiText.deviceTopology.connectedDevice : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope)),
-      firstShown(userDetailItem(isDevice ? uiText.deviceTopology.label.deviceType : uiText.deviceTopology.label.interfaceType, isDevice
-        ? node.specializedDevice?.deviceTypeLabel ?? hardwareKindLabel(port)
-        : connectorLabel(port.connectorKind))),
-      firstShown(userDetailItem(uiText.deviceTopology.label.connectionState, connectionStateLabel(node.connectionState))),
-      parent ? firstShown(userDetailItem(uiText.deviceTopology.label.connectedTo, parent.title)) : null,
-      isInterface ? firstShown(userDetailItem(uiText.deviceTopology.label.directChildren, uiText.deviceTopology.countSuffix(childCount))) : null
-    ]),
-    userDetailSection(uiText.deviceTopology.section.connection, [
-      firstShown(userDetailItem(uiText.deviceTopology.label.bus, reportedDeviceValue(busLabel(port.busKind)))),
-      firstShown(userDetailItem(isDevice ? uiText.deviceTopology.label.currentDeviceSpeed : uiText.deviceTopology.label.currentInterfaceSpeed, reportedDeviceValue(port.speed))),
-      firstShown(userDetailItem(uiText.deviceTopology.label.maxSpeed, reportedDeviceValue(port.physicalMaximumSpeed))),
-      firstShown(userDetailItem(uiText.deviceTopology.label.protocol, reportedDeviceValue(isInterface ? interfaceProtocol(node, scope) : port.protocol))),
-      firstShown(userDetailItem(uiText.deviceTopology.label.manufacturer, reportedDeviceValue(port.manufacturer))),
-      port.advancedInterconnect
-        ? firstShown(userDetailItem(uiText.deviceTopology.label.interconnectTechnology, reportedDeviceValue(port.advancedInterconnect.technology)))
-        : null
-    ]),
-    display ? userDetailSection(uiText.deviceTopology.section.display, [
-      userDetailItem(uiText.deviceTopology.label.deviceName, reportedDeviceValue(display.monitorName)),
-      userDetailItem(uiText.deviceTopology.label.activeResolution, reportedDeviceValue(display.resolution)),
-      userDetailItem(uiText.deviceTopology.label.refreshRate, reportedDeviceValue(display.refreshRate)),
-      userDetailItem(uiText.deviceTopology.label.connectionLocation, display.internal ? uiText.deviceTopology.displayLocation.internal : uiText.deviceTopology.displayLocation.external)
-    ]) : null,
-    network ? userDetailSection(uiText.deviceTopology.section.network, [
-      userDetailItem(uiText.deviceTopology.label.networkInterface, reportedDeviceValue(network.interfaceName)),
-      userDetailItem(uiText.deviceTopology.label.connectionState, userFacingNetworkState(network.connectionState)),
-      userDetailItem(uiText.deviceTopology.label.transmitSpeed, reportedDeviceValue(network.transmitLinkSpeed)),
-      userDetailItem(uiText.deviceTopology.label.receiveSpeed, reportedDeviceValue(network.receiveLinkSpeed)),
-      network.activeMtuBytes ? userDetailItem("MTU", `${network.activeMtuBytes} B`) : null,
-      userDetailItem(uiText.deviceTopology.label.macAddress, reportedDeviceValue(network.permanentAddress))
-    ]) : null,
-    usb ? userDetailSection("USB", [
-      userDetailItem(uiText.deviceTopology.label.port, formatUsbPort(usb)),
-      userDetailItem(uiText.deviceTopology.label.usbConnection, renderBackendMessage(usb.connectionStatus)),
-      userDetailItem(uiText.deviceTopology.label.connector, formatUsbConnector(usb)),
-      userDetailItem(uiText.deviceTopology.label.supportedProtocols, reportedDeviceValue(usb.supportedProtocols)),
-      userDetailItem(uiText.deviceTopology.label.portCapability, reportedDeviceValue(formatUsbCapability(usb))),
-      userDetailItem(uiText.deviceTopology.label.deviceSpecification, reportedDeviceValue(usb.deviceSpecification)),
-      userDetailItem(uiText.deviceTopology.label.deviceRevision, reportedDeviceValue(usb.deviceRevision)),
-      userDetailItem(uiText.deviceTopology.label.usbClass, reportedDeviceValue(usb.deviceClass)),
-      userDetailItem("VID / PID", reportedDeviceValue(formatUsbVidPid(usb))),
-      userDetailItem(uiText.deviceTopology.label.serialNumber, reportedDeviceValue(usb.serialNumber))
-    ]) : null,
-    isDevice ? userDetailSection(uiText.deviceTopology.section.deviceIdentity, [
-      userDetailItem(uiText.deviceTopology.label.hardwareIdentity, reportedDeviceValue(port.deviceId))
-    ]) : null
-  ]);
-}
-
-function reportedDeviceValue(value?: string | null) {
-  return isReportedDeviceValue(value) ? String(value).trim() : "";
-}
-
-function isReportedDeviceValue(value?: string | null) {
-  const text = String(value ?? "").trim();
-  return Boolean(text && text !== "--" && text.toLocaleLowerCase() !== "unknown" && !text.includes(uiText.deviceTopology.notReportedMarker));
-}
-
-// 后端给的是状态 id（见 DeviceNetworkConnectionStates），措辞在这里。
-function userFacingNetworkState(value?: string | null) {
-  switch (String(value ?? "").trim()) {
-    case "connected": return uiText.deviceTopology.connectionState.connected;
-    case "disconnected": return uiText.deviceTopology.connectionState.disconnected;
-    case "not-reported": return uiText.deviceTopology.notReportedMarker;
-    default: return uiText.deviceTopology.connectionState.unknown;
-  }
-}
-
-// 高级互联节点的「硬件类别」就是它的互联角色，措辞在角色码里。
-function hardwareKindLabel(port: DeviceTopologyPort) {
-  return port.advancedInterconnect
-    ? renderBackendMessage(port.advancedInterconnect.role, portHardwareKind(port))
-    : portHardwareKind(port);
-}
-
-function isDeviceRole(role?: DeviceTopologyNodeRole) {
-  return role === "external-hub"
-    || role === "attached-device"
-    || role === "internal-controller"
-    || role === "internal-device"
-    || role === "internal-function";
-}
-
-function isInterfaceRole(role?: DeviceTopologyNodeRole) {
-  return role === "host-interface"
-    || role === "downstream-interface"
-    || role === "internal-interface";
-}
-
-function interfaceProtocol(node: DeviceTopologyListNode, scope: DeviceTopologyScope) {
-  if (scope === "internal") {
-    switch (node.connectorKind) {
-      case "pcie": return "PCI Express";
-      case "usb-internal": return "USB";
-      case "internal-display": return node.port.display
-        ? displayConnectorTechnology(node.port.display)
-        : uiText.deviceTopology.internalDisplay;
-      case "audio": return "HD Audio";
-      case "bluetooth": return "Bluetooth";
-      case "acpi": return "ACPI";
-      case "storage": return node.port.storage?.busType ?? node.port.protocol;
-      default: return node.port.protocol;
-    }
-  }
-  return node.port.usb?.supportedProtocols
-    ?? node.port.display?.connectorTechnology
-    ?? node.port.protocol;
-}
-
-function interfaceSummaryFields(node: DeviceTopologyListNode, childCount: number, scope: DeviceTopologyScope) {
-  if (scope === "external") {
-    return deviceTopologySummaryFields(node.port);
-  }
-  return [
-    { label: uiText.deviceTopology.label.interfaceType, value: node.title },
-    { label: uiText.deviceTopology.label.connectionState, value: connectionStateLabel(node.connectionState) },
-    { label: uiText.deviceTopology.label.directChildren, value: uiText.deviceTopology.countSuffix(childCount) },
-    { label: uiText.deviceTopology.label.protocol, value: interfaceProtocol(node, scope) }
-  ];
-}
-
-function connectionStateLabel(state?: "connected" | "disconnected" | "unknown") {
-  if (state === "connected") return uiText.deviceTopology.connectionState.connected;
-  if (state === "disconnected") return uiText.deviceTopology.connectionState.disconnected;
-  return uiText.deviceTopology.connectionState.unknown;
 }
 
 function DeviceConnectorIcon(props: { kind: string; large?: boolean }) {
@@ -630,115 +442,3 @@ function DeviceConnectorIcon(props: { kind: string; large?: boolean }) {
   );
 }
 
-function formatUsbPort(usb: DeviceTopologyUsbConnection) {
-  return `Hub ${usb.portNumber}`;
-}
-
-function formatUsbVidPid(usb: DeviceTopologyUsbConnection) {
-  if (!usb.vendorId && !usb.productId) {
-    return "--";
-  }
-
-  return `${usb.vendorId ?? "VID --"} / ${usb.productId ?? "PID --"}`;
-}
-
-function formatUsbCapability(usb: DeviceTopologyUsbConnection) {
-  if (usb.operatingAtSuperSpeedPlusOrHigher) {
-    return uiText.deviceTopology.usbCapability.currentSuperSpeedPlus;
-  }
-
-  if (usb.operatingAtSuperSpeedOrHigher) {
-    return uiText.deviceTopology.usbCapability.currentSuperSpeed;
-  }
-
-  if (usb.superSpeedPlusCapableOrHigher) {
-    return uiText.deviceTopology.usbCapability.supportsSuperSpeedPlus;
-  }
-
-  if (usb.superSpeedCapableOrHigher) {
-    return uiText.deviceTopology.usbCapability.supportsSuperSpeed;
-  }
-
-  if (usb.superSpeedCapableOrHigher === false || usb.superSpeedPlusCapableOrHigher === false) {
-    return uiText.deviceTopology.usbCapability.notReported;
-  }
-
-  return "--";
-}
-
-function formatUsbConnector(usb: DeviceTopologyUsbConnection) {
-  const connector = usb.portConnectorIsTypeC ? "USB-C" : "USB";
-  if (usb.portIsUserConnectable === true) {
-    return uiText.deviceTopology.connectorSuffix.userPluggable(connector);
-  }
-
-  if (usb.portIsUserConnectable === false) {
-    return uiText.deviceTopology.connectorSuffix.internal(connector);
-  }
-
-  return usb.portConnectorIsTypeC ? connector : "--";
-}
-
-function connectorLabel(kind: string) {
-  switch (kind) {
-    case "usb-a":
-      return uiText.deviceTopology.usbGenericConnector;
-    case "usb-c":
-      return "USB-C / Type-C";
-    case "thunderbolt":
-      return "Thunderbolt / USB4";
-    case "hdmi":
-      return "HDMI";
-    case "displayport":
-      return "DisplayPort";
-    case "mini-displayport":
-      return "Mini DisplayPort";
-    case "dvi":
-      return "DVI";
-    case "vga":
-      return "VGA / HD15";
-    case "internal-display":
-      return uiText.deviceTopology.deviceCategory.internalDisplayPanel;
-    case "wireless-display":
-      return uiText.deviceTopology.deviceCategory.wirelessDisplay;
-    case "rj45":
-      return "RJ45 / Ethernet";
-    case "audio":
-      return uiText.deviceTopology.deviceCategory.audio;
-    case "sd-card":
-      return uiText.deviceTopology.deviceCategory.cardReader;
-    case "pcie":
-      return "PCIe";
-    case "bluetooth":
-      return "Bluetooth";
-    default:
-      return uiText.deviceTopology.deviceCategory.generic;
-  }
-}
-
-function busLabel(kind: string) {
-  switch (kind) {
-    case "usb":
-      return "USB";
-    case "usb4":
-      return "USB4";
-    case "thunderbolt":
-      return "Thunderbolt";
-    case "pci":
-      return "PCI / PCIe";
-    case "display":
-      return uiText.deviceTopology.deviceCategory.display;
-    case "network":
-      return uiText.deviceTopology.deviceCategory.network;
-    case "audio":
-      return uiText.deviceTopology.deviceCategory.audio;
-    case "storage":
-      return uiText.deviceTopology.deviceCategory.storage;
-    case "bluetooth":
-      return uiText.deviceTopology.deviceCategory.bluetooth;
-    case "system":
-      return uiText.deviceTopology.deviceCategory.systemFirmware;
-    default:
-      return uiText.deviceTopology.deviceCategory.unknown;
-  }
-}

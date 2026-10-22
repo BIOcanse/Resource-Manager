@@ -140,6 +140,7 @@ public sealed record MetricDeviceAddress
             throw new ArgumentOutOfRangeException(nameof(adapterLuid));
         if (members.Any(string.IsNullOrWhiteSpace))
             throw new ArgumentException("Physical PnP identities cannot be empty.", nameof(pnpInstanceIds));
+        members = members.Select(static member => Pnp(member, nameof(pnpInstanceIds))).ToArray();
         return new()
         {
             Kind = members.Length == 1 ? "gpu_adapter" : "gpu_adapter_group",
@@ -150,14 +151,14 @@ public sealed record MetricDeviceAddress
     }
 
     public static MetricDeviceAddress Npu(string pnpInstanceId)
-        => new() { Kind = "npu", PnpInstanceId = RequireText(pnpInstanceId, nameof(pnpInstanceId)) };
+        => new() { Kind = "npu", PnpInstanceId = Pnp(pnpInstanceId, nameof(pnpInstanceId)) };
 
     public static MetricDeviceAddress NpuEngine(string pnpInstanceId, uint physicalAdapterIndex, uint engineIndex)
-        => new() { Kind = "npu_engine", PnpInstanceId = RequireText(pnpInstanceId, nameof(pnpInstanceId)),
+        => new() { Kind = "npu_engine", PnpInstanceId = Pnp(pnpInstanceId, nameof(pnpInstanceId)),
             PhysicalAdapterIndex = physicalAdapterIndex, EngineIndex = engineIndex };
 
     public static MetricDeviceAddress GpuFan(string pnpInstanceId, uint fanIndex)
-        => new() { Kind = "fan", PnpInstanceId = RequireText(pnpInstanceId, nameof(pnpInstanceId)), FanIndex = fanIndex };
+        => new() { Kind = "fan", PnpInstanceId = Pnp(pnpInstanceId, nameof(pnpInstanceId)), FanIndex = fanIndex };
 
     public static MetricDeviceAddress GpuFanTuningGroup(ulong adapterLuid, IEnumerable<string> pnpInstanceIds)
         => GpuAdapter(adapterLuid, pnpInstanceIds);
@@ -201,6 +202,11 @@ public sealed record MetricDeviceAddress
         ArgumentException.ThrowIfNullOrWhiteSpace(value, parameterName);
         return value;
     }
+
+    // PnP instance ids are case-insensitive. Addresses use the device-topology spelling
+    // (trimmed, upper invariant) so consumers can match port DeviceId by exact equality.
+    private static string Pnp(string value, string parameterName)
+        => RequireText(value, parameterName).Trim().ToUpperInvariant();
 
     private static string? Clean(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

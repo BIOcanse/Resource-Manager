@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal } from "solid-js";
+import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import {
   dismissOptimizationReport,
@@ -12,6 +12,8 @@ import type { RequestClient } from
   "../frontendRuntime/request/RequestClient.ts";
 import type { SourceHandle } from
   "../frontendRuntime/source/SourceDescriptor.ts";
+import type { PushValueSource } from
+  "../frontendRuntime/push/PushValueSourceFamily.ts";
 import {
   sourceCanRender,
   type SourceSnapshot
@@ -36,11 +38,15 @@ import type {
 } from "../types";
 
 const optimizationModeApplyDelayMs = 3000;
+const smartStatusSubscriptionIntervalMs = 3_000;
 
 export interface OptimizationStoreOptions {
   showToast: (input: ToastInput) => void;
   enabled: Accessor<boolean>;
   reportSource: SourceHandle<OptimizationReportOverview>;
+  /** 调度状态的后端推送：页面上的状态区可见时订阅，显示随后端变化。 */
+  statusSource: PushValueSource<HostManagerSmartCoordinatorStatus>;
+  statusActive: Accessor<boolean>;
   requestClient: Pick<RequestClient, "request">;
 }
 
@@ -99,6 +105,17 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     });
   });
 
+  // 调度状态由后端协调器持有：循环里的模式、运行、故障关闭和计数随时会变，只靠进页读取一次会停在旧值。
+  createEffect(() => {
+    if (!options.enabled() || !options.statusActive()) {
+      return;
+    }
+    const unsubscribe = options.statusSource.subscribe(
+      smartStatusSubscriptionIntervalMs,
+      acceptHostManagerStatus);
+    onCleanup(unsubscribe);
+  });
+
   async function changeHostManagerSmartCoordinatorMode(mode: AppOptimizationMode) {
     if (!options.enabled()) {
       clearPendingOptimizationMode();
@@ -123,9 +140,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
 
     setActionId("smart-mode");
     try {
-      const status = await setHostManagerSmartCoordinatorMode(mode);
-      setHostManagerStatus(status);
-      setHostManagerObservation(readyObservation());
+      acceptHostManagerStatus(await setHostManagerSmartCoordinatorMode(mode));
       await refreshReports(false);
     } catch (error) {
       showErrorToast(error, uiText.stores.smartModeSwitchFailed);
@@ -216,16 +231,20 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
 
     setHostManagerObservation(refreshingObservation);
     try {
-      const status = await getHostManagerSmartCoordinatorStatus();
-      setHostManagerStatus(status);
-      setHostManagerObservation(readyObservation());
-      if (pendingOptimizationMode() === status.mode) {
-        clearPendingOptimizationMode();
-      }
+      acceptHostManagerStatus(await getHostManagerSmartCoordinatorStatus());
     } catch (error) {
       setHostManagerObservation((previous) => failedObservation(
         previous,
         userFacingErrorMessage(error, uiText.stores.optimizationScheduleRefreshFailed)));
+    }
+  }
+
+  // 读取、推送和切换模式的回执都是同一份后端状态，统一在这里落地。
+  function acceptHostManagerStatus(status: HostManagerSmartCoordinatorStatus) {
+    setHostManagerStatus(status);
+    setHostManagerObservation(readyObservation());
+    if (pendingOptimizationMode() === status.mode) {
+      clearPendingOptimizationMode();
     }
   }
 

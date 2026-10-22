@@ -219,6 +219,36 @@ public sealed class StorageInformationCollectorTests
         Assert.Empty(WindowsStorageSensorsMonitoringZone.ProjectIdentities([.. rows, Physical(8, "conflicting", "SN-B")], 1));
     }
 
+    [Fact]
+    public void CoreHostStorageIdentitiesCarryTheStorageDeviceDescriptor()
+    {
+        // The Core host reads storage identities through this zone; it must publish the same descriptor as the
+        // ReadWriteCore default resources instead of the "unknown" placeholder.
+        var physical = Physical();
+        physical["FriendlyName"] = " YMTC PC41Q-1TB-B ";
+        var read = WindowsStorageSensorsMonitoringZone.ReadIdentities(1, (_, _) => new([physical], null));
+        var identity = Assert.Single(read.Identities);
+        Assert.Equal("storage", identity.Device.Kind);
+        var address = Assert.IsType<MetricDeviceAddress>(identity.Device.Address);
+        Assert.Equal("storage", address.Kind);
+        Assert.Equal(7, address.PhysicalDiskDeviceId);
+        Assert.Equal("DISK-A", address.UniqueId);
+        Assert.Equal("SN-A", address.SerialNumber);
+        Assert.Equal("YMTC PC41Q-1TB-B", identity.Device.DisplayName);
+        Assert.Equal("storage", Assert.Single(Zone([Counter()]).ReadStorageSensors().Identities!).Device.Kind);
+
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
+            [], read.Identities, [], NativeMetricSnapshotCatalogHandleMap.Empty);
+        var bindings = catalog.RuleBindings.Values.Where(row => row.DeviceIdentity == identity.ExactIdentityKey).ToArray();
+        Assert.NotEmpty(bindings);
+        Assert.All(bindings, row =>
+        {
+            Assert.Equal("storage", row.Device.Kind);
+            Assert.Equal("storage", row.Device.Address!.Kind);
+            Assert.Equal("YMTC PC41Q-1TB-B", row.Device.DisplayName);
+        });
+    }
+
     internal static HardwareMetricSnapshot CommittedSnapshot()
         => StorageMetricSnapshotTestData.CommittedSnapshot();
 }

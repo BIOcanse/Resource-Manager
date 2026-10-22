@@ -59,7 +59,7 @@ public sealed class AppSettingsMigratorTests
 
         Assert.Equal(AppSettingsDefaults.CurrentVersion, settings.Version);
         Assert.True(settings.Performance.SmartMonitoringEnabled);
-        Assert.Equal(AppThemeModes.System, settings.Appearance.Theme);
+        Assert.Equal("system", settings.Appearance.Theme);
         Assert.Equal([AppGpuPerformanceUseCases.General], settings.Performance.GpuPerformanceUseCases);
         Assert.False(settings.SystemIntegration.TaskManagerShortcutReplacementEnabled);
         Assert.False(settings.SystemIntegration.Hotkeys.Single().Enabled);
@@ -96,7 +96,7 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
         var serialized = JsonSerializer.Serialize(settings);
 
-        Assert.Equal(AppThemeModes.System, settings.Appearance.Theme);
+        Assert.Equal("system", settings.Appearance.Theme);
         Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
         Assert.DoesNotContain("samplingDispatchMode", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
@@ -202,7 +202,7 @@ public sealed class AppSettingsMigratorTests
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        Assert.Equal(AppThemeModes.System, settings.Appearance.Theme);
+        Assert.Equal("system", settings.Appearance.Theme);
         var hotkey = Assert.Single(settings.SystemIntegration.Hotkeys);
         Assert.Equal(AppSystemIntegrationActionIds.ForceTerminateUnresponsiveAndForeground, hotkey.ActionId);
         Assert.False(hotkey.Enabled);
@@ -227,7 +227,7 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
         Assert.Equal(barColorMode, settings.Appearance.BarColorMode);
-        Assert.Equal(AppThemeModes.System, settings.Appearance.Theme);
+        Assert.Equal("system", settings.Appearance.Theme);
         Assert.True(settings.PublicService.Enabled);
     }
 
@@ -258,7 +258,7 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
         var serialized = JsonSerializer.Serialize(settings, JsonSerializerOptions.Web);
 
-        Assert.Equal(AppThemeModes.System, settings.Appearance.Theme);
+        Assert.Equal("system", settings.Appearance.Theme);
         Assert.DoesNotContain("sceneReferenceWhite", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("outputDisplayProfiles", serialized, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("outputMinimumNits", serialized, StringComparison.OrdinalIgnoreCase);
@@ -441,6 +441,38 @@ public sealed class AppSettingsMigratorTests
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
     }
 
+    [Fact]
+    public void RequiresRewrite_AddsMissingUiStyleToCurrentShape()
+    {
+        using var document = JsonDocument.Parse(CurrentShapeJson.Replace(
+            "\"uiStyle\": \"standard\",", string.Empty, StringComparison.Ordinal));
+
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        Assert.Equal("standard", AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance.UiStyle);
+    }
+
+    [Theory]
+    [InlineData("terminal", "amber", "terminal", "amber")]
+    [InlineData("terminal", "system", "terminal", "phosphor")]
+    [InlineData("soft", "lowContrast", "soft", "system")]
+    [InlineData("unknown", "dark", "standard", "dark")]
+    [InlineData("outline", "blueprint", "outline", "blueprint")]
+    public void MigrateForRead_NormalizesThePaletteWithinTheStyle(
+        string uiStyle,
+        string theme,
+        string expectedUiStyle,
+        string expectedTheme)
+    {
+        using var document = JsonDocument.Parse(CurrentShapeJson
+            .Replace("\"uiStyle\": \"standard\"", $"\"uiStyle\": \"{uiStyle}\"", StringComparison.Ordinal)
+            .Replace("\"theme\": \"system\"", $"\"theme\": \"{theme}\"", StringComparison.Ordinal));
+
+        var appearance = AppSettingsMigrator.MigrateForRead(document.RootElement).Appearance;
+
+        Assert.Equal(expectedUiStyle, appearance.UiStyle);
+        Assert.Equal(expectedTheme, appearance.Theme);
+    }
+
     private const string CurrentShapeJson =
         """
         {
@@ -464,6 +496,7 @@ public sealed class AppSettingsMigratorTests
             "localSystemRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 60000 }
           },
           "appearance": {
+            "uiStyle": "standard",
             "theme": "system",
             "animations": "auto",
             "resourceBarHardwareAccelerationEnabled": true,

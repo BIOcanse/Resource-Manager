@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ko-KR-targetedReport.ts";
-import { fieldLabel } from "./ko-KR-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
 const koKrAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "저장 중",
     saveFailed: "저장하지 못했습니다"
@@ -619,6 +620,7 @@ const koKrAppCopy: AppCopy = {
     listLabel: "모니터링 항목",
     empty: "일치하는 모니터링 항목이 없습니다",
     needsInstall: (name: string) => `설치 필요: ${name}`,
+    deviceFields: "장치 필드",
     cancel: "취소",
     confirm: "확인"
   },
@@ -800,6 +802,8 @@ const koKrAppCopy: AppCopy = {
     reportPanel: "최적화 보고서",
     gpuScoreUnrecognizedTitle: "GPU 모델을 인식하지 못했습니다",
     gpuScoreUnrecognizedMessage: (names: string) => `${names}에 일치하는 기본 성능 점수가 없습니다. 양수의 수동 점수를 설정하면 자동 GPU 순위에 포함됩니다.`,
+    runtimeFaultClosedTitle: "최적화 런타임이 오류로 차단되었습니다",
+    runtimeFaultClosedDetail: (reason: string) => `새 최적화 조정은 실행되지 않습니다. 원인 코드: ${reason}`,
     filterLabel: "보고서 필터",
     filterUntrusted: (count: string) => `신뢰하지 않음 ${count}`,
     filterAll: (count: string) => `전체 ${count}`,
@@ -1023,6 +1027,7 @@ const koKrAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} 세부 정보`,
     fallbackDeviceName: "장치",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `상위 허브 포트 ${port}`,
     connectedDevice: "연결된 장치",
     section: {
       overview: "개요",
@@ -1052,7 +1057,7 @@ const koKrAppCopy: AppCopy = {
       activeResolution: "현재 해상도",
       refreshRate: "재생 빈도",
       connectionLocation: "연결 위치",
-      networkInterface: "네트워크 인터페이스",
+      networkInterface: "시스템 인터페이스 이름",
       transmitSpeed: "송신 속도",
       receiveSpeed: "수신 속도",
       macAddress: "MAC 주소",
@@ -1144,6 +1149,7 @@ const koKrAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · 내부 연결`
     },
     usbGenericConnector: "USB-A / USB 연결",
+    ethernetProtocol: "이더넷",
     deviceCategory: {
       internalDisplayPanel: "내장 디스플레이 패널",
       wirelessDisplay: "무선 / 가상 디스플레이",
@@ -1227,7 +1233,7 @@ const koKrAppCopy: AppCopy = {
     powerRole: "전원 역할",
     negotiatedPower: "협상된 전력",
     graphicsBus: "그래픽 버스",
-    networkInterface: "네트워크 인터페이스",
+    networkInterface: "시스템 인터페이스 이름",
     connectionState: "연결 상태",
     transmitLink: "송신 링크",
     receiveLink: "수신 링크",

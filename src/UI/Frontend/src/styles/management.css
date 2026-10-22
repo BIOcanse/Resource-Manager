@@ -25,7 +25,8 @@
   color: var(--text);
 }
 
-.management-tabs {
+/* 二级分页（组件与软件、详细信息共用）：固定在顶栏下面的一条，页签与顶栏页签同一口径。 */
+.page-subnav {
   position: fixed;
   top: var(--shellbar-height);
   left: 0;
@@ -38,24 +39,25 @@
   padding: 0 14px;
   background: var(--shell-bg);
   border-bottom: 1px solid var(--divider);
-  backdrop-filter: blur(14px);
+  backdrop-filter: var(--shell-backdrop);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
 }
 
 .shell-pages::-webkit-scrollbar,
-.management-tabs::-webkit-scrollbar {
+.page-subnav::-webkit-scrollbar {
   height: 6px;
 }
 
 .shell-pages::-webkit-scrollbar-thumb,
-.management-tabs::-webkit-scrollbar-thumb {
+.page-subnav::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 999px;
 }
 
-.management-tab {
+.page-subnav-tab {
+  flex: 0 0 auto;
   min-height: 30px;
   padding: 0 12px;
   border: 1px solid var(--line);
@@ -67,20 +69,20 @@
   white-space: nowrap;
 }
 
-.management-tab.active {
+.page-subnav-tab.active {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--on-accent);
 }
 
 /* 与顶栏页签同一口径：悬停是淡强调色，实心强调色只留给当前子页。 */
-.management-tab:not(.active):hover {
+.page-subnav-tab:not(.active):not(:disabled):hover {
   border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
   background: var(--accent-soft);
   color: var(--text);
 }
 
-.management-tab.active:hover {
+.page-subnav-tab.active:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
@@ -200,7 +202,6 @@
   gap: 8px;
   justify-content: flex-end;
   align-content: center;
-  max-width: 236px;
 }
 
 .software-actions {
@@ -217,6 +218,8 @@
   min-height: 32px;
   padding: 0 10px;
   font-size: 13px;
+  /* 按钮文字不折行：折成两行（「验证并补齐文／件」）既难读又把卡片撑高。 */
+  white-space: nowrap;
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 

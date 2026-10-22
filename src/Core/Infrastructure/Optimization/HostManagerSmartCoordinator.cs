@@ -83,6 +83,8 @@ public sealed partial class HostManagerSmartCoordinator(
     private ulong nativeHostSessionIncarnation;
     private bool authoritativeAppliedFactsRequired = true;
     private bool legacyStatePrepared;
+    // 调度循环存活且上一周期没有失败；与模式无关。状态读取时再和当前模式、故障关闭合成，
+    // 这样刚切换模式、循环还没跑到下一周期时，状态也不会沿用上一个模式的结论。
     private bool schedulerRunning;
     private int foregroundControlRequestCount;
     private readonly ResourceManagerSelfLocalResourceManager selfLocalResourceManagerOwner =
@@ -115,11 +117,10 @@ public sealed partial class HostManagerSmartCoordinator(
         {
             RequireOperationAdmission();
             var state = await LoadRollbackStateAsync(cancellationToken);
-            return CreateStatus(
+            return await CreateStatusAsync(
                 runtimePlanProvider.Current.OptimizationMode.Mode,
                 ProjectNativeState(state),
-                schedulerRunning,
-                nativeWorkspace?.Snapshot.PendingCount ?? 0);
+                cancellationToken);
         }
         finally
         {
@@ -187,11 +188,10 @@ public sealed partial class HostManagerSmartCoordinator(
             }
             schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
             var state = ProjectNativeState(await LoadRollbackStateAsync(cancellationToken));
-            return CreateStatus(
+            return await CreateStatusAsync(
                 normalizedMode,
                 state,
-                schedulerRunning,
-                nativeWorkspace?.Snapshot.PendingCount ?? 0);
+                cancellationToken);
         }
         finally
         {
@@ -230,11 +230,10 @@ public sealed partial class HostManagerSmartCoordinator(
                 outerLoopContext,
                 cancellationToken);
             var state = ProjectNativeState(await LoadRollbackStateAsync(cancellationToken));
-            status = CreateStatus(
+            status = await CreateStatusAsync(
                 runtimePlanProvider.Current.OptimizationMode.Mode,
                 state,
-                schedulerRunning,
-                nativeWorkspace?.Snapshot.PendingCount ?? 0);
+                cancellationToken);
         }
         finally
         {
@@ -296,11 +295,10 @@ public sealed partial class HostManagerSmartCoordinator(
             schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
             var restored = await LoadRollbackStateAsync(cancellationToken);
 
-            return CreateStatus(
+            return await CreateStatusAsync(
                 AppOptimizationModes.Normal,
                 ProjectNativeState(restored),
-                schedulerRunning,
-                nativeWorkspace?.Snapshot.PendingCount ?? 0);
+                cancellationToken);
         }
         finally
         {
@@ -317,7 +315,7 @@ public sealed partial class HostManagerSmartCoordinator(
         IDisposable? processMemoryFinalAdmissionSubscription = null;
         string? subscribedHardwareRequestKey = null;
         var subscribedProcessMetricMask = SchedulingProcessMetricMask.None;
-        schedulerRunning = runtimePlanProvider.Current.OptimizationMode.SchedulingEnabled;
+        schedulerRunning = true;
         try
         {
             await Task.Yield();
@@ -336,7 +334,7 @@ public sealed partial class HostManagerSmartCoordinator(
                 try
                 {
                     var mode = runtimePlanProvider.Current.OptimizationMode;
-                    schedulerRunning = mode.SchedulingEnabled;
+                    schedulerRunning = true;
                     var publicResourcesAvailable = HasAvailablePublicResourceLifecycle();
                     var cpuRequired = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled;
                     if (!cpuRequired)
@@ -415,7 +413,6 @@ public sealed partial class HostManagerSmartCoordinator(
                         outerLoopContext,
                         stoppingToken);
                     var currentMode = runtimePlanProvider.Current.OptimizationMode;
-                    schedulerRunning = currentMode.SchedulingEnabled;
                     if (!currentMode.SchedulingEnabled
                         && await CanParkNormalSchedulingAsync(stoppingToken))
                     {

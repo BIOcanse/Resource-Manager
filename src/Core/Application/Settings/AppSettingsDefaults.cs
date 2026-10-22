@@ -1,5 +1,6 @@
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Units;
+using ResourceManager.Shared.Appearance;
 
 namespace ResourceManager.App.Application.Settings;
 
@@ -26,6 +27,7 @@ public static class AppSettingsDefaults
 
     public static AppSettings Create()
     {
+        var defaultAppearance = UiStyleCatalog.Normalize(null, null);
         return new AppSettings(
             CurrentVersion,
             new AppPerformanceSettings(
@@ -62,7 +64,8 @@ public static class AppSettingsDefaults
                     AppLogicRefreshIntervalPresets.Balanced,
                     LocalSystemRefreshBalancedIntervalMs)),
             new AppAppearanceSettings(
-                AppThemeModes.System,
+                defaultAppearance.UiStyle,
+                defaultAppearance.Theme,
                 AppAnimationModes.Auto,
                 true,
                 AppAdaptiveBooleanModes.Auto,

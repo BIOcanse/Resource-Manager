@@ -1,0 +1,320 @@
+/* terminal style. Rules: docs/ui_styles.md. */
+/*
+  终端：只有深色。近黑的平面，单色强调（磷绿／琥珀／冰蓝），直角，
+  面板用强调色调的细线分隔，少数选中和聚焦的控件带一圈很淡的微光，读数用等宽数字。
+  只改颜色、圆角、线条、阴影和字体；布局、尺寸、字号、行高都沿用标准风格。
+*/
+
+/* 风格级：三套配色共用的线条、阴影和字体。颜色都从配色块里的变量派生。 */
+:root[data-ui-style="terminal"] {
+  /* 顶栏不透明，背景模糊看不出来，关掉省合成开销。 */
+  --shell-backdrop: none;
+  color-scheme: dark;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --shadow-color: 0 0 0;
+  /* 平面：常态不投影，层次靠表面明暗和细线。 */
+  --elev-1: 0 0 0 0 transparent;
+  /* 悬停和浮起的小件：一圈强调色细线，加一点很短的暗影把它和底面分开。 */
+  --elev-2: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent), 0 6px 16px rgb(0 0 0 / 0.45);
+  /* 弹出层与对话框。 */
+  --elev-3: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 18px 48px rgb(0 0 0 / 0.68);
+  --shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent), 0 10px 28px rgb(0 0 0 / 0.55);
+  --modal-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent), 0 24px 64px rgb(0 0 0 / 0.70);
+  /* 顶边一条极淡的强调色线，代替标准风格的白色高光。 */
+  --edge-highlight: inset 0 1px 0 color-mix(in srgb, var(--accent) 12%, transparent);
+  /* 选中、当前页、聚焦的少数控件用的微光；不要用在表格行这类大量重复的元素上。 */
+  --terminal-glow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 8px color-mix(in srgb, var(--accent) 32%, transparent);
+  --terminal-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", monospace;
+  --terminal-heading: Bahnschrift, "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+}
+
+/* 配色：画布直接读 --surface、--surface-soft、--hairline、--text、--muted、--line、--divider、
+   --resource-empty，这些用不需要再解析的字面颜色。 */
+:root[data-ui-style="terminal"][data-theme="phosphor"] {
+  --treemap-directory-hue: 140;
+  --treemap-file-hue: 165;
+  --bg: #050806;
+  --surface: #0a0f0c;
+  --surface-soft: #0d1410;
+  --surface-strong: #14201a;
+  --table-header-bg: #0c1510;
+  --hover-bg: #112419;
+  --text: #b4f0c4;
+  --muted: #72b88b;
+  --line: #1f5a37;
+  --line-soft: #173826;
+  --divider: #1a3d2a;
+  --divider-soft: #12291c;
+  --accent: #41e88a;
+  --accent-strong: #86fbb4;
+  --accent-soft: #0f2e1d;
+  --warn: #ffb54a;
+  --warn-soft: #2e2210;
+  --danger: #ff6159;
+  --danger-soft: #331312;
+  --shell-bg: #070b09;
+  --badge-bg: #15281c;
+  --empty-bg: rgba(10, 15, 12, 0.56);
+  --resource-empty: #08100b;
+  --on-accent: #02130a;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(65, 232, 138, 0.26);
+}
+
+:root[data-ui-style="terminal"][data-theme="amber"] {
+  --treemap-directory-hue: 34;
+  --treemap-file-hue: 50;
+  --bg: #080603;
+  --surface: #0f0b06;
+  --surface-soft: #140f08;
+  --surface-strong: #1f180d;
+  --table-header-bg: #120d07;
+  --hover-bg: #251b0b;
+  --text: #ffd9a3;
+  --muted: #c4985c;
+  --line: #5e4316;
+  --line-soft: #3a2a10;
+  --divider: #3f2e12;
+  --divider-soft: #2a1f0c;
+  --accent: #ffb030;
+  --accent-strong: #ffcd73;
+  --accent-soft: #2e200a;
+  /* 警告不能和琥珀强调色混：换成偏黄绿的柠檬色，更亮，色相差 40° 左右。 */
+  --warn: #e4ef5c;
+  --warn-soft: #262a0c;
+  --danger: #ff5a6c;
+  --danger-soft: #351219;
+  --shell-bg: #0a0704;
+  --badge-bg: #2a1f0e;
+  --empty-bg: rgba(15, 11, 6, 0.56);
+  --resource-empty: #0c0905;
+  --on-accent: #140c00;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(255, 176, 48, 0.26);
+}
+
+:root[data-ui-style="terminal"][data-theme="ice"] {
+  --treemap-directory-hue: 192;
+  --treemap-file-hue: 212;
+  --bg: #04070b;
+  --surface: #09111a;
+  --surface-soft: #0c1622;
+  --surface-strong: #13212f;
+  --table-header-bg: #0b1520;
+  --hover-bg: #102637;
+  --text: #c6ecff;
+  --muted: #7aa9c5;
+  --line: #1d4a63;
+  --line-soft: #163346;
+  --divider: #183a4f;
+  --divider-soft: #102635;
+  --accent: #4fd2ff;
+  --accent-strong: #9ae6ff;
+  --accent-soft: #0c2a3a;
+  --warn: #ffb84d;
+  --warn-soft: #2e2310;
+  --danger: #ff6470;
+  --danger-soft: #351319;
+  --shell-bg: #060a0f;
+  --badge-bg: #142636;
+  --empty-bg: rgba(9, 17, 26, 0.56);
+  --resource-empty: #070e15;
+  --on-accent: #00121b;
+  --backdrop: rgba(0, 0, 0, 0.62);
+  --hairline: rgba(79, 210, 255, 0.26);
+}
+
+/* ---- 全局 ---- */
+
+/* 直角：写死了圆角（胶囊、圆点、开关）的元素也一并改成直角。滚动条滑块用强调色调。 */
+:root[data-ui-style="terminal"] * {
+  border-radius: 0;
+  scrollbar-color: color-mix(in srgb, var(--accent) 36%, transparent) transparent;
+}
+
+:root[data-ui-style="terminal"] *::before,
+:root[data-ui-style="terminal"] *::after {
+  border-radius: 0;
+}
+
+:root[data-ui-style="terminal"] ::selection {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 标题用 Bahnschrift（中文落到雅黑）。只给两端对齐、旁边不紧跟其他元素的标题，
+   字宽变化不会推动别的盒子；标题栏的产品名是居中排的，不换。 */
+:root[data-ui-style="terminal"] .panel-header h2,
+:root[data-ui-style="terminal"] .modal-header h2,
+:root[data-ui-style="terminal"] .settings-content-header h2 {
+  font-family: var(--terminal-heading);
+}
+
+/* 读数：等宽字只给宽度由外层决定的盒子（卡片主读数、定宽表格列），等宽字更宽，
+   放进按内容定宽的位置会挤动旁边的标签。表格各列数字统一等宽对齐。 */
+:root[data-ui-style="terminal"] .metric-main-content .metric-value,
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell {
+  font-family: var(--terminal-mono);
+}
+
+:root[data-ui-style="terminal"] .resource-table-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 卡片主读数用更亮的强调色，像仪表的读数；没有值时保持标准风格的灰色。 */
+:root[data-ui-style="terminal"] .metric-main-content .metric-value:not(.missing) {
+  color: var(--accent-strong);
+}
+
+/* ---- 按钮 ---- */
+
+/* 去掉标准风格主按钮的渐变光泽，保持平面。 */
+:root[data-ui-style="terminal"] button {
+  background-image: none;
+}
+
+:root[data-ui-style="terminal"] button.secondary {
+  border-color: var(--line);
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+:root[data-ui-style="terminal"] button.secondary:not(:disabled):hover {
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* ---- 顶栏与二级分页 ---- */
+
+/* 未选中的页签是透明的字，当前页是反显的强调色块加微光。 */
+:root[data-ui-style="terminal"] .shell-page,
+:root[data-ui-style="terminal"] .page-subnav-tab {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+:root[data-ui-style="terminal"] .shell-page:not(.active):hover,
+:root[data-ui-style="terminal"] .page-subnav-tab:not(.active):not(:disabled):hover {
+  border-color: var(--line);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+:root[data-ui-style="terminal"] .shell-page.active,
+:root[data-ui-style="terminal"] .page-subnav-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--terminal-glow);
+}
+
+:root[data-ui-style="terminal"] .shell-page.active:hover,
+:root[data-ui-style="terminal"] .page-subnav-tab.active:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+/* ---- 面板与卡片 ---- */
+
+/* 面板标题的计数徽标：去掉胶囊底，改成细线框。 */
+:root[data-ui-style="terminal"] #controlledCount,
+:root[data-ui-style="terminal"] #managementCount,
+:root[data-ui-style="terminal"] #resourceBreakdownStatus,
+:root[data-ui-style="terminal"] #resourceTableStatus,
+:root[data-ui-style="terminal"] #migrationStatus,
+:root[data-ui-style="terminal"] #migrationRecordCount,
+:root[data-ui-style="terminal"] #optimizationCount {
+  border-radius: 0;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* ---- 输入与分段 ---- */
+
+:root[data-ui-style="terminal"] .toolbar-search input:focus,
+:root[data-ui-style="terminal"] .resource-table-search input:focus,
+:root[data-ui-style="terminal"] .metric-picker-search:focus-within,
+:root[data-ui-style="terminal"] .standard-select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: var(--terminal-glow);
+}
+
+/* 下拉框里的搜索框：外框已经亮起，里面的输入框和外框的偏移焦点环在直角下会叠成三层框，只留外框的微光。 */
+:root[data-ui-style="terminal"] .standard-select-search:focus-within {
+  outline: none;
+  box-shadow: var(--terminal-glow);
+}
+
+:root[data-ui-style="terminal"] .standard-select-search input:focus-visible {
+  outline: none;
+}
+
+/* 开关：关时是暗槽里一块次要色的方块，开时整条反显成强调色、方块换成深色。
+   这里的选择器比标准风格的状态规则更具体，所以开、开但禁用两种状态都要重写一遍。 */
+:root[data-ui-style="terminal"] .settings-switch span {
+  border-color: var(--line);
+  background: var(--surface-strong);
+}
+
+:root[data-ui-style="terminal"] .settings-switch span::after {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+:root[data-ui-style="terminal"] .settings-switch input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+:root[data-ui-style="terminal"] .settings-switch input:checked + span::after {
+  background: var(--on-accent);
+}
+
+:root[data-ui-style="terminal"] .settings-switch input:checked:disabled + span {
+  border-color: color-mix(in oklab, var(--accent) 45%, var(--surface));
+  background: color-mix(in oklab, var(--accent) 45%, var(--surface));
+}
+
+/* 分段按钮悬停：和页签一样给一层淡强调色，实心强调色只留给当前项。 */
+:root[data-ui-style="terminal"] .settings-segment:not(.active):hover,
+:root[data-ui-style="terminal"] .resource-table-mode-button:not(.active):hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* 设置页左侧当前分区：和顶栏当前页一样带微光。 */
+:root[data-ui-style="terminal"] .settings-nav-item.active {
+  box-shadow: var(--terminal-glow);
+}
+
+/* 资源条提示：标准风格写死了半透明深底白字，这里换成本配色的表面、文字和细线。 */
+:root[data-ui-style="terminal"] .resource-tooltip {
+  background: var(--surface-strong);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--line), 0 8px 20px rgb(0 0 0 / 0.5);
+}
+
+/* ---- 表格 ---- */
+
+/* 占用热度条：标准风格写死了青绿和金黄，这里改成强调色的两档深浅。 */
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--accent) 12%, transparent) 0,
+      color-mix(in srgb, var(--accent) 12%, transparent) var(--private-heat, var(--heat)),
+      color-mix(in srgb, var(--accent) 26%, transparent) var(--private-heat, var(--heat)),
+      color-mix(in srgb, var(--accent) 26%, transparent) var(--heat),
+      transparent var(--heat),
+      transparent 100%
+    );
+}
+
+:root[data-ui-style="terminal"] .resource-table-cell.value-cell.unavailable {
+  background: transparent;
+}

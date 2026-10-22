@@ -24,6 +24,7 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/cpu/topology/fields/subscribe")]
     [InlineData("/api/cpu/residency/subscribe")]
     [InlineData("/api/optimization/smart/state/subscribe")]
+    [InlineData("/api/optimization/smart/status/subscribe")]
     [InlineData("/api/operations/subscribe")]
     public void ExactLogicalSelectorsAreAccepted(string path)
     {

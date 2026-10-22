@@ -1,4 +1,5 @@
 import { createSignal, For, Match, onCleanup, onMount, Show, Switch } from "solid-js";
+import { Portal } from "solid-js/web";
 import { CircleDashed, Download, Lock, X } from "lucide-solid";
 import {
   acknowledgeControlNotice,
@@ -238,10 +239,13 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   return (
     <div class="page control-page">
       <Show when={noticeSeen() === false}>
-        <ControlFirstRunNotice onAcknowledge={() => {
-          setNoticeSeen(true);
-          void acknowledgeControlNotice(runtime.requestClient).catch(() => undefined);
-        }} />
+        {/* 挂到 body：页面入场动画给 .page 加了 transform，留在页内时固定定位的弹窗会以页面为容器，前 0.3 秒错位后再跳回中间。 */}
+        <Portal>
+          <ControlFirstRunNotice onAcknowledge={() => {
+            setNoticeSeen(true);
+            void acknowledgeControlNotice(runtime.requestClient).catch(() => undefined);
+          }} />
+        </Portal>
       </Show>
       <div class="panel">
         <Show when={failed()}>

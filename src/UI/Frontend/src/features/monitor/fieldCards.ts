@@ -94,7 +94,7 @@ export function fieldCardSlots(cards: readonly DashboardCardSettings[]): FieldCa
 
 export function fieldCardDefinitions(catalog: readonly MetricFieldCatalogDevice[]): MetricDefinition[] {
   return [...catalog].sort(compareDevices).flatMap((device) => {
-    const group = deviceLabel(device);
+    const group = deviceLabel(device, catalog);
     return device.fields
       .filter((field) => !Object.hasOwn(cardExcludedFields, field.name))
       .map((field) => ({
@@ -143,7 +143,7 @@ export function fieldCardValues(
     items[slot.metricId] = {
       id: slot.metricId,
       label,
-      group: known ? deviceLabel(known) : undefined,
+      group: known && catalog ? deviceLabel(known, catalog) : undefined,
       displayValue: display ?? text.valueUnavailable,
       numericValue: field?.integerValue !== null && field?.integerValue !== undefined
         ? Number(field.integerValue)
@@ -153,13 +153,27 @@ export function fieldCardValues(
   return items;
 }
 
-/** 设备的显示名：设备自报的名字优先，没有时按种类和序号起名；单例种类只写种类名。 */
-export function deviceLabel(device: Pick<MetricFieldDeviceInfo, "kind" | "displayName" | "ordinal">): string {
+/**
+ * 设备的显示名：设备自报的名字优先，没有时按种类和序号起名；单例种类只写种类名。
+ * 显卡引擎没有自己的名字：目录里有同一 PnP 实例的显卡时，在序号名后带上显卡名，
+ * 例如「显卡引擎 0 · NVIDIA GeForce RTX 5060 Laptop GPU」。
+ */
+export function deviceLabel(
+  device: Pick<MetricFieldDeviceInfo, "kind" | "displayName" | "ordinal" | "address">,
+  catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[]
+): string {
   const kind = deviceKindLabel(device.kind);
   if (device.displayName) {
     return uiText.dashboard.namedDevice(kind, device.displayName);
   }
-  return singletonKinds.has(device.kind) ? kind : uiText.dashboard.numberedDevice(kind, device.ordinal);
+  const numbered = singletonKinds.has(device.kind) ? kind : uiText.dashboard.numberedDevice(kind, device.ordinal);
+  const adapterName = device.address?.kind === "gpu_engine" ? gpuAdapterName(catalog, device.address.pnpInstanceId) : null;
+  return adapterName ? uiText.dashboard.namedDevice(numbered, adapterName) : numbered;
+}
+
+function gpuAdapterName(catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[], pnpInstanceId: string): string | null {
+  const adapter = catalog.find((device) => device.address?.kind === "gpu_adapter" && device.address.pnpInstanceId === pnpInstanceId);
+  return adapter?.displayName ?? null;
 }
 
 export function deviceKindLabel(kind: string): string {

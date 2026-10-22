@@ -15,6 +15,8 @@ public readonly record struct NumaMemoryCatalogIdentity(ushort NodeNumber)
 
 public sealed record NetworkInterfaceCatalogIdentity(int DisplayIndex, Guid Guid, ulong Luid, uint Index)
 {
+    // Interface description declared by the same IP Helper row (MIB_IF_ROW2.Description); never synthesized.
+    public string? NameDeclared { get; init; }
     public string ExactIdentityKey => "windows-network-interface|" + Guid.ToString("D").ToUpperInvariant();
     public string BindingKey => $"{ExactIdentityKey}|{Luid:X16}|{Index}";
 }

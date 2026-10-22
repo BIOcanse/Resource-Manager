@@ -207,8 +207,10 @@ export default createSettingsLocale("de-DE", {
     }
   },
   "appearance": {
-    "themeTitle": "Farbmodus",
-    "themeDescription": "Wählen Sie Systemvorgabe, helles, dunkles oder kontrastarmes Design.",
+    "uiStyleTitle": "Oberflächenstil",
+    "uiStyleDescription": "Ändert Ecken, Linien, Schatten und Schriften der Bedienelemente; das Layout bleibt gleich. Jeder Stil hat eigene Farbschemata.",
+    "themeTitle": "Farbschema",
+    "themeDescription": "Wählen Sie ein Farbschema des aktuellen Stils. System folgt der hellen oder dunklen Windows-Einstellung.",
     "animationTitle": "Animationen",
     "animationDescription": "Wählen Sie volle Animationen, keine Animationen oder vereinfachte Effekte für geringere Oberflächenlast.",
     "resourceBarHardwareAccelerationTitle": "Hardwarebeschleunigung der Ressourcenleisten",
@@ -241,11 +243,23 @@ export default createSettingsLocale("de-DE", {
     "settingsLanguageTitle": "Oberflächensprache",
     "settingsLanguageDescription": "Ändert die Sprache der gesamten Oberfläche einschließlich Infobereich und Fenstertitel. System verwendet die Windows-Anzeigesprache.",
     "languageSelectLabel": "Sprache",
+    "uiStyleOptions": {
+      "standard": "Standard",
+      "soft": "Weich",
+      "outline": "Kontur",
+      "terminal": "Terminal"
+    },
     "themeOptions": {
       "system": "System",
       "light": "Hell",
       "dark": "Dunkel",
-      "lowContrast": "Niedriger Kontrast"
+      "lowContrast": "Niedriger Kontrast",
+      "paper": "Papier",
+      "graphite": "Graphit",
+      "blueprint": "Blaupause",
+      "phosphor": "Phosphor",
+      "amber": "Bernstein",
+      "ice": "Eis"
     },
     "animationOptions": {
       "auto": {

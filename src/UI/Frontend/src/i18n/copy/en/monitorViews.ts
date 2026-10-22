@@ -86,6 +86,7 @@ export const enMonitorViewsCopy: Pick<
     listLabel: "Monitoring items",
     empty: "No matching monitoring item",
     needsInstall: (name: string) => `Needs installing: ${name}`,
+    deviceFields: "Device fields",
     cancel: "Cancel",
     confirm: "Confirm"
   },

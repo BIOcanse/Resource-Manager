@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ru-RU-targetedReport.ts";
-import { fieldLabel } from "./ru-RU-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
 
 const ruRuAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "Сохранение",
     saveFailed: "Не удалось сохранить"
@@ -619,6 +620,7 @@ const ruRuAppCopy: AppCopy = {
     listLabel: "Элементы мониторинга",
     empty: "Нет подходящих элементов мониторинга",
     needsInstall: (name: string) => `Требуется установка: ${name}`,
+    deviceFields: "Поля устройства",
     cancel: "Отмена",
     confirm: "Подтвердить"
   },
@@ -800,6 +802,8 @@ const ruRuAppCopy: AppCopy = {
     reportPanel: "Отчёты об оптимизации",
     gpuScoreUnrecognizedTitle: "Модель GPU не распознана",
     gpuScoreUnrecognizedMessage: (names: string) => `${names}: встроенная оценка производительности не найдена. Положительная оценка, заданная вручную, позволит включить эти GPU в автоматическое ранжирование.`,
+    runtimeFaultClosedTitle: "Среда оптимизации заблокирована после сбоя",
+    runtimeFaultClosedDetail: (reason: string) => `Новые изменения оптимизации применяться не будут. Код причины: ${reason}`,
     filterLabel: "Фильтр отчётов",
     filterUntrusted: (count: string) => `Недоверенные ${count}`,
     filterAll: (count: string) => `Все ${count}`,
@@ -1023,6 +1027,7 @@ const ruRuAppCopy: AppCopy = {
     detailTitle: (name: string) => `Сведения: ${name}`,
     fallbackDeviceName: "Устройство",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `Порт ${port} родительского концентратора`,
     connectedDevice: "Подключённое устройство",
     section: {
       overview: "Обзор",
@@ -1052,7 +1057,7 @@ const ruRuAppCopy: AppCopy = {
       activeResolution: "Текущее разрешение",
       refreshRate: "Частота обновления",
       connectionLocation: "Место подключения",
-      networkInterface: "Сетевой интерфейс",
+      networkInterface: "Системное имя интерфейса",
       transmitSpeed: "Скорость передачи",
       receiveSpeed: "Скорость приёма",
       macAddress: "MAC-адрес",
@@ -1144,6 +1149,7 @@ const ruRuAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · внутреннее подключение`
     },
     usbGenericConnector: "USB-A / подключение USB",
+    ethernetProtocol: "Ethernet",
     deviceCategory: {
       internalDisplayPanel: "Встроенная панель дисплея",
       wirelessDisplay: "Беспроводной или виртуальный дисплей",
@@ -1227,7 +1233,7 @@ const ruRuAppCopy: AppCopy = {
     powerRole: "Роль в питании",
     negotiatedPower: "Согласованная мощность",
     graphicsBus: "Графическая шина",
-    networkInterface: "Сетевой интерфейс",
+    networkInterface: "Системное имя интерфейса",
     connectionState: "Состояние подключения",
     transmitLink: "Канал передачи",
     receiveLink: "Канал приёма",

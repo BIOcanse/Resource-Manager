@@ -1,6 +1,6 @@
 import type { AppCopy } from "../zh/index.ts";
 
-export const enFieldLabelsCopy: Pick<AppCopy, "fieldLabel"> = {
+export const enFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"> = {
   fieldLabel: {
     npu_all_engine_running_time_microseconds: { label: "NPU engine running time (raw)", hint: "Raw cumulative running time of one NPU engine in microseconds (DXCore); its starting point is not defined, so it is only useful for computing busy rates." },
     npu_all_engine_busy_percent: { label: "NPU engine busy", hint: "Engine busy time using the same algorithm as Task Manager: the largest share of real time any engine of this NPU spent running; it can exceed 100% and is not guaranteed to match the number Task Manager shows." },
@@ -327,5 +327,8 @@ export const enFieldLabelsCopy: Pick<AppCopy, "fieldLabel"> = {
     gpu_amd_memory_temperature_celsius: { label: "VRAM temperature (ADLX)", hint: "Video memory temperature reported by AMD ADLX." },
     cpu_amd_smu_temperature_reported_celsius: { label: "CPU temperature (SMU)", hint: "CPU temperature reported by the AMD SMU; whether it is Tctl or Tdie has not been established." },
     gpu_amd_apu_temperature_reported_celsius: { label: "APU graphics temperature (SMU)", hint: "Temperature of the integrated graphics in this AMD APU, as reported by the SMU." }
+  },
+  fieldValueLabel: {
+    batteryPowerState: { onLine: "On AC power", discharging: "Discharging", charging: "Charging", critical: "Critical" }
   }
 };

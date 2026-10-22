@@ -1,4 +1,4 @@
-import { storageHealthLabel } from "../deviceVocabulary.ts";
+import { portProtocol, storageHealthLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
   connectionFacts,
@@ -29,7 +29,7 @@ export const externalStorageAdapter: DeviceAdapter<ExternalStorageDeviceModel> =
     const deviceTypeLabel = external ? uiText.deviceAdapters.externalStorage : uiText.deviceAdapters.disk;
     const transportMode = protocols.length > 0
       ? resolveStorageTransport(protocols)
-      : displayValue(storage?.busType, context.port.protocol);
+      : displayValue(storage?.busType, portProtocol(context.port));
     const specification = usbSpecification(context.port);
     const revision = deviceRevision(context.port);
     const capacity = formatBytes(storage?.capacityBytes);

@@ -119,9 +119,10 @@ export const zhDeviceTopologyCopy = {
     keyFacts: "關鍵資訊",
     details: "詳細資訊",
     partialUnavailable: "部分裝置資訊暫時不可用，可以稍後重新整理。",
-    detailTitle: (name: string) => `${name}詳細資訊`,
+    detailTitle: (name: string) => `詳細資訊：${name}`,
     fallbackDeviceName: "裝置",
     countSuffix: (count: number) => `${count} 個`,
+    usbHubPort: (port: number) => `上層集線器埠 ${port}`,
     connectedDevice: "連線裝置",
     section: {
       overview: "概覽",
@@ -151,7 +152,7 @@ export const zhDeviceTopologyCopy = {
       activeResolution: "活動解析度",
       refreshRate: "重新整理率",
       connectionLocation: "連線位置",
-      networkInterface: "網路介面",
+      networkInterface: "系統介面名稱",
       transmitSpeed: "傳送速率",
       receiveSpeed: "接收速率",
       macAddress: "MAC 地址",
@@ -243,6 +244,7 @@ export const zhDeviceTopologyCopy = {
       internal: (connector: string) => `${connector} · 內部連線`
     },
     usbGenericConnector: "USB-A / USB 連線",
+    ethernetProtocol: "乙太網路",
     deviceCategory: {
       internalDisplayPanel: "內建顯示面板",
       wirelessDisplay: "無線 / 虛擬顯示",

@@ -1,11 +1,12 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./de-DE-targetedReport.ts";
-import { fieldLabel } from "./de-DE-fieldLabels.ts";
+import { fieldLabel, fieldValueLabel } from "./de-DE-fieldLabels.ts";
 
 const deDeAppCopy: AppCopy = {
   targetedReport,
   fieldLabel,
+  fieldValueLabel,
   common: {
     saving: "Wird gespeichert",
     saveFailed: "Speichern fehlgeschlagen"
@@ -619,6 +620,7 @@ const deDeAppCopy: AppCopy = {
     listLabel: "Überwachungselemente",
     empty: "Kein passendes Überwachungselement",
     needsInstall: (name: string) => `Installation erforderlich: ${name}`,
+    deviceFields: "Gerätefelder",
     cancel: "Abbrechen",
     confirm: "Bestätigen"
   },
@@ -800,6 +802,8 @@ const deDeAppCopy: AppCopy = {
     reportPanel: "Optimierungsberichte",
     gpuScoreUnrecognizedTitle: "GPU-Modell nicht erkannt",
     gpuScoreUnrecognizedMessage: (names: string) => `${names} hat keinen passenden integrierten Leistungswert. Mit einem positiven manuellen Wert können diese GPUs automatisch eingestuft werden.`,
+    runtimeFaultClosedTitle: "Optimierungslaufzeit nach einem Fehler gesperrt",
+    runtimeFaultClosedDetail: (reason: string) => `Es werden keine neuen Optimierungsänderungen angewendet. Ursachencode: ${reason}`,
     filterLabel: "Berichtsfilter",
     filterUntrusted: (count: string) => `Nicht vertrauenswürdig ${count}`,
     filterAll: (count: string) => `Alle ${count}`,
@@ -1023,6 +1027,7 @@ const deDeAppCopy: AppCopy = {
     detailTitle: (name: string) => `Details zu ${name}`,
     fallbackDeviceName: "Gerät",
     countSuffix: (count: number) => `${count}`,
+    usbHubPort: (port: number) => `Port ${port} des übergeordneten Hubs`,
     connectedDevice: "Verbundenes Gerät",
     section: {
       overview: "Überblick",
@@ -1052,7 +1057,7 @@ const deDeAppCopy: AppCopy = {
       activeResolution: "Aktive Auflösung",
       refreshRate: "Bildwiederholrate",
       connectionLocation: "Verbindungsort",
-      networkInterface: "Netzwerkschnittstelle",
+      networkInterface: "Systemschnittstellenname",
       transmitSpeed: "Sendegeschwindigkeit",
       receiveSpeed: "Empfangsgeschwindigkeit",
       macAddress: "MAC-Adresse",
@@ -1144,6 +1149,7 @@ const deDeAppCopy: AppCopy = {
       internal: (connector: string) => `${connector} · interne Verbindung`
     },
     usbGenericConnector: "USB-A / USB-Verbindung",
+    ethernetProtocol: "Ethernet",
     deviceCategory: {
       internalDisplayPanel: "Integriertes Displaypanel",
       wirelessDisplay: "Drahtloses / virtuelles Display",
@@ -1227,7 +1233,7 @@ const deDeAppCopy: AppCopy = {
     powerRole: "Energierolle",
     negotiatedPower: "Ausgehandelte Leistung",
     graphicsBus: "Grafikbus",
-    networkInterface: "Netzwerkschnittstelle",
+    networkInterface: "Systemschnittstellenname",
     connectionState: "Verbindungsstatus",
     transmitLink: "Sendeverbindung",
     receiveLink: "Empfangsverbindung",

@@ -267,9 +267,10 @@ public sealed class MetricDeviceFieldTests
         Assert.DoesNotContain(discovered.Items.Keys, key => key == triggerAddress);
         Assert.DoesNotContain(discovered.Datasets.Keys, key => key == triggerAddress);
 
-        // A field request is mapped back to its internal trigger before native planning.
+        // A field request names the public engine address; it is mapped back to its internal
+        // trigger only before native planning.
         var publicRequest = MetricDeviceFields.CreateRequest(discovered, engineBinding.DeviceIdentity, [definition.Name]);
-        Assert.Equal([triggerAddress], publicRequest.Ids);
+        Assert.Equal([engineBinding.RequestAddress], publicRequest.Ids);
         var addressRequest = MetricSampleRequest.ForIds([engineBinding.RequestAddress]);
         Assert.Equal([triggerAddress], WindowsHardwareMetricCapture
             .CreateCollectionRequest(addressRequest, catalog, discovered).Ids);

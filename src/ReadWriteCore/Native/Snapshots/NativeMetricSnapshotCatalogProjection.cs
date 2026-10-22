@@ -280,7 +280,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"network-interface|{row.ExactIdentityKey}"),
                 row.ExactIdentityKey, row.BindingKey,
                 new MetricDeviceDescriptor("network_interface",
-                    MetricDeviceAddress.NetworkInterface(row.Guid, row.Luid, row.Index), null,
+                    MetricDeviceAddress.NetworkInterface(row.Guid, row.Luid, row.Index), CleanDisplayName(row.NameDeclared),
                     ordinal))).ToArray();
         var resolvedNpus = npuMemoryIdentities.OrderBy(static row => row.ExactIdentityKey, StringComparer.Ordinal)
             .Select((row, index) => new ResolvedNpuIdentity(index,

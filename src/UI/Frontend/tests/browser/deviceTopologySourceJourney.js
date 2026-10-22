@@ -85,6 +85,27 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     && longTextPresentation.secondaryScrollWidth <= longTextPresentation.secondaryClientWidth + 1
     && longTextPresentation.wraps,
   `Long device description is clipped or unrecoverable: ${JSON.stringify(longTextPresentation)}`);
+  // 清单比面板高时，换行的副标题仍在条目边框内（auto 行曾只按条目的 min-height 分配高度，副标题溢出卡片）。
+  const constrainedList = await topology.locator(".device-port-list").evaluate((list) => {
+    const previousHeight = list.style.height;
+    list.style.height = "90px";
+    const items = [...list.querySelectorAll(".device-port-item")].map((item) => {
+      const secondary = item.querySelector("small");
+      return {
+        text: item.textContent?.trim().slice(0, 60),
+        overflow: item.scrollHeight - item.clientHeight,
+        secondaryBottom: secondary?.getBoundingClientRect().bottom ?? 0,
+        itemBottom: item.getBoundingClientRect().bottom
+      };
+    });
+    const overflowing = list.scrollHeight > list.clientHeight;
+    list.style.height = previousHeight;
+    return { overflowing, items };
+  });
+  assert(constrainedList.overflowing
+    && constrainedList.items.length > 0
+    && constrainedList.items.every((item) => item.overflow <= 1 && item.secondaryBottom <= item.itemBottom + 1),
+  `Device list items overflow their cards when the list scrolls: ${JSON.stringify(constrainedList)}`);
   await hdmiItem.focus();
   await page.keyboard.press("Enter");
   const selectedDetails = (await topology.getByLabel("拓扑详情").textContent())?.trim();
@@ -102,6 +123,11 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     await waitForTelemetry(page, subscriptionPath, value => value.publications > count);
     await checkDisplayVariant(page, app, variant);
   }
+  // 端口上什么都没接：弹窗不列显示节，也不渲染当前模式、EDID 声明和原始 EDID。
+  const beforeDetached = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { displayEdid: "detached" });
+  await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeDetached);
+  const detachedDetails = await checkDetachedDisplayDialog(page, app);
   await setScenario(page, { displayEdid: "identity" });
   const interfaceRoots = topology.locator(".device-port-item:not(.nested)");
   await page.waitForFunction(() => document.querySelectorAll(".device-topology-panel .device-port-item:not(.nested)").length === 2);
@@ -190,7 +216,9 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     type3Details,
     typeXDetails,
     declarationDetails,
+    detachedDetails,
     longTextPresentation,
+    constrainedList,
     firstActivation,
     firstChannel,
     active,
@@ -199,6 +227,30 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     reactivatedChannel,
     finalDirect
   };
+}
+
+async function checkDetachedDisplayDialog(page, app) {
+  const topology = page.locator(".device-topology-panel");
+  const root = topology.locator(".device-port-item:not(.nested)").filter({ hasText: "HDMI" }).first();
+  await root.click();
+  await topology.locator(".device-details-button").click();
+  const dialog = page.locator(".user-details-modal:visible");
+  await dialog.waitFor();
+  await dialog.getByText(app.deviceTopology.label.interfaceType, { exact: true }).first().waitFor();
+  const details = {
+    headings: await dialog.locator("h3").allInnerTexts(),
+    edidSections: await dialog.locator("[data-display-current], [data-display-edid], [data-display-edid-raw]").count(),
+    nested: await topology.locator(".device-port-item.nested").count()
+  };
+  assert(details.edidSections === 0
+    && !details.headings.includes(app.deviceTopology.section.display)
+    && !details.headings.includes(app.deviceTopology.edid.current)
+    && details.headings.includes(app.deviceTopology.section.connection)
+    && details.nested === 0,
+  `An empty display port still lists display or EDID sections: ${JSON.stringify(details)}`);
+  await page.keyboard.press("Escape");
+  await dialog.waitFor({ state: "hidden" });
+  return details;
 }
 
 async function setScenario(page, patch) {

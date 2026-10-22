@@ -724,6 +724,16 @@
   max-width: 520px;
 }
 
+/* 和其他提示弹窗的正文同一内边距；标题在正文里，不另起页眉（这两屏不能关）。 */
+.control-first-run-notice-body {
+  padding: 18px 18px 8px;
+}
+
+.control-first-run-notice-body h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
 .control-first-run-notice p {
   margin: 0 0 10px;
   line-height: 1.7;

@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
-import { readDocumentTheme } from "../../presentation/documentTheme";
+import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 import type { ResourceSegmentCssVars } from "./resourceSegmentLayout";
 
 export interface ResourcePaintSegment {
@@ -28,7 +28,6 @@ interface ResourceSegmentPaintPlaneProps {
 interface ResourceBarPresentation {
   animations: string;
   barColor: string;
-  theme: string;
   selfGpuGrade: string;
   frontendFocused: string;
 }
@@ -56,18 +55,18 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   let lastDrawnSegments: ResourcePaintSegment[] = [];
   const [presentation, setPresentation] = createSignal(readResourceBarPresentation());
 
-  const observer = new MutationObserver(() => setPresentation(readResourceBarPresentation()));
+  // 每次都给一个新对象，外观变化（颜色从 CSS 变量取）也会触发重画。
+  const refreshPresentation = () => setPresentation(readResourceBarPresentation());
+  const observer = new MutationObserver(refreshPresentation);
   observer.observe(document.body, {
     attributes: true,
     attributeFilter: ["data-animations", "data-bar-color", "data-self-gpu-grade", "data-frontend-focused"]
   });
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"]
-  });
+  const stopObservingAppearance = observeDocumentAppearance(refreshPresentation);
 
   onCleanup(() => {
     observer.disconnect();
+    stopObservingAppearance();
     cancelAnimationFrame(animationFrame);
   });
 
@@ -95,14 +94,15 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
     }
 
     cancelAnimationFrame(animationFrame);
+    const paintStyle = createCanvasPaintStyle(element);
 
     if (!shouldAnimate || lastDrawnSegments.length === 0) {
-      drawSegments(element, targetSegments, geometry, currentPresentation, paintOptions);
+      drawSegments(element, targetSegments, geometry, currentPresentation, paintOptions, paintStyle);
       lastDrawnSegments = targetSegments;
       return;
     }
 
-    animateSegments(element, lastDrawnSegments, targetSegments, geometry, currentPresentation, paintOptions, (frame) => {
+    animateSegments(element, lastDrawnSegments, targetSegments, geometry, currentPresentation, paintOptions, paintStyle, (frame) => {
       animationFrame = frame;
     }, (drawn) => {
       lastDrawnSegments = drawn;
@@ -138,11 +138,23 @@ function animateSegments(
   geometry: PaintGeometry,
   presentation: ResourceBarPresentation,
   paintOptions: PaintOptions,
+  paintStyle: CanvasPaintStyle,
   setAnimationFrame: (frame: number) => void,
   setLastDrawnSegments: (segments: ResourcePaintSegment[]) => void)
 {
   const fromByKey = new Map(fromSegments.map((segment) => [segment.key, segment]));
   const startedAt = performance.now();
+  const pixelWidth = paintPixelWidth(geometry);
+  // 每秒一次的小幅变化常常落在同样的像素上：这时中间帧与末帧逐像素相同，直接画末帧。
+  // 末帧画分隔线而中间帧不画，所以有分隔线时仍按原样过渡。
+  if (!paintOptions.drawDividers
+    && segmentPixelKey(toSegments.map((target) => fromByKey.get(target.key) ?? target), pixelWidth)
+      === segmentPixelKey(toSegments, pixelWidth)) {
+    drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
+    setLastDrawnSegments(toSegments);
+    return;
+  }
+  let drawnPixelKey: string | null = null;
 
   const step = (now: number) => {
     const progress = clampNumber((now - startedAt) / animationDurationMs, 0, 1);
@@ -156,15 +168,19 @@ function animateSegments(
       };
     });
 
-    drawSegments(canvas, interpolated, geometry, presentation, { drawDividers: false });
-    setLastDrawnSegments(interpolated);
-
     if (progress < 1) {
+      // 与上一帧落在同样的像素上时不重画，画面不变。
+      const pixelKey = segmentPixelKey(interpolated, pixelWidth);
+      if (pixelKey !== drawnPixelKey) {
+        drawSegments(canvas, interpolated, geometry, presentation, { drawDividers: false }, paintStyle);
+        drawnPixelKey = pixelKey;
+      }
+      setLastDrawnSegments(interpolated);
       setAnimationFrame(requestAnimationFrame(step));
       return;
     }
 
-    drawSegments(canvas, toSegments, geometry, presentation, paintOptions);
+    drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
     setLastDrawnSegments(toSegments);
   };
 
@@ -176,9 +192,10 @@ function drawSegments(
   segments: ResourcePaintSegment[],
   geometry: PaintGeometry,
   presentation: ResourceBarPresentation,
-  paintOptions: PaintOptions)
+  paintOptions: PaintOptions,
+  paintStyle: CanvasPaintStyle)
 {
-  const pixelWidth = Math.max(1, Math.round(geometry.width * geometry.devicePixelRatio));
+  const pixelWidth = paintPixelWidth(geometry);
   const paintHeight = geometry.height + geometry.overscan * 2;
   const pixelHeight = Math.max(1, Math.round(paintHeight * geometry.devicePixelRatio));
   if (canvas.width !== pixelWidth) {
@@ -206,7 +223,7 @@ function drawSegments(
       continue;
     }
 
-    context.fillStyle = resolveCanvasColor(segmentPaintColor(segment, presentation), canvas);
+    context.fillStyle = paintStyle.color(segmentPaintColor(segment, presentation));
     context.fillRect(leftPx / geometry.devicePixelRatio, 0, (rightPx - leftPx) / geometry.devicePixelRatio, height);
     if (segment.sharedFraction) {
       const sharedLeft = Math.floor(rightPx - (rightPx - leftPx) * segment.sharedFraction);
@@ -216,25 +233,23 @@ function drawSegments(
   }
 
   if (paintOptions.drawDividers) {
-    drawSegmentDividers(context, canvas, segments, geometry, pixelWidth, pixelHeight);
+    drawSegmentDividers(context, segments, geometry, pixelWidth, pixelHeight, paintStyle);
   }
 
-  drawSegmentLabels(context, canvas, segments, presentation, geometry, pixelWidth, pixelHeight);
+  drawSegmentLabels(context, segments, presentation, geometry, pixelWidth, pixelHeight, paintStyle);
 }
 
 function drawSegmentLabels(
   context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
   segments: ResourcePaintSegment[],
   presentation: ResourceBarPresentation,
   geometry: PaintGeometry,
   pixelWidth: number,
-  pixelHeight: number)
+  pixelHeight: number,
+  paintStyle: CanvasPaintStyle)
 {
   const devicePixelRatio = geometry.devicePixelRatio;
-  const style = getComputedStyle(canvas);
-  const fontFamily = style.fontFamily || "Segoe UI, sans-serif";
-  context.font = `700 12px ${fontFamily}`;
+  context.font = paintStyle.font();
   context.textAlign = "center";
   context.textBaseline = "middle";
 
@@ -251,7 +266,7 @@ function drawSegmentLabels(
       continue;
     }
 
-    const label = fitCanvasLabel(context, segment.label, availableWidth);
+    const label = fitCanvasLabel((text) => paintStyle.textWidth(context, text), segment.label, availableWidth);
     if (!label) {
       continue;
     }
@@ -264,7 +279,7 @@ function drawSegmentLabels(
       width,
       pixelHeight / devicePixelRatio);
     context.clip();
-    context.fillStyle = resolveCanvasColor(segmentPaintLabelColor(segment, presentation), canvas);
+    context.fillStyle = paintStyle.color(segmentPaintLabelColor(segment, presentation));
     context.fillText(
       label,
       (leftPx + rightPx) / (2 * devicePixelRatio),
@@ -274,16 +289,16 @@ function drawSegmentLabels(
 }
 
 function fitCanvasLabel(
-  context: CanvasRenderingContext2D,
+  textWidth: (text: string) => number,
   label: string,
   availableWidth: number)
 {
-  if (context.measureText(label).width <= availableWidth) {
+  if (textWidth(label) <= availableWidth) {
     return label;
   }
 
   const suffix = "...";
-  if (context.measureText(suffix).width > availableWidth) {
+  if (textWidth(suffix) > availableWidth) {
     return "";
   }
 
@@ -292,7 +307,7 @@ function fitCanvasLabel(
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
     const candidate = `${label.slice(0, middle)}${suffix}`;
-    if (context.measureText(candidate).width <= availableWidth) {
+    if (textWidth(candidate) <= availableWidth) {
       low = middle;
     } else {
       high = middle - 1;
@@ -304,18 +319,18 @@ function fitCanvasLabel(
 
 function drawSegmentDividers(
   context: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
   segments: ResourcePaintSegment[],
   geometry: PaintGeometry,
   pixelWidth: number,
-  pixelHeight: number)
+  pixelHeight: number,
+  paintStyle: CanvasPaintStyle)
 {
   const devicePixelRatio = geometry.devicePixelRatio;
   const lineWidthPx = 1;
   const height = pixelHeight / devicePixelRatio;
   const drawnBoundaries = new Set<number>();
 
-  context.fillStyle = resolveCanvasColor(dividerColor, canvas);
+  context.fillStyle = paintStyle.color(dividerColor);
 
   for (let index = 0; index < segments.length - 1; index++) {
     const boundaryPx = Math.floor(clampNumber(segments[index].right, 0, 100) * pixelWidth / 100);
@@ -348,6 +363,19 @@ function normalizePaintGeometry(width: number, height: number, devicePixelRatio:
   };
 }
 
+function paintPixelWidth(geometry: PaintGeometry) {
+  return Math.max(1, Math.round(geometry.width * geometry.devicePixelRatio));
+}
+
+/** 各段左右边界落在哪个像素上（与 drawSegments 的取整一致）。颜色、标签在一段过渡内不变，不进键。 */
+function segmentPixelKey(segments: ResourcePaintSegment[], pixelWidth: number) {
+  let key = "";
+  for (const segment of segments) {
+    key += `${Math.floor(clampNumber(segment.left, 0, 100) * pixelWidth / 100)},${Math.floor(clampNumber(segment.right, 0, 100) * pixelWidth / 100)};`;
+  }
+  return key;
+}
+
 function paintSegmentSignature(segments: ResourcePaintSegment[]) {
   return segments
     .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}`)
@@ -378,7 +406,44 @@ function shouldDrawTypeDividers(
     && segments.length > 1;
 }
 
-function resolveCanvasColor(color: string, element: HTMLElement) {
+/**
+ * 一次绘制（一次数据更新，或一段 360 ms 的过渡）内不变的画布样式：字体、CSS 变量解析出的颜色、文字宽度。
+ * 每次更新新建一份，过渡中的每一帧复用，不再逐帧读计算样式（逐帧读会强制样式重算）。
+ */
+interface CanvasPaintStyle {
+  font(): string;
+  color(value: string): string;
+  textWidth(context: CanvasRenderingContext2D, text: string): number;
+}
+
+function createCanvasPaintStyle(canvas: HTMLCanvasElement): CanvasPaintStyle {
+  let computed: CSSStyleDeclaration | null = null;
+  let font: string | null = null;
+  const colors = new Map<string, string>();
+  const widths = new Map<string, number>();
+  const style = () => computed ??= getComputedStyle(canvas);
+  return {
+    font: () => font ??= `700 12px ${style().fontFamily || "Segoe UI, sans-serif"}`,
+    color: (value) => {
+      let resolved = colors.get(value);
+      if (resolved === undefined) {
+        resolved = resolveCanvasColor(value, style);
+        colors.set(value, resolved);
+      }
+      return resolved;
+    },
+    textWidth: (context, text) => {
+      let width = widths.get(text);
+      if (width === undefined) {
+        width = context.measureText(text).width;
+        widths.set(text, width);
+      }
+      return width;
+    }
+  };
+}
+
+function resolveCanvasColor(color: string, style: () => CSSStyleDeclaration) {
   const trimmed = color.trim();
   if (!trimmed.startsWith("var(")) {
     return toCanvasSupportedColor(trimmed);
@@ -389,7 +454,7 @@ function resolveCanvasColor(color: string, element: HTMLElement) {
     return trimmed;
   }
 
-  const resolved = getComputedStyle(element).getPropertyValue(match[1]).trim();
+  const resolved = style().getPropertyValue(match[1]).trim();
   const fallback = match[2]?.trim() ?? trimmed;
   return toCanvasSupportedColor(resolved || fallback);
 }
@@ -411,7 +476,6 @@ function readResourceBarPresentation(): ResourceBarPresentation {
   return {
     animations: document.body.dataset.animations ?? "normal",
     barColor: document.body.dataset.barColor ?? "type",
-    theme: readDocumentTheme(),
     selfGpuGrade: document.body.dataset.selfGpuGrade ?? "normal",
     frontendFocused: document.body.dataset.frontendFocused ?? "yes"
   };

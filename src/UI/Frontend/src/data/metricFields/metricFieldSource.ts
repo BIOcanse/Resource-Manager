@@ -21,7 +21,9 @@ export type MetricFieldAddress =
   | { readonly kind: "cpu_logical_processor"; readonly processorGroup: number; readonly groupRelativeIndex: number }
   | { readonly kind: "numa_node"; readonly nodeNumber: number }
   | { readonly kind: "npu"; readonly pnpInstanceId: string }
-  | { readonly kind: "gpu_adapter"; readonly pnpInstanceId: string };
+  | { readonly kind: "gpu_adapter"; readonly pnpInstanceId: string }
+  /** 显卡引擎的地址带所属显卡的 PnP 实例 ID（后端 MetricDeviceAddress.GpuEngine 从显卡地址复制），卡片名用它找显卡名。 */
+  | { readonly kind: "gpu_engine"; readonly pnpInstanceId: string };
 
 export interface MetricFieldValue {
   readonly name: string;
@@ -148,6 +150,7 @@ function decodeAddress(value: unknown, path: string): MetricFieldAddress | null 
       return { kind, nodeNumber: requireNonNegativeSafeInteger(record.nodeNumber, `${path}.nodeNumber`) };
     case "npu":
     case "gpu_adapter":
+    case "gpu_engine":
       return { kind, pnpInstanceId: requireString(record.pnpInstanceId, `${path}.pnpInstanceId`) };
     default:
       // 后端以后给别的设备种类加地址时，这里还没有消费者：当作没有地址。

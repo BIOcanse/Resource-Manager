@@ -207,8 +207,10 @@ export default createSettingsLocale("ja-JP", {
     }
   },
   "appearance": {
-    "themeTitle": "配色モード",
-    "themeDescription": "システム設定、ライト、ダーク、低コントラストの外観を選びます。",
+    "uiStyleTitle": "インターフェイス スタイル",
+    "uiStyleDescription": "コントロールの角丸、線、影、フォントを変えます。レイアウトは変わりません。スタイルごとに配色があります。",
+    "themeTitle": "配色",
+    "themeDescription": "現在のスタイルの配色から選びます。「システム」は Windows のライト/ダーク設定に従います。",
     "animationTitle": "アニメーション",
     "animationDescription": "通常のアニメーション、アニメーションなし、または負荷を抑えた簡易表示を選びます。",
     "resourceBarHardwareAccelerationTitle": "リソースバーのハードウェアアクセラレーション",
@@ -241,11 +243,23 @@ export default createSettingsLocale("ja-JP", {
     "settingsLanguageTitle": "表示言語",
     "settingsLanguageDescription": "トレイとウィンドウタイトルを含む画面全体の言語を変更します。システム設定では Windows の表示言語を使用します。",
     "languageSelectLabel": "言語",
+    "uiStyleOptions": {
+      "standard": "標準",
+      "soft": "ソフト",
+      "outline": "アウトライン",
+      "terminal": "ターミナル"
+    },
     "themeOptions": {
       "system": "システム",
       "light": "ライト",
       "dark": "ダーク",
-      "lowContrast": "低コントラスト"
+      "lowContrast": "低コントラスト",
+      "paper": "ペーパー",
+      "graphite": "グラファイト",
+      "blueprint": "ブループリント",
+      "phosphor": "蛍光グリーン",
+      "amber": "アンバー",
+      "ice": "アイス"
     },
     "animationOptions": {
       "auto": {

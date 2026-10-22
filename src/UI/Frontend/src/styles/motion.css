@@ -322,7 +322,7 @@ body[data-animations="ultra"] .settings-section-panel {
 }
 
 body[data-animations="ultra"] .window-shellbar,
-body[data-animations="ultra"] .management-tabs {
+body[data-animations="ultra"] .page-subnav {
   backdrop-filter: none;
   background: var(--surface);
 }
@@ -343,6 +343,12 @@ select:focus-visible,
 textarea:focus-visible {
   outline: var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* 分段控件的容器裁掉溢出，焦点环画在选项内侧，否则外扩的部分被裁掉。 */
+.settings-segment:focus-visible,
+.resource-table-mode-button:focus-visible {
+  outline-offset: -2px;
 }
 
 .settings-switch input:focus-visible + span {

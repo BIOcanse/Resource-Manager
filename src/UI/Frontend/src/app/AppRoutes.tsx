@@ -1,13 +1,7 @@
-import { Show } from "solid-js";
+import { Show, lazy, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
-import { DetailsPage } from "../features/details/DetailsPage";
-import { ControlWorkspace } from "../features/control/ControlWorkspace";
-import { DiskUsageWorkspace } from "../features/diskUsage/DiskUsageWorkspace";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
-import { ManagementWorkspace } from "../features/management/ManagementWorkspace";
 import { MonitorPage } from "../features/monitor/MonitorPage";
-import { OptimizationWorkspace } from "../features/optimization/OptimizationWorkspace";
-import { SettingsWorkspace } from "../features/settings/SettingsWorkspace";
 import { PageBoundary } from "../ui/patterns/PageBoundary.tsx";
 import type { ManagementStore } from "../stores/managementStore";
 import type { MonitorStore } from "../stores/monitorStore";
@@ -16,6 +10,33 @@ import type { SettingsStore } from "../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
 import { uiText } from "../text.ts";
+
+// 首屏是监视控制台；其余页面各自一个分包，首屏脚本只含监视页。
+// 分包在首屏渲染后由 preloadRoutePages 预先载入，换页时已就绪，不出现空白帧。
+const ManagementWorkspace = lazy(() => import("../features/management/ManagementWorkspace")
+  .then((module) => ({ default: module.ManagementWorkspace })));
+const OptimizationWorkspace = lazy(() => import("../features/optimization/OptimizationWorkspace")
+  .then((module) => ({ default: module.OptimizationWorkspace })));
+const DiskUsageWorkspace = lazy(() => import("../features/diskUsage/DiskUsageWorkspace")
+  .then((module) => ({ default: module.DiskUsageWorkspace })));
+const ControlWorkspace = lazy(() => import("../features/control/ControlWorkspace")
+  .then((module) => ({ default: module.ControlWorkspace })));
+const DetailsPage = lazy(() => import("../features/details/DetailsPage")
+  .then((module) => ({ default: module.DetailsPage })));
+const SettingsWorkspace = lazy(() => import("../features/settings/SettingsWorkspace")
+  .then((module) => ({ default: module.SettingsWorkspace })));
+
+/** 载入全部非首屏页面的分包。载入失败不在这里处理：进入该页时由页面边界显示错误。 */
+function preloadRoutePages(): Promise<unknown> {
+  return Promise.allSettled([
+    ManagementWorkspace.preload(),
+    OptimizationWorkspace.preload(),
+    DiskUsageWorkspace.preload(),
+    ControlWorkspace.preload(),
+    DetailsPage.preload(),
+    SettingsWorkspace.preload()
+  ]);
+}
 
 interface AppRoutesProps {
   animationMode: Exclude<AppAnimationMode, "auto">;
@@ -38,6 +59,12 @@ interface AppRoutesProps {
 }
 
 export function AppRoutes(props: AppRoutesProps) {
+  onMount(() => {
+    // 首屏渲染完、主线程空闲时再载入其余页面；最迟 2 秒后开始。
+    const idle = requestIdleCallback(() => void preloadRoutePages(), { timeout: 2_000 });
+    onCleanup(() => cancelIdleCallback(idle));
+  });
+
   return (
     <Show
       when={props.activePage() === "components"}

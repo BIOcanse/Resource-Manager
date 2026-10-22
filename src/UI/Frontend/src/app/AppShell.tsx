@@ -142,7 +142,7 @@ export function AppShell(props: AppShellProps) {
         class="app-shell"
         aria-labelledby="activePageTitle"
         classList={{
-          "components-shell": props.activePage() === "components"
+          "has-page-subnav": props.activePage() === "components" || props.activePage() === "details"
         }}
       >
         <h1

@@ -15,6 +15,22 @@ export function portHardwareKind(port: DeviceTopologyPort) {
   return port.hardwareKind ?? renderBackendMessage(port.hardwareKindCode, "");
 }
 
+/**
+ * 端口的协议：后端给的多是技术名（USB、HID、Wi-Fi、HDMI 2.1 等），原样显示；
+ * 其中几个普通英文词（Ethernet、Audio、Display）按当前语言出；显示连接给的是 Windows 输出技术 id 时按输出技术出。
+ */
+export function portProtocol(port: Pick<DeviceTopologyPort, "protocol" | "display">) {
+  if (port.display && port.protocol === port.display.outputTechnology) {
+    return outputTechnologyLabel(port.protocol);
+  }
+  switch (port.protocol) {
+    case "Ethernet": return uiText.deviceTopology.ethernetProtocol;
+    case "Audio": return uiText.deviceTopology.deviceCategory.audio;
+    case "Display": return uiText.deviceTopology.deviceCategory.display;
+    default: return port.protocol;
+  }
+}
+
 /** 显示接口的名称：机型接口档案给的接口名优先，否则用 Windows 输出技术。 */
 export function displayConnectorTechnology(display: DeviceTopologyDisplayConnection) {
   return display.connectorTechnology ?? outputTechnologyLabel(display.outputTechnology);

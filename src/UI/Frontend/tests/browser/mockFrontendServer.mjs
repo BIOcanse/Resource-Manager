@@ -26,6 +26,7 @@ const defaultScenario = {
   settingsPatchDelayMs: 0,
   settingsRevision: "frontend-harness-r1",
   settingsTheme: "system",
+  settingsUiStyle: "standard",
   localSystemIntervalMs: null,
   performanceMonitorRefreshIntervalMs: null,
   diskUsageScanFailure: false,
@@ -44,6 +45,8 @@ const defaultScenario = {
   runtimeEffectOwners: false,
   optimizationRuntime: false,
   optimizationReports: "ready",
+  // 后端调度状态（GET /api/optimization/smart/status 与它的推送订阅同源）；只写与默认值不同的字段。
+  smartStatus: {},
   softwareIssues: true,
   operations: "empty",
   operationCanceled: false,
@@ -108,6 +111,7 @@ let operationsCurrentValue = null;
 const defaultAppSettings = {
   version: "1.0.23",
   appearance: {
+    uiStyle: scenario.settingsUiStyle,
     theme: scenario.settingsTheme,
     animations: scenario.animations,
     language: "zh-CN"
@@ -315,15 +319,7 @@ async function handleApi(request, response, url) {
     });
   }
   if (path === "/api/optimization/smart/status" && request.method === "GET") {
-    return json(response, 200, {
-      mode: "normal",
-      schedulerRunning: true,
-      lastRunAt: null,
-      lastRestoreAt: null,
-      pendingChangeCount: 0,
-      appliedTargetCount: 0,
-      message: "frontend performance harness"
-    });
+    return json(response, 200, smartCoordinatorStatus());
   }
   if (path === "/api/disk-usage/volumes" && request.method === "GET") {
     if (scenario.diskUsageMultiRoot === true) {
@@ -419,6 +415,7 @@ async function handleApi(request, response, url) {
       mergeRecord(appSettings, patch.changes);
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.settingsTheme = appSettings.appearance?.theme ?? "system";
+      scenario.settingsUiStyle = appSettings.appearance?.uiStyle ?? "standard";
       scenario.animations = appSettings.appearance?.animations ?? "normal";
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       return json(response, 200, appSettingsResult());
@@ -936,6 +933,9 @@ function applyScenarioPatch(patch) {
   if (typeof patch.settingsTheme === "string") {
     appSettings.appearance.theme = patch.settingsTheme;
   }
+  if (typeof patch.settingsUiStyle === "string") {
+    appSettings.appearance.uiStyle = patch.settingsUiStyle;
+  }
   if (typeof patch.animations === "string") {
     appSettings.appearance.animations = patch.animations;
   }
@@ -1362,6 +1362,12 @@ function fixtureDisplayEdid() {
   }
   if (scenario.displayEdid === "emptyRaw") { display.edidRawDeclaredBase64 = ""; display.modeCapabilityDeclared = null; }
   if (scenario.displayEdid === "legacy") for (const key of ["modeCapabilityDeclared", "edidRawDeclaredBase64", "currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) delete display[key];
+  // 端口上什么都没接（2026-10-22 实机 HDMI / Mini DP 的原样形状）：没有显示器名称、设备路径和 EDID，当前模式为空。
+  if (scenario.displayEdid === "detached") {
+    Object.assign(display, { monitorName: "", resolution: null, refreshRate: null, active: false, targetAvailable: false, monitorDevicePath: null,
+      edidRawDeclaredBase64: null, modeCapabilityDeclared: null, currentWidth: null, currentHeight: null,
+      currentRefreshRateNumerator: 0, currentRefreshRateDenominator: 0, currentBitsPerColorChannel: null });
+  }
   return display;
 }
 function fixtureDeviceTopologyState(capturedAt = now()) {
@@ -1653,8 +1659,23 @@ const subscriptionChannelSelectors = new Set([
   "/api/cpu/topology/subscribe",
   "/api/cpu/residency/subscribe",
   "/api/optimization/smart/state/subscribe",
+  "/api/optimization/smart/status/subscribe",
   "/api/operations/subscribe"
 ]);
+
+function smartCoordinatorStatus() {
+  return {
+    mode: "normal",
+    schedulerRunning: false,
+    lastRunAt: null,
+    lastRestoreAt: null,
+    pendingChangeCount: 0,
+    appliedTargetCount: 0,
+    faultClosedReason: null,
+    message: "frontend performance harness",
+    ...scenario.smartStatus
+  };
+}
 
 function parseSubscriptionChannelSelector(value) {
   if (!value
@@ -1757,6 +1778,8 @@ function subscriptionPayloadFactory(url) {
         message: "frontend harness",
         appliedPlacements: []
       });
+    case "/api/optimization/smart/status/subscribe":
+      return () => smartCoordinatorStatus();
     default:
       return null;
   }

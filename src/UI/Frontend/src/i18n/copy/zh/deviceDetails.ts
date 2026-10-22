@@ -67,7 +67,7 @@ export const zhDeviceDetailsCopy = {
     powerRole: "供电角色",
     negotiatedPower: "协商功率",
     graphicsBus: "图形总线",
-    networkInterface: "网络接口",
+    networkInterface: "系统接口名",
     connectionState: "连接状态",
     transmitLink: "发送链路",
     receiveLink: "接收链路",

@@ -91,8 +91,10 @@ const zhCnSettingsCopy: SettingsCopy = {
     }
   },
   appearance: {
-    themeTitle: "颜色模式",
-    themeDescription: "选择跟随系统、浅色、深色或低对比外观。",
+    uiStyleTitle: "界面风格",
+    uiStyleDescription: "改变控件的圆角、线条、阴影和字体，布局不变。每种风格有自己的配色。",
+    themeTitle: "配色",
+    themeDescription: "选择当前风格提供的配色。跟随系统会按 Windows 的浅色或深色设置切换。",
     animationTitle: "动画效果",
     animationDescription: "选择完整动画、关闭动画，或进一步简化视觉以降低界面开销。",
     resourceBarHardwareAccelerationTitle: "资源条硬件加速",
@@ -113,11 +115,23 @@ const zhCnSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "界面语言",
     settingsLanguageDescription: "切换整个界面的语言，包括桌面外壳的托盘与窗口标题；跟随系统会使用 Windows 显示语言。",
     languageSelectLabel: "语言",
+    uiStyleOptions: {
+      standard: "标准",
+      soft: "柔和",
+      outline: "线框",
+      terminal: "终端"
+    },
     themeOptions: {
       system: "跟随系统",
       light: "浅色",
       dark: "深色",
-      lowContrast: "低对比"
+      lowContrast: "低对比",
+      paper: "纸面",
+      graphite: "石墨",
+      blueprint: "蓝图",
+      phosphor: "磷绿",
+      amber: "琥珀",
+      ice: "冰蓝"
     },
     animationOptions: {
       auto: { label: "自动调度", description: "前台正常动画，后台自动切超高性能。" },
@@ -389,8 +403,10 @@ const enSettingsCopy: SettingsCopy = {
     }
   },
   appearance: {
-    themeTitle: "Color Mode",
-    themeDescription: "Choose system, light, dark, or low-contrast appearance.",
+    uiStyleTitle: "Interface style",
+    uiStyleDescription: "Changes the corners, lines, shadows and fonts of controls; the layout stays the same. Each style has its own palettes.",
+    themeTitle: "Palette",
+    themeDescription: "Choose one of the current style's palettes. System follows the Windows light or dark setting.",
     animationTitle: "Motion",
     animationDescription: "Choose full motion, no motion, or simplified visuals for lower interface overhead.",
     resourceBarHardwareAccelerationTitle: "Resource Bar Hardware Acceleration",
@@ -411,11 +427,23 @@ const enSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "Interface language",
     settingsLanguageDescription: "Changes the language of the whole interface, including the desktop shell tray and window title. System uses the Windows display language.",
     languageSelectLabel: "Language",
+    uiStyleOptions: {
+      standard: "Standard",
+      soft: "Soft",
+      outline: "Outline",
+      terminal: "Terminal"
+    },
     themeOptions: {
       system: "System",
       light: "Light",
       dark: "Dark",
-      lowContrast: "Low contrast"
+      lowContrast: "Low contrast",
+      paper: "Paper",
+      graphite: "Graphite",
+      blueprint: "Blueprint",
+      phosphor: "Phosphor",
+      amber: "Amber",
+      ice: "Ice"
     },
     animationOptions: {
       auto: { label: "Automatic", description: "Use normal motion in the foreground and switch to the ultra-performance appearance in low-power background states" },

@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { MetricDefinition, MetricSnapshot } from "../../types";
 import type { ObservationState } from "../../observation/observationState";
+import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 import {
   appendPerformancePoint,
   appendPerformanceHistory,
@@ -19,6 +20,8 @@ interface PerformanceCanvasTheme {
   text: string;
   muted: string;
   grid: string;
+  // 卡片圆角跟随当前风格的 --radius-md。
+  cardRadius: number;
 }
 
 export function ResourcePerformancePanel(props: {
@@ -61,18 +64,14 @@ export function ResourcePerformancePanel(props: {
 
   onMount(() => {
     const observer = new ResizeObserver(drawSoon);
-    const themeObserver = new MutationObserver(drawSoon);
     if (canvas) {
       observer.observe(canvas);
     }
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"]
-    });
+    const stopObservingAppearance = observeDocumentAppearance(drawSoon);
     drawSoon();
     onCleanup(() => {
       observer.disconnect();
-      themeObserver.disconnect();
+      stopObservingAppearance();
       if (frame) {
         cancelAnimationFrame(frame);
       }
@@ -231,7 +230,7 @@ function drawChart(
   context.fillStyle = theme.card;
   context.strokeStyle = theme.border;
   context.lineWidth = 1;
-  roundRect(context, x + 0.5, y + 0.5, width - 1, height - 1, 8);
+  roundRect(context, x + 0.5, y + 0.5, width - 1, height - 1, theme.cardRadius);
   context.fill();
   context.stroke();
 
@@ -350,7 +349,8 @@ function readCanvasTheme(canvas: HTMLCanvasElement): PerformanceCanvasTheme {
     border: read("--hairline", "#d8e0dd"),
     text: read("--text", "#0f1714"),
     muted: read("--muted", "#17201d"),
-    grid: read("--line", "#eef2f0")
+    grid: read("--line", "#eef2f0"),
+    cardRadius: Number.parseFloat(read("--radius-md", "8")) || 0
   };
 }
 

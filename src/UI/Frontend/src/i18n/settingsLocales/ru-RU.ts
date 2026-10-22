@@ -207,8 +207,10 @@ export default createSettingsLocale("ru-RU", {
     }
   },
   "appearance": {
-    "themeTitle": "Цветовой режим",
-    "themeDescription": "Выберите системное, светлое, тёмное или низкоконтрастное оформление.",
+    "uiStyleTitle": "Стиль интерфейса",
+    "uiStyleDescription": "Меняет скругления, линии, тени и шрифты элементов управления; расположение не меняется. У каждого стиля свои палитры.",
+    "themeTitle": "Палитра",
+    "themeDescription": "Выберите палитру текущего стиля. «Системная» следует светлой или тёмной теме Windows.",
     "animationTitle": "Анимация",
     "animationDescription": "Выберите полную анимацию, её отключение или упрощённые эффекты для снижения нагрузки интерфейса.",
     "resourceBarHardwareAccelerationTitle": "Аппаратное ускорение полос ресурсов",
@@ -241,11 +243,23 @@ export default createSettingsLocale("ru-RU", {
     "settingsLanguageTitle": "Язык интерфейса",
     "settingsLanguageDescription": "Меняет язык всего интерфейса, включая трей и заголовок окна. Системный режим использует язык интерфейса Windows.",
     "languageSelectLabel": "Язык",
+    "uiStyleOptions": {
+      "standard": "Стандартный",
+      "soft": "Мягкий",
+      "outline": "Контурный",
+      "terminal": "Терминал"
+    },
     "themeOptions": {
       "system": "Система",
       "light": "Светлая",
       "dark": "Темная",
-      "lowContrast": "Низкая контрастность"
+      "lowContrast": "Низкая контрастность",
+      "paper": "Бумага",
+      "graphite": "Графит",
+      "blueprint": "Чертёж",
+      "phosphor": "Люминофор",
+      "amber": "Янтарь",
+      "ice": "Лёд"
     },
     "animationOptions": {
       "auto": {

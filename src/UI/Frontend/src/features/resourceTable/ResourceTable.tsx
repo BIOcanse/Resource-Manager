@@ -326,6 +326,8 @@ function VirtualResourceTable(props: {
   onReorderColumn: (sourceColumnId: string, targetColumnId: string) => void;
 }) {
   let viewport: HTMLDivElement | undefined;
+  // 视口实际的滚动位置，由滚动事件和本组件的写入维护。每秒的数据更新只和它比较，不读 DOM（读会强制同步布局）。
+  let viewportScrollTop = 0;
   const [scrollTop, setScrollTop] = createSignal(0);
   const [scrollLeft, setScrollLeft] = createSignal(0);
   const [viewportHeight, setViewportHeight] = createSignal(360);
@@ -408,8 +410,9 @@ function VirtualResourceTable(props: {
     const target = Math.min(
       scrollTop(),
       Math.max(0, rowCount * rowHeight - viewportHeight()));
-    if (viewport.scrollTop !== target) {
+    if (viewportScrollTop !== target) {
       viewport.scrollTop = target;
+      viewportScrollTop = target;
     }
     if (scrollTop() !== target) {
       setScrollTop(target);
@@ -435,6 +438,7 @@ function VirtualResourceTable(props: {
     lastScrolledHighlightKey = key;
     const nextScrollTop = Math.max(0, rowIndex * rowHeight - rowHeight * 2);
     viewport.scrollTop = nextScrollTop;
+    viewportScrollTop = nextScrollTop;
     setScrollTop(nextScrollTop);
   });
 
@@ -483,6 +487,7 @@ function VirtualResourceTable(props: {
     }
     if (nextScrollTop !== viewport.scrollTop) {
       viewport.scrollTop = nextScrollTop;
+      viewportScrollTop = nextScrollTop;
       setScrollTop(nextScrollTop);
     }
 
@@ -741,6 +746,7 @@ function VirtualResourceTable(props: {
         role="rowgroup"
         ref={viewport}
         onScroll={(event) => {
+          viewportScrollTop = event.currentTarget.scrollTop;
           if (rows().length > 0) {
             setScrollTop(event.currentTarget.scrollTop);
           }

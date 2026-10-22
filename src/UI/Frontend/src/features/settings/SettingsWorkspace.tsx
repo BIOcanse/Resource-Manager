@@ -34,6 +34,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onMemoryOptimizationTargetLinesChange={settings.updateMemoryOptimizationTargetLines}
         onFrontendHiddenRefreshModeChange={settings.updateFrontendHiddenRefreshMode}
         onLogicRefreshIntervalChange={settings.updateLogicRefreshInterval}
+        onUiStyleChange={settings.updateUiStyle}
         onThemeChange={settings.updateTheme}
         onAnimationsChange={settings.updateAnimations}
         onResourceBarHardwareAccelerationModeChange={settings.updateResourceBarHardwareAccelerationMode}

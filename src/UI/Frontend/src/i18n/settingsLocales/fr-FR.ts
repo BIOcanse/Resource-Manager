@@ -207,8 +207,10 @@ export default createSettingsLocale("fr-FR", {
     }
   },
   "appearance": {
-    "themeTitle": "Mode de couleur",
-    "themeDescription": "Choisissez une apparence système, claire, sombre ou à faible contraste.",
+    "uiStyleTitle": "Style de l'interface",
+    "uiStyleDescription": "Modifie les coins, les lignes, les ombres et les polices des contrôles ; la disposition ne change pas. Chaque style a ses propres palettes.",
+    "themeTitle": "Palette",
+    "themeDescription": "Choisissez une palette du style actuel. Système suit le réglage clair ou sombre de Windows.",
     "animationTitle": "Animations",
     "animationDescription": "Choisissez des animations complètes, aucune animation ou des effets simplifiés pour réduire le coût de l’interface.",
     "resourceBarHardwareAccelerationTitle": "Accélération matérielle des barres",
@@ -241,11 +243,23 @@ export default createSettingsLocale("fr-FR", {
     "settingsLanguageTitle": "Langue de l’interface",
     "settingsLanguageDescription": "Change la langue de toute l’interface, y compris la zone de notification et le titre de fenêtre. Le mode système utilise la langue d’affichage Windows.",
     "languageSelectLabel": "Langue",
+    "uiStyleOptions": {
+      "standard": "Standard",
+      "soft": "Doux",
+      "outline": "Contour",
+      "terminal": "Terminal"
+    },
     "themeOptions": {
       "system": "Système",
       "light": "Clair",
       "dark": "Sombre",
-      "lowContrast": "Faible contraste"
+      "lowContrast": "Faible contraste",
+      "paper": "Papier",
+      "graphite": "Graphite",
+      "blueprint": "Plan",
+      "phosphor": "Phosphore",
+      "amber": "Ambre",
+      "ice": "Glace"
     },
     "animationOptions": {
       "auto": {

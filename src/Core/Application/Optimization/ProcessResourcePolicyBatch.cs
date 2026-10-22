@@ -12,6 +12,7 @@ public enum ProcessResourcePolicyBatchFields
     CpuSets = 1 << 5
 }
 
+// CpuSetIds：null 表示不写 CPU Sets；空集合表示清除进程默认 CPU Sets（恢复为未设置）。
 public sealed record ProcessResourcePolicyBatchRequest(
     int ProcessId,
     DateTimeOffset? ExpectedStartedAt,

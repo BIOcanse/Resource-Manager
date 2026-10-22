@@ -70,6 +70,69 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
     await checkEdid();
   }
 
+  // 界面风格：配色清单随风格变化；换风格时配色在新风格里有就保留，没有就换成该风格的默认配色。
+  // 风格只改外观，设置页各区域的位置和尺寸必须和标准风格一致。
+  const styleGroup = page.getByRole("radiogroup", { name: "界面风格", exact: true });
+  const paletteGroup = page.getByRole("radiogroup", { name: "配色", exact: true });
+  const standardLayout = await settingsLayout(page);
+  const styleResults = [];
+  for (const transition of [
+    { label: "柔和", uiStyle: "soft", palettes: ["跟随系统", "浅色", "深色"], kept: "浅色", pick: "深色", theme: "dark", scheme: "dark" },
+    { label: "终端", uiStyle: "terminal", palettes: ["磷绿", "琥珀", "冰蓝"], kept: "磷绿", pick: "琥珀", theme: "amber", scheme: "dark" },
+    { label: "线框", uiStyle: "outline", palettes: ["跟随系统", "纸面", "石墨", "蓝图"], kept: "跟随系统", pick: "纸面", theme: "paper", scheme: "light" },
+    { label: "标准", uiStyle: "standard", palettes: ["跟随系统", "浅色", "深色", "低对比"], kept: "跟随系统", pick: "浅色", theme: "light", scheme: "light" }
+  ]) {
+    await styleGroup.getByRole("radio", { name: transition.label, exact: true }).click();
+    const palettes = await paletteGroup.getByRole("radio").allTextContents();
+    assert(JSON.stringify(palettes.map((label) => label.trim())) === JSON.stringify(transition.palettes),
+      `${transition.uiStyle} offers unexpected palettes: ${JSON.stringify(palettes)}`);
+    const checked = await paletteGroup.getByRole("radio", { checked: true }).textContent();
+    assert(checked?.trim() === transition.kept,
+      `${transition.uiStyle} did not keep or default the palette: ${checked}`);
+    await paletteGroup.getByRole("radio", { name: transition.pick, exact: true }).click();
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await page.waitForFunction(
+      ({ uiStyle, theme }) => document.documentElement.dataset.uiStyle === uiStyle
+        && document.documentElement.dataset.theme === theme,
+      transition,
+      { timeout: 5000 });
+    const applied = await page.evaluate(() => {
+      const resolve = (name) => {
+        const probe = document.createElement("span");
+        probe.style.color = `var(${name})`;
+        document.body.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      };
+      return {
+        colorScheme: getComputedStyle(document.documentElement).colorScheme,
+        background: resolve("--bg"),
+        bodyBackground: getComputedStyle(document.body).backgroundColor,
+        surface: resolve("--surface"),
+        contentBackground: getComputedStyle(document.querySelector(".settings-content")).backgroundColor,
+        cache: localStorage.getItem("resource-manager:appearance")
+      };
+    });
+    assert(applied.colorScheme === transition.scheme,
+      `${transition.uiStyle}/${transition.theme} uses the wrong color scheme: ${JSON.stringify(applied)}`);
+    assert(applied.bodyBackground === applied.background && applied.contentBackground === applied.surface,
+      `${transition.uiStyle}/${transition.theme} surfaces diverged from its tokens: ${JSON.stringify(applied)}`);
+    assert(applied.cache === JSON.stringify({ uiStyle: transition.uiStyle, theme: transition.theme }),
+      `Preboot cache does not hold the style and palette: ${applied.cache}`);
+    const layout = await settingsLayout(page);
+    const moved = Object.keys(standardLayout).filter((key) => {
+      const before = standardLayout[key];
+      const after = layout[key];
+      return !after || ["x", "y", "width", "height"].some((side) => Math.abs(before[side] - after[side]) > 1);
+    });
+    assert(moved.length === 0,
+      `${transition.uiStyle} moved settings layout: ${JSON.stringify(moved.map((key) => [key, standardLayout[key], layout[key]]))}`);
+    styleResults.push({ uiStyle: transition.uiStyle, theme: transition.theme, background: applied.background });
+  }
+  assert(new Set(styleResults.map((result) => result.background)).size === styleResults.length,
+    `Styles share a background and are not distinguishable: ${JSON.stringify(styleResults)}`);
+
   await page.evaluate(() => localStorage.setItem(
     "resource-manager:appearance",
     JSON.stringify({ theme: "dark" })));
@@ -82,10 +145,27 @@ export default async function themeConsistencyJourney(page, baseUrl = "http://12
   return {
     edidThemes,
     modes: snapshots.map((snapshot) => snapshot.theme),
+    styles: styleResults,
     stalePrebootConverged: snapshots[0].theme === "light"
       && snapshots.at(-1)?.theme === "light",
     pageErrors: failures
   };
+}
+
+// 设置页主要区域的位置和尺寸，用来确认换风格不动布局。
+async function settingsLayout(page) {
+  return page.evaluate(() => {
+    const entries = {};
+    // 只比结构区域：换字体后控件宽度和说明文字换行可以不同。
+    const selectors = [".settings-content", ".settings-content-header", ".settings-nav-item"];
+    for (const selector of selectors) {
+      document.querySelectorAll(selector).forEach((element, index) => {
+        const rect = element.getBoundingClientRect();
+        entries[`${selector}#${index}`] = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      });
+    }
+    return entries;
+  });
 }
 
 async function openAppearanceSettings(page) {

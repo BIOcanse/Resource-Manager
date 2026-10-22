@@ -19,7 +19,8 @@ import type {
   AppLogicRefreshIntervalKey,
   AppPresetNumericSetting,
   AppSettings,
-  AppThemeMode,
+  AppPalette,
+  AppUiStyle,
   SettingsSection
 } from "../../types";
 
@@ -47,7 +48,8 @@ interface SettingsPageProps {
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onFrontendHiddenRefreshModeChange: (mode: AppFrontendHiddenRefreshMode) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
-  onThemeChange: (theme: AppThemeMode) => void;
+  onUiStyleChange: (uiStyle: AppUiStyle) => void;
+  onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
   onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -251,6 +253,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <AppearanceSettingsSection
               settings={props.settings.appearance}
               text={text()}
+              onUiStyleChange={props.onUiStyleChange}
               onThemeChange={props.onThemeChange}
               onAnimationsChange={props.onAnimationsChange}
               onResourceBarHardwareAccelerationModeChange={props.onResourceBarHardwareAccelerationModeChange}

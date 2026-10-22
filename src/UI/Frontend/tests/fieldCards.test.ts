@@ -76,7 +76,25 @@ assert.equal(first.group, "逻辑处理器 0", "a device without its own name is
 assert.equal(definitions[2].group, "磁盘 · Fixture SSD", "the device's own name is used when present");
 assert.equal(definitions[3].label, "unknown_future_field", "a field without copy shows its field name, visibly");
 assert.equal(definitions[3].group, "future_kind 3", "a kind without copy shows its kind name, visibly");
-assert.equal(deviceLabel({ kind: "gpu_adapter", displayName: null, ordinal: 0 }), "显卡 0");
+assert.equal(deviceLabel({ kind: "gpu_adapter", displayName: null, ordinal: 0, address: null }, []), "显卡 0");
+
+// 显卡引擎没有自己的名字：同一 PnP 实例的显卡在目录里时带上显卡名；对不上时只写种类和序号。
+const gpuCatalog = metricFieldCatalogDecoder.decode([
+  { deviceIdentity: "gpu|nv", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV", adapterLuid: "E4A6" }, displayName: "NVIDIA GeForce RTX 5060 Laptop GPU", ordinal: 1 }, fields: [] },
+  { deviceIdentity: "gpu-engine|E4A6|0|3|0", device: { kind: "gpu_engine", address: { kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV", physicalIndex: 0, engineIndex: 3, engineClass: 0, adapterLuid: "E4A6" }, displayName: null, ordinal: 3 }, fields: [
+    { name: "gpu_all_engine_busy_percent", unit: "%", valueKind: "float64" }
+  ] },
+  { deviceIdentity: "gpu-engine|10B0C|0|0|0", device: { kind: "gpu_engine", address: { kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_1002&DEV_164E\\AMD", physicalIndex: 0, engineIndex: 0, engineClass: 0, adapterLuid: "10B0C" }, displayName: null, ordinal: 0 }, fields: [
+    { name: "gpu_all_engine_busy_percent", unit: "%", valueKind: "float64" }
+  ] }
+]);
+assert.deepEqual(gpuCatalog[1].address, { kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV" }, "the engine keeps its adapter's PnP instance ID");
+const engineGroups = fieldCardDefinitions(gpuCatalog).map((metric) => metric.group);
+assert.deepEqual(engineGroups, ["显卡引擎 0", "显卡引擎 3 · NVIDIA GeForce RTX 5060 Laptop GPU"],
+  "an engine is named after its adapter when the adapter is in the catalog, otherwise by kind and ordinal");
+const engineSlots = fieldCardSlots([{ id: "e", main: "gpu_all_engine_busy_percent@gpu-engine|E4A6|0|3|0", mainBinding: binding("gpu-engine|E4A6|0|3|0"), small: [] }]);
+assert.equal(fieldCardValues(engineSlots, gpuCatalog, [])["gpu_all_engine_busy_percent@gpu-engine|E4A6|0|3|0"].group,
+  "显卡引擎 3 · NVIDIA GeForce RTX 5060 Laptop GPU", "the card shows the same name as the picker");
 
 // 卡片数值。
 applyByteUnitMode("binary");

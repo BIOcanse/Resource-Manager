@@ -76,16 +76,16 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         await store.SaveAsync(defaults with
         {
             SystemIntegration = defaults.SystemIntegration with { AutoStartEnabled = true },
-            Appearance = defaults.Appearance with { Theme = AppThemeModes.Dark }
+            Appearance = defaults.Appearance with { Theme = "dark" }
         }, CancellationToken.None);
         var other = new JsonAppSettingsStore(environment);
         var loaded = (await other.LoadAsync(CancellationToken.None)).Settings;
         Assert.True(loaded.SystemIntegration.AutoStartEnabled);
-        Assert.Equal(AppThemeModes.Dark, loaded.Appearance.Theme);
+        Assert.Equal("dark", loaded.Appearance.Theme);
         await other.SaveAsync(loaded with { SystemIntegration = loaded.SystemIntegration with { AutoStartEnabled = false } }, CancellationToken.None);
         var disabled = (await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None)).Settings;
         Assert.False(disabled.SystemIntegration.AutoStartEnabled);
-        Assert.Equal(AppThemeModes.Dark, disabled.Appearance.Theme);
+        Assert.Equal("dark", disabled.Appearance.Theme);
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         performance["optimizationMode"] = AppOptimizationModes.Smart;
         performance["monitorRefreshIntervalMs"]!["mode"] = AppPresetNumericSettingModes.Custom;
         performance["monitorRefreshIntervalMs"]!["customValue"] = 4_321;
-        source["appearance"]!["theme"] = AppThemeModes.Dark;
+        source["appearance"]!["theme"] = "dark";
         source["appearance"]!["language"] = AppLanguageModes.English;
         source["debug"]!["hostManagerSmartCoordinatorScoreOnlyEnabled"] = true;
         await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
@@ -185,7 +185,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
             AppPresetNumericSettingModes.Custom,
             loaded.Settings.Performance.MonitorRefreshIntervalMs.Mode);
         Assert.Equal(4_321, loaded.Settings.Performance.MonitorRefreshIntervalMs.CustomValue);
-        Assert.Equal(AppThemeModes.Dark, loaded.Settings.Appearance.Theme);
+        Assert.Equal("dark", loaded.Settings.Appearance.Theme);
         Assert.Equal(AppLanguageModes.English, loaded.Settings.Appearance.Language);
         Assert.True(loaded.Settings.Debug.HostManagerSmartCoordinatorScoreOnlyEnabled);
 
@@ -198,7 +198,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
                 .GetProperty("performance")
                 .TryGetProperty("samplingDispatchMode", out _));
         Assert.Equal(
-            AppThemeModes.Dark,
+            "dark",
             persisted.RootElement
                 .GetProperty("appearance")
                 .GetProperty("theme")
@@ -241,7 +241,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         {
             Appearance = AppSettingsDefaults.Create().Appearance with
             {
-                Theme = AppThemeModes.Dark
+                Theme = "dark"
             }
         };
         var saved = await store.SaveAsync(expected, CancellationToken.None);
@@ -255,7 +255,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal(AppSettingsSourceKind.RecoveredLastKnownGood, recovered.Source.Kind);
         Assert.Equal("readOnlyLastKnownGoodFallback", recovered.Source.RecoveryDisposition);
         Assert.Null(recovered.Source.RecoveryArtifactPath);
-        Assert.Equal(AppThemeModes.Dark, recovered.Settings.Appearance.Theme);
+        Assert.Equal("dark", recovered.Settings.Appearance.Theme);
         AssertFileTreeUnchanged(before, configRoot);
     }
 
@@ -323,7 +323,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         {
             Appearance = AppSettingsDefaults.Create().Appearance with
             {
-                Theme = AppThemeModes.Dark
+                Theme = "dark"
             }
         };
         var saved = await originalStore.SaveAsync(expected, CancellationToken.None);
@@ -340,7 +340,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal("recoveredLastKnownGood", recovered.Source.RecoveryDisposition);
         Assert.NotNull(recovered.Source.RecoveryArtifactPath);
         Assert.True(File.Exists(recovered.Source.RecoveryArtifactPath));
-        Assert.Equal(AppThemeModes.Dark, recovered.Settings.Appearance.Theme);
+        Assert.Equal("dark", recovered.Settings.Appearance.Theme);
         Assert.Equal(
             JsonSerializer.Serialize(expected),
             JsonSerializer.Serialize(

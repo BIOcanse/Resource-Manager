@@ -207,8 +207,10 @@ export default createSettingsLocale("es-ES", {
     }
   },
   "appearance": {
-    "themeTitle": "Modo de color",
-    "themeDescription": "Elige la apariencia del sistema, clara, oscura o de bajo contraste.",
+    "uiStyleTitle": "Estilo de la interfaz",
+    "uiStyleDescription": "Cambia las esquinas, líneas, sombras y fuentes de los controles; el diseño no cambia. Cada estilo tiene sus propias paletas.",
+    "themeTitle": "Paleta",
+    "themeDescription": "Elige una paleta del estilo actual. Sistema sigue el ajuste claro u oscuro de Windows.",
     "animationTitle": "Animaciones",
     "animationDescription": "Elige animaciones completas, ninguna animación o efectos simplificados para reducir la carga de la interfaz.",
     "resourceBarHardwareAccelerationTitle": "Aceleración por hardware de las barras",
@@ -241,11 +243,23 @@ export default createSettingsLocale("es-ES", {
     "settingsLanguageTitle": "Idioma de la interfaz",
     "settingsLanguageDescription": "Cambia el idioma de toda la interfaz, incluida la bandeja y el título de ventana. Sistema usa el idioma de visualización de Windows.",
     "languageSelectLabel": "Idioma",
+    "uiStyleOptions": {
+      "standard": "Estándar",
+      "soft": "Suave",
+      "outline": "Contorno",
+      "terminal": "Terminal"
+    },
     "themeOptions": {
       "system": "Sistema",
       "light": "Claro",
       "dark": "Oscuro",
-      "lowContrast": "Bajo contraste"
+      "lowContrast": "Bajo contraste",
+      "paper": "Papel",
+      "graphite": "Grafito",
+      "blueprint": "Plano",
+      "phosphor": "Fósforo",
+      "amber": "Ámbar",
+      "ice": "Hielo"
     },
     "animationOptions": {
       "auto": {

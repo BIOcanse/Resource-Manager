@@ -1,4 +1,5 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
+import { observeDocumentAppearance } from "../../presentation/documentAppearance";
 
 export interface ChartPoint { x: number; y: number | null }
 
@@ -27,13 +28,12 @@ export function TargetedReportChart(props: {
   });
   onMount(() => {
     const observer = new ResizeObserver(drawSoon);
-    const theme = new MutationObserver(drawSoon);
     if (canvas) observer.observe(canvas);
-    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const stopObservingAppearance = observeDocumentAppearance(drawSoon);
     drawSoon();
     onCleanup(() => {
       observer.disconnect();
-      theme.disconnect();
+      stopObservingAppearance();
       if (frame) cancelAnimationFrame(frame);
     });
   });

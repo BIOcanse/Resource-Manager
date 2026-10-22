@@ -79,12 +79,12 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
   const visibleKinds = () => managementKinds().filter((kind) =>
     props.mutablePersistenceEnabled || kind.id === "Dependency" || kind.id === "Support");
   return (
-    <nav class="management-tabs" aria-label={uiText.management.categoryNav}>
+    <nav class="page-subnav" aria-label={uiText.management.categoryNav}>
       <For each={visibleKinds()}>
         {(kind) => (
           <button
             id={`managementTab-${kind.id}`}
-            class="management-tab"
+            class="page-subnav-tab"
             classList={{ active: props.activeSubpage === kind.id }}
             type="button"
             aria-current={props.activeSubpage === kind.id ? "page" : undefined}
@@ -96,7 +96,7 @@ export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
       </For>
       <button
         id="managementTab-BrowserRuntime"
-        class="management-tab"
+        class="page-subnav-tab"
         classList={{ active: props.activeSubpage === browserRuntimeManagementSubpageId }}
         type="button"
         aria-current={props.activeSubpage === browserRuntimeManagementSubpageId ? "page" : undefined}
