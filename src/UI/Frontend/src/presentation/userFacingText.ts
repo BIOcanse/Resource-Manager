@@ -188,18 +188,14 @@ export function componentDisplayName(componentId: unknown, fallback?: unknown) {
     case "fan-control-core": return names.fanControlCore;
     case "hardware-bridge": return names.hardwareBridge;
     case "amd-smu-pawnio-provider": return names.amdSmuPawnIo;
-    case "amd-ryzen-master-monitoring-sdk": return names.amdRyzenMaster;
-    case "msi-afterburner": return names.msiAfterburner;
+    case "hardware-sensors-pawnio-provider": return names.hardwareSensorsPawnIo;
+    case "intel-msr-pawnio-provider": return names.intelMsrPawnIo;
     case "librehardwaremonitor-provider": return names.libreHardwareMonitor;
     case "shared-webview2-runtime": return names.sharedWebView2Runtime;
-    case "notebook-fancontrol-provider": return names.notebookFanControl;
     case "notebook-oem-fan-provider": return names.notebookOemFan;
-    case "windows-performance-toolkit": return names.windowsPerformanceToolkit;
-    case "latencymon": return names.latencyMon;
     case "nvidia-nvml-provider": return names.nvidiaNvml;
     case "nvidia-nvapi-provider": return names.nvidiaNvapi;
     case "amd-adlx-provider": return names.amdAdlx;
-    case "intel-pcm-provider": return names.intelPcm;
     default: return safeUserFact(fallback) || uiText.status.component.nameFallback;
   }
 }
@@ -209,35 +205,23 @@ export function componentPurpose(componentId: unknown) {
   switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
     case "fan-control-core": return purposes.fanControlCore;
     case "hardware-bridge": return purposes.hardwareBridge;
-    case "msi-afterburner": return purposes.msiAfterburner;
-    case "amd-ryzen-master-monitoring-sdk": return purposes.amdRyzenSdk;
     case "amd-smu-pawnio-provider": return purposes.amdSmu;
-    case "intel-pcm-provider": return purposes.intelCpu;
-    case "librehardwaremonitor-provider": return purposes.generalHardwareSensors;
+    case "hardware-sensors-pawnio-provider": return purposes.hardwareSensorsPawnIo;
+    case "intel-msr-pawnio-provider": return purposes.intelMsrPawnIo;
+    case "librehardwaremonitor-provider": return purposes.motherboardMemorySensors;
     case "nvidia-nvml-provider": return purposes.nvidiaNvml;
     case "nvidia-nvapi-provider": return purposes.nvidiaNvapi;
     case "amd-adlx-provider": return purposes.amdGpu;
-    case "notebook-fancontrol-provider": return purposes.notebookEcFan;
     case "notebook-oem-fan-provider": return purposes.notebookOemFan;
-    case "latencymon": return purposes.latencyMon;
-    case "windows-performance-toolkit": return purposes.windowsPerformanceToolkit;
     case "shared-webview2-runtime": return purposes.sharedWebView2Runtime;
     default:
       return uiText.status.component.purposeFallback;
   }
 }
 
-export function componentCategory(componentId: unknown) {
-  const categories = uiText.status.component.categories;
-  switch (String(componentId ?? "").trim().toLocaleLowerCase()) {
-    case "windows-performance-toolkit":
-    case "latencymon":
-      return categories.performanceAnalysis;
-    case "msi-afterburner":
-      return categories.helperTool;
-    default:
-      return categories.hardwareMonitoring;
-  }
+// 组件目录里只有硬件监控一类。
+export function componentCategory() {
+  return uiText.status.component.categories.hardwareMonitoring;
 }
 
 export function safeUserFact(value: unknown) {
