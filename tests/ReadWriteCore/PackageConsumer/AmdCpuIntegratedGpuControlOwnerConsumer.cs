@@ -29,6 +29,7 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
                 Require(helper.LastUnit=="W" && helper.LastWhich=="stapm","CPU unit/which was not transmitted.");
                 Require((await gpu.WriteAsync(gpuTarget,co,new(co.Field,-20),default)).Status==IntegratedGpuControlStatus.Applied,"Recorded iGPU setting failed.");
                 Require(helper.Power==20 && helper.GpuCounts==-20,"Shared transport mixed independent fields.");
+                Require(helper.LastGpuUnit=="档","iGPU unit was not transmitted.");
                 var count=helper.Calls;
                 Require((await cpu.WriteAsync(target,new(AmdCpuControlField.TdcLimit),new(AmdCpuControlField.TdcLimit,50),default)).Status==AmdCpuControlStatus.Failed && helper.Calls==count,"Unconfirmed current mapping was sent.");
             }
@@ -67,12 +68,12 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
     private sealed class RecordedHelper : IHardwareBridgeProcessClient
     {
         public bool IsInstalled=>true;public string? UnavailableReason=>null;public int Calls,Disposals;
-        public double Power=45,GpuCounts=8;public string? LastUnit,LastWhich;
+        public double Power=45,GpuCounts=8;public string? LastUnit,LastWhich,LastGpuUnit;
         public Task<JsonElement?> SendAsync(string operation,IReadOnlyDictionary<string,object?>? arguments,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();Calls++;
             if(operation=="set-power-limit"){Power=Convert.ToDouble(arguments!["value"]);LastUnit=(string?)arguments["unit"];LastWhich=(string?)arguments["which"];}
-            if(operation=="set-igpu-curve-optimizer")GpuCounts=Convert.ToDouble(arguments!["counts"]);
+            if(operation=="set-igpu-curve-optimizer"){GpuCounts=Convert.ToDouble(arguments!["value"]);LastGpuUnit=(string?)arguments["unit"];}
             return Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new{ok=true,available=true,powerTable=true,curveOptimizer=true,
                 integratedGpuCurveOptimizer=true,accepted=true,status="OK",stapmLimitWatts=Power,integratedGpuCurveOptimizerCounts=GpuCounts}));
         }

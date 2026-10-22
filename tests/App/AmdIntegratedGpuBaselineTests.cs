@@ -84,7 +84,7 @@ public sealed class AmdIntegratedGpuBaselineTests
                 while ($null -ne ($line=[Console]::In.ReadLine()) -and $iterations -lt 100) {
                     $iterations++
                     $request=$line | ConvertFrom-Json
-                    if ($request.op -eq 'set-igpu-curve-optimizer') { $counts=$request.counts }
+                    if ($request.op -eq 'set-igpu-curve-optimizer') { $counts=$request.value }
                     [Console]::Out.WriteLine((@{id=$request.id;ok=$true;available=$true;integratedGpuCurveOptimizer=$true;accepted=$true;integratedGpuCurveOptimizerCounts=$counts} | ConvertTo-Json -Compress))
                     [Console]::Out.Flush()
                 }

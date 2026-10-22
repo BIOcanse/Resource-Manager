@@ -141,9 +141,10 @@ public sealed class IntegratedGpuControlResource : IDisposable
         }
 
         var counts = (int)wanted;
+        // 和处理器那几项一样，值连同单位一起发；辅助进程不收裸数字。
         var response = await SendAsync(
             "set-igpu-curve-optimizer",
-            new Dictionary<string, object?> { ["counts"] = counts },
+            new Dictionary<string, object?> { ["value"] = counts, ["unit"] = "档" },
             cancellationToken).ConfigureAwait(false);
         if (response is not { } result || !Flag(result, "ok"))
         {
