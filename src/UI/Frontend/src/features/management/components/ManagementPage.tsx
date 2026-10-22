@@ -510,12 +510,15 @@ function getManagementRoleItems(
   components: ManagedComponent[],
   software: SoftwareRecord[]
 ): ManagementItem[] {
-  const componentItems = components
-    .filter((component) => component.definition?.managementRole === role)
+  const roleComponents = components
+    .filter((component) => component.definition?.managementRole === role);
+  const componentItems = roleComponents
     .filter((component) => component.definition?.id !== sharedBrowserRuntimeComponentId)
     .map((component) => ({ type: "component" as const, value: component }));
-  const componentNameSet = new Set(componentItems
-    .map((item) => normalizeName(item.value.definition?.name))
+  // 共享 WebView2 运行时只在「运行时管理」里列；它在软件清单里的同名记录也要一起去掉，
+  // 否则会以后端原名的软件卡片回到依赖列表。
+  const componentNameSet = new Set(roleComponents
+    .map((component) => normalizeName(component.definition?.name))
     .filter(Boolean));
   const extraSoftwareItems = software
     .filter((item) => !isUnconfirmedSoftware(item) && item.managementRole === role)
