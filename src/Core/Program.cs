@@ -42,7 +42,7 @@ app.Logger.LogInformation(
 
 loopbackApiPipeline.ConfigureApplication(app);
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(FrontendStaticFiles.Options);
 
 app.MapResourceManagerEndpoints(loopbackApiPipeline.Mode, startupCapabilities);
 app.Map("/api/{**unmatchedPath}", () => Results.NotFound(new
@@ -88,6 +88,6 @@ static bool IsLocalSystem()
     return identity.User?.IsWellKnown(WellKnownSidType.LocalSystemSid) == true;
 }
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", FrontendStaticFiles.Options);
 
 await app.RunAsync();

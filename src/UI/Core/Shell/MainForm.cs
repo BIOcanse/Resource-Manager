@@ -54,7 +54,7 @@ public sealed partial class MainForm : Form
         BackColor = frontendHost.BackgroundColor;
 
         Controls.Add(frontendHost.View);
-        backendAvailabilityPanel = new BackendAvailabilityPanel();
+        backendAvailabilityPanel = new BackendAvailabilityPanel(frontendHost.BackgroundColor);
         backendAvailabilityPanel.RetryRequested += (_, _) =>
             BackendRetryRequested?.Invoke(this, EventArgs.Empty);
         backendAvailabilityPanel.DiagnosticsRequested += (_, _) =>
