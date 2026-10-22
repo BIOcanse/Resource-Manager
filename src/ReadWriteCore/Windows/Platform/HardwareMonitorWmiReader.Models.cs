@@ -23,4 +23,9 @@ internal sealed record HardwareMonitorHardwareInfo(
 
 // Topology completeness describes query success, including an empty catalog.
 public sealed record HardwareMonitorFanIdentityRead(bool Complete, IReadOnlyList<HardwareMonitorFanIdentity> Identities);
-public sealed record HardwareMonitorFanIdentity(int Index, string IdentityKey);
+public sealed record HardwareMonitorFanIdentity(int Index, string IdentityKey)
+{
+    public string? Provider { get; init; }
+    public string? SensorIdentifier { get; init; }
+    public string? NameDeclared { get; init; }
+}

@@ -6,6 +6,8 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class DashboardSettingsNormalizer
 {
+    private const int MaximumSmallSlots = 6;
+
     public static DashboardSettings Normalize(DashboardSettings? settings, bool preserveVersion = false)
     {
         if (settings is null)
@@ -54,12 +56,12 @@ public static class DashboardSettingsNormalizer
             ? Guid.NewGuid().ToString("N")
             : card.Id.Trim();
 
-        var main = string.IsNullOrWhiteSpace(card.Main) ? null : card.Main.Trim();
+        var main = NormalizeCardSlotId(card.Main, card.MainBinding);
         var sourceBindings = card.SmallBindings ?? [];
-        var small = new List<string>(3);
-        var smallBindings = new List<DashboardMetricBinding?>(3);
+        var small = new List<string>(MaximumSmallSlots);
+        var smallBindings = new List<DashboardMetricBinding?>(MaximumSmallSlots);
         for (var index = 0;
-             index < (card.Small?.Count ?? 0) && small.Count < 3;
+             index < (card.Small?.Count ?? 0) && small.Count < MaximumSmallSlots;
              index++)
         {
             var metricId = card.Small![index];
@@ -68,13 +70,14 @@ public static class DashboardSettingsNormalizer
                 continue;
             }
 
-            var normalizedMetricId = metricId.Trim();
+            var binding = index < sourceBindings.Count ? sourceBindings[index] : null;
+            var normalizedMetricId = NormalizeCardSlotId(metricId, binding)!;
             small.Add(normalizedMetricId);
-            smallBindings.Add(NormalizeBinding(
+            smallBindings.Add(NormalizeCardBinding(
                 normalizedMetricId,
-                index < sourceBindings.Count ? sourceBindings[index] : null));
+                binding));
         }
-        var mainBinding = NormalizeBinding(main, card.MainBinding);
+        var mainBinding = NormalizeCardBinding(main, card.MainBinding);
 
         return new DashboardCardSettings(
             id,
@@ -84,14 +87,47 @@ public static class DashboardSettingsNormalizer
             smallBindings.ToArray());
     }
 
+    private static string? NormalizeCardSlotId(
+        string? metricId,
+        DashboardMetricBinding? binding)
+    {
+        if (string.IsNullOrWhiteSpace(metricId))
+        {
+            return null;
+        }
+
+        return IsDeviceFieldBinding(binding)
+            ? metricId
+            : metricId.Trim();
+    }
+
+    private static DashboardMetricBinding? NormalizeCardBinding(
+        string? metricId,
+        DashboardMetricBinding? binding)
+    {
+        if (string.IsNullOrWhiteSpace(metricId) || binding is null)
+        {
+            return null;
+        }
+
+        if (string.Equals(binding.ScopeKind, "device-field", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(binding.ScopeKey)
+                ? null
+                : new DashboardMetricBinding("device-field", binding.ScopeKey);
+        }
+
+        return NormalizeBinding(metricId, binding);
+    }
+
     private static DashboardMetricBinding? NormalizeBinding(
         string? metricId,
         DashboardMetricBinding? binding)
     {
-        if (string.IsNullOrWhiteSpace(metricId)
-            || binding is null
+        if (binding is null
             || !string.Equals(binding.ScopeKind, "gpu", StringComparison.OrdinalIgnoreCase)
             || string.IsNullOrWhiteSpace(binding.ScopeKey)
+            || string.IsNullOrWhiteSpace(metricId)
             || DashboardSettingsDefaults.ParseGpuIndex(metricId) is null)
         {
             return null;
@@ -99,6 +135,10 @@ public static class DashboardSettingsNormalizer
 
         return new DashboardMetricBinding("gpu", binding.ScopeKey.Trim());
     }
+
+    private static bool IsDeviceFieldBinding(DashboardMetricBinding? binding)
+        => binding is not null
+            && string.Equals(binding.ScopeKind, "device-field", StringComparison.OrdinalIgnoreCase);
 
     private static ResourceBarSettings? NormalizeResourceBar(ResourceBarSettings? bar)
     {

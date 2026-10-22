@@ -24,7 +24,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
     private ImmutableDictionary<string, Declaration> declarations = ImmutableDictionary<string, Declaration>.Empty;
     private sealed record Declaration(MetricDeviceFieldBinding Binding, WindowsMetricControlBinding Entry,
         bool CanRead, bool CanWrite, string? Reason, FieldWriteContract Contract);
-    private sealed record CpuDomain(string Identity, string Vendor);
+    private sealed record CpuDomain(string Identity, string Vendor, MetricDeviceDescriptor Device);
     private sealed record Facts(CpuDomain? Cpu, WindowsGpuAdapterInventoryRead? Inventory, bool FixedChassis);
 
     /// <summary>Explicit capability operation. Original AMD CPU/iGPU Probe can
@@ -43,7 +43,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
             {
                 var vendor = entry.Family == WindowsMetricControlFamily.IntelCpu ? "GenuineIntel" : "AuthenticAMD";
                 if (facts.Cpu is { } cpu && cpu.Vendor == vendor)
-                    Add(entry, cpu.Identity, null, new(cpu.Identity));
+                    Add(entry, cpu.Identity, null, new(cpu.Identity), cpu.Device);
                 continue;
             }
             if (!Complete(facts.Inventory)) continue;
@@ -55,13 +55,15 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
                 var identity = entry.Definition.Resource == MetricResource.Fan ? exact + "|fan-tuning-group" : exact;
                 Add(entry, identity, adapter,
                     new(entry.Family == WindowsMetricControlFamily.AmdIntegratedGpu ? facts.Cpu?.Identity : null,
-                        exact, adapter.PhysicalIdentities.Single().PnpInstanceId.ToUpperInvariant()));
+                        exact, adapter.PhysicalIdentities.Single().PnpInstanceId.ToUpperInvariant()),
+                    GpuDevice(adapter, entry.Definition.Resource == MetricResource.Fan));
             }
         }
         Volatile.Write(ref declarations, next.ToImmutable());
         return AddBindings(snapshot);
 
-        void Add(WindowsMetricControlBinding entry, string identity, WindowsGpuAdapter? adapter, WindowsMetricControlTarget target)
+        void Add(WindowsMetricControlBinding entry, string identity, WindowsGpuAdapter? adapter,
+            WindowsMetricControlTarget target, MetricDeviceDescriptor device)
         {
             var key = adapter is null ? (ulong?)null : WindowsGpuAdapterIdentity.Pack(adapter.Luid);
             if (resources.ControlResolveObjectId is not null && adapter is not null && mapperGpuFacts is null) return;
@@ -71,7 +73,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
             target = target with { RawObjectId = rawId };
             var binding = new MetricDeviceFieldBinding(identity, entry.Definition,
                 "managed-control|" + Uri.EscapeDataString(identity) + "|" + entry.Definition.Name, entry.SourceId)
-                { AdapterKey = key, ControlTarget = target };
+                { AdapterKey = key, ControlTarget = target, Device = device };
             next.Add(binding.RequestAddress, Probe(binding, entry, adapter));
         }
     }
@@ -433,8 +435,27 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
             || threads.Any(thread => thread.Data is not { } data || data.Identity.Vendor != identity.Vendor
                 || data.Identity.Family != identity.Family || data.Identity.Model != identity.Model
                 || data.Identity.Stepping != identity.Stepping)) return null;
+        var members = ids.Select(static id => new MetricProcessorAddress(
+            checked((ushort)(id / 64)), checked((byte)(id % 64)))).ToArray();
+        var displayName = string.IsNullOrWhiteSpace(identity.Brand) ? null : identity.Brand.Trim();
+        var device = new MetricDeviceDescriptor("cpu_platform", MetricDeviceAddress.CpuPlatform(members), displayName, 0);
         return new("host-cpu-control|" + identity.Vendor + "|" + identity.Family + ":" + identity.Model + ":" + identity.Stepping
-            + "|" + identity.Brand + "|" + packages[0].DeviceIdentity + "|" + string.Join(',', ids), identity.Vendor);
+            + "|" + identity.Brand + "|" + packages[0].DeviceIdentity + "|" + string.Join(',', ids), identity.Vendor, device);
+    }
+
+    private static MetricDeviceDescriptor GpuDevice(WindowsGpuAdapter adapter, bool fanTuningGroup)
+    {
+        var pnp = adapter.PhysicalIdentities
+            .OrderBy(static identity => identity.PnpInstanceId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static identity => identity.PhysicalAdapterIndex)
+            .Select(static identity => identity.PnpInstanceId)
+            .ToArray();
+        var luid = WindowsGpuAdapterIdentity.Pack(adapter.Luid);
+        var address = fanTuningGroup
+            ? MetricDeviceAddress.GpuFanTuningGroup(luid, pnp)
+            : MetricDeviceAddress.GpuAdapter(luid, pnp);
+        return new(fanTuningGroup ? "gpu_fan_tuning_group" : "gpu_adapter", address,
+            string.IsNullOrWhiteSpace(adapter.Name) ? null : adapter.Name.Trim(), adapter.Index);
     }
     private static bool Complete(WindowsGpuAdapterInventoryRead? inventory)
         => inventory is not null && inventory.Status == SamplingObservationStatus.Current && inventory.Generation > 0

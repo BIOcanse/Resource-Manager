@@ -109,6 +109,7 @@ public static class NativeMetricSnapshotCommittedProjection
                         binding.Field!, binding.MetricId, binding.SourceId)
                     {
                         NpuEngine = binding.NpuEngine,
+                        Device = binding.Device,
                         RequestAliases = requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [],
                         AdapterKey = frame.Catalog.GpuScopeBindings.TryGetValue(binding.ScopeHandle, out var gpuBinding)
                             ? gpuBinding.AdapterLuid : null

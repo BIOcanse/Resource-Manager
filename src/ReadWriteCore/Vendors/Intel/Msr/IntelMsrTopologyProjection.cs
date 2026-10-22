@@ -19,9 +19,10 @@ public static class IntelMsrTopologyProjection
                         NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
         }
         var cores = Project(information?.PhysicalCores?.Select(static core =>
-            ($"windows-cpu-core|{string.Join(',', core.LogicalProcessorIds.Order())}", core.LogicalProcessorIds)), false);
+            ($"windows-cpu-core|{string.Join(',', core.LogicalProcessorIds.Order())}", core.LogicalProcessorIds,
+                (string?)core.PhysicalCoreId, (string?)null)), false);
         var packages = Project(information?.Packages?.Select(static package =>
-            (package.DeviceIdentity, package.LogicalProcessorIds)), true);
+            (package.DeviceIdentity, package.LogicalProcessorIds, (string?)null, (string?)package.DeviceIdentity)), true);
         var threads = ProjectThreads();
         var dies = ProjectDies();
         var platform = ProjectPlatform();
@@ -71,7 +72,11 @@ public static class IntelMsrTopologyProjection
             var processorId = representative.LogicalProcessorId;
             targets.Add(new(0, "windows-intel-psys-platform|" + packageValues[0].DeviceIdentity,
                 new((ushort)(processorId / 64), (byte)(processorId % 64)), data.Signature!.Value,
-                data.IntelX2ApicId, IntelMsrTargetKind.Platform, false, false));
+                data.IntelX2ApicId, IntelMsrTargetKind.Platform, false, false)
+            {
+                ProcessorAddresses = ProcessorAddresses(packageMembers),
+                NameDeclared = data.Identity.Brand
+            });
             return NativeMetricSnapshotCatalogTopologyStatus.Complete;
         }
 
@@ -93,7 +98,13 @@ public static class IntelMsrTopologyProjection
                 if (data.Signature is not { } signature) return NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
                 var id = processor.LogicalProcessorId;
                 produced.Add(new(index, die.DeviceIdentity, new((ushort)(id / 64), (byte)(id % 64)),
-                    signature, data.IntelX2ApicId, IntelMsrTargetKind.PhysicalDie, false, false) { RaplProfile = rapl });
+                    signature, data.IntelX2ApicId, IntelMsrTargetKind.PhysicalDie, false, false)
+                {
+                    DieId = die.DeviceIdentity,
+                    ProcessorAddresses = ProcessorAddresses(die.LogicalProcessorIds),
+                    NameDeclared = data.Identity.Brand,
+                    RaplProfile = rapl
+                });
             }
             targets.AddRange(produced);
             return NativeMetricSnapshotCatalogTopologyStatus.Complete;
@@ -111,13 +122,20 @@ public static class IntelMsrTopologyProjection
                 var id = processor.LogicalProcessorId;
                 produced.Add(new(id, processor.DeviceIdentity, new((ushort)(id / 64), (byte)(id % 64)),
                     signature, data.IntelX2ApicId, IntelMsrTargetKind.LogicalProcessor, false, false)
-                    { SupportsPerformanceFeedback = true, IntelProcessorBaseFrequencyDeclaredMhz = data.IntelProcessorBaseFrequencyDeclaredMhz });
+                {
+                    SupportsPerformanceFeedback = true,
+                    IntelProcessorBaseFrequencyDeclaredMhz = data.IntelProcessorBaseFrequencyDeclaredMhz,
+                    NameDeclared = data.Identity.Brand,
+                    ProcessorAddresses = [new((ushort)(id / 64), (byte)(id % 64))]
+                });
             }
             targets.AddRange(produced);
             return NativeMetricSnapshotCatalogTopologyStatus.Complete;
         }
 
-        NativeMetricSnapshotCatalogTopologyStatus Project(IEnumerable<(string Identity, IReadOnlyList<int> Ids)>? groups, bool isPackage)
+        NativeMetricSnapshotCatalogTopologyStatus Project(
+            IEnumerable<(string Identity, IReadOnlyList<int> Ids, string? CoreId, string? PackageId)>? groups,
+            bool isPackage)
         {
             if (groups is null) return NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
             var values = groups.OrderBy(static group => group.Identity, StringComparer.Ordinal).ToArray();
@@ -141,11 +159,26 @@ public static class IntelMsrTopologyProjection
                 produced.Add(new(index, group.Identity, new((ushort)(id / 64), (byte)(id % 64)),
                     signature, data.IntelX2ApicId, isPackage ? IntelMsrTargetKind.Package : IntelMsrTargetKind.PhysicalCore,
                     supports, IntelThermalTargetModels.Supports(data.Identity))
-                    { RaplProfile = rapl, ThermalStatusCapabilities = IntelThermalStatusCatalog.Capabilities(data,
-                        isPackage ? IntelMsrTargetKind.Package : IntelMsrTargetKind.PhysicalCore) });
+                {
+                    CoreId = group.CoreId,
+                    PackageId = group.PackageId,
+                    NameDeclared = data.Identity.Brand,
+                    ProcessorAddresses = ProcessorAddresses(group.Ids),
+                    RaplProfile = rapl,
+                    ThermalStatusCapabilities = IntelThermalStatusCatalog.Capabilities(data,
+                        isPackage ? IntelMsrTargetKind.Package : IntelMsrTargetKind.PhysicalCore)
+                });
             }
             targets.AddRange(produced);
             return NativeMetricSnapshotCatalogTopologyStatus.Complete;
         }
+
+        static IReadOnlyList<CpuProcessorAddress> ProcessorAddresses(IEnumerable<int> processorIds)
+            => processorIds.Distinct().Order().Select(static id =>
+            {
+                if (id < 0 || id / 64 > ushort.MaxValue)
+                    throw new InvalidOperationException("The CPU topology contains an out-of-range logical processor ID.");
+                return new CpuProcessorAddress(checked((ushort)(id / 64)), checked((byte)(id % 64)));
+            }).ToArray();
     }
 }

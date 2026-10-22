@@ -4,6 +4,9 @@ namespace ResourceManager.ReadWrite.Windows.Devices;
 
 public sealed record StorageOwnerIdentity(int DisplayIndex, string ExactIdentityKey)
 {
+    public string? UniqueId { get; init; }
+    public string? SerialNumber { get; init; }
+    public string? NameDeclared { get; init; }
     public bool SupportsNvmeHealth { get; init; }
     public bool SupportsAtaSmart { get; init; }
 }

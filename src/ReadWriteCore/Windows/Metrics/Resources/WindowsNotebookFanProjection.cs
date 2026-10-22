@@ -12,7 +12,12 @@ public static class WindowsNotebookFanProjection
         HardwareMonitorFanIdentityRead wmi, bool enableMechrevo, ulong generation)
     {
         var identities = wmi.Complete
-            ? wmi.Identities.Select(item => new NativeMetricSnapshotOrdinalCatalogIdentity(item.Index, item.IdentityKey, generation)).ToList()
+            ? wmi.Identities.Select(item => new NativeMetricSnapshotOrdinalCatalogIdentity(item.Index, item.IdentityKey, generation)
+            {
+                Device = new("fan", item.Provider is not null && item.SensorIdentifier is not null
+                    ? MetricDeviceAddress.SystemFan(item.Provider, item.SensorIdentifier)
+                    : null, Clean(item.NameDeclared), item.Index)
+            }).ToList()
             : [];
         if (enableMechrevo)
         {
@@ -43,9 +48,15 @@ public static class WindowsNotebookFanProjection
         return
         [
             new(firstDisplayIndex, CpuFanIdentityKey, topologyGeneration)
-            { NotebookOemRole = NotebookOemPhysicalFanRole.Cpu },
+            {
+                NotebookOemRole = NotebookOemPhysicalFanRole.Cpu,
+                Device = new("fan", MetricDeviceAddress.OemFan("cpu"), null, firstDisplayIndex)
+            },
             new(firstDisplayIndex + 1, DiscreteGpuFanIdentityKey, topologyGeneration)
-            { NotebookOemRole = NotebookOemPhysicalFanRole.DiscreteGpu }
+            {
+                NotebookOemRole = NotebookOemPhysicalFanRole.DiscreteGpu,
+                Device = new("fan", MetricDeviceAddress.OemFan("discrete_gpu"), null, firstDisplayIndex + 1)
+            }
         ];
     }
 
@@ -74,5 +85,8 @@ public static class WindowsNotebookFanProjection
             "Unavailable",
             string.Join("; ", states.Select(static state => $"{state.Provider}: {state.Message}")));
     }
+
+    private static string? Clean(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 

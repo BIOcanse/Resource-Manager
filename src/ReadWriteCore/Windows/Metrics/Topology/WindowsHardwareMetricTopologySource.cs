@@ -80,7 +80,14 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
                 luid,
                 inventory.Generation,
                 VendorMask(adapter.VendorId),
-                adapter.SupportsDedicatedMemoryMetrics));
+                adapter.SupportsDedicatedMemoryMetrics)
+            {
+                PhysicalPnpInstanceIds = adapter.PhysicalIdentities
+                    .OrderBy(static identity => identity.PnpInstanceId, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(static identity => identity.PhysicalAdapterIndex)
+                    .Select(static identity => identity.PnpInstanceId)
+                    .ToArray()
+            });
         }
 
         if (rows.Select(static row => row.DisplayIndex)
@@ -115,7 +122,11 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
         var nextFanIndex = fanRows.Count == 0 ? 0 : checked(fanRows.Max(static fan => fan.DisplayIndex) + 1);
         if (nvmlFans is not null)
             foreach (var fan in nvmlFans.OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
-                fanRows.Add(new(nextFanIndex++, fan.ExactIdentityKey, inventory.Generation) { NvmlFan = fan });
+                fanRows.Add(new(nextFanIndex++, fan.ExactIdentityKey, inventory.Generation)
+                {
+                    NvmlFan = fan,
+                    Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, nextFanIndex - 1)
+                });
         var batteries = resources.ReadBatteryIdentities();
         var topology = new NativeMetricSnapshotCatalogTopologySnapshot(
             inventory.Generation,

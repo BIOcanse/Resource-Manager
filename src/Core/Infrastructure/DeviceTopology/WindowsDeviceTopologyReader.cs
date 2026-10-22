@@ -887,7 +887,11 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             adapter.ConnectorPresent,
             adapter.TransmitLinkSpeedBitsPerSecond,
             adapter.ReceiveLinkSpeedBitsPerSecond,
-            adapter.MediaConnectState);
+            adapter.MediaConnectState)
+        {
+            InterfaceGuid = adapter.InterfaceGuid,
+            InterfaceDescription = adapter.InterfaceDescription
+        };
     }
 
     /// <summary>收发速率不同时前端会分行显示两者，这里只给较高的那个；都没有则返回 null。</summary>

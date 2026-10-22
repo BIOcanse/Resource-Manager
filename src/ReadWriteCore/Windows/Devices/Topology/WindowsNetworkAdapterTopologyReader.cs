@@ -10,7 +10,7 @@ public static class WindowsNetworkAdapterTopologyReader
     {
         var result = (query ?? DeviceTopologyWmiUtilities.QueryObjects)(
             @"root\StandardCimv2",
-            "SELECT PnPDeviceID, InterfaceName, MediaConnectState, TransmitLinkSpeed, ReceiveLinkSpeed, PermanentAddress, ActiveMaximumTransmissionUnit, HardwareInterface, ConnectorPresent FROM MSFT_NetAdapter", timeout);
+            "SELECT PnPDeviceID, InterfaceGuid, InterfaceDescription, InterfaceName, MediaConnectState, TransmitLinkSpeed, ReceiveLinkSpeed, PermanentAddress, ActiveMaximumTransmissionUnit, HardwareInterface, ConnectorPresent FROM MSFT_NetAdapter", timeout);
         var adapters = result.Rows
             .Select(CreateAdapter)
             .Where(static adapter => adapter is not null)
@@ -38,7 +38,12 @@ public static class WindowsNetworkAdapterTopologyReader
             Clean(DeviceTopologyWmiUtilities.ReadString(row, "PermanentAddress")),
             DeviceTopologyWmiUtilities.ReadUInt64(row, "ActiveMaximumTransmissionUnit"),
             DeviceTopologyWmiUtilities.ReadBoolean(row, "HardwareInterface"),
-            DeviceTopologyWmiUtilities.ReadBoolean(row, "ConnectorPresent"));
+            DeviceTopologyWmiUtilities.ReadBoolean(row, "ConnectorPresent"))
+        {
+            InterfaceGuid = Guid.TryParse(DeviceTopologyWmiUtilities.ReadString(row, "InterfaceGuid"), out var guid)
+                && guid != Guid.Empty ? guid.ToString("D").ToUpperInvariant() : null,
+            InterfaceDescription = Clean(DeviceTopologyWmiUtilities.ReadString(row, "InterfaceDescription"))
+        };
     }
 
     private static ulong? ReadLinkSpeed(IReadOnlyDictionary<string, object?> row, string property)
@@ -74,4 +79,8 @@ public sealed record DeviceTopologyNetworkAdapter(
     string? PermanentAddress,
     ulong? ActiveMtuBytes,
     bool? HardwareInterface,
-    bool? ConnectorPresent);
+    bool? ConnectorPresent)
+{
+    public string? InterfaceGuid { get; init; }
+    public string? InterfaceDescription { get; init; }
+}

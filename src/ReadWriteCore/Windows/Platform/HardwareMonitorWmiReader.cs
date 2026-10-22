@@ -25,7 +25,12 @@ public sealed partial class HardwareMonitorWmiReader
                 .Select(static group => group.Single())
                 .OrderBy(static row => ReadString(row, "Identifier"), StringComparer.Ordinal)
                 .Select((row, index) => new HardwareMonitorFanIdentity(index,
-                    FanIdentity(provider, ReadString(row, "Identifier")!))).ToArray();
+                    FanIdentity(provider, ReadString(row, "Identifier")!))
+                {
+                    Provider = provider,
+                    SensorIdentifier = ReadString(row, "Identifier"),
+                    NameDeclared = ReadString(row, "Name")
+                }).ToArray();
             return new(true, identities);
         }
         return new(false, []);

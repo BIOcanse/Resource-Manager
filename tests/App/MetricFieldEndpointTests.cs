@@ -304,7 +304,7 @@ public sealed class MetricFieldEndpointTests
     }
 
     [Theory]
-    [InlineData("?fields=memory_all_physical_available_bytes")]
+    [InlineData("?device=&fields=memory_all_physical_available_bytes")]
     [InlineData("?device=memory&fields=typo")]
     [InlineData("?device=unknown&fields=memory_all_physical_available_bytes")]
     [InlineData("?device=memory&device=unknown&fields=memory_all_physical_available_bytes")]
