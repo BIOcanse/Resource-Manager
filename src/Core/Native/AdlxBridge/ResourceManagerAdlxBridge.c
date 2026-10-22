@@ -9,7 +9,7 @@
 #define RM_ADLX_ERROR_INIT_FAILED -2
 #define RM_ADLX_ERROR_NO_SYSTEM -3
 #define RM_ADLX_ERROR_NO_PERF -4
-#define RM_ADLX_BRIDGE_ABI_VERSION 5
+#define RM_ADLX_BRIDGE_ABI_VERSION 6
 
 #define ADLX_OK 0
 #define ADLX_ALREADY_ENABLED 1
@@ -32,6 +32,8 @@
 #define RM_ADLX_METRIC_BOARD_POWER 512
 #define RM_ADLX_METRIC_INTAKE_TEMPERATURE 1024
 #define RM_ADLX_METRIC_MEMORY_TEMPERATURE 2048
+#define RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL 8192
+#define RM_ADLX_METRIC_NPU_FREQUENCY 16384
 
 typedef int32_t ADLX_RESULT;
 typedef int32_t adlx_int;
@@ -200,6 +202,11 @@ typedef struct IADLXGPUMetricsSupport1 IADLXGPUMetricsSupport1;
 typedef struct IADLXGPUMetricsSupport1Vtbl {
     IADLXGPUMetricsSupportVtbl base;
     ADLX_RESULT (__stdcall *IsSupportedGPUMemoryTemperature)(IADLXGPUMetricsSupport1* self, adlx_bool* supported);
+    ADLX_RESULT (__stdcall *GetGPUMemoryTemperatureRange)(IADLXGPUMetricsSupport1* self, adlx_int* minValue, adlx_int* maxValue);
+    ADLX_RESULT (__stdcall *IsSupportedNPUFrequency)(IADLXGPUMetricsSupport1* self, adlx_bool* supported);
+    ADLX_RESULT (__stdcall *GetNPUFrequencyRange)(IADLXGPUMetricsSupport1* self, adlx_int* minValue, adlx_int* maxValue);
+    ADLX_RESULT (__stdcall *IsSupportedNPUActivityLevel)(IADLXGPUMetricsSupport1* self, adlx_bool* supported);
+    ADLX_RESULT (__stdcall *GetNPUActivityLevelRange)(IADLXGPUMetricsSupport1* self, adlx_int* minValue, adlx_int* maxValue);
 } IADLXGPUMetricsSupport1Vtbl;
 struct IADLXGPUMetricsSupport1 { const IADLXGPUMetricsSupport1Vtbl* pVtbl; };
 
@@ -207,6 +214,8 @@ typedef struct IADLXGPUMetrics1 IADLXGPUMetrics1;
 typedef struct IADLXGPUMetrics1Vtbl {
     IADLXGPUMetricsVtbl base;
     ADLX_RESULT (__stdcall *GPUMemoryTemperature)(IADLXGPUMetrics1* self, adlx_double* value);
+    ADLX_RESULT (__stdcall *NPUFrequency)(IADLXGPUMetrics1* self, adlx_int* value);
+    ADLX_RESULT (__stdcall *NPUActivityLevel)(IADLXGPUMetrics1* self, adlx_int* value);
 } IADLXGPUMetrics1Vtbl;
 struct IADLXGPUMetrics1 { const IADLXGPUMetrics1Vtbl* pVtbl; };
 
@@ -240,6 +249,8 @@ typedef struct ResourceManagerAdlxGpuMetrics
     double memoryTemperatureCelsius;
     int32_t identityValid;
     int64_t sampleTimestampMilliseconds;
+    int32_t npuActivityLevelPercent;
+    int32_t npuFrequencyMhz;
 } ResourceManagerAdlxGpuMetrics;
 
 typedef struct ResourceManagerAdlxGpuSelection {
@@ -606,6 +617,62 @@ static int read_gpu_metrics(
             if (memorySupport) memorySupport->pVtbl->base.Release((IADLXGPUMetricsSupport*)memorySupport);
         }
 
+        if ((flags & (RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL | RM_ADLX_METRIC_NPU_FREQUENCY)) != 0)
+        {
+            IADLXGPUMetricsSupport1* npuSupport = NULL;
+            IADLXGPUMetrics1* npuMetrics = NULL;
+            ADLX_RESULT support1Result = support->pVtbl->QueryInterface(
+                support, L"IADLXGPUMetricsSupport1", (void**)&npuSupport);
+            if (ADLX_SUCCEEDED(support1Result) && npuSupport)
+            {
+                int npuMetricsQueried = 0;
+                int npuMetricsReady = 0;
+                if (flags & RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL)
+                {
+                    supported = 0;
+                    if (ADLX_SUCCEEDED(npuSupport->pVtbl->IsSupportedNPUActivityLevel(npuSupport, &supported)))
+                    {
+                        set_supported(output, RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL, supported);
+                        if (supported && metrics)
+                        {
+                            npuMetricsQueried = 1;
+                            npuMetricsReady = ADLX_SUCCEEDED(metrics->pVtbl->QueryInterface(
+                                metrics, L"IADLXGPUMetrics1", (void**)&npuMetrics)) && npuMetrics;
+                            if (npuMetricsReady
+                                && ADLX_SUCCEEDED(npuMetrics->pVtbl->NPUActivityLevel(npuMetrics, &output->npuActivityLevelPercent))
+                                && output->npuActivityLevelPercent >= 0
+                                && output->npuActivityLevelPercent <= 100)
+                                set_available(output, RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL);
+                        }
+                    }
+                }
+
+                if (flags & RM_ADLX_METRIC_NPU_FREQUENCY)
+                {
+                    supported = 0;
+                    if (ADLX_SUCCEEDED(npuSupport->pVtbl->IsSupportedNPUFrequency(npuSupport, &supported)))
+                    {
+                        set_supported(output, RM_ADLX_METRIC_NPU_FREQUENCY, supported);
+                        if (supported && metrics)
+                        {
+                            if (!npuMetricsQueried)
+                            {
+                                npuMetricsQueried = 1;
+                                npuMetricsReady = ADLX_SUCCEEDED(metrics->pVtbl->QueryInterface(
+                                    metrics, L"IADLXGPUMetrics1", (void**)&npuMetrics)) && npuMetrics;
+                            }
+                            if (npuMetricsReady
+                                && ADLX_SUCCEEDED(npuMetrics->pVtbl->NPUFrequency(npuMetrics, &output->npuFrequencyMhz))
+                                && output->npuFrequencyMhz >= 0)
+                                set_available(output, RM_ADLX_METRIC_NPU_FREQUENCY);
+                        }
+                    }
+                }
+            }
+            if (npuMetrics) npuMetrics->pVtbl->base.Release((IADLXGPUMetrics*)npuMetrics);
+            if (npuSupport) npuSupport->pVtbl->base.Release((IADLXGPUMetricsSupport*)npuSupport);
+        }
+
         supported = 0;
         if ((flags & RM_ADLX_METRIC_POWER) && ADLX_SUCCEEDED(support->pVtbl->IsSupportedGPUPower(support, &supported)))
         {
@@ -679,7 +746,7 @@ __declspec(dllexport) int ResourceManagerAdlxReadSelectedGpuMetrics(
     for (int index = 0; index < selectionCount; index++) {
         if (!selections[index].pnpString[0]
             || !memchr(selections[index].pnpString, 0, sizeof(selections[index].pnpString))
-            || selections[index].requestedFlags <= 0 || (selections[index].requestedFlags & ~8191)) return 0;
+            || selections[index].requestedFlags <= 0 || (selections[index].requestedFlags & ~32767)) return 0;
         for (int prior = 0; prior < index; prior++)
             if (selections[prior].uniqueId == selections[index].uniqueId) return 0;
     }

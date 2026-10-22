@@ -12,6 +12,7 @@ if (args.Contains("--current-backend-recorded-only", StringComparer.Ordinal))
     await AmdHardwareTopologyConsumer.RunRecordedAsync();
     await SecurityProductConsumer.RunRecordedAsync();
     await EdidModeConsumer.RunRecordedAsync();
+    await NpuEngineConsumer.RunRecordedAsync();
     return;
 }
 if (args.Contains("--security-products-recorded-only", StringComparer.Ordinal))

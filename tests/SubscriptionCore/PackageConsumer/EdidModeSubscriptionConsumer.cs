@@ -72,6 +72,9 @@ internal static partial class EdidModeSubscriptionConsumer
         await RunScenarioAsync(token => RunCompactRecordedAsync(settings, configuration, token, true));
         await RunScenarioAsync(token => RunCompactRecordedAsync(settings, configuration, token, false, mixed: true));
         await RunScenarioAsync(token => RunDynamicRangeRecordedAsync(settings, configuration, token));
+        await RunScenarioAsync(token => RunAdaptiveSyncRecordedAsync(settings, configuration, token, 0));
+        await RunScenarioAsync(token => RunAdaptiveSyncRecordedAsync(settings, configuration, token, 1));
+        await RunScenarioAsync(token => RunTypeVViRecordedAsync(settings, configuration, token));
         Console.WriteLine("[EDID-MODE-SUB-RECORDED] native-role2; exact-display; two-DTD; rational; same-current; stop/drain; direct-recovery; T7-exact-CTA-DSCnull; ordered-SVR-source-references; NVR-codes-unit; T8-full-DMT-code-raw-also420; T10-CVT-parameters-SVR147; DisplayID-VIII-full-DMT-raw-null-CTA-domain; DisplayID-IV-independent-legacy-byte-DMT; DisplayID-original-CTA-VIC-HDMI-VIC13-full-domain; wire12-bitmap17-raw-bitindex-code; TypeIII-independent2-width-aspect-nominal-field-frame; TypeX-independent3-CVT-wire20; nonmode-CTA-wire20-original-owner-raw-recovery; no-live-display");
     }
 

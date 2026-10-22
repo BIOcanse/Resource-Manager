@@ -50,6 +50,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         var second = await core.CollectAsync(fields);
         Assert.All(second.Where(static row => row.Field.FieldName == NpuEngineRecordedResources.Ratio), static row => Assert.Equal(0d, row.Value!.Number));
         Assert.Equal(2, recording.Reads); Assert.Equal(256U, recording.LastMaximum);
+        Assert.Equal(0d, Assert.Single(await core.CollectAsync(BusyFields(core.Catalog))).Value!.Number);
     }
 
     [Fact]
@@ -68,6 +69,85 @@ public sealed class NpuEngineOwnerIntegrationTests
     }
 
     [Fact]
+    public async Task DeviceBusyUsesMaximumOverCompleteEngineSetAndPreservesValuesAbove100()
+    {
+        var recording = new NpuEngineRecordedResources();
+        recording.EngineCounterSteps[0] = 500_000;
+        recording.EngineCounterSteps[1] = 1_500_000;
+        recording.EngineTickOffsets[1] = 500_000;
+        using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.Default, recording.Create(), new(), unavailableCooldown: TimeSpan.Zero);
+        using var http = new HttpClient(); var core = Core(owner, http);
+        var busy = BusyFields(await core.DiscoverAsync());
+        var field = Assert.Single(busy);
+        var capability = core.Query(field);
+        Assert.True(capability.Read.Supported); Assert.False(capability.Write.Supported);
+        Assert.Empty(capability.Read.Dependencies); Assert.Equal(NativeMetricSnapshotSources.WindowsNpuEngine, capability.ReadSource);
+        Assert.Equal("%", capability.Definition.Unit); Assert.Equal("float64", capability.Definition.ValueKind);
+
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(2, recording.LastRequested.Count);
+        Assert.Equal(150d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+        Assert.Equal(2, recording.LastRequested.Count);
+
+        recording.MissingEngine = 1;
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        recording.MissingEngine = null;
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(150d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+    }
+
+    [Fact]
+    public async Task DeviceBusyDoesNotPublishWhenQpcStallsOrCounterResetsAndWarmsAgain()
+    {
+        var recording = new NpuEngineRecordedResources();
+        using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.Default, recording.Create(), new(), unavailableCooldown: TimeSpan.Zero);
+        using var http = new HttpClient(); var core = Core(owner, http);
+        var busy = BusyFields(await core.DiscoverAsync());
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+
+        recording.TickStep = 0;
+        // Read uses current Ticks before applying TickStep: this sample is 3,000,000
+        // and the next is also 3,000,000 (the actual stall). After restoring the step,
+        // the following sample is 4,000,000 and has a valid one-second interval.
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+        recording.TickStep = 1_000_000;
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+
+        recording.ResetCounters(1);
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+    }
+
+    [Fact]
+    public async Task DeviceBusyKeepsCurrentAndBaselineOnCancellationAndReopensUnknownAfterDirectoryChange()
+    {
+        var recording = new NpuEngineRecordedResources();
+        using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.Default, recording.Create(), new(), unavailableCooldown: TimeSpan.Zero);
+        using var http = new HttpClient(); var core = Core(owner, http);
+        var busy = BusyFields(await core.DiscoverAsync());
+        Assert.Null(Assert.Single(await core.CollectAsync(busy)).Value);
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+
+        var current = owner.ReadCachedSnapshot();
+        using (var canceled = new CancellationTokenSource())
+        {
+            recording.AfterRead = canceled.Cancel;
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await core.CollectAsync(busy, canceled.Token));
+            recording.AfterRead = null;
+            Assert.Same(current, owner.ReadCachedSnapshot());
+        }
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(busy)).Value!.Number);
+
+        recording.Opened[0].Current = false;
+        var replacement = BusyFields(await core.DiscoverAsync());
+        Assert.Equal<FieldReference>(busy, replacement);
+        Assert.Null(Assert.Single(await core.CollectAsync(replacement)).Value);
+        Assert.Equal(125d, Assert.Single(await core.CollectAsync(replacement)).Value!.Number);
+    }
+
+    [Fact]
     public async Task FailureAndCounterOrFrequencyResetWarmTheOriginalNativeBaselineAgain()
     {
         var recording = new NpuEngineRecordedResources();
@@ -77,7 +157,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         await core.CollectAsync(fields); AssertRatios(await core.CollectAsync(fields), 125);
         recording.Fail = true; Assert.All(await core.CollectAsync(fields), static row => Assert.Null(row.Value));
         recording.Fail = false; AssertRatios(await core.CollectAsync(fields), null); AssertRatios(await core.CollectAsync(fields), 125);
-        recording.Counter = 1; AssertRatios(await core.CollectAsync(fields), null); AssertRatios(await core.CollectAsync(fields), 125);
+        recording.ResetCounters(1); AssertRatios(await core.CollectAsync(fields), null); AssertRatios(await core.CollectAsync(fields), 125);
         recording.Frequency = 2_000_000; AssertRatios(await core.CollectAsync(fields), null); AssertRatios(await core.CollectAsync(fields), 250);
     }
 
@@ -118,7 +198,7 @@ public sealed class NpuEngineOwnerIntegrationTests
         Assert.Same(current, owner.ReadCachedSnapshot()); recording.AfterRead = null;
         // Accepted→next accepted spans2 seconds and4.5mµs =>225. An incorrectly
         // advanced canceled baseline would instead span1 second and3.25mµs =>325.
-        recording.Counter += 2_000_000;
+        recording.AdvanceCounters(2_000_000);
         AssertRatios(await core.CollectAsync(fields), 225);
         owner.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await core.CollectAsync(fields));
@@ -148,7 +228,9 @@ public sealed class NpuEngineOwnerIntegrationTests
     public void EveryApplicableTemplateParticipatesAndNewDirectoryChangesEachNativeRuleFingerprint()
     {
         var config = WindowsMetricConfiguration.Default.CatalogConfiguration;
-        var engine = config.RuleTemplates.First(static template => template.SourceId == NativeMetricSnapshotSources.WindowsNpuEngine);
+        var engine = config.RuleTemplates.First(static template => template.SourceId == NativeMetricSnapshotSources.WindowsNpuEngine && template.ScopeExpansion == 17);
+        var busyTemplate = Assert.Single(config.RuleTemplates.Where(static template => template.MetricIdTemplate == "npu.{npu}.engineBusy"));
+        Assert.Equal(16U, busyTemplate.ScopeExpansion); Assert.Equal(64U, busyTemplate.MaximumInstanceCount);
         Assert.Equal(256U, WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(config.RuleTemplates));
         Assert.Equal(1U, WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(config.RuleTemplates.Add(engine with { TemplateId = engine.TemplateId + ".narrow", MaximumInstanceCount = 1 })));
         Assert.Equal(0U, WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(config.RuleTemplates.Where(static template => template.SourceId != NativeMetricSnapshotSources.WindowsNpuEngine)));
@@ -157,10 +239,11 @@ public sealed class NpuEngineOwnerIntegrationTests
             npuEngineIdentities: first.Identities, npuEngineDirectory: first);
         var b = NativeMetricSnapshotCatalogProjection.Create(config, [], [], [], NativeMetricSnapshotCatalogHandleMap.Empty,
             npuEngineIdentities: second.Identities, npuEngineDirectory: second);
-        var ar = a.Rules.Where(rule => a.SourceIds[rule.SourceHandle] == NativeMetricSnapshotSources.WindowsNpuEngine).Select(static rule => rule.SemanticFingerprint).ToArray();
-        var br = b.Rules.Where(rule => b.SourceIds[rule.SourceHandle] == NativeMetricSnapshotSources.WindowsNpuEngine).Select(static rule => rule.SemanticFingerprint).ToArray();
-        Assert.Equal<ulong>(a.Rules.Where(rule => a.SourceIds[rule.SourceHandle] == NativeMetricSnapshotSources.WindowsNpuEngine).Select(static rule => rule.ScopeHandle),
-            b.Rules.Where(rule => b.SourceIds[rule.SourceHandle] == NativeMetricSnapshotSources.WindowsNpuEngine).Select(static rule => rule.ScopeHandle));
+        var engineRulesA = a.RuleBindings.Values.Where(static rule => rule.NpuEngine is not null).ToArray();
+        var engineRulesB = b.RuleBindings.Values.Where(static rule => rule.NpuEngine is not null).ToArray();
+        var ar = engineRulesA.Select(rule => a.Rules.Single(native => native.RuleHandle == rule.RuleHandle).SemanticFingerprint).ToArray();
+        var br = engineRulesB.Select(rule => b.Rules.Single(native => native.RuleHandle == rule.RuleHandle).SemanticFingerprint).ToArray();
+        Assert.Equal<ulong>(engineRulesA.Select(static rule => rule.ScopeHandle), engineRulesB.Select(static rule => rule.ScopeHandle));
         Assert.Equal(4, ar.Length); Assert.True(ar.Zip(br).All(static pair => pair.First != pair.Second));
         using var emptyA = new NpuEngineRecordedResources.Directory(0); using var emptyB = new NpuEngineRecordedResources.Directory(0);
         var ca = NativeMetricSnapshotCatalogProjection.Create(config, [], [], [], NativeMetricSnapshotCatalogHandleMap.Empty, npuEngineDirectory: emptyA);
@@ -319,6 +402,9 @@ public sealed class NpuEngineOwnerIntegrationTests
         => catalog.Fields.Where(static field => field.Field.FieldName is NpuEngineRecordedResources.Raw or NpuEngineRecordedResources.Ratio)
             .Select(static field => field.Field).OrderBy(static field => field.DeviceIdentity, StringComparer.Ordinal)
             .ThenBy(static field => field.FieldName, StringComparer.Ordinal).ToImmutableArray();
+    internal static ImmutableArray<FieldReference> BusyFields(ReadWriteCatalog catalog)
+        => catalog.Fields.Where(static field => field.Field.FieldName == NpuEngineRecordedResources.Busy)
+            .Select(static field => field.Field).ToImmutableArray();
     private static void AssertRatios(ImmutableArray<FieldReading> readings, double? expected)
         => Assert.All(readings.Where(static row => row.Field.FieldName == NpuEngineRecordedResources.Ratio), row => Assert.Equal(expected, row.Value?.Number));
 }

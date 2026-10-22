@@ -48,6 +48,9 @@ internal static partial class EdidModeConsumer
         await RunChromaticityRecordedAsync();
         await RunCompactRecordedAsync();
         await RunDynamicRangeRecordedAsync();
+        await RunAdaptiveSyncRecordedAsync(0);
+        await RunAdaptiveSyncRecordedAsync(1);
+        await RunTypeVViRecordedAsync();
         Console.WriteLine("[EDID-MODE-RW-RECORDED] parser; exact-display; two-DTD; rational; inactive; direct/current; failure/recovery; T7-exact-CTA-DSCnull; ordered-SVR-source-references; NVR-codes-unit; T8-full-DMT-code-raw-also420; T10-CVT-parameters-SVR147; DisplayID-VIII-full-DMT-raw-null-CTA-domain; DisplayID-IV-independent-legacy-byte-DMT; DisplayID-original-CTA-VIC-HDMI-VIC13-full-domain; wire12-bitmap17-raw-bitindex-code; TypeIII-independent2-width-aspect-nominal-field-frame; TypeX-independent3-CVT-wire20; nonmode-CTA-wire20-original-owner-raw-recovery; no-live-display");
     }
 

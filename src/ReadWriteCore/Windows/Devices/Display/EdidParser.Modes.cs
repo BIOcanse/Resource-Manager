@@ -18,6 +18,8 @@ public static partial class EdidParser
         var modes = new List<EdidModeDeclaration>();
         var ranges = new List<EdidRangeDeclaration>();
         var dynamicRanges = new List<EdidDynamicTimingRangeDeclaration>();
+        var adaptiveSyncRanges = new List<EdidAdaptiveSyncRangeDeclaration>();
+        var adaptiveSyncSeen = false;
         var cta = new ModeCtaReferences();
         if (!ReadBaseModes(edid[..128], modes, ranges))
             return null;
@@ -40,7 +42,8 @@ public static partial class EdidParser
                     // Each structure has its own Base. A legacy chain does not count
                     // the independent structure2.0 EDID sections that follow it.
                     if (!ReadDisplayIdModes(block, checked((uint)index), legacyDisplayIdCount,
-                        block[1] == 0x12 ? legacyDisplayIdSeen++ : modernDisplayIdSeen++, modes, dynamicRanges, cta))
+                        block[1] == 0x12 ? legacyDisplayIdSeen++ : modernDisplayIdSeen++, modes, dynamicRanges,
+                        adaptiveSyncRanges, ref adaptiveSyncSeen, cta))
                         return null;
                     break;
                 // Block-map entries are tags, never timing declarations. Validate their references too.
@@ -61,7 +64,8 @@ public static partial class EdidParser
             ranges.OrderBy(static value => value.BlockIndex).ThenBy(static value => value.ByteOffset).ToImmutableArray())
         { EdidRevision = edid[19], BaseFeatures = edid[24], CtaFlags = cta.Flags,
             SelectionDeclarations = cta.Selections.ToImmutableArray(),
-            DynamicTimingRanges = dynamicRanges.ToImmutableArray() };
+            DynamicTimingRanges = dynamicRanges.ToImmutableArray(),
+            AdaptiveSyncRanges = adaptiveSyncRanges.ToImmutableArray() };
     }
 
     private static bool TryReadModeBlockCount(ReadOnlySpan<byte> edid, out int count)

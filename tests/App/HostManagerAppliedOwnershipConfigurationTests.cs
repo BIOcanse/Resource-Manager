@@ -36,7 +36,7 @@ public sealed class HostManagerAppliedOwnershipConfigurationTests
 
         var hot = plan.HotPublish.AppliedOwnership;
         Assert.True(hot.IsPublished);
-        Assert.Equal(66UL << 32, hot.ConfigurationGeneration);
+        Assert.Equal(67UL << 32, hot.ConfigurationGeneration);
         Assert.Equal(5000, hot.MaximumFutureSkewMilliseconds);
         Assert.Equal(5000, hot.PersistenceRetryDelayMilliseconds);
         Assert.Equal(300_000, hot.RecoveryDeadlineMilliseconds);

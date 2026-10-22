@@ -69,11 +69,11 @@ public sealed record NativeMetricSnapshotRuleTemplate(
         && SourceHandle > 0
         && SourcePriority > 0
         && ScopeExpansion is >= 1 and <= 17
-        && MetricKind is >= 1 and <= 18
+        && MetricKind is >= 1 and <= 19
         && ScopeKind is >= 1 and <= 4
         && ValueKind is >= 1 and <= 6
         && RetentionPolicy is 1 or 2
-        && (MetricKind is not (14 or 15 or 16 or 17 or 18) || (ValueKind == 1 && RetentionPolicy == 2))
+        && (MetricKind is not (14 or 15 or 16 or 17 or 18 or 19) || (ValueKind == 1 && RetentionPolicy == 2))
         && CapabilityMask > 0
         && (MetricFlags & ~0x0FU) == 0
         && GpuVendorMask <= 0x0FU

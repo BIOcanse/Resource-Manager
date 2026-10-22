@@ -37,10 +37,18 @@ static class WindowsGpuVendorConsumer
         try
         {
             uint Query(string name) => Marshal.GetDelegateForFunctionPointer<UnsignedQuery>(NativeLibrary.GetExport(library, name))();
-            Require(Query("ResourceManagerAdlxGetAbiVersion") == 5 && Query("ResourceManagerAdlxGetGpuMetricsSize") == 840
+            Require(Query("ResourceManagerAdlxGetAbiVersion") == 6 && Query("ResourceManagerAdlxGetGpuMetricsSize") == 848
                 && Query("ResourceManagerAdlxGetGpuSelectionSize") == 520, "packaged ADLX bridge matches the original managed ABI");
         }
         finally { NativeLibrary.Free(library); }
+
+        var activityField = MetricFieldRegistry.Definitions.Single(field => field.Code == MetricFieldCode.AdlxNpuActivityPercent);
+        var frequencyField = MetricFieldRegistry.Definitions.Single(field => field.Code == MetricFieldCode.AdlxNpuFrequencyMhz);
+        Require(activityField.Name == "gpu_amd_npu_activity_percent" && activityField.Resource == MetricResource.Gpu
+            && activityField.Vendor == MetricVendor.Amd && activityField.Unit == "%"
+            && frequencyField.Name == "gpu_amd_npu_frequency_mhz" && frequencyField.Resource == MetricResource.Gpu
+            && frequencyField.Vendor == MetricVendor.Amd && frequencyField.Unit == "MHz",
+            "AMD ADLX NPU reports are GPU-vendor fields, separate from the OS NPU resource");
 
         var inventory = new WindowsGpuAdapterOrderReader().ReadInventory();
         var windows = WindowsGpuInformationProjection.Create(inventory);

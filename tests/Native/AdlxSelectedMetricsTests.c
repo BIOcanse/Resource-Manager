@@ -14,6 +14,14 @@ static int usage_result, voltage_result, timestamp_result;
 static int total_result, total_reads[3], clock_result, memory_clock_result, used_result;
 static int clock_value, memory_clock_value, used_value;
 static adlx_bool memory_supported=1;
+static IADLXGPUMetricsSupport1 support_extension;
+static IADLXGPUMetrics1 metrics_extension;
+static int support_extension_queries, metrics_extension_queries;
+static int activity_support_reads, frequency_support_reads, activity_metric_reads, frequency_metric_reads;
+static int npu_call_order[8], npu_call_order_count;
+static int activity_support_result, frequency_support_result, activity_metric_result, frequency_metric_result;
+static adlx_bool activity_supported=1, frequency_supported=1;
+static int activity_level=0, npu_frequency=0;
 static adlx_bool usage_supported=1, voltage_supported=1;
 static double usage=0;
 static int voltage=0;
@@ -41,6 +49,20 @@ static ADLX_RESULT __stdcall read_usage(IADLXGPUMetrics* self,double* out) { (vo
 static ADLX_RESULT __stdcall read_voltage(IADLXGPUMetrics* self,int* out) { (void)self; voltage_reads++; *out=voltage; return voltage_result; }
 static ADLX_RESULT __stdcall read_timestamp(IADLXGPUMetrics* self,int64_t* out) { (void)self; timestamp_reads++; *out=timestamp; return timestamp_result; }
 static ADLX_RESULT __stdcall supports_memory(IADLXGPUMetricsSupport* self,adlx_bool* out) { (void)self; *out=memory_supported; return 0; }
+static ADLX_RESULT __stdcall query_support_extension(IADLXGPUMetricsSupport* self,const wchar_t* iid,void** out)
+{ (void)self; (void)iid; support_extension_queries++; *out=&support_extension; return 0; }
+static ADLX_RESULT __stdcall query_metrics_extension(IADLXGPUMetrics* self,const wchar_t* iid,void** out)
+{ (void)self; (void)iid; metrics_extension_queries++; *out=&metrics_extension; return 0; }
+static ADLX_RESULT __stdcall supports_npu_activity(IADLXGPUMetricsSupport1* self,adlx_bool* out)
+{ (void)self; if(npu_call_order_count<8) npu_call_order[npu_call_order_count]=1; npu_call_order_count++; activity_support_reads++; *out=activity_supported; return activity_support_result; }
+static ADLX_RESULT __stdcall supports_npu_frequency(IADLXGPUMetricsSupport1* self,adlx_bool* out)
+{ (void)self; if(npu_call_order_count<8) npu_call_order[npu_call_order_count]=3; npu_call_order_count++; frequency_support_reads++; *out=frequency_supported; return frequency_support_result; }
+static ADLX_RESULT __stdcall read_npu_activity(IADLXGPUMetrics1* self,adlx_int* out)
+{ (void)self; if(npu_call_order_count<8) npu_call_order[npu_call_order_count]=2; npu_call_order_count++; activity_metric_reads++; *out=activity_level; return activity_metric_result; }
+static ADLX_RESULT __stdcall read_npu_frequency(IADLXGPUMetrics1* self,adlx_int* out)
+{ (void)self; if(npu_call_order_count<8) npu_call_order[npu_call_order_count]=4; npu_call_order_count++; frequency_metric_reads++; *out=npu_frequency; return frequency_metric_result; }
+static ADLX_RESULT __stdcall npu_range(IADLXGPUMetricsSupport1* self,adlx_int* min,adlx_int* max)
+{ (void)self; *min=0; *max=100; return 0; }
 static ADLX_RESULT __stdcall clock_range(IADLXGPUMetricsSupport* self,int* min,int* max) { (void)self; *min=0; *max=2000; return 0; }
 static ADLX_RESULT __stdcall read_clock(IADLXGPUMetrics* self,int* out) { (void)self; *out=clock_value; return clock_result; }
 static ADLX_RESULT __stdcall read_memory_clock(IADLXGPUMetrics* self,int* out) { (void)self; *out=memory_clock_value; return memory_clock_result; }
@@ -57,20 +79,28 @@ int main(void)
 {
     IADLXGPUVtbl gpu_table={.Release=drop_gpu,.Name=text,.VendorId=text,.DeviceId=text,.PNPString=instance,.Type=type,.UniqueId=uid,.TotalVRAM=vram};
     IADLXGPUListVtbl list_table={.Release=drop_list,.Size=size,.At_GPUList=at};
-    IADLXGPUMetricsSupportVtbl support_table={.Release=drop_support,.IsSupportedGPUUsage=supports_usage,.IsSupportedGPUVoltage=supports_voltage,
+    IADLXGPUMetricsSupportVtbl support_table={.Release=drop_support,.QueryInterface=query_support_extension,.IsSupportedGPUUsage=supports_usage,.IsSupportedGPUVoltage=supports_voltage,
         .IsSupportedGPUClockSpeed=supports_memory,.GetGPUClockSpeedRange=clock_range,
         .IsSupportedGPUVRAMClockSpeed=supports_memory,.GetGPUVRAMClockSpeedRange=clock_range,.IsSupportedGPUVRAM=supports_memory};
-    IADLXGPUMetricsVtbl metrics_table={.Release=drop_metrics,.TimeStamp=read_timestamp,.GPUUsage=read_usage,.GPUVoltage=read_voltage,
+    IADLXGPUMetricsVtbl metrics_table={.Release=drop_metrics,.QueryInterface=query_metrics_extension,.TimeStamp=read_timestamp,.GPUUsage=read_usage,.GPUVoltage=read_voltage,
         .GPUClockSpeed=read_clock,.GPUVRAMClockSpeed=read_memory_clock,.GPUVRAM=read_used};
+    IADLXGPUMetricsSupport1Vtbl support1_table={0};
+    support1_table.base=support_table; support1_table.GetGPUMemoryTemperatureRange=npu_range;
+    support1_table.IsSupportedNPUFrequency=supports_npu_frequency; support1_table.GetNPUFrequencyRange=npu_range;
+    support1_table.IsSupportedNPUActivityLevel=supports_npu_activity; support1_table.GetNPUActivityLevelRange=npu_range;
+    IADLXGPUMetrics1Vtbl metrics1_table={0};
+    metrics1_table.base=metrics_table; metrics1_table.NPUFrequency=read_npu_frequency; metrics1_table.NPUActivityLevel=read_npu_activity;
     IADLXSystemVtbl system_table={.GetGPUs=get_list};
     IADLXPerformanceMonitoringServicesVtbl perf_table={.GetSupportedGPUMetrics=get_support,.GetCurrentGPUMetrics=get_metrics};
     IADLXSystem system={&system_table}; IADLXPerformanceMonitoringServices perf={&perf_table};
     for(int i=0;i<3;i++) devices[i].pVtbl=&gpu_table;
     list.pVtbl=&list_table; support.pVtbl=&support_table; metrics.pVtbl=&metrics_table;
+    support_extension.pVtbl=&support1_table; metrics_extension.pVtbl=&metrics1_table;
     gSystem=&system; gPerfServices=&perf; gInitAttempted=1; gInitResult=0;
-    assert(ResourceManagerAdlxGetAbiVersion()==5);
-    assert(ResourceManagerAdlxGetGpuMetricsSize()==840 && ResourceManagerAdlxGetGpuSelectionSize()==520);
+    assert(ResourceManagerAdlxGetAbiVersion()==6);
+    assert(ResourceManagerAdlxGetGpuMetricsSize()==848 && ResourceManagerAdlxGetGpuSelectionSize()==520);
     assert(offsetof(ResourceManagerAdlxGpuMetrics,identityValid)==824 && offsetof(ResourceManagerAdlxGpuMetrics,sampleTimestampMilliseconds)==832);
+    assert(offsetof(ResourceManagerAdlxGpuMetrics,npuActivityLevelPercent)==840 && offsetof(ResourceManagerAdlxGpuMetrics,npuFrequencyMhz)==844);
     ResourceManagerAdlxGpuMetrics probe[3];
     assert(ResourceManagerAdlxReadGpuMetrics(probe,3,0,NULL,0)==3);
     assert(releases==4 && support_reads[0]+support_reads[1]+support_reads[2]==0);
@@ -113,7 +143,7 @@ int main(void)
     identity_result=0; ResourceManagerAdlxGpuSelection duplicate[2]={selected,selected};
     assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,duplicate,2,NULL,0)==0);
     selected.requestedFlags=0; assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,&selected,1,NULL,0)==0);
-    selected.requestedFlags=8192; assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,&selected,1,NULL,0)==0);
+    selected.requestedFlags=32768; assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,&selected,1,NULL,0)==0);
     selected.requestedFlags=all; memset(selected.pnpString,'x',512);
     assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,&selected,1,NULL,0)==0);
     assert(ResourceManagerAdlxReadSelectedGpuMetrics(probe,3,NULL,1,NULL,0)==0);
@@ -133,10 +163,35 @@ int main(void)
     used_result=0; clock_result=memory_clock_result=3; value=sample(memory_flags);
     assert(value.availableFlags==RM_ADLX_METRIC_VRAM);
     clock_result=memory_clock_result=0; memory_supported=0;
+    const int npu_flags=RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL|RM_ADLX_METRIC_NPU_FREQUENCY;
+    before=releases; npu_call_order_count=0; value=sample(npu_flags);
+    assert(value.availableFlags==npu_flags && value.npuActivityLevelPercent==0 && value.npuFrequencyMhz==0);
+    assert(releases-before==7 && support_extension_queries>0 && metrics_extension_queries>0);
+    assert(npu_call_order_count==4 && npu_call_order[0]==1 && npu_call_order[1]==2
+        && npu_call_order[2]==3 && npu_call_order[3]==4);
+    int activity_before=activity_metric_reads, frequency_before=frequency_metric_reads;
+    activity_level=47; assert(sample(RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL).availableFlags==RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL);
+    assert(activity_metric_reads==activity_before+1 && frequency_metric_reads==frequency_before);
+    npu_frequency=1800; assert(sample(RM_ADLX_METRIC_NPU_FREQUENCY).availableFlags==RM_ADLX_METRIC_NPU_FREQUENCY);
+    assert(activity_metric_reads==activity_before+1 && frequency_metric_reads==frequency_before+1);
+    activity_supported=0; frequency_supported=0; u=activity_metric_reads; v=frequency_metric_reads;
+    assert(sample(npu_flags).availableFlags==0 && activity_metric_reads==u && frequency_metric_reads==v);
+    activity_supported=1; frequency_supported=1; activity_metric_result=frequency_metric_result=3;
+    assert(sample(npu_flags).availableFlags==0); activity_metric_result=frequency_metric_result=0;
+    activity_level=101; npu_frequency=-1;
+    assert(sample(npu_flags).availableFlags==0); activity_level=0; npu_frequency=0;
+    activity_support_result=3; u=activity_metric_reads;
+    assert(!(sample(RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL).availableFlags & RM_ADLX_METRIC_NPU_ACTIVITY_LEVEL)
+        && activity_metric_reads==u);
+    activity_support_result=0;
+    frequency_support_result=3; v=frequency_metric_reads;
+    assert(!(sample(RM_ADLX_METRIC_NPU_FREQUENCY).availableFlags & RM_ADLX_METRIC_NPU_FREQUENCY)
+        && frequency_metric_reads==v);
+    frequency_support_result=0;
     assert(sample(memory_flags).availableFlags==0);
     memory_supported=1; gpu_table.TotalVRAM=NULL; value=sample(memory_flags);
     assert(value.availableFlags==memory_flags && value.totalVramMb==0);
     gpu_table.TotalVRAM=vram;
-    puts("ADLX selected metrics: ABI5, exact selected IO, timestamp, memory/clock zero and failures, dirty capacity rejection, identity and releases passed.");
+    puts("ADLX selected metrics: ABI6, exact selected IO, NPU support and getter checks, NPU zero and failures, timestamp, memory/clock zero, dirty capacity rejection, identity and releases passed.");
     return 0;
 }

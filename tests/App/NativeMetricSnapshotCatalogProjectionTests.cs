@@ -563,7 +563,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     private const uint VendorNvidia = 1;
     private const uint VendorAmd = 2;
     [Fact]
-    public void NewAbiNativeCapacityReportsTheExactFiveCapacityIncreaseWithinTheSame64MiBBudget()
+    public void CurrentAbiRetainsTheHistorical512SlotCapacityDeltaWithinTheSame64MiBBudget()
     {
         var configuration = ResourceManager.ReadWrite.Windows.Metrics.Configuration.WindowsMetricConfiguration.Default;
         var original = configuration.Configuration;
@@ -572,10 +572,18 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         original.MaximumObservationCount = 12288;
         original.MaximumPlanMetricCount = 12288;
         original.MaximumMetricPlanCount = 12288;
-        // Both workspaces call the same current ABI10 DLL. This is a capacity-input
-        // comparison, not a claim that the historical ABI8 binary is interchangeable.
-        using var before = new NativeMetricSnapshotWorkspace(original, configuration.CatalogConfiguration);
-        using var after = new NativeMetricSnapshotWorkspace(configuration.Configuration, configuration.CatalogConfiguration);
+        var intermediate = configuration.Configuration;
+        intermediate.MaximumMetricCount = 12800;
+        intermediate.MaximumRequestedCount = 12800;
+        intermediate.MaximumObservationCount = 12800;
+        intermediate.MaximumPlanMetricCount = 12800;
+        intermediate.MaximumMetricPlanCount = 12800;
+        // Preserve this earlier 12,288 -> 12,800 sizing comparison explicitly.
+        // The current default capacity is covered by the catalog-envelope test below.
+        using var before = new NativeMetricSnapshotWorkspace(original,
+            configuration.CatalogConfiguration with { MaximumMetricCount = 12288 });
+        using var after = new NativeMetricSnapshotWorkspace(intermediate,
+            configuration.CatalogConfiguration with { MaximumMetricCount = 12800 });
         Assert.Equal(0x000A_0000U, before.Configuration.AbiVersion); Assert.Equal(before.Configuration.AbiVersion, after.Configuration.AbiVersion);
         Assert.Equal(12288U, before.Capacity.MetricCapacity); Assert.Equal(12800U, after.Capacity.MetricCapacity);
         Assert.Equal(1_013_760UL, (after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) - (before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount));
@@ -645,14 +653,20 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
 
         using var workspace = new NativeMetricSnapshotWorkspace(
             NativeMetricSnapshotHostConfiguration.CreateConfiguration(plan), config);
-        Assert.Equal(12800U, workspace.Capacity.MetricCapacity);
+        Assert.Equal(13_472U, workspace.Capacity.MetricCapacity);
         Assert.Equal(16384U, workspace.Capacity.RuleCapacity);
         Assert.True(checked(workspace.Capacity.ResidentByteCount + workspace.Capacity.ScratchByteCount) <= plan.Recreate.Capacity.ResidentByteBudget);
         var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, gpus, disks, fans,
             workspace.CreateCatalogHandleMap(), cpuVendor: MetricVendor.All, batteries: batteries,
             numaNodes: numa, intelCpus: cpus, networkInterfaces: interfaces, npuMemoryIdentities: npus, npuEngineIdentities: engines.Identities, npuEngineDirectory: engines);
         Assert.Equal(256, projection.NpuEngineIdentities.Length);
-        Assert.Equal(512, projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNpuEngine));
+        // Each engine retains its raw counter and ratio; each NPU also has one
+        // device busy field. Capacity includes the newly declared node/thread fields.
+        Assert.Equal(2 * engines.Identities.Count + Bound(16),
+            projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNpuEngine));
+        Assert.Equal(Bound(16), projection.RuleBindings.Values.Count(row => row.FieldCode == MetricFieldCode.NpuDeviceEngineBusyPercent));
+        Assert.Equal(Bound(9), projection.RuleBindings.Values.Count(row => row.FieldCode == MetricFieldCode.NumaNodeCapacityMiB));
+        Assert.Equal(Bound(12), projection.RuleBindings.Values.Count(row => row.FieldCode == MetricFieldCode.IntelEffectiveFrequencyMhz));
         Assert.Equal(16, projection.SystemFanIdentities.Count(row => row.IgclFan is not null));
         Assert.Equal(64, projection.NpuMemoryIdentities.Length);
         Assert.Equal(256, projection.RuleBindings.Values.Count(row => row.SourceId == NativeMetricSnapshotSources.WindowsNpuMemory));
@@ -661,8 +675,9 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             NativeMetricSnapshotSources.WindowsStorageSensors or NativeMetricSnapshotSources.WindowsDiskPerformance
             or NativeMetricSnapshotSources.WindowsNvmeHealth or NativeMetricSnapshotSources.WindowsAtaSmart));
         Assert.Equal(660, projection.RuleBindings.Values.Count(row => row.Field?.Resource == MetricResource.Fan));
-        Assert.Equal(12103, projection.Rules.Length);
-        Assert.Equal(12069, projection.MetricBindings.Count);
+        var addedNodeThreadAndDeviceFields = Bound(9) + Bound(12) + Bound(16);
+        Assert.Equal(12103 + addedNodeThreadAndDeviceFields, projection.Rules.Length);
+        Assert.Equal(12069 + addedNodeThreadAndDeviceFields, projection.MetricBindings.Count);
         // These are the original native replacement and native header, not a
         // managed row-count-only assertion or a replacement workspace stub.
         var header = workspace.ReplaceCatalog(projection, DateTimeOffset.UtcNow);
@@ -680,6 +695,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
                     new CpuProcessorAddress((ushort)(i / 64), (byte)(i % 64)), 0x406E0, (uint)i, kind, true, true)
                 {
                     SupportsPerformanceFeedback = true,
+                    IntelProcessorBaseFrequencyDeclaredMhz = 1000,
                     RaplProfile = new IntelRaplProfile(IntelRaplDomains.Package | IntelRaplDomains.Pp0
                         | IntelRaplDomains.Pp1 | IntelRaplDomains.Dram)
                     { PowerInformationDomains = IntelRaplDomains.Package | IntelRaplDomains.Dram, DramPowerUsesRaplUnits = true },

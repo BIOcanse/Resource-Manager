@@ -173,6 +173,8 @@ public sealed partial class IntelMsrThermalCollectorTests
     {
         internal CpuProcessorAddress Address = new(0, 0);
         internal uint Signature = 0x906E0;
+        internal uint MaximumLeaf = 6;
+        internal ushort BaseFrequencyMhz;
         internal string Vendor = "GenuineIntel";
         internal int ThermalFlags = 65;
         internal int FeedbackFlags;
@@ -186,10 +188,14 @@ public sealed partial class IntelMsrThermalCollectorTests
             var vendor = Encoding.ASCII.GetBytes(Vendor);
             return unchecked((uint)leaf) switch
             {
-                0 => (6, BinaryPrimitives.ReadInt32LittleEndian(vendor.AsSpan(0, 4)),
+                0 => (unchecked((int)MaximumLeaf), BinaryPrimitives.ReadInt32LittleEndian(vendor.AsSpan(0, 4)),
                     BinaryPrimitives.ReadInt32LittleEndian(vendor.AsSpan(8, 4)), BinaryPrimitives.ReadInt32LittleEndian(vendor.AsSpan(4, 4))),
                 1 => (unchecked((int)Signature), 0, 0, Leaf1Edx),
                 6 => (ThermalFlags, 0, FeedbackFlags, 0),
+                7 => (0, 0, 0, 0), // The declared max leaf makes this legal; EAX says there is no subleaf 1.
+                0x0B => (0, 0, 0, 0), // The synthetic CPU does not expose extended topology data.
+                0x15 => (0, 0, 0, 0),
+                0x16 => (BaseFrequencyMhz, 0, 0, 0),
                 0x80000000 => (unchecked((int)0x80000000), 0, 0, 0),
                 _ => throw new InvalidOperationException($"Unexpected CPUID {leaf:X}/{subleaf:X}")
             };

@@ -219,7 +219,12 @@ public enum MetricFieldCode
     NpuSharedMemoryResident,
     IgclFanSpeedRpm,
     NpuEngineRunningTimeMicroseconds,
-    NpuEngineReportedRunningTimeRatioPercent
+    NpuEngineReportedRunningTimeRatioPercent,
+    AdlxNpuActivityPercent,
+    AdlxNpuFrequencyMhz,
+    NumaNodeCapacityMiB,
+    IntelEffectiveFrequencyMhz,
+    NpuDeviceEngineBusyPercent
 }
 
 public sealed record MetricFieldDefinition(
@@ -235,8 +240,9 @@ public static class MetricFieldRegistry
     // This table is the contract; no field name is parsed to infer its meaning.
     private static IReadOnlyList<MetricFieldDefinition> BaseDefinitions { get; } =
     [
-        new(MetricFieldCode.NpuEngineRunningTimeMicroseconds, "npu_all_engine_running_time_microseconds", MetricResource.Npu, MetricVendor.All, "µs", "npu.engine.{engine}.runningTimeMicroseconds", "DXCore state4 OS-reported raw running time for one exact NPU engine in its retained adapter directory; counter epoch is not promised") { ValueKind = "unsigned64", HasLegacyAddress = false },
-        new(MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent, "npu_all_engine_reported_running_time_ratio_percent", MetricResource.Npu, MetricVendor.All, "%", "npu.engine.{engine}.reportedRunningTimeRatioPercent", "Per-engine OS-reported running-time delta divided by this application's query-return QPC elapsed time, scaled to percent; may exceed100, not proven hardware busy or Task Manager utilization; no device aggregation") { HasLegacyAddress = false },
+        new(MetricFieldCode.NpuEngineRunningTimeMicroseconds, "npu_all_engine_running_time_microseconds", MetricResource.Npu, MetricVendor.All, "µs", "npu.engine.{engine}.runningTimeMicroseconds", "DXCore AdapterEngineRunningTimeMicroseconds raw running time in microseconds for one exact NPU engine in its retained adapter directory; counter epoch is not promised") { ValueKind = "unsigned64", HasLegacyAddress = false },
+        new(MetricFieldCode.NpuDeviceEngineBusyPercent, "npu_all_engine_busy_percent", MetricResource.Npu, MetricVendor.All, "%", "npu.{npu}.engineBusy", "Engine busy time using the same engine-running-time algorithm as Task Manager: maximum per-engine running-time delta ratio across the complete bound engine directory; numeric equality with Task Manager is not asserted") { HasLegacyAddress = false },
+        new(MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent, "npu_all_engine_reported_running_time_ratio_percent", MetricResource.Npu, MetricVendor.All, "%", "npu.engine.{engine}.reportedRunningTimeRatioPercent", "Per-engine DXCore running-time delta in microseconds divided by actual monotonic QPC elapsed time, scaled to percent; original value may exceed100; Task Manager-style algorithm does not imply numeric equality") { HasLegacyAddress = false },
         new(MetricFieldCode.NpuDedicatedMemoryCommitted, "npu_all_dedicated_memory_committed", MetricResource.Npu, MetricVendor.All, "B", "npu.{npu}.dedicatedMemoryCommitted", "DXCore device-global dedicated committed bytes for an exact hardware NPU with a single physical adapter at index zero; not process budget, capacity, total or percent") { ValueKind = "unsigned64", HasLegacyAddress = false },
         new(MetricFieldCode.NpuDedicatedMemoryResident, "npu_all_dedicated_memory_resident", MetricResource.Npu, MetricVendor.All, "B", "npu.{npu}.dedicatedMemoryResident", "DXCore device-global dedicated resident bytes for an exact hardware NPU with a single physical adapter at index zero; not process budget, capacity, total or percent") { ValueKind = "unsigned64", HasLegacyAddress = false },
         new(MetricFieldCode.NpuSharedMemoryCommitted, "npu_all_shared_memory_committed", MetricResource.Npu, MetricVendor.All, "B", "npu.{npu}.sharedMemoryCommitted", "DXCore device-global shared committed bytes for an exact hardware NPU with a single physical adapter at index zero; not process budget, capacity, total or percent") { ValueKind = "unsigned64", HasLegacyAddress = false },
@@ -386,6 +392,10 @@ public static class MetricFieldRegistry
         new(MetricFieldCode.AdlxVoltage, "gpu_amd_voltage_reported_volts", MetricResource.Gpu, MetricVendor.Amd, "V", "gpu.{gpu}.adlxVoltage", "ADLX GPUVoltage sample, mV converted to V; rail/calibration unspecified, not VID or tuning offset") { HasLegacyAddress = false },
         new(MetricFieldCode.AdlxSampleTimestamp, "gpu_amd_sample_timestamp_reported_ms", MetricResource.Gpu, MetricVendor.Amd, "ms", "gpu.{gpu}.adlxSampleTimestamp", "ADLX TimeStamp raw system-epoch milliseconds; epoch unspecified, not host capture time or sampling duration") { HasLegacyAddress = false, ValueKind = "unsigned64" },
         new(MetricFieldCode.AdlxDedicatedMemoryMb, "gpu_amd_adlx_dedicated_memory_mb", MetricResource.Gpu, MetricVendor.Amd, "MB", "gpu.{gpu}.adlxDedicatedMemoryMb", "ADLX GPUVRAM raw nonnegative integer dedicated GPU memory in SDK MB; byte multiplier and physical residency unspecified, no cross-source fallback") { HasLegacyAddress = false, ValueKind = "unsigned64" },
+        new(MetricFieldCode.NumaNodeCapacityMiB, "memory_all_numa_node_capacity_mib", MetricResource.Memory, MetricVendor.All, "MiB", "numa.{numa}.capacityMiB", "PerfOS NUMA Node Memory\\Total MBytes NumberOfItems32; reported as binary MiB rounded down per OS node; process memory-partition view, not exact bytes or installed DIMM capacity") { ValueKind = "unsigned64", HasLegacyAddress = false },
+        new(MetricFieldCode.IntelEffectiveFrequencyMhz, "cpu_intel_effective_frequency_mhz", MetricResource.Cpu, MetricVendor.Intel, "MHz", "thread.{thread}.intelEffectiveFrequencyMhz", "Per-logical-processor C0 interval average derived from ΔAPERF / ΔMPERF × CPUID.16H EAX[15:0] declared base frequency; excludes idle time") { HasLegacyAddress = false },
+        new(MetricFieldCode.AdlxNpuActivityPercent, "gpu_amd_npu_activity_percent", MetricResource.Gpu, MetricVendor.Amd, "%", "gpu.{gpu}.adlxNpuActivityLevel", "ADLX IADLXGPUMetrics1::NPUActivityLevel percent for the exact AMD ADLX GPU target; separate vendor report from DXCore engine busy time and not an NPU adapter identity mapping") { HasLegacyAddress = false },
+        new(MetricFieldCode.AdlxNpuFrequencyMhz, "gpu_amd_npu_frequency_mhz", MetricResource.Gpu, MetricVendor.Amd, "MHz", "gpu.{gpu}.adlxNpuFrequency", "ADLX IADLXGPUMetrics1::NPUFrequency MHz for the exact AMD ADLX GPU target; vendor report with no inferred NPU adapter identity mapping") { HasLegacyAddress = false },
         new(MetricFieldCode.CpuUsage, "cpu_all_usage_percent", MetricResource.Cpu, MetricVendor.All, "%", "cpu.usage"),
         new(MetricFieldCode.CpuFrequency, "cpu_all_frequency_reported_mhz", MetricResource.Cpu, MetricVendor.All, "MHz", "cpu.frequency"),
         new(MetricFieldCode.CpuFrequencyPercent, "cpu_all_frequency_reference_percent", MetricResource.Cpu, MetricVendor.All, "%", "cpu.frequencyPercent"),

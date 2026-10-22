@@ -125,6 +125,7 @@ internal sealed partial class WindowsHardwareMetricCapture
                 if (request.IncludesCatalog) snapshot = AddCatalogObservations(snapshot, topology, commandAt);
                 if (prepared is not null) snapshot = WindowsMetricControlFields.ApplyPreparedFields(snapshot, prepared);
                 snapshot = ProjectGpuEngineFields(snapshot, request, fieldCatalog, pdhGpuEngineUsage);
+                snapshot = ProjectNpuDeviceBusyFields(snapshot, request);
                 onCommitted?.Invoke(snapshot);
                 published = snapshot;
             })) return null;
@@ -143,21 +144,33 @@ internal sealed partial class WindowsHardwareMetricCapture
                     && binding.SourceId == NativeMetricSnapshotSources.PdhGpuEngine)
                 .Select(static binding => binding.MetricId)).WithCatalog();
         }
-        if (request.IsAll || fieldCatalog is null)
+        if (request.IsAll)
             return request;
 
-        var projectedBindings = fieldCatalog.FieldBindings.Values
+        var requestedBusyDevices = catalog.RuleBindings.Values
+            .Where(binding => binding.FieldCode == MetricFieldCode.NpuDeviceEngineBusyPercent
+                && request.Includes(binding.MetricId))
+            .Select(static binding => binding.DeviceIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        var npuEngineTriggers = catalog.RuleBindings.Values
+            .Where(binding => binding.FieldCode == MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent
+                && binding.NpuEngine is { } engine && requestedBusyDevices.Contains(engine.ParentDeviceIdentity))
+            .Select(static binding => binding.MetricId)
+            .ToArray();
+
+        var projectedBindings = fieldCatalog?.FieldBindings.Values
             .Where(binding => binding.PdhGpuEngineIdentity is not null
                 && request.Includes(binding.RequestAddress))
-            .ToArray();
-        if (projectedBindings.Length == 0)
+            .ToArray() ?? [];
+        if (projectedBindings.Length == 0 && npuEngineTriggers.Length == 0)
             return request;
 
         var projectedAddresses = projectedBindings.Select(static binding => binding.RequestAddress)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var projectedTriggers = projectedBindings.Select(static binding => binding.EffectiveSampleRequestAddress);
         var expanded = MetricSampleRequest.ForIds(request.Ids.Where(id => !projectedAddresses.Contains(id))
-            .Concat(projectedTriggers));
+            .Concat(projectedTriggers)
+            .Concat(npuEngineTriggers));
         return request.IncludesCatalog ? expanded.WithCatalog() : expanded;
     }
 

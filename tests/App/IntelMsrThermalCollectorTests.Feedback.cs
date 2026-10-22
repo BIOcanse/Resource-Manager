@@ -7,6 +7,7 @@ using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.ReadWrite.Native;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -159,7 +160,35 @@ public sealed partial class IntelMsrThermalCollectorTests
         Assert.Equal(784, bindings.Select(static binding => binding.DeviceIdentity).Distinct().Count());
         Assert.InRange(workspace.Capacity.ResidentByteCount, 1UL, 64UL * 1024 * 1024);
         var threadRules = compiled.HotPublish.RuleTemplates.Where(static rule => rule.ScopeExpansion == 12).ToArray();
-        Assert.Equal(3, threadRules.Length); Assert.All(threadRules, rule => { Assert.True(rule.IsPublished); Assert.Equal(512U, rule.MaximumInstanceCount); });
+        var effectiveFrequency = Assert.Single(threadRules,
+            static rule => rule.MetricKind == (uint)NativeMetricSnapshotMetricKind.CounterFrequency);
+        Assert.Equal("cpu_intel_effective_frequency_mhz.optional", effectiveFrequency.TemplateId);
+        Assert.Equal(18UL, effectiveFrequency.SourceHandle);
+        Assert.Equal(512U, effectiveFrequency.MaximumInstanceCount);
+        var originalThreadRules = threadRules
+            .Where(rule => rule.TemplateId != effectiveFrequency.TemplateId).ToArray();
+        Assert.Equal(
+            [
+                "cpu_intel_aperf_counter_raw.optional",
+                "cpu_intel_aperf_mperf_interval_ratio.optional",
+                "cpu_intel_mperf_counter_raw.optional"
+            ],
+            originalThreadRules.Select(static rule => rule.TemplateId)
+                .OrderBy(static templateId => templateId, StringComparer.Ordinal));
+        Assert.Equal(3, originalThreadRules.Length);
+        Assert.Equal(1536U, originalThreadRules.Aggregate(0U,
+            static (sum, rule) => sum + rule.MaximumInstanceCount));
+        Assert.All(originalThreadRules, rule =>
+        {
+            Assert.True(rule.IsPublished);
+            Assert.Equal(512U, rule.MaximumInstanceCount);
+        });
+        Assert.Equal(4, threadRules.Length);
+        Assert.Equal(2048U, threadRules.Aggregate(0U,
+            static (sum, rule) => sum + rule.MaximumInstanceCount));
+        // These feedback fixtures omit the CPUID.16H base MHz, so the optional frequency field is not bound.
+        Assert.DoesNotContain(bindings,
+            static binding => binding.FieldCode == MetricFieldCode.IntelEffectiveFrequencyMhz);
     }
 
     [Fact]

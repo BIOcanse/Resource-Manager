@@ -118,6 +118,9 @@ public sealed partial class IntelMsrThermalCollectorTests
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], workspace.CreateCatalogHandleMap(), intelCpus: cpus);
         workspace.ReplaceCatalog(catalog, DateTimeOffset.UtcNow);
         Assert.Equal(5120, catalog.MetricBindings.Values.Count(static binding => binding.SourceId == "intel.msr"));
+        // FeedbackThread fixtures have no declared CPUID.16H base MHz, so effective frequency adds no binding here.
+        Assert.DoesNotContain(catalog.MetricBindings.Values,
+            static binding => binding.FieldCode == MetricFieldCode.IntelEffectiveFrequencyMhz);
         Assert.InRange(workspace.Capacity.ResidentByteCount, 1UL, 64UL * 1024 * 1024);
     }
 

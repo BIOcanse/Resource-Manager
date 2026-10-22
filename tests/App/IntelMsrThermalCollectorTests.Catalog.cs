@@ -2,6 +2,7 @@ using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.ReadWrite.Native;
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
 
 namespace Resource_Manager_APP.Tests;
@@ -68,9 +69,29 @@ public sealed partial class IntelMsrThermalCollectorTests
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         Assert.True(compiled.IsPublished);
-        var rules = compiled.HotPublish.RuleTemplates.Where(rule => rule.SourceHandle == 18).ToArray();
-        Assert.Equal(61, rules.Length); Assert.All(rules, rule => Assert.True(rule.IsPublished));
-        Assert.Equal(5506U, rules.Aggregate(0U, static (sum, rule) => sum + rule.MaximumInstanceCount));
+        var intelSource = Assert.Single(compiled.HotPublish.SourcePolicies,
+            static source => source.SourceId == "intel.msr");
+        Assert.Equal(18UL, intelSource.SourceHandle);
+        var rules = compiled.HotPublish.RuleTemplates
+            .Where(rule => rule.SourceHandle == intelSource.SourceHandle).ToArray();
+        var effectiveFrequency = Assert.Single(rules,
+            static rule => rule.TemplateId == "cpu_intel_effective_frequency_mhz.optional");
+        var originalRules = rules.Where(rule => rule.TemplateId != effectiveFrequency.TemplateId).ToArray();
+        Assert.Equal(61, originalRules.Length);
+        Assert.All(originalRules, rule => Assert.True(rule.IsPublished));
+        Assert.Equal(5506U, originalRules.Aggregate(0U,
+            static (sum, rule) => sum + rule.MaximumInstanceCount));
+        Assert.Equal(62, rules.Length);
+        Assert.Equal(6018U, rules.Aggregate(0U,
+            static (sum, rule) => sum + rule.MaximumInstanceCount));
+        Assert.True(effectiveFrequency.IsPublished);
+        Assert.Equal("intel.msr", effectiveFrequency.SourceId);
+        Assert.Equal(intelSource.SourceHandle, effectiveFrequency.SourceHandle);
+        Assert.Equal("thread.{thread}.intelEffectiveFrequencyMhz", effectiveFrequency.MetricIdTemplate);
+        Assert.Equal(12U, effectiveFrequency.ScopeExpansion);
+        Assert.Equal(2U, effectiveFrequency.ScopeKind);
+        Assert.Equal((uint)NativeMetricSnapshotMetricKind.CounterFrequency, effectiveFrequency.MetricKind);
+        Assert.Equal(512U, effectiveFrequency.MaximumInstanceCount);
         Assert.All(rules.Where(rule => rule.ScopeExpansion == 10), rule => { Assert.Equal(2U, rule.ScopeKind); Assert.Equal(256U, rule.MaximumInstanceCount); });
         Assert.All(rules.Where(rule => rule.ScopeExpansion == 11), rule => { Assert.Equal(2U, rule.ScopeKind); Assert.Equal(16U, rule.MaximumInstanceCount); });
         var known = Core(); var unknown = Core(1) with { SupportsTemperatureTarget = false };
@@ -79,6 +100,8 @@ public sealed partial class IntelMsrThermalCollectorTests
             cpuVendor: MetricVendor.Amd, intelCpus: [known, unknown, unsupported, Package()]);
         var bindings = catalog.MetricBindings.Values.Where(binding => binding.SourceId == "intel.msr").ToArray();
         Assert.Equal(7, bindings.Length);
+        Assert.DoesNotContain(bindings,
+            static binding => binding.FieldCode == MetricFieldCode.IntelEffectiveFrequencyMhz);
         Assert.All(bindings, binding => { Assert.EndsWith('/' + binding.Field!.Name, binding.MetricId); Assert.Empty(binding.LegacyMetricId);
             Assert.Equal(MetricVendor.Intel, binding.Field.Vendor); Assert.Equal("°C", binding.Field.Unit); Assert.Equal("float64", binding.Field.ValueKind); });
         Assert.Equal(MetricFieldCode.IntelCoreDtsDistance, Assert.Single(bindings, binding => binding.DeviceIdentity == unknown.ExactIdentityKey).FieldCode);

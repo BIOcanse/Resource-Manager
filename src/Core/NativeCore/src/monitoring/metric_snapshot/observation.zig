@@ -559,7 +559,7 @@ fn validateObservation(
     if (observation.struct_size != @sizeOf(protocol.ObservationInput) or
         (observation.flags & ~protocol.ObservationFlags.known) != 0 or observation.rule_handle == 0 or
         observation.metric_handle == 0 or observation.source_handle == 0 or
-        observation.scope_handle == 0 or observation.reserved_u32 != 0 or
+        observation.scope_handle == 0 or
         observation.source_handle != session.completion.source_handle or
         observation.source_observation_sequence !=
             session.completion.source_observation_sequence or
@@ -580,12 +580,20 @@ fn validateObservation(
     const rule_index = session.active.findRule(observation.rule_handle) orelse return null;
     if (!session.requested_rule_flags[rule_index]) return null;
     const active_rule = session.active.rules[rule_index];
+    const definition = active_rule.definition;
+    const counter_frequency = definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_frequency);
     if (active_rule.observed_at_milliseconds != 0 and
-        observation.observed_at_milliseconds < active_rule.observed_at_milliseconds)
+        observation.observed_at_milliseconds < active_rule.observed_at_milliseconds and
+        !counter_frequency)
     {
         return null;
     }
-    const definition = active_rule.definition;
+    const current = observation.status == @intFromEnum(protocol.ObservationStatus.current);
+    if (counter_frequency) {
+        if (current) {
+            if (observation.reserved_u32 == 0 or observation.reserved_u32 > @as(u32, std.math.maxInt(u16))) return null;
+        } else if (observation.reserved_u32 != 0) return null;
+    } else if (observation.reserved_u32 != 0) return null;
     if (definition.metric_handle != observation.metric_handle or
         definition.source_handle != observation.source_handle or
         definition.scope_handle != observation.scope_handle or
@@ -594,12 +602,11 @@ fn validateObservation(
     {
         return null;
     }
-    const counter_pair = definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_ratio);
+    const counter_pair = definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_ratio) or counter_frequency;
     const timed_counter = protocol.isTimedCounterMetric(definition.metric_kind);
     const floating_pair = protocol.isFloatingCounterMetric(definition.metric_kind);
     const flags: u32 = if (counter_pair) protocol.ObservationFlags.counter_pair else if (timed_counter) protocol.ObservationFlags.timed_counter else if (floating_pair) protocol.ObservationFlags.floating_counter_pair else 0;
     if (observation.flags != flags) return null;
-    const current = observation.status == @intFromEnum(protocol.ObservationStatus.current);
     if (current) {
         if ((observation.valid_mask & protocol.ObservationValid.value) == 0 or
             !(if (counter_pair or timed_counter or floating_pair) observation.byte_count == 0 and observation.payload_reserved == 0 and
@@ -876,10 +883,12 @@ fn clearCpuBaseline(source: *catalog.SourceRecord) void {
 fn applyCounterPair(rule: *catalog.RuleRecord, observation: *const protocol.ObservationInput, source_generation: u64, capability_generation: u64) void {
     const prior = rule.counter_baseline;
     const same_capability = rule.capability_generation == capability_generation;
+    const counter_frequency = rule.definition.metric_kind == @intFromEnum(protocol.MetricKind.counter_frequency);
     applyMissing(rule, .unavailable, capability_generation);
-    rule.counter_baseline = .{ .valid = true, .primary = observation.value_bits, .reference = observation.value_high_bits, .ticks_per_second = observation.counter_ticks_per_second, .observed_at_milliseconds = observation.observed_at_milliseconds };
+    rule.counter_baseline = .{ .valid = true, .primary = observation.value_bits, .reference = observation.value_high_bits, .ticks_per_second = observation.counter_ticks_per_second, .reference_frequency_mhz = observation.reserved_u32, .observed_at_milliseconds = observation.observed_at_milliseconds };
     const timed = protocol.isTimedCounterMetric(rule.definition.metric_kind);
     if (!prior.valid or !same_capability or (!timed and observation.observed_at_milliseconds <= prior.observed_at_milliseconds)) return;
+    if (counter_frequency and (prior.reference_frequency_mhz != observation.reserved_u32 or observation.observed_at_milliseconds <= rule.observed_at_milliseconds)) return;
     var duration: u64 = undefined;
     var ratio: f64 = undefined;
     if (protocol.isFloatingCounterMetric(rule.definition.metric_kind)) {
@@ -906,6 +915,7 @@ fn applyCounterPair(rule: *catalog.RuleRecord, observation: *const protocol.Obse
             @as(f64, @floatFromInt(delta_reference));
     }
     if (rule.definition.metric_kind == @intFromEnum(protocol.MetricKind.timed_microsecond_counter_percentage)) ratio /= 10_000.0;
+    if (counter_frequency) ratio *= @as(f64, @floatFromInt(observation.reserved_u32));
     const bits: u64 = @bitCast(ratio);
     if (!protocol.validValue(rule.definition.value_kind, rule.definition.flags, rule.definition.minimum_value_bits, rule.definition.maximum_value_bits, bits)) return;
     rule.source_generation = source_generation;
@@ -1112,3 +1122,78 @@ test "timed microsecond invalid intervals rewarm and missing discards the baseli
         try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
     }
 }
+
+test "counter frequency scales C0 APERF/MPERF deltas by declared base MHz" {
+    var rule: catalog.RuleRecord = .{};
+    rule.definition.metric_kind = @intFromEnum(protocol.MetricKind.counter_frequency);
+    rule.definition.value_kind = @intFromEnum(protocol.ValueKind.float64);
+    rule.definition.retention_policy = @intFromEnum(protocol.RetentionPolicy.mark_unavailable);
+    rule.definition.flags = protocol.MetricFlags.nonnegative;
+    rule.definition.minimum_value_bits = @bitCast(@as(f64, 0));
+    rule.definition.maximum_value_bits = @bitCast(std.math.floatMax(f64));
+    rule.capability_generation = 1;
+
+    var sample = std.mem.zeroes(protocol.ObservationInput);
+    sample.reserved_u32 = 2400;
+    sample.value_bits = 1000;
+    sample.value_high_bits = 100;
+    sample.observed_at_milliseconds = 1000;
+    applyCounterPair(&rule, &sample, 1, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+
+    sample.value_bits = 1150;
+    sample.value_high_bits = 200;
+    sample.observed_at_milliseconds = 2000;
+    applyCounterPair(&rule, &sample, 2, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+    try std.testing.expectEqual(@as(f64, 3600), @as(f64, @bitCast(rule.value_bits)));
+    try std.testing.expectEqual(@as(u64, 1000), rule.sample_duration_milliseconds);
+
+    sample.value_bits = 1150;
+    sample.value_high_bits = 300;
+    sample.observed_at_milliseconds = 3000;
+    applyCounterPair(&rule, &sample, 3, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+    try std.testing.expectEqual(@as(f64, 0), @as(f64, @bitCast(rule.value_bits)));
+
+    sample.value_bits = 1250;
+    sample.value_high_bits = 300;
+    sample.observed_at_milliseconds = 4000;
+    applyCounterPair(&rule, &sample, 4, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+    try std.testing.expectEqual(@as(u64, 1250), rule.counter_baseline.primary);
+
+    sample.value_bits = 1350;
+    sample.value_high_bits = 400;
+    sample.observed_at_milliseconds = 5000;
+    applyCounterPair(&rule, &sample, 5, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+    try std.testing.expectEqual(@as(f64, 2400), @as(f64, @bitCast(rule.value_bits)));
+
+    sample.value_bits = 1500;
+    sample.value_high_bits = 500;
+    sample.reserved_u32 = 2800;
+    sample.observed_at_milliseconds = 6000;
+    applyCounterPair(&rule, &sample, 6, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+
+    sample.value_bits = 1400;
+    sample.value_high_bits = 600;
+    sample.observed_at_milliseconds = 7000;
+    applyCounterPair(&rule, &sample, 7, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+
+    sample.value_bits = 1500;
+    sample.value_high_bits = 700;
+    sample.observed_at_milliseconds = 6500;
+    applyCounterPair(&rule, &sample, 8, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.unavailable, rule.status);
+
+    sample.value_bits = 1600;
+    sample.value_high_bits = 800;
+    sample.observed_at_milliseconds = 7500;
+    applyCounterPair(&rule, &sample, 9, 1);
+    try std.testing.expectEqual(protocol.MetricStatus.current, rule.status);
+    try std.testing.expectEqual(@as(f64, 2800), @as(f64, @bitCast(rule.value_bits)));
+}
+

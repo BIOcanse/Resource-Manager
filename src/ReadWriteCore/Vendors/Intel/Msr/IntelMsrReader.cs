@@ -52,13 +52,15 @@ public sealed class IntelMsrReader
                         { results.Add(new(device.ExactIdentityKey, values)); continue; }
                         var current = WindowsCpuThreadCpuidReader.ReadRegisters(access.Read);
                         var fields = requested[device.ExactIdentityKey].Where(device.AppliesTo).ToHashSet();
-                        var feedbackRequested = fields.Any(static field => field is MetricFieldCode.IntelAperfCounter or MetricFieldCode.IntelMperfCounter or MetricFieldCode.IntelPerformanceRatio);
+                        var frequencyRequested = fields.Contains(MetricFieldCode.IntelEffectiveFrequencyMhz);
+                        var ratioRequested = fields.Contains(MetricFieldCode.IntelPerformanceRatio);
+                        var feedbackRequested = fields.Any(static field => field is MetricFieldCode.IntelAperfCounter or MetricFieldCode.IntelMperfCounter or MetricFieldCode.IntelPerformanceRatio or MetricFieldCode.IntelEffectiveFrequencyMhz);
                         var statusRequested = fields.Any(static field => IntelThermalStatusCatalog.Find(field) is not null);
                         var psysRequested = fields.Any(IntelPsysFieldCatalog.Contains);
                         var thermalRequested = fields.Any(static field => IntelRaplFieldCatalog.Find(field) is null && IntelRaplPowerInformation.Find(field) is null
                             && IntelThermalStatusCatalog.Find(field) is null
                             && !IntelPsysFieldCatalog.Contains(field)
-                            && field is not (MetricFieldCode.IntelAperfCounter or MetricFieldCode.IntelMperfCounter or MetricFieldCode.IntelPerformanceRatio));
+                            && field is not (MetricFieldCode.IntelAperfCounter or MetricFieldCode.IntelMperfCounter or MetricFieldCode.IntelPerformanceRatio or MetricFieldCode.IntelEffectiveFrequencyMhz));
                         var raplRequested = fields.Any(static field => IntelRaplFieldCatalog.Find(field) is not null || IntelRaplPowerInformation.Find(field) is not null);
                         if (current.Identity.Vendor != "GenuineIntel" || current.Signature != device.Signature
                             || current.IntelX2ApicId != device.X2ApicId
@@ -68,6 +70,7 @@ public sealed class IntelMsrReader
                             || (raplRequested && IntelRaplModels.Get(current.Identity, device.Kind) != device.RaplProfile)
                             || (psysRequested && (!device.IsPlatform || !IntelPsysModels.Supports(current.Identity)))
                             || (feedbackRequested && current.IntelPerformanceFeedbackSupported != true)
+                            || (frequencyRequested && current.IntelProcessorBaseFrequencyDeclaredMhz != device.IntelProcessorBaseFrequencyDeclaredMhz)
                             || (statusRequested && IntelThermalStatusCatalog.Capabilities(current, device.Kind) != device.ThermalStatusCapabilities))
                         { results.Add(new(device.ExactIdentityKey, values, true)); continue; }
                         if (access.Current() != device.Processor)
@@ -112,12 +115,14 @@ public sealed class IntelMsrReader
                         IntelRaplFieldCatalog.Read(hardware, device.RaplProfile, fields, values, unsigned, ReadRapl);
                         IntelRaplPowerInformation.Read(hardware, device.RaplProfile, fields, values, unsigned, ReadRapl);
                         if (psysRequested) IntelPsysFieldCatalog.Read(hardware, fields, values, unsigned, ReadRapl);
-                        var ratioRequested = fields.Contains(MetricFieldCode.IntelPerformanceRatio);
-                        var mperf = fields.Contains(MetricFieldCode.IntelMperfCounter) || ratioRequested ? ReadMsr(hardware, 0xE7) : null;
-                        var aperf = fields.Contains(MetricFieldCode.IntelAperfCounter) || ratioRequested ? ReadMsr(hardware, 0xE8) : null;
+                        var feedbackPairRequested = ratioRequested || frequencyRequested;
+                        var mperf = fields.Contains(MetricFieldCode.IntelMperfCounter) || feedbackPairRequested ? ReadMsr(hardware, 0xE7) : null;
+                        var aperf = fields.Contains(MetricFieldCode.IntelAperfCounter) || feedbackPairRequested ? ReadMsr(hardware, 0xE8) : null;
                         if (fields.Contains(MetricFieldCode.IntelMperfCounter) && mperf.HasValue) unsigned[MetricFieldCode.IntelMperfCounter] = mperf.Value;
                         if (fields.Contains(MetricFieldCode.IntelAperfCounter) && aperf.HasValue) unsigned[MetricFieldCode.IntelAperfCounter] = aperf.Value;
                         if (ratioRequested && aperf.HasValue && mperf.HasValue) pairs[MetricFieldCode.IntelPerformanceRatio] = new(aperf.Value, mperf.Value);
+                        if (frequencyRequested && aperf.HasValue && mperf.HasValue && device.IntelProcessorBaseFrequencyDeclaredMhz is { } baseFrequencyMhz)
+                            pairs[MetricFieldCode.IntelEffectiveFrequencyMhz] = new(aperf.Value, mperf.Value, baseFrequencyMhz);
                         if (access.Current() != device.Processor) { values.Clear(); unsigned.Clear(); pairs.Clear(); booleans.Clear(); changed = true; }
                     }
                     catch (Exception exception) when (Expected(exception)) { values.Clear(); unsigned.Clear(); pairs.Clear(); booleans.Clear(); }

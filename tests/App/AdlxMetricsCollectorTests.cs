@@ -25,9 +25,9 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
 {
-    private const int AllFlags = 1 | 32 | 4096;
-    private static readonly string[] Names = ["gpu_amd_activity_percent", "gpu_amd_voltage_reported_volts", "gpu_amd_sample_timestamp_reported_ms"];
-    private static readonly HashSet<MetricFieldCode> Codes = [MetricFieldCode.AdlxActivity, MetricFieldCode.AdlxVoltage, MetricFieldCode.AdlxSampleTimestamp];
+    private const int AllFlags = 1 | 32 | 4096 | 8192 | 16384;
+    private static readonly string[] Names = ["gpu_amd_activity_percent", "gpu_amd_voltage_reported_volts", "gpu_amd_sample_timestamp_reported_ms", "gpu_amd_npu_activity_percent", "gpu_amd_npu_frequency_mhz"];
+    private static readonly HashSet<MetricFieldCode> Codes = [MetricFieldCode.AdlxActivity, MetricFieldCode.AdlxVoltage, MetricFieldCode.AdlxSampleTimestamp, MetricFieldCode.AdlxNpuActivityPercent, MetricFieldCode.AdlxNpuFrequencyMhz];
     private const string PnpA = @"PCI\VEN_1002&DEV_744C\A";
     private const string PnpB = @"PCI\VEN_1002&DEV_744C\B";
     private static AmdAdlxReadRequest Request(params int[] indexes) => new(indexes.ToHashSet(), true, false, false, false,
@@ -65,7 +65,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(4U,840,520)] [InlineData(5U,824,520)] [InlineData(5U,840,516)]
+    [InlineData(5U,840,520)] [InlineData(6U,840,520)] [InlineData(6U,848,516)]
     public async Task IncompatibleAbiNeverReads(uint abi,int size,int selectionSize)
     {
         var native = new Bridge { Abi=abi,Size=size,SelectionSize=selectionSize };
@@ -101,7 +101,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         {
             case 0: row.IdentityValid=0; metadata=[row]; break;
             case 1: row.StructSize=824; metadata=[row]; break;
-            case 2: row.AbiVersion=4; metadata=[row]; break;
+            case 2: row.AbiVersion=5; metadata=[row]; break;
             case 3: metadata=[row,Row(10,PnpB)]; break;
             case 4: metadata=[row,Row(11,PnpA)]; break;
             case 5: inventory=inventory with { SkippedCount=1 }; break;
@@ -154,7 +154,27 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void OriginalWorkspaceKeepsThreeFieldsPerDeviceAndClearsIndividualFailure()
+    public void NpuVendorReadingsHonorSelectionAvailabilityAndTrueZero()
+    {
+        var request=Request(9) with { IncludeNpuActivityLevel=true, IncludeNpuFrequency=true };
+        var row=Row(10,PnpA,8192|16384);
+        var gpu=Assert.IsType<GpuMetrics>(AmdAdlxBridgeReader.ToGpuMetrics(row,request,Inventory()));
+        Assert.Equal(0d,gpu.AdditionalReadings[MetricFieldCode.AdlxNpuActivityPercent]);
+        Assert.Equal(0d,gpu.AdditionalReadings[MetricFieldCode.AdlxNpuFrequencyMhz]);
+
+        row.AvailableFlags=8192;
+        gpu=Assert.IsType<GpuMetrics>(AmdAdlxBridgeReader.ToGpuMetrics(row,request,Inventory()));
+        Assert.Equal(0d,gpu.AdditionalReadings[MetricFieldCode.AdlxNpuActivityPercent]);
+        Assert.Null(gpu.AdditionalReadings[MetricFieldCode.AdlxNpuFrequencyMhz]);
+
+        row.AvailableFlags=8192|16384; row.NpuActivityLevelPercent=101; row.NpuFrequencyMhz=-1;
+        gpu=Assert.IsType<GpuMetrics>(AmdAdlxBridgeReader.ToGpuMetrics(row,request,Inventory()));
+        Assert.Null(gpu.AdditionalReadings[MetricFieldCode.AdlxNpuActivityPercent]);
+        Assert.Null(gpu.AdditionalReadings[MetricFieldCode.AdlxNpuFrequencyMhz]);
+    }
+
+    [Fact]
+    public void OriginalWorkspaceKeepsFiveFieldsPerDeviceAndClearsIndividualFailure()
     {
         var compiled=HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         using var workspace=NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,Path.Combine(Path.GetTempPath(),$"adlx-native-{Guid.NewGuid():N}.bin"));
@@ -163,12 +183,13 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var catalog=NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
             [new(9,"AMD A","gpu-a",0xA1,1,2,true),new(3,"AMD B","gpu-b",0xB1,1,2,true),new(7,"NVIDIA","gpu-nvidia",0xC1,1,1,true)],[],[],workspace.CreateCatalogHandleMap());
         var bindings=catalog.MetricBindings.Values.Where(binding=>Codes.Contains(binding.FieldCode)).ToArray();
-        Assert.Equal(6,bindings.Length); Assert.All(bindings,binding=>Assert.Equal("amd.adlx",binding.SourceId));
+        Assert.Equal(10,bindings.Length); Assert.All(bindings,binding=>Assert.Equal("amd.adlx",binding.SourceId));
         var a=bindings.Where(binding=>binding.DisplayIndex==9).ToArray();
         var b=bindings.Where(binding=>binding.DisplayIndex==3).ToArray();
         var request=WindowsHardwareMetricSampler.CreateAdlxReadRequest([a.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxActivity),
-            b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxVoltage),b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxSampleTimestamp)]);
-        Assert.Equal(1,request.NativeFlagsByDisplayIndex![9]); Assert.Equal(32|4096,request.NativeFlagsByDisplayIndex[3]);
+            b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxVoltage),b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxSampleTimestamp),
+            a.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxNpuActivityPercent),b.Single(binding=>binding.FieldCode==MetricFieldCode.AdlxNpuFrequencyMhz)]);
+        Assert.Equal(1|8192,request.NativeFlagsByDisplayIndex![9]); Assert.Equal(32|4096|16384,request.NativeFlagsByDisplayIndex[3]);
         var now=DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog,now);
         var modes=catalog.Sources.Select(source=>new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle,1,NativeMetricSnapshotZoneMode.Normal,NativeMetricSnapshotSourceAvailability.Available)).ToArray();
         for(var phase=0;phase<5;phase++)
@@ -176,10 +197,11 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
             var at=now.AddSeconds(phase+1);
             var plan=workspace.PlanCollection(bindings.Select(binding=>binding.MetricHandle).ToArray(),modes,false,at);
             var source=Assert.Single(plan.Sources);
-            var row=Row(10,PnpA,phase==1 ? 1|4096 : AllFlags); row.VoltageMillivolts=1200; row.SampleTimestampMilliseconds=9007199254740993;
-            var other=Row(20,PnpB,AllFlags); other.UsagePercent=75; other.VoltageMillivolts=950; other.SampleTimestampMilliseconds=0;
+            var row=Row(10,PnpA,phase==1 ? 1|4096 : AllFlags); row.VoltageMillivolts=1200; row.SampleTimestampMilliseconds=9007199254740993; row.NpuFrequencyMhz=1800;
+            var other=Row(20,PnpB,AllFlags); other.UsagePercent=75; other.VoltageMillivolts=950; other.SampleTimestampMilliseconds=0; other.NpuActivityLevelPercent=73;
+            var selectedNpuMetrics=Request(9,3) with { IncludeNpuActivityLevel=true, IncludeNpuFrequency=true };
             workspace.CompleteSource(plan,WindowsHardwareMetricSampler.CreateAdlxCompletion(plan,source,new(source.SourceHandle,1,(ulong)phase+1),at,
-                phase==3 ? [] : [AmdAdlxBridgeReader.ToGpuMetrics(row,Request(9),Inventory())!,AmdAdlxBridgeReader.ToGpuMetrics(other,Request(3),Inventory())!]),at);
+                phase==3 ? [] : [AmdAdlxBridgeReader.ToGpuMetrics(row,selectedNpuMetrics,Inventory())!,AmdAdlxBridgeReader.ToGpuMetrics(other,selectedNpuMetrics,Inventory())!]),at);
             var snapshot=NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(),"CPU","RAM",1);
             var first=Fields(snapshot,a[0].DeviceIdentity);
             if(phase==3)
@@ -190,11 +212,13 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
             }
             Assert.Equal(0d,first[Names[0]].NumericValue); Assert.Equal(phase==1 ? null : 1.2d,first[Names[1]].NumericValue);
             Assert.Equal("9007199254740993",first[Names[2]].IntegerValue); Assert.Null(first[Names[2]].NumericValue);
+            Assert.Equal(phase==1 ? null : 0d,first[Names[3]].NumericValue); Assert.Equal(phase==1 ? null : 1800d,first[Names[4]].NumericValue);
             Assert.Contains("\"integerValue\":\"9007199254740993\"",JsonSerializer.Serialize(first[Names[2]],new JsonSerializerOptions(JsonSerializerDefaults.Web)));
             Assert.Equal("unsigned64",first[Names[2]].ValueKind);
             var second=Fields(snapshot,b[0].DeviceIdentity); Assert.Equal(75d,second[Names[0]].NumericValue); Assert.Equal(.95d,second[Names[1]].NumericValue);
             Assert.Equal("0",second[Names[2]].IntegerValue);
-            Assert.Equal(3,MetricDeviceFields.CreateRequest(snapshot,a[0].DeviceIdentity,Names).Ids.Count);
+            Assert.Equal(73d,second[Names[3]].NumericValue); Assert.Equal(0d,second[Names[4]].NumericValue);
+            Assert.Equal(Names.Length,MetricDeviceFields.CreateRequest(snapshot,a[0].DeviceIdentity,Names).Ids.Count);
         }
     }
 
@@ -212,7 +236,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         await owner.StartAsync(CancellationToken.None); var dashboard=new DashboardMonitoringCatalogState();
         using(var lease=owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
         var device=dashboard.Current!.FieldBindings.Values.Single(binding=>binding.Field.Code==MetricFieldCode.AdlxActivity && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
-        var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993;
+        var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
         var native=new Bridge { Metadata=[Row(10,PnpA),Row(20,PnpB)],Values=[row] };
         var zone=new AmdAdlxMonitoringZone(new AmdAdlxBridgeReader(native));
         var registry=new MonitoringSourceZoneRegistry(MonitoringSourceZoneCatalog.SourceIds.Select(id=>id==zone.DisplayName ? zone : new MonitoringSourceZone(id)).ToArray());
@@ -262,12 +286,15 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     private static void CheckWire(JsonElement fields,bool empty)
     {
         var values=fields.EnumerateArray().ToDictionary(field=>field.GetProperty("name").GetString()!);
-        Assert.Equal(3,values.Count);
+        Assert.Equal(5,values.Count);
         Assert.All(values.Values,field=>Assert.Equal("amd.adlx",field.GetProperty("sourceId").GetString()));
         var time=values[Names[2]];
         Assert.Equal(empty ? null : "9007199254740993",time.GetProperty("integerValue").GetString());
         Assert.Equal("unsigned64",time.GetProperty("valueKind").GetString()); Assert.Equal("ms",time.GetProperty("unit").GetString());
         Assert.Equal(JsonValueKind.Null,time.GetProperty("numericValue").ValueKind);
+        Assert.Equal<double?>(empty ? null : 0d,values[Names[3]].GetProperty("numericValue").ValueKind==JsonValueKind.Null ? null : values[Names[3]].GetProperty("numericValue").GetDouble());
+        Assert.Equal<double?>(empty ? null : 1800d,values[Names[4]].GetProperty("numericValue").ValueKind==JsonValueKind.Null ? null : values[Names[4]].GetProperty("numericValue").GetDouble());
+        Assert.Equal("%",values[Names[3]].GetProperty("unit").GetString()); Assert.Equal("MHz",values[Names[4]].GetProperty("unit").GetString());
         if(!empty) { Assert.Equal(0,values[Names[0]].GetProperty("numericValue").GetDouble()); Assert.Equal(1.25,values[Names[1]].GetProperty("numericValue").GetDouble()); }
     }
     private static async Task<WebApplication> StartHttpAsync(WindowsHardwareMetricSampler sampler,DashboardMonitoringCatalogState catalog,
@@ -295,7 +322,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         Assert.Single(MetricDeviceFields.Read(snapshot,device,Names.ToHashSet())).Fields.ToDictionary(field=>field.Name);
     private static NativeAdlxGpuMetrics Row(int id,string pnp,int flags=0)
     {
-        var row=new NativeAdlxGpuMetrics { StructSize=Marshal.SizeOf<NativeAdlxGpuMetrics>(),AbiVersion=5,IdentityValid=1,UniqueId=id,SupportedFlags=flags,AvailableFlags=flags };
+        var row=new NativeAdlxGpuMetrics { StructSize=Marshal.SizeOf<NativeAdlxGpuMetrics>(),AbiVersion=6,IdentityValid=1,UniqueId=id,SupportedFlags=flags,AvailableFlags=flags };
         var bytes=MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref row,1));
         Encoding.UTF8.GetBytes(pnp).CopyTo(bytes.Slice(Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.PnpString)).ToInt32(),512));
         return row;
@@ -311,7 +338,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     };
     private sealed class Bridge : IAmdAdlxNativeBridge
     {
-        public uint Abi=5; public int Size=840,SelectionSize=520,AbiReads,MetadataReads,SelectedReads;
+        public uint Abi=6; public int Size=848,SelectionSize=520,AbiReads,MetadataReads,SelectedReads;
         public Exception? Failure; public int? MetadataCount;
         public NativeAdlxGpuMetrics[] Metadata=[],Values=[]; public NativeAdlxGpuSelection[] Selections=[]; public Action? AfterMetadata;
         public uint GetAbiVersion() { AbiReads++; if(Failure is not null) throw Failure; return Abi; }

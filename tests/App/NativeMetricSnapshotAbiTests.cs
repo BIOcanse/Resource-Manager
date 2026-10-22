@@ -130,6 +130,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
         Assert.Equal(13U, (uint)NativeMetricSnapshotMetricKind.CustomNumeric);
         Assert.Equal(16U, (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio);
         Assert.Equal(17U, (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage);
+        Assert.Equal(19U, (uint)NativeMetricSnapshotMetricKind.CounterFrequency);
         Assert.Equal(4U, (uint)NativeMetricSnapshotObservationFlags.FloatingCounterPair);
         Assert.Equal(7U, (uint)NativeMetricSnapshotObservationFlags.Known);
         Assert.Equal(4U, (uint)NativeMetricSnapshotScopeKind.GpuAdapter);
@@ -397,6 +398,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotMetricKind.FloatingCounterRatio,
             (uint)NativeMetricSnapshotMetricKind.FloatingCounterPercentage,
             (uint)NativeMetricSnapshotMetricKind.TimedMicrosecondCounterPercentage,
+            (uint)NativeMetricSnapshotMetricKind.CounterFrequency,
             (uint)NativeMetricSnapshotScopeKind.Host,
             (uint)NativeMetricSnapshotScopeKind.Cpu,
             (uint)NativeMetricSnapshotScopeKind.Memory,

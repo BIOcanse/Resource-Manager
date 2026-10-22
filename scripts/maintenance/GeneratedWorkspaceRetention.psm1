@@ -4,9 +4,9 @@ $script:GeneratedWorkspaceMarkerName = '.generated-workspace.json'
 $script:GeneratedWorkspaceMarkerMaxBytes = 1048576
 $script:GeneratedWorkspaceLockName = '.generated-workspace-retention.lock'
 
-# Reserve the same exclusive sharing checks using DELETE + READ_ATTRIBUTES,
-# without opening every cache payload for data reads. No deletion disposition
-# is set by Open; ordinary deletion remains below, after all safety checks.
+# Reserve exclusive sharing checks using DELETE + READ_ATTRIBUTES without
+# opening every cache payload for data reads. OpenReadDelete supports a caller
+# that must verify bytes and mark that same handle for deletion.
 if (-not ('ResourceManager.GeneratedWorkspaces.NativeFileGuard' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
@@ -24,19 +24,53 @@ namespace ResourceManager.GeneratedWorkspaces {
         [DllImport("kernel32.dll", SetLastError=true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetFileTime(SafeFileHandle handle, IntPtr creation, IntPtr access, out long write);
-        public static SafeFileHandle Open(string path, uint share) {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileDispositionInfo {
+            [MarshalAs(UnmanagedType.Bool)] public bool DeleteFile;
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FileAttributeTagInfo {
+            public uint FileAttributes;
+            public uint ReparseTag;
+        }
+        [DllImport("kernel32.dll", SetLastError=true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int fileInformationClass, ref FileDispositionInfo info, uint size);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int fileInformationClass, out FileAttributeTagInfo info, uint size);
+        private static SafeFileHandle OpenWithAccess(string path, uint access, uint share) {
             // Callers have already canonicalized and checked the managed path.
             // Win32 still needs extended syntax for payloads beyond MAX_PATH.
             string nativePath = path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path
                 : path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path.Substring(2)
                 : @"\\?\" + path;
-            var handle = CreateFile(nativePath, 0x00010080, share, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
+            var handle = CreateFile(nativePath, access, share, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero);
             if (handle.IsInvalid) {
                 int error = Marshal.GetLastWin32Error();
                 handle.Dispose();
                 throw new Win32Exception(error);
             }
             return handle;
+        }
+        public static SafeFileHandle Open(string path, uint share) {
+            return OpenWithAccess(path, 0x00010080, share);
+        }
+        public static SafeFileHandle OpenReadDelete(string path, uint share) {
+            return OpenWithAccess(path, 0x80010080, share);
+        }
+        public static bool IsReparsePoint(SafeFileHandle handle) {
+            FileAttributeTagInfo info;
+            if (!GetFileInformationByHandleEx(handle, 9, out info, (uint)Marshal.SizeOf(typeof(FileAttributeTagInfo)))) {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            return (info.FileAttributes & 0x00000400) != 0;
+        }
+        public static void Delete(SafeFileHandle handle) {
+            var info = new FileDispositionInfo { DeleteFile = true };
+            if (!SetFileInformationByHandle(handle, 4, ref info, (uint)Marshal.SizeOf(typeof(FileDispositionInfo)))) {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
         }
         public static long Length(SafeFileHandle handle) {
             long length;
@@ -1688,10 +1722,14 @@ function Invoke-GeneratedWorkspaceRetention {
         [object]$Policy = (Get-GeneratedWorkspacePolicy),
         [AllowEmptyCollection()][AllowNull()][string[]]$ReferenceRoots = @(),
         [AllowEmptyCollection()][AllowNull()][string[]]$WorkspacePaths = @(),
+        [switch]$CompletedOnly,
         [switch]$Apply
     )
+    if ($CompletedOnly -and $null -ne $WorkspacePaths -and $WorkspacePaths.Count -gt 0) {
+        throw 'CompletedOnly and exact WorkspacePaths are separate cleanup selections.'
+    }
     $group = [pscustomobject]@{ RootPath = $RootPath; WorkspacePaths = $WorkspacePaths }
-    Invoke-GWRetentionGroups -WorkspaceGroups @($group) -Policy $Policy -ReferenceRoots $ReferenceRoots -Apply:$Apply
+    Invoke-GWRetentionGroups -WorkspaceGroups @($group) -Policy $Policy -ReferenceRoots $ReferenceRoots -Apply:$Apply -CompletedPool:$CompletedOnly
 }
 
 Export-ModuleMember -Function @(

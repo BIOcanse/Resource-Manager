@@ -77,6 +77,7 @@
     <Compile Include="../Fixtures/DisplayIdFormulaFixture.cs" Link="DisplayIdFormulaFixture.cs" />
     <Compile Include="../Fixtures/DisplayIdFormulaExpectation.cs" Link="DisplayIdFormulaExpectation.cs" />
     <Compile Include="../Fixtures/DisplayIdCtaColourExpectation.cs" Link="DisplayIdCtaColourExpectation.cs" />
+    <Compile Include="../Fixtures/DisplayIdCompactTimingFixture.cs" Link="DisplayIdCompactTimingFixture.cs" />
     <ProjectReference Include="..\..\src\Core\ResourceManager.App.csproj" />
     <ProjectReference Include="..\..\src\UI\Core\ResourceManager.NativeUi.csproj" />
     <ProjectReference Include="..\..\src\UI\Launcher\ResourceManager.Launcher.csproj" />

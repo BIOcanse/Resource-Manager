@@ -14,10 +14,15 @@ internal sealed class NpuEngineRecordedResources
 {
     internal const string Raw = "npu_all_engine_running_time_microseconds";
     internal const string Ratio = "npu_all_engine_reported_running_time_ratio_percent";
+    internal const string Busy = "npu_all_engine_busy_percent";
     internal int Count = 2, Opens, Reads, UnselectedReads;
     internal bool Fail, Unavailable, InvalidateDuringRead;
     internal ulong Counter = 9_007_199_254_740_993, Ticks = 1_000_000, Frequency = 1_000_000;
     internal ulong CounterStep = 1_250_000, TickStep = 1_000_000;
+    internal uint? MissingEngine;
+    internal readonly Dictionary<uint, ulong> EngineCounterSteps = [];
+    internal readonly Dictionary<uint, ulong> EngineTickOffsets = [];
+    private readonly Dictionary<uint, ulong> engineCounters = [];
     internal Action? AfterRead;
     internal readonly List<Directory> Opened = [];
     internal IReadOnlySet<string> LastRequested = new HashSet<string>();
@@ -34,12 +39,26 @@ internal sealed class NpuEngineRecordedResources
         IReadOnlySet<string> requested, uint maximum, CancellationToken token)
     {
         token.ThrowIfCancellationRequested(); Reads++; LastRequested = requested; LastMaximum = maximum;
-        var counter = Counter; var ticks = Ticks;
+        var ticks = Ticks;
         Counter = checked(Counter + CounterStep); Ticks = checked(Ticks + TickStep);
-        var rows = devices.Where(engine => requested.Contains(engine.ExactIdentityKey)).Select(engine =>
-            new NpuEngineRead(engine, Fail ? null : new NpuEngineSample(counter, ticks - 1, ticks, Frequency), InvalidateDuringRead)).ToArray();
+        var rows = devices.Where(engine => requested.Contains(engine.ExactIdentityKey) && engine.EngineIndex != MissingEngine)
+            .Select(engine =>
+            {
+                var counter = engineCounters.TryGetValue(engine.EngineIndex, out var current) ? current : Counter - CounterStep;
+                var step = EngineCounterSteps.GetValueOrDefault(engine.EngineIndex, CounterStep);
+                engineCounters[engine.EngineIndex] = checked(counter + step);
+                var queryTicks = checked(ticks + EngineTickOffsets.GetValueOrDefault(engine.EngineIndex));
+                return new NpuEngineRead(engine, Fail ? null : new NpuEngineSample(counter, queryTicks - 1, queryTicks, Frequency), InvalidateDuringRead);
+            }).ToArray();
         if (InvalidateDuringRead) foreach (var directory in Opened) directory.Current = false;
         AfterRead?.Invoke(); return rows;
+    }
+    internal void ResetCounters(ulong value)
+    { Counter = value; engineCounters.Clear(); }
+    internal void AdvanceCounters(ulong value)
+    {
+        Counter = checked(Counter + value);
+        foreach (var engine in engineCounters.Keys.ToArray()) engineCounters[engine] = checked(engineCounters[engine] + value);
     }
     internal WindowsHardwareMetricResources Create() => new()
     {
@@ -47,7 +66,8 @@ internal sealed class NpuEngineRecordedResources
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation([], []) },
         OpenNpuEngineDirectory = Open, ReadNpuEngines = Read,
-        ReadNpuMemoryIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+        ReadNpuMemoryIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete,
+            [new NpuMemoryCatalogIdentity(@"ACPI\RECORDED_ENGINE_NPU\ONE")]),
         ReadGpuInventory = static () => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 0, 0, 0, 1, []),
         ReadStorageIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
         ReadFanIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),

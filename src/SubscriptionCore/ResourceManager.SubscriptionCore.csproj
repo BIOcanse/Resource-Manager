@@ -6,7 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <PackageId>ResourceManager.SubscriptionCore</PackageId>
-    <Version>0.1.0-dev.86</Version>
+    <Version>0.1.0-dev.87</Version>
     <Description>Native subscription planning, managed tracking and explicit read/write field subscriptions.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

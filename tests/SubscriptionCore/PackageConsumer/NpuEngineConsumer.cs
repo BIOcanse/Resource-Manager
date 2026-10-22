@@ -19,6 +19,7 @@ internal sealed class NpuEngineRecordedResources
 {
     internal const string Raw = "npu_all_engine_running_time_microseconds";
     internal const string Ratio = "npu_all_engine_reported_running_time_ratio_percent";
+    internal const string Busy = "npu_all_engine_busy_percent";
     internal int Count = 2, Opens, Reads, UnselectedReads;
     internal bool Fail, Unavailable = false, InvalidateDuringRead = false;
     internal ulong Counter = 9_007_199_254_740_993, Ticks = 1_000_000, Frequency = 1_000_000;
@@ -52,7 +53,8 @@ internal sealed class NpuEngineRecordedResources
         Controls = new WindowsMetricControlResources { ControlReadCpuIdentity = static () => null,
             ControlReadCpuTopology = static () => new CpuOsTopologyInformation([], []) },
         OpenNpuEngineDirectory = Open, ReadNpuEngines = Read,
-        ReadNpuMemoryIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+        ReadNpuMemoryIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete,
+            [new NpuMemoryCatalogIdentity(@"ACPI\RECORDED_ENGINE_NPU\ONE")]),
         ReadGpuInventory = static () => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 0, 0, 0, 1, []),
         ReadStorageIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
         ReadFanIdentities = static _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
@@ -133,6 +135,21 @@ internal static class NpuEngineConsumer
         var before = owner.ReadCachedSnapshot(); var reads = recording.Reads;
         foreach (var field in fields) _ = core.ReadCached(field);
         Require(ReferenceEquals(before, owner.ReadCachedSnapshot()) && recording.Reads == reads, "cache uses original current without sampling");
+        var busy = BusyFields(core.Catalog);
+        Require(busy.Length == 1, "one device busy field is expanded for the exact parent NPU");
+        var busyCapability = core.Query(busy[0]);
+        Require(busyCapability.Read.Supported && !busyCapability.Write.Supported
+            && busyCapability.ReadSource == NativeMetricSnapshotSources.WindowsNpuEngine
+            && busyCapability.Read.Dependencies.IsEmpty
+            && busyCapability.Definition.ValueKind == "float64" && busyCapability.Definition.Unit == "%",
+            "OS-provided device busy field is read-only and reports percent");
+        var busyCurrent = await core.CollectAsync(busy, timeout.Token);
+        Require(busyCurrent.Single().Value?.Number == 125 && recording.Reads == 3 && recording.LastRequested.Count == 2,
+            "device busy is the maximum over all bound engine ratios");
+        before = owner.ReadCachedSnapshot(); reads = recording.Reads;
+        _ = core.ReadCached(busy[0]);
+        Require(ReferenceEquals(before, owner.ReadCachedSnapshot()) && recording.Reads == reads,
+            "device busy cache read uses current without creating another engine sample");
         Require(fields.SequenceEqual(Fields(await core.DiscoverAsync(timeout.Token))) && recording.Opens == 1, "repeated probe retains the real live directory");
         if (observe is not null) await observe(core, owner, recording, fields, timeout.Token);
         recording.Fail = true;
@@ -161,11 +178,14 @@ internal static class NpuEngineConsumer
         Ratio(await core.CollectAsync(replacement, timeout.Token), 125);
         Require(recording.Opened[0].Disposed && recording.UnselectedReads == 0, "old directory drains without querying unrelated producers");
         owner.Dispose(); Require(recording.Opened.All(directory => directory.Disposed), "last original holder releases all directory leases");
-        Console.WriteLine("[NPU-ENGINE-PACKAGE-RECORDED] raw-U64/QPC-Native-ratio125; warmup/failure/reopen; same-current; live-directory-reuse; cancellation/retirement; no-live-hardware.");
+        Console.WriteLine("[NPU-ENGINE-PACKAGE-RECORDED] raw-U64/QPC-Native-ratio125/device-busy-max; warmup/failure/reopen; same-current; live-directory-reuse; cancellation/retirement; no-live-hardware.");
     }
     internal static ImmutableArray<FieldReference> Fields(ReadWriteCatalog catalog)
         => catalog.Fields.Where(field => field.Field.FieldName is NpuEngineRecordedResources.Raw or NpuEngineRecordedResources.Ratio)
             .Select(field => field.Field).OrderBy(field => field.DeviceIdentity, StringComparer.Ordinal).ThenBy(field => field.FieldName, StringComparer.Ordinal).ToImmutableArray();
+    internal static ImmutableArray<FieldReference> BusyFields(ReadWriteCatalog catalog)
+        => catalog.Fields.Where(field => field.Field.FieldName == NpuEngineRecordedResources.Busy)
+            .Select(field => field.Field).ToImmutableArray();
     internal static void Ratio(ImmutableArray<FieldReading> readings, double? expected)
         => Require(readings.Where(row => row.Field.FieldName == NpuEngineRecordedResources.Ratio).All(row => row.Value?.Number == expected), "reported ratio/warmup contract");
     internal static void Require(bool condition, string message) { if (!condition) throw new InvalidDataException("Recorded NPU engine: " + message); }

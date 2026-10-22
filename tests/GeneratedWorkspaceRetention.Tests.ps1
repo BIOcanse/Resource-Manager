@@ -523,6 +523,28 @@ try {
     Assert-True ($selectedResult.overBudget -and $selectedResult.accountingScope -like 'selected*') 'selected byte accounting explicitly reports the unknown whole-root budget.'
     Assert-Throws { Invoke-GeneratedWorkspaceRetention -RootPath $selectedRoot -Policy $script:Policy -WorkspacePaths @($tempBase) -Apply } 'selection cannot escape its configured management root.'
 
+    # Prepare only sizes the completed pool; live/unknown payload stays outside it.
+    $poolRoot = Join-Path $tempBase 'completed-pool-root'
+    [System.IO.Directory]::CreateDirectory($poolRoot) | Out-Null
+    $script:Policy.roots += [pscustomobject]@{ id = 'completed-pool'; path = $poolRoot; excludedNames = @() }
+    $script:Policy.enabled = $false
+    $poolRetired = New-TestWorkspace -RootPath $poolRoot -Name 'retired'
+    Write-FixtureBytes -Path (Join-Path $poolRetired 'payload.bin') -Count 8
+    Complete-TestWorkspace -RootPath $poolRoot -WorkspacePath $poolRetired
+    $poolDependency = New-TestWorkspace -RootPath $poolRoot -Name 'dependency'
+    Complete-TestWorkspace -RootPath $poolRoot -WorkspacePath $poolDependency
+    $poolLive = New-TestWorkspace -RootPath $poolRoot -Name 'live' -References @($poolDependency)
+    $poolUnknown = Join-Path $poolRoot 'unknown'
+    [System.IO.Directory]::CreateDirectory($poolUnknown) | Out-Null
+    Write-FixtureBytes -Path (Join-Path $poolUnknown 'input.bin') -Count 8
+    $script:Policy.enabled = $true
+    $script:Policy.defaults.maxRecentCompleted = 0
+    $poolResult = Invoke-GeneratedWorkspaceRetention -RootPath $poolRoot -Policy $script:Policy -CompletedOnly -Apply
+    Assert-True ($poolResult.safeToPrune -and $poolResult.selectedWorkspaceCount -eq 2) 'completed-only Prepare selects completed metadata under the root locks.'
+    Assert-True (-not (Test-Path -LiteralPath $poolRetired) -and (Test-Path -LiteralPath $poolDependency)) 'completed-only cleanup retires the eligible batch while live references still protect completed dependencies.'
+    Assert-True ((Test-Path -LiteralPath $poolLive) -and (Test-Path -LiteralPath $poolUnknown) -and -not $poolResult.wholeRootBytesKnown) 'live and unknown payload stay protected, with unknown whole-root accounting.'
+    Assert-Throws { Invoke-GeneratedWorkspaceRetention -RootPath $poolRoot -Policy $script:Policy -CompletedOnly -WorkspacePaths @($poolDependency) } 'completed pool and exact selection cannot be mixed.'
+
     # Native occupancy/deletion handles must cover real generated paths over MAX_PATH.
     $script:Policy.enabled = $false
     $longTask = New-TestWorkspace -RootPath $selectedRoot -Name 'long-path'

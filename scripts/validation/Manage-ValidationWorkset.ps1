@@ -4242,8 +4242,167 @@ function Get-WorksetBytes {
         [Parameter(Mandatory)][int]$MaxNodes,
         [Parameter(Mandatory)][int]$MaxMilliseconds
     )
-    $accounting = Get-TreeAccounting -Path $ValidationRoot -MaxNodes $MaxNodes -MaxMilliseconds $MaxMilliseconds
-    if ($accounting.ReparsePaths.Count -gt 0) {
+
+    # Capacity admission needs only a bounded byte/node count. Keep this fast
+    # path separate from Get-TreeAccounting, which Prune uses to collect the
+    # exact protected paths and entries needed for its deletion plan.
+    if (-not ('ResourceManager.Validation.Internal.WorksetAccounting' -as [type])) {
+        $source = @'
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+
+namespace ResourceManager.Validation.Internal
+{
+    public sealed class WorksetAccountingResult
+    {
+        public long Bytes { get; set; }
+        public int NodeCount { get; set; }
+        public long ElapsedMilliseconds { get; set; }
+        public int ReparseCount { get; set; }
+    }
+
+    public static class WorksetAccounting
+    {
+        private static WorksetAccountingResult Empty()
+        {
+            return new WorksetAccountingResult
+            {
+                Bytes = 0L,
+                NodeCount = 0,
+                ElapsedMilliseconds = 0L,
+                ReparseCount = 0
+            };
+        }
+
+        private static void AssertWithinBounds(int nodeCount, int maxNodes, Stopwatch timer, int maxMilliseconds, string path)
+        {
+            long elapsed = timer.ElapsedMilliseconds;
+            if (nodeCount > maxNodes || elapsed > maxMilliseconds)
+            {
+                throw new InvalidOperationException(string.Format(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    "Directory accounting exceeded its bound (nodes={0}/{1} elapsedMs={2}/{3}): {4}",
+                    nodeCount,
+                    maxNodes,
+                    elapsed,
+                    maxMilliseconds,
+                    path));
+            }
+        }
+
+        public static WorksetAccountingResult Measure(string path, int maxNodes, int maxMilliseconds)
+        {
+            string fullPath = Path.GetFullPath(path);
+            DirectoryInfo root = new DirectoryInfo(fullPath);
+            FileAttributes rootAttributes;
+            try
+            {
+                rootAttributes = File.GetAttributes(fullPath);
+            }
+            catch (FileNotFoundException)
+            {
+                return Empty();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return Empty();
+            }
+
+            if ((rootAttributes & FileAttributes.Directory) == 0)
+            {
+                return Empty();
+            }
+            if ((rootAttributes & FileAttributes.ReparsePoint) != 0)
+            {
+                return new WorksetAccountingResult
+                {
+                    Bytes = 0L,
+                    NodeCount = 1,
+                    ElapsedMilliseconds = 0L,
+                    ReparseCount = 1
+                };
+            }
+
+            Stopwatch timer = Stopwatch.StartNew();
+            Stack<DirectoryInfo> pending = new Stack<DirectoryInfo>();
+            pending.Push(root);
+            long bytes = 0L;
+            int nodeCount = 1;
+            int reparseCount = 0;
+
+            while (pending.Count > 0)
+            {
+                AssertWithinBounds(nodeCount, maxNodes, timer, maxMilliseconds, fullPath);
+                DirectoryInfo directory = pending.Pop();
+                IEnumerator<FileSystemInfo> entries = directory.EnumerateFileSystemInfos().GetEnumerator();
+                try
+                {
+                    while (entries.MoveNext())
+                    {
+                        FileSystemInfo entry = entries.Current;
+                        nodeCount++;
+                        AssertWithinBounds(nodeCount, maxNodes, timer, maxMilliseconds, fullPath);
+
+                        FileAttributes attributes = File.GetAttributes(entry.FullName);
+                        if ((attributes & FileAttributes.ReparsePoint) != 0)
+                        {
+                            reparseCount++;
+                            continue;
+                        }
+
+                        if ((attributes & FileAttributes.Directory) != 0)
+                        {
+                            DirectoryInfo childDirectory = entry as DirectoryInfo;
+                            if (childDirectory == null)
+                            {
+                                throw new IOException("A directory entry could not be represented as DirectoryInfo: " + entry.FullName);
+                            }
+                            pending.Push(childDirectory);
+                        }
+                        else
+                        {
+                            FileInfo file = entry as FileInfo;
+                            if (file == null)
+                            {
+                                throw new IOException("A file entry could not be represented as FileInfo: " + entry.FullName);
+                            }
+                            checked
+                            {
+                                bytes += file.Length;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    IDisposable disposable = entries as IDisposable;
+                    if (disposable != null)
+                    {
+                        disposable.Dispose();
+                    }
+                }
+            }
+
+            timer.Stop();
+            return new WorksetAccountingResult
+            {
+                Bytes = bytes,
+                NodeCount = nodeCount,
+                ElapsedMilliseconds = timer.ElapsedMilliseconds,
+                ReparseCount = reparseCount
+            };
+        }
+    }
+}
+'@
+        Add-Type -TypeDefinition $source -Language CSharp -ErrorAction Stop
+    }
+
+    $accounting = [ResourceManager.Validation.Internal.WorksetAccounting]::Measure($ValidationRoot, $MaxNodes, $MaxMilliseconds)
+    $script:LastWorksetAccounting = $accounting
+    if ($accounting.ReparseCount -gt 0) {
         throw 'The validation workset contains reparse points; size and prune boundaries are not trusted.'
     }
     [long]$accounting.Bytes
@@ -4284,7 +4443,7 @@ $References = @(& (Join-Path $PSScriptRoot 'ConvertTo-ValidationLifecycleReferen
 $retentionResult = $null
 if ($Mode -eq 'Prepare' -and (Test-Path -LiteralPath $batchesRoot -PathType Container)) {
     # Retire only explicitly completed, unreferenced batches before capacity admission.
-    $retentionResult = Invoke-GeneratedWorkspaceRetention -RootPath $batchesRoot -Policy $retentionPolicy -ReferenceRoots $ReferenceRoots -Apply
+    $retentionResult = Invoke-GeneratedWorkspaceRetention -RootPath $batchesRoot -Policy $retentionPolicy -ReferenceRoots $ReferenceRoots -Apply -CompletedOnly
 }
 $sharedArtifactsRoot = Join-Path $validationRoot 'shared-artifacts'
 $sharedManagedCacheRoot = Join-Path $sharedArtifactsRoot 'managed-cache'
@@ -4294,6 +4453,7 @@ $fVolume = Get-DriveSnapshot -Path 'F:\'
 $maxWorksetBytes = [long]($MaxWorksetGiB * 1GB)
 $reserveFreeBytes = [long]($ReserveFreeGiB * 1GB)
 $expectedGrowthBytes = [long]($ExpectedGrowthGiB * 1GB)
+$script:LastWorksetAccounting = $null
 $worksetBytes = if ($Mode -eq 'Complete') {
     [long]0
 } else {
@@ -4309,6 +4469,8 @@ switch ($Mode) {
             ValidationRoot = $validationRoot
             SharedArtifactsRoot = $sharedArtifactsRoot
             WorksetBytes = $worksetBytes
+            WorksetAccountingNodeCount = [int]$script:LastWorksetAccounting.NodeCount
+            WorksetAccountingElapsedMilliseconds = [long]$script:LastWorksetAccounting.ElapsedMilliseconds
             AccountingNodeLimit = $MaxAccountingNodes
             AccountingTimeLimitMilliseconds = $MaxAccountingMilliseconds
             MaxWorksetBytes = $maxWorksetBytes

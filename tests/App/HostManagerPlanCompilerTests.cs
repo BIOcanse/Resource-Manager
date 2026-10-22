@@ -26,7 +26,7 @@ public sealed class HostManagerPlanCompilerTests
         var plan = Compile(loaded);
 
         Assert.Equal(42, plan.SchemaVersion);
-        Assert.Equal(66, plan.ProfileRevision);
+        Assert.Equal(67, plan.ProfileRevision);
         Assert.True(plan.IsPublished);
         Assert.Equal("default", plan.ProfileName);
         Assert.Equal(64, plan.PlanSha256.Length);
@@ -166,14 +166,14 @@ public sealed class HostManagerPlanCompilerTests
 
         var metricSnapshot = plan.MetricSnapshot;
         Assert.True(metricSnapshot.IsPublished);
-        Assert.Equal(66UL << 32, metricSnapshot.HotPublish.ConfigurationGeneration);
+        Assert.Equal(67UL << 32, metricSnapshot.HotPublish.ConfigurationGeneration);
         Assert.Equal(
-            (66UL << 32) | 1UL,
+            (67UL << 32) | 1UL,
             metricSnapshot.HotPublish.CatalogGenerationBase);
         Assert.Equal(1U, metricSnapshot.HotPublish.CatalogManifestVersion);
         Assert.Equal(64, metricSnapshot.HotPublish.CatalogManifestSha256.Length);
         Assert.Equal(23, metricSnapshot.HotPublish.SourcePolicies.Length);
-        Assert.Equal(299, metricSnapshot.HotPublish.RuleTemplates.Length);
+        Assert.Equal(304, metricSnapshot.HotPublish.RuleTemplates.Length);
         Assert.Equal(10, metricSnapshot.HotPublish.RuleTemplates.Count(static rule => rule.ValueKind == 4));
         Assert.Equal(3, metricSnapshot.HotPublish.RuleTemplates.Count(static rule => rule.ValueKind == 5));
         Assert.Single(
@@ -225,7 +225,7 @@ public sealed class HostManagerPlanCompilerTests
 
         var reportCoordinator = plan.ReportCoordinator;
         Assert.True(reportCoordinator.IsPublished);
-        Assert.Equal(66UL << 32, reportCoordinator.ConfigurationGeneration);
+        Assert.Equal(67UL << 32, reportCoordinator.ConfigurationGeneration);
         Assert.Equal(3_600_000, reportCoordinator.HotPublish.BucketWidthMilliseconds);
         Assert.Equal(86_400_000, reportCoordinator.HotPublish.Window24HoursMilliseconds);
         Assert.Equal(604_800_000, reportCoordinator.HotPublish.Window7DaysMilliseconds);
@@ -296,13 +296,13 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal(6, memoryCleanup.EmergencyBatchCount);
 
         var placement = plan.HotPublish.PlacementCoordinator;
-        Assert.Equal(66UL << 32, placement.ConfigurationGeneration);
+        Assert.Equal(67UL << 32, placement.ConfigurationGeneration);
         Assert.Equal(5000, placement.RetryDelayMilliseconds);
         Assert.Equal(30000, placement.ActionTimeoutMilliseconds);
         Assert.Equal(5000, placement.MaximumFutureSkewMilliseconds);
 
         var transactionJournal = plan.HotPublish.TransactionJournal;
-        Assert.Equal(66UL << 32, transactionJournal.ConfigurationGeneration);
+        Assert.Equal(67UL << 32, transactionJournal.ConfigurationGeneration);
         Assert.Equal(3, transactionJournal.MaximumRecoveryAttempts);
         Assert.Equal(5000, transactionJournal.RetryDelayMilliseconds);
         Assert.Equal(300000, transactionJournal.RecoveryDeadlineMilliseconds);
@@ -560,8 +560,8 @@ public sealed class HostManagerPlanCompilerTests
         => AssertLegacyMetricCapacity(JsonNode.Parse(ReadDefaultProfile())!.AsObject(), maximum, accepted);
 
     [Theory]
-    [InlineData(12800, true)]
-    [InlineData(12799, false)]
+    [InlineData(13472, true)]
+    [InlineData(13471, false)]
     public void FullDefaultMetricExpansionUsesTheActualMetricCapacityBoundary(int maximum, bool accepted)
     {
         var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
@@ -606,11 +606,39 @@ public sealed class HostManagerPlanCompilerTests
         var intelFan = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "fan.igclRpm")!;
         Assert.Equal(16, intelFan["maximum_instance_count"]!.GetValue<int>());
         fullDefaultBoundary += intelFan["maximum_instance_count"]!.GetValue<int>();
-        var engineRules = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-engine").ToArray();
+        var engineRules = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-engine"
+            && rule["scope_expansion"]!.GetValue<string>() == "npu_engine").ToArray();
         Assert.Equal(2, engineRules.Length);
         Assert.All(engineRules, rule => Assert.Equal(256, rule!["maximum_instance_count"]!.GetValue<int>()));
         fullDefaultBoundary += engineRules.Sum(rule => rule!["maximum_instance_count"]!.GetValue<int>());
         Assert.Equal(12_800, fullDefaultBoundary);
+
+        var numaCapacity = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "memory_all_numa_node_capacity_mib.optional")!;
+        Assert.Equal("numa_node", numaCapacity["scope_expansion"]!.GetValue<string>());
+        Assert.Equal(64, numaCapacity["maximum_instance_count"]!.GetValue<int>());
+        var effectiveFrequency = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "cpu_intel_effective_frequency_mhz.optional")!;
+        Assert.Equal("cpu_logical_processor", effectiveFrequency["scope_expansion"]!.GetValue<string>());
+        Assert.Equal(512, effectiveFrequency["maximum_instance_count"]!.GetValue<int>());
+        var npuDeviceBusy = Assert.Single(rules, rule => rule!["template_id"]!.GetValue<string>() == "npu_all_engine_busy_percent.optional")!;
+        Assert.Equal("npu_device", npuDeviceBusy["scope_expansion"]!.GetValue<string>());
+        Assert.Equal(64, npuDeviceBusy["maximum_instance_count"]!.GetValue<int>());
+        var amdNpuRules = rules.Where(rule =>
+            rule!["template_id"]!.GetValue<string>() is "gpu_amd_npu_activity_percent.optional"
+                or "gpu_amd_npu_frequency_mhz.optional").ToArray();
+        Assert.Equal(2, amdNpuRules.Length);
+        Assert.All(amdNpuRules, rule =>
+        {
+            Assert.Equal("gpu_adapter", rule!["scope_expansion"]!.GetValue<string>());
+            Assert.Equal(32, rule["maximum_instance_count"]!.GetValue<int>());
+        });
+        var addedAmdNpuInstances = amdNpuRules.Sum(rule => Math.Min(rule!["maximum_instance_count"]!.GetValue<int>(), gpuLimit));
+        Assert.Equal(32, addedAmdNpuInstances);
+        var addedRuleAndMetricInstances = numaCapacity["maximum_instance_count"]!.GetValue<int>()
+            + effectiveFrequency["maximum_instance_count"]!.GetValue<int>()
+            + npuDeviceBusy["maximum_instance_count"]!.GetValue<int>() + addedAmdNpuInstances;
+        Assert.Equal(672, addedRuleAndMetricInstances);
+        fullDefaultBoundary += addedRuleAndMetricInstances;
+        Assert.Equal(13_472, fullDefaultBoundary);
         Assert.Equal(accepted ? fullDefaultBoundary : fullDefaultBoundary - 1, maximum);
 
         AssertMetricCapacity(profile, maximum, accepted);
@@ -620,28 +648,28 @@ public sealed class HostManagerPlanCompilerTests
     [InlineData(65, true)]
     [InlineData(68, true)]
     [InlineData(69, false)]
-    public void NpuInstanceCapacityUsesTheOriginalTotalMetricGate(int instances, bool accepted)
+    public void NpuInstanceCapacityUsesTheUpdatedTotalMetricGate(int instances, bool accepted)
     {
         var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
         var capacity = profile["host_recreate"]!["metric_snapshot"]!["capacity"]!;
-        Assert.Equal(12800, capacity["maximum_metric_count"]!.GetValue<int>());
+        Assert.Equal(13_472, capacity["maximum_metric_count"]!.GetValue<int>());
         var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
         // Isolate the existing NPU scaling proof; the combined default gate above includes Intel fan slots.
         rules.Remove(rules.Single(rule => rule!["template_id"]!.GetValue<string>() == "fan.igclRpm"));
         var npu = rules.Where(rule => rule!["source_id"]!.GetValue<string>() == "windows.npu-memory").ToArray();
         Assert.Equal(4, npu.Length);
         foreach (var rule in npu) rule!["maximum_instance_count"] = instances;
-        AssertMetricCapacity(profile, 12800, accepted);
+        AssertMetricCapacity(profile, 13_472, accepted);
     }
 
     [Theory]
-    [InlineData(13171, true)]
-    [InlineData(13170, false)]
-    public void FullDefaultNpuShapeUsesTheOriginalRuleGate(int maximum, bool accepted)
+    [InlineData(13843, true)]
+    [InlineData(13842, false)]
+    public void FullDefaultRuleShapeUsesTheUpdatedRuleGate(int maximum, bool accepted)
     {
         var profile = JsonNode.Parse(ReadDefaultProfile())!.AsObject();
         profile["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_rule_count"] = maximum;
-        var loaded = StrictHostManagerProfileLoader.LoadBytes(Encoding.UTF8.GetBytes(profile.ToJsonString()), "npu-rule-boundary.json");
+        var loaded = StrictHostManagerProfileLoader.LoadBytes(Encoding.UTF8.GetBytes(profile.ToJsonString()), "metric-rule-boundary.json");
         if (accepted) Assert.True(Compile(loaded).IsPublished);
         else Assert.Throws<InvalidDataException>(() => Compile(loaded));
     }
@@ -661,13 +689,18 @@ public sealed class HostManagerPlanCompilerTests
 
     private static void AssertLegacyMetricCapacity(JsonObject profile, int maximum, bool accepted)
     {
-        // Keep original CPU/GPU boundaries independent of later disk, OEM/NVML fan and NVML P-state fields.
+        // Keep original CPU/GPU boundaries independent of later disk, OEM/NVML fan,
+        // NUMA, Intel-frequency, NPU-device and AMD-NPU additions.
         // The complete current default is tested separately above.
         var rules = profile["hot_publish"]!["metric_snapshot"]!["rule_templates"]!.AsArray();
         foreach (var rule in rules.Where(rule =>
             rule?["source_id"]?.GetValue<string>() == "windows.disk-performance"
                 || rule?["source_id"]?.GetValue<string>() == "windows.npu-memory"
                 || rule?["source_id"]?.GetValue<string>() == "windows.npu-engine"
+                || rule?["template_id"]?.GetValue<string>() is "memory_all_numa_node_capacity_mib.optional"
+                    or "cpu_intel_effective_frequency_mhz.optional"
+                    or "gpu_amd_npu_activity_percent.optional"
+                    or "gpu_amd_npu_frequency_mhz.optional"
                 || rule?["scope_expansion"]?.GetValue<string>() == "intel_platform").ToArray())
             rules.Remove(rule);
         foreach (var rule in rules.Where(rule => rule!["template_id"]!.GetValue<string>()
@@ -853,7 +886,7 @@ public sealed class HostManagerPlanCompilerTests
             Assert.Equal(0U, unchecked((uint)changed.SmartCoordinator.ConfigurationGeneration));
         }
 
-        Assert.Equal(66UL, first.SmartCoordinator.ConfigurationGeneration >> 32);
+        Assert.Equal(67UL, first.SmartCoordinator.ConfigurationGeneration >> 32);
         Assert.Equal(0U, unchecked((uint)first.SmartCoordinator.ConfigurationGeneration));
     }
 
