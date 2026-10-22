@@ -62,9 +62,9 @@ export function inspectCopy(
   const issues: LocalizationIssue[] = [];
   for (const [path, expected] of baseline) {
     const fullPath = `${surface}.${path}`;
-    // Only these two option contracts make description optional. Missing titles
+    // Only this option contract makes description optional. Missing titles
     // and labels still fail; an explicitly present empty description also fails.
-    if (optionalDescriptions && /^performance\.(?:adaptiveBooleanModeOptions|frontendHiddenRefreshModeOptions)\.\d+\.description$/.test(path) && leaves.get(path) === undefined) continue;
+    if (optionalDescriptions && /^performance\.adaptiveBooleanModeOptions\.\d+\.description$/.test(path) && leaves.get(path) === undefined) continue;
     if (!leaves.has(path)) {
       issues.push({ language, path: fullPath, kind: "missing", actual: null });
     } else if (typeof leaves.get(path) !== typeof expected) {

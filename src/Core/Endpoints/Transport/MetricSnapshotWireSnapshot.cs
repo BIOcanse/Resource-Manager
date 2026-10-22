@@ -7,13 +7,15 @@ namespace ResourceManager.App.Endpoints.Transport;
 public sealed record MetricSnapshotWireSnapshot(
     int Version,
     DateTimeOffset? CapturedAt,
-    IReadOnlyDictionary<string, MetricValue> Items)
+    IReadOnlyDictionary<string, MetricValue> Items,
+    string CatalogRevision = "0")
 {
     public const int CurrentVersion = 4;
 
     public static MetricSnapshotWireSnapshot From(
         HardwareMetricSnapshot snapshot,
-        MetricSampleRequest request)
+        MetricSampleRequest request,
+        string catalogRevision = "0")
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(request);
@@ -52,7 +54,8 @@ public sealed record MetricSnapshotWireSnapshot(
         return new MetricSnapshotWireSnapshot(
             CurrentVersion,
             capturedAt,
-            items);
+            items,
+            catalogRevision);
     }
 
     private static IReadOnlyList<string> ResolveRequestedMetricIds(

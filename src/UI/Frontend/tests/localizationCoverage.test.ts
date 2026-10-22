@@ -44,7 +44,6 @@ for (const count of [0, 1, 37]) {
   );
 }
 const settingsCases: FunctionCase<SettingsTextBundle>[] = [
-  { path: "performance.smartMonitoringDescription(17)", render: copy => copy.performance.smartMonitoringDescription(17), parameters: ["17"], requiresTranslation: true },
   { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true }
 ];
 

@@ -5,7 +5,10 @@ public sealed record DashboardSettings(
     IReadOnlyList<DashboardCardSettings> Cards,
     IReadOnlyList<ResourceBarSettings> ResourceBars,
     IReadOnlyList<ResourceTableColumnSettings> ResourceTableColumns,
-    IReadOnlyList<ResourceTableColumnSettings>? ResourceTableProcessColumns = null);
+    IReadOnlyList<ResourceTableColumnSettings>? ResourceTableProcessColumns = null)
+{
+    public bool UsesFactoryDefaults { get; init; }
+}
 
 public sealed record DashboardCardSettings(
     string Id,

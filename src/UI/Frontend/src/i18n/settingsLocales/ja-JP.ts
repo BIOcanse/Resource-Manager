@@ -77,22 +77,15 @@ export default createSettingsLocale("ja-JP", {
   },
   "performance": {
     "smartMonitoringTitle": "必要時のみ監視",
-    "smartMonitoringDescription": (seconds: number) => `データが必要な間だけ監視し、${seconds} 秒間使われなければ停止します。`,
+    "smartMonitoringDescription": "オンのときは画面に表示中または購読中の読み取り値だけを取得します。オフのときはカタログ内のすべての読み取り値を取得するため、負荷が増えます。",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "自動",
-        "description": "現在の性能モードに合わせて自動選択します。"
-      },
-      {
         "id": "enabled",
-        "label": "常に有効",
-        "description": "この設定を常に有効にします。"
+        "label": "オン"
       },
       {
         "id": "disabled",
-        "label": "常に無効",
-        "description": "この設定を常に無効にします。"
+        "label": "オフ"
       }
     ],
     "gpuPerformanceUseCasesTitle": "GPU の用途",
@@ -117,25 +110,10 @@ export default createSettingsLocale("ja-JP", {
     "memoryOptimizationTargetDescription": "目標を超えた使用量は、第 1 段階の緩やかな解放を継続します。緊急解放は開始しません。",
     "physicalMemoryOptimizationTargetLabel": "物理メモリ目標使用率 %",
     "virtualMemoryOptimizationTargetLabel": "コミット目標使用率 %",
-    "pauseHiddenTitle": "非表示時の更新",
-    "pauseHiddenDescription": "通常モードでは非表示中の画面更新を一時停止でき、表示時にすぐ再開します。",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "自動",
-        "description": "現在の性能モードに合わせて自動判断します。"
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "非表示時に停止",
-        "description": "ウィンドウが非表示の間、画面更新を停止します。"
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "更新を継続",
-        "description": "ウィンドウが非表示の間も画面更新を継続します。"
-      }
-    ],
+    "moveDownDangerTitle": "退避時の危険しきい値",
+    "moveDownDangerDescription": "リソーススケジューリングは、VRAM のデータを物理メモリへ、または物理メモリのデータを仮想メモリへ退避する前に、退避後の残量を見積もります。残量がこの割合を下回る場合はそのソフトウェアの退避を見送り、次の層へ負荷を移さないようにします。",
+    "vramMoveDownPhysicalMemoryDangerLabel": "VRAM 退避時：物理メモリ空き率 %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "メモリ退避時：コミット余裕率 %",
     "refreshCadenceTitle": "情報の更新頻度",
     "refreshCadenceDescription": "監視情報と状態の更新速度を設定します。速くするとリソース使用量が少し増えます。",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("ja-JP", {
         "label": "リソース一覧",
         "description": "ソフトウェアとプロセスのリソース一覧を更新します。"
       },
-      "management": {
-        "label": "コンポーネントとソフトウェア",
-        "description": "コンポーネント状態、ソフトウェア一覧、処理の進捗を更新します。"
-      },
-      "discovery": {
-        "label": "ソフトウェアの移動",
-        "description": "移動の進捗と利用可能な内容を更新します。"
-      },
-      "optimization": {
-        "label": "性能の最適化",
-        "description": "最適化レポートとスケジューリング状態を更新します。"
-      },
       "localSystem": {
         "label": "ローカルシステム",
         "description": "稼働時間など、低頻度で変化するローカル状態を更新します。"
@@ -213,25 +179,6 @@ export default createSettingsLocale("ja-JP", {
     "themeDescription": "現在のスタイルの配色から選びます。「システム」は Windows のライト/ダーク設定に従います。",
     "animationTitle": "アニメーション",
     "animationDescription": "通常のアニメーション、アニメーションなし、または負荷を抑えた簡易表示を選びます。",
-    "resourceBarHardwareAccelerationTitle": "リソースバーのハードウェアアクセラレーション",
-    "resourceBarHardwareAccelerationDescription": "GPU でリソースバーのアニメーションを滑らかにします。表示に問題があれば無効にしてください。",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "自動",
-        "description": "前面では滑らかさを保ち、省電力のバックグラウンドでは負荷を減らします。"
-      },
-      {
-        "id": "enabled",
-        "label": "常に有効",
-        "description": "リソースバーで常にハードウェアアクセラレーションを使います。"
-      },
-      {
-        "id": "disabled",
-        "label": "常に無効",
-        "description": "リソースバーで常に互換描画を使います。"
-      }
-    ],
     "resourceBarFrameRateTitle": "リソースバーのアニメーションのフレームレート",
     "resourceBarFrameRateDescription": "リソースバーの切り替えアニメーションを 1 秒間に何フレーム描くかを決めます。画面に合わせるとディスプレイのリフレッシュレートで描きます。カスタムではフレーム数を抑えて負荷を減らせます。標準アニメーションのときだけ有効です。",
     "resourceBarFrameRateModeOptions": [

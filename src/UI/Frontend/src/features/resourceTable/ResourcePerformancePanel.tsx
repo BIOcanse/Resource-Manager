@@ -150,7 +150,8 @@ function performanceSeries(catalog: MetricDefinition[]): PerformanceSeries[] {
 
   return ids
     .filter((id, index, all) => all.indexOf(id) === index)
-    .filter((id) => available.has(id))
+    // 目录里有但标成不可选的项（例如核显没有显存占用率）本机读不到，画出来只是一条空线。
+    .filter((id) => available.has(id) && available.get(id)!.selectable !== false)
     .slice(0, 10)
     .map((id, index) => ({
       id,

@@ -94,18 +94,6 @@ internal static class DashboardSettingsBindingResolver
             });
         }
 
-        var currentGpuBars = DashboardSettingsDefaults.CreateResourceBars(
-                snapshot.Items,
-                gpuIdentitiesByIndex)
-            .Where(static bar => TryParseGpuMetric(bar.MetricId, out _, out _));
-        foreach (var bar in currentGpuBars)
-        {
-            if (seen.Add(bar.MetricId))
-            {
-                resolved.Add(bar);
-            }
-        }
-
         return resolved;
     }
 

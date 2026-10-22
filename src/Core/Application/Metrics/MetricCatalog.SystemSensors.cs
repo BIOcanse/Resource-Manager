@@ -31,7 +31,7 @@ public static partial class MetricCatalog
             MetricGroups.Memory,
             "°C",
             "small",
-            requiredComponentId: RequiredComponentWhenUnavailable(items, "memory.temperature", "librehardwaremonitor-provider"));
+            requiredComponentId: RequiredComponentWhenUnavailable(items, "memory.temperature", "hardware-sensors-pawnio-provider"));
         AddMotherboardSensorDefinitions(definitions, items);
         AddDiskTemperatureDefinitions(definitions, items);
         AddSystemFanDefinitions(definitions, items);
@@ -49,7 +49,7 @@ public static partial class MetricCatalog
             MetricGroups.Motherboard,
             "°C",
             "small",
-            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardTemperature", "librehardwaremonitor-provider"));
+            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardTemperature", "hardware-sensors-pawnio-provider"));
         AddSnapshotMetric(
             definitions,
             items,
@@ -58,7 +58,7 @@ public static partial class MetricCatalog
             MetricGroups.Motherboard,
             "°C",
             "small",
-            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.vrmTemperature", "librehardwaremonitor-provider"));
+            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.vrmTemperature", "hardware-sensors-pawnio-provider"));
         AddSnapshotMetric(
             definitions,
             items,
@@ -67,7 +67,7 @@ public static partial class MetricCatalog
             MetricGroups.Motherboard,
             "°C",
             "small",
-            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.chipsetTemperature", "librehardwaremonitor-provider"));
+            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.chipsetTemperature", "hardware-sensors-pawnio-provider"));
         AddSnapshotMetric(
             definitions,
             items,
@@ -76,7 +76,7 @@ public static partial class MetricCatalog
             MetricGroups.Motherboard,
             "V",
             "small",
-            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardVoltage", "librehardwaremonitor-provider"));
+            requiredComponentId: RequiredComponentWhenUnavailable(items, "system.motherboardVoltage", "hardware-sensors-pawnio-provider"));
     }
 
     private static void AddDiskTemperatureDefinitions(
@@ -89,7 +89,7 @@ public static partial class MetricCatalog
         {
             var index = TryParseIndexedMetric(item.Key, "disk.", ".temperature")!.Value;
             var selectable = IsMetricSelectable(item.Value);
-            var requiredComponentId = selectable ? null : "librehardwaremonitor-provider";
+            string? requiredComponentId = null;
             definitions.Add(new MetricDefinition(
                 item.Key,
                 $"磁盘{index} 温度",
@@ -125,7 +125,7 @@ public static partial class MetricCatalog
         {
             var index = TryParseIndexedMetric(item.Key, "fan.", suffix)!.Value;
             var selectable = IsMetricSelectable(item.Value);
-            var requiredComponentId = selectable ? null : "librehardwaremonitor-provider";
+            var requiredComponentId = selectable ? null : "hardware-sensors-pawnio-provider";
             definitions.Add(new MetricDefinition(
                 item.Key,
                 labelFactory(index),

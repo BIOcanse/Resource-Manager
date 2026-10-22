@@ -75,7 +75,6 @@ assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
 assert.match(settingsPage, /settingsReady\(\) && props\.activeSection !== "credits"/);
 for (const control of [
   "onAnimationsChange",
-  "onResourceBarHardwareAccelerationModeChange",
   "onFontSmoothingChange"
 ]) {
   assert.match(appearanceSettings, new RegExp(`onChange=\\{props\\.${control}\\}`));
@@ -112,6 +111,16 @@ assert.match(resourcePaintPlane, /drawSegmentLabels\(/);
 assert.match(resourcePaintPlane, /fitCanvasLabel\(/);
 assert.match(monitorStore, /if \(mode === "performance"\) \{\s*cancelResourceTableEdit\(\)/);
 assert.match(monitorStore, /if \(resourceTableMode\(\) === "performance"\) \{\s*return;/);
+// 性能面板只画目录里可选的曲线，读不到的项不画空线。
+assert.match(readSource("features/resourceTable/ResourcePerformancePanel.tsx"),
+  /\.filter\(\(id\) => available\.has\(id\) && available\.get\(id\)!\.selectable !== false\)/);
+// 快照帧的目录修订号第一次出现或变化时重取目录；还是出厂布局时再重取看板设置（后端按新目录重新展开）。
+assert.match(monitorStore, /dashboardUsesFactoryDefaults = settings\.usesFactoryDefaults === true;/);
+assert.match(monitorStore, /if \(value\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.catalogRevision;\s*void followBackendCatalog\(value\.catalogRevision\);/);
+assert.match(monitorStore, /if \(!await refreshCatalog\(\)\) \{\s*if \(backendCatalogRevision === revision\) \{\s*backendCatalogRevision = null;/);
+assert.match(monitorStore, /if \(dashboardUsesFactoryDefaults\) \{\s*await refreshSettings\(\);/);
+// 看板布局由后端按本机目录生成，设置到达前不画前端自带的占位卡。
+assert.match(monitorStore, /const \[cards, setCards\] = createSignal<DashboardCardSettings\[\]>\(\[\]\);/);
 for (const retiredMonitorRefresh of [
   "refreshSnapshot",
   "refreshResourceBars",

@@ -674,18 +674,19 @@
   box-shadow: inset 0 0 0 1px var(--accent-soft);
 }
 
+/* 交互层按设备像素对齐后的 translateX + 真实宽度定位；没有像素几何时退回百分比位置。 */
 .resource-segment-layer {
   box-sizing: border-box;
   position: absolute;
   top: var(--segment-render-top, 1px);
   bottom: auto;
-  left: var(--segment-left, 0%);
-  width: var(--segment-width, 0%);
+  left: var(--segment-render-left, var(--segment-left, 0%));
+  width: var(--segment-render-width, var(--segment-width, 0%));
   min-width: 0;
   height: var(--segment-render-height, calc(100% - 2px));
   min-height: 0;
   pointer-events: none;
-  transform: none;
+  transform: translateX(var(--segment-render-x, 0px));
   transform-origin: left center;
 }
 
@@ -765,18 +766,6 @@
   transform: none;
   transform-origin: left center;
   vertical-align: top;
-}
-
-body[data-resource-bar-hardware-acceleration="on"] .resource-segment-layer {
-  left: var(--segment-render-left, var(--segment-left, 0%));
-  width: var(--segment-render-width, var(--segment-width, 0%));
-  transform: translateX(var(--segment-render-x, 0px));
-}
-
-body[data-resource-bar-hardware-acceleration="on"] .resource-segment,
-body[data-resource-bar-hardware-acceleration="on"] .resource-process-segment,
-body[data-resource-bar-hardware-acceleration="on"] .resource-segment-empty {
-  width: 100%;
 }
 
 /* Selection: high-contrast white inner ring + faint dark outer ring for

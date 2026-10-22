@@ -58,12 +58,6 @@ button.resource-process-segment:active {
   transform: none;
 }
 
-body[data-resource-bar-hardware-acceleration="on"] button.resource-segment:active,
-body[data-resource-bar-hardware-acceleration="on"] button.resource-segment-empty:active,
-body[data-resource-bar-hardware-acceleration="on"] button.resource-process-segment:active {
-  transform: none;
-}
-
 .resource-table-head-cell:active,
 .edit-slot:active {
   transform: none;
@@ -115,30 +109,24 @@ textarea {
   animation: motion-rise-in var(--motion-fast) var(--ease-decel);
 }
 
-/* --- 资源条形图：设置项控制硬件合成路径 --- */
-/* 分段按 softwareId keyed。硬件加速开启时提升整条可视平面，子段继续用
-   设备像素对齐后的 translateX + 真实宽度，避免每个色块独立 will-change 成层。 */
+/* --- 资源条形图交互层 --- */
+/* 分段按 softwareId keyed。交互层用设备像素对齐后的 translateX + 真实宽度做过渡，
+   避免每个色块独立 will-change 成层。 */
 .resource-segment,
 .resource-process-segment,
 .resource-segment-empty {
   transition: box-shadow var(--motion-medium) var(--ease-standard);
 }
 
-body[data-animations="normal"]:not([data-resource-bar-hardware-acceleration="on"]) .resource-segment-layer.motion-segment {
-  transition:
-    left var(--motion-bar) var(--ease-bar),
-    width var(--motion-bar) var(--ease-bar);
-}
-
-body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment {
+body[data-animations="normal"] .resource-segment-layer.motion-segment {
   transition:
     transform var(--motion-bar) var(--ease-bar),
     width var(--motion-bar) var(--ease-bar);
 }
 
-body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-segment,
-body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-process-segment,
-body[data-animations="normal"][data-resource-bar-hardware-acceleration="on"] .resource-segment-layer.motion-segment > .resource-segment-empty {
+body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-segment,
+body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-process-segment,
+body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-segment-empty {
   transition: box-shadow var(--motion-medium) var(--ease-standard);
 }
 

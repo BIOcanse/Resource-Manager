@@ -77,22 +77,15 @@ export default createSettingsLocale("ko-KR", {
   },
   "performance": {
     "smartMonitoringTitle": "필요할 때 모니터링",
-    "smartMonitoringDescription": (seconds: number) => `데이터를 사용하는 동안만 모니터링하고, ${seconds}초 동안 사용하지 않으면 중지합니다.`,
+    "smartMonitoringDescription": "켜짐이면 화면에 표시 중이거나 구독 중인 측정값만 수집합니다. 꺼짐이면 카탈로그의 모든 측정값을 수집하므로 부하가 더 큽니다.",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "자동",
-        "description": "현재 성능 모드에 따라 자동으로 선택합니다."
-      },
-      {
         "id": "enabled",
-        "label": "항상 켜기",
-        "description": "이 설정을 항상 활성화합니다."
+        "label": "켜짐"
       },
       {
         "id": "disabled",
-        "label": "항상 끄기",
-        "description": "이 설정을 항상 비활성화합니다."
+        "label": "꺼짐"
       }
     ],
     "gpuPerformanceUseCasesTitle": "GPU 용도",
@@ -117,25 +110,10 @@ export default createSettingsLocale("ko-KR", {
     "memoryOptimizationTargetDescription": "사용량이 목표를 넘으면 1단계의 느린 해제를 계속하며 긴급 정리는 실행하지 않습니다.",
     "physicalMemoryOptimizationTargetLabel": "물리 메모리 목표 사용률 %",
     "virtualMemoryOptimizationTargetLabel": "목표 커밋 사용률 %",
-    "pauseHiddenTitle": "창이 숨겨졌을 때 갱신",
-    "pauseHiddenDescription": "일반 모드에서는 창이 숨겨진 동안 UI 갱신을 멈추고 표시되면 즉시 재개할 수 있습니다.",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "자동",
-        "description": "현재 성능 모드에 따라 자동으로 결정합니다."
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "숨겨지면 일시 중지",
-        "description": "창이 숨겨진 동안 UI 갱신을 일시 중지합니다."
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "계속 갱신",
-        "description": "창이 숨겨진 동안에도 UI 갱신을 계속합니다."
-      }
-    ],
+    "moveDownDangerTitle": "하위 계층 이동 위험 임계값",
+    "moveDownDangerDescription": "리소스 스케줄링은 VRAM 데이터를 물리 메모리로, 또는 물리 메모리 데이터를 가상 메모리로 옮기기 전에 이동 후 남는 양을 추정합니다. 남는 양이 이 비율보다 낮아지면 해당 소프트웨어의 이동을 건너뛰어 다음 계층으로 부담을 넘기지 않습니다.",
+    "vramMoveDownPhysicalMemoryDangerLabel": "VRAM 이동 시: 물리 메모리 여유 %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "메모리 이동 시: 커밋 여유 %",
     "refreshCadenceTitle": "정보 갱신 빈도",
     "refreshCadenceDescription": "모니터링 정보와 상태의 갱신 속도를 설정합니다. 빠르게 갱신할수록 리소스를 조금 더 사용합니다.",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("ko-KR", {
         "label": "리소스 표",
         "description": "소프트웨어 및 프로세스 리소스 목록을 갱신합니다."
       },
-      "management": {
-        "label": "구성 요소 및 소프트웨어",
-        "description": "구성 요소 상태, 소프트웨어 목록 및 작업 진행률을 갱신합니다."
-      },
-      "discovery": {
-        "label": "소프트웨어 이동",
-        "description": "이동 진행률 및 사용 가능한 콘텐츠를 갱신합니다."
-      },
-      "optimization": {
-        "label": "성능 최적화",
-        "description": "최적화 보고서와 스케줄링 상태를 갱신합니다."
-      },
       "localSystem": {
         "label": "로컬 시스템",
         "description": "가동 시간과 같은 저빈도 로컬 상태를 갱신합니다."
@@ -213,25 +179,6 @@ export default createSettingsLocale("ko-KR", {
     "themeDescription": "현재 스타일의 색 구성 중에서 선택합니다. 시스템은 Windows의 밝게/어둡게 설정을 따릅니다.",
     "animationTitle": "애니메이션",
     "animationDescription": "전체 애니메이션, 애니메이션 없음 또는 UI 부하를 줄이는 간소화된 효과를 선택합니다.",
-    "resourceBarHardwareAccelerationTitle": "리소스 막대 하드웨어 가속",
-    "resourceBarHardwareAccelerationDescription": "그래픽 카드로 리소스 막대 애니메이션을 개선합니다. 표시 문제가 있으면 끄세요.",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "자동",
-        "description": "전경에서는 부드러운 표시를 유지하고 저전력 백그라운드 상태에서는 부하를 줄입니다."
-      },
-      {
-        "id": "enabled",
-        "label": "항상 켜기",
-        "description": "리소스 막대에 하드웨어 가속을 항상 사용합니다."
-      },
-      {
-        "id": "disabled",
-        "label": "항상 끄기",
-        "description": "리소스 막대에 호환 렌더링을 항상 사용합니다."
-      }
-    ],
     "resourceBarFrameRateTitle": "리소스 막대 애니메이션 프레임 속도",
     "resourceBarFrameRateDescription": "리소스 막대 전환 애니메이션을 초당 몇 프레임 그릴지 정합니다. 화면에 맞춤은 모니터 주사율로 그리고, 사용자 지정은 프레임 수를 제한해 부하를 줄입니다. 일반 애니메이션일 때만 적용됩니다.",
     "resourceBarFrameRateModeOptions": [

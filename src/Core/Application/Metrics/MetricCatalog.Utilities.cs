@@ -156,7 +156,7 @@ public static partial class MetricCatalog
             return "notebook-oem-fan-provider";
         }
 
-        return "librehardwaremonitor-provider";
+        return "hardware-sensors-pawnio-provider";
     }
 
     private static string? ComponentName(string? componentId)
@@ -168,7 +168,7 @@ public static partial class MetricCatalog
             "nvidia-nvml-provider" => "NVIDIA NVML Provider",
             "nvidia-nvapi-provider" => "NVIDIA NVAPI Provider",
             "amd-adlx-provider" => "AMD ADLX / ADL Provider",
-            "librehardwaremonitor-provider" => "LibreHardwareMonitor Core",
+            "hardware-sensors-pawnio-provider" => "PawnIO",
             "notebook-oem-fan-provider" => "Notebook OEM Fan Provider",
             _ => null
         };

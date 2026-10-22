@@ -68,6 +68,34 @@ public sealed class JsonDashboardSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task OldLayoutResetPersistsOnceAndReadOnlyResolutionDoesNotWrite()
+    {
+        var appRoot = CreateAppRoot("old-layout-reset");
+        var config = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(appRoot)!, "Config")).FullName;
+        var path = Path.Combine(config, "dashboard-settings.json");
+        var old = DashboardSettingsDefaults.Create() with
+        {
+            Version = 15, Cards = [new DashboardCardSettings("old", "cpu.usage", [])]
+        };
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(old, JsonSerializerOptions.Web));
+        var before = CaptureFileTree(config);
+        var store = new JsonDashboardSettingsStore(new TestHostEnvironment(appRoot));
+        var migrator = new DashboardSettingsMigrator();
+        var loaded = await store.LoadReadOnlyAsync(CancellationToken.None);
+        var reset = migrator.ResolveForRead(loaded, null);
+        Assert.DoesNotContain(reset.Cards, c => c.Id == "old");
+        AssertFileTreeUnchanged(before, config);
+        await store.SaveAsync(reset, CancellationToken.None);
+        var custom = migrator.SanitizeForSave(reset with { Cards = [new DashboardCardSettings("new-custom", "cpu.frequency", [])], ResourceBars = [] });
+        await store.SaveAsync(custom, CancellationToken.None);
+        var reopened = await new JsonDashboardSettingsStore(new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
+        var resolved = migrator.ResolveForRead(reopened, null);
+        Assert.Equal("new-custom", Assert.Single(resolved.Cards).Id);
+        Assert.Empty(resolved.ResourceBars);
+        Assert.Equal(16, resolved.Version);
+    }
+
+    [Fact]
     public async Task LoadReadOnlyAsync_DoesNotCreateLastKnownGoodOrChangeCanonical()
     {
         var caseRoot = Path.Combine(testRoot, "read-only-persisted");

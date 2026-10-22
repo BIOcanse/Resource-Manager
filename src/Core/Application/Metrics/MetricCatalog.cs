@@ -34,12 +34,6 @@ public static partial class MetricCatalog
             .Distinct()
             .Order()
             .ToArray();
-        if (gpuIndexes.Length == 0)
-        {
-            definitions.AddRange(CreateGpuDefinitions(0, "GPU0", "No NVIDIA GPU telemetry"));
-            return definitions;
-        }
-
         foreach (var index in gpuIndexes)
         {
             var gpu = snapshot.Gpus.FirstOrDefault(candidate => candidate.Index == index);
@@ -55,6 +49,19 @@ public static partial class MetricCatalog
                 usageCapabilityKnown: gpu is not null));
         }
 
+        var supportedAliases = snapshot.FieldBindings.Values
+            .Where(static binding => binding.Field.Reading is { IsPreferredSource: true, SourceAvailability: "available" })
+            .SelectMany(static binding => binding.RequestAliases)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < definitions.Count; index++)
+        {
+            if (supportedAliases.Contains(definitions[index].Id))
+                definitions[index] = definitions[index] with
+                {
+                    Selectable = true, RequiredComponentId = null,
+                    RequiredComponentName = null, DisabledReason = null
+                };
+        }
         return definitions;
     }
 

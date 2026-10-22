@@ -96,7 +96,11 @@ if($taskExplicitTestProject) {
     # tests use --runtime-check and never open hardware backends.
     $env:RM_CONTROL_HELPER_PACKAGE_DIRECTORY=Join-Path $taskRepo '.local/review-repairs-20261002/component-delivery-current'
     $env:RM_TEST_REPOSITORY_ROOT=$taskRepo
-    [IO.File]::WriteAllText((Join-Path $RunDirectory 'test-environment.json'),(@{externalEvidence=$taskEnvironment;runnerHelperDeliverySelectionPreserved=$true;testRepositoryRoot=$taskRepo}|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+    # The scrub above removes ambient external evidence. Restore only the
+    # scratch directory explicitly assigned to this bounded Job, not its
+    # potentially overridden value from the test process environment.
+    $env:RM_REVIEW_SCRATCH=$taskScratch
+    [IO.File]::WriteAllText((Join-Path $RunDirectory 'test-environment.json'),(@{externalEvidence=$taskEnvironment;runnerHelperDeliverySelectionPreserved=$true;testRepositoryRoot=$taskRepo;runnerScratchRoot=$taskScratch}|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
 } else {
     $env:RM_CONTROL_HELPER_PACKAGE_DIRECTORY=Join-Path $taskRepo '.local/review-repairs-20261002/component-delivery-current'
     $env:RM_TEST_REPOSITORY_ROOT=$taskRepo

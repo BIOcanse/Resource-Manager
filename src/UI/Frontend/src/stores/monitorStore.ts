@@ -62,7 +62,6 @@ import {
   clampResourceTableColumnWidth,
   dashboardSettingsVersion,
   dashboardSmallMetricLimit,
-  defaultCards,
   defaultResourceTableColumns,
   isProcessDetailResourceTableColumn,
   normalizeCards,
@@ -191,7 +190,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       ? readyObservation(current.capturedAt ?? undefined)
       : loadingObservation();
   });
-  const [cards, setCards] = createSignal<DashboardCardSettings[]>(structuredClone(defaultCards));
+  // 看板布局由后端按本机目录生成，设置到达前不画卡片，免得先闪一版和后端不一样的占位卡。
+  const [cards, setCards] = createSignal<DashboardCardSettings[]>([]);
   const [resourceBars, setResourceBars] = createSignal<ResourceBarSettings[]>([]);
   const [resourceTableColumns, setResourceTableColumns] = createSignal<ResourceTableColumnSettings[]>(defaultResourceTableColumns([], "software"));
   const [resourceTableProcessColumns, setResourceTableProcessColumns] = createSignal<ResourceTableColumnSettings[]>(defaultResourceTableColumns([], "process"));
@@ -231,6 +231,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   let resourceTableEditGeneration = 0;
   let lastCatalogRevision = -1;
   let lastDashboardSettingsRevision = -1;
+  // 出厂布局随目录重新展开（见 release_defaults_contract.md），目录换新时要重取看板设置；用户保存过的布局不用。
+  let dashboardUsesFactoryDefaults = false;
+  // 快照帧带来的后端目录修订号。第一次收到和以后每次变化都重取目录；重取失败就清掉，下一帧再试。
+  let backendCatalogRevision: string | null = null;
 
   const activeCards = cards;
   const resourceBarEditing = createMemo(() => resourceBarEditMode());
@@ -329,7 +333,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     if (Object.keys(items).length === 0) {
       return legacy;
     }
-    return { version: 4, capturedAt: legacy?.capturedAt ?? null, items: { ...legacy?.items, ...items } };
+    // 卡片显示不读目录修订号，沿用指标帧的；还没有指标帧时为空。
+    return { version: 4, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
   });
   let activeResourceBarsQueryKey: string | null = null;
   let activeResourceTableQueryKey: string | null = null;
@@ -354,6 +359,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       (value) => {
         if (accepting && activeMetricQueryKey === queryKey) {
           setSnapshot(value);
+          if (value.catalogRevision !== backendCatalogRevision) {
+            backendCatalogRevision = value.catalogRevision;
+            void followBackendCatalog(value.catalogRevision);
+          }
         }
       });
     onCleanup(() => {
@@ -568,6 +577,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
     const result = source.data;
     const settings = result.settings;
+    dashboardUsesFactoryDefaults = settings.usesFactoryDefaults === true;
     if (source.revision !== lastDashboardSettingsRevision) {
       if (!editMode()) {
         setCards(structuredClone(settings.cards));
@@ -592,6 +602,18 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   async function refreshCatalog() {
     const source = await metricCatalogLease.refresh();
     return sourceCanRender(source);
+  }
+
+  async function followBackendCatalog(revision: string) {
+    if (!await refreshCatalog()) {
+      if (backendCatalogRevision === revision) {
+        backendCatalogRevision = null;
+      }
+      return;
+    }
+    if (dashboardUsesFactoryDefaults) {
+      await refreshSettings();
+    }
   }
 
   async function refreshSettings() {

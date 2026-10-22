@@ -27,7 +27,7 @@ public sealed class PackageSwitchTransactionTests
             {
                 updateCompatibility = new
                 {
-                    minimumSettingsSchema = "1.0.17", maximumSettingsSchema = "1.0.26", maximumDatabaseSchema = 11
+                    minimumSettingsSchema = "1.0.17", maximumSettingsSchema = "1.0.27", maximumDatabaseSchema = 11
                 }
             }));
             File.WriteAllText(Path.Combine(installed, "Config", "app-settings.json"), "{\"version\":\"1.0.24\"}");

@@ -9,9 +9,16 @@ $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $taskPath=[IO.Path]::GetFullPath($TaskRoot)
 # A task-local registration profile supplies extra roots, never a permanent
 # exemption from the project's current automatic retention limits.
-$policy=Get-Content -LiteralPath (Join-Path $taskPath 'retention-policy.json') -Raw|ConvertFrom-Json
 if([string]::IsNullOrWhiteSpace($ProjectPolicyPath)) {$ProjectPolicyPath=Join-Path $repo 'scripts/maintenance/generated-workspace-policy.json'}
 $projectPolicy=Get-Content -LiteralPath $ProjectPolicyPath -Raw|ConvertFrom-Json
+$profilePath=Join-Path $taskPath 'retention-policy.json'
+$policy=if([IO.File]::Exists($profilePath)) {
+    Get-Content -LiteralPath $profilePath -Raw|ConvertFrom-Json
+} else {
+    # A newly registered task needs no private policy copy when it has no
+    # additional roots. Use the current enabled project policy directly.
+    Get-Content -LiteralPath $ProjectPolicyPath -Raw|ConvertFrom-Json
+}
 $policy.enabled=[bool]$projectPolicy.enabled
 $policy.defaults=$projectPolicy.defaults
 $policy.referenceRoots=@(@($projectPolicy.referenceRoots)+@($policy.referenceRoots)|Sort-Object -Unique)

@@ -1,4 +1,4 @@
-import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppFrontendHiddenRefreshMode, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppAdaptiveBooleanMode, AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppGpuPerformanceUseCase, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, ByteUnitMode, SettingsSection } from "../types.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -62,11 +62,11 @@ export interface SettingsCopy {
     reapply: string;
   };
   // 选项的 description 是**可选的补充**，不是必填栏位。
-  // 标题已经说清楚的选项（"始终开启""隐藏时暂停"）再挂一句
+  // 标题已经说清楚的选项（"开启""关闭"）再挂一句
   // "始终启用这项设置"只是把标题重说一遍，那是噪音不是帮助。
   performance: {
     smartMonitoringTitle: string;
-    smartMonitoringDescription: (seconds: number) => string;
+    smartMonitoringDescription: string;
     adaptiveBooleanModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description?: string }>;
     gpuPerformanceUseCasesTitle: string;
     gpuPerformanceUseCasesDescription: string;
@@ -84,9 +84,10 @@ export interface SettingsCopy {
     memoryOptimizationTargetDescription: string;
     physicalMemoryOptimizationTargetLabel: string;
     virtualMemoryOptimizationTargetLabel: string;
-    pauseHiddenTitle: string;
-    pauseHiddenDescription: string;
-    frontendHiddenRefreshModeOptions: Array<{ id: AppFrontendHiddenRefreshMode; label: string; description?: string }>;
+    moveDownDangerTitle: string;
+    moveDownDangerDescription: string;
+    vramMoveDownPhysicalMemoryDangerLabel: string;
+    physicalMemoryMoveDownVirtualMemoryDangerLabel: string;
     refreshCadenceTitle: string;
     refreshCadenceDescription: string;
     presetNumericModeOptions: Array<{ id: AppPresetNumericSettingMode; label: string; description: string }>;
@@ -102,9 +103,6 @@ export interface SettingsCopy {
     themeDescription: string;
     animationTitle: string;
     animationDescription: string;
-    resourceBarHardwareAccelerationTitle: string;
-    resourceBarHardwareAccelerationDescription: string;
-    resourceBarHardwareAccelerationModeOptions: Array<{ id: AppAdaptiveBooleanMode; label: string; description: string }>;
     resourceBarFrameRateTitle: string;
     resourceBarFrameRateDescription: string;
     resourceBarFrameRateModeOptions: Array<{ id: AppResourceBarFrameRateMode; label: string; description: string }>;

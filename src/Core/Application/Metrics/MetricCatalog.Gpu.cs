@@ -180,7 +180,7 @@ public static partial class MetricCatalog
                 return "nvidia-nvapi-provider";
             }
 
-            return "librehardwaremonitor-provider";
+            return "hardware-sensors-pawnio-provider";
         }
 
         if (sensorKind.Equals("fanPercent", StringComparison.OrdinalIgnoreCase)

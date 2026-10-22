@@ -130,8 +130,8 @@ internal sealed class MetricReadingSourceTracker
         });
         var legacy = frame.Catalog.LegacyMetricHandles.ToDictionary(static pair => pair.Key,
             static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        foreach (var group in candidates.Where(static row => row.Binding.LegacyMetricId.Length != 0)
-                     .GroupBy(static row => row.Binding.LegacyMetricId, StringComparer.OrdinalIgnoreCase))
+        foreach (var group in candidates.Where(row => LegacyAddress(row.Binding).Length != 0)
+                     .GroupBy(row => LegacyAddress(row.Binding), StringComparer.OrdinalIgnoreCase))
         {
             // Resolve through the same preferred reading metadata used by the UI.
             var best = group.Select(row => preferred[row.ReadingId]).Where(static row => row is not null)
@@ -177,7 +177,7 @@ internal sealed class MetricReadingSourceTracker
         foreach (var id in request.Ids)
         {
             var bindings = frame.Catalog.MetricBindings.Values
-                .Where(row => string.Equals(row.LegacyMetricId, id, StringComparison.OrdinalIgnoreCase)).ToArray();
+                .Where(row => string.Equals(LegacyAddress(row), id, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (bindings.Length == 0) { expanded.Add(id); continue; }
             if (selection.LegacyHandles.TryGetValue(id, out var handle))
                 expanded.Add(frame.Catalog.MetricIds[handle]);
@@ -208,4 +208,27 @@ internal sealed class MetricReadingSourceTracker
 
     private static string ReadingId(string device, string quantity)
         => "reading-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(device + "\0" + quantity)));
+
+    // Component addresses are selected here, alongside the public reading
+    // metadata, rather than by dashboard, scheduler or UI vendor branches.
+    internal static string LegacyAddress(NativeMetricSnapshotRuleCatalogBinding binding)
+    {
+        if (binding.LegacyMetricId.Length != 0) return binding.LegacyMetricId;
+        if (binding.SourceId == "amd.smu" && binding.FieldCode == MetricFieldCode.GpuTemperature && binding.DisplayIndex >= 0)
+            return $"gpu.{binding.DisplayIndex}.temperature";
+        if (binding.SourceId == "intel.igcl" && binding.DisplayIndex >= 0)
+            return binding.FieldCode switch
+            {
+                MetricFieldCode.IgclGpuTemperature => $"gpu.{binding.DisplayIndex}.temperature",
+                MetricFieldCode.IgclGpuIntervalPower => $"gpu.{binding.DisplayIndex}.power",
+                MetricFieldCode.IgclGpuVoltage => $"gpu.{binding.DisplayIndex}.coreVoltage",
+                _ => string.Empty
+            };
+        // The legacy singular CPU card refers to the first actual package;
+        // individual package readings retain their own identities and values.
+        if (binding.SourceId == "intel.msr" && binding.FieldCode == MetricFieldCode.IntelPackageDtsTemperature
+            && binding.Device.Kind == "cpu_package" && binding.Device.Ordinal == 0)
+            return "cpu.temperature";
+        return string.Empty;
+    }
 }

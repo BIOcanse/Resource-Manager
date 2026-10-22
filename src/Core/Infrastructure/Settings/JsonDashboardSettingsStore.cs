@@ -387,7 +387,9 @@ public sealed class JsonDashboardSettingsStore : IDashboardSettingsStore
 
         if (lastKnownGood is not null)
         {
-            var restored = DashboardSettingsNormalizer.Normalize(lastKnownGood.Settings);
+            // Keep the source version until the runtime can reset the layout
+            // against a real catalog. Recovery must not consume that migration.
+            var restored = DashboardSettingsNormalizer.Normalize(lastKnownGood.Settings, preserveVersion: true);
             _ = await SaveCoreAsync(restored, cancellationToken);
             logger?.LogWarning(
                 "Dashboard settings were restored from last-known-good image {LastKnownGoodPath}.",
@@ -475,7 +477,7 @@ public sealed class JsonDashboardSettingsStore : IDashboardSettingsStore
             return null;
         }
 
-        var settings = DashboardSettingsNormalizer.Normalize(image.Settings);
+        var settings = DashboardSettingsNormalizer.Normalize(image.Settings, preserveVersion: true);
         if (persist)
         {
             _ = await SaveCoreAsync(settings, cancellationToken);
@@ -582,6 +584,17 @@ public sealed class JsonDashboardSettingsStore : IDashboardSettingsStore
         {
             throw new UnsupportedDashboardSettingsSchemaException(
                 $"The dashboard settings file '{sourcePath}' uses unsupported schema '{sourceVersion}'.");
+        }
+
+        if (sourceVersion < DashboardSettingsDefaults.CurrentVersion)
+        {
+            // The user explicitly requested a one-time reset of every old
+            // layout. Keep its version until the runtime resolves real devices
+            // and saves the new layout; do not import retired layout shapes.
+            return new ParsedSettingsImage(
+                DashboardSettingsDefaults.Create() with { Version = sourceVersion },
+                sourceVersion,
+                Convert.ToHexString(SHA256.HashData(sourceBytes)));
         }
 
         var deserialized = JsonSerializer.Deserialize<DashboardSettings>(

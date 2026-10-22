@@ -1,7 +1,7 @@
 import { For, Match, Switch } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect";
 import {
-  defaultLogicRefreshIntervalSetting,
+  defaultAppSettings,
   formatLogicRefreshIntervalPresetMs,
   logicRefreshIntervalKeys,
   normalizeLogicRefreshIntervalSetting
@@ -9,7 +9,6 @@ import {
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAdaptiveBooleanMode,
-  AppFrontendHiddenRefreshMode,
   AppGpuPerformanceUseCase,
   AppLogicRefreshIntervalKey,
   AppLogicRefreshIntervalPreset,
@@ -32,33 +31,13 @@ interface PerformanceSettingsSectionProps {
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  onFrontendHiddenRefreshModeChange: (mode: AppFrontendHiddenRefreshMode) => void;
+  onMoveDownDangerLinesChange: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
 }
 
 export function PerformanceSettingsSection(props: PerformanceSettingsSectionProps) {
-  const performance = (): AppPerformanceSettings => props.settings ?? {
-    smartMonitoringEnabled: true,
-    monitoringIdleSeconds: 5,
-    optimizationMode: "normal" as const,
-    pauseFrontendRefreshWhenHiddenInNormalMode: true,
-    preciseGpuPlacementEnabled: true,
-    vramMoveDownPhysicalMemoryDangerPercent: 10,
-    physicalMemoryMoveDownVirtualMemoryDangerPercent: 12,
-    physicalMemoryAutomaticCleanupPercent: 6,
-    virtualMemoryAutomaticCleanupPercent: 8,
-    physicalMemoryOptimizationTargetUsagePercent: 70,
-    virtualMemoryOptimizationTargetUsagePercent: 70,
-    gpuPerformanceUseCases: ["general"],
-    smartMonitoringMode: "auto",
-    frontendHiddenRefreshMode: "auto",
-    monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
-    resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
-    managementRefreshIntervalMs: defaultLogicRefreshIntervalSetting("management"),
-    discoveryRefreshIntervalMs: defaultLogicRefreshIntervalSetting("discovery"),
-    optimizationRefreshIntervalMs: defaultLogicRefreshIntervalSetting("optimization"),
-    localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
-  };
+  // 占位值与「恢复为默认」同源，不另写一份默认值。
+  const performance = (): AppPerformanceSettings => props.settings ?? defaultAppSettings().performance!;
   const gpuSchedulingMode = (): GpuSchedulingMode => performance().preciseGpuPlacementEnabled ? "precise" : "basic";
   // 设置页的两态开关一律「开启在前、关闭在后」。
   const gpuSchedulingModeOptions = (): Array<{ id: GpuSchedulingMode; label: string; description: string }> => [
@@ -77,19 +56,19 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     const virtual = field === "virtual" ? number : performance().virtualMemoryOptimizationTargetUsagePercent;
     props.onMemoryOptimizationTargetLinesChange(physical, virtual);
   };
+  const updateMoveDownDangerLine = (field: "vram" | "physical", value: string) => {
+    const number = Number(value);
+    const vram = field === "vram" ? number : performance().vramMoveDownPhysicalMemoryDangerPercent;
+    const physical = field === "physical" ? number : performance().physicalMemoryMoveDownVirtualMemoryDangerPercent;
+    props.onMoveDownDangerLinesChange(vram, physical);
+  };
   const logicRefreshIntervalSetting = (key: AppLogicRefreshIntervalKey) => {
     const current = performance();
     const setting = key === "monitor"
       ? current.monitorRefreshIntervalMs
       : key === "resourceTable"
         ? current.resourceTableRefreshIntervalMs
-        : key === "management"
-          ? current.managementRefreshIntervalMs
-          : key === "discovery"
-            ? current.discoveryRefreshIntervalMs
-            : key === "optimization"
-              ? current.optimizationRefreshIntervalMs
-              : current.localSystemRefreshIntervalMs;
+        : current.localSystemRefreshIntervalMs;
     return normalizeLogicRefreshIntervalSetting(key, setting);
   };
   const updateLogicRefreshInterval = (
@@ -132,10 +111,10 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
       <div class="settings-row">
         <div class="settings-row-copy">
           <strong>{props.text.performance.smartMonitoringTitle}</strong>
-          <span>{props.text.performance.smartMonitoringDescription(performance().monitoringIdleSeconds)}</span>
+          <span>{props.text.performance.smartMonitoringDescription}</span>
         </div>
         <SegmentedControl
-          value={performance().smartMonitoringMode ?? "auto"}
+          value={performance().smartMonitoringMode}
           options={props.text.performance.adaptiveBooleanModeOptions}
           ariaLabel={props.text.performance.smartMonitoringTitle}
           onChange={props.onSmartMonitoringModeChange}
@@ -213,17 +192,36 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           </label>
         </div>
       </div>
+      {/* 下移危险阈值：资源调度把显存下移到内存、把内存下移到虚拟内存前，按移动后的剩余比例判断是否放弃这次下移。 */}
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.performance.pauseHiddenTitle}</strong>
-          <span>{props.text.performance.pauseHiddenDescription}</span>
+          <strong>{props.text.performance.moveDownDangerTitle}</strong>
+          <span>{props.text.performance.moveDownDangerDescription}</span>
         </div>
-        <SegmentedControl
-          value={performance().frontendHiddenRefreshMode ?? "auto"}
-          options={props.text.performance.frontendHiddenRefreshModeOptions}
-          ariaLabel={props.text.performance.pauseHiddenTitle}
-          onChange={props.onFrontendHiddenRefreshModeChange}
-        />
+        <div class="settings-number-pair">
+          <label>
+            <span>{props.text.performance.vramMoveDownPhysicalMemoryDangerLabel}</span>
+            <input
+              type="number"
+              min="0"
+              max="95"
+              step="1"
+              value={performance().vramMoveDownPhysicalMemoryDangerPercent}
+              onChange={(event) => updateMoveDownDangerLine("vram", event.currentTarget.value)}
+            />
+          </label>
+          <label>
+            <span>{props.text.performance.physicalMemoryMoveDownVirtualMemoryDangerLabel}</span>
+            <input
+              type="number"
+              min="0"
+              max="95"
+              step="1"
+              value={performance().physicalMemoryMoveDownVirtualMemoryDangerPercent}
+              onChange={(event) => updateMoveDownDangerLine("physical", event.currentTarget.value)}
+            />
+          </label>
+        </div>
       </div>
       <div class="settings-row settings-row-block">
         <div class="settings-row-copy">

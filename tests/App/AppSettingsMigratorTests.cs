@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Optimization;
@@ -28,7 +28,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.25", true)]
     [InlineData("1.0.16", false)]
     [InlineData("1.0.26", true)]
-    [InlineData("1.0.27", false)]
+    [InlineData("1.0.27", true)]
+    [InlineData("1.0.28", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -58,7 +59,7 @@ public sealed class AppSettingsMigratorTests
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
         Assert.Equal(AppSettingsDefaults.CurrentVersion, settings.Version);
-        Assert.True(settings.Performance.SmartMonitoringEnabled);
+        Assert.Equal(AppAdaptiveBooleanModes.Enabled, settings.Performance.SmartMonitoringMode);
         Assert.Equal("system", settings.Appearance.Theme);
         Assert.Equal([AppGpuPerformanceUseCases.General], settings.Performance.GpuPerformanceUseCases);
         Assert.False(settings.SystemIntegration.TaskManagerShortcutReplacementEnabled);
@@ -127,7 +128,7 @@ public sealed class AppSettingsMigratorTests
 
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
 
-        Assert.True(settings.Performance.PreciseGpuPlacementEnabled);
+        Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
         Assert.False(settings.PublicService.Enabled);
         Assert.False(settings.PublicService.FileIndexEnabled);
         Assert.False(settings.PublicService.DatabaseServiceEnabled);
@@ -191,8 +192,8 @@ public sealed class AppSettingsMigratorTests
         Assert.Equal(AppPresetNumericSettingModes.Aotu, settings.Performance.MonitorRefreshIntervalMs.Mode);
         Assert.Equal(AppLogicRefreshIntervalPresets.Responsive, settings.Performance.MonitorRefreshIntervalMs.Preset);
         Assert.Equal(1000, settings.Performance.MonitorRefreshIntervalMs.CustomValue);
-        Assert.Equal(AppLogicRefreshIntervalPresets.Balanced, settings.Performance.ManagementRefreshIntervalMs.Preset);
-        Assert.Equal(10000, settings.Performance.ManagementRefreshIntervalMs.CustomValue);
+        Assert.Equal(AppLogicRefreshIntervalPresets.Balanced, settings.Performance.LocalSystemRefreshIntervalMs.Preset);
+        Assert.Equal(60000, settings.Performance.LocalSystemRefreshIntervalMs.CustomValue);
     }
 
     [Fact]
@@ -282,7 +283,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -299,7 +300,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -319,7 +320,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.26\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -564,31 +565,22 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.26",
+          "version": "1.0.27",
           "performance": {
-            "smartMonitoringEnabled": true,
-            "monitoringIdleSeconds": 5,
             "optimizationMode": "normal",
-            "pauseFrontendRefreshWhenHiddenInNormalMode": true,
             "preciseGpuPlacementEnabled": false,
             "vramMoveDownPhysicalMemoryDangerPercent": 10,
             "physicalMemoryMoveDownVirtualMemoryDangerPercent": 12,
             "gpuPerformanceUseCases": ["general"],
-            "smartMonitoringMode": "auto",
-            "frontendHiddenRefreshMode": "auto",
+            "smartMonitoringMode": "enabled",
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
-            "managementRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 10000 },
-            "discoveryRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 3000 },
-            "optimizationRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 10000 },
             "localSystemRefreshIntervalMs": { "mode": "aotu", "preset": "balanced", "customValue": 60000 }
           },
           "appearance": {
             "uiStyle": "standard",
             "theme": "system",
             "animations": "auto",
-            "resourceBarHardwareAccelerationEnabled": true,
-            "resourceBarHardwareAccelerationMode": "auto",
             "resourceBarFrameRateMode": "display",
             "resourceBarFrameRate": 60,
             "barColorMode": "type",

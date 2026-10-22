@@ -15,6 +15,9 @@ $ErrorActionPreference='Stop'
 $taskRepo='D:\Code\Resource-Manager-Development'
 $taskRoot=[IO.Path]::GetFullPath($TaskRoot)
 $taskWorkspace=[IO.Path]::GetFullPath($WorkspaceRoot)
+if(-not [IO.File]::Exists((Join-Path $taskRoot 'NuGet.official.config'))) {
+    throw 'Prepare TaskRoot/NuGet.official.config with explicit package sources before allocating a validation workset.'
+}
 if($CompilerEnvironment -and $Stage -notin @('Build','ProductBackend','ProductShell','ProductImage')){throw 'CompilerEnvironment applies only to Build and product composition stages.'}
 $taskExplicitTestProject=-not [string]::IsNullOrWhiteSpace($TestProject)
 if($taskExplicitTestProject -and $Stage -notin @('Build','Tests')){throw 'TestProject applies only to Build and Tests.'}

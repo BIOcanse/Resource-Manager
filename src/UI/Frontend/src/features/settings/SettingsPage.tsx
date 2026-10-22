@@ -12,7 +12,6 @@ import type {
   AppBarColorMode,
   ByteUnitMode,
   AppEditableHotkeySettings,
-  AppFrontendHiddenRefreshMode,
   AppFontSmoothing,
   AppGpuPerformanceUseCase,
   AppLanguageMode,
@@ -48,12 +47,11 @@ interface SettingsPageProps {
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  onFrontendHiddenRefreshModeChange: (mode: AppFrontendHiddenRefreshMode) => void;
+  onMoveDownDangerLinesChange: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
-  onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -250,7 +248,7 @@ export function SettingsPage(props: SettingsPageProps) {
               onGpuPerformanceUseCasesChange={props.onGpuPerformanceUseCasesChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
-              onFrontendHiddenRefreshModeChange={props.onFrontendHiddenRefreshModeChange}
+              onMoveDownDangerLinesChange={props.onMoveDownDangerLinesChange}
               onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
             />
           </Show>
@@ -261,7 +259,6 @@ export function SettingsPage(props: SettingsPageProps) {
               onUiStyleChange={props.onUiStyleChange}
               onThemeChange={props.onThemeChange}
               onAnimationsChange={props.onAnimationsChange}
-              onResourceBarHardwareAccelerationModeChange={props.onResourceBarHardwareAccelerationModeChange}
               onResourceBarFrameRateModeChange={props.onResourceBarFrameRateModeChange}
               onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}

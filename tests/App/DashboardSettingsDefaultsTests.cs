@@ -29,12 +29,12 @@ public sealed class DashboardSettingsDefaultsTests
         var migrator = new DashboardSettingsMigrator();
 
         var resolved = migrator.ResolveForRead(stored, snapshot);
-        var expected = DashboardSettingsDefaults.Create(snapshot);
+        var expected = DashboardSettingsDefaults.Create(snapshot) with { UsesFactoryDefaults = true };
 
         Assert.True(migrator.AreEquivalent(expected, resolved));
         // 8 = 原来的 7 加上 gpu0 的风扇卡：那块 GPU 有自己的风扇、没有独立显存，
         // 先前被"要有显存才出传感卡"那条判据吞掉了。
-        Assert.Equal(8, resolved.Cards.Count);
+        Assert.Equal(9, resolved.Cards.Count);
         Assert.Contains(resolved.Cards, static card => card.Id == "gpu0-sensors");
         Assert.Contains(resolved.Cards, static card => card.Id == "gpu1-sensors");
     }
@@ -113,15 +113,15 @@ public sealed class DashboardSettingsDefaultsTests
         Assert.Collection(
             settings.Cards,
             card => AssertCard(card, "cpu", "cpu.usage", "cpu.frequency", "cpu.temperature", "cpu.actualPower"),
-            card => AssertCard(card, "memory", "memory.usage", "memory.percent", "memory.temperature"),
-            card => AssertCard(card, "gpu0", "gpu.0.usage", "gpu.0.graphicsClock", "gpu.0.temperature"),
+            card => AssertCard(card, "memory", "memory.usage", "memory.percent", "memory.temperature", "virtualMemory.usage"),
+            card => AssertCard(card, "gpu0", "gpu.0.usage", "gpu.0.graphicsClock", "gpu.0.temperature", "gpu.0.graphicsClockPercent"),
             card => AssertCard(card, "gpu1", "gpu.1.usage", "gpu.1.graphicsClock", "gpu.1.power", "gpu.1.temperature"),
             card => AssertCard(card, "vram1", "gpu.1.vram", "gpu.1.vramPercent", "gpu.1.memoryClock", "gpu.1.graphicsClockPercent"),
-            card => AssertCard(card, "cpu-sensors", "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent"),
+            card => AssertCard(card, "cpu-sensors", "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent", "cpu.fanPercent"),
             // gpu.0 有自己的风扇但没有独立显存。先前"要有显存才出传感卡"的判据
             // 会把这张风扇卡整张吞掉 —— 显存和风扇没有关系。
-            card => AssertCard(card, "gpu0-sensors", "gpu.0.fanRpm", "gpu.0.coreVoltage", "gpu.0.current"),
-            card => AssertCard(card, "gpu1-sensors", "gpu.1.fanRpm", "gpu.1.coreVoltage", "gpu.1.current"));
+            card => AssertCard(card, "gpu0-sensors", "gpu.0.fanRpm", "gpu.0.coreVoltage", "gpu.0.current", "gpu.0.fanPercent"),
+            card => AssertCard(card, "gpu1-sensors", "gpu.1.fanRpm", "gpu.1.coreVoltage", "gpu.1.current", "gpu.1.fanPercent"));
     }
 
     [Fact]
@@ -152,11 +152,11 @@ public sealed class DashboardSettingsDefaultsTests
         Assert.Collection(
             settings.Cards,
             card => AssertCard(card, "cpu", "cpu.usage", "cpu.frequency", "cpu.temperature", "cpu.actualPower"),
-            card => AssertCard(card, "memory", "memory.usage", "memory.percent", "memory.temperature"),
+            card => AssertCard(card, "memory", "memory.usage", "memory.percent", "memory.temperature", "virtualMemory.usage"),
             card => AssertCard(card, "gpu0", "gpu.0.usage", "gpu.0.graphicsClock", "gpu.0.power", "gpu.0.temperature"),
             card => AssertCard(card, "gpu1", "gpu.1.usage", "gpu.1.graphicsClock", "gpu.1.temperature"),
             card => AssertCard(card, "vram0", "gpu.0.vram", "gpu.0.vramPercent", "gpu.0.memoryClock", "gpu.0.graphicsClockPercent"),
-            card => AssertCard(card, "cpu-sensors", "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent"),
+            card => AssertCard(card, "cpu-sensors", "cpu.fanRpm", "cpu.coreVoltage", "cpu.packageCurrent", "cpu.fanPercent"),
             card => AssertCard(card, "gpu0-sensors", "gpu.0.fanRpm", "gpu.0.coreVoltage", "gpu.0.current"));
     }
 
@@ -176,7 +176,7 @@ public sealed class DashboardSettingsDefaultsTests
             [new ResourceTableColumnSettings(ResourceTableColumnIds.Name, true, 240)],
             [new ResourceTableColumnSettings(ResourceTableColumnIds.Name, true, 260)]);
         var snapshot = CreateSnapshot(
-            CreateAvailableMetrics(),
+            CreateSelectableMetrics(),
             CreateGpu(0, "gpu-integrated"),
             CreateGpu(1, "gpu-dedicated"));
 
@@ -199,7 +199,7 @@ public sealed class DashboardSettingsDefaultsTests
     public void MigrateForRead_ReconcilesLegacyGpuColumnsAndBarsWithCurrentCatalog()
     {
         var settings = new DashboardSettings(
-            DashboardSettingsDefaults.CurrentVersion - 1,
+            DashboardSettingsDefaults.CurrentVersion,
             [new DashboardCardSettings("cpu", "cpu.usage", [])],
             [new ResourceBarSettings("legacy-vram", "gpu.0.vram", ResourceBreakdownScaleModes.Capacity)],
             [
@@ -499,7 +499,7 @@ public sealed class DashboardSettingsDefaultsTests
         Assert.True(coreVoltage.Selectable);
         Assert.False(stapmPower.Selectable);
         Assert.NotNull(stapmPower.DisabledReason);
-        Assert.Equal("librehardwaremonitor-provider", cpuFan.RequiredComponentId);
+        Assert.Equal("hardware-sensors-pawnio-provider", cpuFan.RequiredComponentId);
         Assert.Equal("nvidia-nvapi-provider", gpuCurrent.RequiredComponentId);
     }
 
@@ -522,9 +522,9 @@ public sealed class DashboardSettingsDefaultsTests
         Assert.True(vrm.Selectable);
         Assert.Null(vrm.RequiredComponentId);
         Assert.False(chipset.Selectable);
-        Assert.Equal("librehardwaremonitor-provider", chipset.RequiredComponentId);
+        Assert.Equal("hardware-sensors-pawnio-provider", chipset.RequiredComponentId);
         Assert.False(voltage.Selectable);
-        Assert.Equal("librehardwaremonitor-provider", voltage.RequiredComponentId);
+        Assert.Equal("hardware-sensors-pawnio-provider", voltage.RequiredComponentId);
     }
 
     [Fact]
@@ -868,5 +868,85 @@ public sealed class DashboardSettingsDefaultsTests
         return card.Id == id
             && card.Main == main
             && card.Small.SequenceEqual(small);
+    }
+
+    [Fact]
+    public void NewDefaultsUseBuiltinFallbacksAndAppendIoWithoutComponentPlaceholders()
+    {
+        var items = new Dictionary<string, MetricValue>();
+        AddMetrics(items, "cpu.usage", "cpu.frequency", "cpu.frequencyPercent", "memory.usage", "memory.percent",
+            "virtualMemory.usage", "virtualMemory.percent", "disk.total.activePercent", "disk.total.readBytesPerSec",
+            "network.total.receiveBytesPerSec", "network.total.sendBytesPerSec");
+        var settings = DashboardSettingsDefaults.Create(items);
+        Assert.Collection(settings.Cards,
+            c => AssertCard(c, "cpu", "cpu.usage", "cpu.frequency", "cpu.frequencyPercent"),
+            c => AssertCard(c, "memory", "memory.usage", "memory.percent", "virtualMemory.usage", "virtualMemory.percent"),
+            c => AssertCard(c, "disk-network", "disk.total.activePercent", "disk.total.readBytesPerSec",
+                "network.total.receiveBytesPerSec", "network.total.sendBytesPerSec"));
+        Assert.Equal(new[] { "disk.io", "network.traffic" }, settings.ResourceBars.TakeLast(2).Select(b => b.MetricId));
+        Assert.All(settings.Cards, c => Assert.Null(c.MainBinding));
+    }
+
+    [Fact]
+    public void RemovedGpuBarsAndAnExplicitEmptyBarListStayRemoved()
+    {
+        var snapshot = CreateSnapshot(CreateSelectableMetrics(), CreateGpu(0, "gpu-integrated"), CreateGpu(1, "gpu-dedicated"));
+        var defaults = DashboardSettingsDefaults.Create(snapshot);
+        var requested = defaults with { ResourceBars = defaults.ResourceBars.Where(b => !b.MetricId.StartsWith("gpu.")).ToArray() };
+        var migrator = new DashboardSettingsMigrator();
+        var saved = migrator.SanitizeForSave(requested, snapshot);
+        Assert.DoesNotContain(saved.ResourceBars, b => b.MetricId.StartsWith("gpu."));
+        Assert.DoesNotContain(migrator.MigrateForRead(saved, snapshot).ResourceBars, b => b.MetricId.StartsWith("gpu."));
+        Assert.Empty(migrator.SanitizeForSave(requested with { ResourceBars = [] }, snapshot).ResourceBars);
+    }
+
+    [Fact]
+    public void WarmCatalogNeverInventsGpuZeroAndOldLayoutsResetOnlyBeforeCurrentVersion()
+    {
+        var bundled = DashboardSettingsDefaults.Create();
+        Assert.Equal(new[] { "cpu", "memory", "disk-network" }, bundled.Cards.Select(c => c.Id));
+        Assert.DoesNotContain(bundled.Cards.SelectMany(c => c.Small), id => id.EndsWith("temperature"));
+        var snapshot = CreateSnapshot(new Dictionary<string, MetricValue>());
+        Assert.DoesNotContain(MetricCatalog.FromSnapshot(snapshot), d => d.Id.StartsWith("gpu."));
+        Assert.DoesNotContain(DashboardSettingsDefaults.Create(snapshot).Cards, c => c.Id.StartsWith("gpu"));
+        var current = DashboardSettingsDefaults.Create(snapshot) with
+        {
+            Cards = [new DashboardCardSettings("mine", "cpu.frequency", [])], ResourceBars = []
+        };
+        var migrator = new DashboardSettingsMigrator();
+        var reset = migrator.MigrateForRead(current with { Version = 15 }, snapshot);
+        Assert.DoesNotContain(reset.Cards, c => c.Id == "mine");
+        Assert.Equal(16, reset.Version);
+        Assert.True(migrator.AreEquivalent(current, migrator.MigrateForRead(current, snapshot)));
+    }
+
+    [Fact]
+    public void FactoryLayoutUpdatesAfterCapabilityDiscoveryButManualSaveRetainsUserChoices()
+    {
+        var initial = CreateSnapshot(new Dictionary<string, MetricValue>());
+        var migrator = new DashboardSettingsMigrator();
+        var reset = migrator.MigrateForRead(DashboardSettingsDefaults.Create() with { Version = 15 }, initial);
+        Assert.True(reset.UsesFactoryDefaults);
+        Assert.DoesNotContain("cpu.temperature", reset.Cards.Single(c => c.Id == "cpu").Small);
+        var field = MetricFieldRegistry.FindByName("cpu_amd_smu_temperature_reported_celsius")!;
+        var discovered = initial with
+        {
+            FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            {
+                ["raw"] = new("cpu-target", field with
+                {
+                    Reading = new("reading", "cpu.control_temperature", 10, "available", true, "cpu-target", field.Name)
+                }, "raw", "amd.smu") { RequestAliases = ["cpu.temperature"] }
+            }
+        };
+        var updated = migrator.MigrateForRead(reset, discovered);
+        Assert.Contains("cpu.temperature", updated.Cards.Single(c => c.Id == "cpu").Small);
+        Assert.False(discovered.Items.ContainsKey("cpu.temperature"));
+        Assert.True(updated.UsesFactoryDefaults);
+        var manual = migrator.SanitizeForSave(updated with { Cards = [new("mine", "cpu.frequency", [])], ResourceBars = [] }, discovered);
+        Assert.False(manual.UsesFactoryDefaults);
+        Assert.Equal("mine", Assert.Single(migrator.MigrateForRead(manual, initial).Cards).Id);
+        Assert.Contains("cpu.temperature", DashboardSettingsDefaults.FactoryCandidateMetricIds(initial));
+        Assert.DoesNotContain(DashboardSettingsDefaults.FactoryCandidateMetricIds(initial), id => id.StartsWith("gpu."));
     }
 }

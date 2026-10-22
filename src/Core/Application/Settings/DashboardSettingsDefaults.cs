@@ -8,8 +8,40 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class DashboardSettingsDefaults
 {
-    public const int MinimumSupportedVersion = 14;
-    public const int CurrentVersion = 15;
+    public const int MinimumSupportedVersion = 1;
+    public const int CurrentVersion = 16;
+
+    // Before discovery only built-in component readings are known. Optional
+    // sensors and GPUs enter the same template from the real selectable catalog.
+    private static readonly HashSet<string> BuiltInMetricIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "cpu.usage", "cpu.frequency", "cpu.frequencyPercent", "memory.usage", "memory.percent",
+        "virtualMemory.usage", "virtualMemory.percent", "disk.total.activePercent", "disk.total.readBytesPerSec",
+        "disk.total.writeBytesPerSec", "disk.total.queueLength", "network.total.receiveBytesPerSec",
+        "network.total.sendBytesPerSec", "network.total.utilizationPercent"
+    };
+    private static readonly string[] CpuDetails = ["cpu.frequency", "cpu.temperature", "cpu.actualPower", "cpu.frequencyPercent"];
+    private static readonly string[] MemoryDetails = ["memory.percent", "memory.temperature", "virtualMemory.usage", "virtualMemory.percent"];
+    private static readonly string[] CpuSensorDetails = ["cpu.coreVoltage", "cpu.packageCurrent", "cpu.fanPercent"];
+    private static readonly string[] IoDetails = ["disk.total.readBytesPerSec", "network.total.receiveBytesPerSec", "network.total.sendBytesPerSec"];
+    private static readonly string[] GpuUsageDetails = ["graphicsClock", "power", "temperature", "memoryClock", "graphicsClockPercent"];
+    private static readonly string[] GpuVramDetails = ["vramPercent", "memoryClock", "graphicsClockPercent"];
+    private static readonly string[] GpuSensorDetails = ["coreVoltage", "current", "fanPercent", "hotspotTemperature"];
+
+    internal static IReadOnlyList<string> FactoryCandidateMetricIds(HardwareMetricSnapshot? snapshot)
+    {
+        var ids = new List<string> { "cpu.usage", "memory.usage", "cpu.fanRpm", "disk.total.activePercent" };
+        ids.AddRange(CpuDetails.Concat(MemoryDetails).Concat(CpuSensorDetails).Concat(IoDetails));
+        foreach (var index in snapshot?.Gpus.Select(static gpu => gpu.Index).Distinct() ?? [])
+        {
+            ids.AddRange(GpuMetricIds(index, ["usage", "vram", "fanRpm"]));
+            ids.AddRange(GpuMetricIds(index, GpuUsageDetails.Concat(GpuVramDetails).Concat(GpuSensorDetails)));
+        }
+        return ids.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static string[] GpuMetricIds(int index, IEnumerable<string> suffixes)
+        => suffixes.Select(suffix => $"gpu.{index}.{suffix}").ToArray();
 
     public static DashboardSettings Create(HardwareMetricSnapshot snapshot)
     {
@@ -88,6 +120,14 @@ public static class DashboardSettingsDefaults
             AddGpuSensorCard(cards, index, items, gpuIdentityKeys);
         }
 
+        if (HasMetric(items, "disk.total.activePercent"))
+        {
+            cards.Add(new DashboardCardSettings(
+                "disk-network",
+                "disk.total.activePercent",
+                GetExistingMetrics(items, IoDetails)));
+        }
+
         return new DashboardSettings(
             CurrentVersion,
             cards,
@@ -151,11 +191,7 @@ public static class DashboardSettingsDefaults
         var prefix = $"gpu.{index}";
         if (HasMetric(items, $"{prefix}.vram"))
         {
-            var small = GetExistingMetrics(
-                items,
-                $"{prefix}.vramPercent",
-                $"{prefix}.memoryClock",
-                $"{prefix}.graphicsClockPercent");
+            var small = GetExistingMetrics(items, GpuMetricIds(index, GpuVramDetails));
             var binding = CreateGpuBinding(index, gpuIdentityKeys);
             cards.Add(new DashboardCardSettings(
                 $"vram{index}",
@@ -171,7 +207,7 @@ public static class DashboardSettingsDefaults
         return new DashboardCardSettings(
             "cpu",
             "cpu.usage",
-            GetExistingMetrics(items, "cpu.frequency", "cpu.temperature", "cpu.actualPower"));
+            GetExistingMetrics(items, CpuDetails));
     }
 
     internal static DashboardCardSettings CreateMemoryCard(IReadOnlyDictionary<string, MetricValue>? items)
@@ -179,7 +215,7 @@ public static class DashboardSettingsDefaults
         return new DashboardCardSettings(
             "memory",
             "memory.usage",
-            GetExistingMetrics(items, "memory.percent", "memory.temperature"));
+            GetExistingMetrics(items, MemoryDetails));
     }
 
     internal static string[] CreateGpuUsageSmallMetrics(
@@ -192,12 +228,7 @@ public static class DashboardSettingsDefaults
         // "这是不是一块独立显卡"的替代判据 —— **AI SoC 就没有显存**，
         // 核显也没有，但它们的功耗该显示的时候一样要显示。
         // 一项要不要出现，只看它自己读不读得到。
-        var prefix = $"gpu.{index}";
-        return GetExistingMetrics(
-            items,
-            $"{prefix}.graphicsClock",
-            $"{prefix}.power",
-            $"{prefix}.temperature");
+        return GetExistingMetrics(items, GpuMetricIds(index, GpuUsageDetails));
     }
 
     internal static void AddCpuSensorCard(
@@ -212,7 +243,7 @@ public static class DashboardSettingsDefaults
         cards.Add(new DashboardCardSettings(
             "cpu-sensors",
             "cpu.fanRpm",
-            GetExistingMetrics(items, "cpu.coreVoltage", "cpu.packageCurrent")));
+            GetExistingMetrics(items, CpuSensorDetails)));
     }
 
     internal static void AddGpuSensorCard(
@@ -232,7 +263,7 @@ public static class DashboardSettingsDefaults
             return;
         }
 
-        var small = GetExistingMetrics(items, $"{prefix}.coreVoltage", $"{prefix}.current");
+        var small = GetExistingMetrics(items, GpuMetricIds(index, GpuSensorDetails));
         var binding = CreateGpuBinding(index, gpuIdentityKeys);
         cards.Add(new DashboardCardSettings(
             $"gpu{index}-sensors",
@@ -282,6 +313,8 @@ public static class DashboardSettingsDefaults
             }
         }
 
+        bars.Add(new ResourceBarSettings("resource-disk", ResourceBreakdownMetricIds.DiskIo, ResourceBreakdownScaleModes.Active));
+        bars.Add(new ResourceBarSettings("resource-network", ResourceBreakdownMetricIds.NetworkTraffic, ResourceBreakdownScaleModes.Active));
         return bars;
     }
 
@@ -380,7 +413,7 @@ public static class DashboardSettingsDefaults
 
     private static bool HasMetric(IReadOnlyDictionary<string, MetricValue>? items, string metricId)
     {
-        return items is null || items.ContainsKey(metricId);
+        return items?.ContainsKey(metricId) ?? BuiltInMetricIds.Contains(metricId);
     }
 
     private static string[] GetExistingMetrics(IReadOnlyDictionary<string, MetricValue>? items, params string[] metricIds)

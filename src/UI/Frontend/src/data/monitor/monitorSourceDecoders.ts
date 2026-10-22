@@ -39,6 +39,7 @@ export const metricSnapshotDecoder = defineResponseDecoder<MetricSnapshot>(
     return {
       version: 4,
       capturedAt,
+      catalogRevision: requireNonEmptyString(record.catalogRevision, "$.catalogRevision"),
       items
     };
   });

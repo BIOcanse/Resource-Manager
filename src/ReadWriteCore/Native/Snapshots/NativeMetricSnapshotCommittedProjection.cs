@@ -119,7 +119,10 @@ public static class NativeMetricSnapshotCommittedProjection
                     {
                         NpuEngine = binding.NpuEngine,
                         Device = binding.Device,
-                        RequestAliases = requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [],
+                        RequestAliases = (requestAliases.GetValueOrDefault(binding.MetricHandle) ?? [])
+                            .Append(MetricReadingSourceTracker.LegacyAddress(binding))
+                            .Where(static alias => alias.Length != 0)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                         AdapterKey = frame.Catalog.GpuScopeBindings.TryGetValue(binding.ScopeHandle, out var gpuBinding)
                             ? gpuBinding.AdapterLuid : null
                     }, StringComparer.Ordinal),

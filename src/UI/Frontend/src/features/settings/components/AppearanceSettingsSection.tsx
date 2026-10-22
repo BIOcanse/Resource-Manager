@@ -9,7 +9,6 @@ import {
 } from "../../../presentation/resourceBarFrameRate.ts";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
-  AppAdaptiveBooleanMode,
   AppAnimationMode,
   AppBarColorMode,
   AppFontSmoothing,
@@ -29,7 +28,6 @@ interface AppearanceSettingsSectionProps {
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
   onAnimationsChange: (animations: AppAnimationMode) => void;
-  onResourceBarHardwareAccelerationModeChange: (mode: AppAdaptiveBooleanMode) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -44,7 +42,6 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
     uiStyle: "standard" as AppUiStyle,
     theme: "system" as AppPalette,
     animations: "auto" as AppAnimationMode,
-    resourceBarHardwareAccelerationMode: "auto" as AppAdaptiveBooleanMode,
     barColorMode: "type" as AppBarColorMode,
     byteUnitMode: "native" as ByteUnitMode,
     fontSmoothing: "auto" as AppFontSmoothing,
@@ -91,18 +88,6 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           options={props.text.animationOptions}
           ariaLabel={props.text.appearance.animationTitle}
           onChange={props.onAnimationsChange}
-        />
-      </div>
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{props.text.appearance.resourceBarHardwareAccelerationTitle}</strong>
-          <span>{props.text.appearance.resourceBarHardwareAccelerationDescription}</span>
-        </div>
-        <SegmentedControl
-          value={appearance().resourceBarHardwareAccelerationMode ?? "auto"}
-          options={props.text.appearance.resourceBarHardwareAccelerationModeOptions}
-          ariaLabel={props.text.appearance.resourceBarHardwareAccelerationTitle}
-          onChange={props.onResourceBarHardwareAccelerationModeChange}
         />
       </div>
       <div class="settings-row">

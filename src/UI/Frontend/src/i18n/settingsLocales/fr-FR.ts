@@ -77,22 +77,15 @@ export default createSettingsLocale("fr-FR", {
   },
   "performance": {
     "smartMonitoringTitle": "Surveillance à la demande",
-    "smartMonitoringDescription": (seconds: number) => `Surveille uniquement quand les données sont utilisées, puis s’arrête après ${seconds} secondes d’inactivité.`,
+    "smartMonitoringDescription": "Activé : seules les mesures affichées par l’interface ou auxquelles elle est abonnée sont échantillonnées. Désactivé : toutes les mesures du catalogue sont échantillonnées, ce qui coûte davantage.",
     "adaptiveBooleanModeOptions": [
       {
-        "id": "auto",
-        "label": "Automatique",
-        "description": "Choisir automatiquement selon le mode de performance actuel."
-      },
-      {
         "id": "enabled",
-        "label": "Toujours activé",
-        "description": "Toujours activer ce paramètre."
+        "label": "Activé"
       },
       {
         "id": "disabled",
-        "label": "Toujours désactivé",
-        "description": "Toujours désactiver ce paramètre."
+        "label": "Désactivé"
       }
     ],
     "gpuPerformanceUseCasesTitle": "Usages du GPU",
@@ -117,25 +110,10 @@ export default createSettingsLocale("fr-FR", {
     "memoryOptimizationTargetDescription": "Au-dessus de la cible, la libération lente de niveau un continue sans déclencher de nettoyage d’urgence.",
     "physicalMemoryOptimizationTargetLabel": "Utilisation cible de mémoire physique %",
     "virtualMemoryOptimizationTargetLabel": "Utilisation cible de mémoire engagée %",
-    "pauseHiddenTitle": "Actualisation lorsque la fenêtre est masquée",
-    "pauseHiddenDescription": "En mode normal, les mises à jour de l’interface peuvent s’arrêter lorsque la fenêtre est masquée et reprendre dès son affichage.",
-    "frontendHiddenRefreshModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automatique",
-        "description": "Décider automatiquement selon le mode de performance actuel."
-      },
-      {
-        "id": "pauseWhenHidden",
-        "label": "Suspendre si masquée",
-        "description": "Suspendre les mises à jour de l’interface lorsque la fenêtre est masquée."
-      },
-      {
-        "id": "continueWhenHidden",
-        "label": "Continuer l’actualisation",
-        "description": "Continuer les mises à jour de l’interface lorsque la fenêtre est masquée."
-      }
-    ],
+    "moveDownDangerTitle": "Seuils de danger des transferts mémoire",
+    "moveDownDangerDescription": "Avant de transférer des données de la VRAM vers la mémoire physique, ou de la mémoire physique vers la mémoire virtuelle, la planification estime ce qui restera libre. En dessous de ces pourcentages, le transfert de ce logiciel est annulé pour ne pas reporter la pression sur le niveau suivant.",
+    "vramMoveDownPhysicalMemoryDangerLabel": "Depuis la VRAM : mémoire physique libre %",
+    "physicalMemoryMoveDownVirtualMemoryDangerLabel": "Depuis la mémoire : marge d’engagement %",
     "refreshCadenceTitle": "Fréquence d’actualisation",
     "refreshCadenceDescription": "Définissez la vitesse de mise à jour des mesures et états. Une fréquence élevée consomme un peu plus de ressources.",
     "presetNumericModeOptions": [
@@ -188,18 +166,6 @@ export default createSettingsLocale("fr-FR", {
         "label": "Tableau des ressources",
         "description": "Actualise la liste des ressources des logiciels et processus."
       },
-      "management": {
-        "label": "Composants et logiciels",
-        "description": "Actualise l’état des composants, les listes de logiciels et la progression des opérations."
-      },
-      "discovery": {
-        "label": "Migration des logiciels",
-        "description": "Actualise la progression des migrations et le contenu disponible."
-      },
-      "optimization": {
-        "label": "Optimisation des performances",
-        "description": "Actualise les rapports d’optimisation et l’état de l’ordonnancement."
-      },
       "localSystem": {
         "label": "Système local",
         "description": "Actualise les états locaux peu variables, comme la durée de fonctionnement."
@@ -213,25 +179,6 @@ export default createSettingsLocale("fr-FR", {
     "themeDescription": "Choisissez une palette du style actuel. Système suit le réglage clair ou sombre de Windows.",
     "animationTitle": "Animations",
     "animationDescription": "Choisissez des animations complètes, aucune animation ou des effets simplifiés pour réduire le coût de l’interface.",
-    "resourceBarHardwareAccelerationTitle": "Accélération matérielle des barres",
-    "resourceBarHardwareAccelerationDescription": "Utilisez la carte graphique pour améliorer l’animation des barres. Désactivez cette option en cas de problème d’affichage.",
-    "resourceBarHardwareAccelerationModeOptions": [
-      {
-        "id": "auto",
-        "label": "Automatique",
-        "description": "Conserver la fluidité au premier plan et réduire le coût en arrière-plan à faible consommation."
-      },
-      {
-        "id": "enabled",
-        "label": "Toujours activé",
-        "description": "Toujours utiliser l’accélération matérielle pour les barres."
-      },
-      {
-        "id": "disabled",
-        "label": "Toujours désactivé",
-        "description": "Toujours utiliser le rendu de compatibilité pour les barres."
-      }
-    ],
     "resourceBarFrameRateTitle": "Fréquence d’images des barres de ressources",
     "resourceBarFrameRateDescription": "Nombre d’images par seconde dessinées pendant les transitions des barres. Suivre l’écran utilise la fréquence de rafraîchissement du moniteur ; Personnalisé limite les images pour réduire la charge. S’applique uniquement avec les animations normales.",
     "resourceBarFrameRateModeOptions": [

@@ -40,9 +40,10 @@ public static class DashboardSettingsNormalizer
         return new DashboardSettings(
             preserveVersion ? settings.Version : DashboardSettingsDefaults.CurrentVersion,
             cards.Length == 0 ? defaults.Cards : cards,
-            resourceBars.Length == 0 ? defaults.ResourceBars : resourceBars,
+            settings.ResourceBars is null ? defaults.ResourceBars : resourceBars,
             resourceTableColumns.Length == 0 ? defaults.ResourceTableColumns : resourceTableColumns,
-            resourceTableProcessColumns.Length == 0 ? defaults.ResourceTableProcessColumns : resourceTableProcessColumns);
+            resourceTableProcessColumns.Length == 0 ? defaults.ResourceTableProcessColumns : resourceTableProcessColumns)
+        { UsesFactoryDefaults = settings.UsesFactoryDefaults };
     }
 
     private static DashboardCardSettings? NormalizeCard(DashboardCardSettings? card)

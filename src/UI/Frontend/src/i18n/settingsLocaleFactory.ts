@@ -37,11 +37,10 @@ const zhCnSettingsCopy: SettingsCopy = {
   },
   performance: {
     smartMonitoringTitle: "按需监控",
-    smartMonitoringDescription: (seconds) => `只在要显示的时候采，闲置 ${seconds} 秒停。`,
+    smartMonitoringDescription: "开启时只采样界面正在显示或订阅的读数；关闭时按读数目录全量采样，开销更大。",
     adaptiveBooleanModeOptions: [
-      { id: "auto", label: "自动调度", description: "按性能模式自动选。" },
-      { id: "enabled", label: "始终开启" },
-      { id: "disabled", label: "始终关闭" }
+      { id: "enabled", label: "开启" },
+      { id: "disabled", label: "关闭" }
     ],
     gpuPerformanceUseCasesTitle: "GPU 用途",
     gpuPerformanceUseCasesDescription: "选择主要用途，以更合适地比较不同显卡的能力。可多选。",
@@ -59,13 +58,10 @@ const zhCnSettingsCopy: SettingsCopy = {
     memoryOptimizationTargetDescription: "超过目标后慢慢释放，不做紧急清理。",
     physicalMemoryOptimizationTargetLabel: "物理内存目标使用率 %",
     virtualMemoryOptimizationTargetLabel: "提交量目标使用率 %",
-    pauseHiddenTitle: "窗口隐藏时刷新",
-    pauseHiddenDescription: "窗口看不见时停掉界面更新，重新显示立刻补上。",
-    frontendHiddenRefreshModeOptions: [
-      { id: "auto", label: "自动调度", description: "按性能模式自动决定。" },
-      { id: "pauseWhenHidden", label: "隐藏时暂停" },
-      { id: "continueWhenHidden", label: "隐藏也刷新" }
-    ],
+    moveDownDangerTitle: "下移危险阈值",
+    moveDownDangerDescription: "资源调度把显存数据移到物理内存、或把物理内存数据移到虚拟内存前，先估算移动后的剩余；低于这里的比例就放弃该软件的这次下移，避免把压力转到下一层。",
+    vramMoveDownPhysicalMemoryDangerLabel: "显存下移：物理内存剩余 %",
+    physicalMemoryMoveDownVirtualMemoryDangerLabel: "内存下移：提交额度剩余 %",
     refreshCadenceTitle: "信息更新频率",
     refreshCadenceDescription: "越快越费资源。",
     presetNumericModeOptions: [
@@ -84,9 +80,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     refreshCadenceItems: {
       monitor: { label: "监控快照 / 资源条", description: "监视控制台的数值和资源条" },
       resourceTable: { label: "资源表", description: "软件和进程列表" },
-      management: { label: "组件与软件", description: "组件状态和操作进度" },
-      discovery: { label: "软件迁移", description: "迁移进度和可迁移内容" },
-      optimization: { label: "性能优化", description: "优化报告和调度状态" },
       localSystem: { label: "本机状态", description: "开机时间等低频状态" }
     }
   },
@@ -97,13 +90,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     themeDescription: "选择当前风格提供的配色。跟随系统会按 Windows 的浅色或深色设置切换。",
     animationTitle: "动画效果",
     animationDescription: "选择完整动画、关闭动画，或进一步简化视觉以降低界面开销。",
-    resourceBarHardwareAccelerationTitle: "资源条硬件加速",
-    resourceBarHardwareAccelerationDescription: "使用显卡提升资源条动画流畅度；遇到显示异常时可以关闭。",
-    resourceBarHardwareAccelerationModeOptions: [
-      { id: "auto", label: "自动调度", description: "前台流畅，后台省开销。" },
-      { id: "enabled", label: "始终开启", description: "资源条走硬件加速。" },
-      { id: "disabled", label: "始终关闭", description: "资源条走兼容渲染。" }
-    ],
     resourceBarFrameRateTitle: "资源条动画帧率",
     resourceBarFrameRateDescription: "资源条过渡动画每秒画几帧。跟随屏幕按显示器刷新率画；自定义可限制帧数以降低开销。只在正常动画下生效。",
     resourceBarFrameRateModeOptions: [
@@ -354,11 +340,10 @@ const enSettingsCopy: SettingsCopy = {
   },
   performance: {
     smartMonitoringTitle: "On-demand monitoring",
-    smartMonitoringDescription: (seconds) => `Keep monitoring only while data is in use, then stop after ${seconds} seconds idle.`,
+    smartMonitoringDescription: "When on, only the readings the interface is showing or subscribed to are sampled. When off, every reading in the catalog is sampled, which costs more.",
     adaptiveBooleanModeOptions: [
-      { id: "auto", label: "Automatic", description: "Choose automatically for the current performance mode." },
-      { id: "enabled", label: "Always On", description: "Always enable this setting." },
-      { id: "disabled", label: "Always Off", description: "Always disable this setting." }
+      { id: "enabled", label: "On" },
+      { id: "disabled", label: "Off" }
     ],
     gpuPerformanceUseCasesTitle: "GPU use cases",
     gpuPerformanceUseCasesDescription: "Select the main workloads to compare GPU capabilities more appropriately. Multiple selections are allowed.",
@@ -376,13 +361,10 @@ const enSettingsCopy: SettingsCopy = {
     memoryOptimizationTargetDescription: "Usage above a target continues slow level-one release without triggering emergency cleanup.",
     physicalMemoryOptimizationTargetLabel: "Physical memory target usage %",
     virtualMemoryOptimizationTargetLabel: "Target commit usage %",
-    pauseHiddenTitle: "Refresh while hidden",
-    pauseHiddenDescription: "In normal mode, interface updates can pause while the window is hidden and resume immediately when shown.",
-    frontendHiddenRefreshModeOptions: [
-      { id: "auto", label: "Automatic", description: "Decide automatically for the current performance mode." },
-      { id: "pauseWhenHidden", label: "Pause when hidden", description: "Pause interface updates while the window is hidden." },
-      { id: "continueWhenHidden", label: "Keep refreshing", description: "Keep interface updates running while the window is hidden." }
-    ],
+    moveDownDangerTitle: "Move-down danger thresholds",
+    moveDownDangerDescription: "Before scheduling moves data from VRAM into physical memory, or from physical memory into virtual memory, it estimates what would remain free. Below these percentages, the move is skipped for that software so the pressure is not pushed onto the next tier.",
+    vramMoveDownPhysicalMemoryDangerLabel: "VRAM move-down: physical memory free %",
+    physicalMemoryMoveDownVirtualMemoryDangerLabel: "Memory move-down: commit headroom %",
     refreshCadenceTitle: "Information Update Frequency",
     refreshCadenceDescription: "Control how quickly monitoring information and status are updated. Faster updates use slightly more resources.",
     presetNumericModeOptions: [
@@ -401,9 +383,6 @@ const enSettingsCopy: SettingsCopy = {
     refreshCadenceItems: {
       monitor: { label: "Monitor Snapshot / Bars", description: "Refreshes live dashboard values and resource bars." },
       resourceTable: { label: "Resource Table", description: "Refreshes the software and process resource list." },
-      management: { label: "Components and Software", description: "Refreshes component state, software lists, and operation progress." },
-      discovery: { label: "Software migration", description: "Refreshes migration progress and available content." },
-      optimization: { label: "Performance optimization", description: "Refreshes optimization reports and scheduling status." },
       localSystem: { label: "Local System", description: "Refreshes low-frequency local status such as uptime." }
     }
   },
@@ -414,13 +393,6 @@ const enSettingsCopy: SettingsCopy = {
     themeDescription: "Choose one of the current style's palettes. System follows the Windows light or dark setting.",
     animationTitle: "Motion",
     animationDescription: "Choose full motion, no motion, or simplified visuals for lower interface overhead.",
-    resourceBarHardwareAccelerationTitle: "Resource Bar Hardware Acceleration",
-    resourceBarHardwareAccelerationDescription: "Use the graphics card to improve resource-bar animation. Turn it off if display issues occur.",
-    resourceBarHardwareAccelerationModeOptions: [
-      { id: "auto", label: "Automatic", description: "Stay smooth in the foreground and reduce cost in low-power background states." },
-      { id: "enabled", label: "Always On", description: "Always use hardware acceleration for resource bars." },
-      { id: "disabled", label: "Always Off", description: "Always use compatibility rendering for resource bars." }
-    ],
     resourceBarFrameRateTitle: "Resource Bar Frame Rate",
     resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Applies only with Normal motion.",
     resourceBarFrameRateModeOptions: [

@@ -88,6 +88,7 @@ public sealed class RuntimePlanCompiler(
             dashboardSettingsLoad,
             catalogSnapshot);
         if (persistenceCapabilities.MutablePersistenceEnabled
+            && catalogSnapshot is not null
             && !dashboardSettingsMigrator.AreEquivalent(
                 dashboardSettingsLoad.Settings,
                 dashboardSettings))
@@ -122,18 +123,12 @@ public sealed class RuntimePlanCompiler(
                 cpuTopology.CpuName,
                 cpuOverrides.ScoresByCoreIndex),
             CompiledOptimizationModePlan.Compile(settings.Performance.OptimizationMode),
-            new CompiledSelfLogicPlan(
-                settings.Performance.MonitorRefreshIntervalMs,
-                settings.Performance.ResourceTableRefreshIntervalMs,
-                settings.Performance.ManagementRefreshIntervalMs,
-                settings.Performance.DiscoveryRefreshIntervalMs,
-                settings.Performance.OptimizationRefreshIntervalMs,
-                settings.Performance.LocalSystemRefreshIntervalMs),
             CompileDiagnosticsPlan(settings.Debug),
             CompileMonitoringPlan(
                 dashboardSettings,
                 registeredSourceZoneIds,
-                firmwareProviderPlan))
+                firmwareProviderPlan,
+                catalogSnapshot))
         {
             RuntimeCapabilityConstrainedPaths = runtimeProjection.ConstrainedPaths,
             AutoStartEnabled = settings.SystemIntegration.AutoStartEnabled,
@@ -326,7 +321,8 @@ public sealed class RuntimePlanCompiler(
     private static CompiledMonitoringPlan CompileMonitoringPlan(
         DashboardSettings dashboardSettings,
         IReadOnlyList<string> registeredSourceZoneIds,
-        CompiledFirmwareProviderPlan firmwareProviderPlan)
+        CompiledFirmwareProviderPlan firmwareProviderPlan,
+        HardwareMetricSnapshot? catalogSnapshot)
     {
         var dashboardMetricIds = dashboardSettings.Cards
             .SelectMany(static card => new[] { card.Main }.Concat(card.Small ?? []))
@@ -346,10 +342,14 @@ public sealed class RuntimePlanCompiler(
             static bar => bar.MetricId.Trim(),
             static bar => ResourceBreakdownScaleModes.Normalize(bar.MetricId, bar.ScaleMode),
             StringComparer.OrdinalIgnoreCase);
+        var requestedMetricIds = dashboardSettings.UsesFactoryDefaults
+            ? dashboardMetricIds.Concat(DashboardSettingsDefaults.FactoryCandidateMetricIds(catalogSnapshot))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            : dashboardMetricIds;
 
         return new CompiledMonitoringPlan(
             dashboardMetricIds.Length > 0 ? dashboardMetricIds : CompiledMonitoringPlan.Default.DashboardMetricIds,
-            dashboardMetricIds.Length > 0 ? MetricSampleRequest.ForIds(dashboardMetricIds) : CompiledMonitoringPlan.Default.DashboardMetricRequest,
+            requestedMetricIds.Length > 0 ? MetricSampleRequest.ForIds(requestedMetricIds) : CompiledMonitoringPlan.Default.DashboardMetricRequest,
             resourceBarMetricIds.Length > 0 ? resourceBarMetricIds : CompiledMonitoringPlan.Default.ResourceBarMetricIds,
             resourceBarScaleModes.Count > 0 ? resourceBarScaleModes : CompiledMonitoringPlan.Default.ResourceBarScaleModes,
             CompileTableColumns(dashboardSettings.ResourceTableColumns, ResourceTableViewModes.Software),

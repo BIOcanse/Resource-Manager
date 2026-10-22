@@ -39,8 +39,8 @@ export type AppPalette =
   | "system" | "light" | "dark" | "lowContrast"
   | "paper" | "graphite" | "blueprint"
   | "phosphor" | "amber" | "ice";
-export type AppAdaptiveBooleanMode = "auto" | "enabled" | "disabled";
-export type AppFrontendHiddenRefreshMode = "auto" | "pauseWhenHidden" | "continueWhenHidden";
+// 只有开、关两档（按需监控用）；旧设置里的 auto 由归一化读成 enabled。
+export type AppAdaptiveBooleanMode = "enabled" | "disabled";
 export type AppAnimationMode = "auto" | "normal" | "none" | "ultra";
 // 资源条动画帧率：display = 跟随屏幕，custom = 按 resourceBarFrameRate 限帧；见 presentation/resourceBarFrameRate.ts。
 export type AppResourceBarFrameRateMode = "display" | "custom";
@@ -89,9 +89,6 @@ export type AppLogicRefreshIntervalPreset = "responsive" | "balanced" | "lowPowe
 export type AppLogicRefreshIntervalKey =
   | "monitor"
   | "resourceTable"
-  | "management"
-  | "discovery"
-  | "optimization"
   | "localSystem";
 export type SettingsSection = "performance" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
 
@@ -131,6 +128,8 @@ export interface MetricValue {
 export interface MetricSnapshot {
   version: 4;
   capturedAt: string | null;
+  /** 后端目录 owner 给的不透明标记，目录或读取项来源元数据变了才换；只比相等，不解析。 */
+  catalogRevision: string;
   items: Record<string, MetricValue>;
 }
 
@@ -181,6 +180,8 @@ export interface ResourceBarSettings {
 
 export interface DashboardSettings {
   version: number;
+  /** 只读：还是后端按本机目录展开的出厂布局。后端在用户保存时清掉它，前端保存不发这一项。 */
+  usesFactoryDefaults?: boolean;
   cards: DashboardCardSettings[];
   resourceBars: ResourceBarSettings[];
   resourceTableColumns: ResourceTableColumnSettings[];
@@ -226,10 +227,7 @@ export interface AppUpdateSettings {
 }
 
 export interface AppPerformanceSettings {
-  smartMonitoringEnabled: boolean;
-  monitoringIdleSeconds: number;
   optimizationMode: AppOptimizationMode;
-  pauseFrontendRefreshWhenHiddenInNormalMode: boolean;
   preciseGpuPlacementEnabled: boolean;
   vramMoveDownPhysicalMemoryDangerPercent: number;
   physicalMemoryMoveDownVirtualMemoryDangerPercent: number;
@@ -239,12 +237,8 @@ export interface AppPerformanceSettings {
   virtualMemoryOptimizationTargetUsagePercent: number;
   gpuPerformanceUseCases: AppGpuPerformanceUseCase[];
   smartMonitoringMode: AppAdaptiveBooleanMode;
-  frontendHiddenRefreshMode: AppFrontendHiddenRefreshMode;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;
-  managementRefreshIntervalMs: AppPresetNumericSetting;
-  discoveryRefreshIntervalMs: AppPresetNumericSetting;
-  optimizationRefreshIntervalMs: AppPresetNumericSetting;
   localSystemRefreshIntervalMs: AppPresetNumericSetting;
 }
 
@@ -312,8 +306,6 @@ export interface AppAppearanceSettings {
   // 当前风格下的配色。
   theme: AppPalette;
   animations?: AppAnimationMode;
-  resourceBarHardwareAccelerationEnabled?: boolean;
-  resourceBarHardwareAccelerationMode?: AppAdaptiveBooleanMode;
   resourceBarFrameRateMode?: AppResourceBarFrameRateMode;
   // custom 时的帧/秒（10–240）；display 时保留不用。
   resourceBarFrameRate?: number;

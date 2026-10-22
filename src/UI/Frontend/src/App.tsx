@@ -22,8 +22,7 @@ import { createMonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
-  normalizeBarColorMode,
-  resolveAdaptiveBooleanMode
+  normalizeBarColorMode
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
@@ -94,7 +93,6 @@ export default function App() {
         ? settings.settings().performance
         : undefined;
     },
-    optimizationMode: optimization.optimizationMode,
     management: {
       activeSubpage: management.activeSubpage,
       refreshState: management.refreshState,
@@ -110,7 +108,7 @@ export default function App() {
   const resourceTableIntervalMs = createMemo(() =>
     pageRefresh.cpuRuntimePlan().refreshIntervalMs.resourceTable);
   const monitor = createMonitorStore({
-    smartMonitoringEnabled: () => resolveAdaptiveBooleanMode(settings.settings().performance?.smartMonitoringMode, true),
+    smartMonitoringEnabled: () => settings.settings().performance?.smartMonitoringMode === "enabled",
     onMetricDependenciesRequested: () => void management.refreshComponents(),
     metricCatalogSource: frontendRuntime.sources.metricCatalog,
     dashboardSettingsSource: frontendRuntime.sources.dashboardSettings,
@@ -192,7 +190,7 @@ export default function App() {
 
     return uiText.page.monitor;
   });
-  const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled !== false);
+  const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
   const systemUptime = pageRefresh.systemUptime;
   const currentSelfScheduling = pageRefresh.selfScheduling;
   const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(
@@ -238,10 +236,6 @@ export default function App() {
 
   createEffect(() => {
     document.body.dataset.animations = gpuRuntimePlan().animations;
-  });
-
-  createEffect(() => {
-    document.body.dataset.resourceBarHardwareAcceleration = gpuRuntimePlan().resourceBarHardwareAcceleration ? "on" : "off";
   });
 
   createEffect(() => {

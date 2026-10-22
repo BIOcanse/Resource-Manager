@@ -146,6 +146,43 @@ public sealed class MetricReadingSourceSelectionTests
         Assert.Same(original, MetricReadingCatalog.Update(original, update with { WorkspaceIdentity = 9 }));
     }
 
+    [Theory]
+    [InlineData(MetricFieldCode.IgclGpuTemperature, "temperature")]
+    [InlineData(MetricFieldCode.IgclGpuIntervalPower, "power")]
+    [InlineData(MetricFieldCode.IgclGpuVoltage, "coreVoltage")]
+    public void IntelGpuComponentDemandAndPublicPreferenceUseTheSameRawField(MetricFieldCode code, string suffix)
+    {
+        var raw = Binding(1, 10, "intel.igcl", code, "intel-gpu") with { DisplayIndex = 2 };
+        var frame = Frame(raw);
+        var tracker = new MetricReadingSourceTracker();
+        var component = $"gpu.2.{suffix}";
+        Assert.Contains(raw.MetricId, tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds([component]), frame, 1).Ids);
+        tracker.Observe(frame, 1, [Complete(10, 1)]);
+        var selected = tracker.Select(frame, 1);
+        Assert.True(selected.Fields[1].IsPreferredSource);
+        Assert.Equal(1UL, selected.LegacyHandles[component]);
+        Assert.Equal(new[] { raw.MetricId }, tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds([component]), frame, 1).Ids);
+        tracker.Observe(frame, 1, [Complete(10) with { Status = NativeMetricSnapshotSourceStatus.Unavailable }]);
+        Assert.Equal(1UL, tracker.Select(frame, 1).LegacyHandles[component]);
+    }
+
+    [Fact]
+    public void SingularCpuTemperatureUsesStructuredFirstPackageWithoutMergingOtherPackagesOrCores()
+    {
+        var first = Binding(1, 10, "intel.msr", MetricFieldCode.IntelPackageDtsTemperature, "package-a") with
+        { Device = new MetricDeviceDescriptor("cpu_package", null, null, 0) };
+        var second = Binding(2, 10, "intel.msr", MetricFieldCode.IntelPackageDtsTemperature, "package-b") with
+        { Device = new MetricDeviceDescriptor("cpu_package", null, null, 1) };
+        var core = Binding(3, 10, "intel.msr", MetricFieldCode.IntelCoreDtsTemperature, "core-a");
+        var frame = Frame(first, second, core);
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 1, 2, 3)]);
+        var selected = tracker.Select(frame, 1);
+        Assert.Equal(1UL, selected.LegacyHandles["cpu.temperature"]);
+        Assert.Equal(3, selected.Fields.Values.Select(r => r.Id).Distinct().Count());
+        Assert.Equal(new[] { first.MetricId }, tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds(["cpu.temperature"]), frame, 1).Ids);
+    }
+
     private static NativeMetricSnapshotRuleCatalogBinding Temperature(ulong handle, ulong source, string sourceId)
         => Binding(handle, source, sourceId, MetricFieldCode.GpuTemperature, "gpu-opaque") with { LegacyMetricId = "gpu.0.temperature" };
 

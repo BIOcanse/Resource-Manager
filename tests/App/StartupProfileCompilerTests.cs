@@ -45,7 +45,7 @@ public sealed class StartupProfileCompilerTests
         var settings = AppSettingsDefaults.Create();
 
         Assert.Equal(AppOptimizationModes.Normal, settings.Performance.OptimizationMode);
-        Assert.True(settings.Performance.PreciseGpuPlacementEnabled);
+        Assert.False(settings.Performance.PreciseGpuPlacementEnabled);
         Assert.False(settings.PublicService.Enabled);
         Assert.False(settings.PublicService.FileIndexEnabled);
         Assert.False(settings.PublicService.DatabaseServiceEnabled);

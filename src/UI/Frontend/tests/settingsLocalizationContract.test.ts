@@ -29,7 +29,7 @@ assert.match(settingsLocaleFactory, /whole interface/);
 assert.match(settingsLoader, /settingsLanguageDescription: ""/);
 
 // Refresh interval edits stay local until the shared NumberField commits them.
-// 可见标签只写“自定义 (ms)”，不再把整行标题重复一遍；读屏名称仍带行标题，六行可区分。
+// 可见标签只写“自定义 (ms)”，不再把整行标题重复一遍；读屏名称仍带行标题，三行可区分。
 assert.match(performanceSettings, /<NumberField[\s\S]*?label=\{props\.text\.performance\.refreshCadenceCustomLabel\}[\s\S]*?ariaLabel=\{`\$\{itemText\(\)\.label\} \$\{props\.text\.performance\.refreshCadenceCustomLabel\}`\}[\s\S]*?min=\{500\}[\s\S]*?max=\{300000\}[\s\S]*?step=\{100\}[\s\S]*?onChange=\{\(value\) => updateLogicRefreshCustomValue\(key, value\)\}/);
 assert.match(settingsControls, /aria-label=\{props\.ariaLabel\}/);
 // 只显示当前模式生效的输入：锁定预设才有预设下拉框，自定义才有毫秒输入框，自动调度两者都没有。
