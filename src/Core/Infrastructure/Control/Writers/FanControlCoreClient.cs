@@ -466,16 +466,8 @@ public sealed partial class FanControlCoreClient(
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            /*
-             * 告诉核心 LibreHardwareMonitor 装在哪儿 —— 台式机主板风扇接头那条路要用它
-             * （它内置 PawnIO 的 LpcIO，不需要 WinRing0）。
-             *
-             * **由我们告诉它，不让它自己猜路径。** 组件目录的布局是这一侧的事；
-             * 核心猜一个相对路径，装法一变就找不到，而且找不到时报出来的原因会变成
-             * "这台机器没有主板风扇接头" —— 那是假的。
-             *
-             * 组件没装就不设这个变量，核心那边会如实说缺什么。
-             */
+            // Both telemetry and the desktop fan backend use the product's official core DLL.
+            // The host supplies the path; the child never searches a retired GUI installation.
             if (ResolveLibreHardwareMonitorPath() is { } libraryPath)
             {
                 start.Environment["FANCONTROLCORE_LHM_PATH"] = libraryPath;
@@ -499,17 +491,13 @@ public sealed partial class FanControlCoreClient(
     }
 
     /// <summary>
-    /// LibreHardwareMonitor 组件装在哪儿。没装就是 null。
-    ///
-    /// 它和风扇核心在同一个组件根目录下，各占一个子目录。
+    /// Product-shipped official core library directory, shared with the fan helper.
     /// </summary>
     private string? ResolveLibreHardwareMonitorPath()
     {
-        var path = Path.Combine(
-            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-            "Dependencies",
-            "librehardwaremonitor-provider");
-        return Directory.Exists(path) ? path : null;
+        // The official core library ships with this product; never depend on the retired GUI install.
+        var path = Path.GetDirectoryName(typeof(LibreHardwareMonitor.Hardware.Computer).Assembly.Location);
+        return path is not null && File.Exists(Path.Combine(path, "LibreHardwareMonitorLib.dll")) ? path : null;
     }
 
     private string? ResolveExecutablePath()

@@ -232,10 +232,12 @@ public sealed record MetricFieldDefinition(
     string Unit, string RequestTemplate, string? Meaning = null)
 {
     public string ValueKind { get; init; } = "float64";
+    // Populated per actual machine binding, never on the static registry entry.
+    public MetricReadingSource? Reading { get; init; }
     internal bool HasLegacyAddress { get; init; } = true;
 }
 
-public static class MetricFieldRegistry
+public static partial class MetricFieldRegistry
 {
     // This table is the contract; no field name is parsed to infer its meaning.
     private static IReadOnlyList<MetricFieldDefinition> BaseDefinitions { get; } =

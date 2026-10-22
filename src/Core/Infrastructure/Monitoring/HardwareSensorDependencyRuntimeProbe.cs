@@ -2,6 +2,7 @@ using System.Management;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite.Windows.Platform;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -41,69 +42,12 @@ internal static class HardwareSensorDependencyRuntimeProbe
 
     public static HardwareSensorDependencyRuntimeStatus ProbeLibreHardwareMonitor()
     {
-        var wmi = ProbeHardwareMonitorWmi();
-        if (wmi is not null)
-        {
-            return new HardwareSensorDependencyRuntimeStatus(
-                true,
-                true,
-                "RuntimeAvailable",
-                $"{wmi.Provider} WMI 可访问；实时读数还需要由监控项采样验证。",
-                wmi.Path);
-        }
-
-        var installPath = FindFirstExistingPath(CandidateLibreHardwareMonitorFiles());
-        if (installPath is not null)
-        {
-            return new HardwareSensorDependencyRuntimeStatus(
-                true,
-                false,
-                "InstalledUnverified",
-                "检测到 LibreHardwareMonitor 文件，但当前未发现可访问 WMI 传感命名空间；需要启动并开启传感暴露。",
-                installPath);
-        }
-
-        return new HardwareSensorDependencyRuntimeStatus(
-            false,
-            false,
-            "Missing",
-            "未检测到 LibreHardwareMonitor WMI 或本地依赖文件。",
-            null);
-    }
-
-    public static HardwareSensorDependencyRuntimeStatus ProbeNotebookFanControl()
-    {
-        var service = FindService(
-            "NBFCService",
-            "NoteBookFanControlService",
-            "NotebookFanControlService");
-        if (service is not null)
-        {
-            return new HardwareSensorDependencyRuntimeStatus(
-                true,
-                true,
-                "RuntimeAvailable",
-                $"检测到 NBFC 服务：{service}；读取风扇前还需要机型配置和只读桥接验证。",
-                service);
-        }
-
-        var installPath = FindFirstExistingPath(CandidateNotebookFanControlFiles());
-        if (installPath is not null)
-        {
-            return new HardwareSensorDependencyRuntimeStatus(
-                true,
-                false,
-                "InstalledUnverified",
-                "检测到 Notebook FanControl 文件，但未检测到服务；需要完成安装/配置后才能作为风扇 Provider。",
-                installPath);
-        }
-
-        return new HardwareSensorDependencyRuntimeStatus(
-            false,
-            false,
-            "Missing",
-            "未检测到 NBFC 服务或本地依赖文件。",
-            null);
+        var library = typeof(LibreHardwareMonitor.Hardware.Computer).Assembly.Location;
+        // Status reads never open the driver or enumerate sensors.
+        var installed = LibreHardwareMonitor.PawnIo.PawnIo.IsInstalled;
+        return new(true, false, installed ? "InstalledUnverified" : "DriverMissing",
+            installed ? "官方核心库与 PawnIO 已安装；传感器能力由实际采样确认。"
+                : "官方核心库已随产品提供；需要显式安装 PawnIO 驱动。", library);
     }
 
     private static IEnumerable<string> CandidateNvapiLibraries()
@@ -122,97 +66,6 @@ internal static class HardwareSensorDependencyRuntimeProbe
         {
             yield return Path.Combine(windowsDirectory, "SysWOW64", "nvapi.dll");
         }
-    }
-
-    private static HardwareMonitorWmiState? ProbeHardwareMonitorWmi()
-    {
-        return ProbeWmiNamespace("LibreHardwareMonitor", @"root\LibreHardwareMonitor")
-            ?? ProbeWmiNamespace("OpenHardwareMonitor", @"root\OpenHardwareMonitor");
-    }
-
-    private static HardwareMonitorWmiState? ProbeWmiNamespace(string provider, string path)
-    {
-        try
-        {
-            var scope = new ManagementScope(path);
-            scope.Connect();
-            using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT Identifier FROM Sensor"));
-            searcher.Options.ReturnImmediately = true;
-            searcher.Options.Timeout = TimeSpan.FromSeconds(2);
-            using var collection = searcher.Get();
-            using var enumerator = collection.GetEnumerator();
-            if (!enumerator.MoveNext())
-            {
-                return null;
-            }
-
-            using var first = enumerator.Current;
-            return new HardwareMonitorWmiState(provider, path);
-        }
-        catch (Exception ex) when (ex is ManagementException or UnauthorizedAccessException or COMException)
-        {
-            return null;
-        }
-    }
-
-    private static IEnumerable<string> CandidateLibreHardwareMonitorFiles()
-    {
-        foreach (var root in CandidateDependencyDirectories("librehardwaremonitor-provider", "LibreHardwareMonitor", "Libre Hardware Monitor"))
-        {
-            yield return Path.Combine(root, "LibreHardwareMonitor.exe");
-        }
-    }
-
-    private static IEnumerable<string> CandidateNotebookFanControlFiles()
-    {
-        foreach (var root in CandidateDependencyDirectories("notebook-fancontrol-provider", "NoteBook FanControl", "Notebook FanControl", "NBFC"))
-        {
-            yield return Path.Combine(root, "NBFC.exe");
-            yield return Path.Combine(root, "NoteBookFanControl.exe");
-            yield return Path.Combine(root, "NotebookFanControl.exe");
-        }
-    }
-
-    private static IEnumerable<string> CandidateDependencyDirectories(string componentId, params string[] names)
-    {
-        var packageRoot = PackagePathResolver.ResolvePackageRoot(AppContext.BaseDirectory);
-        yield return Path.Combine(packageRoot, "Dependencies", componentId);
-
-        var roots = new[]
-        {
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
-        };
-
-        foreach (var root in roots.Where(static item => !string.IsNullOrWhiteSpace(item)))
-        {
-            foreach (var name in names)
-            {
-                yield return Path.Combine(root, name);
-            }
-        }
-    }
-
-    private static string? FindService(params string[] serviceNames)
-    {
-        foreach (var serviceName in serviceNames)
-        {
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}");
-                if (key is not null)
-                {
-                    var imagePath = key.GetValue("ImagePath")?.ToString();
-                    return string.IsNullOrWhiteSpace(imagePath) ? serviceName : $"{serviceName} / {imagePath}";
-                }
-            }
-            catch
-            {
-                // Registry probing is best-effort for optional providers.
-            }
-        }
-
-        return null;
     }
 
     private static string? FindFirstExistingPath(IEnumerable<string> candidates)
@@ -253,7 +106,6 @@ internal static class HardwareSensorDependencyRuntimeProbe
         }
     }
 
-    private sealed record HardwareMonitorWmiState(string Provider, string Path);
 }
 
 internal sealed record HardwareSensorDependencyRuntimeStatus(

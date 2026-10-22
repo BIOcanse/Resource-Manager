@@ -38,6 +38,8 @@ $representativeInputs = @(
     [string]$manifest.projectPath,
     'Directory.Build.props',
     'src/Core/Configuration/FreedomPoints/backend.groups.json',
+    'src/UI/Frontend/src/domain/metricFieldsWire.ts',
+    'src/UI/Frontend/tests/wire-fixture.json',
     (Join-Path $productSdk 'Run-Stage.ps1'),
     (Join-Path $productSdk 'Get-DiskCheckpointNativeInputs.ps1'),
     (Join-Path $productSdk 'Save-AppTestOutputEvidence.ps1'),
@@ -54,12 +56,13 @@ $coordinatorInputs = @(
     (Join-Path $productSdk 'Get-AppTestCompileInputScope.ps1'),
     $PSCommandPath
 )
+$frontendTestInputs = @('src/UI/Frontend/tests/frontendWorkContract.test.ts','src/UI/Frontend/tests/settingsStore.test.ts','src/UI/Frontend/tests/example.test.tsx') | ForEach-Object { Join-Path $repositoryRoot $_ }
 $runtimeSelection = [IO.Path]::GetFullPath((Join-Path $productSdk 'Get-AppTestRuntimeSelection.ps1'))
 $selectedCompilePath = Join-Path ([IO.Path]::GetTempPath()) ('rm-app-test-selected-compile-' + [guid]::NewGuid().ToString('N') + '.txt')
 $rows = [Collections.Generic.List[object]]::new()
 foreach ($source in @($manifest.sourceFiles)) { $rows.Add([pscustomobject]@{path=[IO.Path]::GetFullPath([string]$source);sha256=('0' * 64)}) }
 $rows.Add([pscustomobject]@{path=[IO.Path]::GetFullPath([string]$unselected[0].FullPath);sha256=('1' * 64)})
-foreach ($path in $representativeInputs + $coordinatorInputs + @($runtimeSelection)) {
+foreach ($path in $representativeInputs + $coordinatorInputs + $frontendTestInputs + @($runtimeSelection)) {
     $rows.Add([pscustomobject]@{path=[IO.Path]::GetFullPath($path);sha256=('2' * 64)})
 }
 try {
@@ -77,6 +80,9 @@ try {
     Assert-InputScope (-not $scopedPaths.Contains([IO.Path]::GetFullPath([string]$unselected[0].FullPath))) 'Unselected test Compile source remained in stage inputs.'
     foreach ($path in $representativeInputs) {
         Assert-InputScope ($scopedPaths.Contains([IO.Path]::GetFullPath($path))) "App build/import/resource input was dropped: $path"
+    }
+    foreach ($path in $frontendTestInputs) {
+        Assert-InputScope (-not $scopedPaths.Contains([IO.Path]::GetFullPath($path))) "Frontend TS test remained in managed input scope: $path"
     }
     foreach ($path in $coordinatorInputs) {
         Assert-InputScope (-not $scopedPaths.Contains([IO.Path]::GetFullPath($path))) "Coordinator or review tool remained in stage inputs: $path"

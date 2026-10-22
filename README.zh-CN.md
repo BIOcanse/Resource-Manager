@@ -197,7 +197,7 @@ GPU 为独显，iGPU 为核显。
 | 设备类型 | 状态 | 范围 |
 | --- | --- | --- |
 | 💻 笔记本 | 🟡 | 兼容的 OEM 通道：自动 / 全速、固件曲线、软件曲线与占空比；需要 Fan Control Core，各项分别检测 |
-| 🖥️ 桌面主机 | 🟡 | Super I/O 主板接头已由 Fan Control Core + LibreHardwareMonitor 接入；AMD ADLX 风扇控制器已接最低转速、目标 RPM 和 Zero RPM，逐能力探测。USB / HID、NVIDIA 原生风扇写入、AMD 固件风扇曲线仍未完成 |
+| 🖥️ 桌面主机 | 🟡 | Super I/O 主板接头由 Fan Control Core + LibreHardwareMonitorLib（PawnIO）接入；AMD ADLX 风扇控制器已接最低转速、目标 RPM 和 Zero RPM，逐能力探测。USB / HID、NVIDIA 原生风扇写入、AMD 固件风扇曲线仍未完成 |
 
 仅有自动 / 全速接口的机器不提供任意定速；目标 RPM 与监测 RPM 分别显示。其他原设计缺口还包括 AMD CPU 电流 / 温度回读及命令校准、更多 SMU 调节项和 Linux 产品控制宿主；Fan Control Core 已有 Linux hwmon，不代表主产品已经支持 Linux。
 
@@ -233,8 +233,8 @@ GPU 为独显，iGPU 为核显。
 | 💾 USB 硬盘 | 🟡 | 健康状态 ✅；其他读数取决于 USB 桥接芯片 | Windows 存储接口 |
 | 🌐 网络 | ✅ | 逐网卡 17 项累计计数与收发速率；总吞吐与利用率 | Windows IP Helper、性能计数器 |
 | 🔋 电池 | ✅ | 电量、充放电功率、电源状态、设计 / 满充 / 剩余容量、电压、满充 / 设计容量比 | Windows 电池驱动 |
-| 🌀 笔记本风扇 | ✅ | 兼容的 Uniwill / 同方笔记本的 CPU 与 GPU 风扇转速（RPM 与 %）；其他品牌依靠 LibreHardwareMonitor（🟡） | 内置 OEM 读取，只读 |
-| 🌀 桌面风扇与主板传感器 | 🟡 | 风扇转速、主板 / VRM / 芯片组温度、主板电压、内存温度、通用 CPU 温度 | LibreHardwareMonitor，可选 |
+| 🌀 笔记本风扇 | ✅ | 兼容的 Uniwill / 同方笔记本的 CPU 与 GPU 风扇转速（RPM 与 %）；其他固件仍需按机型确认（🟡） | 内置 OEM 读取，只读 |
+| 🌀 桌面风扇与主板传感器 | 🟡 | 风扇转速、主板 / VRM / 芯片组温度、主板电压、内存温度 | LibreHardwareMonitorLib 核心库 + 显式安装的 PawnIO |
 | 📋 软件与进程 | ✅ | CPU、内存（含共享内存估算份额）、磁盘、网络、各 GPU 占用与显存 | Windows |
 
 <details>
@@ -251,7 +251,7 @@ GPU 为独显，iGPU 为核显。
 | 封装、核心、核显、DRAM 能量计数；封装与 DRAM 声明功耗限制 | — | 🟡 | Intel MSR |
 | 逐线程有效频率（活动期间平均频率，来自 APERF / MPERF） | — | 🟡 | Intel MSR |
 | 温度、功耗、电流与跨域限制状态（当前及已记录） | — | 🟡 | Intel MSR |
-| 通用 CPU 温度与桌面 CPU 风扇 | 🟡 | 🟡 | LibreHardwareMonitor（可选，WMI） |
+| CPU 温度与桌面 CPU 风扇 | 🟡 | 🟡 | CPU：原生 SMU / Intel DTS；桌面风扇：核心库 + PawnIO |
 
 SMU 温度是 SMU 报告的值，尚未确定对应 Tctl 还是 Tdie。Intel C-state 驻留与详细降频原因暂不提供，因为当前签名 IntelMSR 模块不允许读取所需寄存器。Intel 区间功率暂未提供，提供的是原始能量计数。
 
@@ -294,7 +294,7 @@ AMD 一列在 Radeon 610M 核显上检查；AMD 独显走同一 ADLX 路径，�
 | 物理内存、提交量、系统缓存、内核池；进程 / 线程 / 句柄数 | ✅ | Windows |
 | NUMA 节点可用内存与容量（单节点） | ✅ | Windows |
 | 多节点及纯内存 NUMA 节点 | 🟡 | Windows |
-| 内存温度 | 🟡 | LibreHardwareMonitor |
+| 内存温度 | 🟡 | LibreHardwareMonitorLib Memory 组 + PawnIO |
 | 全部磁盘的总活动时间、读写速率、队列长度 | ✅ | Windows 性能计数器 |
 | 硬盘健康状态（NVMe 与 USB） | ✅ | Windows 存储管理（MSFT_PhysicalDisk） |
 | 硬盘健康状态（SATA） | 🟡 | Windows 存储管理（MSFT_PhysicalDisk） |
@@ -307,7 +307,7 @@ AMD 一列在 Radeon 610M 核显上检查；AMD 独显走同一 ADLX 路径，�
 | 电池电量、充放电功率、电源状态、各项容量、电压、满充 / 设计容量比 | ✅ | Windows 电池驱动 |
 | 电池循环次数与剩余时间 | 🟡 | Windows 电池驱动，取决于电池固件 |
 | 兼容的 Uniwill / 同方笔记本的 CPU / GPU 风扇转速 | ✅ | 内置 OEM 读取（UWACPI，只读） |
-| 桌面风扇、主板 / VRM / 芯片组温度、主板电压 | 🟡 | LibreHardwareMonitor（可选，WMI） |
+| 桌面风扇、主板 / VRM / 芯片组温度、主板电压 | 🟡 | LibreHardwareMonitorLib 核心库 + 显式安装的 PawnIO |
 | 逐软件、逐进程的 CPU、内存、磁盘、网络、GPU 占用与显存 | ✅ | Windows 进程计数器、ETW、GPU 计数器 |
 
 </details>

@@ -64,6 +64,9 @@ internal sealed partial class WindowsPlatformSensorReader(
         IReadOnlyList<WindowsDiskPerformanceTarget> targets, CancellationToken token)
         => storageZone.ReadDiskPerformanceAsync(targets, token);
 
+    internal NativeMetricSnapshotOrdinalTopologyRead ReadHardwareMonitorFanIdentities(ulong generation)
+        => hardwareMonitorZone.ReadFanCatalog(generation);
+
     internal HardwareMonitorSensorSnapshot ReadHardwareMonitorSensors()
         => hardwareMonitorZone.ReadSensors();
 

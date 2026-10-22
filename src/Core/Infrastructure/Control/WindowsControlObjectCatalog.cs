@@ -290,7 +290,7 @@ public sealed class WindowsControlObjectCatalog(
         {
             ControlVendors.Nvidia => ("nvidia-nvapi-provider", "NVIDIA NVAPI Provider"),
             ControlVendors.Amd => ("amd-adlx-provider", "AMD ADLX / ADL Provider"),
-            _ => ("msi-afterburner", "MSI Afterburner")
+            _ => ((string?)null, (string?)null)
         };
 
         ControlCapability Card(
@@ -1077,7 +1077,7 @@ public sealed class WindowsControlObjectCatalog(
                         ControlVendors.Amd => (ControlChannels.Adlx,
                             "amd-adlx-provider", "AMD ADLX / ADL Provider"),
                         // 不认识的卡就不编链路：说不出走哪条，比说错强。
-                        _ => (null, "msi-afterburner", "MSI Afterburner")
+                        _ => (null, (string?)null, (string?)null)
                     };
             ordinal++;
             objects.Add(new ControlObject(
@@ -1118,8 +1118,8 @@ public sealed class WindowsControlObjectCatalog(
         string id,
         string label,
         string valueKind,
-        string componentId,
-        string componentName,
+        string? componentId,
+        string? componentName,
         ControlNumberRange? range = null,
         string accessLevel = ControlAccessLevels.Normal,
         string? channel = null)

@@ -54,8 +54,7 @@ is released; the caller's interval controls the next opening attempt. Dispose re
 session once and prevents reopening. The caller owns the reader lifetime independently of subscription.
 
 Product path selection, diagnostics and retry policy remain explicit host bindings.
-The unbound old Ryzen Master reader has no verified parameter
-layout and is not advertised as an implemented independent field provider.
+The unused Ryzen Master wrapper was removed; it decoded no verified fields. Telemetry uses the explicit PawnIO SMU reader.
 This batch's session/mapping evidence is recorded; no live SMU/tuning writes are certified.
 
 ## Original Intel MSR and AMD tuning operations
@@ -247,3 +246,15 @@ The OS owner exposes selected activation status rows, exact unexpanded registry 
 ## Selected physical disk performance
 
 The seven canonical `storage_all_*` performance fields use the existing `WindowsHardwareMetricOwner` capture and current publication. The optional `windows.disk-performance` source accepts a caller-owned typed `WindowsHardwareMetricResources.ReadDiskPerformanceAsync` producer; the default implementation verifies the existing exact ATA/NVMe physical identity on one opened disk-interface handle before two explicit performance queries. Rates and activity use one monotonic sample window, queue length is the end snapshot, and combined latency is weighted by completed operation counts. Zero operations have no latency value. `ObservedAt` identifies the end sample. Cached reads do not query. Each successful performance query is paired with a performance-OFF call on the same handle; failed, ambiguous or invalid windows publish unavailable selected values. `PARTMGR` provider coverage and real controller compatibility require separate device validation. The default 250 ms wait is configurable up to five seconds; this bounds the sample wait, not a synchronous driver call.
+
+## Motherboard and memory sensors
+
+`HardwareMonitorCoreReader` owns the official LibreHardwareMonitorLib 0.9.6 Computer.
+Only Motherboard and Memory are enabled. CPU, GPU, Storage, Network, Battery,
+Controller, PSU and PowerMonitor are disabled. Construction does not open hardware;
+selected reads open the shared session and Dispose closes it. The existing capture
+owner schedules collection. Reads retain upstream sensor identifiers and raw units;
+there is no GUI, listener, HTTP/WMI fallback, install or control call.
+The elapsed budget is checked between library operations; it cannot preempt a kernel
+call. Driver access requires the separately, explicitly installed PawnIO driver.
+MPL-2.0 library and LGPL-2.1 embedded-module notices accompany the package.

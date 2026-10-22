@@ -163,14 +163,12 @@ public static partial class MetricCatalog
     {
         return componentId switch
         {
+            "intel-msr-pawnio-provider" => "Intel CPU / PawnIO",
             "amd-smu-pawnio-provider" => "AMD SMU / PawnIO Provider",
-            "amd-ryzen-master-monitoring-sdk" => "AMD Ryzen Master Monitoring SDK",
-            "intel-pcm-provider" => "Intel PCM / MSR Provider",
             "nvidia-nvml-provider" => "NVIDIA NVML Provider",
             "nvidia-nvapi-provider" => "NVIDIA NVAPI Provider",
             "amd-adlx-provider" => "AMD ADLX / ADL Provider",
-            "librehardwaremonitor-provider" => "LibreHardwareMonitor Provider",
-            "notebook-fancontrol-provider" => "Notebook FanControl Provider",
+            "librehardwaremonitor-provider" => "LibreHardwareMonitor Core",
             "notebook-oem-fan-provider" => "Notebook OEM Fan Provider",
             _ => null
         };

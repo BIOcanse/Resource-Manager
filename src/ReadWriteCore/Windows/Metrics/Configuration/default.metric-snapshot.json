@@ -169,7 +169,7 @@
         "semantic_fingerprint": 11514769179777931343
       },
       {
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "source_handle": 12,
         "source_role": "metrics",
         "priority": 300,
@@ -756,7 +756,7 @@
       {
         "template_id": "cpu.fanRpm.wmi",
         "metric_id_template": "cpu.fanRpm",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "cpu",
         "metric_kind": "cpu_sensor",
         "value_kind": "float64",
@@ -775,7 +775,7 @@
       {
         "template_id": "cpu.fanPercent.wmi",
         "metric_id_template": "cpu.fanPercent",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "cpu",
         "metric_kind": "cpu_sensor",
         "value_kind": "float64",
@@ -834,7 +834,7 @@
       {
         "template_id": "cpu.temperature.wmi",
         "metric_id_template": "cpu.temperature",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "cpu",
         "metric_kind": "cpu_sensor",
         "value_kind": "float64",
@@ -853,7 +853,7 @@
       {
         "template_id": "memory.temperature.wmi",
         "metric_id_template": "memory.temperature",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "memory",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -872,7 +872,7 @@
       {
         "template_id": "system.motherboardTemperature.wmi",
         "metric_id_template": "system.motherboardTemperature",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "host",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -891,7 +891,7 @@
       {
         "template_id": "system.vrmTemperature.wmi",
         "metric_id_template": "system.vrmTemperature",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "host",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -910,7 +910,7 @@
       {
         "template_id": "system.chipsetTemperature.wmi",
         "metric_id_template": "system.chipsetTemperature",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "host",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -929,7 +929,7 @@
       {
         "template_id": "system.motherboardVoltage.wmi",
         "metric_id_template": "system.motherboardVoltage",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "host",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -1274,7 +1274,7 @@
       {
         "template_id": "fan.speed.wmi",
         "metric_id_template": "fan.{fan}.speed",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "system_fan",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",
@@ -1293,7 +1293,7 @@
       {
         "template_id": "fan.speedPercent.wmi",
         "metric_id_template": "fan.{fan}.speedPercent",
-        "source_id": "hardware-monitor.wmi",
+        "source_id": "hardware-monitor.core",
         "scope_expansion": "system_fan",
         "metric_kind": "custom_numeric",
         "value_kind": "float64",

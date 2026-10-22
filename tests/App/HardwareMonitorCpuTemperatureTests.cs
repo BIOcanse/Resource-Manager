@@ -32,7 +32,7 @@ public sealed class HardwareMonitorCpuTemperatureTests
         Assert.Equal(2, bindings.Length);
         Assert.Equal(2, bindings.Select(rule => rule.MetricHandle).Distinct().Count());
         Assert.Contains(bindings, rule => rule.SourceId == "amd.smu");
-        Assert.Contains(bindings, rule => rule.SourceId == "hardware-monitor.wmi");
+        Assert.Contains(bindings, rule => rule.SourceId == "hardware-monitor.core");
         Assert.Equal(Assert.Single(bindings, rule => rule.SourceId == "amd.smu").MetricHandle,
             projection.LegacyMetricHandles["cpu.temperature"]);
     }

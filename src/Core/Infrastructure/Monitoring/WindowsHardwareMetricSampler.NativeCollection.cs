@@ -92,7 +92,7 @@ public sealed partial class WindowsHardwareMetricSampler
         ReadNetworkIdentities = () => networkZone.ReadInterfaceIdentities(), ReadNetworkInterfaces = (devices, request) => networkZone.ReadInterfaces(devices, request),
         ReadSystemIo = request => systemIoZone.Read(request), ReadStorageIdentities = generation => WindowsStorageSensorsMonitoringZone.ReadIdentities(generation),
         ReadDiskPerformanceAsync = (targets, token) => platformSensorReader.ReadDiskPerformanceAsync(targets, token),
-        ReadFanIdentities = generation => HardwareMonitorWmiMonitoringZone.ReadFanIdentities(generation),
+        ReadFanIdentities = generation => platformSensorReader.ReadHardwareMonitorFanIdentities(generation),
         ReadStorageSensors = () => platformSensorReader.ReadStorageSensors(), ReadNvmeSensors = request => platformSensorReader.ReadNvmeSensors(request),
         ReadAtaSensors = request => platformSensorReader.ReadAtaSensors(request), ReadHardwareMonitor = () => platformSensorReader.ReadHardwareMonitorSensors(),
         ReadNotebookFans = () => platformSensorReader.ReadNotebookOemFanSensors(),

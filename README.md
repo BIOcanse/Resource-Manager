@@ -197,7 +197,7 @@ The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tu
 | Device type | Status | Scope |
 | --- | --- | --- |
 | 💻 Laptop | 🟡 | Compatible OEM channels: automatic / maximum speed, firmware curves, software curves and duty control. Fan Control Core required; each capability is detected separately |
-| 🖥️ Desktop | 🟡 | Super I/O motherboard headers use Fan Control Core + LibreHardwareMonitor. AMD ADLX fan controllers expose minimum speed, target RPM and Zero RPM when supported. USB / HID controllers, NVIDIA native fan writing and AMD firmware fan curves remain incomplete |
+| 🖥️ Desktop | 🟡 | Super I/O motherboard headers use Fan Control Core + LibreHardwareMonitorLib (PawnIO). AMD ADLX fan controllers expose minimum speed, target RPM and Zero RPM when supported. USB / HID controllers, NVIDIA native fan writing and AMD firmware fan curves remain incomplete |
 
 Automatic / maximum-only channels do not offer arbitrary fixed speed. Requested RPM and monitored RPM are separate values. Remaining design gaps also include AMD CPU current / temperature readback and command mapping, advanced SMU controls and the Linux product control host; existing Linux hwmon support in Fan Control Core does not establish full Linux product support.
 
@@ -233,8 +233,8 @@ A ✅ cell means the main readings of that column were verified on the machine n
 | 💾 USB drives | 🟡 | Health status ✅; other readings depend on the USB bridge | Windows storage APIs |
 | 🌐 Network | ✅ | Per interface: 17 cumulative counters and send / receive rate; total throughput and utilization | Windows IP Helper, performance counters |
 | 🔋 Battery | ✅ | Charge, charge / discharge rate, power state, design / full-charge / remaining capacity, voltage, full-to-design ratio | Windows battery driver |
-| 🌀 Laptop fans | ✅ | CPU and GPU fan speed (RPM and %) on compatible Uniwill / Tongfang laptops; other brands rely on LibreHardwareMonitor (🟡) | Built-in OEM reader, read-only |
-| 🌀 Desktop fans and motherboard sensors | 🟡 | Fan speed, motherboard / VRM / chipset temperature, motherboard voltage, memory temperature, generic CPU temperature | LibreHardwareMonitor, optional |
+| 🌀 Laptop fans | ✅ | CPU and GPU fan speed (RPM and %) on compatible Uniwill / Tongfang laptops; other firmware remains model dependent (🟡) | Built-in OEM reader, read-only |
+| 🌀 Desktop fans and motherboard sensors | 🟡 | Fan speed, motherboard / VRM / chipset temperature, motherboard voltage, memory temperature | LibreHardwareMonitorLib core + explicitly installed PawnIO |
 | 📋 Applications and processes | ✅ | CPU, memory with estimated shared-memory share, disk, network, per-GPU usage and VRAM | Windows |
 
 <details>
@@ -251,7 +251,7 @@ A ✅ cell means the main readings of that column were verified on the machine n
 | Energy counters for package, cores, graphics and DRAM; declared package and DRAM power limits | — | 🟡 | Intel MSR |
 | Effective frequency per thread (average while active, from APERF / MPERF) | — | 🟡 | Intel MSR |
 | Thermal, power, current and cross-domain limit status, current and logged | — | 🟡 | Intel MSR |
-| Generic CPU temperature and desktop CPU fan | 🟡 | 🟡 | LibreHardwareMonitor (optional, WMI) |
+| CPU temperature and desktop CPU fan | 🟡 | 🟡 | CPU: native SMU / Intel DTS; desktop fan: core library + PawnIO |
 
 The SMU temperature is the value the SMU reports; whether it is Tctl or Tdie is not established. Intel C-state residency and detailed throttle reasons are not available, because the current signed IntelMSR module does not permit those registers. Intel interval power is not provided yet; the raw energy counters are.
 
@@ -294,7 +294,7 @@ The verification machine has no NPU. Qualcomm NPUs run on Windows on Arm, which 
 | Physical memory, commit, system cache, kernel pools; process / thread / handle counts | ✅ | Windows |
 | NUMA node available memory and capacity, single node | ✅ | Windows |
 | NUMA with several nodes or memory-only nodes | 🟡 | Windows |
-| Memory temperature | 🟡 | LibreHardwareMonitor |
+| Memory temperature | 🟡 | LibreHardwareMonitorLib Memory group + PawnIO |
 | Total disk active time, read / write rate, queue length | ✅ | Windows performance counters |
 | Drive health status, NVMe and USB | ✅ | Windows storage management (MSFT_PhysicalDisk) |
 | Drive health status, SATA | 🟡 | Windows storage management (MSFT_PhysicalDisk) |
@@ -307,7 +307,7 @@ The verification machine has no NPU. Qualcomm NPUs run on Windows on Arm, which 
 | Battery charge, rate, power state, capacities, voltage, full-to-design ratio | ✅ | Windows battery driver |
 | Battery cycle count and remaining time | 🟡 | Windows battery driver; depends on the battery firmware |
 | Laptop CPU / GPU fan speed, compatible Uniwill / Tongfang laptops | ✅ | Built-in OEM reader (UWACPI, read-only) |
-| Desktop fans, motherboard / VRM / chipset temperature, motherboard voltage | 🟡 | LibreHardwareMonitor (optional, WMI) |
+| Desktop fans, motherboard / VRM / chipset temperature, motherboard voltage | 🟡 | LibreHardwareMonitorLib core + explicitly installed PawnIO |
 | Per-application and per-process CPU, memory, disk, network, GPU usage and VRAM | ✅ | Windows process counters, ETW, GPU counters |
 
 </details>

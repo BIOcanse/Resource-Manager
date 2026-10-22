@@ -133,11 +133,13 @@ toolchain are development tools, not applications automatically installed for
 users. Compiler-supplied code linked into a binary is a separate distribution
 question and must not be dismissed as build-only.
 
-NVML/NVAPI and AMD driver interfaces use the installed vendor drivers. Ryzen
-Master SDK, Intel PCM, PawnIO, LibreHardwareMonitor, Notebook FanControl, Windows
-Performance Toolkit, MSI Afterburner and LatencyMon are external or optional
-support. Listing them in credits does not bundle them, install them, replace
-their license terms or authorize redistributing their drivers.
+NVML/NVAPI and AMD driver interfaces use installed vendor drivers. PawnIO is
+an explicitly installed optional signed driver; the product does not silently
+install it. LibreHardwareMonitorLib 0.9.6 is the official unmodified MPL-2.0 core
+library, used only for motherboard and memory telemetry. Its signed embedded
+PawnIO modules retain their LGPL-2.1 terms; see the accompanying upstream notices.
+No LibreHardwareMonitor GUI, HTTP server, NBFC, Afterburner, Intel PCM, WPT,
+LatencyMon or Ryzen Master wrapper is a product dependency.
 
 ## Release assembly checks
 

@@ -1,9 +1,30 @@
 [
   {
+    "name": "BlackSharp.Core",
+    "version": "1.0.7",
+    "authors": "BlackSharp.Core",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "coverlet.collector",
+    "version": "6.0.4",
+    "license": "MIT",
+    "authors": "tonerdo",
+    "kind": "test dependency"
+  },
+  {
     "name": "Disk.ReadWrite",
     "version": "0.1.0",
     "license": "Not declared in package metadata",
     "authors": "BIOcanse",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "DiskInfoToolkit",
+    "version": "1.1.2",
+    "authors": "DiskInfoToolkit",
+    "license": "MPL-2.0",
     "kind": "managed dependency"
   },
   {
@@ -14,18 +35,18 @@
     "kind": "managed dependency"
   },
   {
-    "name": "ResourceManager.Ledger",
-    "version": "0.1.0-dev.2",
-    "license": "Not declared in package metadata",
-    "authors": "BIOcanse",
+    "name": "HidSharp",
+    "version": "2.6.4",
+    "authors": "James F. Bellinger",
+    "license": "LICENSE.txt",
     "kind": "managed dependency"
   },
   {
-    "name": "coverlet.collector",
-    "version": "6.0.4",
-    "license": "MIT",
-    "authors": "tonerdo",
-    "kind": "test dependency"
+    "name": "LibreHardwareMonitorLib",
+    "version": "0.9.6",
+    "authors": "LibreHardwareMonitorLib",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
   },
   {
     "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
@@ -385,6 +406,13 @@
     "kind": "runtime pack"
   },
   {
+    "name": "Mono.Posix.NETStandard",
+    "version": "1.0.0",
+    "authors": "Microsoft",
+    "license": "See package license URL",
+    "kind": "managed dependency"
+  },
+  {
     "name": "NETStandard.Library.Ref",
     "version": "2.1.0",
     "license": "MIT",
@@ -397,6 +425,139 @@
     "license": "MIT",
     "authors": "James Newton-King",
     "kind": "test dependency"
+  },
+  {
+    "name": "RAMSPDToolkit-NDD",
+    "version": "1.4.2",
+    "authors": "RAMSPDToolkit-NDD",
+    "license": "MPL-2.0",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "ResourceManager.Ledger",
+    "version": "0.1.0-dev.2",
+    "license": "Not declared in package metadata",
+    "authors": "BIOcanse",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.android-x86.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-bionic-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-bionic-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-arm.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-musl-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.linux-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.maccatalyst-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.maccatalyst-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.osx-arm64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
+    "name": "runtime.osx-x64.runtime.native.System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
   },
   {
     "name": "SourceGear.sqlite3",
@@ -455,11 +616,25 @@
     "kind": "test dependency"
   },
   {
+    "name": "System.IO.FileSystem.AccessControl",
+    "version": "5.0.0",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
+  },
+  {
     "name": "System.IO.Pipelines",
     "version": "10.0.0",
     "license": "MIT",
     "authors": "Microsoft",
     "kind": "adapter build dependency"
+  },
+  {
+    "name": "System.IO.Ports",
+    "version": "10.0.3",
+    "authors": "Microsoft",
+    "license": "MIT",
+    "kind": "managed dependency"
   },
   {
     "name": "System.Management",
@@ -572,5 +747,19 @@
     "license": "Apache-2.0",
     "authors": "jnewkirk,bradwilson",
     "kind": "test dependency"
+  },
+  {
+    "name": "Microsoft.NET.ILLink.Tasks",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
+  },
+  {
+    "name": "Microsoft.NETCore.App.Crossgen2.win-x64",
+    "version": "10.0.8",
+    "license": "MIT",
+    "authors": "Microsoft",
+    "kind": "publish tool"
   }
 ]

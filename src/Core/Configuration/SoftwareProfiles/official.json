@@ -439,14 +439,6 @@
       "assignmentReason": "驱动、输入、显示或硬件控制路径。"
     },
     {
-      "softwareId": "dependency-support:amd-ryzen-master-monitoring-sdk",
-      "displayName": "AMD Ryzen Master Monitoring SDK",
-      "kind": "DependencySupport",
-      "state": "downloadable",
-      "assignedGroupId": "dependency.telemetry-provider",
-      "assignmentReason": "依赖/支持组件由组件页管理。"
-    },
-    {
       "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-amd-catalyst-install-manager",
       "displayName": "AMD Software",
       "kind": "Other",
@@ -653,14 +645,6 @@
       "state": "installed",
       "assignedGroupId": "meeting-capture-password",
       "assignmentReason": "会议、录制或密码管理。"
-    },
-    {
-      "softwareId": "dependency-support:latencymon",
-      "displayName": "LatencyMon",
-      "kind": "DependencySupport",
-      "state": "installed",
-      "assignedGroupId": "dependency.telemetry-provider",
-      "assignmentReason": "依赖/支持组件由组件页管理。"
     },
     {
       "softwareId": "windows-installed:currentuser-registry64-software-microsoft-windows-currentversion-uninstall-c6dbe996-22a9-5998-b542-7abe33da3b83",
@@ -1023,14 +1007,6 @@
       "assignmentReason": "驱动、输入、显示或硬件控制路径。"
     },
     {
-      "softwareId": "dependency-support:msi-afterburner",
-      "displayName": "MSI Afterburner",
-      "kind": "DependencySupport",
-      "state": "installed",
-      "assignedGroupId": "dependency.telemetry-provider",
-      "assignmentReason": "依赖/支持组件由组件页管理。"
-    },
-    {
       "softwareId": "windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall--c8a53c34-e7c8-43d1-955b-a535a94082f0",
       "displayName": "Node.js",
       "kind": "Other",
@@ -1357,14 +1333,6 @@
       "state": "installed",
       "assignedGroupId": "driver-input-hardware",
       "assignmentReason": "驱动、输入、显示或硬件控制路径。"
-    },
-    {
-      "softwareId": "dependency-support:windows-performance-toolkit",
-      "displayName": "Windows Performance Toolkit",
-      "kind": "DependencySupport",
-      "state": "installed",
-      "assignedGroupId": "dependency.telemetry-provider",
-      "assignmentReason": "依赖/支持组件由组件页管理。"
     },
     {
       "softwareId": "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall--b09b3bef-7c75-4e26-ae6b-f6cdeb0fb071",

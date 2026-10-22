@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.ReadWrite.Fields;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -69,6 +70,22 @@ public sealed class DashboardMonitoringCatalogState
         changed?.Invoke();
     }
 
+    public bool PublishReadingMetadata(HardwareMetricSnapshot snapshot)
+    {
+        Action? changed;
+        lock (gate)
+        {
+            if (current is null) return false;
+            var next = MetricReadingCatalog.Update(current, snapshot);
+            if (ReferenceEquals(next, current)) return false;
+            Volatile.Write(ref current, next);
+            identity = CatalogIdentity.Create(next);
+            changed = Changed;
+        }
+        changed?.Invoke();
+        return true;
+    }
+
     private static bool IsGpuCoreMetric(string metricId)
     {
         if (!metricId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase))
@@ -111,7 +128,7 @@ public sealed class DashboardMonitoringCatalogState
                 snapshot.CatalogGeneration,
                 string.Join('|', adapterIdentity.Concat(metricIdentity).Concat(snapshot.FieldBindings.Values
                     .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
-                    .Select(static binding => $"{binding.DeviceIdentity}:{binding.RequestAddress}:{binding.SourceId}"))));
+                    .Select(static binding => $"{binding.DeviceIdentity}:{binding.RequestAddress}:{binding.SourceId}:{binding.Field.Reading}"))));
         }
     }
 }

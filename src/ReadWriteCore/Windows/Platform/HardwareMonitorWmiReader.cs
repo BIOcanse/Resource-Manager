@@ -18,7 +18,15 @@ public sealed partial class HardwareMonitorWmiReader
         {
             var result = query(provider, "SELECT Identifier, Name, Parent, SensorType FROM Sensor", queryTimeout);
             if (result.Error is not null) continue;
-            var identities = result.Rows.Where(static row => IsSensorType(row, "Fan") && !IsCpuFanSensor(row) && !IsGpuFanSensor(row))
+            return ProjectFanIdentities(provider, result);
+        }
+        return new(false, []);
+    }
+
+    internal static HardwareMonitorFanIdentityRead ProjectFanIdentities(string provider, QueryResult result)
+    {
+        if (result.Error is not null) return new(false, []);
+        var identities = result.Rows.Where(static row => IsSensorType(row, "Fan") && !IsCpuFanSensor(row) && !IsGpuFanSensor(row))
                 .Where(static row => !string.IsNullOrWhiteSpace(ReadString(row, "Identifier")))
                 .GroupBy(static row => ReadString(row, "Identifier"), StringComparer.Ordinal)
                 .Where(static group => group.Count() == 1)
@@ -31,9 +39,7 @@ public sealed partial class HardwareMonitorWmiReader
                     SensorIdentifier = ReadString(row, "Identifier"),
                     NameDeclared = ReadString(row, "Name")
                 }).ToArray();
-            return new(true, identities);
-        }
-        return new(false, []);
+        return new(true, identities);
     }
 
     private static string FanIdentity(string provider, string identifier) => provider + "|" + identifier;
@@ -83,10 +89,11 @@ public sealed partial class HardwareMonitorWmiReader
         return query(path, "SELECT Identifier, Name, HardwareType FROM Hardware", timeout);
     }
 
-    private static HardwareMonitorSensorSnapshot BuildHardwareMonitorSnapshot(
+    internal static HardwareMonitorSensorSnapshot BuildHardwareMonitorSnapshot(
         string provider,
         QueryResult result,
-        QueryResult hardware)
+        QueryResult hardware,
+        string? providerIdentity = null)
     {
         if (result.Error is not null && result.Rows.Count == 0)
         {
@@ -100,7 +107,7 @@ public sealed partial class HardwareMonitorWmiReader
                 null,
                 null,
                 [],
-                []);
+                []) { CatalogComplete = false };
         }
 
         var hardwareByIdentifier = BuildHardwareMap(hardware.Rows);
@@ -191,8 +198,8 @@ public sealed partial class HardwareMonitorWmiReader
                 FindMatchingControlPercent(controlRows, row),
                 ReadString(row, "Name") ?? string.Empty)
             {
-                IdentityKey = FanIdentity(provider == "LibreHardwareMonitor WMI"
-                    ? @"root\LibreHardwareMonitor" : @"root\OpenHardwareMonitor", ReadString(row, "Identifier")!)
+                IdentityKey = FanIdentity(providerIdentity ?? (provider == "LibreHardwareMonitor WMI"
+                    ? @"root\LibreHardwareMonitor" : @"root\OpenHardwareMonitor"), ReadString(row, "Identifier")!)
             })
             .ToArray();
         var gpuSensors = BuildGpuSensorSnapshots(provider, result.Rows, hardwareByIdentifier);
@@ -220,7 +227,17 @@ public sealed partial class HardwareMonitorWmiReader
             cpuFanPercent,
             systemFans,
             gpuSensors,
-            cpuTemperature);
+            cpuTemperature)
+        {
+            CatalogComplete = result.Error is null,
+            CpuTemperatureSensorIdentifier = SelectCpuTemperatureRow(temperatureRows, hardwareByIdentifier)
+                is { } cpuRow ? ReadString(cpuRow, "Identifier") : null,
+            CpuTemperatureReadingKind = SelectCpuTemperatureRow(temperatureRows, hardwareByIdentifier)
+                is { } selectedCpu && (ReadString(selectedCpu, "Name") ?? "").Contains("Tctl", StringComparison.OrdinalIgnoreCase)
+                    ? "cpu.control_temperature" : "cpu.temperature_reported",
+            SensorIdentifiers = result.Rows.Select(static row => ReadString(row, "Identifier"))
+                .Where(static id => !string.IsNullOrWhiteSpace(id)).Select(static id => id!).ToArray()
+        };
     }
 
     private static IReadOnlyDictionary<string, HardwareMonitorHardwareInfo> BuildHardwareMap(

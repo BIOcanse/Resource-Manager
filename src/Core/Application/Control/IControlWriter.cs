@@ -3,7 +3,7 @@ using ResourceManager.App.Domain.Control;
 namespace ResourceManager.App.Application.Control;
 
 /// <summary>
-/// 一条真正能写硬件的路径：NVAPI、ADLX、NBFC 各一个。
+/// 一条真正能写硬件的路径：NVAPI、ADLX、OEM 固件 各一个。
 ///
 /// **"这一项现在能不能写"只有写入器知道，所以由它回答。**
 /// 目录只描述能力的形状（叫什么、是数值还是曲线），能不能用、为什么不能用、

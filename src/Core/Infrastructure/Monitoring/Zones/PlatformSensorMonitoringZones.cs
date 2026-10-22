@@ -13,8 +13,10 @@ public sealed partial class WindowsStorageSensorsMonitoringZone : MonitoringSour
     }
 }
 
-public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZone
+public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZone, IDisposable
 {
+    private readonly ResourceManager.ReadWrite.Windows.Platform.HardwareMonitorCoreReader coreReader = new();
+    public void Dispose() => coreReader.Dispose();
     public HardwareMonitorWmiMonitoringZone()
         : base(MonitoringSourceZoneIds.HardwareMonitorWmi)
     {

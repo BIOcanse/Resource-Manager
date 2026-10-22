@@ -38,16 +38,7 @@ public sealed class ProviderRuntimeProbe(
                 adlx.LibraryPath);
         }
 
-        if (componentId.Equals("amd-ryzen-master-monitoring-sdk", StringComparison.OrdinalIgnoreCase))
-        {
-            var ryzen = AmdRyzenMasterRuntimeProbe.Probe();
-            return new ComponentProviderRuntimeProbeResult(
-                ryzen.RuntimeAvailable,
-                ryzen.CpuParametersExportAvailable,
-                ryzen.State,
-                ryzen.Message,
-                ryzen.PlatformLibraryPath);
-        }
+
 
         if (componentId.Equals("amd-smu-pawnio-provider", StringComparison.OrdinalIgnoreCase))
         {
@@ -91,16 +82,7 @@ public sealed class ProviderRuntimeProbe(
                 hardwareMonitor.RuntimePath);
         }
 
-        if (componentId.Equals("notebook-fancontrol-provider", StringComparison.OrdinalIgnoreCase))
-        {
-            var nbfc = HardwareSensorDependencyRuntimeProbe.ProbeNotebookFanControl();
-            return new ComponentProviderRuntimeProbeResult(
-                nbfc.RuntimeAvailable,
-                nbfc.PrimaryCapabilityAvailable,
-                nbfc.State,
-                nbfc.Message,
-                nbfc.RuntimePath);
-        }
+
 
         if (componentId.Equals(NotebookOemFanSensorReader.ComponentId, StringComparison.OrdinalIgnoreCase))
         {

@@ -132,6 +132,6 @@ public sealed class HardwareMonitorWmiReaderLibraryIntegrationTests
         var rawGpu = Assert.Single(raw.GpuSensors);
         Assert.Equal(rawGpu.Name, Assert.Single(formatted.GpuSensors).Name);
         Assert.Equal(MetricDisplayDetailFormatter.SensorDetail(rawGpu.Name, "GPU sensor 0"), Assert.Single(formatted.GpuSensors).Detail);
-        Assert.Equal("已读取内存温度、主板传感、风扇或 GPU 后备传感器。", formatted.ProviderState.Message);
+        Assert.Equal("已读取内存温度、主板传感或风扇。", formatted.ProviderState.Message);
     }
 }

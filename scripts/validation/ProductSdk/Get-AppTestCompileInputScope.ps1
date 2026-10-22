@@ -160,6 +160,13 @@ function Get-AppTestScopedInputRows(
         if ([string]::IsNullOrWhiteSpace($rawPath)) { continue }
         $fullPath = Get-AppTestFullPath $rawPath $scope.repositoryRoot
         $extension = [IO.Path]::GetExtension($fullPath)
+        # Frontend TypeScript tests are neither managed Compile items nor app
+        # resources. Their own frontend gate seals them; keep production TS and
+        # JSON fixtures in this scope because managed tests can consume those.
+        if ($extension -iin @('.ts', '.tsx') -and
+            (Test-AppTestPathUnder $fullPath (Join-Path $scope.repositoryRoot 'src/UI/Frontend/tests'))) {
+            continue
+        }
         if ($extension -ieq '.cs' -and (Test-AppTestPathUnder $fullPath $testRoot)) {
             if (-not $scope.selectedSources.Contains($fullPath)) { continue }
             [void]$capturedSources.Add($fullPath)

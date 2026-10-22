@@ -794,8 +794,13 @@ public sealed partial class WindowsHardwareMetricSampler :
                     StringComparison.OrdinalIgnoreCase));
 
     internal void PublishCompletedDatasets(IEnumerable<string> datasetIds)
-        => publicationSignal.Publish(MetricDatasetIds.ExpandBoundSystemDatasets(
-            datasetIds, ReadCachedSnapshot()?.FieldBindings.Values ?? []));
+    {
+        var snapshot = ReadCachedSnapshot();
+        var metadataChanged = snapshot is not null && dashboardMonitoringCatalog.PublishReadingMetadata(snapshot);
+        publicationSignal.Publish(MetricDatasetIds.ExpandBoundSystemDatasets(
+            metadataChanged ? datasetIds.Append(MetricDatasetIds.SystemMetricCatalog) : datasetIds,
+            snapshot?.FieldBindings.Values ?? []));
+    }
 
     private MetricSampleRequest? CreateMetricSampleRequest(
         IReadOnlyList<string> itemIds,

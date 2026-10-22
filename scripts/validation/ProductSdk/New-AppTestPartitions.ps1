@@ -6,7 +6,10 @@ param(
     [ValidateRange(1,32)][int]$PartitionCount=6,
     [ValidateRange(262144,67108864)][long]$MaximumPartitionSourceBytes=1887436,
     [ValidateSet('All','DependencyClosure')][string]$SharedSourceMode='All',
-    [string]$PreservePlanPath
+    [string]$PreservePlanPath,
+    # Optional focused compile selection. Reuses the same parsed Compile graph;
+    # it does not assign full-App partitions or claim full-App coverage.
+    [string]$RootSourceListPath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -153,6 +156,51 @@ function Shared-Closure($MemberRows) {
     }
     while($queue.Count -gt 0){foreach($other in $rows[$queue.Dequeue()].dependencies){if(-not $rows[$other].bound -and $selected.Add($other)){$queue.Enqueue($other)}}}
     return @($selected|ForEach-Object {$rows[$_]}|Sort-Object path)
+}
+if(-not [string]::IsNullOrWhiteSpace($RootSourceListPath)) {
+    if($PartitionCount -ne 1 -or $SharedSourceMode -cne 'DependencyClosure' -or
+        -not [string]::IsNullOrWhiteSpace($PreservePlanPath)) {
+        throw 'Focused source selection requires PartitionCount 1, DependencyClosure and no PreservePlanPath.'
+    }
+    $rootList=[IO.Path]::GetFullPath($RootSourceListPath)
+    if(-not [IO.File]::Exists($rootList) -or ([IO.FileInfo]$rootList).Length -gt 1048576){throw 'Focused roots must be an existing JSON list no larger than 1 MiB.'}
+    $roots=@(Get-Content -LiteralPath $rootList -Raw|ConvertFrom-Json)
+    if($roots.Count -lt 1 -or $roots.Count -gt 4096){throw 'Focused source selection requires 1-4096 roots.'}
+    $indices=[Collections.Generic.Dictionary[string,int]]::new([StringComparer]::OrdinalIgnoreCase)
+    for($index=0;$index -lt $rows.Count;$index++){$indices.Add($rows[$index].path,$index)}
+    $selected=[Collections.Generic.HashSet[int]]::new()
+    $queue=[Collections.Generic.Queue[int]]::new()
+    foreach($path in $roots) {
+        if($path -isnot [string] -or -not [IO.Path]::IsPathFullyQualified($path) -or -not $indices.ContainsKey([IO.Path]::GetFullPath($path))){throw 'Every focused root must be an actual original Compile item.'}
+        $index=$indices[[IO.Path]::GetFullPath($path)]
+        if($selected.Add($index)){$queue.Enqueue($index)}
+    }
+    foreach($row in $alwaysShared){$index=$rows.IndexOf($row);if($selected.Add($index)){$queue.Enqueue($index)}}
+    while($queue.Count -gt 0) {
+        foreach($other in $rows[$queue.Dequeue()].dependencies) {
+            if($selected.Add($other)){$queue.Enqueue($other)}
+        }
+    }
+    $chosen=@($selected|ForEach-Object {$rows[$_]}|Sort-Object path)
+    $bytes=[long](($chosen|Measure-Object bytes -Sum).Sum)
+    if($bytes -gt $MaximumPartitionSourceBytes){throw 'Focused roots and their complete dependency closure exceed the source-byte cap; no dependency was omitted.'}
+    [void][IO.Directory]::CreateDirectory($output)
+    $sourceListPath=Join-Path $output 'focused-sourceList.txt'
+    [IO.File]::WriteAllLines($sourceListPath,[string[]]@($chosen|ForEach-Object path),$utf8)
+    # Consume this through the existing original-project Compile filtering route.
+    # Its imports, references and embedded resources remain owned by that project;
+    # no manually copied temporary csproj is required.
+    $result=[ordered]@{
+        schemaVersion=1;scope='focused-compile-dependency-closure';partitionId='focused';projectPath=$project
+        sourceListPath=$sourceListPath
+        originalCompileMetadata=@{path=$inputPath;sha256=(Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash}
+        roots=@($roots);sourceFiles=@($chosen|ForEach-Object path);sourceBytes=$bytes
+        files=@($chosen|Select-Object path,bytes,sha256);fullAppCoverageClaimed=$false
+    }
+    $resultPath=Join-Path $output 'focused-compile-closure.json'
+    Write-Json $resultPath $result
+    [pscustomobject]@{path=$resultPath;sourceCount=$chosen.Count;sourceBytes=$bytes;fullAppCoverageClaimed=$false}|ConvertTo-Json -Compress
+    return
 }
 if($dependencyScoped){foreach($bucket in $buckets){$bucket.bytes=0L}}
 

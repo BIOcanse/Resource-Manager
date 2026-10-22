@@ -44,6 +44,7 @@ public sealed record DeviceMetricFieldValue(
     public byte[]? BytesValue { get; init; }
     public bool? BooleanValue { get; init; }
     public ulong? SampleDurationMilliseconds { get; init; }
+    public MetricReadingSource? Reading { get; init; }
 }
 
 public sealed record DeviceMetricFieldSnapshot(
@@ -139,7 +140,8 @@ public static class MetricDeviceFields
                         ValueKind = binding.Field.ValueKind,
                         BytesValue = current ? value?.BytesValue : null,
                         BooleanValue = current ? value?.BooleanValue : null,
-                        SampleDurationMilliseconds = current ? value?.SampleDurationMilliseconds : null
+                        SampleDurationMilliseconds = current ? value?.SampleDurationMilliseconds : null,
+                        Reading = binding.Field.Reading
                     };
                 }).ToArray())
                 { Device = descriptors[group.Key] };

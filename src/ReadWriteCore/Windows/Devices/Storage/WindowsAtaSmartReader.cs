@@ -185,7 +185,15 @@ public static class WindowsAtaSmartReader
             }
             if (i + 1 == count)
             {
-                if (next != 0) return false;
+                // Some Windows storage stacks terminate the counted list with
+                // the aligned end offset, rather than zero. Accept that exact
+                // boundary only; never follow it or accept another hidden ID.
+                if (next != 0)
+                {
+                    if (next < 16 + length || (ulong)offset + next != size) return false;
+                    foreach (var padding in identifier.Slice(16 + length, next - 16 - length))
+                        if (padding != 0) return false;
+                }
             }
             else
             {

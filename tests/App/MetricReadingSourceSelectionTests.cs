@@ -1,0 +1,180 @@
+using System.Collections.Immutable;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Infrastructure.Monitoring;
+using ResourceManager.ReadWrite.Fields;
+using ResourceManager.ReadWrite.Native;
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed class MetricReadingSourceSelectionTests
+{
+    [Fact]
+    public void PreferredSourceAndLegacySchedulingAddressUseTheSameDecisionWithoutRemovingRawFields()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx"));
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 1), Complete(20, 2)]);
+        var selection = tracker.Select(frame, 1);
+        Assert.Equal(2, selection.Fields.Count);
+        Assert.Equal(selection.Fields[1].Id, selection.Fields[2].Id);
+        Assert.True(selection.Fields[1].IsPreferredSource);
+        Assert.False(selection.Fields[2].IsPreferredSource);
+        Assert.Equal(1UL, selection.LegacyHandles["gpu.0.temperature"]);
+        Assert.Equal("field-1", selection.Fields[2].PreferredFieldName);
+    }
+
+    [Fact]
+    public void PreferenceDependsOnDiscoveredSupportAndDoesNotSwitchOnATransientMissingSample()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx"));
+        var tracker = new MetricReadingSourceTracker();
+        Assert.All(tracker.Select(frame, 1).Fields.Values, r =>
+        {
+            Assert.Equal("unverified", r.SourceAvailability);
+            Assert.Null(r.PreferredFieldName);
+        });
+        tracker.Observe(frame, 1, [Complete(20, 2)]);
+        Assert.True(tracker.Select(frame, 1).Fields[2].IsPreferredSource);
+        tracker.Observe(frame, 1, [Complete(10, 1)]);
+        tracker.Observe(frame, 1, [Complete(10) with { Status = NativeMetricSnapshotSourceStatus.Unavailable }]);
+        var selected = tracker.Select(frame, 1);
+        Assert.True(selected.Fields[1].IsPreferredSource);
+        Assert.Equal("available", selected.Fields[1].SourceAvailability);
+        Assert.Equal(1UL, selected.LegacyHandles["gpu.0.temperature"]);
+    }
+
+    [Fact]
+    public void CapabilityChangeAndWorkspaceReplacementInvalidateOldSupport()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx"));
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 1), Complete(20, 2)]);
+        var changed = frame with { Sources = frame.Sources.Select(s => s.SourceHandle == 10
+            ? s with { CapabilityGeneration = 2 } : s).ToImmutableArray() };
+        Assert.Equal("unverified", tracker.Select(changed, 1).Fields[1].SourceAvailability);
+        Assert.True(tracker.Select(changed, 1).Fields[2].IsPreferredSource);
+        Assert.All(tracker.Select(changed, 2).Fields.Values, r => Assert.Equal("unverified", r.SourceAvailability));
+    }
+
+    [Fact]
+    public void CrossDeviceApuAliasNeedsTheStructuredRouteAndPrefersTheGpuPresentation()
+    {
+        var cpu = Binding(1, 10, "amd.smu", MetricFieldCode.CpuIgpuTemperature, "cpu-opaque");
+        var gpu = Temperature(2, 10, "amd.smu");
+        var frame = Frame(cpu, gpu);
+        var tracker = new MetricReadingSourceTracker();
+        Assert.NotEqual(tracker.Select(frame, 1).Fields[1].Id, tracker.Select(frame, 1).Fields[2].Id);
+        tracker.Observe(frame, 1, [Complete(10, 1) with { IntegratedGpuDeviceIdentity = "gpu-opaque" }]);
+        var selected = tracker.Select(frame, 1);
+        Assert.Equal(selected.Fields[1].Id, selected.Fields[2].Id);
+        Assert.True(selected.Fields[2].IsPreferredSource);
+        Assert.Equal("gpu-opaque", selected.Fields[1].PreferredDeviceIdentity);
+    }
+
+    [Fact]
+    public void AdlxIntegerAndConvertedBytesShareOneReadingAndNeitherBecomesAnotherSourcesQuantity()
+    {
+        var bytes = Binding(1, 10, "amd.adlx", MetricFieldCode.GpuMemoryUsed, "gpu-opaque");
+        var integer = Binding(2, 10, "amd.adlx", MetricFieldCode.AdlxDedicatedMemoryMb, "gpu-opaque");
+        var reserved = Binding(3, 20, "nvidia.nvml", MetricFieldCode.NvmlFbReserved, "gpu-opaque");
+        var frame = Frame(bytes, integer, reserved);
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 2)]);
+        var selected = tracker.Select(frame, 1);
+        Assert.Equal(selected.Fields[1].Id, selected.Fields[2].Id);
+        Assert.True(selected.Fields[1].IsPreferredSource);
+        Assert.NotEqual(selected.Fields[1].Id, selected.Fields[3].Id);
+    }
+
+    [Fact]
+    public void SeparateDevicesAndHotspotStaySeparateEvenWhenTheyHaveTheSameNumericTemperature()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx") with { DeviceIdentity = "another-gpu" },
+            Binding(3, 20, "amd.adlx", MetricFieldCode.GpuHotspotTemperature, "gpu-opaque"));
+        Assert.Equal(3, new MetricReadingSourceTracker().Select(frame, 1).Fields.Values.Select(r => r.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public void UnsupportedLegacyTargetProducesAnEmptyRequestRatherThanAnImplicitAllRequest()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"));
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10) with { Status = NativeMetricSnapshotSourceStatus.Unsupported }]);
+        var request = tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds(["gpu.0.temperature"]), frame, 1);
+        Assert.True(request.IsEmpty);
+        Assert.False(request.IsAll);
+    }
+
+    [Fact]
+    public void LegacyExpansionPreservesExplicitAllGpuCoreDemand()
+    {
+        var frame = Frame(Temperature(1, 10, "amd.smu"));
+        var request = new MetricReadingSourceTracker().ExpandLegacyRequest(
+            MetricSampleRequest.ForIdsAndAllGpuCoreMetrics([]), frame, 1);
+        Assert.True(request.IncludesAllGpuCoreMetrics);
+        Assert.False(request.IsAll);
+    }
+
+    [Fact]
+    public void HttpSensorQuantityIsReverifiedAfterItsSourceCapabilityChanges()
+    {
+        var binding = Binding(1, 10, "hardware-monitor.core", MetricFieldCode.CpuTemperature, "cpu-opaque");
+        var frame = Frame(binding);
+        var tracker = new MetricReadingSourceTracker();
+        tracker.Observe(frame, 1, [Complete(10, 1) with
+        { ReadingQuantities = ImmutableDictionary<ulong, string>.Empty.Add(1, "cpu.control_temperature") }]);
+        Assert.Equal("cpu.control_temperature", tracker.Select(frame, 1).Fields[1].Quantity);
+        var changed = frame with { Sources = frame.Sources.Select(s => s with { CapabilityGeneration = 2 }).ToImmutableArray() };
+        Assert.Equal("cpu.temperature_reported", tracker.Select(changed, 1).Fields[1].Quantity);
+    }
+
+    [Fact]
+    public void MetadataMergePreservesCatalogShapeValuesAndOfflineControlBindings()
+    {
+        var field = new MetricFieldDefinition(MetricFieldCode.GpuTemperature, "test", MetricResource.Gpu, MetricVendor.Amd, "°C", "raw");
+        var binding = new MetricDeviceFieldBinding("opaque", field, "raw", "amd.smu");
+        var original = Snapshot(new Dictionary<string, MetricDeviceFieldBinding> { ["raw"] = binding, ["offline"] = binding with { RequestAddress = "offline" } });
+        var reading = new MetricReadingSource("reading", "gpu.edge_temperature", 10, "available", true, "opaque", "test");
+        var update = original with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            { ["raw"] = binding with { Field = field with { Reading = reading } } } };
+        var merged = MetricReadingCatalog.Update(original, update);
+        Assert.Equal(2, merged.FieldBindings.Count);
+        Assert.Equal(reading, merged.FieldBindings["raw"].Field.Reading);
+        Assert.Same(original.Items, merged.Items);
+        Assert.Same(original, MetricReadingCatalog.Update(original, update with { WorkspaceIdentity = 9 }));
+    }
+
+    private static NativeMetricSnapshotRuleCatalogBinding Temperature(ulong handle, ulong source, string sourceId)
+        => Binding(handle, source, sourceId, MetricFieldCode.GpuTemperature, "gpu-opaque") with { LegacyMetricId = "gpu.0.temperature" };
+
+    private static NativeMetricSnapshotRuleCatalogBinding Binding(ulong handle, ulong source, string sourceId, MetricFieldCode code, string device)
+        => new(handle, handle, source, 1, "raw-" + handle, sourceId, 1, 1, 0, 0, 0, 0)
+        { DeviceIdentity = device, Field = new(code, "field-" + handle, MetricResource.Gpu, MetricVendor.Amd, "unit", "raw") };
+
+    private static NativeMetricSnapshotCommittedFrame Frame(params NativeMetricSnapshotRuleCatalogBinding[] bindings)
+    {
+        var metrics = bindings.ToImmutableDictionary(b => b.MetricHandle, b => b.MetricId);
+        var sources = bindings.GroupBy(b => b.SourceHandle).ToImmutableDictionary(g => g.Key, g => g.First().SourceId);
+        var catalog = new NativeMetricSnapshotCatalogProjection([], [], metrics,
+            metrics.ToImmutableDictionary(p => p.Value, p => p.Key, StringComparer.OrdinalIgnoreCase), sources,
+            sources.ToImmutableDictionary(p => p.Value, p => p.Key, StringComparer.Ordinal),
+            bindings.ToImmutableDictionary(b => b.RuleHandle), ImmutableDictionary<ulong, NativeMetricSnapshotGpuScopeBinding>.Empty,
+            NativeMetricSnapshotCatalogHandleMap.Empty, 1, "fixture")
+        { MetricBindings = bindings.ToImmutableDictionary(b => b.MetricHandle),
+            LegacyMetricHandles = bindings.Where(b => b.LegacyMetricId.Length != 0).GroupBy(b => b.LegacyMetricId)
+                .ToImmutableDictionary(g => g.Key, g => g.First().MetricHandle, StringComparer.OrdinalIgnoreCase) };
+        return new(new() { ConfigurationGeneration = 1, CatalogGeneration = 1, CommittedGeneration = 1 },
+            sources.Keys.Select(s => new NativeMetricSnapshotSourceOutput { SourceHandle = s, SourceIncarnation = s,
+                SourceObservationSequence = 1, CapabilityGeneration = 1, Priority = (uint)s }).ToImmutableArray(), [], [], [], catalog);
+    }
+
+    private static NativeMetricSnapshotSourceCompletion Complete(ulong source, params ulong[] available)
+        => new(source, source, 1, DateTimeOffset.UtcNow, NativeMetricSnapshotSourceStatus.Complete, [], null, [], 0, 0)
+        { SupportedMetricHandles = available.ToImmutableArray() };
+
+    private static HardwareMetricSnapshot Snapshot(IReadOnlyDictionary<string, MetricDeviceFieldBinding> fields)
+        => new(DateTimeOffset.UtcNow, null!, null!, null!, [], new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
+            new Dictionary<string, MetricValue>()) { WorkspaceIdentity = 1, ConfigurationGeneration = 1, CatalogGeneration = 1, FieldBindings = fields };
+}

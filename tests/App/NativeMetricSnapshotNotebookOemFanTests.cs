@@ -114,7 +114,7 @@ public sealed class NativeMetricSnapshotNotebookOemFanTests
                 policy.SourceId is "nvidia.nvapi"
                     or "nvidia.nvml"
                     or "amd.adlx"
-                    or "hardware-monitor.wmi")
+                    or "hardware-monitor.core")
             .Select(static policy => policy.Priority)
             .ToArray();
 

@@ -9,14 +9,26 @@ public sealed partial class HardwareMonitorWmiReader
         IReadOnlyList<Dictionary<string, object?>> rows,
         IReadOnlyDictionary<string, HardwareMonitorHardwareInfo> hardware)
     {
+        var row = SelectCpuTemperatureRow(rows, hardware);
+        return row is null ? null : ParseTemperature(row.GetValueOrDefault("Value"));
+    }
+
+    internal static IReadOnlyDictionary<string, object?>? SelectCpuTemperatureRow(
+        IReadOnlyList<Dictionary<string, object?>> rows,
+        IReadOnlyDictionary<string, HardwareMonitorHardwareInfo> hardware)
+    {
+        // Select the sensor identity, not whichever sensor happens to have a
+        // value this frame. CCD Tdie is a separate physical reading from Tctl.
         var candidates = rows.Where(row => IsSensorType(row, "Temperature") && IsCpuSensor(row, hardware))
-            .Select(row => (Value: ParseTemperature(row.GetValueOrDefault("Value")), Name: ReadString(row, "Name") ?? ""))
-            .Where(item => item.Value is not null).ToArray();
+            .Select(row => (Row: row, Name: ReadString(row, "Name") ?? ""))
+            .ToArray();
+        var controls = candidates.Where(item => item.Name.Contains("Tctl", StringComparison.OrdinalIgnoreCase)
+            && !item.Name.Contains("CCD", StringComparison.OrdinalIgnoreCase)).ToArray();
         var packages = candidates.Where(item => item.Name.Contains("Package", StringComparison.OrdinalIgnoreCase)
-            || item.Name.Contains("Tctl", StringComparison.OrdinalIgnoreCase)
-            || item.Name.Contains("Tdie", StringComparison.OrdinalIgnoreCase)).ToArray();
-        var selected = packages.Length > 0 ? packages : candidates;
-        return selected.Length > 0 ? selected.Max(item => item.Value) : null;
+            && !item.Name.Contains("CCD", StringComparison.OrdinalIgnoreCase)).ToArray();
+        var selected = controls.Length > 0 ? controls : packages.Length > 0 ? packages : candidates;
+        return selected.OrderBy(item => ReadString(item.Row, "Identifier"), StringComparer.Ordinal)
+            .Select(static item => item.Row).FirstOrDefault();
     }
 
     private static bool IsCpuSensor(IReadOnlyDictionary<string, object?> row,

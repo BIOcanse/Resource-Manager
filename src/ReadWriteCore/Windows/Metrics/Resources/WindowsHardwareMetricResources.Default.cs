@@ -75,7 +75,7 @@ public sealed partial class WindowsHardwareMetricResources
             available => BackendMessage.Create(0, 0, available ? "storage-current" : "storage-unavailable"));
         var diskPerformance = new WindowsDiskPerformanceCaptureReader(
             new WindowsDiskLayoutInformationReader(new WindowsDiskLayoutInformationNativeApi()), clock, options.DiskPerformanceSampleWindow);
-        var hardwareMonitor = new HardwareMonitorWmiReader();
+        var hardwareMonitor = new HardwareMonitorCoreReader();
         WindowsMetricControlResources? controls = null;
         HardwareBridgeProcessClient? helper = null;
         IntelCpuControlResource? intelControl = null;
@@ -178,6 +178,7 @@ public sealed partial class WindowsHardwareMetricResources
         if (amdControl is not null) result.owned.Add(amdControl);
         if (amdDesktopControl is not null) result.owned.Add(amdDesktopControl);
         if (integratedControl is not null) result.owned.Add(integratedControl);
+        result.owned.Add(hardwareMonitor);
         result.owned.Add(nvidiaControl);
         result.owned.Add(nvapi);
         result.owned.Add(frequency);
