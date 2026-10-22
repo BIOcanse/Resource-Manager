@@ -594,6 +594,47 @@ function New-GeneratedWorkspace {
     return [pscustomobject]@{ workspace = $state; retention = $retention }
 }
 
+function Get-GWAdoptionRecord {
+    param(
+        [Parameter(Mandatory)][string]$RootPath,
+        [Parameter(Mandatory)][string]$WorkspacePath,
+        [Parameter(Mandatory)][object]$RootConfig,
+        [Parameter(Mandatory)][string]$Purpose,
+        [AllowEmptyCollection()][AllowNull()][string[]]$References,
+        [AllowNull()][string]$CompletedUtc
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Purpose)) { throw 'Purpose must be a non-empty description.' }
+    Assert-GWNoReparsePath -Path $RootPath -RequireLeaf
+    Assert-GWNoReparsePath -Path $WorkspacePath -RequireLeaf
+    if (-not [System.IO.Directory]::Exists($RootPath) -or -not [System.IO.Directory]::Exists($WorkspacePath)) {
+        throw 'Adopt requires an existing managed root and workspace.'
+    }
+    $markerPath = Join-Path $WorkspacePath $script:GeneratedWorkspaceMarkerName
+    Assert-GWNoReparsePath -Path $markerPath
+    try {
+        $null = [System.IO.File]::GetAttributes($markerPath)
+        throw "Adopt refuses a workspace that already has a lifecycle marker: $WorkspacePath"
+    }
+    catch [System.IO.FileNotFoundException] { }
+    catch [System.IO.DirectoryNotFoundException] { }
+    $read = Read-GWStateRecord -RootPath $RootPath -WorkspacePath $WorkspacePath
+    if ($read.Exists) { throw "Adopt refuses a workspace that already has a lifecycle marker: $WorkspacePath" }
+
+    $referencesFull = @(ConvertTo-GWReferences -References $References)
+    $stateName = 'running'
+    $outcome = $null
+    if (-not [string]::IsNullOrWhiteSpace($CompletedUtc)) {
+        $parsedCompleted = [DateTimeOffset]::Parse($CompletedUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+        $CompletedUtc = $parsedCompleted.UtcDateTime.ToString('o')
+        $stateName = 'completed'
+        $outcome = 'adopted-verified'
+    }
+    $state = New-GWStateRecord -RootPath $RootPath -WorkspacePath $WorkspacePath -RootId ([string](Get-GWProperty $RootConfig 'id' 'managed-root')) -Purpose $Purpose -State $stateName -References $referencesFull -CompletedUtc $CompletedUtc -Outcome $outcome -Adopted $true
+    $payload = New-GWStateRecordPayload -State $state
+    return [pscustomobject]@{ before = $null; after = $state; payload = [byte[]]$payload.Bytes }
+}
+
 function Adopt-GeneratedWorkspace {
     [CmdletBinding()]
     param(
@@ -606,7 +647,6 @@ function Adopt-GeneratedWorkspace {
         [AllowEmptyCollection()][AllowNull()][string[]]$ReferenceRoots = @()
     )
 
-    if ([string]::IsNullOrWhiteSpace($Purpose)) { throw 'Purpose must be a non-empty description.' }
     $rootFull = ConvertTo-GWFullPath -Path $RootPath -ParameterName 'RootPath'
     $rootConfig = Get-GWPolicyRoot -Policy $Policy -RootPath $rootFull
     $workspace = Assert-GWManagedWorkspacePath -RootPath $rootFull -WorkspacePath $WorkspacePath -RootConfig $rootConfig
@@ -616,26 +656,93 @@ function Adopt-GeneratedWorkspace {
     $allRoots = @(Get-GWReferenceRootPaths -RootPath $rootFull -ReferenceRoots $ReferenceRoots)
     $locks = Enter-GWRootLocks -RootPaths $allRoots
     try {
-        Assert-GWNoReparsePath -Path $workspace.RootPath -RequireLeaf
-        Assert-GWNoReparsePath -Path $workspace.WorkspacePath -RequireLeaf
-        $read = Read-GWStateRecord -RootPath $rootFull -WorkspacePath $workspace.WorkspacePath
-        if ($read.Exists) { throw "Adopt refuses a workspace that already has a lifecycle marker: $($workspace.WorkspacePath)" }
-        $referencesFull = @(ConvertTo-GWReferences -References $References)
-        $stateName = 'running'
-        $outcome = $null
-        if (-not [string]::IsNullOrWhiteSpace($CompletedUtc)) {
-            $parsedCompleted = [DateTimeOffset]::Parse($CompletedUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
-            $CompletedUtc = $parsedCompleted.UtcDateTime.ToString('o')
-            $stateName = 'completed'
-            $outcome = 'adopted-verified'
-        }
-        $state = New-GWStateRecord -RootPath $rootFull -WorkspacePath $workspace.WorkspacePath -RootId ([string](Get-GWProperty $rootConfig 'id' 'managed-root')) -Purpose $Purpose -State $stateName -References $referencesFull -CompletedUtc $CompletedUtc -Outcome $outcome -Adopted $true
+        $record = Get-GWAdoptionRecord -RootPath $rootFull -WorkspacePath $workspace.WorkspacePath -RootConfig $rootConfig -Purpose $Purpose -References $References -CompletedUtc $CompletedUtc
+        $state = $record.after
         Write-GWStateRecord -State $state
     }
     finally { Exit-GWRootLocks -Streams $locks }
 
     $retention = Invoke-GWRetentionAfterLifecycle -RootPath $rootFull -Policy $Policy -ReferenceRoots $allRoots
     return [pscustomobject]@{ workspace = $state; retention = $retention }
+}
+
+function Adopt-GeneratedWorkspaceBatch {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RootPath,
+        [Parameter(Mandatory)][ValidateCount(1,512)][object[]]$Adoptions,
+        [object]$Policy = (Get-GeneratedWorkspacePolicy),
+        [AllowEmptyCollection()][AllowNull()][string[]]$ReferenceRoots = @()
+    )
+
+    if (-not (Test-GWPolicyEnabled -Policy $Policy)) { throw 'Batch adoption requires enabled finite retention.' }
+    $rootFull = ConvertTo-GWFullPath -Path $RootPath -ParameterName 'RootPath'
+    $rootConfig = Get-GWPolicyRoot -Policy $Policy -RootPath $rootFull
+    $null = Get-GWPolicyLimits -Policy $Policy -RootConfig $rootConfig
+    $requests = [Collections.Generic.List[object]]::new()
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $missing = [object]::new()
+    foreach ($item in $Adoptions) {
+        if ($null -eq $item) { throw 'Every batch adoption entry must be an object.' }
+        $workspacePath = [string](Get-GWProperty $item 'WorkspacePath' '')
+        $workspace = Assert-GWManagedWorkspacePath -RootPath $rootFull -WorkspacePath $workspacePath -RootConfig $rootConfig
+        if (-not $seen.Add($workspace.WorkspacePath)) { throw 'Duplicate workspace in batch adoption.' }
+        $purpose = [string](Get-GWProperty $item 'Purpose' '')
+        if ([string]::IsNullOrWhiteSpace($purpose)) { throw 'Every batch adoption requires a non-empty Purpose.' }
+        $completedValue = Get-GWProperty $item 'CompletedUtc' $missing
+        if ([object]::ReferenceEquals($completedValue,$missing) -or [string]::IsNullOrWhiteSpace([string]$completedValue)) {
+            throw 'Every batch adoption requires a verified terminal CompletedUtc value.'
+        }
+        $completed = [DateTimeOffset]::Parse([string]$completedValue, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).UtcDateTime.ToString('o')
+        $references = Get-GWProperty $item 'References' $missing
+        if ([object]::ReferenceEquals($references,$missing)) { throw 'Every batch adoption requires explicit References.' }
+        $referencesFull = @(ConvertTo-GWReferences -References ([string[]]@($references)))
+        if (-not [System.IO.Directory]::Exists($rootFull) -or -not [System.IO.Directory]::Exists($workspace.WorkspacePath)) {
+            throw 'Batch adoption requires an existing managed root and every workspace.'
+        }
+        $requests.Add([pscustomobject]@{ path=$workspace.WorkspacePath; purpose=$purpose; completedUtc=$completed; references=$referencesFull })
+    }
+
+    $allRoots = @(Get-GWReferenceRootPaths -RootPath $rootFull -ReferenceRoots $ReferenceRoots)
+    $locks = Enter-GWRootLocks -RootPaths $allRoots
+    $plan = [Collections.Generic.List[object]]::new()
+    $adopted = [Collections.Generic.List[object]]::new()
+    $writeFailure = $null
+    $failedRecord = $null
+    try {
+        [long]$payloadBytes = 0
+        # Validate every workspace and marker payload while all reference-root locks are held.
+        foreach ($request in $requests) {
+            $record = Get-GWAdoptionRecord -RootPath $rootFull -WorkspacePath $request.path -RootConfig $rootConfig -Purpose $request.purpose -References $request.references -CompletedUtc $request.completedUtc
+            $payloadBytes += [long]$record.payload.Length
+            if ($payloadBytes -gt 8MB) { throw 'Batch marker payloads exceed the 8 MiB bound.' }
+            $plan.Add($record)
+        }
+        foreach ($record in $plan) {
+            try { Write-GWStateRecord -State $record.after; $adopted.Add($record.after) }
+            catch { $writeFailure=$_; $failedRecord=$record; break }
+        }
+    }
+    finally { Exit-GWRootLocks -Streams $locks }
+
+    # Every write attempt receives one ordinary enabled sweep after the graph locks are released.
+    $retention=$null;$retentionFailure=$null
+    try { $retention=Invoke-GWRetentionAfterLifecycle -RootPath $rootFull -Policy $Policy -ReferenceRoots $allRoots }
+    catch { $retentionFailure=$_ }
+    $result=[pscustomobject]@{ adopted=@($adopted.ToArray()); requested=$requests.Count; allAdopted=($null -eq $writeFailure); retention=$retention;
+        failedWorkspace=$(if($failedRecord){$failedRecord.after.workspacePath}else{$null});
+        remainingWorkspaces=@($plan|Select-Object -Skip $adopted.Count|ForEach-Object {$_.after.workspacePath});
+        writeFailureMessage=$(if($writeFailure){$writeFailure.Exception.Message}else{$null});
+        retentionFailureMessage=$(if($retentionFailure){$retentionFailure.Exception.Message}else{$null}) }
+    if ($writeFailure -or $retentionFailure) {
+        $errors=[Collections.Generic.List[Exception]]::new()
+        if($writeFailure){$errors.Add($writeFailure.Exception)}
+        if($retentionFailure){$errors.Add($retentionFailure.Exception)}
+        $exception=[AggregateException]::new('Batch adoption or its required retention sweep failed; inspect adoption progress and retry only verified unmarked remaining paths.',$errors.ToArray())
+        $exception.Data['adoption']=$result
+        throw $exception
+    }
+    return $result
 }
 
 function Get-GWCompletionRecord {
@@ -1251,7 +1358,12 @@ function New-GWRetentionPlan {
         $remainingBytes -= [long]$entry.Item.Bytes
     }
     $targetMaxBytes = [long]$TargetCatalog.Limits.MaxBytes
-    if ($sizeBudgetKnown) {
+    if ($sizeBudgetKnown -and $remainingBytes -gt $targetMaxBytes) {
+        # These seeds cannot be evicted by this root's plan. Their dependency
+        # closure therefore protects the same candidates in every size pass.
+        # Target-root recent items are deliberately excluded: the size budget
+        # may still evict them after the original per-candidate closure check.
+        $nonEvictableClosure = Get-GWReferenceClosure -Items $allItems -SeedItems (@($permanent.ToArray()) + @($nonTargetItems)) -Budget $budget -RootPath $TargetCatalog.RootPath
         while ($remainingBytes -gt $targetMaxBytes) {
             Add-GWScanNode -Budget $budget -RootPath $TargetCatalog.RootPath
             $survivors = @(Get-GWCurrentSurvivors -Items $allItems -BaseProtected $baseSeeds -TargetRootPath $TargetCatalog.RootPath -PlannedKeys $plannedKeys -Budget $budget -RootPath $TargetCatalog.RootPath)
@@ -1259,7 +1371,8 @@ function New-GWRetentionPlan {
             foreach ($item in $targetItems) {
                 Add-GWScanNode -Budget $budget -RootPath $TargetCatalog.RootPath
                 if ($item.Registered -and $item.State -eq 'completed' -and -not $plannedKeys.Contains($item.Key) -and
-                    -not (Test-GWItemHasPermanentProtection -Item $item) -and $item.SizeKnown) {
+                    -not (Test-GWItemHasPermanentProtection -Item $item) -and $item.SizeKnown -and
+                    -not $nonEvictableClosure.ProtectedKeys.Contains($item.Key)) {
                     $eligibleList.Add($item)
                 }
             }
@@ -1738,6 +1851,7 @@ Export-ModuleMember -Function @(
     'Get-GeneratedWorkspaceState',
     'New-GeneratedWorkspace',
     'Adopt-GeneratedWorkspace',
+    'Adopt-GeneratedWorkspaceBatch',
     'Complete-GeneratedWorkspace',
     'Complete-GeneratedWorkspaceBatch',
     'Set-GeneratedWorkspaceKeep',

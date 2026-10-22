@@ -8,6 +8,9 @@ param(
     # JSON array of { rootId, workspacePaths }; batch Inspect/Prune emit NDJSON.
     [string]$WorkspaceGroups,
 
+    # JSON array of completed-workspace adoption records; exclusive to Adopt.
+    [string]$AdoptionsPath,
+
     [string]$WorkspacePath,
     [string[]]$WorkspacePaths = @(),
     [string]$Purpose,
@@ -25,7 +28,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($PolicyPath)) {
-    $PolicyPath = Join-Path $PSScriptRoot 'generated-workspace-policy.json'
+    $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $PolicyPath = Join-Path $repositoryRoot 'scripts/maintenance/generated-workspace-policy.json'
 }
 Import-Module (Join-Path $PSScriptRoot 'GeneratedWorkspaceRetention.psm1') -Force -DisableNameChecking
 
@@ -44,6 +48,51 @@ try {
         }
     }
     $allReferenceRoots = [string[]]$referenceRootPaths.ToArray()
+    if (-not [string]::IsNullOrWhiteSpace($AdoptionsPath)) {
+        if ($Action -ne 'Adopt' -or [string]::IsNullOrWhiteSpace($RootId) -or
+            -not [string]::IsNullOrWhiteSpace($WorkspaceGroups) -or -not [string]::IsNullOrWhiteSpace($WorkspacePath) -or
+            $WorkspacePaths.Count -gt 0 -or -not [string]::IsNullOrWhiteSpace($Purpose) -or
+            -not [string]::IsNullOrWhiteSpace($CompletedUtc) -or -not [string]::IsNullOrWhiteSpace($Outcome) -or
+            $References.Count -gt 0 -or $Apply -or $KeepState -ne 'true') {
+            throw 'AdoptionsPath is exclusive to Adopt; provide RootId and omit single-workspace, completion, Keep, Prune, and batch-inspection arguments.'
+        }
+        $manifest = Get-Item -LiteralPath $AdoptionsPath -Force
+        if ($manifest.PSIsContainer -or ($manifest.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw 'AdoptionsPath must be a regular, non-reparse JSON file.'
+        }
+        if ($manifest.Length -gt 8MB) { throw 'AdoptionsPath must be a JSON array no larger than 8 MiB.' }
+        $rawAdoptions = Get-Content -LiteralPath $manifest.FullName -Raw
+        if ([string]::IsNullOrWhiteSpace($rawAdoptions) -or -not $rawAdoptions.TrimStart().StartsWith('[')) {
+            throw 'AdoptionsPath must contain a JSON array.'
+        }
+        $adoptions = @(ConvertFrom-Json -InputObject $rawAdoptions)
+        if ($adoptions.Count -eq 1 -and $adoptions[0] -is [array]) { $adoptions = $adoptions[0] }
+        if ($adoptions.Count -lt 1 -or $adoptions.Count -gt 512) { throw 'AdoptionsPath must contain between 1 and 512 adoption records.' }
+        $inputTimer = [Diagnostics.Stopwatch]::StartNew()
+        $inputMaxMilliseconds = 300000
+        if ($null -ne $policy.defaults.PSObject.Properties['maxMilliseconds']) { $inputMaxMilliseconds = [int]$policy.defaults.maxMilliseconds }
+        foreach ($entry in $adoptions) {
+            if ($inputTimer.ElapsedMilliseconds -gt $inputMaxMilliseconds) { throw 'AdoptionsPath validation exceeded the policy time bound.' }
+            if ($null -eq $entry -or $null -eq $entry.PSObject.Properties['WorkspacePath'] -or
+                $null -eq $entry.PSObject.Properties['Purpose'] -or $null -eq $entry.PSObject.Properties['CompletedUtc'] -or
+                $null -eq $entry.PSObject.Properties['References']) {
+                throw 'Every adoption record must include WorkspacePath, Purpose, CompletedUtc, and References.'
+            }
+        }
+        $configuredRoot = Get-GeneratedWorkspaceRoot -Policy $policy -RootId $RootId
+        try {
+            $result = Adopt-GeneratedWorkspaceBatch -RootPath ([string]$configuredRoot.Path) -Adoptions $adoptions -Policy $policy -ReferenceRoots $allReferenceRoots
+        }
+        catch {
+            if ($null -ne $_.Exception.Data -and $_.Exception.Data.Contains('adoption')) {
+                ConvertTo-Json -InputObject ([pscustomobject]@{ error=$_.Exception.Message; adoption=$_.Exception.Data['adoption'] }) -Depth 18 -Compress
+                exit 1
+            }
+            throw
+        }
+        ConvertTo-Json -InputObject $result -Depth 18
+        return
+    }
     if (-not [string]::IsNullOrWhiteSpace($WorkspaceGroups)) {
         if ($Action -notin @('Inspect', 'Prune') -or -not [string]::IsNullOrWhiteSpace($RootId) -or
             -not [string]::IsNullOrWhiteSpace($WorkspacePath) -or $WorkspacePaths.Count -gt 0) {
