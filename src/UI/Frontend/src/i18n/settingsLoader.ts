@@ -248,7 +248,6 @@ export const loadingSettingsText: SettingsTextBundle = {
       nativeToolchain: "",
       buildContributors: "",
       testContributors: "",
-      openHardwareMonitor: "",
       upstreamContributors: "",
       resourceManager: "",
       solid: "",
@@ -272,6 +271,9 @@ export const loadingSettingsText: SettingsTextBundle = {
       pawnIo: "",
       pawnIoModules: "",
       libreHardwareMonitor: "",
+      blacktempelToolkits: "",
+      hidSharp: "",
+      monoPosix: "",
       usbIds: "",
       pciIds: ""
     },

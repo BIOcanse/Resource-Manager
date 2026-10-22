@@ -462,7 +462,6 @@ export default createSettingsLocale("ja-JP", {
       "nativeToolchain": "ネイティブコンパイルと実行基盤を支える GCC と MinGW の作者・保守担当者に感謝します。一部のコンポーネントは libgcc/libstdc++ を静的リンクし、再配布審査は別に行います。",
       "buildContributors": "Solid のコンパイル・更新ツール、ソースマップ、ブラウザーデータ、小型ユーティリティを含む、すべてのビルド依存の作者と保守担当者に感謝します。完全な一覧には、任意プラットフォームも含め、固定された全パッケージとバージョンを残しています。",
       "testContributors": "ブラウザー自動化、回帰テスト、カバレッジを支える Playwright、xUnit.net、Coverlet、Microsoft テスト基盤の貢献者に感謝します。これらは開発ツールで、製品実行時の必須依存ではありません。",
-      "openHardwareMonitor": "センサーインターフェイスを提供する OpenHardwareMonitor の作者・貢献者に感謝します。インストール済みの外部プロバイダーから WMI データを取得できますが、同梱を意味しません。",
       "upstreamContributors": "ANTLR、Unicode、Mono、Brotli、LLVM の貢献者を含む、.NET と WebView2 の原本通知に記載されたすべての作者に感謝します。原本は全文保持しており、内容は実行中 DLL ごとの一覧ではありません。",
       "resourceManager": "Copyright (c) 2026 BIOcanse。本プロジェクトは Apache-2.0 を使用します。第三者コンポーネントは各自のライセンスを保持します。",
       "solid": "現在の軽量 Web シェルで使用するリアクティブなコンポーネントモデルを提供します。",
@@ -486,6 +485,9 @@ export default createSettingsLocale("ja-JP", {
       "pawnIo": "公式署名済みドライバー。AMD SMU の読み取り、Intel プロセッサ制御、マザーボードとメモリのセンサーで共用します。勝手にはインストールしません。",
       "pawnIoModules": "公式署名済みモジュール（LGPL-2.1）。RyzenSMU と IntelMSR はコンポーネントの確認時に取得し、LPC・EC・SMBus のアクセス モジュールは LibreHardwareMonitorLib に組み込まれています。",
       "libreHardwareMonitor": "同梱の公式コアライブラリー 0.9.6（MPL-2.0）。マザーボードとメモリの 2 グループだけを有効にし、PawnIO 経由でマザーボードの温度・電圧・ファンとメモリ温度を読みます。GUI や Web サーバーは起動しません。",
+      "blacktempelToolkits": "LibreHardwareMonitorLib が使うディスク情報、メモリ SPD 読み取り、基盤ライブラリー（1.1.2、1.4.2、1.0.7）。作者 Florian K.、MPL-2.0。",
+      "hidSharp": "LibreHardwareMonitorLib が使う USB HID デバイス アクセス ライブラリー 2.6.4。作者 James F. Bellinger、Apache-2.0。",
+      "monoPosix": "LibreHardwareMonitorLib が使う Mono POSIX インターフェイス 1.0.0。Microsoft が公開し、Mono クラス ライブラリーの MIT ライセンスに従います。",
       "usbIds": "USB VID/PID のメーカー・デバイス名をオフラインで提供します。デバイス詳細の要求時のみ読み込みます。",
       "pciIds": "PCI VEN/DEV/SUBSYS のメーカー、デバイス、サブシステム名をオフラインで提供します。デバイス詳細の要求時のみ読み込みます。"
     },

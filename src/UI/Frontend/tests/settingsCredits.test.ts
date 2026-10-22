@@ -133,9 +133,13 @@ for (const language of ["zh-CN", "en-US"] as const) {
   assert.ok(external.items.some((item) => item.name === "PawnIO / PawnIOLib"));
   assert.match(external.items.find((item) => item.name === "PawnIO.Modules")!.note, /LGPL-2\.1/);
   assert.match(external.items.find((item) => item.name === "LibreHardwareMonitorLib")!.note, /MPL-2\.0/);
+  // 核心库的传递依赖各按自己的许可致谢，不并入 LHM/MPL。
+  assert.match(external.items.find((item) => item.name === "DiskInfoToolkit / RAMSPDToolkit-NDD / BlackSharp.Core")!.note, /MPL-2\.0/);
+  assert.match(external.items.find((item) => item.name === "HidSharp")!.note, /Apache-2\.0/);
+  assert.match(external.items.find((item) => item.name === "Mono.Posix.NETStandard")!.note, /MIT/);
   // 只用核心的依赖：包装程序（GUI、外部工具、厂商 SDK）不再出现在致谢里。
   for (const name of ["Windows Performance Toolkit", "MSI Afterburner", "LatencyMon", "Intel PCM",
-    "Notebook FanControl", "AMD Ryzen Master Monitoring SDK"]) {
+    "Notebook FanControl", "AMD Ryzen Master Monitoring SDK", "OpenHardwareMonitor"]) {
     assert.ok(!all.some((item) => item.name === name), `Removed wrapper still credited: ${name}`);
   }
   for (const item of all) {

@@ -457,7 +457,6 @@ export default createSettingsLocale("zh-TW", {
       "nativeToolchain": "感謝 GCC 與 MinGW 的作者及維護者提供原生編譯與執行庫基礎。部分原生元件靜態連結 libgcc/libstdc++；具體分發許可另列，不因鳴謝省略核查。",
       "buildContributors": "感謝全部構建依賴的作者與維護者，包括 Solid 編譯與重新整理工具、原始碼對映工具、瀏覽器資料及小型基礎庫。下方完整名單保留鎖檔案中的每個包和版本，包括可選平臺依賴。",
       "testContributors": "感謝 Playwright、xUnit.net、Coverlet 與 Microsoft 測試平臺貢獻者，使自動化互動、迴歸測試和覆蓋率檢查成為可能。它們用於開發驗證，不是基礎產品執行依賴。",
-      "openHardwareMonitor": "感謝 OpenHardwareMonitor 作者與貢獻者提供硬體感測器介面；可讀取已安裝外部程式的 WMI 資料，不意味著基礎包捆綁該程式。",
       "upstreamContributors": "同樣感謝 .NET 與 WebView2 原始第三方宣告中列出的全部作者，包括 ANTLR、Unicode、Mono、Brotli、LLVM 等標準、執行庫和演算法貢獻者。完整原文隨包保留；這不是逐項執行時 DLL 清單。",
       "resourceManager": "Copyright (c) 2026 BIOcanse。本專案採用 Apache-2.0；第三方元件保留各自的許可。",
       "solid": "用於構建介面與互動。",
@@ -481,6 +480,9 @@ export default createSettingsLocale("zh-TW", {
       "pawnIo": "官方簽署驅動程式，AMD SMU 讀數、Intel 處理器控制和主機板與記憶體感測共用；不會靜默安裝。",
       "pawnIoModules": "官方簽署模組（LGPL-2.1）：RyzenSMU 和 IntelMSR 在點擊驗證時取得；LPC、EC、SMBus 存取模組內嵌於 LibreHardwareMonitorLib。",
       "libreHardwareMonitor": "隨產品提供的官方核心庫 0.9.6（MPL-2.0），只啟用主機板和記憶體兩組，經 PawnIO 讀取主機板溫度、電壓、風扇和記憶體溫度；不啟動 GUI 或網頁服務。",
+      "blacktempelToolkits": "LibreHardwareMonitorLib 依賴的磁碟資訊、記憶體 SPD 讀取和基礎庫（1.1.2、1.4.2、1.0.7），作者 Florian K.，MPL-2.0。",
+      "hidSharp": "LibreHardwareMonitorLib 依賴的 USB HID 裝置存取庫 2.6.4，作者 James F. Bellinger，Apache-2.0。",
+      "monoPosix": "LibreHardwareMonitorLib 依賴的 Mono POSIX 介面 1.0.0，由 Microsoft 發布，依 Mono 類別庫的 MIT 授權。",
       "usbIds": "提供 USB VID/PID 到廠商和裝置名稱的本地離線解析；僅在裝置詳情開啟時按需載入。",
       "pciIds": "提供 PCI VEN/DEV/SUBSYS 到廠商、裝置和子系統名稱的本地離線解析；僅在裝置詳情開啟時按需載入。"
     },

@@ -462,7 +462,6 @@ export default createSettingsLocale("ko-KR", {
       "nativeToolchain": "네이티브 컴파일과 실행 기반을 제공한 GCC 및 MinGW 작성자와 유지보수 담당자에게 감사드립니다. 일부 구성 요소는 libgcc/libstdc++를 정적으로 링크하며 재배포 검토는 별도로 수행합니다.",
       "buildContributors": "Solid 컴파일 및 갱신 도구, 소스 맵, 브라우저 데이터와 소형 유틸리티를 포함한 모든 빌드 의존성의 작성자와 유지보수 담당자에게 감사드립니다. 전체 목록에는 선택적 플랫폼을 포함한 모든 고정 패키지와 버전이 유지됩니다.",
       "testContributors": "브라우저 자동화, 회귀 테스트 및 커버리지를 제공한 Playwright, xUnit.net, Coverlet와 Microsoft 테스트 플랫폼 기여자에게 감사드립니다. 이들은 개발 도구이며 기본 제품의 실행 의존성이 아닙니다.",
-      "openHardwareMonitor": "하드웨어 센서 인터페이스를 제공한 OpenHardwareMonitor 작성자와 기여자에게 감사드립니다. 설치된 외부 제공자가 WMI 데이터를 제공할 수 있으며 번들 포함을 뜻하지 않습니다.",
       "upstreamContributors": "ANTLR, Unicode, Mono, Brotli와 LLVM 기여자를 포함해 원본 .NET 및 WebView2 고지에 나오는 모든 작성자에게 감사드립니다. 원본 전체를 보존하며 이는 실행 중 DLL별 목록이 아닙니다.",
       "resourceManager": "Copyright (c) 2026 BIOcanse. 이 프로젝트는 Apache-2.0을 사용합니다. 타사 구성 요소에는 각각의 라이선스가 유지됩니다.",
       "solid": "현재 경량 웹 셸 프런트엔드의 반응형 구성 요소 모델을 제공합니다.",
@@ -486,6 +485,9 @@ export default createSettingsLocale("ko-KR", {
       "pawnIo": "공식 서명된 드라이버로, AMD SMU 읽기, Intel 프로세서 제어, 메인보드와 메모리 센서가 함께 씁니다. 몰래 설치되지 않습니다.",
       "pawnIoModules": "공식 서명된 모듈(LGPL-2.1). RyzenSMU와 IntelMSR은 구성 요소를 확인할 때 받아 오고, LPC·EC·SMBus 접근 모듈은 LibreHardwareMonitorLib에 내장되어 있습니다.",
       "libreHardwareMonitor": "함께 제공되는 공식 핵심 라이브러리 0.9.6(MPL-2.0). 메인보드와 메모리 두 그룹만 켜고 PawnIO를 통해 메인보드 온도, 전압, 팬과 메모리 온도를 읽습니다. GUI나 웹 서버는 실행하지 않습니다.",
+      "blacktempelToolkits": "LibreHardwareMonitorLib이 쓰는 디스크 정보, 메모리 SPD 읽기, 기반 라이브러리(1.1.2, 1.4.2, 1.0.7). 작성자 Florian K., MPL-2.0.",
+      "hidSharp": "LibreHardwareMonitorLib이 쓰는 USB HID 장치 접근 라이브러리 2.6.4. 작성자 James F. Bellinger, Apache-2.0.",
+      "monoPosix": "LibreHardwareMonitorLib이 쓰는 Mono POSIX 인터페이스 1.0.0. Microsoft가 배포하며 Mono 클래스 라이브러리의 MIT 라이선스를 따릅니다.",
       "usbIds": "USB VID/PID 제조사와 장치 이름을 로컬 오프라인으로 제공합니다. 장치 세부정보를 요청할 때만 불러옵니다.",
       "pciIds": "PCI VEN/DEV/SUBSYS 제조사, 장치 및 하위 시스템 이름을 로컬 오프라인으로 제공합니다. 장치 세부정보를 요청할 때만 불러옵니다."
     },
