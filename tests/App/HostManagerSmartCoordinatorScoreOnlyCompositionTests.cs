@@ -774,6 +774,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         time.Advance(TimeSpan.FromSeconds(1));
         fixture.PublicResourceManager.PendingNewEffectCandidates = 1;
+        var stages = (Array)typeof(HostManagerSmartCoordinator).GetField(
+            "NewEffectOrder", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        // The cycle that first sees the escalated gate starts with cleanup,
+        // independently of other work stages; public work follows in the next cycle.
+        typeof(HostManagerSmartCoordinator).GetField(
+                "nextRealtimeNewEffectIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(fixture.Coordinator, Enumerable.Range(0, stages.Length)
+                .Single(index => stages.GetValue(index)!.ToString() == "MemoryCleanup"));
         fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(
             committedGeneration: 4,
             capturedAt: time.GetUtcNow()));
