@@ -347,7 +347,7 @@ const ruRuAppCopy: AppCopy = {
     uptimeTitle: "Время с последнего запуска этого компьютера"
   },
   managementPage: {
-    browserRuntimeTab: "Управление средами выполнения",
+    browserRuntimeTab: "Среды",
     migrationTab: "Рабочая панель переноса",
     pageLabel: (kind: string) => `Управление: ${kind}`,
     searchLabel: (kind: string) => `Поиск: ${kind}`,
@@ -367,19 +367,19 @@ const ruRuAppCopy: AppCopy = {
     moreActions: "Другие действия"
   },
   softwareKind: {
-    Adapted: "Поддерживаемые программы",
-    Controlled: "Управляемые программы",
-    Unconfirmed: "Не подтверждено",
+    Adapted: "Совместимые",
+    Controlled: "Управляемые",
+    Unconfirmed: "Не проверено",
     Managed: "Под управлением",
     Game: "Игры",
-    HighPerformance: "Высокопроизводительные программы",
-    Other: "Обычные приложения",
+    HighPerformance: "Тяжёлые",
+    Other: "Приложения",
     WindowsSystem: "Система Windows",
     WindowsComponent: "Приложение или компонент Windows",
     WindowsService: "Служба Windows",
     RuntimePackage: "Приложение Windows",
-    RuntimeProduct: "Обычные приложения",
-    RuntimeRoot: "Обычные приложения",
+    RuntimeProduct: "Приложения",
+    RuntimeRoot: "Приложения",
     Unattributed: "Неотнесённые процессы",
     SystemResidual: "Резерв системы и драйверов",
     Empty: "Свободно"

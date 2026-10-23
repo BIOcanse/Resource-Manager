@@ -347,7 +347,7 @@ const esEsAppCopy: AppCopy = {
     uptimeTitle: "Tiempo transcurrido desde el último inicio de este equipo"
   },
   managementPage: {
-    browserRuntimeTab: "Gestión de entornos de ejecución",
+    browserRuntimeTab: "Entornos",
     migrationTab: "Banco de migración",
     pageLabel: (kind: string) => `Gestión: ${kind}`,
     searchLabel: (kind: string) => `Buscar en ${kind}`,
@@ -367,19 +367,19 @@ const esEsAppCopy: AppCopy = {
     moreActions: "Más acciones"
   },
   softwareKind: {
-    Adapted: "Software compatible",
-    Controlled: "Software gestionado",
+    Adapted: "Compatible",
+    Controlled: "Gestionado",
     Unconfirmed: "Sin confirmar",
     Managed: "Bajo gestión",
     Game: "Juegos",
-    HighPerformance: "Software de alto rendimiento",
-    Other: "Aplicaciones generales",
+    HighPerformance: "Alto rendimiento",
+    Other: "Aplicaciones",
     WindowsSystem: "Sistema Windows",
     WindowsComponent: "Aplicación/componente de Windows",
     WindowsService: "Servicio de Windows",
     RuntimePackage: "Aplicación de Windows",
-    RuntimeProduct: "Aplicaciones generales",
-    RuntimeRoot: "Aplicaciones generales",
+    RuntimeProduct: "Aplicaciones",
+    RuntimeRoot: "Aplicaciones",
     Unattributed: "Procesos sin atribuir",
     SystemResidual: "Reservado por sistema/controlador",
     Empty: "Libre"
