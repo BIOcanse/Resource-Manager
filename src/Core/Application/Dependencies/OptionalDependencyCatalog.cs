@@ -112,12 +112,12 @@ public static class OptionalDependencyCatalog
                 + "它是独立程序，由主程序随开随关；"
                 + "退出时会把风扇交还固件自动控制。",
             ReleaseSource: new GitHubReleaseSource(
-                Owner: "BIOcanse", Repository: "Fan-Control-Core", VerifiedTag: "v0.1.0",
+                Owner: "BIOcanse", Repository: "Fan-Control-Core", VerifiedTag: "v0.2.0",
                 VerifiedAssetName: "FanControlCore-win-x64.zip", AssetPatterns: ["FanControlCore-win-x64.zip"]),
             PayloadSource: new DependencyPayloadSource(
                 Owner: "BIOcanse",
                 Repository: "Fan-Control-Core",
-                VerifiedTag: "v0.1.0",
+                VerifiedTag: "v0.2.0",
                 VerifiedAssetName: "FanControlCore-win-x64.zip",
                 FileNames: ["FanControlCore.exe", "LICENSE"], IncludeArchiveContents: true)),
         new OptionalDependencyDefinition(
