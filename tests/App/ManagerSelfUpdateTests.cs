@@ -10,6 +10,38 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ManagerSelfUpdateTests
 {
     [Fact]
+    public async Task VerifiedPackageManagerCanApplyButReplacementStillComparesTheOldInstalledManager()
+    {
+        using var fixture = new Fixture();
+        var package = ReleasePackageLayout.Verify(fixture.Download);
+        var plan = new UpdatePlan(package, fixture.Installed, "0.2.0", false);
+        var executable = UpdateManagerPaths.PackagedExecutable(fixture.Download);
+        UpdateManagerCommand.RequireApplyManager(executable, plan, ToolText.For("en-US"));
+        await PackageSwitchTransaction.ApplyAsync(plan, new Runtime(), CancellationToken.None);
+        ProcessStartInfo? launched = null;
+        Assert.True(ManagerSelfUpdate.Schedule(package, fixture.Installed, start => launched = start));
+        Assert.NotNull(launched);
+        Assert.Equal(UpdateManagerPaths.PackagedExecutable(fixture.Installed), launched.FileName);
+        Assert.NotEqual(executable, launched.FileName);
+        Assert.Equal("old-manager", File.ReadAllText(fixture.OldManager));
+    }
+
+    [Theory]
+    [InlineData("other-path")]
+    [InlineData("changed-payload")]
+    public void ArbitraryOrTamperedPackageManagerCannotApply(string failure)
+    {
+        using var fixture = new Fixture();
+        var package = ReleasePackageLayout.Verify(fixture.Download);
+        var plan = new UpdatePlan(package, fixture.Installed, "0.2.0", false);
+        var executable = UpdateManagerPaths.PackagedExecutable(fixture.Download);
+        if (failure == "other-path") executable = Path.Combine(fixture.Download, "ResourceManager.UpdateManager.exe");
+        else File.AppendAllText(executable, "changed-after-preflight");
+        Assert.ThrowsAny<Exception>(() => UpdateManagerCommand.RequireApplyManager(executable, plan, ToolText.For("en-US")));
+        Assert.Equal("old-manager", File.ReadAllText(fixture.OldManager));
+    }
+
+    [Fact]
     public async Task CommittedCopyIsLaunchedEvenIfUserPackageChangesAfterSwitch()
     {
         using var fixture = new Fixture();
@@ -20,7 +52,7 @@ public sealed class ManagerSelfUpdateTests
         File.WriteAllText(Path.Combine(fixture.Installed, "Config", "app-settings.json"), "user-settings");
 
         ProcessStartInfo? launched = null;
-        Assert.True(ManagerSelfUpdate.Schedule(package, fixture.Installed, fixture.OldManager, start =>
+        Assert.True(ManagerSelfUpdate.Schedule(package, fixture.Installed, start =>
         {
             launched = start;
             Assert.Equal("fixture:Internal/UpdateManager/ResourceManager.UpdateManager.exe", File.ReadAllText(start.FileName));
@@ -57,7 +89,7 @@ public sealed class ManagerSelfUpdateTests
         }
         var launched = false;
         Action dispatch = () => ManagerSelfUpdate.Schedule(
-            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed,
             _ => launched = true);
         if (failure == "missing") Assert.Throws<FileNotFoundException>(dispatch);
         else Assert.Throws<InvalidDataException>(dispatch);
@@ -73,7 +105,7 @@ public sealed class ManagerSelfUpdateTests
         fixture.CopyPayloadToInstalled();
         File.Copy(UpdateManagerPaths.PackagedExecutable(fixture.Installed), fixture.OldManager, overwrite: true);
         Assert.False(ManagerSelfUpdate.Schedule(ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"),
-            fixture.Installed, fixture.OldManager, _ => throw new Xunit.Sdk.XunitException("Unexpected launch")));
+            fixture.Installed, _ => throw new Xunit.Sdk.XunitException("Unexpected launch")));
     }
 
     [Fact]
@@ -82,7 +114,7 @@ public sealed class ManagerSelfUpdateTests
         using var fixture = new Fixture();
         fixture.CopyPayloadToInstalled();
         Assert.Throws<InvalidOperationException>(() => ManagerSelfUpdate.Schedule(
-            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+            ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed,
             _ => throw new InvalidOperationException("injected dispatch failure")));
         File.Delete(UpdateManagerPaths.PackagedExecutable(fixture.Installed));
     }
@@ -100,7 +132,7 @@ public sealed class ManagerSelfUpdateTests
                 JsonSerializer.Serialize(new { appearance = new { language } }));
             var text = ToolText.For(language);
             var error = Assert.Throws<InvalidDataException>(() => ManagerSelfUpdate.Schedule(
-                ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed, fixture.OldManager,
+                ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"), fixture.Installed,
                 _ => throw new Xunit.Sdk.XunitException("Invalid payload was dispatched")));
             Assert.Equal(text.ManagerPayloadInvalid, error.Message);
             Assert.Contains("BACKUP-TOKEN", text.Format(text.ManagerSelfUpdatedBackupFormat, "BACKUP-TOKEN"));

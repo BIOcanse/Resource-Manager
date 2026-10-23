@@ -200,7 +200,7 @@ if([string]::IsNullOrWhiteSpace($NativeContextPath)) {
     if(@($taskNativeContext.outputs|Where-Object {[string]$_.path -ieq [string]$taskNativeContext.properties.NativeCoreOutput}).Count -ne 1){throw 'NativeCoreOutput is not bound to a verified output.'}
 }
 if($taskDiskInputs){
-    $taskProperties+=@(('-p:DiskCheckpointNativeRoot='+$taskDiskInputs.context.artifactRoot),('-p:DiskCheckpointPowerShell='+[Environment]::ProcessPath))
+    $taskProperties+=('-p:DiskCheckpointNativeRoot='+$taskDiskInputs.context.artifactRoot)
 }
 if($taskPartition) {
     $taskCompileEvidence=Join-Path $RunDirectory 'compile-partition'
@@ -212,7 +212,8 @@ if($taskPartition) {
 }
 $taskProperties+= '-p:CompilerResponseFile=D:\Code\Resource-Manager-Development\scripts\validation\ProductSdk\serial-compiler.rsp'
 $taskProperties+= @(('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $taskRoot 'ledger-native')),
-    ('-p:ResourceManagerLedgerPowerShell='+[Environment]::ProcessPath))
+    ('-p:ResourceManagerLedgerPowerShell='+[Environment]::ProcessPath),
+    ('-p:DiskCheckpointPowerShell='+[Environment]::ProcessPath))
 if(-not [string]::IsNullOrWhiteSpace($LedgerBuildRoot)){$taskProperties+=('-p:ResourceManagerLedgerBuildRoot='+[IO.Path]::GetFullPath($LedgerBuildRoot))}
 $taskProperties+=@(('-p:RestoreConfigFile='+(Join-Path $taskRoot 'NuGet.official.config')),('-p:RestorePackagesPath='+(Join-Path $taskArtifacts 'packages')))
 $taskLogPrefix=if($taskExplicitTestProject){'full-app'}else{'focused'}
