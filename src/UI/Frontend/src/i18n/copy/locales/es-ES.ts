@@ -21,12 +21,12 @@ const esEsAppCopy: AppCopy = {
     info: "Aviso"
   },
   page: {
-    monitor: "Consola de supervisión",
-    components: "Componentes y software",
-    optimization: "Optimización del rendimiento",
-    details: "Información detallada",
+    monitor: "Supervisión",
+    components: "Software",
+    optimization: "Optimización",
+    details: "Detalles",
     settings: "Configuración",
-    diskUsage: "Uso del disco",
+    diskUsage: "Disco",
     control: "Control"
   },
   control: {
@@ -1731,7 +1731,7 @@ const esEsAppCopy: AppCopy = {
   },
   softwareActions: {
     policyEditUnavailable: "Este perfil de inicio no permite editar las políticas de software.",
-    softwareListNoMatch: "Todavía no hay ninguna entrada coincidente en la lista de software. Actualiza primero «Componentes y software».",
+    softwareListNoMatch: "Todavía no hay ninguna entrada coincidente en la lista de software. Actualiza primero «Software».",
     policySoftwareMissing: "No se encontró en la lista de software el software de esta política.",
     noRunningProcess: "No hay ningún proceso en ejecución coincidente.",
     endTaskTitle: (name: string) => `Finalizar tarea: ${name}`,
@@ -2192,7 +2192,7 @@ const esEsAppCopy: AppCopy = {
   appShellExtras: {
     metricNeedsComponent: (metric: string, component: string) => `${metric} necesita ${component}`,
     currentState: (state: string) => `Estado actual: ${state}`,
-    goToComponents: "¿Abrir «Componentes y software» para instalarlo o comprobarlo?",
+    goToComponents: "¿Abrir «Software» para instalarlo o comprobarlo?",
     noRunnableAction: "Ahora mismo no hay ninguna acción disponible",
     cancelTaskFailed: "No se pudo cancelar la tarea"
   },

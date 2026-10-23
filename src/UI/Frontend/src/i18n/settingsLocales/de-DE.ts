@@ -199,7 +199,7 @@ export default createSettingsLocale("de-DE", {
     "byteUnitTitle": "Kapazitätseinheiten",
     "byteUnitDescription": "1 GiB = 1024 MiB, 1 GB = 1000 MB. Beim Wechsel werden auch die Zahlen umgerechnet, nicht nur die Bezeichnungen geändert.",
     "readingSourceTitle": "Messwertquellen",
-    "readingSourceDescription": "Wie Messwerte mit mehreren Quellen in der Überwachungskonsole und den Gerätedetails aufgeführt werden. Standardmäßig wird nur die genaueste Quelle auf diesem Computer angezeigt; werden alle verfügbaren Quellen angezeigt, ist die genaueste als „Bevorzugt“ markiert. Die Planung verwendet unabhängig von dieser Einstellung immer die genaueste Quelle.",
+    "readingSourceDescription": "Wie Messwerte mit mehreren Quellen in der Überwachung und den Gerätedetails aufgeführt werden. Standardmäßig wird nur die genaueste Quelle auf diesem Computer angezeigt; werden alle verfügbaren Quellen angezeigt, ist die genaueste als „Bevorzugt“ markiert. Die Planung verwendet unabhängig von dieser Einstellung immer die genaueste Quelle.",
     "readingSourceModeOptions": [
       {
         "id": "preferred",
