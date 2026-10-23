@@ -81,9 +81,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         const string softwareId = "software:owned-native-gpu-cycle";
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, "Owned GPU cycle") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto,
-            SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
             RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         });

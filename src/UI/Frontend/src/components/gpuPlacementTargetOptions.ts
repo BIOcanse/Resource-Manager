@@ -17,19 +17,22 @@ function ordinarySystemTargetGpuOptions(): readonly GpuPolicySelectOption[] {
   ] as const;
 }
 
+/**
+ * preciseSelectionAvailable：调用方传入“精确调度已开启且启动期能力可用”，
+ * 为 true 时才列出具体显卡，否则只给系统级目标。
+ */
 export function startupTargetGpuOptionsForSoftwarePolicy(
-  preciseGpuPlacementEnabled: boolean,
-  schedulingMode: string,
+  preciseSelectionAvailable: boolean,
   currentTarget: string,
   exactTargets: readonly GpuPlacementExactTargetOption[] = []): readonly GpuPolicySelectOption[] {
   if (isUnavailableStartupGpuTarget(currentTarget)) {
-    const availableOptions = preciseGpuPlacementEnabled && schedulingMode === "Precise"
+    const availableOptions = preciseSelectionAvailable
       ? [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets)]
       : ordinarySystemTargetGpuOptions();
     return [[currentTarget, uiText.gpuTarget.startupUnavailable(formatGpuTarget(currentTarget)), true], ...availableOptions];
   }
 
-  if (preciseGpuPlacementEnabled && schedulingMode === "Precise") {
+  if (preciseSelectionAvailable) {
     return preserveUnavailableCurrentTarget(
       [...ordinarySystemTargetGpuOptions(), ...mapExactTargets(exactTargets)],
       currentTarget,

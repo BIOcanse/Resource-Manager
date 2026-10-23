@@ -23,9 +23,7 @@ public sealed class GpuLaunchInterceptionTests
             "process.exe",
             @"C:\Apps\process.exe",
             true,
-            GpuPlacementPolicyModes.Inherit,
             [],
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             DateTimeOffset.UnixEpoch);
 
@@ -36,21 +34,16 @@ public sealed class GpuLaunchInterceptionTests
     public void StartupProvider_IsIndependentFromRuntimeHotSwitchMode()
     {
         var policy = new ResolvedGpuPlacementPolicy(
-            GpuPlacementPolicyModes.Auto,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.AutoIdleGpu,
-            GpuPlacementRuntimeSchedulingModes.Ordinary,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             false,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover,
-            true,
-            false,
-            false,
             CpuMaximumOccupancyModes.SingleCcd,
-            false,
             [],
-            []);
+            [],
+            CpuSchedulingExcluded: false,
+            MemorySchedulingExcluded: false,
+            GpuSchedulingExcluded: false);
 
         Assert.True(policy.AllowsStartupShimExecution());
         Assert.False(policy.AcceptsRuntimeGpuScheduling());
@@ -75,9 +68,6 @@ public sealed class GpuLaunchInterceptionTests
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(
             GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Manual,
-                SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
                 RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [provider]
             });
@@ -94,8 +84,6 @@ public sealed class GpuLaunchInterceptionTests
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(
             GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Manual,
-                SchedulingMode = GpuPlacementSchedulingModes.Precise,
                 AllowedProviders = [GpuPlacementProviderIds.VulkanExplicitLayer, GpuPlacementProviderIds.D3dDeviceCreateShim]
             });
         var decision = new GpuStartupPlacementDecision(GpuStartupPlacementDecisionKinds.Inject,
@@ -105,7 +93,7 @@ public sealed class GpuLaunchInterceptionTests
         Assert.Equal(new[] { GpuPlacementProviderIds.D3dDeviceCreateShim, GpuPlacementProviderIds.VulkanExplicitLayer }, decision.StartupProviders);
         Assert.Contains("startupProviders=d3d-device-create-shim,vulkan-explicit-layer\n",
             GpuLaunchBrokerProtocol.Serialize(decision), StringComparison.Ordinal);
-        Assert.Empty((policy with { EnabledMode = GpuPlacementPolicyModes.Disabled }).GetStartupProviders(GpuGraphicsApi.D3D11));
+        Assert.Empty((policy with { GpuSchedulingExcluded = true }).GetStartupProviders(GpuGraphicsApi.D3D11));
     }
 
     [Fact]
@@ -133,9 +121,7 @@ public sealed class GpuLaunchInterceptionTests
             Path.GetFileName(executablePath),
             executablePath,
             true,
-            GpuPlacementPolicyModes.Auto,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             DateTimeOffset.UnixEpoch,
             true);
@@ -226,9 +212,7 @@ public sealed class GpuLaunchInterceptionTests
 
         var softwarePolicy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            SchedulingMode = GpuPlacementSchedulingModes.Precise,
             StartupTargetGpu = GpuPlacementTargets.AutoIdleGpu
         };
         var processPolicy = new GpuPlacementProcessPolicy(
@@ -237,9 +221,7 @@ public sealed class GpuLaunchInterceptionTests
             Path.GetFileName(executablePath),
             executablePath,
             true,
-            GpuPlacementPolicyModes.Inherit,
             [],
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             DateTimeOffset.UnixEpoch,
             true);

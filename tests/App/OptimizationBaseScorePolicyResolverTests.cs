@@ -123,9 +123,7 @@ public sealed class OptimizationBaseScorePolicyResolverTests
             "helper",
             null,
             inherit,
-            GpuPlacementPolicyModes.Inherit,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             baseScoreOverride,
             DateTimeOffset.UnixEpoch);
     }

@@ -120,6 +120,16 @@ public sealed class GpuStartupPlacementResolver(
             softwarePolicy.SoftwareName,
             null,
             processPolicy.ProcessKey);
+        if (resolved.GpuSchedulingExcluded)
+        {
+            return PassThrough(
+                executablePath,
+                "gpu-scheduling-excluded",
+                "该软件已设置为不参与 GPU 调度。",
+                processPolicy,
+                resolved.StartupTargetGpu);
+        }
+
         if (!resolved.AllowsStartupShimExecution())
         {
             return PassThrough(

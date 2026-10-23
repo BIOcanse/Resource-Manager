@@ -379,7 +379,6 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     {
         var policy = AutoPolicy() with
         {
-            EnabledMode = GpuPlacementPolicyModes.Manual,
             CpuManualLockedPositionIds = ["core:3"]
         };
 
@@ -400,11 +399,11 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void DisabledGpuSelectionDoesNotDisableCpuPlacement(bool manualLock)
+    public void GpuSchedulingExclusionDoesNotDisableCpuPlacement(bool manualLock)
     {
         var policy = AutoPolicy() with
         {
-            EnabledMode = GpuPlacementPolicyModes.Disabled,
+            GpuSchedulingExcluded = true,
             CpuManualLockedPositionIds = manualLock ? ["core:3"] : []
         };
         var process = CreateProcess("cpu-only", 31, 40, 20, policy);
@@ -421,6 +420,31 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
             CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
             [process with { CanApplyPhysicalPlacement = false }], CreateCapacity(), true, new(95, 80));
         Assert.Empty(unavailable.Cpu);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CpuSchedulingExclusionRemovesOnlyCpuPlacement(bool manualLock)
+    {
+        var participating = AutoPolicy() with
+        {
+            CpuManualLockedPositionIds = manualLock ? ["core:3"] : []
+        };
+        var participatingPlan = HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
+            [CreateProcess("cpu-excluded", 32, 40, 80, participating)],
+            CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 80));
+        var excludedPlan = HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(),
+            [CreateProcess("cpu-excluded", 32, 40, 80, participating with { CpuSchedulingExcluded = true })],
+            CreateCapacity(), runtimeGpuShimEnabled: true, gpuOverflow: new(95, 80));
+
+        Assert.Single(participatingPlan.Cpu);
+        Assert.Empty(excludedPlan.Cpu);
+        Assert.Equal(
+            participatingPlan.Gpu.Select(static placement => (placement.Process.TargetId, placement.TargetAdapterKey, placement.Source)),
+            excludedPlan.Gpu.Select(static placement => (placement.Process.TargetId, placement.TargetAdapterKey, placement.Source)));
     }
 
     [Fact]
@@ -514,8 +538,6 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
         var policy = AutoPolicy() with
         {
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
             RuntimeHotSwitchEnabled = true
         };
         var first = CreateProcess("first", 10, null, 40, policy);
@@ -597,21 +619,16 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
 
     private static ResolvedGpuPlacementPolicy AutoPolicy()
         => new(
-            GpuPlacementPolicyModes.Auto,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementRuntimeSchedulingModes.Precise,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             true,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover,
-            true,
-            false,
-            false,
             CpuMaximumOccupancyModes.SingleCcd,
-            false,
             [],
-            []);
+            [],
+            CpuSchedulingExcluded: false,
+            MemorySchedulingExcluded: false,
+            GpuSchedulingExcluded: false);
 
     private static CompiledHostManagerPlacementCoordinatorRecreatePlan CreateCapacity()
         => new(16, 16, 16, 16, 4, 2, 16, 16);

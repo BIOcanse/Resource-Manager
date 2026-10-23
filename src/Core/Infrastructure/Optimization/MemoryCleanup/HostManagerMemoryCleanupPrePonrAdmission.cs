@@ -21,7 +21,8 @@ internal static class HostManagerMemoryCleanupPrePonrAdmission
         SchedulingProcessFact current,
         double currentMaximumBaseScore,
         string currentRuntimeState,
-        int protectionLevel)
+        int protectionLevel,
+        bool memorySchedulingExcluded)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(baselineScore);
@@ -49,7 +50,8 @@ internal static class HostManagerMemoryCleanupPrePonrAdmission
                 or HostManagerRuntimeStates.ForegroundUnfocused
             || currentRuntimeState is HostManagerRuntimeStates.ForegroundFocused
                 or HostManagerRuntimeStates.ForegroundUnfocused
-            || protectionLevel >= OptimizationProtectionLevels.Level2NoOptimization)
+            || protectionLevel >= OptimizationProtectionLevels.Level2NoOptimization
+            || memorySchedulingExcluded)
         {
             return HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible;
         }

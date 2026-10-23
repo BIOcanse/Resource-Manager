@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileProviders;
@@ -18,14 +19,14 @@ public sealed class GpuRuntimeTargetPersistenceTests
         try
         {
             var original = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
-            { SchedulingMode = GpuPlacementSchedulingModes.Precise, StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu };
+            { StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu };
             var document = new GpuPlacementPolicyDocument("1.2.0", [original], [], DateTimeOffset.UnixEpoch);
             var json = JsonSerializer.SerializeToNode(document, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
             json["softwarePolicies"]![0]!["targetGpu"] = oldTarget;
             var path = Path.Combine(root, "UserData", "SoftwareProfiles", "gpu-placement-policies.local.json");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, json.ToJsonString());
-            var store = new JsonGpuPlacementPolicyStore(new Environment(root));
+            var store = new JsonGpuPlacementPolicyStore(new Environment(root), NullLogger<JsonGpuPlacementPolicyStore>.Instance);
             var loaded = Assert.Single((await store.GetAsync(CancellationToken.None)).SoftwarePolicies);
             Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, loaded.StartupTargetGpu);
             await store.SaveSoftwarePolicyAsync(loaded, CancellationToken.None);

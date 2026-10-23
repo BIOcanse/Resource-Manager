@@ -184,8 +184,8 @@ public sealed partial class HostManagerSmartCoordinator
                         && target.CanApplyPhysicalCorePlacement,
                     processCpuMetricsComplete && scoreMembershipConsistent,
                     processGpuMetricsComplete && scoreMembershipConsistent,
-                    modePlan.CpuSchedulingEnabled,
-                    modePlan.GpuSchedulingEnabled);
+                    modePlan.CpuSchedulingEnabled && !target.GpuPlacementPolicy.CpuSchedulingExcluded,
+                    modePlan.GpuSchedulingEnabled && !target.GpuPlacementPolicy.GpuSchedulingExcluded);
                 Append(inputRows, identity);
                 if (hasAdapterRecord)
                 {

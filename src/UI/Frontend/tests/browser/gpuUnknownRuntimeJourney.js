@@ -18,8 +18,6 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     }
     const response = await route.fetch();
     const data = await response.json();
-    data.softwarePolicy.schedulingMode = "Precise";
-    data.softwarePolicy.runtimeSchedulingMode = "Precise";
     data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "GPU1", displayName: "GPU 1 Test", available: true }] };
     data.processCapabilities = [{ processKey: "fixture",
       startup: { state: "supported", providerId: "fixture", graphicsApi: "D3D11", reason: "fixture" },

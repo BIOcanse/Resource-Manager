@@ -217,7 +217,7 @@ public sealed class GpuGraphicsApiIdentificationTests
         var history = new JsonGpuPlacementProcessHistoryStore(files);
         var process = Assert.Single((await history.SaveFirstGraphicsApiAsync(
             "software", "Software", files.Instance(), api, default)).Processes);
-        var policies = new JsonGpuPlacementPolicyStore(files);
+        var policies = new JsonGpuPlacementPolicyStore(files, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
             StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu,

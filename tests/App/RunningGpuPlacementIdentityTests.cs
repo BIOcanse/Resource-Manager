@@ -17,9 +17,6 @@ public sealed class RunningGpuPlacementIdentityTests
         using var files = new GpuGraphicsApiIdentificationTests.Fixture();
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("actual-software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto,
-            SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
             RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };

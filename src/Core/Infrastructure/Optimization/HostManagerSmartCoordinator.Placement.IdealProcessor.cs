@@ -19,6 +19,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         var inputs = new List<HostManagerIdealProcessorInput>();
         foreach (var process in processes.Where(static p => p.CanApplyPhysicalPlacement
+            && !p.Policy.CpuSchedulingExcluded
             && p.CanonicalCpuScore is >= 0 && p.Policy.CpuManualLockedPositionIds.Count == 0
             && p.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.AllCores, StringComparison.OrdinalIgnoreCase)))
         {

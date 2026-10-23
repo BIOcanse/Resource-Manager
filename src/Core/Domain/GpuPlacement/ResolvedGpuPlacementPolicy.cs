@@ -1,69 +1,43 @@
 namespace ResourceManager.App.Domain.GpuPlacement;
 
 public sealed record ResolvedGpuPlacementPolicy(
-    string EnabledMode,
     IReadOnlyList<string> AllowedProviders,
-    string SchedulingMode,
     string StartupTargetGpu,
-    string RuntimeSchedulingMode,
-    string ExplicitSelectionMode,
     bool RuntimeHotSwitchEnabled,
     string PreferredRuntimeSwitchMethod,
-    bool KeepCpuProcessesOnMainCcd,
-    bool GpuExclusive,
-    bool AbsolutePerformanceModeEnabled,
     string CpuMaximumOccupancyMode,
-    bool CpuExclusiveLocksAffinity,
     IReadOnlyList<string> CpuManualExclusivePositionIds,
-    IReadOnlyList<string> CpuManualLockedPositionIds)
+    IReadOnlyList<string> CpuManualLockedPositionIds,
+    bool CpuSchedulingExcluded,
+    bool MemorySchedulingExcluded,
+    bool GpuSchedulingExcluded)
 {
     public static ResolvedGpuPlacementPolicy FromSoftware(GpuPlacementSoftwarePolicy policy, string? softwareKind = null)
     {
-        var cpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode);
         return new ResolvedGpuPlacementPolicy(
-            ResolveSoftwareEnabledMode(policy),
             NormalizeProviders(policy.AllowedProviders),
-            GpuPlacementSchedulingModes.Normalize(policy.SchedulingMode),
             GpuPlacementTargets.Normalize(policy.StartupTargetGpu),
-            GpuPlacementRuntimeSchedulingModes.Normalize(policy.RuntimeSchedulingMode),
-            GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
             policy.RuntimeHotSwitchEnabled ?? GpuPlacementPolicyDefaults.ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),
             GpuPlacementRuntimeSwitchMethods.Normalize(policy.PreferredRuntimeSwitchMethod),
-            cpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase),
-            policy.GpuExclusive,
-            policy.AbsolutePerformanceModeEnabled,
-            cpuMaximumOccupancyMode,
-            policy.CpuExclusiveLocksAffinity,
+            CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
             NormalizeCpuPositionIds(policy.CpuManualExclusivePositionIds),
-            NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds));
+            NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds),
+            policy.CpuSchedulingExcluded,
+            policy.MemorySchedulingExcluded,
+            policy.GpuSchedulingExcluded);
     }
 
+    // A process override only changes its providers (and its base score elsewhere); scheduling
+    // participation is a software-level choice and is inherited unchanged.
     public static ResolvedGpuPlacementPolicy FromProcess(
         GpuPlacementProcessPolicy policy,
         GpuPlacementSoftwarePolicy softwarePolicy,
         string? softwareKind = null)
     {
-        var cpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(softwarePolicy.CpuMaximumOccupancyMode);
-        var softwareEnabledMode = ResolveSoftwareEnabledMode(softwarePolicy);
-        var processEnabledMode = GpuPlacementPolicyModes.Normalize(policy.EnabledMode, softwareEnabledMode);
-        return new ResolvedGpuPlacementPolicy(
-            processEnabledMode.Equals(GpuPlacementPolicyModes.Inherit, StringComparison.OrdinalIgnoreCase)
-                ? softwareEnabledMode
-                : processEnabledMode,
-            NormalizeProviders(policy.AllowedProviders),
-            GpuPlacementSchedulingModes.Normalize(softwarePolicy.SchedulingMode),
-            GpuPlacementTargets.Normalize(softwarePolicy.StartupTargetGpu),
-            GpuPlacementRuntimeSchedulingModes.Normalize(softwarePolicy.RuntimeSchedulingMode),
-            GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
-            softwarePolicy.RuntimeHotSwitchEnabled ?? GpuPlacementPolicyDefaults.ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),
-            GpuPlacementRuntimeSwitchMethods.Normalize(softwarePolicy.PreferredRuntimeSwitchMethod),
-            cpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase),
-            softwarePolicy.GpuExclusive,
-            softwarePolicy.AbsolutePerformanceModeEnabled,
-            cpuMaximumOccupancyMode,
-            softwarePolicy.CpuExclusiveLocksAffinity,
-            NormalizeCpuPositionIds(softwarePolicy.CpuManualExclusivePositionIds),
-            NormalizeCpuPositionIds(softwarePolicy.CpuManualLockedPositionIds));
+        return FromSoftware(softwarePolicy, softwareKind) with
+        {
+            AllowedProviders = NormalizeProviders(policy.AllowedProviders)
+        };
     }
 
     public bool AllowsProvider(string providerId)
@@ -73,10 +47,7 @@ public sealed record ResolvedGpuPlacementPolicy(
 
     public bool AllowsRuntimeShimExecution()
     {
-        return SchedulingMode.Equals(GpuPlacementSchedulingModes.Precise, StringComparison.OrdinalIgnoreCase)
-            && RuntimeSchedulingMode.Equals(GpuPlacementRuntimeSchedulingModes.Precise, StringComparison.OrdinalIgnoreCase)
-            && (EnabledMode.Equals(GpuPlacementPolicyModes.Auto, StringComparison.OrdinalIgnoreCase)
-                || EnabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase))
+        return !GpuSchedulingExcluded
             && (AllowsProvider(GpuPlacementProviderIds.D3dDeviceCreateShim)
                 || AllowsProvider(GpuPlacementProviderIds.VulkanExplicitLayer));
     }
@@ -88,11 +59,7 @@ public sealed record ResolvedGpuPlacementPolicy(
 
     public bool AcceptsExternalRuntimeGpuScheduling()
     {
-        return RuntimeHotSwitchEnabled
-            && SchedulingMode.Equals(GpuPlacementSchedulingModes.Precise, StringComparison.OrdinalIgnoreCase)
-            && RuntimeSchedulingMode.Equals(GpuPlacementRuntimeSchedulingModes.Precise, StringComparison.OrdinalIgnoreCase)
-            && (EnabledMode.Equals(GpuPlacementPolicyModes.Auto, StringComparison.OrdinalIgnoreCase)
-                || EnabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase));
+        return RuntimeHotSwitchEnabled && !GpuSchedulingExcluded;
     }
 
     public string? GetRuntimeProvider(GpuGraphicsApi? graphicsApi)
@@ -100,9 +67,7 @@ public sealed record ResolvedGpuPlacementPolicy(
 
     public bool AllowsStartupShimExecution()
     {
-        return SchedulingMode.Equals(GpuPlacementSchedulingModes.Precise, StringComparison.OrdinalIgnoreCase)
-            && (EnabledMode.Equals(GpuPlacementPolicyModes.Auto, StringComparison.OrdinalIgnoreCase)
-                || EnabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase))
+        return !GpuSchedulingExcluded
             && (AllowsProvider(GpuPlacementProviderIds.D3dDeviceCreateShim)
                 || AllowsProvider(GpuPlacementProviderIds.VulkanExplicitLayer));
     }
@@ -112,14 +77,6 @@ public sealed record ResolvedGpuPlacementPolicy(
         if (!AllowsStartupShimExecution()) return [];
         var provider = GpuGraphicsApiRoutes.StartupProvider(graphicsApi);
         return provider is null ? [] : [provider];
-    }
-
-    private static string ResolveSoftwareEnabledMode(GpuPlacementSoftwarePolicy policy)
-    {
-        var enabledMode = GpuPlacementPolicyModes.Normalize(policy.EnabledMode);
-        return enabledMode.Equals(GpuPlacementPolicyModes.Inherit, StringComparison.OrdinalIgnoreCase)
-            ? GpuPlacementPolicyModes.Auto
-            : enabledMode;
     }
 
     private static IReadOnlyList<string> NormalizeProviders(IReadOnlyList<string>? providers)

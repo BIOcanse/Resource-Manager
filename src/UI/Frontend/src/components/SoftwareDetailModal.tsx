@@ -22,10 +22,7 @@ import type {
   DetailRow,
   DetailValue,
   CpuMaximumOccupancyMode,
-  GpuPlacementExplicitSelectionMode,
-  GpuPlacementRuntimeSchedulingMode,
   GpuPlacementRuntimeSwitchMethod,
-  GpuPlacementSchedulingMode,
   GpuPlacementObservedProcess,
   GpuPlacementProcessPolicy,
   GpuPlacementProviderCapability,
@@ -39,7 +36,6 @@ import {
 } from "../presentation/userFacingText";
 import {
   canConfigureRuntimePlacement,
-  isOrdinarySystemGpuTarget,
   isUnavailableStartupGpuTarget,
   startupTargetGpuOptionsForSoftwarePolicy,
   type GpuPolicySelectOption
@@ -84,66 +80,6 @@ function detailTabLabels(): Record<DetailTabId, string> {
 }
 
 // 文案按当前语言求值，不能在模块顶层固化。
-function policyModeOptions() {
-  return [
-    ["Inherit", uiText.softwareDetail.option.useDefault],
-    ["Disabled", uiText.softwareDetail.option.disabled],
-    ["Preview", uiText.softwareDetail.option.previewOnly],
-    ["Auto", uiText.softwareDetail.option.auto],
-    ["Manual", uiText.softwareDetail.option.manual]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function schedulingModeOptions() {
-  return [
-    ["Precise", uiText.softwareDetail.option.preciseScheduling],
-    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function ordinaryOnlySchedulingModeOptions(): readonly GpuPolicySelectOption[] {
-  return [
-    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function runtimeSchedulingModeOptions() {
-  return [
-    ["Precise", uiText.softwareDetail.option.preciseScheduling],
-    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function ordinaryOnlyRuntimeSchedulingModeOptions(): readonly GpuPolicySelectOption[] {
-  return [
-    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function unavailableSchedulingModeOptions(): readonly GpuPolicySelectOption[] {
-  return [
-    ["Precise", uiText.softwareDetail.option.preciseSchedulingUnavailable, true],
-    ["Ordinary", uiText.softwareDetail.option.systemCompatibleScheduling]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function explicitSelectionOptions() {
-  return [
-    ["DefaultSkip", uiText.softwareDetail.option.respectSoftwareChoice],
-    ["PreviewOnly", uiText.softwareDetail.option.previewOnly],
-    ["AllowLow", uiText.softwareDetail.option.allowLowRisk],
-    ["AllowMedium", uiText.softwareDetail.option.allowMediumRisk],
-    ["AllowHigh", uiText.softwareDetail.option.allowHighRisk]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
 function runtimeSwitchMethodOptions() {
   return [
     ["FutureFrameTakeover", uiText.softwareDetail.option.futureFrameTakeover],
@@ -185,21 +121,16 @@ function policyComparableKey(policy: GpuPlacementSoftwarePolicy) {
   return JSON.stringify({
     softwareId: policy.softwareId,
     softwareName: policy.softwareName,
-    enabledMode: policy.enabledMode,
     allowedProviders: sortedPolicyValues(policy.allowedProviders),
-    schedulingMode: policy.schedulingMode,
     startupTargetGpu: policy.startupTargetGpu,
-    runtimeSchedulingMode: policy.runtimeSchedulingMode,
-    explicitSelectionMode: policy.explicitSelectionMode,
     runtimeHotSwitchEnabled: policy.runtimeHotSwitchEnabled ?? null,
     preferredRuntimeSwitchMethod: policy.preferredRuntimeSwitchMethod,
     baseScoreOverride: policy.baseScoreOverride ?? null,
     processOverrideAllowed: policy.processOverrideAllowed,
-    keepCpuProcessesOnMainCcd: policy.keepCpuProcessesOnMainCcd ?? null,
-    gpuExclusive: policy.gpuExclusive,
-    absolutePerformanceModeEnabled: policy.absolutePerformanceModeEnabled,
+    cpuSchedulingExcluded: policy.cpuSchedulingExcluded,
+    memorySchedulingExcluded: policy.memorySchedulingExcluded,
+    gpuSchedulingExcluded: policy.gpuSchedulingExcluded,
     cpuMaximumOccupancyMode: policy.cpuMaximumOccupancyMode,
-    cpuExclusiveLocksAffinity: policy.cpuExclusiveLocksAffinity,
     cpuManualExclusivePositionIds: sortedPolicyValues(policy.cpuManualExclusivePositionIds),
     cpuManualLockedPositionIds: sortedPolicyValues(policy.cpuManualLockedPositionIds)
   });
@@ -339,9 +270,6 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
               <>
                 <TabsPanel value="overview" class="software-detail-tab-panel">
                   <SoftwareIssueDetailSection issues={model().issues} />
-                  <Show when={props.runtimeEffectsEnabled && props.mutablePersistenceEnabled && model().type === "software"}>
-                    <SoftwareProtectionControl softwareId={model().id} />
-                  </Show>
                   <DetailSection title={uiText.softwareDetail.section.basic} rows={model().baseRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.metadata} rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.paths} rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
@@ -372,6 +300,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                 <TabsPanel value="policy" class="software-detail-tab-panel">
                   <Show when={model().type === "software"}>
                     <GpuPlacementPolicySection
+                      softwareId={model().id}
+                      protectionAvailable={props.runtimeEffectsEnabled && props.mutablePersistenceEnabled}
                       settings={props.gpuPlacementSettings}
                       loading={props.gpuPlacementLoading}
                       preciseGpuPlacementEnabled={props.preciseGpuPlacementEnabled}
@@ -439,6 +369,8 @@ function noticeDetailSections(details?: readonly string[] | null): UserDetailSec
 }
 
 function GpuPlacementPolicySection(props: {
+  softwareId: string;
+  protectionAvailable: boolean;
   settings: GpuPlacementSoftwareSettingsSnapshot | null;
   loading: boolean;
   preciseGpuPlacementEnabled: boolean;
@@ -463,7 +395,6 @@ function GpuPlacementPolicySection(props: {
       formatProviderCapability(uiText.softwareDetail.providerPhase.startup, capability.startup),
       formatProviderCapability(uiText.softwareDetail.providerPhase.runtime, capability.runtime)
     ]))];
-  const preciseCapabilityAvailable = () => startupCapabilityAvailable() || runtimeCapabilityAvailable();
   const dirty = () => {
     const saved = savedPolicy();
     const current = draft();
@@ -548,173 +479,115 @@ function GpuPlacementPolicySection(props: {
               <Show when={localError()}>
                 {(message) => <p class="software-detail-hint error">{uiText.softwareDetail.policyActionFailed(message())}</p>}
               </Show>
-              <div class="software-policy-grid">
-                <PolicyNumberInput
-                  label={uiText.softwareDetail.label.softwareBaseScore}
-                  value={current().baseScoreOverride}
-                  placeholder={uiText.softwareDetail.label.softwareBaseScorePlaceholder}
-                  onChange={(baseScoreOverride) => updateDraft({ baseScoreOverride })}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.gpuSelectionPolicy}
-                  value={current().enabledMode}
-                  options={policyModeOptions()}
-                  onChange={(value) => updateDraft({ enabledMode: value as GpuPlacementSoftwarePolicy["enabledMode"] })}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.gpuSelectionMethod}
-                  value={props.preciseGpuPlacementEnabled ? current().schedulingMode : "Ordinary"}
-                  options={props.preciseGpuPlacementEnabled && preciseCapabilityAvailable()
-                    ? schedulingModeOptions()
-                    : current().schedulingMode === "Precise"
-                      ? unavailableSchedulingModeOptions()
-                      : ordinaryOnlySchedulingModeOptions()}
-                  onChange={(value) => {
-                    const schedulingMode = value as GpuPlacementSchedulingMode;
-                    updateDraft({
-                      schedulingMode,
-                      runtimeSchedulingMode: schedulingMode === "Ordinary"
-                        ? "Ordinary"
-                        : current().runtimeSchedulingMode,
-                      startupTargetGpu: schedulingMode === "Ordinary" && !isOrdinarySystemGpuTarget(current().startupTargetGpu)
-                        ? "SystemDefaultGpu"
-                        : current().startupTargetGpu,
-                    });
-                  }}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.startupGpu}
-                  value={current().startupTargetGpu}
-                  options={startupTargetGpuOptionsForSoftwarePolicy(
-                    props.preciseGpuPlacementEnabled && startupCapabilityAvailable(),
-                    current().schedulingMode,
-                    current().startupTargetGpu,
-                    exactTargets())}
-                  onChange={(value) => updateDraft({ startupTargetGpu: value })}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.runtimeSelectionMethod}
-                  value={props.preciseGpuPlacementEnabled ? current().runtimeSchedulingMode : "Ordinary"}
-                  options={props.preciseGpuPlacementEnabled && runtimeCapabilityAvailable()
-                    ? runtimeSchedulingModeOptions()
-                    : current().runtimeSchedulingMode === "Precise"
-                      ? unavailableSchedulingModeOptions()
-                      : ordinaryOnlyRuntimeSchedulingModeOptions()}
-                  onChange={(value) => {
-                    const runtimeSchedulingMode = value as GpuPlacementRuntimeSchedulingMode;
-                    updateDraft({
-                      runtimeSchedulingMode,
-                    });
-                  }}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
-                  value={current().explicitSelectionMode}
-                  options={explicitSelectionOptions()}
-                  onChange={(value) => updateDraft({ explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
-                />
-                <label class="policy-field policy-toggle-field">
-                  <span>{uiText.softwareDetail.label.allowRuntimeGpuSwitch}</span>
-                  <input
-                    type="checkbox"
-                    checked={current().runtimeHotSwitchEnabled !== false}
-                    disabled={(!props.preciseGpuPlacementEnabled || !runtimeCapabilityAvailable())
-                      && current().runtimeHotSwitchEnabled === false}
-                    onChange={(event) => updateDraft({ runtimeHotSwitchEnabled: event.currentTarget.checked })}
-                  />
-                </label>
-                <label class="policy-field policy-toggle-field">
-                  <span>{uiText.softwareDetail.label.preferKeepingTargetGpu}</span>
-                  <input
-                    type="checkbox"
-                    checked={current().gpuExclusive === true}
-                    onChange={(event) => updateDraft({ gpuExclusive: event.currentTarget.checked })}
-                  />
-                </label>
-                <PolicySelect
-                  label={uiText.softwareDetail.label.gpuSwitchMethod}
-                  value={current().preferredRuntimeSwitchMethod}
-                  options={runtimeSwitchMethodOptions()}
-                  disabled={!props.preciseGpuPlacementEnabled || !runtimeCapabilityAvailable()}
-                  onChange={(value) => updateDraft({ preferredRuntimeSwitchMethod: value as GpuPlacementRuntimeSwitchMethod })}
-                />
-                <label class="policy-field policy-toggle-field">
-                  <span>{uiText.softwareDetail.label.allowPerProcessOverride}</span>
-                  <input
-                    type="checkbox"
-                    checked={current().processOverrideAllowed}
-                    onChange={(event) => updateDraft({ processOverrideAllowed: event.currentTarget.checked })}
-                  />
-                </label>
-                <PolicySelect
-                  label={uiText.softwareDetail.label.cpuUsageRange}
-                  value={current().cpuMaximumOccupancyMode}
-                  options={cpuMaximumOccupancyOptions()}
-                  onChange={(value) => {
-                    const cpuMaximumOccupancyMode = value as CpuMaximumOccupancyMode;
-                    updateDraft({
-                      cpuMaximumOccupancyMode,
-                      keepCpuProcessesOnMainCcd: cpuMaximumOccupancyMode === "SingleCcd"
-                    });
-                  }}
-                />
-                <label class="policy-field policy-toggle-field">
-                  <span>{uiText.softwareDetail.label.prioritizePerformance}</span>
-                  <input
-                    type="checkbox"
-                    checked={current().absolutePerformanceModeEnabled === true}
-                    onChange={(event) => updateDraft({ absolutePerformanceModeEnabled: event.currentTarget.checked })}
-                  />
-                </label>
-                <label class="policy-field policy-toggle-field">
-                  <span>{uiText.softwareDetail.label.pinToSelectedCores}</span>
-                  <input
-                    type="checkbox"
-                    checked={current().cpuExclusiveLocksAffinity === true}
-                    onChange={(event) => updateDraft({ cpuExclusiveLocksAffinity: event.currentTarget.checked })}
-                  />
-                </label>
-              </div>
-              <Show when={current().runtimeHotSwitchEnabled !== false}>
-                <p class="gpu-runtime-compatibility-warning">
-                  {uiText.softwareDetail.runtimeSwitchWarning}
-                </p>
-              </Show>
-              <CpuManualPlacementSection
-                topology={cpuTopology()}
+              <SchedulingParticipationGroup
+                softwareId={props.softwareId}
+                protectionAvailable={props.protectionAvailable}
                 policy={current()}
                 onUpdate={updateDraft}
               />
-              <p class="software-detail-hint">
-                {uiText.softwareDetail.baseScoreHint}
-              </p>
-              <Show when={current().schedulingMode === "Precise" && current().runtimeSchedulingMode === "Ordinary"}>
+              <div class="software-policy-group">
+                <div class="software-policy-grid">
+                  <PolicyNumberInput
+                    label={uiText.softwareDetail.label.softwareBaseScore}
+                    value={current().baseScoreOverride}
+                    placeholder={uiText.softwareDetail.label.softwareBaseScorePlaceholder}
+                    onChange={(baseScoreOverride) => updateDraft({ baseScoreOverride })}
+                  />
+                </div>
                 <p class="software-detail-hint">
-                  {uiText.softwareDetail.ordinarySchedulingHint}
+                  {uiText.softwareDetail.baseScoreHint}
                 </p>
-              </Show>
-              <Show when={!props.preciseGpuPlacementEnabled}>
-                <p class="software-detail-hint">
-                  {uiText.softwareDetail.preciseDisabledHint}
-                </p>
-              </Show>
-              {/* 不可用时说后端给的真实原因（缺图形 API、缺 Provider 文件……），没记录到进程时才用通用提示。 */}
-              <Show when={props.preciseGpuPlacementEnabled && !startupCapabilityAvailable() && !runtimeCapabilityAvailable()}>
-                <Show
-                  when={(props.settings?.processCapabilities?.length ?? 0) > 0}
-                  fallback={
-                    <p class="software-detail-hint gpu-runtime-compatibility-warning">
-                      {uiText.softwareDetail.noNativeProcessHint}
-                    </p>
-                  }
-                >
-                  <For each={unavailableCapabilityReasons()}>
-                    {(reason) => (
-                      <p class="software-detail-hint gpu-runtime-compatibility-warning">{reason}</p>
-                    )}
-                  </For>
+              </div>
+              <div class="software-policy-group">
+                <Show when={current().cpuSchedulingExcluded}>
+                  <p class="software-detail-hint">{uiText.softwareDetail.participation.cpuExcludedHint}</p>
                 </Show>
-              </Show>
+                <div class="software-policy-grid">
+                  <PolicySelect
+                    label={uiText.softwareDetail.label.cpuUsageRange}
+                    value={current().cpuMaximumOccupancyMode}
+                    options={cpuMaximumOccupancyOptions()}
+                    disabled={current().cpuSchedulingExcluded}
+                    onChange={(value) => updateDraft({ cpuMaximumOccupancyMode: value as CpuMaximumOccupancyMode })}
+                  />
+                </div>
+                <CpuManualPlacementSection
+                  topology={cpuTopology()}
+                  policy={current()}
+                  disabled={current().cpuSchedulingExcluded}
+                  onUpdate={updateDraft}
+                />
+              </div>
+              <div class="software-policy-group">
+                <Show when={current().gpuSchedulingExcluded}>
+                  <p class="software-detail-hint">{uiText.softwareDetail.participation.gpuExcludedHint}</p>
+                </Show>
+                <div class="software-policy-grid">
+                  <PolicySelect
+                    label={uiText.softwareDetail.label.startupGpu}
+                    value={current().startupTargetGpu}
+                    options={startupTargetGpuOptionsForSoftwarePolicy(
+                      props.preciseGpuPlacementEnabled && startupCapabilityAvailable(),
+                      current().startupTargetGpu,
+                      exactTargets())}
+                    disabled={current().gpuSchedulingExcluded}
+                    onChange={(value) => updateDraft({ startupTargetGpu: value })}
+                  />
+                  <PolicyToggle
+                    label={uiText.softwareDetail.label.allowRuntimeGpuSwitch}
+                    checked={current().runtimeHotSwitchEnabled !== false}
+                    disabled={current().gpuSchedulingExcluded
+                      || (!props.preciseGpuPlacementEnabled || !runtimeCapabilityAvailable())
+                        && current().runtimeHotSwitchEnabled === false}
+                    onChange={(runtimeHotSwitchEnabled) => updateDraft({ runtimeHotSwitchEnabled })}
+                  />
+                  <PolicySelect
+                    label={uiText.softwareDetail.label.gpuSwitchMethod}
+                    value={current().preferredRuntimeSwitchMethod}
+                    options={runtimeSwitchMethodOptions()}
+                    disabled={current().gpuSchedulingExcluded
+                      || !props.preciseGpuPlacementEnabled
+                      || !runtimeCapabilityAvailable()}
+                    onChange={(value) => updateDraft({ preferredRuntimeSwitchMethod: value as GpuPlacementRuntimeSwitchMethod })}
+                  />
+                </div>
+                <Show when={current().runtimeHotSwitchEnabled !== false}>
+                  <p class="gpu-runtime-compatibility-warning">
+                    {uiText.softwareDetail.runtimeSwitchWarning}
+                  </p>
+                </Show>
+                <Show when={!props.preciseGpuPlacementEnabled}>
+                  <p class="software-detail-hint">
+                    {uiText.softwareDetail.preciseDisabledHint}
+                  </p>
+                </Show>
+                {/* 不可用时说后端给的真实原因（缺图形 API、缺 Provider 文件……），没记录到进程时才用通用提示。 */}
+                <Show when={props.preciseGpuPlacementEnabled && !startupCapabilityAvailable() && !runtimeCapabilityAvailable()}>
+                  <Show
+                    when={(props.settings?.processCapabilities?.length ?? 0) > 0}
+                    fallback={
+                      <p class="software-detail-hint gpu-runtime-compatibility-warning">
+                        {uiText.softwareDetail.noNativeProcessHint}
+                      </p>
+                    }
+                  >
+                    <For each={unavailableCapabilityReasons()}>
+                      {(reason) => (
+                        <p class="software-detail-hint gpu-runtime-compatibility-warning">{reason}</p>
+                      )}
+                    </For>
+                  </Show>
+                </Show>
+              </div>
+              <div class="software-policy-group">
+                <div class="software-policy-grid">
+                  <PolicyToggle
+                    label={uiText.softwareDetail.label.allowPerProcessOverride}
+                    checked={current().processOverrideAllowed}
+                    onChange={(processOverrideAllowed) => updateDraft({ processOverrideAllowed })}
+                  />
+                </div>
+              </div>
             </>
           )}
         </Show>
@@ -723,9 +596,47 @@ function GpuPlacementPolicySection(props: {
   );
 }
 
+// 保护（只防降级，立即保存）与三个“不参与”开关（完全不管对应的域，进策略草稿）各自独立，互不推导、互不联动。
+function SchedulingParticipationGroup(props: {
+  softwareId: string;
+  protectionAvailable: boolean;
+  policy: GpuPlacementSoftwarePolicy;
+  onUpdate: (patch: Partial<GpuPlacementSoftwarePolicy>) => void;
+}) {
+  return (
+    <div class="software-policy-group">
+      <h4>{uiText.softwareDetail.participation.title}</h4>
+      <Show when={props.protectionAvailable}>
+        <SoftwareProtectionControl softwareId={props.softwareId} />
+      </Show>
+      <div class="software-policy-grid">
+        <PolicyToggle
+          label={uiText.softwareDetail.participation.cpu}
+          hint={uiText.softwareDetail.participation.cpuHint}
+          checked={props.policy.cpuSchedulingExcluded}
+          onChange={(cpuSchedulingExcluded) => props.onUpdate({ cpuSchedulingExcluded })}
+        />
+        <PolicyToggle
+          label={uiText.softwareDetail.participation.memory}
+          hint={uiText.softwareDetail.participation.memoryHint}
+          checked={props.policy.memorySchedulingExcluded}
+          onChange={(memorySchedulingExcluded) => props.onUpdate({ memorySchedulingExcluded })}
+        />
+        <PolicyToggle
+          label={uiText.softwareDetail.participation.gpu}
+          hint={uiText.softwareDetail.participation.gpuHint}
+          checked={props.policy.gpuSchedulingExcluded}
+          onChange={(gpuSchedulingExcluded) => props.onUpdate({ gpuSchedulingExcluded })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function CpuManualPlacementSection(props: {
   topology: CpuTopologySnapshot | null;
   policy: GpuPlacementSoftwarePolicy;
+  disabled: boolean;
   onUpdate: (patch: Partial<GpuPlacementSoftwarePolicy>) => void;
 }) {
   const exclusiveIds = () => props.policy.cpuManualExclusivePositionIds ?? [];
@@ -741,7 +652,7 @@ function CpuManualPlacementSection(props: {
         <button
           class="secondary"
           type="button"
-          disabled={exclusiveIds().length === 0 && lockedIds().length === 0}
+          disabled={props.disabled || exclusiveIds().length === 0 && lockedIds().length === 0}
           onClick={() => props.onUpdate({ cpuManualExclusivePositionIds: [], cpuManualLockedPositionIds: [] })}
         >
           {uiText.softwareDetail.cpu.clear}
@@ -772,6 +683,7 @@ function CpuManualPlacementSection(props: {
                           id={ccd.id}
                           exclusiveIds={exclusiveIds()}
                           lockedIds={lockedIds()}
+                          disabled={props.disabled}
                           exclusiveDisabled={isCpuManualExclusiveSelectionBlocked(exclusiveIds(), ccd.id, model())}
                           onExclusiveChange={(enabled) => props.onUpdate({
                             cpuManualExclusivePositionIds: toggleCpuManualExclusiveId(exclusiveIds(), ccd.id, enabled, model())
@@ -793,6 +705,7 @@ function CpuManualPlacementSection(props: {
                                 id={core.id}
                                 exclusiveIds={exclusiveIds()}
                                 lockedIds={lockedIds()}
+                                disabled={props.disabled}
                                 exclusiveDisabled={isCpuManualExclusiveSelectionBlocked(exclusiveIds(), core.id, model())}
                                 onExclusiveChange={(enabled) => props.onUpdate({
                                   cpuManualExclusivePositionIds: toggleCpuManualExclusiveId(exclusiveIds(), core.id, enabled, model())
@@ -820,6 +733,7 @@ function CpuManualPlacementToggles(props: {
   id: string;
   exclusiveIds: string[];
   lockedIds: string[];
+  disabled: boolean;
   exclusiveDisabled?: boolean;
   onExclusiveChange: (enabled: boolean) => void;
   onLockedChange: (enabled: boolean) => void;
@@ -833,7 +747,7 @@ function CpuManualPlacementToggles(props: {
         <input
           type="checkbox"
           checked={hasId(props.exclusiveIds, props.id)}
-          disabled={props.exclusiveDisabled === true}
+          disabled={props.disabled || props.exclusiveDisabled === true}
           onChange={(event) => props.onExclusiveChange(event.currentTarget.checked)}
         />
         <span>{uiText.softwareDetail.cpu.reserve}</span>
@@ -842,6 +756,7 @@ function CpuManualPlacementToggles(props: {
         <input
           type="checkbox"
           checked={hasId(props.lockedIds, props.id)}
+          disabled={props.disabled}
           onChange={(event) => props.onLockedChange(event.currentTarget.checked)}
         />
         <span>{uiText.softwareDetail.cpu.pin}</span>
@@ -956,6 +871,8 @@ function GpuPlacementProcessSection(props: {
 }) {
   const processes = () => props.settings?.processHistory?.processes ?? [];
   const softwarePolicy = () => props.settings?.softwarePolicy ?? null;
+  // 软件设为不参与 GPU 调度时，启动前选卡不会执行；勾选保留，但不能再改，也不显示“已就绪”。
+  const gpuSchedulingExcluded = () => softwarePolicy()?.gpuSchedulingExcluded === true;
   const selectedProcess = () => processes().find((process) => process.processKey === props.selectedProcessKey) ?? null;
   const selectedPolicy = () => {
     const process = selectedProcess();
@@ -1040,24 +957,13 @@ function GpuPlacementProcessSection(props: {
                         disabled={policy().inherit}
                         onChange={(baseScoreOverride) => props.onUpdateProcess(process(), { baseScoreOverride })}
                       />
-                      <PolicySelect
-                        label={uiText.softwareDetail.label.gpuSelectionPolicy}
-                        value={policy().enabledMode}
-                        options={policyModeOptions()}
-                        onChange={(value) => props.onUpdateProcess(process(), { enabledMode: value as GpuPlacementProcessPolicy["enabledMode"] })}
-                      />
-                      <PolicySelect
-                        label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
-                        value={policy().explicitSelectionMode}
-                        options={explicitSelectionOptions()}
-                        onChange={(value) => props.onUpdateProcess(process(), { explicitSelectionMode: value as GpuPlacementExplicitSelectionMode })}
-                      />
                       <label class="policy-field policy-toggle-field">
                         <span>{uiText.softwareDetail.label.applyGpuBeforeLaunch}</span>
                         <input
                           type="checkbox"
                           checked={policy().startupInterceptionEnabled === true}
-                          disabled={!process().executablePath
+                          disabled={gpuSchedulingExcluded()
+                            || !process().executablePath
                             || (!props.preciseGpuPlacementEnabled
                               || selectedCapabilities()?.startup.state !== "supported")
                               && policy().startupInterceptionEnabled !== true}
@@ -1067,6 +973,9 @@ function GpuPlacementProcessSection(props: {
                         />
                       </label>
                     </div>
+                    <Show when={gpuSchedulingExcluded()}>
+                      <p class="software-detail-hint">{uiText.softwareDetail.participation.gpuExcludedHint}</p>
+                    </Show>
                     <Show when={!props.preciseGpuPlacementEnabled}>
                       <p class="software-detail-hint">
                         {uiText.softwareDetail.processPreciseDisabledHint}
@@ -1084,7 +993,7 @@ function GpuPlacementProcessSection(props: {
                         </p>
                       )}
                     </Show>
-                    <Show when={policy().startupInterceptionEnabled === true}>
+                    <Show when={!gpuSchedulingExcluded() && policy().startupInterceptionEnabled === true}>
                       <p classList={{
                         "software-detail-hint": true,
                         "gpu-runtime-compatibility-warning": isUnavailableStartupGpuTarget(softwarePolicy()?.startupTargetGpu)
@@ -1137,6 +1046,31 @@ function PolicySelect(props: {
         onChange={props.onChange}
       />
     </label>
+  );
+}
+
+function PolicyToggle(props: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div class="policy-field">
+      <label class="policy-field policy-toggle-field">
+        <span>{props.label}</span>
+        <input
+          type="checkbox"
+          checked={props.checked}
+          disabled={props.disabled}
+          onChange={(event) => props.onChange(event.currentTarget.checked)}
+        />
+      </label>
+      <Show when={props.hint}>
+        <p class="software-detail-hint">{props.hint}</p>
+      </Show>
+    </div>
   );
 }
 
@@ -1279,9 +1213,7 @@ function createDefaultProcessPolicy(
     processName: process.processName,
     executablePath: process.executablePath,
     inherit: true,
-    enabledMode: "Inherit",
     allowedProviders: ["windows-graphics-preference", "vendor-profile", "dxgi-launch-shim", "d3d-device-create-shim"],
-    explicitSelectionMode: "DefaultSkip",
     baseScoreOverride: null,
     startupInterceptionEnabled: false
   };

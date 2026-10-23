@@ -12,7 +12,5 @@ public sealed record CpuExclusiveBinding(
     IReadOnlyList<string> ExpandedExclusivePhysicalCoreIds,
     IReadOnlyList<string> RequestedLockedPositionIds,
     IReadOnlyList<string> ExpandedLockedPhysicalCoreIds,
-    bool LocksAffinity,
-    bool AbsolutePerformanceModeEnabled,
     string MaximumOccupancyMode,
     DateTimeOffset UpdatedAt);

@@ -21,7 +21,8 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             currentMaximumBaseScore: fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            protectionLevel: 0);
+            protectionLevel: 0,
+            memorySchedulingExcluded: false);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.Eligible, result);
     }
@@ -39,7 +40,8 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             runtimeState,
-            protectionLevel: 0);
+            protectionLevel: 0,
+            memorySchedulingExcluded: false);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
@@ -59,7 +61,8 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            protectionLevel: 0);
+            protectionLevel: 0,
+            memorySchedulingExcluded: false);
 
         Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
@@ -99,10 +102,28 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             fixture.Current,
             fixture.Candidate.BaseScore,
             HostManagerRuntimeStates.BackgroundProcess,
-            OptimizationProtectionLevels.Level2NoOptimization);
+            OptimizationProtectionLevels.Level2NoOptimization,
+            memorySchedulingExcluded: false);
         Assert.Equal(
             HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible,
             protectedResult);
+    }
+
+    [Fact]
+    public void EvaluateCurrentFact_RejectsCandidateExcludedFromMemorySchedulingWithoutProtection()
+    {
+        var fixture = CreateFixture();
+
+        var result = HostManagerMemoryCleanupPrePonrAdmission.EvaluateCurrentFact(
+            fixture.Candidate,
+            fixture.Score,
+            fixture.Current,
+            fixture.Candidate.BaseScore,
+            HostManagerRuntimeStates.BackgroundProcess,
+            protectionLevel: 0,
+            memorySchedulingExcluded: true);
+
+        Assert.Equal(HostManagerMemoryCleanupCandidateAdmissionStatus.KnownIneligible, result);
     }
 
     [Fact]
@@ -167,7 +188,8 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
                 current,
                 currentMaximumBaseScore ?? fixture.Candidate.BaseScore,
                 HostManagerRuntimeStates.BackgroundProcess,
-                protectionLevel: 0));
+                protectionLevel: 0,
+                memorySchedulingExcluded: false));
 
     private static AdmissionFixture CreateFixture()
     {

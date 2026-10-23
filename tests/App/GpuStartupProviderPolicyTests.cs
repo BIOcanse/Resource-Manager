@@ -21,7 +21,7 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task GpuAndOverlayProvidersAreSelectedTogether()
     {
         using var root = new OwnedRoot();
-        var policyStore = new JsonGpuPlacementPolicyStore(root.Environment);
+        var policyStore = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software();
         await policyStore.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await policyStore.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
@@ -49,7 +49,7 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task UnavailableOverlaySettingsPreserveGpuStartupProvider()
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software();
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await store.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
@@ -68,11 +68,11 @@ public sealed class GpuStartupProviderPolicyTests
     {
         using var root = new OwnedRoot();
         var policy = Software();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         await store.SaveSoftwarePolicyAsync(policy, CancellationToken.None);
         var path = System.IO.Path.Combine(root.Path, "UserData", "SoftwareProfiles", "gpu-placement-policies.local.json");
         File.WriteAllText(path, "{invalid");
-        var reopened = new JsonGpuPlacementPolicyStore(root.Environment);
+        var reopened = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
 
         await Assert.ThrowsAsync<JsonException>(() => reopened.GetAsync(CancellationToken.None));
         await Assert.ThrowsAsync<JsonException>(() => reopened.SaveSoftwarePolicyAsync(policy, CancellationToken.None));
@@ -102,7 +102,7 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task SaveReloadAndResolverPreserveProviderRevocation(bool processOverride, bool unknown)
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software();
         var process = Process(software, root.Target, !processOverride);
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
@@ -113,7 +113,7 @@ public sealed class GpuStartupProviderPolicyTests
         else
             Assert.Empty((await store.SaveSoftwarePolicyAsync(software with { AllowedProviders = revoked }, CancellationToken.None)).AllowedProviders);
 
-        var reloaded = new JsonGpuPlacementPolicyStore(root.Environment);
+        var reloaded = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var document = await reloaded.GetAsync(CancellationToken.None);
         var savedSoftware = Assert.Single(document.SoftwarePolicies);
         var savedProcess = Assert.Single(document.ProcessPolicies);
@@ -130,10 +130,10 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task OmittedProvidersStillUseDeclaredDefaults()
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software() with { AllowedProviders = null! };
         var saved = await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
-        var reloaded = Assert.Single((await new JsonGpuPlacementPolicyStore(root.Environment).GetAsync(CancellationToken.None)).SoftwarePolicies);
+        var reloaded = Assert.Single((await new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance).GetAsync(CancellationToken.None)).SoftwarePolicies);
         foreach (var policy in new[] { software, saved, reloaded })
         {
             var resolved = ResolvedGpuPlacementPolicy.FromSoftware(policy);
@@ -149,9 +149,9 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task SavedVulkanProviderKeepsItsMeaning(string provider, bool enabled)
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         await store.SaveSoftwarePolicyAsync(Software() with { AllowedProviders = [$" {provider.ToUpperInvariant()} ", provider] }, CancellationToken.None);
-        var reloaded = Assert.Single((await new JsonGpuPlacementPolicyStore(root.Environment).GetAsync(CancellationToken.None)).SoftwarePolicies);
+        var reloaded = Assert.Single((await new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance).GetAsync(CancellationToken.None)).SoftwarePolicies);
         Assert.Single(reloaded.AllowedProviders);
         var resolved = ResolvedGpuPlacementPolicy.FromSoftware(reloaded);
         Assert.Equal(enabled ? new[] { GpuPlacementProviderIds.VulkanExplicitLayer } : [], resolved.GetStartupProviders(GpuGraphicsApi.Vulkan));
@@ -172,7 +172,7 @@ public sealed class GpuStartupProviderPolicyTests
             : [GpuPlacementProviderIds.VulkanExplicitLayer];
         var software = Software() with { AllowedProviders = processOverride ? [GpuPlacementProviderIds.D3dDeviceCreateShim] : providers };
         var process = Process(software, root.Target, !processOverride) with { AllowedProviders = providers };
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await store.SaveProcessPolicyAsync(process, CancellationToken.None);
         var document = await store.GetAsync(CancellationToken.None);
@@ -188,24 +188,24 @@ public sealed class GpuStartupProviderPolicyTests
     }
 
     [Theory]
-    [InlineData(GpuPlacementPolicyModes.Disabled, GpuPlacementSchedulingModes.Precise)]
-    [InlineData(GpuPlacementPolicyModes.Preview, GpuPlacementSchedulingModes.Precise)]
-    [InlineData(GpuPlacementPolicyModes.Manual, GpuPlacementSchedulingModes.Ordinary)]
-    [InlineData(GpuPlacementPolicyModes.Auto, GpuPlacementSchedulingModes.Ordinary)]
-    public async Task DisallowedShimNeverPreparesAnyApi(string mode, string schedulingMode)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GpuSchedulingExcludedNeverPreparesAnyApi(bool processOverride)
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
-        var software = Software() with { EnabledMode = mode, SchedulingMode = schedulingMode };
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
+        var software = Software() with { GpuSchedulingExcluded = true };
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
-        await store.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
-        var reloaded = new JsonGpuPlacementPolicyStore(root.Environment);
+        await store.SaveProcessPolicyAsync(Process(software, root.Target, !processOverride), CancellationToken.None);
+        var reloaded = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var document = await reloaded.GetAsync(CancellationToken.None);
+        Assert.True(Assert.Single(document.SoftwarePolicies).GpuSchedulingExcluded);
         var resolved = ResolvedGpuPlacementPolicy.FromSoftware(Assert.Single(document.SoftwarePolicies));
         Assert.Empty(resolved.GetStartupProviders(GpuGraphicsApi.Vulkan));
         Assert.False(resolved.AllowsRuntimeShimExecution());
         var decision = await Resolver(reloaded, document, root.Environment).ResolveAsync(new(root.Target), CancellationToken.None);
-        Assert.Equal("startup-provider-not-allowed", decision.Status);
+        Assert.Equal("gpu-scheduling-excluded", decision.Status);
+        Assert.Equal(GpuStartupPlacementDecisionKinds.PassThrough, decision.Decision);
         Assert.Null(decision.PolicyPath);
         Assert.Empty(decision.StartupProviders);
         Assert.False(Directory.Exists(Path.Combine(root.Path, "UserData", "GpuPlacement")));
@@ -217,7 +217,7 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task GlobalDisabledNeverPreparesAnyApi(bool processOverride)
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software();
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await store.SaveProcessPolicyAsync(Process(software, root.Target, !processOverride), CancellationToken.None);
@@ -253,7 +253,7 @@ public sealed class GpuStartupProviderPolicyTests
     public async Task PolicyWriteFailureDoesNotAuthorizeStartupProviders()
     {
         using var root = new OwnedRoot();
-        var store = new JsonGpuPlacementPolicyStore(root.Environment);
+        var store = new JsonGpuPlacementPolicyStore(root.Environment, NullLogger<JsonGpuPlacementPolicyStore>.Instance);
         var software = Software();
         await store.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await store.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
@@ -280,16 +280,13 @@ public sealed class GpuStartupProviderPolicyTests
 
     private static GpuPlacementSoftwarePolicy Software() => GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
     {
-        EnabledMode = GpuPlacementPolicyModes.Manual,
-        SchedulingMode = GpuPlacementSchedulingModes.Precise,
         StartupTargetGpu = GpuPlacementTargets.HighPerformanceGpu,
         AllowedProviders = [GpuPlacementProviderIds.VulkanExplicitLayer]
     };
 
     private static GpuPlacementProcessPolicy Process(GpuPlacementSoftwarePolicy software, string path, bool inherit) => new(
-        software.SoftwareId, "process", "target.exe", path, inherit, GpuPlacementPolicyModes.Manual,
-        software.AllowedProviders, GpuPlacementExplicitSelectionModes.DefaultSkip,
-        null, DateTimeOffset.UnixEpoch, true);
+        software.SoftwareId, "process", "target.exe", path, inherit,
+        software.AllowedProviders, null, DateTimeOffset.UnixEpoch, true);
 
     private static GpuStartupPlacementResolver Resolver(JsonGpuPlacementPolicyStore store, GpuPlacementPolicyDocument document,
         IHostEnvironment environment, bool globalEnabled = true,

@@ -84,9 +84,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData("global-disabled")]
     [InlineData("not-actionable")]
-    [InlineData("disabled")]
-    [InlineData("preview")]
-    [InlineData("ordinary")]
+    [InlineData("gpu-scheduling-excluded")]
     [InlineData("no-shim")]
     [InlineData("no-software")]
     [InlineData("no-path")]
@@ -111,9 +109,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 { Version = fixture.RuntimePlanProvider.Current.Version + 1,
                     GpuPlacement = fixture.RuntimePlanProvider.Current.GpuPlacement with { GlobalPreciseProviderEnabled = false } }); break;
             case "not-actionable": process = process with { CanApplyPhysicalPlacement = false }; break;
-            case "disabled": process = process with { Policy = process.Policy with { EnabledMode = GpuPlacementPolicyModes.Disabled } }; break;
-            case "preview": process = process with { Policy = process.Policy with { EnabledMode = GpuPlacementPolicyModes.Preview } }; break;
-            case "ordinary": process = process with { Policy = process.Policy with { SchedulingMode = GpuPlacementSchedulingModes.Ordinary } }; break;
+            case "gpu-scheduling-excluded": process = process with { Policy = process.Policy with { GpuSchedulingExcluded = true } }; break;
             case "no-shim": process = process with { Policy = process.Policy with { AllowedProviders = [] } }; break;
             case "no-software": process = process with { SoftwareId = "" }; break;
             case "no-path": process = process with { ExecutablePath = null }; break;
@@ -196,7 +192,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             GpuPlacement = fixture.RuntimePlanProvider.Current.GpuPlacement with { GlobalPreciseProviderEnabled = false }
         });
         process = process with { CanApplyPhysicalPlacement = false, Policy = process.Policy with
-            { EnabledMode = GpuPlacementPolicyModes.Disabled, AllowedProviders = [] } };
+            { GpuSchedulingExcluded = true, AllowedProviders = [] } };
         var next = new ControlledRemoteCall(nextKind, completed: true);
         if (allowed)
         {
