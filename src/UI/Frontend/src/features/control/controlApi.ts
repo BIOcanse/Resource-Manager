@@ -86,8 +86,20 @@ function readCapability(value: unknown, path: string): ControlCapability {
     requiredAccessLevel: requireOneOf(
       record.requiredAccessLevel,
       `${path}.requiredAccessLevel`,
-      controlAccessLevels)
+      controlAccessLevels),
+    curvePointLimit: readCurvePointLimit(record.curvePointLimit, `${path}.curvePointLimit`)
   };
+}
+
+function readCurvePointLimit(value: unknown, path: string): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const limit = requireFiniteNumber(value, path);
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new ResponseDecodeError(path, "a positive whole number of curve points");
+  }
+  return limit;
 }
 
 function readObject(value: unknown, path: string): ControlObject {

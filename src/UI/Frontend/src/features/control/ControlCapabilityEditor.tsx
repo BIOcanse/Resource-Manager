@@ -4,8 +4,9 @@ import { controlCapabilityLabel, controlDisplayText } from "./controlPresentatio
 import {
   curveFromStops,
   defaultStops,
-  stopsFromCurve,
-  temperaturesFromCurve
+  curveOnTemperatures,
+  curveTemperatures,
+  stopsFromCurve
 } from "./fanCurve.ts";
 import { FanCurveChart } from "./FanCurveChart";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
@@ -358,8 +359,6 @@ function CurveEditor(props: {
   let mounted = true;
   onCleanup(() => { mounted = false; });
 
-  const temperatures = createMemo(() => temperaturesFromCurve(props.setting?.curve));
-  const stops = createMemo(() => stopsFromCurve(props.setting?.curve, temperatures()));
   const configured = () => props.setting?.curve != null;
 
   /*
@@ -384,11 +383,21 @@ function CurveEditor(props: {
   const fixedSteps = () =>
     props.terms.includes("curve-fixed-steps") && execution() === "firmware";
 
-  const write = (next: number[], mode?: string) =>
+  /*
+   * 横轴的温度点：每 5 度一个，固定不动，用户只调转速。
+   * 交给固件时点数受固件表限制（见 curvePointLimit），交给软件时不受。
+   */
+  const temperaturesFor = (mode: string) => curveTemperatures(
+    props.terms.includes("curve-fixed-steps") && mode === "firmware",
+    mode === "firmware" ? props.capability.curvePointLimit : null);
+  const temperatures = createMemo(() => temperaturesFor(execution()));
+  const stops = createMemo(() => stopsFromCurve(props.setting?.curve, temperatures()));
+
+  const write = (next: number[]) =>
     props.onChange({
       capabilityId: props.capability.id,
       curve: curveFromStops(next, temperatures()),
-      curveExecution: mode ?? execution()
+      curveExecution: execution()
     });
 
   /*
@@ -413,15 +422,20 @@ function CurveEditor(props: {
     const stillSelected = () => mounted && props.setting === requestedSetting && !props.disabled;
     try {
       const firmware = await getControlObjectCurve(runtime.requestClient, props.objectId);
+      // 固件表的断点不规则（例如 0、48、52…85 度），落到固定的 5 度点上再交给用户调。
       if (stillSelected()) props.onChange({
         capabilityId: props.capability.id,
-        curve: firmware ?? curveFromStops(defaultStops()),
+        curve: curveOnTemperatures(firmware ?? curveFromStops(defaultStops()), temperatures()),
         curveExecution: execution()
       });
     } catch {
       // 读不到就用默认曲线起步。这里不报错：用户要的是开始编曲线，
       // 而那件事并不依赖读得到固件当前值。
-      if (stillSelected()) write(defaultStops());
+      if (stillSelected()) props.onChange({
+        capabilityId: props.capability.id,
+        curve: curveOnTemperatures(curveFromStops(defaultStops()), temperatures()),
+        curveExecution: execution()
+      });
     } finally {
       setReading(false);
     }
@@ -466,7 +480,13 @@ function CurveEditor(props: {
               description: uiText.control.curveExecutionSoftwareHint
             }
           ]}
-          onChange={(mode) => props.onChange({ ...props.setting!, curveExecution: mode })}
+          onChange={(mode) => props.onChange({
+            ...props.setting!,
+            curve: props.setting?.curve == null
+              ? null
+              : curveOnTemperatures(props.setting.curve, temperaturesFor(mode)),
+            curveExecution: mode
+          })}
         />
       </Show>
       {/*

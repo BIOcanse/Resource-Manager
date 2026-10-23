@@ -906,7 +906,7 @@ public sealed class WindowsControlObjectCatalog(
     /// <summary>
     /// 机身风扇上该有哪几项。**每个风扇一份，不是整机一份。**
     /// </summary>
-    private static IReadOnlyList<ControlCapability> ChassisFanCapabilities()
+    private static IReadOnlyList<ControlCapability> ChassisFanCapabilities(int? curvePointLimit)
     {
         var (componentId, componentName) = ("fan-control-core", "风扇控制核心");
         return
@@ -917,7 +917,7 @@ public sealed class WindowsControlObjectCatalog(
                 "转速曲线",
                 ControlValueKinds.Curve,
                 componentId,
-                componentName),
+                componentName) with { CurvePointLimit = curvePointLimit },
             /*
              * 固定转速。
              *
@@ -985,7 +985,7 @@ public sealed class WindowsControlObjectCatalog(
                      */
                     $"风扇{ordinal}",
                     new ControlObjectPlatform(ControlOperatingSystems.Windows, ControlVendors.Oem),
-                    ChassisFanCapabilities(),
+                    ChassisFanCapabilities(fan.FirmwareCurve is null ? null : fan.CurvePoints),
                     fan.Detail,
                     Terms: FanTerms(fan)));
             }
@@ -1004,7 +1004,7 @@ public sealed class WindowsControlObjectCatalog(
                 new ControlObjectPlatform(
                     ControlOperatingSystems.Windows,
                     notebook ? ControlVendors.Oem : ControlVendors.Unknown),
-                ChassisFanCapabilities(),
+                ChassisFanCapabilities(curvePointLimit: null),
                 cpuFan.Detail));
         }
 
