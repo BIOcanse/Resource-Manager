@@ -70,7 +70,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "edid-basic", path = "/api/device-topology/state/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token, "lastSuccessAt"));
         var display = EdidBasicDisplay(message.RootElement.GetProperty("value")); Assert.Equal(JsonValueKind.Null, display.GetProperty("physicalSize").ValueKind);
         Assert.Equal(10U, display.GetProperty("bitsPerColorChannel").GetUInt32());
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250); var reads = reader.ReadCount; var cached = fixture.Provider.ReadState();

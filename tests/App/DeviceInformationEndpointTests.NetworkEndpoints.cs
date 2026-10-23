@@ -83,7 +83,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
         Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message=JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message=JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value=Field(message.RootElement.GetProperty("value"),"machine","network_all_tcp_ipv4_endpoint_reported").GetProperty("value");
         Assert.Equal(3,value.GetArrayLength());Assert.True(api.Reads>=8);Assert.True(api.Opens>=4);
         Assert.All(api.Leases,static lease=>Assert.Equal(1,lease.Disposals));

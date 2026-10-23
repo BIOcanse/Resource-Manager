@@ -23,12 +23,7 @@ $workspaceMarker=Join-Path $workspace '.generated-workspace.json'
 $workspaceState=Get-Content -LiteralPath $workspaceMarker -Raw|ConvertFrom-Json
 if($taskState.state -cne 'running' -or $workspaceState.state -cne 'running'){throw 'Closure requires the task and its workspace to be running.'}
 $workspaceMarkerHash=(Get-FileHash -LiteralPath $workspaceMarker).Hash
-$build=Get-Content (Join-Path $taskPath 'build-context.json') -Raw|ConvertFrom-Json
-$references=@([string]$build.artifacts)+@($acceptance.packages|ForEach-Object path)+@($acceptance.consumerDependencies|ForEach-Object deps)|Sort-Object -Unique
-if($acceptance.PSObject.Properties['retainedOutputs']) {
-    # Only current accepted output roots and actual consumer dependencies remain.
-    $references=@($references)+@($acceptance.retainedOutputs)|Sort-Object -Unique
-}
+$references=@(& (Join-Path $PSScriptRoot 'Get-AcceptedOutputReferences.ps1') -Acceptance $acceptance)
 # Use current finite project limits and the complete registered reference roots.
 $effectiveRetention=& (Join-Path $PSScriptRoot 'Get-ProductRetentionPolicy.ps1') -TaskRoot $taskPath -ProjectPolicyPath $ProjectPolicyPath
 $policy=$effectiveRetention.policy

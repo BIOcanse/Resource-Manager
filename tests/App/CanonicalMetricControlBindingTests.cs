@@ -26,6 +26,16 @@ public sealed class CanonicalMetricControlBindingTests
     private const string IntelPl1 = "cpu_intel_requested_pl1_power_limit_watts";
     private const string AmdStapm = "cpu_amd_requested_stapm_power_limit_watts";
 
+    [Theory]
+    [InlineData("cpu_amd_requested_temperature_limit_celsius")]
+    [InlineData("cpu_intel_requested_temperature_limit_reduction_celsius")]
+    public void RequestedTemperatureFieldsUseCelsiusDisplayUnit(string name)
+    {
+        var binding = WindowsMetricControlBindings.FindByName(name);
+        Assert.NotNull(binding);
+        Assert.Equal("°C", binding.Definition.Unit);
+    }
+
     [Fact]
     public void ExactManagedContractTableKeepsUnsupportedAndTelemetrySeparate()
     {

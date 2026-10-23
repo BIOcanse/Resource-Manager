@@ -112,7 +112,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var success = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var success = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         using var failure = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
         using var recovery = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
         var successful = success.RootElement.GetProperty("value");
@@ -299,7 +299,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
         Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message=JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message=JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         Assert.Equal((ushort)65,Field(message.RootElement.GetProperty("value"),HidInformationCollectorTests.IdentityA,"hid_all_report_length_declared").GetProperty("value").GetProperty("inputBytes").GetUInt16());
         Assert.True(api.Opens>0); Assert.Equal(api.Enumerations,api.Opens);
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
@@ -353,7 +353,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
         Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message=JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message=JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         Assert.Equal("fe80::1234",Field(message.RootElement.GetProperty("value"),NetworkAddressInformationCollectorTests.IdentityA,"network_all_unicast_address_reported").GetProperty("value")[1].GetProperty("address").GetString());
         Assert.Equal("198.51.100.1",Field(message.RootElement.GetProperty("value"),NetworkAddressInformationCollectorTests.IdentityA,"network_all_route_reported").GetProperty("value")[0].GetProperty("nextHopAddress").GetString());
         Assert.True(api.InterfaceReads>0); Assert.Equal(api.InterfaceReads,api.UnicastReads); Assert.Equal(api.InterfaceReads,api.RouteReads);
@@ -399,7 +399,7 @@ public sealed partial class DeviceInformationEndpointTests
             Content=JsonContent.Create(new { version=1,subscriptions=new[] { new { id="amd-worker",path="/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token); Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message=JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message=JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value=message.RootElement.GetProperty("value");
         Assert.Equal("020.003",Field(value,AmdGpuDeclarationInformationCollectorTests.IdentityA,"gpu_amd_vbios_version").GetProperty("value").GetString());
         Assert.Equal("GDDR6",Field(value,AmdGpuDeclarationInformationCollectorTests.IdentityA,"gpu_amd_vram_type").GetProperty("value").GetString());
@@ -411,6 +411,16 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal("113-TEST",Field(cached.RootElement,AmdGpuDeclarationInformationCollectorTests.IdentityA,"gpu_amd_vbios_part_number").GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(calls,probe.Calls()); Assert.Same(current,fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();
+    }
+
+    // A collector test needs the first observed value after the explicit
+    // cached-current frame (empty/persisted is valid and must be delivered).
+    private static async Task<string> ReadFirstObservedInformationAsync(StreamReader stream, CancellationToken token, string timestampProperty = "observedAt")
+    {
+        var first = (await stream.ReadLineAsync(token))!;
+        using var frame = JsonDocument.Parse(first);
+        if (frame.RootElement.GetProperty("value").GetProperty(timestampProperty).ValueKind != JsonValueKind.Null) return first;
+        return (await stream.ReadLineAsync(token))!;
     }
 
 }

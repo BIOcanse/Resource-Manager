@@ -65,7 +65,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "usb-parent-port", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var field = UsbParent(message.RootElement.GetProperty("value")); Assert.Equal(UsbParentPortInformationCollectorTests.Parent, field.GetProperty("value").GetString());
         Assert.Equal(UsbParentPortInformationCollectorTests.Source, field.GetProperty("definition").GetProperty("sourceId").GetString());
         Assert.True(reader.ReadCount >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);

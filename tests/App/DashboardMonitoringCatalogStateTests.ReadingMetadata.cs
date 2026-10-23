@@ -1,10 +1,92 @@
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed partial class DashboardMonitoringCatalogStateTests
 {
+    [Theory]
+    [InlineData("motherboard_all_vrm_temperature_celsius", "system.vrmTemperature", "memory_all_temperature_reported_celsius", "hardware-monitor.core")]
+    [InlineData("motherboard_all_chipset_temperature_celsius", "system.chipsetTemperature", "memory_all_temperature_reported_celsius", "hardware-monitor.core")]
+    [InlineData("cpu_amd_stapm_power_watts", "cpu.stapmPower", "cpu_amd_actual_power_watts", "amd.smu")]
+    [InlineData("cpu_amd_package_power_reported_watts", "cpu.packagePower", "cpu_amd_actual_power_watts", "amd.smu")]
+    public void RunningSourceDoesNotBecomeMissingComponentWhenAnotherFieldIsUnverified(
+        string fieldName, string alias, string availableFieldName, string source)
+    {
+        var initial = CreateSnapshot(1, "gpu", []);
+        initial = initial with { Cpu = initial.Cpu with { Name = "AMD Ryzen test" } };
+        var target = CatalogBinding(fieldName, source, "target", alias, "unverified", preferred: false);
+        var sibling = CatalogBinding(availableFieldName, source, "sibling", "unrelated", "available", preferred: true);
+        initial = initial with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            { ["target"] = target, ["sibling"] = sibling } };
+        var definition = MetricCatalog.FromSnapshot(initial).Single(item => item.Id == alias);
+        Assert.False(definition.Selectable);
+        Assert.Null(definition.RequiredComponentId);
+        Assert.Null(definition.RequiredComponentName);
+        Assert.Equal(BackendMessageCodes.Metric.NoValidReading, definition.DisabledReason!.Code);
+        Assert.Equal("unverified", initial.FieldBindings["target"].Field.Reading!.SourceAvailability);
+        Assert.Empty(initial.Items);
+
+        // An installed, unrelated provider is not evidence for this one.
+        var unrelated = initial with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            { ["target"] = target, ["sibling"] = sibling with { SourceId = "other-provider" } } };
+        Assert.Equal(BackendMessageCodes.Metric.NeedsComponent,
+            MetricCatalog.FromSnapshot(unrelated).Single(item => item.Id == alias).DisabledReason!.Code);
+    }
+
+    [Theory]
+    [InlineData("unsupported", false, BackendMessageCodes.Metric.NotExposed)]
+    [InlineData("unverified", false, BackendMessageCodes.Metric.NeedsComponent)]
+    [InlineData("available", true, 0)]
+    public void CatalogUsesExplicitFieldCapabilityWithoutInventingValues(string availability, bool selectable, int reason)
+    {
+        const string alias = "system.motherboardTemperature";
+        var binding = CatalogBinding("motherboard_all_temperature_reported_celsius", "hardware-monitor.core",
+            "field", alias, availability, preferred: availability == "available");
+        var snapshot = CreateSnapshot(1, "gpu", []) with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { ["field"] = binding } };
+        var definition = MetricCatalog.FromSnapshot(snapshot).Single(item => item.Id == alias);
+        Assert.Equal(selectable, definition.Selectable);
+        if (reason == 0) Assert.Null(definition.DisabledReason);
+        else Assert.Equal(reason, definition.DisabledReason!.Code);
+        Assert.Empty(snapshot.Items);
+    }
+
+    [Fact]
+    public void CommittedSourceCapabilityCorrectsMissingComponentWithoutResamplingCatalogValues()
+    {
+        var target = CatalogBinding("motherboard_all_vrm_temperature_celsius", "hardware-monitor.core",
+            "target", "system.vrmTemperature", "unverified", preferred: false);
+        var sibling = CatalogBinding("memory_all_temperature_reported_celsius", "hardware-monitor.core",
+            "sibling", "memory.temperature", "unverified", preferred: false);
+        var initial = CreateSnapshot(1, "gpu", []) with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            { ["target"] = target, ["sibling"] = sibling } };
+        var state = new DashboardMonitoringCatalogState();
+        state.PublishCatalogProbe(initial);
+        var revision = state.Revision;
+        Assert.Equal(BackendMessageCodes.Metric.NeedsComponent,
+            MetricCatalog.FromSnapshot(state.Current!).Single(item => item.Id == "system.vrmTemperature").DisabledReason!.Code);
+        var committed = initial with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
+            { ["target"] = target, ["sibling"] = sibling with { Field = sibling.Field with
+                { Reading = sibling.Field.Reading! with { SourceAvailability = "available", IsPreferredSource = true } } } } };
+        Assert.True(state.PublishReadingMetadata(committed));
+        Assert.NotEqual(revision, state.Revision);
+        Assert.Same(initial.Items, state.Current!.Items);
+        Assert.Equal(BackendMessageCodes.Metric.NoValidReading,
+            MetricCatalog.FromSnapshot(state.Current).Single(item => item.Id == "system.vrmTemperature").DisabledReason!.Code);
+    }
+
+    private static MetricDeviceFieldBinding CatalogBinding(string name, string source, string request,
+        string alias, string availability, bool preferred)
+    {
+        var definition = MetricFieldRegistry.FindByName(name)!;
+        Assert.NotNull(definition);
+        return new("opaque-" + request, definition with { Reading = new("reading-" + request, name,
+            100, availability, preferred, preferred ? "opaque-" + request : null, preferred ? name : null) }, request, source)
+        { RequestAliases = [alias] };
+    }
+
     [Fact]
     public void CommittedReadingMetadataUpdatesTheCatalogAndSignalsOnceWithoutReplacingValuesOrOfflineBindings()
     {

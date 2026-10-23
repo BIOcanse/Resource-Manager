@@ -64,7 +64,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         DisplayEdidTypeXConsumerTestData.AssertValue(Hdr(message.RootElement.GetProperty("value"), DisplayEdidModeInformationCollectorTests.Name).GetProperty("value"), version);
         Assert.True(reader.ReadCount >= 1); await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var reads = reader.ReadCount; var current = fixture.Provider.ReadState().InformationFields;

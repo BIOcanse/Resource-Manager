@@ -92,7 +92,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value = message.RootElement.GetProperty("value");
         var total = Field(value, VolumeSpaceInformationCollectorTests.IdA, "volume_all_size_actual");
         Assert.Equal("4096000", total.GetProperty("value").GetString());

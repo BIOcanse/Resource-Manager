@@ -138,6 +138,30 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
         Assert.Equal("020.003",Assert.Single(result.Amd!,gpu=>gpu.PnpInstanceId==PnpA).VbiosVersion);
     }
 
+    [Fact]
+    public async Task HungDeclarationsKeepOsTopologyAndCannotBlockLaterMetricRequests()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var finished = new ManualResetEventSlim();
+        var bridge = new Bridge { Metadata = [Metadata(10, PnpA)], Values = [Value(10, PnpA)], BeforeDeclarations = () =>
+        { entered.Set(); try { Assert.True(release.Wait(TimeSpan.FromSeconds(5))); } finally { finished.Set(); } } };
+        var reader = new AmdAdlxBridgeReader(bridge, TimeSpan.FromMilliseconds(200));
+        var capture = Task.Run(() => reader.ReadDeclarations(Inventory()));
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(2)));
+            var result = await capture.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Equal(2, result!.Count);
+            Assert.All(result, item => Assert.Null(item.VbiosVersion));
+            Assert.Empty(await reader.ReadAsync(AmdAdlxReadRequest.All, Inventory(), CancellationToken.None));
+            Assert.Equal(1, bridge.Calls);
+        }
+        finally { release.Set(); Assert.True(finished.Wait(TimeSpan.FromSeconds(2))); }
+        Assert.All(reader.ReadDeclarations(Inventory())!, item => Assert.Null(item.VbiosVersion));
+        Assert.Equal(1, bridge.Calls);
+    }
+
     private static NativeAdlxGpuMetrics Metadata(int id,string pnp)
     {
         var row=new NativeAdlxGpuMetrics { StructSize=848,AbiVersion=6,UniqueId=id,IdentityValid=1 };
@@ -163,7 +187,7 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
         WindowsGpuIdentityEvidence.CmCanonicalInstanceRoundTrip|WindowsGpuIdentityEvidence.KmtDeviceIds|WindowsGpuIdentityEvidence.CmPciAddress,WindowsGpuPhysicalIdentityStatus.Bound,0)] };
     private sealed class Bridge:IAmdAdlxNativeBridge
     {
-        public uint Abi=6,DeclarationAbi=1; public int Size=1040,Calls; public int? Count; public Exception? Failure;
+        public uint Abi=6,DeclarationAbi=1; public int Size=1040,Calls; public int? Count; public Exception? Failure; public Action? BeforeDeclarations;
         public NativeAdlxGpuMetrics[] Metadata=[]; public NativeAdlxGpuDeclaration[] Values=[]; public NativeAdlxGpuSelection[] Selections=[];
         public uint GetAbiVersion() { Calls++; if(Failure is not null) throw Failure; return Abi; }
         public int GetMetricsSize()=>848; public int GetSelectionSize()=>520;
@@ -171,6 +195,6 @@ public sealed class AmdGpuDeclarationInformationCollectorTests
         public int ReadMetadata(NativeAdlxGpuMetrics[] output,StringBuilder message) { Metadata.CopyTo(output,0); return Count ?? Metadata.Length; }
         public int ReadSelected(NativeAdlxGpuMetrics[] output,NativeAdlxGpuSelection[] selections,StringBuilder message)=>throw new InvalidOperationException("No metrics demanded");
         public int ReadDeclarations(NativeAdlxGpuDeclaration[] output,NativeAdlxGpuSelection[] selections,StringBuilder message)
-        { Selections=selections; Values.CopyTo(output,0); return Values.Length; }
+        { BeforeDeclarations?.Invoke(); Selections=selections; Values.CopyTo(output,0); return Values.Length; }
     }
 }

@@ -74,7 +74,7 @@ public sealed partial class DeviceInformationEndpointTests
             new { id = "security-products-worker", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode); using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value = Field(message.RootElement.GetProperty("value"), "machine", "security_all_antivirus_products_reported").GetProperty("value");
         Assert.Equal("Product", value[0].GetProperty("nameReported").GetString()); Assert.Equal(1U, value[0].GetProperty("signatureStatusReported").GetUInt32());
         Assert.True(reader.ReadCount >= 1); Assert.Equal(2 * reader.ReadCount, api.Providers.Count);

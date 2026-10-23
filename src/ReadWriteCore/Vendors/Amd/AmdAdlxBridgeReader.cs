@@ -10,10 +10,26 @@ public sealed partial class AmdAdlxBridgeReader
 {
     private readonly IAmdAdlxNativeBridge bridge;
     private readonly Func<string, string, string?>? describeProviderMessage;
-    public AmdAdlxBridgeReader(Func<string, string, string?>? describeProviderMessage = null) : this(null, describeProviderMessage) { }
-    internal AmdAdlxBridgeReader(IAmdAdlxNativeBridge bridge) : this(bridge, null) { }
-    private AmdAdlxBridgeReader(IAmdAdlxNativeBridge? bridge, Func<string, string, string?>? describeProviderMessage)
-        => (this.bridge, this.describeProviderMessage) = (bridge ?? new NativeBridge(), describeProviderMessage);
+    private static readonly AdlxReadBoundary NativeReadBoundary = new();
+    private readonly AdlxReadBoundary readBoundary;
+    private readonly TimeSpan maximumReadDuration;
+    public AmdAdlxBridgeReader(Func<string, string, string?>? describeProviderMessage = null)
+        : this(null, describeProviderMessage, null) { }
+    public AmdAdlxBridgeReader(TimeSpan maximumReadDuration,
+        Func<string, string, string?>? describeProviderMessage = null)
+        : this(null, describeProviderMessage, maximumReadDuration) { }
+    internal AmdAdlxBridgeReader(IAmdAdlxNativeBridge bridge, TimeSpan? maximumReadDuration = null)
+        : this(bridge, null, maximumReadDuration) { }
+    private AmdAdlxBridgeReader(IAmdAdlxNativeBridge? bridge, Func<string, string, string?>? describeProviderMessage,
+        TimeSpan? maximumReadDuration)
+    {
+        this.bridge = bridge ?? new NativeBridge();
+        this.describeProviderMessage = describeProviderMessage;
+        this.maximumReadDuration = maximumReadDuration ?? TimeSpan.FromSeconds(2);
+        if (this.maximumReadDuration <= TimeSpan.Zero || this.maximumReadDuration.TotalMilliseconds > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(maximumReadDuration));
+        readBoundary = bridge is null ? NativeReadBoundary : new();
+    }
     internal const uint BridgeAbiVersion = 6;
     internal const int TimestampFlag = 4096;
     private const int UsageFlag = 1;
@@ -33,7 +49,23 @@ public sealed partial class AmdAdlxBridgeReader
     private const int GpuTypeIntegrated = 1;
     private const int GpuTypeDiscrete = 2;
 
-    public Task<IReadOnlyList<GpuMetrics>> ReadAsync(
+    public Task<IReadOnlyList<GpuMetrics>> ReadAsync(AmdAdlxReadRequest request,
+        WindowsGpuAdapterInventoryRead windowsInventory, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!request.IncludesAnyMetric) return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
+        request = request with { DisplayIndexes = request.DisplayIndexes?.ToHashSet(),
+            NativeFlagsByDisplayIndex = request.NativeFlagsByDisplayIndex?.ToDictionary(item => item.Key, item => item.Value) };
+        windowsInventory = CopyInventory(windowsInventory);
+        return readBoundary.RunAsync(() => ReadUnboundedAsync(request, windowsInventory, cancellationToken).GetAwaiter().GetResult(),
+            (IReadOnlyList<GpuMetrics>)[], maximumReadDuration, cancellationToken);
+    }
+
+    private static WindowsGpuAdapterInventoryRead CopyInventory(WindowsGpuAdapterInventoryRead inventory)
+        => inventory with { Adapters = inventory.Adapters.Select(adapter => adapter with
+            { PhysicalIdentities = adapter.PhysicalIdentities.ToArray() }).ToArray() };
+
+    private Task<IReadOnlyList<GpuMetrics>> ReadUnboundedAsync(
         AmdAdlxReadRequest request,
         WindowsGpuAdapterInventoryRead windowsInventory,
         CancellationToken cancellationToken)
@@ -63,6 +95,7 @@ public sealed partial class AmdAdlxBridgeReader
             var buffer = new NativeAdlxGpuMetrics[32];
             var message = new StringBuilder(512);
             var count = bridge.ReadMetadata(buffer, message);
+            ThrowIfFaulted(count);
             if (count <= 0 || count > buffer.Length)
             {
                 return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
@@ -86,6 +119,7 @@ public sealed partial class AmdAdlxBridgeReader
             cancellationToken.ThrowIfCancellationRequested();
             Array.Clear(buffer);
             count = bridge.ReadSelected(buffer, selections, message);
+            ThrowIfFaulted(count);
             if (count <= 0 || count > selections.Length) return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
             var byDisplayIndex = new Dictionary<int, GpuMetrics>();
             var ambiguousDisplayIndexes = new HashSet<int>();
@@ -126,6 +160,11 @@ public sealed partial class AmdAdlxBridgeReader
         {
             return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
         }
+    }
+
+    private static void ThrowIfFaulted(int result)
+    {
+        if (result == -5) throw new SEHException("ADLX instance faulted; process restart is required before reuse.");
     }
 
     internal static int BuildNativeFlags(AmdAdlxReadRequest request)

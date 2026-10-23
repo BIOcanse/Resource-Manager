@@ -38,9 +38,8 @@ public static class DesktopEntryRegistration
         appPath.SetValue("", stableStart);
         appPath.SetValue("Path", plan.ManagerDirectory);
         using var uninstall = machine.OpenSubKey(UninstallationPlan.RegistrationKeys[3], writable: true)!;
-        uninstall.SetValue("UninstallString", "\"" + Path.Combine(plan.ManagerDirectory, UninstallationPlan.ExecutableName) + "\"");
+        ProductInstallationRegistration.WriteUninstallCommand(uninstall, plan.ManagerDirectory);
         uninstall.SetValue("DisplayIcon", stableStart);
-        uninstall.DeleteValue("NoRemove", false);
         StartMenuShortcut.Create(stableStart);
     }
 }

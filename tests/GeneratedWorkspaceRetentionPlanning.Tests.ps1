@@ -227,6 +227,45 @@ function Test-OrdinarySizeEvictionOrder {
     Assert-True -Condition ($plan.ProjectedBytes -eq 100 -and -not $plan.OverBudget) -Message 'The ordinary eviction must reduce projected size to the configured limit.'
 }
 
+function Test-AcceptedConsumersDetermineBuildRetention {
+    $repository = Split-Path -Parent $PSScriptRoot
+    $selector = Join-Path $repository 'scripts/validation/ProductSdk/Get-AcceptedOutputReferences.ps1'
+    $converter = Join-Path $repository 'scripts/validation/ConvertTo-ValidationLifecycleReferences.ps1'
+    # The converter uses PowerShell paths: use an existing drive, without
+    # creating or reading these purely synthetic catalog directories.
+    $targetRoot = [IO.Path]::Combine($repository, 'tests', '.synthetic-retention-planning', 'accepted-outputs')
+    $ownerRoot = [IO.Path]::Combine($repository, 'tests', '.synthetic-retention-planning', 'accepted-owner')
+    $unused = New-SyntheticItem -RootPath $targetRoot -RootId 'accepted-target' -Name 'test-only-build' -Bytes 100 -CompletionTicks 10
+    $current = New-SyntheticItem -RootPath $targetRoot -RootId 'accepted-target' -Name 'explicit-build' -Bytes 100 -CompletionTicks 20
+    $package = New-SyntheticItem -RootPath $targetRoot -RootId 'accepted-target' -Name 'package' -Bytes 100 -CompletionTicks 30
+    $consumer = New-SyntheticItem -RootPath $targetRoot -RootId 'accepted-target' -Name 'consumer' -Bytes 100 -CompletionTicks 40
+
+    $acceptance = [pscustomobject]@{
+        packages = @([pscustomobject]@{path = [IO.Path]::Combine($package.Path, 'sdk.nupkg')})
+        consumerDependencies = @([pscustomobject]@{deps = [IO.Path]::Combine($consumer.Path, 'app.deps.json')})
+        retainedOutputs = @([IO.Path]::Combine($current.Path, 'scratch', 'artifacts'))
+        buildContext = [pscustomobject]@{artifacts = [IO.Path]::Combine($unused.Path, 'scratch', 'artifacts')}
+    }
+    $raw = @(& $selector -Acceptance $acceptance)
+    Assert-True -Condition ($raw.Count -eq 3) -Message 'Only the three declared output consumers may become references.'
+    $policy = [pscustomobject]@{roots = @(
+        [pscustomobject]@{path = $targetRoot}, [pscustomobject]@{path = $ownerRoot})}
+    $references = @(& $converter -References $raw -Policy $policy)
+    Assert-True -Condition ($references -contains $current.Path) -Message 'Explicit current build consumption must keep its exact batch.'
+    Assert-True -Condition ($references -contains $package.Path -and $references -contains $consumer.Path) -Message 'Package and installed-consumer references must retain their batches.'
+    Assert-True -Condition ($references -notcontains $unused.Path) -Message 'A past build context must not create an implicit retention edge.'
+
+    $owner = New-SyntheticItem -RootPath $ownerRoot -RootId 'accepted-owner' -Name 'accepted-task' -Bytes 10 -CompletionTicks 50 -References $references
+    $targetCatalog = New-SyntheticCatalog -RootPath $targetRoot -RootId 'accepted-target' -Items @($unused, $current, $package, $consumer) -MaxBytes 0 -TotalBytes 400
+    $ownerCatalog = New-SyntheticCatalog -RootPath $ownerRoot -RootId 'accepted-owner' -Items @($owner) -MaxBytes 100 -TotalBytes 10
+    $plan = Invoke-SyntheticPlan -TargetCatalog $targetCatalog -Catalogs @($targetCatalog, $ownerCatalog)
+    Assert-True -Condition ($plan.Planned.Count -eq 1 -and $plan.Planned[0].Item.Key -eq $unused.Key) -Message 'Only the closed test-only build may be reclaimed; real consumers must remain protected.'
+    Assert-True -Condition ($plan.ProjectedBytes -eq 300 -and $plan.OverBudget) -Message 'Real referenced outputs must remain accounted even when they prevent the budget being met.'
+
+    $empty = @(& $selector -Acceptance ([pscustomobject]@{packages = @(); consumerDependencies = @()}))
+    Assert-True -Condition ($empty.Count -eq 0) -Message 'A scope with no remaining consumers must have no implicit build reference.'
+}
+
 Test-ProtectedReferenceFanOutNodeBudget
 Test-RecentTargetCanBeEvictedForSize
 Test-CrossRootCompletedOwnerProtectsTarget
@@ -235,5 +274,6 @@ Test-UnknownSizeSkipsSizeEviction
 Test-ReferenceChainsAndCyclesStayProtected
 Test-SelfReferenceDoesNotProtectItsOwnRecentCandidate
 Test-OrdinarySizeEvictionOrder
+Test-AcceptedConsumersDetermineBuildRetention
 
 Write-Output "GeneratedWorkspaceRetentionPlanning.Tests passed ($script:AssertionCount assertions)."

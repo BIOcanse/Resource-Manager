@@ -8,6 +8,15 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuVendorLibraryIntegrationTests
 {
     [Fact]
+    public void AdlxKeepsTheExistingPublicConstructorAndValidatesAnExplicitReadDeadline()
+    {
+        Assert.NotNull(typeof(AmdAdlxBridgeReader).GetConstructor([typeof(Func<string, string, string>)]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AmdAdlxBridgeReader(TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AmdAdlxBridgeReader(Timeout.InfiniteTimeSpan));
+        _ = new AmdAdlxBridgeReader(TimeSpan.FromSeconds(1)); // construction performs no hardware IO
+    }
+
+    [Fact]
     public async Task PublicReadersAndWriteBridgesBelongToTheLibraryAndEmptyDemandDoesNotAccessNativeDevices()
     {
         var owner = typeof(ReadWriteCore).Assembly;

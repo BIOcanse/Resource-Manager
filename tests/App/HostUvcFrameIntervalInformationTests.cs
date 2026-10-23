@@ -60,7 +60,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var packet = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var packet = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value = Field(packet.RootElement.GetProperty("value"), UvcFrameIntervalCapabilityTests.Identity,
             UvcFrameIntervalCapabilityTests.FieldName).GetProperty("value");
         Assert.Equal(666_667U, value[0].GetProperty("frameIntervalsDeclared")

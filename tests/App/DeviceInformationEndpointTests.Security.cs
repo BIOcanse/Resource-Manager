@@ -111,7 +111,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var snapshot = message.RootElement.GetProperty("value");
         Assert.Equal("0", Field(snapshot, "machine", "security_all_antivirus_state_reported").GetProperty("value").GetString());
         Assert.False(Field(snapshot, "windows-firewall-profile|domain", "security_all_windows_firewall_enabled_configured").GetProperty("value").GetBoolean());

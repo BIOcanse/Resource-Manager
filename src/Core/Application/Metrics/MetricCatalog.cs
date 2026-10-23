@@ -49,19 +49,7 @@ public static partial class MetricCatalog
                 usageCapabilityKnown: gpu is not null));
         }
 
-        var supportedAliases = snapshot.FieldBindings.Values
-            .Where(static binding => binding.Field.Reading is { IsPreferredSource: true, SourceAvailability: "available" })
-            .SelectMany(static binding => binding.RequestAliases)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        for (var index = 0; index < definitions.Count; index++)
-        {
-            if (supportedAliases.Contains(definitions[index].Id))
-                definitions[index] = definitions[index] with
-                {
-                    Selectable = true, RequiredComponentId = null,
-                    RequiredComponentName = null, DisabledReason = null
-                };
-        }
+        ApplyReadingAvailability(definitions, snapshot.FieldBindings.Values);
         return definitions;
     }
 

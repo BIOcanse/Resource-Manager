@@ -76,7 +76,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var field = Field(message.RootElement.GetProperty("value"), PageFileInformationCollectorTests.IdA, "memory_all_pagefile_used");
         Assert.Equal("1638400", field.GetProperty("value").GetString());
         Assert.Equal("windows.pagefile", field.GetProperty("definition").GetProperty("sourceId").GetString());

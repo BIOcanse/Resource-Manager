@@ -384,11 +384,14 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                             0,
                             "GPU A",
                             "gpu-a",
-                            0xA2UL,
+                            0xA1UL,
                             2,
                             VendorNvidia,
                             true)
                     ]);
+                // Exact restart retains the runtime LUID as well as stable identity.
+                // LUID changes intentionally retire persisted inventory; covered by
+                // RestartedGpuInventoryAcceptsCurrentRuntimeIdentity below.
                 var header = restarted.ReplaceCatalog(
                     projection,
                     DateTimeOffset.UtcNow);
@@ -411,7 +414,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                             0,
                             "GPU A",
                             "gpu-a",
-                            0xA3UL,
+                            0xA1UL,
                             3,
                             VendorNvidia,
                             true),

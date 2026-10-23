@@ -36,8 +36,7 @@ public static class ProductInstallationRegistration
             key.SetValue("DisplayIcon", Path.Combine(UpdateManagerPaths.InstalledDirectory(root), "Start.exe"));
             key.SetValue("NoModify", 1, RegistryValueKind.DWord);
             key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-            key.SetValue("UninstallString", "\"" + Path.Combine(UpdateManagerPaths.InstalledDirectory(root), UninstallationPlan.ExecutableName) + "\"");
-            key.DeleteValue("NoRemove", false);
+            WriteUninstallCommand(key, UpdateManagerPaths.InstalledDirectory(root));
         }
         using (var key = machine.CreateSubKey(Product))
         {
@@ -50,6 +49,14 @@ public static class ProductInstallationRegistration
             key.SetValue("ServiceName", WindowsServiceRegistration.ProductServiceName);
             key.SetValue("AppUserModelId", "ResourceManager.Desktop");
         }
+    }
+
+    /// <summary>Refresh the already owned product key; uninstall requires the user's data-retention choice.</summary>
+    public static void WriteUninstallCommand(RegistryKey key, string managerDirectory)
+    {
+        key.SetValue("UninstallString", "\"" + Path.Combine(managerDirectory, UninstallationPlan.ExecutableName) + "\"");
+        key.DeleteValue("QuietUninstallString", false);
+        key.DeleteValue("NoRemove", false);
     }
 
     private static void SetOwned(RegistryKey key, string root)

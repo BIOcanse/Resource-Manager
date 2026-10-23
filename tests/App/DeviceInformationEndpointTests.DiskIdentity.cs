@@ -68,7 +68,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "disk-identity", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token)); using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(message.RootElement.GetProperty("value"), DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
         Assert.True(reader.ReadCount >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var reads = reader.ReadCount; var cached = fixture.Provider.ReadState().InformationFields;

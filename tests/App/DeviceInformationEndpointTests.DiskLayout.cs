@@ -69,7 +69,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream")
         {Content=JsonContent.Create(new{version=1,subscriptions=new[]{new{id="disk-layout",path="/api/device-topology/fields/subscribe?intervalMs=1000"}}})};
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);Assert.Equal(HttpStatusCode.OK,response.StatusCode);
-        using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));using var message=JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));using var message=JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value=message.RootElement.GetProperty("value");var entry=Field(value,DiskLayoutInformationCollectorTests.IdA,"storage_all_partition_layout_reported");
         Assert.Equal("windows.disk-layout",entry.GetProperty("definition").GetProperty("sourceId").GetString());Assert.Equal("9007199254740993",entry.GetProperty("value")[1].GetProperty("startingOffsetBytes").GetString());
         Assert.True(api.Reads.Count>=2);await timeout.CancelAsync();response.Dispose();await Task.Delay(250);var reads=api.Reads.Count;var cached=fixture.Provider.ReadState().InformationFields;

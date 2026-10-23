@@ -46,7 +46,7 @@ public sealed partial class DeviceInformationEndpointTests
             new { id = "displayid-iv", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         assertModeValue(Hdr(message.RootElement.GetProperty("value"), DisplayIdCodeTimingTestData.Name).GetProperty("value")); Assert.True(reader.ReadCount >= 1);
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var reads = reader.ReadCount; var current = fixture.Provider.ReadState().InformationFields;
