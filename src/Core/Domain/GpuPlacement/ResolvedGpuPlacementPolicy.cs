@@ -2,7 +2,6 @@ namespace ResourceManager.App.Domain.GpuPlacement;
 
 public sealed record ResolvedGpuPlacementPolicy(
     string EnabledMode,
-    string MaxRisk,
     IReadOnlyList<string> AllowedProviders,
     string SchedulingMode,
     string StartupTargetGpu,
@@ -23,7 +22,6 @@ public sealed record ResolvedGpuPlacementPolicy(
         var cpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode);
         return new ResolvedGpuPlacementPolicy(
             ResolveSoftwareEnabledMode(policy),
-            GpuPlacementRiskLevels.Normalize(policy.MaxRisk),
             NormalizeProviders(policy.AllowedProviders),
             GpuPlacementSchedulingModes.Normalize(policy.SchedulingMode),
             GpuPlacementTargets.Normalize(policy.StartupTargetGpu),
@@ -52,7 +50,6 @@ public sealed record ResolvedGpuPlacementPolicy(
             processEnabledMode.Equals(GpuPlacementPolicyModes.Inherit, StringComparison.OrdinalIgnoreCase)
                 ? softwareEnabledMode
                 : processEnabledMode,
-            GpuPlacementRiskLevels.Normalize(policy.MaxRisk),
             NormalizeProviders(policy.AllowedProviders),
             GpuPlacementSchedulingModes.Normalize(softwarePolicy.SchedulingMode),
             GpuPlacementTargets.Normalize(softwarePolicy.StartupTargetGpu),

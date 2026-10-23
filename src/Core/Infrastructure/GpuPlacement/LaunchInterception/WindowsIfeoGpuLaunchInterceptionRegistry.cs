@@ -247,7 +247,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry : IGpuLaunc
             policies.Add(existing is null
                 ? new GpuPlacementProcessPolicy(
                     "overlay", normalized, Path.GetFileName(normalized), normalized,
-                    true, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, [],
+                    true, GpuPlacementPolicyModes.Inherit, [],
                     GpuPlacementExplicitSelectionModes.DefaultSkip,
                     null, DateTimeOffset.MinValue, true)
                 : existing with { StartupInterceptionEnabled = true });

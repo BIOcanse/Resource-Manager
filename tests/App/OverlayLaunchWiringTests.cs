@@ -175,7 +175,7 @@ public sealed class OverlayLaunchWiringTests
 
     private static GpuPlacementProcessPolicy Process(string path, bool enabled) => new(
         "software", "process", Path.GetFileName(path), path, true,
-        GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, [], GpuPlacementExplicitSelectionModes.DefaultSkip,
+        GpuPlacementPolicyModes.Inherit, [], GpuPlacementExplicitSelectionModes.DefaultSkip,
         null, DateTimeOffset.UnixEpoch, enabled);
 
     private static SoftwareRecord Software(string path) => new(

@@ -95,15 +95,6 @@ function policyModeOptions() {
 }
 
 // 文案按当前语言求值，不能在模块顶层固化。
-function riskOptions() {
-  return [
-    ["Low", uiText.softwareDetail.option.lowRiskOnly],
-    ["Medium", uiText.softwareDetail.option.allowMediumRisk],
-    ["High", uiText.softwareDetail.option.allowHighRisk]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
 function schedulingModeOptions() {
   return [
     ["Precise", uiText.softwareDetail.option.preciseScheduling],
@@ -195,7 +186,6 @@ function policyComparableKey(policy: GpuPlacementSoftwarePolicy) {
     softwareId: policy.softwareId,
     softwareName: policy.softwareName,
     enabledMode: policy.enabledMode,
-    maxRisk: policy.maxRisk,
     allowedProviders: sortedPolicyValues(policy.allowedProviders),
     schedulingMode: policy.schedulingMode,
     startupTargetGpu: policy.startupTargetGpu,
@@ -468,6 +458,11 @@ function GpuPlacementPolicySection(props: {
     (capability) => capability.startup.state === "supported") === true;
   const runtimeCapabilityAvailable = () => props.settings?.processCapabilities?.some(
     (capability) => canConfigureRuntimePlacement(capability.runtime.state)) === true;
+  const unavailableCapabilityReasons = () => [...new Set((props.settings?.processCapabilities ?? []).flatMap(
+    (capability) => [
+      formatProviderCapability(uiText.softwareDetail.providerPhase.startup, capability.startup),
+      formatProviderCapability(uiText.softwareDetail.providerPhase.runtime, capability.runtime)
+    ]))];
   const preciseCapabilityAvailable = () => startupCapabilityAvailable() || runtimeCapabilityAvailable();
   const dirty = () => {
     const saved = savedPolicy();
@@ -565,12 +560,6 @@ function GpuPlacementPolicySection(props: {
                   value={current().enabledMode}
                   options={policyModeOptions()}
                   onChange={(value) => updateDraft({ enabledMode: value as GpuPlacementSoftwarePolicy["enabledMode"] })}
-                />
-                <PolicySelect
-                  label={uiText.softwareDetail.label.allowedAdjustmentRange}
-                  value={current().maxRisk}
-                  options={riskOptions()}
-                  onChange={(value) => updateDraft({ maxRisk: value as GpuPlacementSoftwarePolicy["maxRisk"] })}
                 />
                 <PolicySelect
                   label={uiText.softwareDetail.label.gpuSelectionMethod}
@@ -709,10 +698,22 @@ function GpuPlacementPolicySection(props: {
                   {uiText.softwareDetail.preciseDisabledHint}
                 </p>
               </Show>
+              {/* 不可用时说后端给的真实原因（缺图形 API、缺 Provider 文件……），没记录到进程时才用通用提示。 */}
               <Show when={props.preciseGpuPlacementEnabled && !startupCapabilityAvailable() && !runtimeCapabilityAvailable()}>
-                <p class="software-detail-hint gpu-runtime-compatibility-warning">
-                  {uiText.softwareDetail.noNativeProcessHint}
-                </p>
+                <Show
+                  when={(props.settings?.processCapabilities?.length ?? 0) > 0}
+                  fallback={
+                    <p class="software-detail-hint gpu-runtime-compatibility-warning">
+                      {uiText.softwareDetail.noNativeProcessHint}
+                    </p>
+                  }
+                >
+                  <For each={unavailableCapabilityReasons()}>
+                    {(reason) => (
+                      <p class="software-detail-hint gpu-runtime-compatibility-warning">{reason}</p>
+                    )}
+                  </For>
+                </Show>
               </Show>
             </>
           )}
@@ -1046,12 +1047,6 @@ function GpuPlacementProcessSection(props: {
                         onChange={(value) => props.onUpdateProcess(process(), { enabledMode: value as GpuPlacementProcessPolicy["enabledMode"] })}
                       />
                       <PolicySelect
-                        label={uiText.softwareDetail.label.allowedAdjustmentRange}
-                        value={policy().maxRisk}
-                        options={riskOptions()}
-                        onChange={(value) => props.onUpdateProcess(process(), { maxRisk: value as GpuPlacementProcessPolicy["maxRisk"] })}
-                      />
-                      <PolicySelect
                         label={uiText.softwareDetail.label.whenSoftwareChoseGpu}
                         value={policy().explicitSelectionMode}
                         options={explicitSelectionOptions()}
@@ -1285,7 +1280,6 @@ function createDefaultProcessPolicy(
     executablePath: process.executablePath,
     inherit: true,
     enabledMode: "Inherit",
-    maxRisk: "Low",
     allowedProviders: ["windows-graphics-preference", "vendor-profile", "dxgi-launch-shim", "d3d-device-create-shim"],
     explicitSelectionMode: "DefaultSkip",
     baseScoreOverride: null,

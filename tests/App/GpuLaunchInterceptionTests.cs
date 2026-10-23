@@ -24,7 +24,6 @@ public sealed class GpuLaunchInterceptionTests
             @"C:\Apps\process.exe",
             true,
             GpuPlacementPolicyModes.Inherit,
-            GpuPlacementRiskLevels.Low,
             [],
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
@@ -38,7 +37,6 @@ public sealed class GpuLaunchInterceptionTests
     {
         var policy = new ResolvedGpuPlacementPolicy(
             GpuPlacementPolicyModes.Auto,
-            GpuPlacementRiskLevels.Low,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
             GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.AutoIdleGpu,
@@ -136,7 +134,6 @@ public sealed class GpuLaunchInterceptionTests
             executablePath,
             true,
             GpuPlacementPolicyModes.Auto,
-            GpuPlacementRiskLevels.Low,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
@@ -241,7 +238,6 @@ public sealed class GpuLaunchInterceptionTests
             executablePath,
             true,
             GpuPlacementPolicyModes.Inherit,
-            GpuPlacementRiskLevels.Low,
             [],
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,

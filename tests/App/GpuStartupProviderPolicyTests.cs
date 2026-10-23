@@ -287,7 +287,7 @@ public sealed class GpuStartupProviderPolicyTests
     };
 
     private static GpuPlacementProcessPolicy Process(GpuPlacementSoftwarePolicy software, string path, bool inherit) => new(
-        software.SoftwareId, "process", "target.exe", path, inherit, GpuPlacementPolicyModes.Manual, GpuPlacementRiskLevels.Low,
+        software.SoftwareId, "process", "target.exe", path, inherit, GpuPlacementPolicyModes.Manual,
         software.AllowedProviders, GpuPlacementExplicitSelectionModes.DefaultSkip,
         null, DateTimeOffset.UnixEpoch, true);
 

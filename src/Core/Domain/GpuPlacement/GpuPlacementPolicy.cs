@@ -30,24 +30,6 @@ public static class GpuPlacementPolicyModes
     }
 }
 
-public static class GpuPlacementRiskLevels
-{
-    public const string Low = "Low";
-    public const string Medium = "Medium";
-    public const string High = "High";
-
-    public static string Normalize(string? value, string fallback = Low)
-    {
-        return value?.Trim() switch
-        {
-            Low => Low,
-            Medium => Medium,
-            High => High,
-            _ => fallback
-        };
-    }
-}
-
 public static class GpuPlacementProviderIds
 {
     public const string WindowsGraphicsPreference = "windows-graphics-preference";
@@ -244,7 +226,6 @@ public sealed record GpuPlacementSoftwarePolicy(
     string SoftwareId,
     string SoftwareName,
     string EnabledMode,
-    string MaxRisk,
     IReadOnlyList<string> AllowedProviders,
     string SchedulingMode,
     string StartupTargetGpu,
@@ -270,7 +251,6 @@ public sealed record GpuPlacementProcessPolicy(
     string? ExecutablePath,
     bool Inherit,
     string EnabledMode,
-    string MaxRisk,
     IReadOnlyList<string> AllowedProviders,
     string ExplicitSelectionMode,
     double? BaseScoreOverride,
@@ -383,7 +363,6 @@ public static class GpuPlacementPolicyDefaults
             softwareId,
             softwareName,
             GpuPlacementPolicyModes.Auto,
-            GpuPlacementRiskLevels.Low,
             GpuPlacementProviderIds.Defaults,
             GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
@@ -415,7 +394,6 @@ public static class GpuPlacementPolicyDefaults
             process.ExecutablePath,
             true,
             GpuPlacementPolicyModes.Inherit,
-            GpuPlacementRiskLevels.Low,
             GpuPlacementProviderIds.Defaults,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
