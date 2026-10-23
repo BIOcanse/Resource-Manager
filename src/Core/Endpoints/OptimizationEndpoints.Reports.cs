@@ -42,6 +42,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return trust is null ? Results.NotFound(new { error = "报告不存在或已经失效。" }) : Results.Ok(trust);
         });
 
+        app.MapDelete("/api/optimization/trust/{id}", async (
+            string id,
+            IHostManagerReportService reportService,
+            CancellationToken cancellationToken) =>
+        {
+            return await reportService.RemoveTrustedTargetAsync(id, cancellationToken)
+                ? Results.NoContent()
+                : Results.NotFound(new { error = "信任项不存在。" });
+        });
+
         app.MapPost("/api/optimization/reports/{id}/protect", async (
             string id,
             IHostManagerReportService reportService,
