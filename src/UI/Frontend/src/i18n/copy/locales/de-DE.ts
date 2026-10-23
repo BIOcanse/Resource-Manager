@@ -21,12 +21,12 @@ const deDeAppCopy: AppCopy = {
     info: "Hinweis"
   },
   page: {
-    monitor: "Überwachungskonsole",
-    components: "Komponenten und Software",
-    optimization: "Leistungsoptimierung",
-    details: "Detaillierte Informationen",
+    monitor: "Überwachung",
+    components: "Software",
+    optimization: "Optimierung",
+    details: "Details",
     settings: "Einstellungen",
-    diskUsage: "Speicherbelegung",
+    diskUsage: "Speicher",
     control: "Steuerung"
   },
   control: {
@@ -1731,7 +1731,7 @@ const deDeAppCopy: AppCopy = {
   },
   softwareActions: {
     policyEditUnavailable: "Dieses Startprofil erlaubt das Bearbeiten von Softwarerichtlinien nicht.",
-    softwareListNoMatch: "Noch kein passender Eintrag in der Softwareliste. Aktualisieren Sie zuerst „Komponenten und Software“.",
+    softwareListNoMatch: "Noch kein passender Eintrag in der Softwareliste. Aktualisieren Sie zuerst „Software“.",
     policySoftwareMissing: "Die Software zu dieser Richtlinie wurde in der Softwareliste nicht gefunden.",
     noRunningProcess: "Kein passender laufender Prozess.",
     endTaskTitle: (name: string) => `Task beenden: ${name}`,
@@ -2192,7 +2192,7 @@ const deDeAppCopy: AppCopy = {
   appShellExtras: {
     metricNeedsComponent: (metric: string, component: string) => `${metric} benötigt ${component}`,
     currentState: (state: string) => `Aktueller Status: ${state}`,
-    goToComponents: "„Komponenten und Software“ öffnen, um es zu installieren oder zu prüfen?",
+    goToComponents: "„Software“ öffnen, um es zu installieren oder zu prüfen?",
     noRunnableAction: "Derzeit ist keine Aktion verfügbar",
     cancelTaskFailed: "Die Aufgabe konnte nicht abgebrochen werden"
   },

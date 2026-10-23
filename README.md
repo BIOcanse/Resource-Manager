@@ -26,7 +26,7 @@ Start using Resource Manager and take real control of your PC! 🚀
 
 ---
 
-## 📊 Monitoring Console
+## 📊 Monitor
 
 The console helps you monitor a wide range of system data. As shown below, all the commonly used information is here, and you can freely adjust both the layout and which data is monitored.
 
@@ -50,7 +50,7 @@ It also fixes Task Manager's **double counting of shared memory**: the yellow pa
 
 ---
 
-## 🧩 Components and Software
+## 🧩 Software
 
 This page lists most of the software on your computer. If an application was not installed in the traditional way, you can add it manually by specifying its main executable and root directory so Resource Manager can bring it under management.
 
@@ -69,7 +69,7 @@ The components that readings and hardware control rely on are managed here too, 
 
 ---
 
-## ⚡ Performance Optimization
+## ⚡ Optimization
 
 Choose **Normal**, or turn on **Memory**, **CPU**, and **GPU scheduling** independently. You can select any combination of the three; choosing Normal clears them all.
 
@@ -122,7 +122,7 @@ Scan every disk, one disk, or a single folder. **Fast scan** reads the NTFS file
 
 ---
 
-## 🎛️ Hardware Control
+## 🎛️ Control
 
 Balance performance, power and noise from one place. The control page brings together the CPU, GPU and fan adjustments available on your hardware, with live readings beside the controls so you can see the current state before changing it.
 
@@ -152,7 +152,7 @@ You can quickly check the **protocol that was actually negotiated**, which in ma
 
 ---
 
-## 🔬 Detailed Information
+## 🔬 Details
 
 Detailed CPU and GPU monitoring, instead of a single utilization percentage that never tells you where the real bottleneck is.
 

@@ -21,12 +21,12 @@ const frFrAppCopy: AppCopy = {
     info: "Information"
   },
   page: {
-    monitor: "Console de surveillance",
-    components: "Composants et logiciels",
-    optimization: "Optimisation des performances",
-    details: "Informations détaillées",
+    monitor: "Surveillance",
+    components: "Logiciels",
+    optimization: "Optimisation",
+    details: "Détails",
     settings: "Paramètres",
-    diskUsage: "Occupation du disque",
+    diskUsage: "Disque",
     control: "Réglages"
   },
   control: {
@@ -1731,7 +1731,7 @@ const frFrAppCopy: AppCopy = {
   },
   softwareActions: {
     policyEditUnavailable: "Ce profil de démarrage n'autorise pas la modification des politiques logicielles.",
-    softwareListNoMatch: "Aucune entrée correspondante dans la liste des logiciels pour l'instant. Actualisez d'abord « Composants et logiciels ».",
+    softwareListNoMatch: "Aucune entrée correspondante dans la liste des logiciels pour l'instant. Actualisez d'abord « Logiciels ».",
     policySoftwareMissing: "Le logiciel de cette politique est introuvable dans la liste des logiciels.",
     noRunningProcess: "Aucun processus en cours d'exécution correspondant.",
     endTaskTitle: (name: string) => `Terminer la tâche : ${name}`,
@@ -2192,7 +2192,7 @@ const frFrAppCopy: AppCopy = {
   appShellExtras: {
     metricNeedsComponent: (metric: string, component: string) => `${metric} nécessite ${component}`,
     currentState: (state: string) => `État actuel : ${state}`,
-    goToComponents: "Ouvrir « Composants et logiciels » pour l'installer ou le vérifier ?",
+    goToComponents: "Ouvrir « Logiciels » pour l'installer ou le vérifier ?",
     noRunnableAction: "Aucune action disponible pour l'instant",
     cancelTaskFailed: "La tâche n'a pas pu être annulée"
   },

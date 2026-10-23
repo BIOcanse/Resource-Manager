@@ -21,12 +21,12 @@ const ruRuAppCopy: AppCopy = {
     info: "Уведомление"
   },
   page: {
-    monitor: "Консоль мониторинга",
-    components: "Компоненты и программы",
-    optimization: "Оптимизация производительности",
-    details: "Подробные сведения",
+    monitor: "Мониторинг",
+    components: "Программы",
+    optimization: "Оптимизация",
+    details: "Сведения",
     settings: "Параметры",
-    diskUsage: "Использование диска",
+    diskUsage: "Диск",
     control: "Управление"
   },
   control: {
@@ -1731,7 +1731,7 @@ const ruRuAppCopy: AppCopy = {
   },
   softwareActions: {
     policyEditUnavailable: "Этот профиль запуска не позволяет изменять политики программ.",
-    softwareListNoMatch: "В списке программ пока нет подходящей записи. Сначала обновите раздел «Компоненты и программы».",
+    softwareListNoMatch: "В списке программ пока нет подходящей записи. Сначала обновите раздел «Программы».",
     policySoftwareMissing: "Программа для этой политики не найдена в списке программ.",
     noRunningProcess: "Нет подходящего выполняющегося процесса.",
     endTaskTitle: (name: string) => `Снять задачу: ${name}`,
@@ -2192,7 +2192,7 @@ const ruRuAppCopy: AppCopy = {
   appShellExtras: {
     metricNeedsComponent: (metric: string, component: string) => `Для «${metric}» требуется ${component}`,
     currentState: (state: string) => `Текущее состояние: ${state}`,
-    goToComponents: "Открыть «Компоненты и программы», чтобы установить или проверить?",
+    goToComponents: "Открыть «Программы», чтобы установить или проверить?",
     noRunnableAction: "Сейчас нет доступных действий",
     cancelTaskFailed: "Не удалось отменить задачу"
   },

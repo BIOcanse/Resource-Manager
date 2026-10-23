@@ -3,7 +3,7 @@ import type { AppCopy } from "../zh/index.ts";
 export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
   softwareActions: {
     policyEditUnavailable: "This startup profile does not allow editing software policies.",
-    softwareListNoMatch: "No matching entry in the software list yet. Refresh “Components and Software” first.",
+    softwareListNoMatch: "No matching entry in the software list yet. Refresh “Software” first.",
     policySoftwareMissing: "The software for this policy was not found in the software list.",
     noRunningProcess: "No matching running process.",
     endTaskTitle: (name: string) => `End task: ${name}`,

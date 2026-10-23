@@ -96,7 +96,7 @@ export const enRuntimeErrorsCopy: Pick<
   appShellExtras: {
     metricNeedsComponent: (metric: string, component: string) => `${metric} needs ${component}`,
     currentState: (state: string) => `Current state: ${state}`,
-    goToComponents: "Open “Components and Software” to install or check it?",
+    goToComponents: "Open “Software” to install or check it?",
     noRunnableAction: "No action available right now",
     cancelTaskFailed: "The task could not be canceled"
   },

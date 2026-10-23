@@ -16,12 +16,12 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     info: "Notice"
   },
   page: {
-    monitor: "Monitoring Console",
-    components: "Components and Software",
-    optimization: "Performance Optimization",
-    details: "Detailed Information",
+    monitor: "Monitor",
+    components: "Software",
+    optimization: "Optimization",
+    details: "Details",
     settings: "Settings",
-    diskUsage: "Disk Usage",
+    diskUsage: "Disk",
     control: "Control"
   },
   control: {
