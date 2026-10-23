@@ -5,7 +5,7 @@ export const enSoftwareCopy: Pick<
   "softwareKind" | "managementRole" | "management" | "managementPage" | "manualSoftware"
 > = {
   managementPage: {
-    browserRuntimeTab: "Runtime management",
+    browserRuntimeTab: "Runtimes",
     migrationTab: "Migration workbench",
     pageLabel: (kind: string) => `${kind} management`,
     searchLabel: (kind: string) => `Search ${kind}`,
@@ -25,19 +25,19 @@ export const enSoftwareCopy: Pick<
     moreActions: "More actions"
   },
   softwareKind: {
-    Adapted: "Adapted software",
-    Controlled: "Controlled software",
+    Adapted: "Adapted",
+    Controlled: "Controlled",
     Unconfirmed: "Unconfirmed",
     Managed: "Managed",
     Game: "Games",
-    HighPerformance: "High-performance software",
-    Other: "General applications",
+    HighPerformance: "High-performance",
+    Other: "Apps",
     WindowsSystem: "Windows system",
     WindowsComponent: "Windows app/component",
     WindowsService: "Windows service",
     RuntimePackage: "Windows app",
-    RuntimeProduct: "General applications",
-    RuntimeRoot: "General applications",
+    RuntimeProduct: "Apps",
+    RuntimeRoot: "Apps",
     Unattributed: "Unattributed processes",
     SystemResidual: "System/driver reserved",
     Empty: "Free"

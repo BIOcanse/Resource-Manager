@@ -347,7 +347,7 @@ const deDeAppCopy: AppCopy = {
     uptimeTitle: "Zeit seit dem letzten Start dieses PCs"
   },
   managementPage: {
-    browserRuntimeTab: "Runtime-Verwaltung",
+    browserRuntimeTab: "Laufzeiten",
     migrationTab: "Migrations-Werkbank",
     pageLabel: (kind: string) => `Verwaltung: ${kind}`,
     searchLabel: (kind: string) => `${kind} durchsuchen`,
@@ -367,26 +367,26 @@ const deDeAppCopy: AppCopy = {
     moreActions: "Weitere Aktionen"
   },
   softwareKind: {
-    Adapted: "Unterstützte Software",
-    Controlled: "Verwaltete Software",
-    Unconfirmed: "Nicht bestätigt",
+    Adapted: "Unterstützt",
+    Controlled: "Verwaltet",
+    Unconfirmed: "Unbestätigt",
     Managed: "Unter Verwaltung",
     Game: "Spiele",
-    HighPerformance: "Leistungsintensive Software",
-    Other: "Allgemeine Anwendungen",
+    HighPerformance: "Leistungsintensiv",
+    Other: "Anwendungen",
     WindowsSystem: "Windows-System",
     WindowsComponent: "Windows-App/-Komponente",
     WindowsService: "Windows-Dienst",
     RuntimePackage: "Windows-App",
-    RuntimeProduct: "Allgemeine Anwendungen",
-    RuntimeRoot: "Allgemeine Anwendungen",
+    RuntimeProduct: "Anwendungen",
+    RuntimeRoot: "Anwendungen",
     Unattributed: "Nicht zugeordnete Prozesse",
     SystemResidual: "System-/Treiberreserviert",
     Empty: "Frei"
   },
   managementRole: {
     Dependency: "Abhängigkeiten",
-    Support: "Unterstützung"
+    Support: "Support"
   },
   management: {
     categoryNav: "Kategorien für Komponenten und Software",

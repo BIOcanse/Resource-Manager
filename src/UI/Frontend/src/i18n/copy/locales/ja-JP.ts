@@ -347,7 +347,7 @@ const jaJpAppCopy: AppCopy = {
     uptimeTitle: "この PC が前回起動してからの経過時間"
   },
   managementPage: {
-    browserRuntimeTab: "ランタイム管理",
+    browserRuntimeTab: "ランタイム",
     migrationTab: "移行ワークベンチ",
     pageLabel: (kind: string) => `${kind}の管理`,
     searchLabel: (kind: string) => `${kind}を検索`,
@@ -367,19 +367,19 @@ const jaJpAppCopy: AppCopy = {
     moreActions: "その他の操作"
   },
   softwareKind: {
-    Adapted: "対応済みソフトウェア",
-    Controlled: "管理下のソフトウェア",
+    Adapted: "対応済み",
+    Controlled: "管理下",
     Unconfirmed: "未確認",
     Managed: "管理対象",
     Game: "ゲーム",
-    HighPerformance: "高負荷ソフトウェア",
-    Other: "一般アプリケーション",
+    HighPerformance: "高負荷",
+    Other: "一般アプリ",
     WindowsSystem: "Windows システム",
     WindowsComponent: "Windows アプリ / コンポーネント",
     WindowsService: "Windows サービス",
     RuntimePackage: "Windows アプリ",
-    RuntimeProduct: "一般アプリケーション",
-    RuntimeRoot: "一般アプリケーション",
+    RuntimeProduct: "一般アプリ",
+    RuntimeRoot: "一般アプリ",
     Unattributed: "帰属不明のプロセス",
     SystemResidual: "システム／ドライバー予約",
     Empty: "空き"

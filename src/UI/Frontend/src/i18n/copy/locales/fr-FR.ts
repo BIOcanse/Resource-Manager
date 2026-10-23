@@ -347,7 +347,7 @@ const frFrAppCopy: AppCopy = {
     uptimeTitle: "Temps écoulé depuis le dernier démarrage de ce PC"
   },
   managementPage: {
-    browserRuntimeTab: "Gestion des runtimes",
+    browserRuntimeTab: "Runtimes",
     migrationTab: "Atelier de migration",
     pageLabel: (kind: string) => `Gestion : ${kind}`,
     searchLabel: (kind: string) => `Rechercher dans ${kind}`,
@@ -367,26 +367,26 @@ const frFrAppCopy: AppCopy = {
     moreActions: "Autres actions"
   },
   softwareKind: {
-    Adapted: "Logiciels pris en charge",
-    Controlled: "Logiciels gérés",
+    Adapted: "Compatibles",
+    Controlled: "Gérés",
     Unconfirmed: "Non confirmé",
     Managed: "Sous gestion",
     Game: "Jeux",
-    HighPerformance: "Logiciels hautes performances",
-    Other: "Applications générales",
+    HighPerformance: "Hautes performances",
+    Other: "Applications",
     WindowsSystem: "Système Windows",
     WindowsComponent: "Application/composant Windows",
     WindowsService: "Service Windows",
     RuntimePackage: "Application Windows",
-    RuntimeProduct: "Applications générales",
-    RuntimeRoot: "Applications générales",
+    RuntimeProduct: "Applications",
+    RuntimeRoot: "Applications",
     Unattributed: "Processus non attribués",
     SystemResidual: "Réservé système/pilote",
     Empty: "Libre"
   },
   managementRole: {
     Dependency: "Dépendances",
-    Support: "Prise en charge"
+    Support: "Assistance"
   },
   management: {
     categoryNav: "Catégories de composants et de logiciels",
