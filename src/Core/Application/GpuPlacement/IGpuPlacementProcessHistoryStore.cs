@@ -19,4 +19,12 @@ public interface IGpuPlacementProcessHistoryStore
         GpuPlacementProcessInstance process,
         GpuGraphicsApi graphicsApi,
         CancellationToken cancellationToken);
+
+    Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(
+        string softwareId,
+        string softwareName,
+        GpuPlacementProcessInstance process,
+        GpuGraphicsApi graphicsApi,
+        string evidenceSource,
+        CancellationToken cancellationToken);
 }
