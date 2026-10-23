@@ -38,13 +38,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static IEndpointRouteBuilder MapMetricsEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapMetricFieldEndpoints();
-        app.MapGet("/api/metrics/catalog", (
-            DashboardMonitoringCatalogState catalogState) =>
+        app.MapGet("/api/metrics/catalog", async (
+            DashboardMonitoringCatalogState catalogState,
+            IComponentManager componentManager,
+            CancellationToken cancellationToken) =>
         {
             // Keep unavailable definitions so consumers can display the missing capability.
-            return Results.Ok(catalogState.Current is not { } snapshot
-                ? Array.Empty<MetricDefinition>()
-                : MetricCatalog.FromSnapshot(snapshot));
+            if (catalogState.Current is not { } snapshot)
+                return Results.Ok(Array.Empty<MetricDefinition>());
+            return Results.Ok(MetricCatalog.WithInstalledComponents(
+                MetricCatalog.FromSnapshot(snapshot),
+                await InstalledComponentIdsAsync(componentManager, cancellationToken)));
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/snapshot", async (
@@ -75,6 +79,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }).AllowAnonymous();
         return app;
     }
+
+    // Hardware providers are machine-wide, so the caller's own install roots do not matter here.
+    private static async Task<IReadOnlySet<string>> InstalledComponentIdsAsync(
+        IComponentManager componentManager,
+        CancellationToken cancellationToken)
+        => (await componentManager.GetStatusesAsync(cancellationToken))
+            .Where(static status => status.Installed)
+            .Select(static status => status.Definition.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static IEndpointRouteBuilder MapMetricFieldEndpoints(this IEndpointRouteBuilder app)
     {

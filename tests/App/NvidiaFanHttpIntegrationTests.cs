@@ -18,6 +18,7 @@ using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.ReadWrite;
@@ -271,6 +272,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(sampler);
         builder.Services.AddSingleton<IRuntimePlanProvider>(provider);
         builder.Services.AddSingleton(core);
+        builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         // An unselected route may bind its service, but this fixture never creates that worker.
         builder.Services.AddSingleton<IGpuTelemetryWorkerClient>(_ => throw new InvalidOperationException("Unselected specialized GPU route."));
         var app = builder.Build();

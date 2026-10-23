@@ -5,6 +5,28 @@ namespace ResourceManager.App.Application.Metrics;
 
 public static partial class MetricCatalog
 {
+    /// <summary>
+    /// "需要 X" 只说给没装 X 的机器听。组件已经装好、这一项只是还没读出值时，
+    /// 原因改成"暂无有效读数"，不再让用户去装一个已经装了的组件。
+    /// </summary>
+    public static IReadOnlyList<MetricDefinition> WithInstalledComponents(
+        IEnumerable<MetricDefinition> definitions,
+        IReadOnlySet<string> installedComponentIds)
+        => definitions.Select(definition =>
+                !definition.Selectable
+                && definition.RequiredComponentId is { } componentId
+                && installedComponentIds.Contains(componentId)
+                    ? definition with
+                    {
+                        RequiredComponentId = null,
+                        RequiredComponentName = null,
+                        DisabledReason = BackendMessage.Create(
+                            BackendMessageDomains.Metric,
+                            BackendMessageCodes.Metric.NoValidReading)
+                    }
+                    : definition)
+            .ToArray();
+
     private static void ApplyReadingAvailability(
         List<MetricDefinition> definitions,
         IEnumerable<MetricDeviceFieldBinding> bindings)
