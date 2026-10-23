@@ -95,6 +95,11 @@ export interface ControlCapability {
    * 只在锁着时才冒出来就白设了。
    */
   requiredAccessLevel: ControlAccessLevel;
+  /**
+   * 曲线交给固件执行时最多能写几个点。横轴摆几个 5 度一格的点由它决定；
+   * 没有固件曲线时为 null。
+   */
+  curvePointLimit: number | null;
 }
 
 export interface ControlObject {

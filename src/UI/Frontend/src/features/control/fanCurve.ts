@@ -3,7 +3,8 @@ import type { ControlCurvePoint } from "./controlTypes.ts";
 /**
  * 风扇曲线：温度到转速。
  *
- * 调整时保留载入曲线的温度点，用户只调每个点的转速；新曲线使用每 5 度的默认十点。
+ * 横轴是固定的温度点，每 5 度一个，用户只调每个点的转速，点不能横向移动。
+ * 载入的曲线（包括固件表里那种不规则的断点）按线性插值落到这组点上。
  * 相邻点之间直线插值，与软件执行端一致。
  *
  * 纯函数，不碰界面也不碰硬件 —— 不管最后由风扇控制核心还是显卡驱动去写，规矩是一样的。
@@ -13,21 +14,43 @@ import type { ControlCurvePoint } from "./controlTypes.ts";
 export const minimumPercent = 0;
 export const maximumPercent = 100;
 
+/** 横轴颗粒度：相邻两个点差几度。 */
+export const curveStepCelsius = 5;
+
+/** 最高那个点的温度。点从这里往下每 5 度一个。 */
+export const curveTopCelsius = 100;
+
+/** 不受固件点数限制时摆几个点：30–100 度，15 个。 */
+export const curveGridPoints = 15;
+
 /**
- * 固定的调整点。
- *
- * 新曲线和十档固件使用这组默认点；已载入的曲线保留它自己的断点。
- * 图表显示范围独立于这些控制点，两端之外保持端点值。
+ * 固件定死温度断点的十档表（Legion）用的刻度：40–85 度，十档。
+ * 那种表只认十个转速档，温度是固件自己的，这里只是我们的刻度。
  */
 export const curveStops: readonly number[] =
   [40, 45, 50, 55, 60, 65, 70, 75, 80, 85];
 
-/** Keep a loaded curve's temperature points; only a new curve uses the ten defaults. */
-export function temperaturesFromCurve(points: readonly ControlCurvePoint[] | null | undefined): readonly number[] {
-  const temperatures = [...new Set((points ?? [])
-    .filter(point => Number.isFinite(point.temperatureCelsius) && Number.isFinite(point.percent))
-    .map(point => point.temperatureCelsius))].sort((a, b) => a - b);
-  return temperatures.length > 0 ? temperatures : curveStops;
+/**
+ * 这条曲线横轴上的温度点。
+ *
+ * 固定档位表用 {@link curveStops}；其余每 5 度一个点、最高点 100 度，
+ * 点数取 {@link curveGridPoints} 和固件点数上限里小的那个（不交给固件时没有上限）。
+ */
+export function curveTemperatures(fixedSteps: boolean, pointLimit: number | null): readonly number[] {
+  if (fixedSteps) {
+    return curveStops;
+  }
+  const count = Math.max(1, Math.min(curveGridPoints, pointLimit ?? curveGridPoints));
+  return Array.from({ length: count },
+    (_, index) => curveTopCelsius - ((count - 1 - index) * curveStepCelsius));
+}
+
+/** 把任意曲线落到给定的温度点上，存下去的就是这组点。 */
+export function curveOnTemperatures(
+  points: readonly ControlCurvePoint[] | null | undefined,
+  temperatures: readonly number[]
+): ControlCurvePoint[] {
+  return curveFromStops(stopsFromCurve(points, temperatures), temperatures);
 }
 
 function clamp(value: number, low: number, high: number) {
@@ -131,7 +154,7 @@ function interpolate(
  * 用户可能真想要一段回落，替他改掉比让他看见问题更糟。
  */
 export function isMonotonic(percents: readonly number[]): boolean {
-  const values = curveStops.map((_, index) => sanitizePercent(percents[index] ?? 0));
+  const values = percents.map(sanitizePercent);
   for (let index = 1; index < values.length; index++) {
     if (values[index] < values[index - 1]) {
       return false;

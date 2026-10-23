@@ -290,7 +290,12 @@ public sealed record ControlCapability(
     /// 够不到的时候 <see cref="Supported"/> 为 false、<see cref="UnavailableReason"/>
     /// 说明差哪一档 —— 界面据此把勾选框也一并锁上，写入层也会拒。
     /// </summary>
-    string RequiredAccessLevel = ControlAccessLevels.Normal);
+    string RequiredAccessLevel = ControlAccessLevels.Normal,
+    /// <summary>
+    /// 曲线交给固件执行时最多能写几个点（ASUS 8、Legion 10、Uniwill 15）。
+    /// 界面按它决定横轴摆几个 5 度一格的点。没有固件曲线时为 null。
+    /// </summary>
+    int? CurvePointLimit = null);
 
 public sealed record ControlNumberRange(
     double Minimum,

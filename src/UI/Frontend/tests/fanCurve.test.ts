@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import {
   curveFromStops,
+  curveOnTemperatures,
   curveStops,
+  curveTemperatures,
   defaultStops,
   isMonotonic,
   percentAt,
-  stopsFromCurve,
-  temperaturesFromCurve
+  stopsFromCurve
 } from "../src/features/control/fanCurve.ts";
 
 // 调整点是固定的，每 5 度一个。
@@ -91,16 +92,24 @@ assert.equal(
 
 console.log("fanCurve: ok");
 
-const hotCurve = [
+// 横轴固定：每 5 度一个点，最高 100 度；点数受固件上限约束。
+const grid = curveTemperatures(false, null);
+assert.deepEqual([...grid], [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]);
+assert.deepEqual([...curveTemperatures(false, 15)], [...grid], "Uniwill 15 点");
+assert.deepEqual([...curveTemperatures(false, 8)], [65, 70, 75, 80, 85, 90, 95, 100], "ASUS 8 点");
+assert.deepEqual([...curveTemperatures(true, 10)], [...curveStops], "固定档位表沿用十档刻度");
+assert.deepEqual([...curveTemperatures(false, 40)], [...grid], "上限再大也不超过 15 点");
+
+// 固件表那种不规则断点载入后落到固定点上，温度只剩 5 度一格。
+const firmwareTable = [
   { temperatureCelsius: 0, percent: 0 },
-  { temperatureCelsius: 60, percent: 30 },
-  { temperatureCelsius: 80, percent: 50 },
-  { temperatureCelsius: 95, percent: 100 }
+  { temperatureCelsius: 48, percent: 30 },
+  { temperatureCelsius: 52, percent: 35 },
+  { temperatureCelsius: 85, percent: 100 }
 ];
-const temperatures = temperaturesFromCurve(hotCurve);
-assert.deepEqual(curveFromStops(stopsFromCurve(hotCurve, temperatures), temperatures), hotCurve,
-  "loading and saving must preserve the high-temperature end");
-const adjusted = stopsFromCurve(hotCurve, temperatures);
-adjusted[1] = 35;
-assert.deepEqual(curveFromStops(adjusted, temperatures).at(-1), hotCurve.at(-1),
-  "editing a lower point must retain the 95°C / 100% point");
+const placed = curveOnTemperatures(firmwareTable, grid);
+assert.deepEqual(placed.map(point => point.temperatureCelsius), [...grid]);
+assert.equal(placed.find(point => point.temperatureCelsius === 85)!.percent, 100);
+assert.equal(placed.find(point => point.temperatureCelsius === 100)!.percent, 100, "最高断点之上保持端点值");
+assert.equal(placed.find(point => point.temperatureCelsius === 30)!.percent, 19, "30 度在 0 与 48 度之间插值");
+assert.deepEqual(curveOnTemperatures(placed, grid), placed, "已经在网格上的曲线再落一次不变");
