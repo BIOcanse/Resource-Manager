@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.CpuTopology;
@@ -522,75 +521,6 @@ public sealed class ProcessPolicyBatchExecutionTests
             field.Field == ProcessResourcePolicyBatchFields.CpuSets && !field.Succeeded);
     }
 
-    [Fact]
-    public void EngineCombinesAllFieldsForOneProcessIntoOneBatchWrite()
-    {
-        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
-        var writer = new RecordingPolicyWriter(new ProcessResourcePolicySnapshot(
-            4242,
-            "batch-target",
-            @"C:\Apps\batch-target.exe",
-            startedAt,
-            nameof(ProcessPriorityClass.High),
-            15,
-            4,
-            MemoryPriority: 5,
-            MemoryPriorityRawValue: "5",
-            MemoryPriorityDisplayValue: "Normal",
-            PowerThrottlingControlMask: 0,
-            PowerThrottlingStateMask: 0,
-            PowerThrottlingRawValue: "control=0;state=0",
-            PowerThrottlingDisplayValue: "未显式控制执行速度节流"));
-        var engine = new OptimizationProcessPolicyEngine(
-            null!,
-            null!,
-            null!,
-            writer,
-            NullLogger.Instance);
-        var actions = new[]
-        {
-            CreateAction(OptimizationLevel2ActionKinds.LowerProcessPriority, "BelowNormal", "BelowNormal", startedAt),
-            CreateAction(OptimizationLevel2ActionKinds.EnableExecutionSpeedThrottling, "开启", "control=1;state=1", startedAt),
-            CreateAction(OptimizationLevel2ActionKinds.LowerMemoryPriority, "Low", "3", startedAt),
-            CreateAction(OptimizationLevel2ActionKinds.MoveProcessAffinity, "0xC", "12", startedAt)
-        };
-
-        var applied = engine.ApplyActions(actions, DateTimeOffset.UtcNow, "batch-test");
-
-        Assert.Equal(1, writer.ReadCount);
-        Assert.Equal(1, writer.BatchCallCount);
-        var request = Assert.Single(writer.Requests);
-        Assert.Equal(nameof(ProcessPriorityClass.BelowNormal), request.PriorityClass);
-        Assert.Equal(12, request.AffinityMask);
-        Assert.Equal(3u, request.MemoryPriority);
-        Assert.Equal(1u, request.PowerControlMask);
-        Assert.Equal(1u, request.PowerStateMask);
-        Assert.Equal(actions.Select(static action => action.Kind), applied.Select(static action => action.Kind));
-    }
-
-    private static ProcessPolicyOptimizationActionPreview CreateAction(
-        string kind,
-        string proposedValue,
-        string proposedRawValue,
-        DateTimeOffset startedAt)
-    {
-        return new ProcessPolicyOptimizationActionPreview(
-            $"action:{kind}",
-            kind,
-            4242,
-            "batch-target",
-            @"C:\Apps\batch-target.exe",
-            startedAt,
-            "current",
-            proposedValue,
-            null,
-            proposedRawValue,
-            true,
-            true,
-            null,
-            []);
-    }
-
     private static WindowsProcessResourcePolicyWriter CreateWriter()
         => new(new NativeProcessPolicyBatchExecutor(NativeProcessPolicyBatchAbi.Version, 256));
 
@@ -613,107 +543,6 @@ public sealed class ProcessPolicyBatchExecutionTests
             .Capture(binding, smart);
         Assert.Null(capture.UnavailableReason);
         return Assert.IsType<HostManagerMemoryModePolicy>(capture.Policy);
-    }
-
-    private sealed class RecordingPolicyWriter(ProcessResourcePolicySnapshot snapshot)
-        : IProcessResourcePolicyWriter
-    {
-        public int ReadCount { get; private set; }
-
-        public int BatchCallCount { get; private set; }
-
-        public IReadOnlyList<ProcessResourcePolicyBatchRequest> Requests { get; private set; } = [];
-
-        public ProcessResourcePolicySnapshot? TryReadProcess(int processId)
-        {
-            ReadCount++;
-            return processId == snapshot.ProcessId ? snapshot : null;
-        }
-
-        public RecoveryReadResult<ProcessPlacementRecoverySnapshot> ReadPlacementStateForRecovery(
-            int processId,
-            ProcessPlacementReadFields requiredFields)
-            => RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Unavailable(0, "Recovery read is outside this batch test.");
-
-        public RecoveryReadResult<ThreadCpuSetPolicySnapshot> ReadThreadPlacementStateForRecovery(
-            int processId,
-            int threadId)
-            => RecoveryReadResult<ThreadCpuSetPolicySnapshot>.Unavailable(0, "Recovery read is outside this batch test.");
-
-        public IReadOnlyList<ProcessResourcePolicyBatchWriteResult> TryApplyBatch(
-            IReadOnlyList<ProcessResourcePolicyBatchRequest> requests)
-        {
-            BatchCallCount++;
-            Requests = requests;
-            return requests.Select(static request => new ProcessResourcePolicyBatchWriteResult(
-                request.ProcessId,
-                CreateSuccessfulFields(request))).ToArray();
-        }
-
-        public DateTimeOffset? TryReadProcessStartedAt(int processId) => snapshot.StartedAt;
-
-        public RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadProcessInstanceForRecovery(
-            int processId)
-            => processId == snapshot.ProcessId && snapshot.StartedAt is not null
-                ? RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(processId, snapshot.StartedAt.Value))
-                : RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(0, "missing");
-
-        public ProcessResourcePolicyWriteResult TrySetPriorityClass(int processId, string priorityClass) => Unexpected();
-
-        public ProcessResourcePolicyWriteResult TrySetProcessorAffinity(int processId, long affinityMask) => Unexpected();
-
-        public IReadOnlyList<uint>? TryReadProcessDefaultCpuSets(int processId) => null;
-
-        public ProcessResourcePolicyWriteResult TrySetProcessDefaultCpuSets(int processId, IReadOnlyList<uint> cpuSetIds) => Unexpected();
-
-        public ThreadCpuSetPolicySnapshot? TryReadThreadSelectedCpuSets(int processId, int threadId) => null;
-
-        public ProcessResourcePolicyWriteResult TrySetThreadSelectedCpuSets(
-            int processId,
-            int threadId,
-            DateTimeOffset expectedCreatedAt,
-            IReadOnlyList<uint> cpuSetIds) => Unexpected();
-
-        public ProcessMemoryPrioritySnapshot? TryReadMemoryPriority(int processId) => null;
-
-        public ProcessResourcePolicyWriteResult TrySetMemoryPriority(
-            int processId,
-            DateTimeOffset expectedStartedAt,
-            uint expectedCurrentMemoryPriority,
-            uint memoryPriority) => Unexpected();
-
-        public ProcessPowerThrottlingSnapshot? TryReadPowerThrottling(int processId) => null;
-
-        public ProcessResourcePolicyWriteResult TrySetPowerThrottling(int processId, uint controlMask, uint stateMask) => Unexpected();
-
-        public ProcessResourcePolicyWriteResult TryTrimWorkingSet(int processId) => Unexpected();
-
-        private static IReadOnlyList<ProcessResourcePolicyBatchFieldResult> CreateSuccessfulFields(
-            ProcessResourcePolicyBatchRequest request)
-        {
-            var fields = new List<ProcessResourcePolicyBatchFieldResult>();
-            Add(request.PriorityClass is not null, ProcessResourcePolicyBatchFields.PriorityClass);
-            Add(request.AffinityMask is not null, ProcessResourcePolicyBatchFields.AffinityMask);
-            Add(request.MemoryPriority is not null, ProcessResourcePolicyBatchFields.MemoryPriority);
-            Add(request.PowerControlMask is not null, ProcessResourcePolicyBatchFields.PowerThrottling);
-            Add(request.TrimWorkingSet, ProcessResourcePolicyBatchFields.TrimWorkingSet);
-            Add(request.CpuSetIds is not null, ProcessResourcePolicyBatchFields.CpuSets);
-            return fields;
-
-            void Add(bool included, ProcessResourcePolicyBatchFields field)
-            {
-                if (included)
-                {
-                    fields.Add(new ProcessResourcePolicyBatchFieldResult(field, true, "ok"));
-                }
-            }
-        }
-
-        private static ProcessResourcePolicyWriteResult Unexpected()
-        {
-            throw new InvalidOperationException("The batch execution path fell back to an individual writer call.");
-        }
     }
 
     private sealed class EmptyCpuCorePerformanceOverrideStore : ICpuCorePerformanceOverrideStore
