@@ -3,12 +3,15 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <excpt.h>
 
 #define RM_ADLX_OK 0
 #define RM_ADLX_ERROR_NOT_LOADED -1
 #define RM_ADLX_ERROR_INIT_FAILED -2
 #define RM_ADLX_ERROR_NO_SYSTEM -3
 #define RM_ADLX_ERROR_NO_PERF -4
+#define RM_ADLX_ERROR_FAULTED -5
+#define RM_ADLX_ERROR_BUSY -6
 #define RM_ADLX_BRIDGE_ABI_VERSION 6
 
 #define ADLX_OK 0
@@ -290,6 +293,47 @@ static void set_message(char* message, int capacity, const char* value)
     snprintf(message, (size_t)capacity, "%s", value);
 }
 
+/* One compiler-supported Windows SEH scope owns every SDK lock. Keep one
+   non-cloned instance: MinGW's __try1 has a single scope-table label pair. */
+static volatile LONG gAdlxFaulted;
+static volatile LONG gAdlxExceptionCode;
+static int __attribute__((used)) adlx_exception_filter(EXCEPTION_POINTERS* exception, void* frame)
+{
+    (void)frame;
+    InterlockedExchange(&gAdlxExceptionCode, (LONG)exception->ExceptionRecord->ExceptionCode);
+    InterlockedExchange(&gAdlxFaulted, 1);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+typedef int (*RmAdlxGuardedOperation)(void*);
+/* GCC does not model the inline-asm SEH scope as a control-flow boundary.
+   Keep this tiny wrapper unoptimized so the indirect call stays between the
+   scope labels; the vendor bodies retain the product's normal -O2 build. */
+static int __attribute__((noinline, noclone, optimize("O0"))) guarded_adlx_call(
+    RmAdlxGuardedOperation operation, void* context, char* message, int messageCapacity)
+{
+    if (InterlockedCompareExchange(&gAdlxFaulted, 0, 0)) {
+        set_message(message, messageCapacity, "ADLX instance faulted; restart the process before reuse.");
+        return RM_ADLX_ERROR_FAULTED;
+    }
+    if (!TryAcquireSRWLockExclusive(&gLock)) {
+        set_message(message, messageCapacity, "ADLX instance is busy.");
+        return RM_ADLX_ERROR_BUSY;
+    }
+    volatile int result = RM_ADLX_ERROR_FAULTED;
+    __asm__ __volatile__("" ::: "memory");
+    __try1(adlx_exception_filter)
+    if (!InterlockedCompareExchange(&gAdlxFaulted, 0, 0)) result = operation(context);
+    __asm__ __volatile__("" ::: "memory");
+    __except1
+    ReleaseSRWLockExclusive(&gLock);
+    if (InterlockedCompareExchange(&gAdlxFaulted, 0, 0)) {
+        set_message(message, messageCapacity, "ADLX instance faulted; restart the process before reuse.");
+        return RM_ADLX_ERROR_FAULTED;
+    }
+    return result;
+}
+
 static void copy_text(char* destination, size_t capacity, const char* source)
 {
     if (!destination || capacity == 0)
@@ -429,7 +473,7 @@ static int gpu_system_loaded(int init)
         && gSystem && gSystem->pVtbl && gSystem->pVtbl->GetGPUs;
 }
 
-static int read_gpu_metrics(
+static int read_gpu_metrics_locked(
     ResourceManagerAdlxGpuMetrics* outputs,
     int capacity,
     int requestedFlags,
@@ -444,11 +488,11 @@ static int read_gpu_metrics(
         return 0;
     }
 
-    AcquireSRWLockExclusive(&gLock);
+
     int init = load_adlx(message, messageCapacity);
     if (init != RM_ADLX_OK && !(!selections && requestedFlags == 0 && gpu_system_loaded(init)))
     {
-        ReleaseSRWLockExclusive(&gLock);
+        
         return init;
     }
 
@@ -459,14 +503,14 @@ static int read_gpu_metrics(
     if (!ADLX_SUCCEEDED(result) || !gpuList)
     {
         set_message(message, messageCapacity, "GetGPUs failed.");
-        ReleaseSRWLockExclusive(&gLock);
+        
         return 0;
     }
 
     adlx_uint size = gpuList->pVtbl->Size(gpuList);
     if (!selections && size > (adlx_uint)capacity) {
         gpuList->pVtbl->Release(gpuList);
-        ReleaseSRWLockExclusive(&gLock);
+        
         return 0; /* No successful truncated identity inventory. */
     }
     debug_trace("returned GPUList Size");
@@ -726,8 +770,26 @@ static int read_gpu_metrics(
 
     gpuList->pVtbl->Release(gpuList);
     set_message(message, messageCapacity, "ADLX read completed.");
-    ReleaseSRWLockExclusive(&gLock);
+    
     return written;
+}
+
+typedef struct RmAdlxMetricCall {
+    ResourceManagerAdlxGpuMetrics* outputs; int capacity; int requestedFlags;
+    char* message; int messageCapacity;
+    const ResourceManagerAdlxGpuSelection* selections; int selectionCount;
+} RmAdlxMetricCall;
+static int metric_call_locked(void* context)
+{
+    RmAdlxMetricCall* call = context;
+    return read_gpu_metrics_locked(call->outputs, call->capacity, call->requestedFlags,
+        call->message, call->messageCapacity, call->selections, call->selectionCount);
+}
+static int read_gpu_metrics(ResourceManagerAdlxGpuMetrics* outputs, int capacity, int requestedFlags,
+    char* message, int messageCapacity, const ResourceManagerAdlxGpuSelection* selections, int selectionCount)
+{
+    RmAdlxMetricCall call = {outputs, capacity, requestedFlags, message, messageCapacity, selections, selectionCount};
+    return guarded_adlx_call(metric_call_locked, &call, message, messageCapacity);
 }
 
 __declspec(dllexport) int ResourceManagerAdlxReadGpuMetrics(

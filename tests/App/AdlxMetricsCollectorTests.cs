@@ -60,7 +60,8 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     {
         using var cancel = new CancellationTokenSource();
         var native = new Bridge { Metadata=[Row(10,PnpA)], AfterMetadata=cancel.Cancel };
-        await Assert.ThrowsAsync<OperationCanceledException>(() => new AmdAdlxBridgeReader(native).ReadAsync(Request(9),Inventory(),cancel.Token));
+        var canceled = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new AmdAdlxBridgeReader(native).ReadAsync(Request(9),Inventory(),cancel.Token));
+        Assert.Equal(cancel.Token, canceled.CancellationToken);
         Assert.Equal(1,native.MetadataReads); Assert.Equal(0,native.SelectedReads);
     }
 
@@ -340,12 +341,12 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     {
         public uint Abi=6; public int Size=848,SelectionSize=520,AbiReads,MetadataReads,SelectedReads;
         public Exception? Failure; public int? MetadataCount;
-        public NativeAdlxGpuMetrics[] Metadata=[],Values=[]; public NativeAdlxGpuSelection[] Selections=[]; public Action? AfterMetadata;
+        public NativeAdlxGpuMetrics[] Metadata=[],Values=[]; public NativeAdlxGpuSelection[] Selections=[]; public Action? AfterMetadata, BeforeSelected;
         public uint GetAbiVersion() { AbiReads++; if(Failure is not null) throw Failure; return Abi; }
         public int GetMetricsSize()=>Size; public int GetSelectionSize()=>SelectionSize;
         public int ReadMetadata(NativeAdlxGpuMetrics[] output,StringBuilder message) { MetadataReads++; Metadata.CopyTo(output,0); AfterMetadata?.Invoke(); return MetadataCount ?? Metadata.Length; }
         public int ReadSelected(NativeAdlxGpuMetrics[] output,NativeAdlxGpuSelection[] selections,StringBuilder message)
-        { Interlocked.Increment(ref SelectedReads); Selections=selections; Values.CopyTo(output,0); return Values.Length; }
+        { Interlocked.Increment(ref SelectedReads); BeforeSelected?.Invoke(); Selections=selections; Values.CopyTo(output,0); return Values.Length; }
     }
     private sealed class Environment(string root) : IHostEnvironment
     {

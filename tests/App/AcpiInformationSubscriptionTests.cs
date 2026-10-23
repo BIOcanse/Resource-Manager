@@ -49,6 +49,7 @@ public sealed partial class AcpiInformationSubscriptionTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await using var topology = fixture.Provider.SubscribeAsync("ordinary", TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         await using var acpi = fixture.Provider.SubscribeAcpiAsync("detail", TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
+        Assert.True(await topology.MoveNextAsync()); // Immediate cached current, no capture.
         var topologyNext = topology.MoveNextAsync().AsTask();
         var acpiNext = acpi.MoveNextAsync().AsTask();
         await fixture.Provider.SampleAcpiNowAsync(timeout.Token);
@@ -244,6 +245,7 @@ public sealed partial class AcpiInformationSubscriptionTests
         using var acpiCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         await using var topology = fixture.Provider.SubscribeAsync("base", TimeSpan.FromSeconds(10), baseCancellation.Token).GetAsyncEnumerator();
         var acpi = fixture.Provider.SubscribeAcpiAsync("acpi", TimeSpan.FromSeconds(10), acpiCancellation.Token).GetAsyncEnumerator();
+        Assert.True(await topology.MoveNextAsync()); // Immediate cached current.
         var baseNext = topology.MoveNextAsync().AsTask();
         var acpiNext = acpi.MoveNextAsync().AsTask();
         await fixture.Provider.StartAsync(CancellationToken.None);

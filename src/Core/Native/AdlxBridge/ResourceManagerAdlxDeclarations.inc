@@ -25,7 +25,7 @@ static int copy_declaration_text(char* target, size_t capacity, const char* sour
     return 1;
 }
 
-__declspec(dllexport) int __cdecl ResourceManagerAdlxReadGpuDeclarations(
+static int read_gpu_declarations_locked(
     ResourceManagerAdlxGpuDeclaration* outputs, int capacity,
     const ResourceManagerAdlxGpuSelection* selections, int selectionCount,
     char* message, int messageCapacity)
@@ -37,16 +37,16 @@ __declspec(dllexport) int __cdecl ResourceManagerAdlxReadGpuDeclarations(
         for (int previous = 0; previous < index; previous++)
             if (selections[index].uniqueId == selections[previous].uniqueId) return 0;
     }
-    AcquireSRWLockExclusive(&gLock);
+
     int init = load_adlx(message, messageCapacity);
-    if (!gpu_system_loaded(init)) { ReleaseSRWLockExclusive(&gLock); return 0; }
+    if (!gpu_system_loaded(init)) {  return 0; }
     IADLXGPUList* list = NULL;
     if (!ADLX_SUCCEEDED(gSystem->pVtbl->GetGPUs(gSystem, &list)) || !list) {
         if (list) list->pVtbl->Release(list);
-        ReleaseSRWLockExclusive(&gLock); return 0;
+         return 0;
     }
     adlx_uint size = list->pVtbl->Size(list);
-    if (size > 32) { list->pVtbl->Release(list); ReleaseSRWLockExclusive(&gLock); return 0; }
+    if (size > 32) { list->pVtbl->Release(list);  return 0; }
     int written = 0;
     for (adlx_uint index = 0; index < size && written < capacity; index++) {
         IADLXGPU* gpu = NULL;
@@ -82,6 +82,25 @@ __declspec(dllexport) int __cdecl ResourceManagerAdlxReadGpuDeclarations(
         }
         gpu->pVtbl->Release(gpu);
     }
-    list->pVtbl->Release(list); ReleaseSRWLockExclusive(&gLock);
+    list->pVtbl->Release(list); 
     return written;
+}
+
+typedef struct RmAdlxDeclarationCall {
+    ResourceManagerAdlxGpuDeclaration* outputs; int capacity;
+    const ResourceManagerAdlxGpuSelection* selections; int selectionCount;
+    char* message; int messageCapacity;
+} RmAdlxDeclarationCall;
+static int declaration_call_locked(void* context)
+{
+    RmAdlxDeclarationCall* call = context;
+    return read_gpu_declarations_locked(call->outputs, call->capacity, call->selections,
+        call->selectionCount, call->message, call->messageCapacity);
+}
+__declspec(dllexport) int __cdecl ResourceManagerAdlxReadGpuDeclarations(
+    ResourceManagerAdlxGpuDeclaration* outputs, int capacity,
+    const ResourceManagerAdlxGpuSelection* selections, int selectionCount, char* message, int messageCapacity)
+{
+    RmAdlxDeclarationCall call = {outputs, capacity, selections, selectionCount, message, messageCapacity};
+    return guarded_adlx_call(declaration_call_locked, &call, message, messageCapacity);
 }

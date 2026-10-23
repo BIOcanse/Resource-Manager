@@ -63,12 +63,12 @@ static IADLXGPU* tuning_gpu_at(IADLXGPUList* list, unsigned int index)
     return gpu;
 }
 
-__declspec(dllexport) int ResourceManagerAdlxGetTuningGpuPnp(int index, char* pnp, int capacity)
+static int get_tuning_gpu_pnp_locked(int index, char* pnp, int capacity)
 {
     IADLXGPUList* list = NULL;
     IADLXGPU* gpu = NULL;
     int result;
-    AcquireSRWLockExclusive(&gLock);
+
     result = load_adlx(NULL, 0);
     if (result != 0) goto done;
     result = gSystem->pVtbl->GetGPUs(gSystem, &list);
@@ -85,14 +85,14 @@ __declspec(dllexport) int ResourceManagerAdlxGetTuningGpuPnp(int index, char* pn
 done:
     if (gpu) gpu->pVtbl->Release(gpu);
     if (list) list->pVtbl->Release(list);
-    ReleaseSRWLockExclusive(&gLock);
+    
     return result;
 }
 
 /* field: 0=power %, 1=min GFX MHz, 2=max GFX MHz, 3=voltage mV, 4=max VRAM MHz,
    5=minimum fan RPM, 6=target fan RPM, 7=Zero RPM, 8=max GFX offset MHz, 9=voltage offset mV.
    operation: 0=read only (also range discovery), 1=write and read back. */
-__declspec(dllexport) int ResourceManagerAdlxTuning(const char* pnp, int field, int operation,
+static int tuning_locked(const char* pnp, int field, int operation,
     int requested, int* current, int* minimum, int* maximum, int* step, int* gfxMode)
 {
     IADLXGPUList* list = NULL;
@@ -105,7 +105,7 @@ __declspec(dllexport) int ResourceManagerAdlxTuning(const char* pnp, int field, 
     const wchar_t* interfaceId;
     if (!pnp || !*pnp || !current || !minimum || !maximum || !step || !gfxMode || field < 0 || field > 9 || operation < 0 || operation > 1) return RM_TUNING_RANGE;
     *gfxMode = -1;
-    AcquireSRWLockExclusive(&gLock);
+
     result = load_adlx(NULL, 0);
     if (result != 0) goto done;
     result = gSystem->pVtbl->GetGPUs(gSystem, &list);
@@ -197,6 +197,34 @@ done:
     if (services) services->pVtbl->Release(services);
     if (gpu) gpu->pVtbl->Release(gpu);
     if (list) list->pVtbl->Release(list);
-    ReleaseSRWLockExclusive(&gLock);
+    
     return result;
+}
+
+typedef struct RmAdlxPnpCall { int index; char* pnp; int capacity; } RmAdlxPnpCall;
+static int pnp_call_locked(void* context)
+{
+    RmAdlxPnpCall* call = context;
+    return get_tuning_gpu_pnp_locked(call->index, call->pnp, call->capacity);
+}
+__declspec(dllexport) int ResourceManagerAdlxGetTuningGpuPnp(int index, char* pnp, int capacity)
+{
+    RmAdlxPnpCall call = {index, pnp, capacity};
+    return guarded_adlx_call(pnp_call_locked, &call, NULL, 0);
+}
+typedef struct RmAdlxTuningCall {
+    const char* pnp; int field; int operation; int requested;
+    int* current; int* minimum; int* maximum; int* step; int* gfxMode;
+} RmAdlxTuningCall;
+static int tuning_call_locked(void* context)
+{
+    RmAdlxTuningCall* call = context;
+    return tuning_locked(call->pnp, call->field, call->operation, call->requested,
+        call->current, call->minimum, call->maximum, call->step, call->gfxMode);
+}
+__declspec(dllexport) int ResourceManagerAdlxTuning(const char* pnp, int field, int operation,
+    int requested, int* current, int* minimum, int* maximum, int* step, int* gfxMode)
+{
+    RmAdlxTuningCall call = {pnp, field, operation, requested, current, minimum, maximum, step, gfxMode};
+    return guarded_adlx_call(tuning_call_locked, &call, NULL, 0);
 }

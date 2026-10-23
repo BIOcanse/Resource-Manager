@@ -77,7 +77,7 @@ public sealed partial class DeviceInformationEndpointTests
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "disk-alignment", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!); var root = message.RootElement.GetProperty("value");
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token)); var root = message.RootElement.GetProperty("value");
         Assert.True(Field(root, DiskLayoutInformationCollectorTests.IdA, "storage_all_partition_alignment_actual").GetProperty("value")[0].GetProperty("physicalStartAligned").GetBoolean());
         Assert.True(api.Reads >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var reads = api.Reads; var cached = fixture.Provider.ReadState().InformationFields;

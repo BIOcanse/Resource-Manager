@@ -205,7 +205,7 @@
     <Exec WorkingDirectory="$(GpuLaunchBrokerRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
   <Target Name="BuildAdlxBridge" BeforeTargets="PrepareForBuild"
-          Inputs="$(AdlxBridgeRoot)\ResourceManagerAdlxBridge.c;$(AdlxBridgeRoot)\ResourceManagerAdlxTuning.inc;$(AdlxBridgeRoot)\build.cmd"
+          Inputs="$(AdlxBridgeRoot)\ResourceManagerAdlxBridge.c;$(AdlxBridgeRoot)\ResourceManagerAdlxDeclarations.inc;$(AdlxBridgeRoot)\ResourceManagerAdlxTuning.inc;$(AdlxBridgeRoot)\build.cmd"
           Outputs="$(AdlxBridgeRoot)\bin\win-x64\ResourceManager.AdlxBridge.dll"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdlxBridgeBuild)' != 'true'">
     <Exec WorkingDirectory="$(AdlxBridgeRoot)" Command="cmd.exe /d /c .\build.cmd" />

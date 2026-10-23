@@ -229,11 +229,18 @@ public sealed class DeviceTopologySnapshotProviderTests
             7,
             semanticComparer.ComputeHash(snapshot),
             snapshot));
-        using var fixture = CreateProvider(new FakeReader(snapshot), store, semanticComparer);
+        var reader = new FakeReader(snapshot);
+        using var fixture = CreateProvider(reader, store, semanticComparer);
         var provider = fixture.Provider;
 
         await provider.StartAsync(CancellationToken.None);
         var state = provider.ReadState();
+        await using (var subscription = provider.SubscribeAsync("test.persisted-first-frame", TimeSpan.FromHours(1), CancellationToken.None).GetAsyncEnumerator())
+        {
+            Assert.True(await subscription.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1)));
+            Assert.Same(state, subscription.Current);
+            Assert.Equal(0, reader.ReadCount);
+        }
         await provider.StopAsync(CancellationToken.None);
 
         Assert.Equal(DeviceTopologySnapshotStatus.Ready, state.State);
@@ -248,7 +255,7 @@ public sealed class DeviceTopologySnapshotProviderTests
     }
 
     [Fact]
-    public async Task SubscriptionWaitsForCompletedSampleAndReleasesDemand()
+    public async Task SubscriptionReturnsCurrentBeforeWaitingForCompletedSampleAndReleasesDemand()
     {
         var snapshot = CreateSnapshot(DateTimeOffset.UtcNow) with { NpuInformation = [] };
         var reader = new FakeReader(snapshot);
@@ -258,6 +265,8 @@ public sealed class DeviceTopologySnapshotProviderTests
             "test.callback", TimeSpan.FromSeconds(1), cancellation.Token)
             .GetAsyncEnumerator())
         {
+            Assert.True(await subscription.MoveNextAsync());
+            Assert.Same(fixture.Provider.ReadState(), subscription.Current);
             var next = subscription.MoveNextAsync().AsTask();
             Assert.False(next.IsCompleted);
             Assert.Equal(0, reader.ReadCount);
@@ -289,6 +298,8 @@ public sealed class DeviceTopologySnapshotProviderTests
             "test.atomic", TimeSpan.FromSeconds(1), cancellation.Token)
             .GetAsyncEnumerator();
         var previous = fixture.Provider.ReadState();
+        Assert.True(await subscription.MoveNextAsync());
+        Assert.Same(previous, subscription.Current);
         var next = subscription.MoveNextAsync().AsTask();
         var capture = Task.Run(() => fixture.Provider.SampleNowAsync(cancellation.Token));
         try
@@ -319,6 +330,7 @@ public sealed class DeviceTopologySnapshotProviderTests
         await using var subscription = fixture.Provider.SubscribeAsync(
             "test.shutdown-order", TimeSpan.FromSeconds(1), cancellation.Token)
             .GetAsyncEnumerator();
+        Assert.True(await subscription.MoveNextAsync());
         var next = subscription.MoveNextAsync().AsTask();
         await fixture.Provider.StopAsync(CancellationToken.None);
         await cancellation.CancelAsync();
@@ -344,6 +356,7 @@ public sealed class DeviceTopologySnapshotProviderTests
             .GetAsyncEnumerator();
         try
         {
+            Assert.True(await subscription.MoveNextAsync());
             var next = subscription.MoveNextAsync().AsTask();
             Assert.True(reader.Entered.Wait(TimeSpan.FromSeconds(2)));
             await cancellation.CancelAsync();

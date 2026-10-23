@@ -238,8 +238,7 @@ internal static class LegacyInstallationAdoption
         uninstall.SetValue("DisplayIcon", start);
         uninstall.SetValue("NoModify", 1, RegistryValueKind.DWord);
         uninstall.SetValue("NoRepair", 1, RegistryValueKind.DWord);
-        uninstall.DeleteValue("NoRemove", false);
-        uninstall.SetValue("UninstallString", "\"" + Path.Combine(UpdateManagerPaths.InstalledDirectory(root), UninstallationPlan.ExecutableName) + "\"");
+        ProductInstallationRegistration.WriteUninstallCommand(uninstall, UpdateManagerPaths.InstalledDirectory(root));
         product.DeleteValue(Pending, false);
         return "旧版桌面登记已切换到 Start.exe。";
     }

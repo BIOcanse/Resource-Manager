@@ -84,7 +84,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         var value = message.RootElement.GetProperty("value");
         Assert.Equal("9007199254740993", Field(value, VolumeSpaceInformationCollectorTests.IdA, "volume_all_disk_extents_reported").GetProperty("value")[0].GetProperty("startingOffsetBytes").GetString());
         Assert.Equal("windows.volume-metadata", Field(value, VolumeSpaceInformationCollectorTests.IdA, "volume_all_disk_extents_reported").GetProperty("definition").GetProperty("sourceId").GetString());

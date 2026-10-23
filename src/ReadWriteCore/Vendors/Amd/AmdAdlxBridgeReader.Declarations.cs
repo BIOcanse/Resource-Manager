@@ -11,6 +11,15 @@ public sealed partial class AmdAdlxBridgeReader
 {
     public IReadOnlyList<DeviceTopologyAmdGpuInformation>? ReadDeclarations(WindowsGpuAdapterInventoryRead inventory, bool nativeAllowed = true)
     {
+        var fallback = ReadDeclarationsCore(inventory, nativeAllowed: false);
+        if (!nativeAllowed || fallback is null || fallback.Count == 0) return fallback;
+        inventory = CopyInventory(inventory);
+        return readBoundary.RunAsync(() => ReadDeclarationsCore(inventory, nativeAllowed: true), fallback,
+            maximumReadDuration, CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    private IReadOnlyList<DeviceTopologyAmdGpuInformation>? ReadDeclarationsCore(WindowsGpuAdapterInventoryRead inventory, bool nativeAllowed)
+    {
         if (inventory.Status != SamplingObservationStatus.Current || inventory.Generation == 0
             || inventory.ObservedCount != inventory.Adapters.Count || inventory.SkippedCount != 0 || inventory.OverflowCount != 0) return null;
         var known = new Dictionary<string, DeviceTopologyAmdGpuInformation>(StringComparer.Ordinal);
@@ -34,6 +43,7 @@ public sealed partial class AmdAdlxBridgeReader
                 || bridge.GetDeclarationSize() != Marshal.SizeOf<NativeAdlxGpuDeclaration>()) return known.Values.ToArray();
             var metadata = new NativeAdlxGpuMetrics[32]; var message = new StringBuilder(512);
             var count = bridge.ReadMetadata(metadata, message);
+            ThrowIfFaulted(count);
             if (count <= 0 || count > metadata.Length) return known.Values.ToArray();
             var valid = metadata.Take(count).Where(item => item.IdentityValid == 1 && item.AbiVersion == BridgeAbiVersion
                 && item.StructSize == Marshal.SizeOf<NativeAdlxGpuMetrics>()).ToArray();
@@ -55,6 +65,7 @@ public sealed partial class AmdAdlxBridgeReader
                 { UniqueId = target.Native.UniqueId, PnpString = target.Native.PnpString, RequestedFlags = 15 }).ToArray();
             var values = new NativeAdlxGpuDeclaration[32];
             count = bridge.ReadDeclarations(values, selections, message);
+            ThrowIfFaulted(count);
             if (count <= 0 || count > selections.Length) return known.Values.ToArray();
             foreach (var target in targets)
             {

@@ -71,7 +71,7 @@ public sealed partial class DeviceInformationEndpointTests
             new { id = "pci-resource-details-worker", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode); using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!); var fields = message.RootElement.GetProperty("value");
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token)); var fields = message.RootElement.GetProperty("value");
         Assert.Equal("18446744073709551615", Field(fields, Pci.Identity, Pci.InterruptField).GetProperty("value")[1].GetProperty("processorAffinityMaskReported").GetString());
         Assert.Equal(uint.MaxValue, Field(fields, Pci.Identity, Pci.DmaField).GetProperty("value")[1].GetProperty("channelReported").GetUInt32());
         Assert.True(api.Opens >= 1); Assert.Equal(8 * api.Opens, api.DataCalls);

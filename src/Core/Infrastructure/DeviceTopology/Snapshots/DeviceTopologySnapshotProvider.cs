@@ -106,6 +106,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
         cancellationToken.ThrowIfCancellationRequested();
         using var publication = captureOwner.SubscribeTopologyPublications();
         using var lease = AcquireInformationSubscription(subscriptionId, interval, cancellationToken: cancellationToken);
+        // The listener is installed before reading current, so later publications cannot be lost.
+        yield return ReadState();
         while (!cancellationToken.IsCancellationRequested)
         {
             await publication.WaitAsync(cancellationToken);

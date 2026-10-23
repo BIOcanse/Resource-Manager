@@ -65,7 +65,7 @@ public sealed partial class DeviceInformationEndpointTests
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "display-rotation", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
-        using var message = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         Assert.Equal("90", Rotation(message.RootElement.GetProperty("value")).GetProperty("value").GetString()); Assert.True(reader.ReadCount >= 1);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250); var reads = reader.ReadCount; var cache = fixture.Provider.ReadState().InformationFields;
         using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
