@@ -10,6 +10,9 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
 // These handles belong to one window execution, not to the session activation service.
 internal sealed class WindowsGpuWindowActionLaunchContext : IDisposable
 {
+    /// <summary>SYNCHRONIZE | FILE_READ_ATTRIBUTES | FILE_WRITE_DATA | FILE_READ_DATA for the logon session.</summary>
+    internal const int ClientPipeAccessMask = 0x00100083;
+
     private readonly SafeProcessHandle target;
     private readonly long creationFileTimeUtc;
     private IntPtr environment;
@@ -75,8 +78,10 @@ internal sealed class WindowsGpuWindowActionLaunchContext : IDisposable
                 logonSid = ReadLogonSid(currentToken);
             }
             RequireTarget(target, creationFileTimeUtc);
-            // The client needs data read/write and wait, not FILE_CREATE_PIPE_INSTANCE (0x4).
-            var dacl = $"D:P(A;;GA;;;{creator})(A;;0x00100003;;;{logonSid})";
+            // The client needs data read/write, wait and FILE_READ_ATTRIBUTES (0x80), which the
+            // pipe client always requests when it opens the pipe; not FILE_CREATE_PIPE_INSTANCE (0x4).
+            // Without 0x80 the controller cannot connect when the service runs as SYSTEM.
+            var dacl = $"D:P(A;;GA;;;{creator})(A;;0x{ClientPipeAccessMask:X8};;;{logonSid})";
             return new(target, creationFileTimeUtc, targetUser, targetSession, dacl, userToken, environment);
         }
         catch

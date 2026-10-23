@@ -38,7 +38,11 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
         Assert.Equal(2, descriptor.DiscretionaryAcl!.Count);
         var client = Assert.IsType<CommonAce>(descriptor.DiscretionaryAcl[1]);
         Assert.Equal(AceQualifier.AccessAllowed, client.AceQualifier);
-        Assert.Equal(0x100003, client.AccessMask);
+        // FILE_READ_ATTRIBUTES (0x80) is requested by every pipe client; without it the
+        // logon session cannot connect when the service creates the pipe as SYSTEM.
+        Assert.Equal(0x100083, client.AccessMask);
+        Assert.Equal(0x80, client.AccessMask & 0x80);
+        Assert.Equal(0, client.AccessMask & 0x4);
         Assert.StartsWith("S-1-5-5-", client.SecurityIdentifier.Value);
         output.WriteLine("windowSession=" + JsonSerializer.Serialize(new { request, context.UserSid, context.SessionId,
             context.UsesSessionToken, context.PipeDacl, serviceExecutionTested = false }));
