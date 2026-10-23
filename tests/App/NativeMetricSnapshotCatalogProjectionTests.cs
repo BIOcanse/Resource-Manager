@@ -1,4 +1,5 @@
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 using ResourceManager.ReadWrite.Windows.Cpu.Models;
 using ResourceManager.ReadWrite.Windows.Devices.Battery;
@@ -650,15 +651,20 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         AddCpus(IntelMsrTargetKind.LogicalProcessor, 12);
         AddCpus(IntelMsrTargetKind.PhysicalDie, 13);
         AddCpus(IntelMsrTargetKind.Platform, 15);
+        var amdTarget = new AmdCcdCpuTarget("recorded-single-amd-package", 0x1A, 0, 0xB00F00, [new(0, 0)]);
+        var amdFormat = AmdCcdTemperatureFormat.Resolve(amdTarget.Family, amdTarget.Model)!;
+        var amdCcds = Enumerable.Range(0, Bound(13, NativeMetricSnapshotSources.AmdSmn))
+            .Select(index => new AmdCcdCatalogIdentity(amdTarget, index, amdFormat.RegisterAddress(index))).ToArray();
 
         using var workspace = new NativeMetricSnapshotWorkspace(
             NativeMetricSnapshotHostConfiguration.CreateConfiguration(plan), config);
-        Assert.Equal(13_472U, workspace.Capacity.MetricCapacity);
+        Assert.Equal(13_488U, workspace.Capacity.MetricCapacity);
         Assert.Equal(16384U, workspace.Capacity.RuleCapacity);
         Assert.True(checked(workspace.Capacity.ResidentByteCount + workspace.Capacity.ScratchByteCount) <= plan.Recreate.Capacity.ResidentByteBudget);
         var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, gpus, disks, fans,
             workspace.CreateCatalogHandleMap(), cpuVendor: MetricVendor.All, batteries: batteries,
-            numaNodes: numa, intelCpus: cpus, networkInterfaces: interfaces, npuMemoryIdentities: npus, npuEngineIdentities: engines.Identities, npuEngineDirectory: engines);
+            numaNodes: numa, intelCpus: cpus, networkInterfaces: interfaces, npuMemoryIdentities: npus, npuEngineIdentities: engines.Identities, npuEngineDirectory: engines,
+            amdCcdIdentities: amdCcds);
         Assert.Equal(256, projection.NpuEngineIdentities.Length);
         // Each engine retains its raw counter and ratio; each NPU also has one
         // device busy field. Capacity includes the newly declared node/thread fields.
@@ -675,7 +681,8 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
             NativeMetricSnapshotSources.WindowsStorageSensors or NativeMetricSnapshotSources.WindowsDiskPerformance
             or NativeMetricSnapshotSources.WindowsNvmeHealth or NativeMetricSnapshotSources.WindowsAtaSmart));
         Assert.Equal(660, projection.RuleBindings.Values.Count(row => row.Field?.Resource == MetricResource.Fan));
-        var addedNodeThreadAndDeviceFields = Bound(9) + Bound(12) + Bound(16);
+        Assert.Equal(16, projection.RuleBindings.Values.Count(row => row.FieldCode == MetricFieldCode.AmdCcdTdieTemperature));
+        var addedNodeThreadAndDeviceFields = Bound(9) + Bound(12) + Bound(16) + amdCcds.Length;
         Assert.Equal(12103 + addedNodeThreadAndDeviceFields, projection.Rules.Length);
         Assert.Equal(12069 + addedNodeThreadAndDeviceFields, projection.MetricBindings.Count);
         // These are the original native replacement and native header, not a
@@ -689,7 +696,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
 
         void AddCpus(IntelMsrTargetKind kind, uint scope)
         {
-            var maximum = Bound(scope);
+            var maximum = Bound(scope, NativeMetricSnapshotSources.IntelMsr);
             for (var i = 0; i < maximum; i++)
                 cpus.Add(new IntelMsrCatalogIdentity(i, "recorded-intel-capacity|" + kind + "|" + i,
                     new CpuProcessorAddress((ushort)(i / 64), (byte)(i % 64)), 0x406E0, (uint)i, kind, true, true)

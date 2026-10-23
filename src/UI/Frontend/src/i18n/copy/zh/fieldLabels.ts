@@ -2,6 +2,7 @@
 // 后端不提供显示名；未知字段名查不到时由消费方决定如何显示。
 export const zhFieldLabelsCopy = {
   fieldLabel: {
+    cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD 温度（Tdie）", hint: "AMD 处理器单个 CCD 的 Tdie 温度，读自该 CCD 的 SMN 温度传感器；与整颗处理器的 Tctl 分开。传感器地址按开源资料对应 CPU 型号，未经 AMD 正式文档确认。" },
     npu_all_engine_running_time_microseconds: { label: "NPU 引擎运行时间（原始）", hint: "单个 NPU 引擎的累计运行时间原始计数，单位微秒（DXCore）；起点未定义，只用于计算忙碌率。" },
     npu_all_engine_busy_percent: { label: "NPU 引擎忙碌率", hint: "引擎忙碌时间，任务管理器同款算法：取该 NPU 各引擎运行时间占实际时间比例的最大值；原值可能超过 100%，不保证与任务管理器显示的数字相同。" },
     npu_all_engine_reported_running_time_ratio_percent: { label: "NPU 单引擎忙碌率", hint: "单个 NPU 引擎的运行时间增量除以实际经过时间，以百分比表示（DXCore）；原值可能超过 100%，算法与任务管理器同类，但数字不保证相同。" },

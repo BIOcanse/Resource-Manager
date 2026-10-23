@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.ReadWrite.Native;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -70,6 +71,7 @@ public readonly record struct NativeMetricSnapshotRuleCatalogBinding(
     public NvidiaNvmlFanIdentity? NvmlFan { get; init; }
     public IntelGclFanIdentity? IgclFan { get; init; }
     public NpuEngineCatalogIdentity? NpuEngine { get; init; }
+    public AmdCcdCatalogIdentity? AmdCcd { get; init; }
     public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
 }
 
@@ -104,6 +106,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     public ImmutableArray<NpuMemoryCatalogIdentity> NpuMemoryIdentities { get; init; } = [];
     public uint NpuMemoryEffectiveMaximumInstanceCount { get; init; }
     public ImmutableArray<IntelMsrCatalogIdentity> IntelCpuIdentities { get; init; } = [];
+    public ImmutableArray<AmdCcdCatalogIdentity> AmdCcdIdentities { get; init; } = [];
     public static NativeMetricSnapshotCatalogProjection Create(
         NativeMetricSnapshotCatalogConfiguration plan,
         IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> gpuAdapters,
@@ -116,7 +119,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         IReadOnlyList<IntelMsrCatalogIdentity>? intelCpus = null,
         IReadOnlyList<NetworkInterfaceCatalogIdentity>? networkInterfaces = null,
         IReadOnlyList<NpuMemoryCatalogIdentity>? npuMemoryIdentities = null,
-        IReadOnlyList<NpuEngineCatalogIdentity>? npuEngineIdentities = null, IWindowsNpuEngineDirectory? npuEngineDirectory = null)
+        IReadOnlyList<NpuEngineCatalogIdentity>? npuEngineIdentities = null, IWindowsNpuEngineDirectory? npuEngineDirectory = null,
+        IReadOnlyList<AmdCcdCatalogIdentity>? amdCcdIdentities = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(gpuAdapters);
@@ -160,6 +164,16 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         networkInterfaces ??= [];
         npuMemoryIdentities ??= [];
         npuEngineIdentities ??= [];
+        amdCcdIdentities ??= [];
+        if (amdCcdIdentities.Count > WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(plan.RuleTemplates)
+            || amdCcdIdentities.Any(static identity => identity.SensorIndex < 0
+                || !IsExactIdentityKey(identity.ExactIdentityKey)
+                || AmdCcdTemperatureFormat.Resolve(identity.Target.Family, identity.Target.Model) is not { } format
+                || identity.SensorIndex >= format.MaximumSensorCount
+                || format.RegisterAddress(identity.SensorIndex) != identity.SmnAddress)
+            || amdCcdIdentities.Select(static identity => identity.ExactIdentityKey).Distinct(StringComparer.Ordinal).Count() != amdCcdIdentities.Count
+            || amdCcdIdentities.Select(static identity => identity.Target.BindingKey).Distinct(StringComparer.Ordinal).Count() > 1)
+            throw new InvalidOperationException("The AMD CCD identities do not describe a bounded single-package sensor directory.");
         npuEngineDirectory ??= npuEngineIdentities.FirstOrDefault()?.Directory;
         var npuEngineMaximumInstanceCount = WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(plan.RuleTemplates);
         if (npuEngineIdentities.Count > npuEngineMaximumInstanceCount
@@ -295,6 +309,10 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 new MetricDeviceDescriptor("npu_engine",
                     MetricDeviceAddress.NpuEngine(row.PnpInstanceId, row.PhysicalAdapterIndex, row.EngineIndex),
                     CleanDisplayName(row.NameDeclared), index))).ToArray();
+        var resolvedAmdCcds = amdCcdIdentities.OrderBy(static identity => identity.SensorIndex)
+            .Select(identity => new ResolvedAmdCcdIdentity(identity.SensorIndex,
+                allocator.GetOrAdd(NativeMetricSnapshotCatalogHandleKind.Scope, $"amd-ccd|{identity.ExactIdentityKey}"),
+                identity.ExactIdentityKey, identity, identity.Device)).ToArray();
         var sources = plan.SourcePolicies
             .OrderBy(static policy => policy.SourceHandle)
             .Select(static policy => new NativeMetricSnapshotSourcePolicyInput
@@ -319,7 +337,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 resolvedStorageSensors,
                 resolvedSystemFans,
                 resolvedBatteries,
-                resolvedNumaNodes, resolvedIntelCpus, resolvedNetworkInterfaces, resolvedNpus, resolvedNpuEngines))
+                resolvedNumaNodes, resolvedIntelCpus, resolvedNetworkInterfaces, resolvedNpus, resolvedNpuEngines, resolvedAmdCcds))
             .Where(rule => rule.Template.ScopeExpansion is 10 or 11 or 12 or 13 || rule.Field?.Resource != MetricResource.Cpu || cpuVendor == MetricVendor.All
                 || (rule.Field.Vendor is MetricVendor.All || rule.Field.Vendor == cpuVendor)
                     && (rule.Template.SourceId != "amd.smu" || cpuVendor == MetricVendor.Amd))
@@ -421,7 +439,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                     DeviceIdentity = rule.DeviceIdentity,
                     DisplayIndex = rule.DisplayIndex,
                     LegacyMetricId = rule.LegacyMetricId,
-                    NvmlFan = rule.NvmlFan, IgclFan = rule.IgclFan, NpuEngine = rule.NpuEngine,
+                    NvmlFan = rule.NvmlFan, IgclFan = rule.IgclFan, NpuEngine = rule.NpuEngine, AmdCcd = rule.AmdCcd,
                     Device = rule.Device
                 });
             rules.Add(new NativeMetricSnapshotMetricDefinitionInput
@@ -471,6 +489,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             .Concat(resolvedNpus.Select(static identity => $"npu|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
             .Concat(resolvedNetworkInterfaces.Select(static identity => $"network-interface|{identity.BindingKey}|{DeviceFingerprint(identity.Device)}"))
             .Concat(resolvedIntelCpus.Select(static identity => $"intel-cpu|{identity.Cpu.BindingKey}|{DeviceFingerprint(identity.Device)}"))
+            .Concat(resolvedAmdCcds.Select(static identity => $"amd-ccd|{identity.ExactIdentityKey}|{DeviceFingerprint(identity.Device)}"))
             .Concat(allocated.Where(static row => row.Rule.LegacyMetricId.Length != 0)
                 .GroupBy(static row => row.Rule.LegacyMetricId, StringComparer.Ordinal)
                 .Select(static group => group.OrderBy(static row => row.Rule.Template.SourcePriority)
@@ -515,6 +534,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             BatteryIdentities = batteries.ToImmutableArray(),
             NumaIdentities = numaNodes.ToImmutableArray(),
             IntelCpuIdentities = intelCpus.ToImmutableArray(),
+            AmdCcdIdentities = amdCcdIdentities.ToImmutableArray(),
             NpuEngineIdentities = npuEngineIdentities.ToImmutableArray(),
             NpuEngineDirectory = npuEngineDirectory,
             NpuEngineEffectiveMaximumInstanceCount = npuEngineMaximumInstanceCount,
@@ -545,7 +565,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         IReadOnlyList<ResolvedBatteryIdentity> batteries,
         IReadOnlyList<ResolvedNumaIdentity> numaNodes, IReadOnlyList<ResolvedIntelCpuIdentity> intelCpus,
         IReadOnlyList<ResolvedNetworkInterfaceIdentity> networkInterfaces, IReadOnlyList<ResolvedNpuIdentity> npus,
-        IReadOnlyList<ResolvedNpuEngineIdentity> npuEngines)
+        IReadOnlyList<ResolvedNpuEngineIdentity> npuEngines, IReadOnlyList<ResolvedAmdCcdIdentity> amdCcds)
     {
         return template.ScopeExpansion switch
         {
@@ -594,6 +614,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             17 => ExpandBounded(template, npuEngines, "{engine}"),
             14 => ExpandBounded(template, networkInterfaces, "{interface}"),
             9 => ExpandBounded(template, numaNodes, "{numa}"),
+            13 when template.SourceId == NativeMetricSnapshotSources.AmdSmn => ExpandBounded(template, amdCcds, "{die}"),
             10 or 11 or 12 or 13 or 15 => ExpandBounded(template, intelCpus.Where(cpu =>
                 cpu.Cpu.Kind == (template.ScopeExpansion switch { 10 => IntelMsrTargetKind.PhysicalCore,
                     11 => IntelMsrTargetKind.Package, 13 => IntelMsrTargetKind.PhysicalDie,
@@ -679,7 +700,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             Device = identity.Device,
             NvmlFan = identity is ResolvedOrdinalIdentity ordinal ? ordinal.NvmlFan : null,
             IgclFan = identity is ResolvedOrdinalIdentity intelOrdinal ? intelOrdinal.IgclFan : null,
-            NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null
+            NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null,
+            AmdCcd = identity is ResolvedAmdCcdIdentity ccd ? ccd.Sensor : null
         };
             // ADLX's chip report on APUs is not a confirmed graphics-only
             // power domain. Keep the raw field, but do not label it GPU power.
@@ -916,6 +938,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         public NvidiaNvmlFanIdentity? NvmlFan { get; init; }
         public IntelGclFanIdentity? IgclFan { get; init; }
         public NpuEngineCatalogIdentity? NpuEngine { get; init; }
+        public AmdCcdCatalogIdentity? AmdCcd { get; init; }
         public MetricDeviceDescriptor Device { get; init; } = MetricDeviceDescriptor.Unspecified;
     }
 
@@ -963,6 +986,9 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     private readonly record struct ResolvedIntelCpuIdentity(int DisplayIndex, ulong ScopeHandle,
         string ExactIdentityKey, IntelMsrCatalogIdentity Cpu,
         MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
+
+    private readonly record struct ResolvedAmdCcdIdentity(int DisplayIndex, ulong ScopeHandle,
+        string ExactIdentityKey, AmdCcdCatalogIdentity Sensor, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;
 
     private readonly record struct ResolvedNetworkInterfaceIdentity(int DisplayIndex, ulong ScopeHandle,
         string ExactIdentityKey, string BindingKey, MetricDeviceDescriptor Device) : IResolvedOrdinalIdentity;

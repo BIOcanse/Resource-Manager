@@ -10,7 +10,7 @@ public sealed class HostManagerMetricSnapshotCatalogTopologySource
     public HostManagerMetricSnapshotCatalogTopologySource(WindowsGpuAdapterOrderMonitoringZone gpuAdapterOrderZone,
         WindowsBatteryMonitoringZone batteryZone, ICpuTopologySampler? cpuTopologySampler = null, IpHelperNetworkMonitoringZone? networkZone = null,
         NvidiaNvmlMonitoringZone? nvidiaZone = null, WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, IntelGclMonitoringZone? intelGclZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null,
-        HardwareMonitorWmiMonitoringZone? hardwareMonitorZone = null)
+        HardwareMonitorWmiMonitoringZone? hardwareMonitorZone = null, AmdSmuMonitoringZone? amdSmuZone = null)
     {
         var engines = npuEngineZone ?? new WindowsNpuEngineMonitoringZone();
         var npus = npuMemoryZone ?? new WindowsNpuMemoryMonitoringZone();
@@ -23,6 +23,8 @@ public sealed class HostManagerMetricSnapshotCatalogTopologySource
             { OpenIgclFanDirectory = (inventory, maximum, prior) => intelGclZone?.OpenFanTopology(inventory, maximum, prior)
                     ?? new IntelFanTopologyRead(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []),
                 OpenNpuEngineDirectory = engines.OpenDirectory,
+                ReadAmdCcdIdentities = (cpu, maximum) => amdSmuZone?.ReadCcdIdentities(cpu, maximum)
+                    ?? new(ResourceManager.ReadWrite.Native.NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []),
                 ReadNvmlFanIdentities = inventory => nvidiaZone?.ReadFanIdentities(inventory), ReadNpuMemoryIdentities = npus.ReadIdentities },
             () => cpuTopologySampler?.CaptureTopology().OsTopologyInformation);
     }
@@ -35,8 +37,8 @@ public sealed class HostManagerMetricSnapshotCatalogTopologySource
     internal NativeMetricSnapshotCatalogTopologySnapshot Capture() => Capture(0);
     internal NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount) => Capture(effectiveNpuMemoryMaximumInstanceCount, 0);
     internal NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount, uint effectiveIntelFanMaximumInstanceCount,
-        NativeMetricSnapshotCatalogProjection? prior = null, uint effectiveNpuEngineMaximumInstanceCount = 0)
+        NativeMetricSnapshotCatalogProjection? prior = null, uint effectiveNpuEngineMaximumInstanceCount = 0, uint effectiveAmdCcdMaximumInstanceCount = 0)
         => captureWithEngine?.Invoke(effectiveNpuMemoryMaximumInstanceCount, effectiveIntelFanMaximumInstanceCount, prior, effectiveNpuEngineMaximumInstanceCount)
             ?? captureWithPrior?.Invoke(effectiveNpuMemoryMaximumInstanceCount, effectiveIntelFanMaximumInstanceCount, prior)
-            ?? capture?.Invoke() ?? source!.Capture(effectiveNpuMemoryMaximumInstanceCount, effectiveIntelFanMaximumInstanceCount, prior, effectiveNpuEngineMaximumInstanceCount);
+            ?? capture?.Invoke() ?? source!.Capture(effectiveNpuMemoryMaximumInstanceCount, effectiveIntelFanMaximumInstanceCount, prior, effectiveNpuEngineMaximumInstanceCount, effectiveAmdCcdMaximumInstanceCount);
 }

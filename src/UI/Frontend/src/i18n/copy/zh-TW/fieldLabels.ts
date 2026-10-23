@@ -2,6 +2,7 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"> = {
   fieldLabel: {
+    cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD 溫度（Tdie）", hint: "AMD 處理器單一 CCD 的 Tdie 溫度，讀自該 CCD 的 SMN 溫度感測器；與整顆處理器的 Tctl 分開。感測器位址依開源資料對應 CPU 型號，未經 AMD 正式文件確認。" },
     npu_all_engine_running_time_microseconds: { label: "NPU 引擎執行時間（原始）", hint: "單一 NPU 引擎的累計執行時間原始計數，單位微秒（DXCore）；起點未定義，只用於計算忙碌率。" },
     npu_all_engine_busy_percent: { label: "NPU 引擎忙碌率", hint: "引擎忙碌時間，與工作管理員相同的演算法：取該 NPU 各引擎執行時間占實際時間比例的最大值；原始值可能超過 100%，不保證與工作管理員顯示的數字相同。" },
     npu_all_engine_reported_running_time_ratio_percent: { label: "NPU 單一引擎忙碌率", hint: "單一 NPU 引擎的執行時間增量除以實際經過時間，以百分比表示（DXCore）；原始值可能超過 100%，演算法與工作管理員同類，但數字不保證相同。" },

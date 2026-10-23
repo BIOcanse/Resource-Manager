@@ -12,8 +12,8 @@ public sealed class HostManagerSoftwareIdentityConfigurationTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
 
-        Assert.Equal(67UL << 32, plan.SoftwareIdentityCatalog.ConfigurationGeneration);
-        Assert.Equal(67UL << 32, plan.SoftwareIdentityResolution.ConfigurationGeneration);
+        Assert.Equal(68UL << 32, plan.SoftwareIdentityCatalog.ConfigurationGeneration);
+        Assert.Equal(68UL << 32, plan.SoftwareIdentityResolution.ConfigurationGeneration);
         Assert.Equal("software_identity_catalog", plan.SoftwareIdentityCatalog.Build.NativeModule);
         Assert.Equal(
             "software_identity_resolution",

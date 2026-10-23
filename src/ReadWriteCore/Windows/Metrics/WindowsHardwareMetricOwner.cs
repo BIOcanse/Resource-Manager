@@ -64,6 +64,8 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
                 ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.OpenIgclFanDirectory(inventory, maximum, prior),
                 OpenNpuEngineDirectory = (maximum, prior) => this.modeProvider(NativeMetricSnapshotSources.WindowsNpuEngine) == NativeMetricSnapshotZoneMode.Freeze
                     ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.OpenNpuEngineDirectory(maximum, prior),
+                ReadAmdCcdIdentities = (cpu, maximum) => this.modeProvider(NativeMetricSnapshotSources.AmdSmn) == NativeMetricSnapshotZoneMode.Freeze
+                    ? new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []) : resources.ReadAmdCcdIdentities(cpu, maximum),
                 ReadNvmlFanIdentities = resources.ReadNvmlFanIdentities, ReadNpuMemoryIdentities = resources.ReadNpuMemoryIdentities },
             resources.Controls?.ControlReadCpuTopology
                 ?? (static () => new WindowsCpuOsTopologyReader().ReadInformation(includeUsage: false)));
@@ -101,6 +103,8 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
             return new(false, "intel-pawnio-paths-not-supplied", dependencies);
         if (binding.SourceId == NativeMetricSnapshotSources.AmdSmu && resourceOptions.AmdSmu is null)
             return new(false, "amd-smu-pawnio-options-not-supplied", dependencies);
+        if (binding.SourceId == NativeMetricSnapshotSources.AmdSmn && resourceOptions.AmdSmn is null)
+            return new(false, "amd-smn-pawnio-options-not-supplied", dependencies);
         if (binding.SourceId == NativeMetricSnapshotSources.NotebookOemFan && !resourceOptions.EnableMechrevo)
             return new(false, "oem-firmware-policy-not-enabled", dependencies);
         return new(true, null, dependencies);
@@ -247,7 +251,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
 
     private void RefreshTopology()
     {
-        var observed = topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), workspace?.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates));
+        var observed = topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), workspace?.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates));
         try
         {
             WindowsMetricCatalogTopologyPublication.RequireGpuTopology(observed);
@@ -301,6 +305,7 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
                 BatteryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                 NpuEngineStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                 NpuMemoryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                AmdCcdStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                 NetworkInterfaceStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                 NumaStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                 IntelCpuCoreStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,

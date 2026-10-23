@@ -243,7 +243,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
         using var native=NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,Path.Combine(Path.GetTempPath(),$"network-capacity-{Guid.NewGuid():N}.bin"));
         Assert.True(native.Capacity.ResidentByteCount <= 64UL*1024*1024);
         output.WriteLine($"Native resident bytes: {native.Capacity.ResidentByteCount}; budget: {compiled.Recreate.Capacity.ResidentByteBudget}.");
-        Assert.Equal(13_472U,native.Capacity.MetricCapacity);
+        Assert.Equal(13_488U,native.Capacity.MetricCapacity);
         var ids=Enumerable.Range(0,128).Select(i=>new NetworkInterfaceCatalogIdentity(i,new Guid(i+1,1,2,new byte[8]),(ulong)i+1,(uint)i+1)).ToArray();
         var catalog=NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,[],[],[],native.CreateCatalogHandleMap(),networkInterfaces:ids);
         native.ReplaceCatalog(catalog,DateTimeOffset.UtcNow);
@@ -287,7 +287,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
                 Assert.True(npuIds.Add(row.MetricIdTemplate.Replace("{npu}",i.ToString(System.Globalization.CultureInfo.InvariantCulture))));
         Assert.Equal(256,npuIds.Count);
         Assert.True(npuIds.IsSubsetOf(ids));
-        Assert.Equal(23,compiled.HotPublish.SourcePolicies.Length);
+        Assert.Equal(24,compiled.HotPublish.SourcePolicies.Length);
         var legacyMetricBoundary=11262+(int)addedDiskExpansion+(int)addedPerformanceStates+(int)addedFanInstances+platformRules.Length+npuIds.Count+16+512;
         var legacyRuleBoundary=11633UL+addedDiskExpansion+addedPerformanceStates+addedFanInstances+(ulong)platformRules.Length+(ulong)npuIds.Count+16UL+512UL;
         Assert.Equal(12800,legacyMetricBoundary);Assert.Equal(13171UL,legacyRuleBoundary);
@@ -303,9 +303,12 @@ public sealed partial class NetworkCounterInformationCollectorTests
         Assert.Equal(32UL,addedAmdNpuInstances);
         var addedNewRulesAndMetrics=(ulong)numaCapacity.MaximumInstanceCount+effectiveFrequency.MaximumInstanceCount+npuDeviceBusy.MaximumInstanceCount+addedAmdNpuInstances;
         Assert.Equal(672UL,addedNewRulesAndMetrics);
-        Assert.Equal(13472UL,(ulong)legacyMetricBoundary+addedNewRulesAndMetrics);
-        Assert.Equal(13843UL,legacyRuleBoundary+addedNewRulesAndMetrics);
-        Assert.Equal(13472,ids.Count);Assert.Equal(13843UL,rules);
+        var ccd=Assert.Single(compiled.HotPublish.RuleTemplates,row=>row.SourceId=="amd.smn");
+        Assert.Equal(16U,ccd.MaximumInstanceCount);
+        addedNewRulesAndMetrics+=ccd.MaximumInstanceCount;
+        Assert.Equal(13488UL,(ulong)legacyMetricBoundary+addedNewRulesAndMetrics);
+        Assert.Equal(13859UL,legacyRuleBoundary+addedNewRulesAndMetrics);
+        Assert.Equal(13488,ids.Count);Assert.Equal(13859UL,rules);
         Assert.True(HostManagerTestPlanFactory.CreatePlan(root=>root["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_metric_count"]=ids.Count).IsPublished);
         Assert.Throws<InvalidDataException>(()=>HostManagerTestPlanFactory.CreatePlan(root=>root["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_metric_count"]=ids.Count-1));
     }

@@ -1,6 +1,7 @@
 import type { AppCopy } from "../index.ts";
 
 export const fieldLabel: AppCopy["fieldLabel"] = {
+  cpu_amd_ccd_tdie_temperature_celsius: { label: "Temperatura del CCD (Tdie)", hint: "Temperatura Tdie de un CCD de un procesador AMD, leída de su sensor de temperatura SMN; independiente de la Tctl del procesador completo. Las direcciones del sensor siguen referencias de código abierto para cada modelo de CPU y AMD no las ha confirmado en su documentación." },
   npu_all_engine_running_time_microseconds: { label: "Tiempo de motor NPU (sin procesar)", hint: "Tiempo de ejecución acumulado sin procesar de un motor de la NPU, en microsegundos (DXCore); su punto de partida no está definido, por lo que solo sirve para calcular tasas de ocupación." },
   npu_all_engine_busy_percent: { label: "Ocupación de motores NPU", hint: "Tiempo de ocupación calculado con el mismo algoritmo que el Administrador de tareas: la mayor proporción de tiempo real en que algún motor de esta NPU estuvo en ejecución; puede superar el 100 % y no se garantiza que coincida con la cifra del Administrador de tareas." },
   npu_all_engine_reported_running_time_ratio_percent: { label: "Ocupación de un motor NPU", hint: "Aumento del tiempo de ejecución de un motor de la NPU dividido entre el tiempo real transcurrido, en porcentaje (DXCore); puede superar el 100 % y, aunque se calcula como en el Administrador de tareas, no se garantiza que coincida con su cifra." },

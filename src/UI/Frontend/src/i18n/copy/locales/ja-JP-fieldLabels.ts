@@ -1,6 +1,7 @@
 import type { AppCopy } from "../index.ts";
 
 export const fieldLabel: AppCopy["fieldLabel"] = {
+  cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD 温度（Tdie）", hint: "AMD プロセッサの 1 つの CCD の Tdie 温度で、その CCD の SMN 温度センサーから読み取ります。プロセッサ全体の Tctl とは別です。センサーのアドレスは CPU モデルごとにオープンソースの資料に従っており、AMD の文書では確認されていません。" },
   npu_all_engine_running_time_microseconds: { label: "NPU エンジン稼働時間（生値）", hint: "1 つの NPU エンジンの累積稼働時間をマイクロ秒で示す生値（DXCore）で、起点が定義されていないため使用率の算出にのみ役立ちます。" },
   npu_all_engine_busy_percent: { label: "NPU エンジン使用率", hint: "タスク マネージャーと同じ算出方法によるエンジン使用率で、この NPU の各エンジンが実時間のうち稼働していた割合の最大値を示し、100% を超えることがあり、タスク マネージャーの表示と一致するとは限りません。" },
   npu_all_engine_reported_running_time_ratio_percent: { label: "NPU 単一エンジン使用率", hint: "1 つの NPU エンジンの稼働時間の増分を実際の経過時間で割った割合（DXCore）で、100% を超えることがあり、タスク マネージャーと同様に算出しますがその表示と一致するとは限りません。" },

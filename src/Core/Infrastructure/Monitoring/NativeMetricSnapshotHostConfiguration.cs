@@ -8,6 +8,7 @@ using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.ReadWrite.Windows.Devices.Npu;
 using ResourceManager.ReadWrite.Windows.Devices.Battery;
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
 internal static class NativeMetricSnapshotHostConfiguration
@@ -53,9 +54,10 @@ internal static class NativeMetricSnapshotHostConfiguration
         IReadOnlyList<IntelMsrCatalogIdentity>? intelCpus = null,
         IReadOnlyList<NetworkInterfaceCatalogIdentity>? networkInterfaces = null,
         IReadOnlyList<NpuMemoryCatalogIdentity>? npuMemoryIdentities = null,
-        IReadOnlyList<NpuEngineCatalogIdentity>? npuEngineIdentities = null, IWindowsNpuEngineDirectory? npuEngineDirectory = null)
+        IReadOnlyList<NpuEngineCatalogIdentity>? npuEngineIdentities = null, IWindowsNpuEngineDirectory? npuEngineDirectory = null,
+        IReadOnlyList<AmdCcdCatalogIdentity>? amdCcdIdentities = null)
         => NativeMetricSnapshotCatalogProjection.Create(CreateCatalogConfiguration(plan), gpuAdapters,
-            storageSensors, systemFans, handleMap, cpuVendor, batteries, numaNodes, intelCpus, networkInterfaces, npuMemoryIdentities, npuEngineIdentities, npuEngineDirectory);
+            storageSensors, systemFans, handleMap, cpuVendor, batteries, numaNodes, intelCpus, networkInterfaces, npuMemoryIdentities, npuEngineIdentities, npuEngineDirectory, amdCcdIdentities);
 
     internal static NativeMetricSnapshotConfiguration CreateConfiguration(CompiledHostManagerMetricSnapshotPlan plan)
     {

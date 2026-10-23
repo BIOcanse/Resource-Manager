@@ -16,7 +16,8 @@ import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
 interface RegistryField { name: string; resource: string; vendor: string; valueKind: string }
 
 const registrySource = readFileSync(new URL("../../../ReadWriteCore/Fields/MetricFieldRegistry.cs", import.meta.url), "utf8");
-const rowPattern = /new\(MetricFieldCode\.(\w+), "([^"]+)", MetricResource\.(\w+), MetricVendor\.(\w+), "[^"]*", "[^"]*"(?:, "(?:[^"\\]|\\.)*")?\)(?: \{([^}]*)\})?/g;
+// 参数之间允许换行缩进（长行在 MetricVendor 之后折行）。
+const rowPattern = /new\(MetricFieldCode\.(\w+),\s+"([^"]+)",\s+MetricResource\.(\w+),\s+MetricVendor\.(\w+),\s+"[^"]*",\s+"[^"]*"(?:,\s+"(?:[^"\\]|\\.)*")?\)(?:\s+\{([^}]*)\})?/g;
 const baseRows = [...registrySource.matchAll(rowPattern)].map((match) => ({
   code: match[1],
   field: { name: match[2], resource: match[3], vendor: match[4], valueKind: /ValueKind = "([^"]+)"/.exec(match[5] ?? "")?.[1] ?? "float64" }

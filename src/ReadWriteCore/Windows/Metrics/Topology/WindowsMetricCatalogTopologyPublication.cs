@@ -14,12 +14,14 @@ public static class WindowsMetricCatalogTopologyPublication
         NativeMetricSnapshotCatalogTopologySnapshot topology, NativeMetricSnapshotCatalogHandleMap handleMap)
         => NativeMetricSnapshotCatalogProjection.Create(configuration, topology.GpuAdapters,
             topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor,
-            topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory);
+            topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities);
     public static NativeMetricSnapshotCatalogTopologySnapshot RetainUnavailableOptionalIdentities(
         NativeMetricSnapshotCatalogTopologySnapshot topology,
         NativeMetricSnapshotCatalogProjection prior)
         => topology with
         {
+            AmdCcdIdentities = topology.AmdCcdStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
+                ? prior.AmdCcdIdentities : topology.AmdCcdIdentities,
             NpuEngineIdentities = topology.NpuEngineStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
                 ? prior.NpuEngineIdentities : topology.NpuEngineIdentities,
             NpuEngineDirectory = topology.NpuEngineStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable

@@ -41,6 +41,9 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
                 NativeMetricSnapshotSourceCatalog.AmdSmu,
                 MonitoringSourceZoneIds.VendorAmdSmu),
             (
+                NativeMetricSnapshotSourceCatalog.AmdSmn,
+                MonitoringSourceZoneIds.VendorAmdSmu),
+            (
                 NativeMetricSnapshotSourceCatalog.IntelMsr,
                 MonitoringSourceZoneIds.VendorIntelMsr),
             (

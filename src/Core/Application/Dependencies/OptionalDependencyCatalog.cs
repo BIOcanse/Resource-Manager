@@ -56,7 +56,7 @@ public static class OptionalDependencyCatalog
                 Repository: "PawnIO.Modules",
                 VerifiedTag: "0.2.11",
                 VerifiedAssetName: "release_0_2_11.zip",
-                FileNames: ["RyzenSMU.bin"])),
+                FileNames: ["RyzenSMU.bin", "AMDFamily17.bin"])),
         new OptionalDependencyDefinition(
             Id: "intel-msr-pawnio-provider",
             Name: "Intel CPU / PawnIO",

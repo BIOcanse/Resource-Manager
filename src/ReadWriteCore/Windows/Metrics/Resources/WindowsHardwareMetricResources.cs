@@ -14,6 +14,7 @@ using ResourceManager.ReadWrite.Vendors.Intel;
 using ResourceManager.ReadWrite.Windows.Devices.Npu;
 using ResourceManager.ReadWrite.Windows.Metrics.Topology;
 using ResourceManager.ReadWrite.Vendors.Intel.Msr;
+using ResourceManager.ReadWrite.Windows.Cpu.Models;
 
 namespace ResourceManager.ReadWrite.Windows.Metrics.Resources;
 
@@ -50,6 +51,10 @@ public sealed partial class WindowsHardwareMetricResources : IDisposable
     public required Func<NvidiaNvapiReadRequest, WindowsGpuAdapterInventoryRead, CancellationToken, Task<IReadOnlyList<NvidiaNvapiGpuSensor>>> ReadNvapiAsync { get; init; }
     public required Func<AmdAdlxReadRequest, WindowsGpuAdapterInventoryRead, CancellationToken, Task<IReadOnlyList<GpuMetrics>>> ReadAdlxAsync { get; init; }
     public required Func<AmdSmuCpuSensorReadRequest, CpuSensorMetrics> ReadAmdSmu { get; init; }
+    public Func<CpuOsTopologyInformation?, uint, AmdCcdTopologyRead> ReadAmdCcdIdentities { get; init; }
+        = static (_, _) => new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
+    public Func<IReadOnlyList<AmdCcdCatalogIdentity>, IReadOnlySet<string>, IReadOnlyDictionary<string, double?>> ReadAmdCcd { get; init; }
+        = static (_, _) => new Dictionary<string, double?>(StringComparer.Ordinal);
     public Func<WindowsGpuAdapterInventoryRead, uint, IntelGclFanDirectoryLease?, IntelFanTopologyRead> OpenIgclFanDirectory { get; init; } = static (_, _, _) => new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
     public Func<IReadOnlyList<IntelGclFanIdentity>, WindowsGpuAdapterInventoryRead, uint, CancellationToken, IReadOnlyList<IntelGclFanReading>> ReadIgclFans { get; init; } = static (_, _, _, _) => [];
     public required Func<WindowsGpuAdapterInventoryRead, IReadOnlyDictionary<int, IReadOnlySet<MetricFieldCode>>, CancellationToken, IReadOnlyList<IntelGclMetricRead>> ReadIntelGpu { get; init; }

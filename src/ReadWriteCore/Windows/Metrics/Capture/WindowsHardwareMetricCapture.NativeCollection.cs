@@ -102,6 +102,8 @@ internal sealed partial class WindowsHardwareMetricCapture
                         sourcePlan,
                         identity,
                         capturedAt),
+                NativeMetricSnapshotSources.AmdSmn =>
+                    CollectAmdCcd(plan, sourcePlan, identity, capturedAt, topology),
                 NativeMetricSnapshotSources.WindowsStorageSensors =>
                     CollectStorageSensors(
                         plan,

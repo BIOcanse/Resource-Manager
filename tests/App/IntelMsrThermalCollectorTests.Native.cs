@@ -13,7 +13,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     public void OriginalNativeWorkspaceFitsExplicitBudgetCommitsAndClearsValuesWithoutASecondCache()
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        Assert.Equal(13_472U, compiled.Recreate.Capacity.MaximumMetricCount);
+        Assert.Equal(13_488U, compiled.Recreate.Capacity.MaximumMetricCount);
         Assert.Equal(64UL * 1024 * 1024, compiled.Recreate.Capacity.ResidentByteBudget);
         using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled, Path.Combine(Path.GetTempPath(), $"intel-msr-{Guid.NewGuid():N}.bin"));
         var core = Core(); var package = Package();

@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 using System.Text;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
@@ -18,7 +19,7 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
     public NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount)
         => Capture(effectiveNpuMemoryMaximumInstanceCount, 0);
 
-    public NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount, uint effectiveIntelFanMaximumInstanceCount, NativeMetricSnapshotCatalogProjection? prior = null, uint effectiveNpuEngineMaximumInstanceCount = 0)
+    public NativeMetricSnapshotCatalogTopologySnapshot Capture(uint effectiveNpuMemoryMaximumInstanceCount, uint effectiveIntelFanMaximumInstanceCount, NativeMetricSnapshotCatalogProjection? prior = null, uint effectiveNpuEngineMaximumInstanceCount = 0, uint effectiveAmdCcdMaximumInstanceCount = 0)
     {
         NpuMemoryTopologyRead npus;
         try { npus = effectiveNpuMemoryMaximumInstanceCount == 0
@@ -27,12 +28,19 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
         catch (Exception) { npus = new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []); }
         var network = resources.ReadNetworkIdentities();
         var numa = resources.ReadNumaIdentities();
+        CpuOsTopologyInformation? cpu = null;
+        try { cpu = readCpuTopology(); } catch (Exception) { }
+        AmdCcdTopologyRead ccd;
+        try { ccd = effectiveAmdCcdMaximumInstanceCount == 0
+            ? new(NativeMetricSnapshotCatalogTopologyStatus.Complete, [])
+            : resources.ReadAmdCcdIdentities(cpu, effectiveAmdCcdMaximumInstanceCount); }
+        catch (Exception) { ccd = new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []); }
         IntelMsrTopologyRead intel;
-        try { intel = IntelMsrTopologyProjection.Create(readCpuTopology()); }
+        try { intel = IntelMsrTopologyProjection.Create(cpu); }
         catch (Exception) { intel = new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
             NativeMetricSnapshotCatalogTopologyStatus.Unavailable, NativeMetricSnapshotCatalogTopologyStatus.Unavailable, [])
             { PlatformStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable }; }
-        var result = CaptureDeviceTopology(effectiveIntelFanMaximumInstanceCount, prior) with { NpuMemoryStatus = npus.Status, NpuMemoryIdentities = npus.Identities, NetworkInterfaceStatus = network.Status, NetworkInterfaces = network.Identities,
+        var result = CaptureDeviceTopology(effectiveIntelFanMaximumInstanceCount, prior) with { AmdCcdStatus = ccd.Status, AmdCcdIdentities = ccd.Identities, NpuMemoryStatus = npus.Status, NpuMemoryIdentities = npus.Identities, NetworkInterfaceStatus = network.Status, NetworkInterfaces = network.Identities,
             NumaStatus = numa.Status, NumaNodes = numa.Identities, IntelCpuCoreStatus = intel.CoreStatus,
             IntelCpuPackageStatus = intel.PackageStatus, IntelCpuLogicalProcessorStatus = intel.LogicalProcessorStatus,
             IntelCpuDieStatus = intel.DieStatus, IntelPlatformStatus = intel.PlatformStatus, IntelCpuIdentities = intel.Identities };
