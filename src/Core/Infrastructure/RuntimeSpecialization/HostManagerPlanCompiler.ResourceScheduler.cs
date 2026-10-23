@@ -185,10 +185,8 @@ public sealed partial class HostManagerPlanCompiler
         }
 
         ValidateRatio(source.StrongPressureFreeRatio, "resource_scheduler.strong_pressure_free_ratio");
-        var dangerPhysicalRatio = performance.VramMoveDownPhysicalMemoryDangerPercent / 100d;
-        var dangerVirtualRatio = performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent / 100d;
-        ValidateRatio(dangerPhysicalRatio, "performance.vram_move_down_physical_memory_danger_percent");
-        ValidateRatio(dangerVirtualRatio, "performance.physical_memory_move_down_virtual_memory_danger_percent");
+        const double dangerPhysicalRatio = 0.10;
+        const double dangerVirtualRatio = 0.12;
         var dangerWeights = ValidateByteArray(
             source.DangerSeverityWeights,
             ResourceSchedulerConfig.DangerFlagCount,

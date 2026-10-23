@@ -102,7 +102,7 @@ export interface SettingsStore {
   updateGpuPerformanceUseCases: (useCases: AppGpuPerformanceUseCase[]) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  updateMoveDownDangerLines: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
+  updateGpuOverflowThresholds: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
   updateLogicRefreshInterval: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
@@ -413,10 +413,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(physicalMemoryPercent, 70),
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(virtualMemoryPercent, 70)
     })),
-    updateMoveDownDangerLines: (vramMoveDownPhysicalMemoryPercent, physicalMemoryMoveDownVirtualMemoryPercent) => updatePerformance((performance) => ({
+    updateGpuOverflowThresholds: (gpuUsagePercent, dedicatedMemoryPercent) => updatePerformance((performance) => ({
       ...performance,
-      vramMoveDownPhysicalMemoryDangerPercent: normalizeDangerPercent(vramMoveDownPhysicalMemoryPercent, performance.vramMoveDownPhysicalMemoryDangerPercent),
-      physicalMemoryMoveDownVirtualMemoryDangerPercent: normalizeDangerPercent(physicalMemoryMoveDownVirtualMemoryPercent, performance.physicalMemoryMoveDownVirtualMemoryDangerPercent)
+      gpuOverflowUsagePercent: normalizeGpuOverflowPercent(gpuUsagePercent, performance.gpuOverflowUsagePercent),
+      gpuOverflowDedicatedMemoryPercent: normalizeGpuOverflowPercent(dedicatedMemoryPercent, performance.gpuOverflowDedicatedMemoryPercent)
     })),
     updateLogicRefreshInterval: (key, setting) => updatePerformance((performance) =>
       assignLogicRefreshInterval(performance, key, normalizeLogicRefreshIntervalSetting(key, setting))),
@@ -595,12 +595,12 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.27",
+    version: "1.0.28",
     performance: {
       optimizationMode: "normal",
       preciseGpuPlacementEnabled: false,
-      vramMoveDownPhysicalMemoryDangerPercent: 10,
-      physicalMemoryMoveDownVirtualMemoryDangerPercent: 12,
+      gpuOverflowUsagePercent: 95,
+      gpuOverflowDedicatedMemoryPercent: 80,
       physicalMemoryAutomaticCleanupPercent: 6,
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
@@ -651,13 +651,13 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.27",
+    version: "1.0.28",
     // 只列出当前模型里的字段：旧文件里已删除的键（旧布尔副本、隐藏时刷新、三项无读取方的刷新频率等）在这里自然丢弃。
     performance: {
       optimizationMode: normalizeOptimizationMode(settings?.performance?.optimizationMode),
       preciseGpuPlacementEnabled: settings?.performance?.preciseGpuPlacementEnabled ?? defaults.performance!.preciseGpuPlacementEnabled,
-      vramMoveDownPhysicalMemoryDangerPercent: normalizeDangerPercent(settings?.performance?.vramMoveDownPhysicalMemoryDangerPercent, defaults.performance!.vramMoveDownPhysicalMemoryDangerPercent),
-      physicalMemoryMoveDownVirtualMemoryDangerPercent: normalizeDangerPercent(settings?.performance?.physicalMemoryMoveDownVirtualMemoryDangerPercent, defaults.performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent),
+      gpuOverflowUsagePercent: normalizeGpuOverflowPercent(settings?.performance?.gpuOverflowUsagePercent, defaults.performance!.gpuOverflowUsagePercent),
+      gpuOverflowDedicatedMemoryPercent: normalizeGpuOverflowPercent(settings?.performance?.gpuOverflowDedicatedMemoryPercent, defaults.performance!.gpuOverflowDedicatedMemoryPercent),
       physicalMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.physicalMemoryAutomaticCleanupPercent, defaults.performance!.physicalMemoryAutomaticCleanupPercent),
       virtualMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.virtualMemoryAutomaticCleanupPercent, defaults.performance!.virtualMemoryAutomaticCleanupPercent),
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.physicalMemoryOptimizationTargetUsagePercent, defaults.performance!.physicalMemoryOptimizationTargetUsagePercent),
@@ -907,6 +907,10 @@ function normalizeAppearanceSettings(
     language: normalizeLanguageMode(settings?.language),
     readingSourceMode: normalizeReadingSourceMode(settings?.readingSourceMode)
   };
+}
+
+function normalizeGpuOverflowPercent(value: number | null | undefined, fallback: number) {
+  return normalizeInteger(value, 1, 100, fallback);
 }
 
 function normalizeDangerPercent(value: number | null | undefined, fallback: number) {

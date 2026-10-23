@@ -142,7 +142,6 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.ActionTimeoutMs => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.ActionTimeoutMilliseconds)),
             BackendFreedomPointPositions.GpuWindowExecutionLimits => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.WindowExecution)),
             BackendFreedomPointPositions.GpuApiObservationWindowMs => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.ApiObservationWindowMilliseconds)),
-            BackendFreedomPointPositions.GpuOverflowThresholds => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.GpuOverflow)),
             BackendFreedomPointPositions.AutomaticExclusivity => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.CpuAutomaticExclusivity)),
             BackendFreedomPointPositions.GameStartGraceMs => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.GameStartGraceMilliseconds)),
             BackendFreedomPointPositions.RequiredConsecutiveDecisions => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.RequiredConsecutiveDecisions)),

@@ -27,15 +27,15 @@ public sealed class ReleaseDefaultSettingsTests
         root["appearance"]!["resourceBarHardwareAccelerationEnabled"] = false;
         root["appearance"]!["resourceBarHardwareAccelerationMode"] = "disabled";
         performance["preciseGpuPlacementEnabled"] = true;
-        performance["vramMoveDownPhysicalMemoryDangerPercent"] = 23;
-        performance["physicalMemoryMoveDownVirtualMemoryDangerPercent"] = 31;
+        performance["gpuOverflowUsagePercent"] = 23;
+        performance["gpuOverflowDedicatedMemoryPercent"] = 31;
         using var document = JsonDocument.Parse(root.ToJsonString());
 
         var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
         Assert.Equal(expected, migrated.Performance.SmartMonitoringMode);
         Assert.True(migrated.Performance.PreciseGpuPlacementEnabled);
-        Assert.Equal(23, migrated.Performance.VramMoveDownPhysicalMemoryDangerPercent);
-        Assert.Equal(31, migrated.Performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent);
+        Assert.Equal(23, migrated.Performance.GpuOverflowUsagePercent);
+        Assert.Equal(31, migrated.Performance.GpuOverflowDedicatedMemoryPercent);
         Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
         var output = JsonSerializer.SerializeToNode(migrated, JsonSerializerOptions.Web)!;
         foreach (var key in new[] { "smartMonitoringEnabled", "monitoringIdleSeconds", "pauseFrontendRefreshWhenHiddenInNormalMode",

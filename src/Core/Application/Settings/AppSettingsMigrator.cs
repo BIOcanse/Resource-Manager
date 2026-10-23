@@ -59,8 +59,8 @@ public static class AppSettingsMigrator
             new AppPerformanceSettings(
                 ReadString(root, "performance", "optimizationMode", defaults.Performance.OptimizationMode),
                 ReadBoolean(root, "performance", "preciseGpuPlacementEnabled", defaults.Performance.PreciseGpuPlacementEnabled),
-                ReadByte(root, "performance", "vramMoveDownPhysicalMemoryDangerPercent", defaults.Performance.VramMoveDownPhysicalMemoryDangerPercent),
-                ReadByte(root, "performance", "physicalMemoryMoveDownVirtualMemoryDangerPercent", defaults.Performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent),
+                ReadByte(root, "performance", "gpuOverflowUsagePercent", defaults.Performance.GpuOverflowUsagePercent),
+                ReadByte(root, "performance", "gpuOverflowDedicatedMemoryPercent", defaults.Performance.GpuOverflowDedicatedMemoryPercent),
                 ReadByte(root, "performance", "physicalMemoryAutomaticCleanupPercent", defaults.Performance.PhysicalMemoryAutomaticCleanupPercent),
                 ReadByte(root, "performance", "virtualMemoryAutomaticCleanupPercent", defaults.Performance.VirtualMemoryAutomaticCleanupPercent),
                 ReadByte(root, "performance", "physicalMemoryOptimizationTargetUsagePercent", defaults.Performance.PhysicalMemoryOptimizationTargetUsagePercent),
@@ -168,8 +168,8 @@ public static class AppSettingsMigrator
             || performance.TryGetProperty("pauseFrontendRefreshWhenHiddenInNormalMode", out _)
             || !performance.TryGetProperty("preciseGpuPlacementEnabled", out _)
             || performance.TryGetProperty("samplingDispatchMode", out _)
-            || !performance.TryGetProperty("vramMoveDownPhysicalMemoryDangerPercent", out var physicalMemoryDangerPercent)
-            || !performance.TryGetProperty("physicalMemoryMoveDownVirtualMemoryDangerPercent", out var virtualMemoryDangerPercent)
+            || !performance.TryGetProperty("gpuOverflowUsagePercent", out var gpuUsagePercent)
+            || !performance.TryGetProperty("gpuOverflowDedicatedMemoryPercent", out var gpuMemoryPercent)
             || !performance.TryGetProperty("gpuPerformanceUseCases", out var gpuPerformanceUseCases)
             || !performance.TryGetProperty("smartMonitoringMode", out var smartMonitoringMode)
             || performance.TryGetProperty("frontendHiddenRefreshMode", out _)
@@ -198,8 +198,8 @@ public static class AppSettingsMigrator
         }
 
         return !IsSupportedOptimizationMode(optimizationMode)
-            || !IsSupportedDangerPercent(physicalMemoryDangerPercent)
-            || !IsSupportedDangerPercent(virtualMemoryDangerPercent)
+            || !IsSupportedGpuOverflowPercent(gpuUsagePercent)
+            || !IsSupportedGpuOverflowPercent(gpuMemoryPercent)
             || !IsSupportedGpuPerformanceUseCases(gpuPerformanceUseCases)
             || !IsSupportedAdaptiveBooleanMode(smartMonitoringMode)
             || !IsSupportedLogicRefreshInterval(monitorRefreshIntervalMs)
@@ -317,13 +317,8 @@ public static class AppSettingsMigrator
         return any;
     }
 
-    private static bool IsSupportedDangerPercent(JsonElement value)
-    {
-        return value.ValueKind == JsonValueKind.Number
-            && value.TryGetByte(out var percent)
-            && percent >= AppSettingsDefaults.MinAdaptedResourceDangerPercent
-            && percent <= AppSettingsDefaults.MaxAdaptedResourceDangerPercent;
-    }
+    private static bool IsSupportedGpuOverflowPercent(JsonElement value)
+        => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var percent) && percent is >= 1 and <= 100;
 
     private static IReadOnlyList<string> ReadGpuPerformanceUseCases(
         JsonElement root,

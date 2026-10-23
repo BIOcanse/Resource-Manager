@@ -226,8 +226,8 @@ public enum HostManagerBindingId : ushort
 {
     PhysicalMemoryOptimizationTargetUsagePercent = 1,
     VirtualMemoryOptimizationTargetUsagePercent = 2,
-    VramMoveDownPhysicalMemoryDangerPercent = 3,
-    PhysicalMemoryMoveDownVirtualMemoryDangerPercent = 4,
+    GpuOverflowUsagePercent = 3,
+    GpuOverflowDedicatedMemoryPercent = 4,
     PhysicalMemoryAutomaticCleanupPercent = 5,
     VirtualMemoryAutomaticCleanupPercent = 6,
     PublicServiceEnabled = 7,

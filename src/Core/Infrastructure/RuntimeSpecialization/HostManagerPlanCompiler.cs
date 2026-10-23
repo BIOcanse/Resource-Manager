@@ -273,7 +273,8 @@ public sealed partial class HostManagerPlanCompiler
             hotPublish.PlacementCoordinator
             ?? throw Missing("hot_publish.placement_coordinator"),
             profile.ProfileRevision,
-            freedom);
+            freedom,
+            performance);
         var appliedOwnership = CompileAppliedOwnershipHotPublish(
             hotPublish.AppliedOwnership
             ?? throw Missing("hot_publish.applied_ownership"),
@@ -379,9 +380,7 @@ public sealed partial class HostManagerPlanCompiler
             loaded.SourceSha256,
             profile.ProfileRevision,
             performance.PhysicalMemoryOptimizationTargetUsagePercent,
-            performance.VirtualMemoryOptimizationTargetUsagePercent,
-            performance.VramMoveDownPhysicalMemoryDangerPercent,
-            performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent
+            performance.VirtualMemoryOptimizationTargetUsagePercent
         });
         var resourceSchedulerConfiguration = CompileResourceSchedulerConfiguration(
             hotResourceScheduler.Configuration
@@ -778,8 +777,8 @@ public sealed partial class HostManagerPlanCompiler
             [
                 HostManagerBindingId.PhysicalMemoryOptimizationTargetUsagePercent,
                 HostManagerBindingId.VirtualMemoryOptimizationTargetUsagePercent,
-                HostManagerBindingId.VramMoveDownPhysicalMemoryDangerPercent,
-                HostManagerBindingId.PhysicalMemoryMoveDownVirtualMemoryDangerPercent,
+                HostManagerBindingId.GpuOverflowUsagePercent,
+                HostManagerBindingId.GpuOverflowDedicatedMemoryPercent,
                 HostManagerBindingId.PhysicalMemoryAutomaticCleanupPercent,
                 HostManagerBindingId.VirtualMemoryAutomaticCleanupPercent,
                 HostManagerBindingId.PublicServiceEnabled,

@@ -211,6 +211,17 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     [InlineData(0, 80, true)]
     [InlineData(95, 80, true)]
     public void EitherActualPressureTriggersOverflowOfLowestPriority(double usage, ulong memory, bool overflow)
+        => AssertGpuOverflow(usage, memory, 95, 80, overflow);
+
+    [Theory]
+    [InlineData(70, 60, 95, 80, false)]
+    [InlineData(70, 60, 70, 80, true)]
+    [InlineData(70, 60, 95, 60, true)]
+    [InlineData(70, 60, 100, 100, false)]
+    public void CompiledSettingsChangeTheActualOverflowDecision(double usage, ulong memory, byte usageThreshold, byte memoryThreshold, bool overflow)
+        => AssertGpuOverflow(usage, memory, usageThreshold, memoryThreshold, overflow);
+
+    private static void AssertGpuOverflow(double usage, ulong memory, byte usageThreshold, byte memoryThreshold, bool overflow)
     {
         var hardware = CreateHardware();
         hardware = hardware with { GpuInventory = hardware.GpuInventory with
@@ -225,7 +236,10 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
         }};
         var plan = HostManagerAutomaticPlacementPlanner.Plan(CreateTwoCcdTopology(), hardware, CreateHardwareScores(),
             [CreateProcess("high", 10, null, 80, AutoPolicy()), CreateProcess("low", 20, null, 10, AutoPolicy())],
-            CreateCapacity(), true, new(95, 80));
+            CreateCapacity(), true, HostManagerTestPlanFactory.CreatePlan(performance:
+                ResourceManager.App.Application.Settings.AppSettingsDefaults.Create().Performance with
+                { GpuOverflowUsagePercent = usageThreshold, GpuOverflowDedicatedMemoryPercent = memoryThreshold })
+                .HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.Equal(22UL, plan.Gpu.Single(p => p.Process.ProcessId == 10).TargetAdapterKey);
         Assert.All(plan.Gpu, p => Assert.Equal(22UL, p.ObservedAdapterKey));
         Assert.Equal(overflow ? 11UL : 22UL, plan.Gpu.Single(p => p.Process.ProcessId == 20).TargetAdapterKey);

@@ -15,7 +15,6 @@ internal static class BackendFreedomPointPositions
     public const ulong GpuWindowExecutionLimits = 0x0001000200150000UL;
     public const ulong ActionTimeoutMs = 0x0001000200160000UL;
     public const ulong AutomaticExclusivity = 0x0001000200170000UL;
-    public const ulong GpuOverflowThresholds = 0x0001000200170001UL;
     public const ulong SoftwareWelfare = 0x0001000200190000UL;
     public const ulong BaseScoreTiers = 0x00010002001B0000UL;
     public const ulong SmtAccounting = 0x00010002001D0000UL;

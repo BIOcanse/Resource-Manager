@@ -772,7 +772,7 @@ public sealed class HostManagerPlanCompilerTests
     }
 
     [Fact]
-    public void Compiler_BindsUserTargetAndDangerLinesIntoNativeConfiguration()
+    public void Compiler_BindsUserTargetsAndGpuThresholdsWhileKeepingInternalDangerRatios()
     {
         var loaded = StrictHostManagerProfileLoader.LoadBytes(
             ReadDefaultProfile(),
@@ -781,8 +781,8 @@ public sealed class HostManagerPlanCompilerTests
         {
             PhysicalMemoryOptimizationTargetUsagePercent = 76,
             VirtualMemoryOptimizationTargetUsagePercent = 82,
-            VramMoveDownPhysicalMemoryDangerPercent = 14,
-            PhysicalMemoryMoveDownVirtualMemoryDangerPercent = 17,
+            GpuOverflowUsagePercent = 14,
+            GpuOverflowDedicatedMemoryPercent = 17,
             PhysicalMemoryAutomaticCleanupPercent = 9,
             VirtualMemoryAutomaticCleanupPercent = 11
         };
@@ -798,8 +798,9 @@ public sealed class HostManagerPlanCompilerTests
 
         Assert.Equal(0.24, configuration.TargetFreeRatios[1], 12);
         Assert.Equal(0.18, configuration.TargetFreeRatios[2], 12);
-        Assert.Equal(0.14, configuration.DangerMinimumPhysicalAfterVramMoveRatio, 12);
-        Assert.Equal(0.17, configuration.DangerMinimumVirtualAfterPhysicalMoveRatio, 12);
+        Assert.Equal(0.10, configuration.DangerMinimumPhysicalAfterVramMoveRatio, 12);
+        Assert.Equal(0.12, configuration.DangerMinimumVirtualAfterPhysicalMoveRatio, 12);
+        Assert.Equal(new CompiledGpuOverflowPolicy(14, 17), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.Equal(0.09, plan.HotPublish.MemoryCleanup.PhysicalEmergencyFreeRatio, 12);
         Assert.Equal(0.11, plan.HotPublish.MemoryCleanup.VirtualEmergencyFreeRatio, 12);
         Assert.NotEqual(0UL, configuration.Generation);

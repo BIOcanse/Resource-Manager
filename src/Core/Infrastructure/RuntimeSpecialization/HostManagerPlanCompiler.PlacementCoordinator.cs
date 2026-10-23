@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.GpuPlacement.WindowExecution;
 using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
@@ -55,13 +56,14 @@ public sealed partial class HostManagerPlanCompiler
     private static CompiledHostManagerPlacementCoordinatorHotPublishPlan CompilePlacementCoordinatorHotPublish(
         HostManagerPlacementCoordinatorHotPublishProfile source,
         int profileRevision,
-        FreedomPointCompilation freedom)
+        FreedomPointCompilation freedom,
+        AppPerformanceSettings performance)
     {
         const string consumer = "HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish";
         var timeout = freedom.Consume<int>(BackendFreedomPointPaths.PlacementActionTimeout, consumer);
         var observationWindow = freedom.Consume<int>(BackendFreedomPointPaths.GpuApiObservationWindow, consumer);
-        var overflow = freedom.Consume<CompiledGpuOverflowPolicy>(
-            BackendFreedomPointPaths.GpuOverflowThresholds, consumer);
+        var overflow = new CompiledGpuOverflowPolicy(
+            performance.GpuOverflowUsagePercent, performance.GpuOverflowDedicatedMemoryPercent);
         var exclusivity = freedom.Consume<CompiledCpuAutomaticExclusivityPolicy>(
             BackendFreedomPointPaths.CpuAutomaticExclusivity, consumer);
         if (!exclusivity.IsValid) throw new InvalidDataException("CPU exclusivity requires 0 <= exit < enter <= 100 and nonnegative qualification rounds.");

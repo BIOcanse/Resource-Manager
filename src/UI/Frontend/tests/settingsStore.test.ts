@@ -19,7 +19,7 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.27", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.28", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -76,7 +76,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.27", `${label}: version`);
+    assert.equal(settings.version, "1.0.28", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -95,30 +95,30 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
   } as unknown as AppSettings).performance!.smartMonitoringMode, "disabled", "Explicit off must stay off");
 }
 
-// 两个下移危险阈值：默认值与后端 AppSettingsDefaults 一致（10 / 12），各自按 0–95 取整归一化。
+// 独显溢出阈值：默认值与后端一致（95 / 80），各自按 1–100 取整归一化。
 {
-  assert.equal(canonicalDefaults.performance!.vramMoveDownPhysicalMemoryDangerPercent, 10);
-  assert.equal(canonicalDefaults.performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent, 12);
-  assert.equal(normalizedMissingFields.performance!.vramMoveDownPhysicalMemoryDangerPercent, 10);
-  assert.equal(normalizedMissingFields.performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent, 12);
+  assert.equal(canonicalDefaults.performance!.gpuOverflowUsagePercent, 95);
+  assert.equal(canonicalDefaults.performance!.gpuOverflowDedicatedMemoryPercent, 80);
+  assert.equal(normalizedMissingFields.performance!.gpuOverflowUsagePercent, 95);
+  assert.equal(normalizedMissingFields.performance!.gpuOverflowDedicatedMemoryPercent, 80);
   const clamped = normalizeAppSettings({
-    version: "1.0.27",
+    version: "1.0.28",
     performance: {
-      vramMoveDownPhysicalMemoryDangerPercent: 120,
-      physicalMemoryMoveDownVirtualMemoryDangerPercent: -4
+      gpuOverflowUsagePercent: 120,
+      gpuOverflowDedicatedMemoryPercent: -4
     }
   } as unknown as AppSettings).performance!;
-  assert.equal(clamped.vramMoveDownPhysicalMemoryDangerPercent, 95);
-  assert.equal(clamped.physicalMemoryMoveDownVirtualMemoryDangerPercent, 0);
+  assert.equal(clamped.gpuOverflowUsagePercent, 100);
+  assert.equal(clamped.gpuOverflowDedicatedMemoryPercent, 1);
   const rounded = normalizeAppSettings({
-    version: "1.0.27",
+    version: "1.0.28",
     performance: {
-      vramMoveDownPhysicalMemoryDangerPercent: 33.6,
-      physicalMemoryMoveDownVirtualMemoryDangerPercent: Number.NaN
+      gpuOverflowUsagePercent: 33.6,
+      gpuOverflowDedicatedMemoryPercent: Number.NaN
     }
   } as unknown as AppSettings).performance!;
-  assert.equal(rounded.vramMoveDownPhysicalMemoryDangerPercent, 34);
-  assert.equal(rounded.physicalMemoryMoveDownVirtualMemoryDangerPercent, 12, "A non-number falls back to the default");
+  assert.equal(rounded.gpuOverflowUsagePercent, 34);
+  assert.equal(rounded.gpuOverflowDedicatedMemoryPercent, 80, "A non-number falls back to the default");
 }
 
 class FakeSettingsSource implements SourceHandle<CommittedAppSettingsResult> {
@@ -348,31 +348,31 @@ await new Promise<void>((resolve, reject) => {
       } as never });
       source.publishReady({ settings: committed, revision: "m1", runtimeApplicationDisposition: "notRequested" });
 
-      store.updateMoveDownDangerLines(25, 12);
+      store.updateGpuOverflowThresholds(25, 80);
       await store.saveDraft();
       assert.deepEqual(patches.pop(), {
         expectedRevision: "m1",
-        changes: { performance: { vramMoveDownPhysicalMemoryDangerPercent: 25 } }
-      }, "Changing the VRAM move-down threshold must patch only that value");
-      assert.equal(store.settings().performance!.vramMoveDownPhysicalMemoryDangerPercent, 25);
-      assert.equal(store.settings().performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent, 12);
+        changes: { performance: { gpuOverflowUsagePercent: 25 } }
+      }, "Changing the GPU usage threshold must patch only that value");
+      assert.equal(store.settings().performance!.gpuOverflowUsagePercent, 25);
+      assert.equal(store.settings().performance!.gpuOverflowDedicatedMemoryPercent, 80);
       assert.equal(store.isDirty(), false);
 
-      store.updateMoveDownDangerLines(25, 40);
+      store.updateGpuOverflowThresholds(25, 40);
       await store.saveDraft();
       assert.deepEqual(patches.pop(), {
         expectedRevision: "m2",
-        changes: { performance: { physicalMemoryMoveDownVirtualMemoryDangerPercent: 40 } }
-      }, "Changing the memory move-down threshold must patch only that value");
-      assert.equal(store.settings().performance!.physicalMemoryMoveDownVirtualMemoryDangerPercent, 40);
+        changes: { performance: { gpuOverflowDedicatedMemoryPercent: 40 } }
+      }, "Changing the dedicated GPU memory threshold must patch only that value");
+      assert.equal(store.settings().performance!.gpuOverflowDedicatedMemoryPercent, 40);
       assert.equal(store.isDirty(), false);
 
-      store.updateMoveDownDangerLines(120, 40);
-      assert.equal(store.draftSettings().performance!.vramMoveDownPhysicalMemoryDangerPercent, 95);
+      store.updateGpuOverflowThresholds(120, 40);
+      assert.equal(store.draftSettings().performance!.gpuOverflowUsagePercent, 100);
       await store.saveDraft();
       assert.deepEqual(patches.pop(), {
         expectedRevision: "m3",
-        changes: { performance: { vramMoveDownPhysicalMemoryDangerPercent: 95 } }
+        changes: { performance: { gpuOverflowUsagePercent: 100 } }
       }, "Out-of-range input must be clamped before it is submitted");
 
       store.updateSmartMonitoringMode("disabled");

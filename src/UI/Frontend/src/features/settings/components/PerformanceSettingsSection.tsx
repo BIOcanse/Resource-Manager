@@ -31,7 +31,7 @@ interface PerformanceSettingsSectionProps {
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  onMoveDownDangerLinesChange: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
+  onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
 }
 
@@ -56,11 +56,11 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
     const virtual = field === "virtual" ? number : performance().virtualMemoryOptimizationTargetUsagePercent;
     props.onMemoryOptimizationTargetLinesChange(physical, virtual);
   };
-  const updateMoveDownDangerLine = (field: "vram" | "physical", value: string) => {
+  const updateGpuOverflowThreshold = (field: "usage" | "dedicated", value: string) => {
     const number = Number(value);
-    const vram = field === "vram" ? number : performance().vramMoveDownPhysicalMemoryDangerPercent;
-    const physical = field === "physical" ? number : performance().physicalMemoryMoveDownVirtualMemoryDangerPercent;
-    props.onMoveDownDangerLinesChange(vram, physical);
+    const usage = field === "usage" ? number : performance().gpuOverflowUsagePercent;
+    const dedicated = field === "dedicated" ? number : performance().gpuOverflowDedicatedMemoryPercent;
+    props.onGpuOverflowThresholdsChange(usage, dedicated);
   };
   const logicRefreshIntervalSetting = (key: AppLogicRefreshIntervalKey) => {
     const current = performance();
@@ -192,33 +192,33 @@ export function PerformanceSettingsSection(props: PerformanceSettingsSectionProp
           </label>
         </div>
       </div>
-      {/* 下移危险阈值：资源调度把显存下移到内存、把内存下移到虚拟内存前，按移动后的剩余比例判断是否放弃这次下移。 */}
+      {/* 两项阈值由设置发布到同一放置计划，任一项达到即触发溢出。 */}
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.performance.moveDownDangerTitle}</strong>
-          <span>{props.text.performance.moveDownDangerDescription}</span>
+          <strong>{props.text.performance.gpuOverflowTitle}</strong>
+          <span>{props.text.performance.gpuOverflowDescription}</span>
         </div>
         <div class="settings-number-pair">
           <label>
-            <span>{props.text.performance.vramMoveDownPhysicalMemoryDangerLabel}</span>
+            <span>{props.text.performance.gpuOverflowUsageLabel}</span>
             <input
               type="number"
-              min="0"
-              max="95"
+              min="1"
+              max="100"
               step="1"
-              value={performance().vramMoveDownPhysicalMemoryDangerPercent}
-              onChange={(event) => updateMoveDownDangerLine("vram", event.currentTarget.value)}
+              value={performance().gpuOverflowUsagePercent}
+              onChange={(event) => updateGpuOverflowThreshold("usage", event.currentTarget.value)}
             />
           </label>
           <label>
-            <span>{props.text.performance.physicalMemoryMoveDownVirtualMemoryDangerLabel}</span>
+            <span>{props.text.performance.gpuOverflowDedicatedMemoryLabel}</span>
             <input
               type="number"
-              min="0"
-              max="95"
+              min="1"
+              max="100"
               step="1"
-              value={performance().physicalMemoryMoveDownVirtualMemoryDangerPercent}
-              onChange={(event) => updateMoveDownDangerLine("physical", event.currentTarget.value)}
+              value={performance().gpuOverflowDedicatedMemoryPercent}
+              onChange={(event) => updateGpuOverflowThreshold("dedicated", event.currentTarget.value)}
             />
           </label>
         </div>

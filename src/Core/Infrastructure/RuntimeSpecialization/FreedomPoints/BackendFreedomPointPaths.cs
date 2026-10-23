@@ -9,7 +9,6 @@ internal static class BackendFreedomPointPaths
     public const string GameStartGrace = "resource-manager/backend/scheduling/transitions/runtime/simple/1";
     public const string FailureRetry = "resource-manager/backend/scheduling/transitions/runtime/simple/2";
     public const string PlacementActionTimeout = "resource-manager/backend/scheduling/placement/runtime/simple/0";
-    public const string GpuOverflowThresholds = "resource-manager/backend/scheduling/placement/runtime/complex/1";
     public const string CpuAutomaticExclusivity = "resource-manager/backend/scheduling/placement/runtime/complex/0";
     public const string GpuWindowExecutionLimits = "resource-manager/backend/scheduling/placement/build/complex/0";
     public const string GpuApiObservationWindow = "resource-manager/backend/scheduling/placement/build/simple/0";

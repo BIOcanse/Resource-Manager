@@ -47,7 +47,7 @@ interface SettingsPageProps {
   onGpuPerformanceUseCasesChange: (useCases: AppGpuPerformanceUseCase[]) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
-  onMoveDownDangerLinesChange: (vramMoveDownPhysicalMemoryPercent: number, physicalMemoryMoveDownVirtualMemoryPercent: number) => void;
+  onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
@@ -248,7 +248,7 @@ export function SettingsPage(props: SettingsPageProps) {
               onGpuPerformanceUseCasesChange={props.onGpuPerformanceUseCasesChange}
               onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
               onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
-              onMoveDownDangerLinesChange={props.onMoveDownDangerLinesChange}
+              onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
               onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
             />
           </Show>

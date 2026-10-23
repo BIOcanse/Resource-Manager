@@ -16,14 +16,11 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(23, points.Length);
-        Assert.Equal(17, points.Count(point => point.Status == "active"));
+        Assert.Equal(22, points.Length);
+        Assert.Equal(16, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
-        var overflow = Assert.Single(points, point => point.Address == BackendFreedomPointPaths.GpuOverflowThresholds);
-        Assert.Equal("active", overflow.Status);
-        Assert.Equal("publish_plan", overflow.UpdateClass);
-        Assert.Equal(80, overflow.Value!.Value.GetProperty("dedicated_memory_percent").GetDouble());
+        Assert.DoesNotContain(points, point => point.Address == "resource-manager/backend/scheduling/placement/runtime/complex/1");
         Assert.Equal(TimeSpan.FromSeconds(5), plan.SchedulerSamplingInterval);
         Assert.Equal(TimeSpan.FromSeconds(5), plan.CpuCoreResidency.ObservationWindow);
         Assert.Equal(
