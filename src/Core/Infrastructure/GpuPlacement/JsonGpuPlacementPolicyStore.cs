@@ -227,7 +227,6 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             softwareId,
             softwareName,
             GpuPlacementPolicyModes.Normalize(policy.EnabledMode),
-            GpuPlacementRiskLevels.Normalize(policy.MaxRisk),
             NormalizeProviderIds(policy.AllowedProviders),
             schedulingMode,
             startupTargetGpu,
@@ -259,7 +258,7 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
                 throw new InvalidOperationException("GPU 调度进程策略不能为空。");
             }
 
-            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low, GpuPlacementProviderIds.Defaults, GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.MinValue);
+            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementPolicyModes.Inherit, GpuPlacementProviderIds.Defaults, GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.MinValue);
         }
 
         var softwareId = throwOnInvalid
@@ -276,7 +275,6 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             CleanText(policy.ExecutablePath),
             policy.Inherit,
             GpuPlacementPolicyModes.Normalize(policy.EnabledMode, GpuPlacementPolicyModes.Inherit),
-            GpuPlacementRiskLevels.Normalize(policy.MaxRisk),
             NormalizeProviderIds(policy.AllowedProviders),
             GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
             policy.Inherit ? null : NormalizeBaseScoreOverride(policy.BaseScoreOverride),

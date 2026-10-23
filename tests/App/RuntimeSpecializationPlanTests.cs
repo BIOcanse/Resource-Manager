@@ -28,7 +28,7 @@ public sealed class RuntimeSpecializationPlanTests
         var explicitOn = game with { SoftwareId = "explicit-on", RuntimeHotSwitchEnabled = true };
         var explicitOff = ordinary with { SoftwareId = "explicit-off", RuntimeHotSwitchEnabled = false };
         var process = new GpuPlacementProcessPolicy("game", "renderer", "renderer.exe", @"C:\Game\renderer.exe",
-            false, GpuPlacementPolicyModes.Inherit, GpuPlacementRiskLevels.Low,
+            false, GpuPlacementPolicyModes.Inherit,
             GpuPlacementProviderIds.Defaults,
             GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.UnixEpoch);
         var document = new GpuPlacementPolicyDocument(GpuPlacementPolicyDocumentVersions.Current,
@@ -170,7 +170,6 @@ public sealed class RuntimeSpecializationPlanTests
             @"C:\Apps\worker.exe",
             Inherit: false,
             GpuPlacementPolicyModes.Manual,
-            GpuPlacementRiskLevels.Low,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
             GpuPlacementExplicitSelectionModes.AllowLow,
             BaseScoreOverride: null,

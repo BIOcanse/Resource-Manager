@@ -660,7 +660,6 @@ export interface SoftwareIssueTag {
 }
 
 export type GpuPlacementPolicyMode = "Inherit" | "Disabled" | "Preview" | "Auto" | "Manual";
-export type GpuPlacementRiskLevel = "Low" | "Medium" | "High";
 export type GpuPlacementTarget = "SystemDefaultGpu" | "AutoIdleGpu" | "IntegratedGpu" | "HighPerformanceGpu" | string;
 export type GpuPlacementSchedulingMode = "Precise" | "Ordinary";
 export type GpuPlacementRuntimeSchedulingMode = "Precise" | "Ordinary";
@@ -677,7 +676,6 @@ export interface GpuPlacementSoftwarePolicy {
   softwareId: string;
   softwareName: string;
   enabledMode: GpuPlacementPolicyMode;
-  maxRisk: GpuPlacementRiskLevel;
   allowedProviders: string[];
   schedulingMode: GpuPlacementSchedulingMode;
   startupTargetGpu: GpuPlacementTarget;
@@ -713,7 +711,6 @@ export interface GpuPlacementProcessPolicy {
   executablePath?: string | null;
   inherit: boolean;
   enabledMode: GpuPlacementPolicyMode;
-  maxRisk: GpuPlacementRiskLevel;
   allowedProviders: string[];
   explicitSelectionMode: GpuPlacementExplicitSelectionMode;
   baseScoreOverride?: number | null;

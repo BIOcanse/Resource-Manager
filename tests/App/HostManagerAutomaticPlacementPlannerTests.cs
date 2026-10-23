@@ -598,7 +598,6 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
     private static ResolvedGpuPlacementPolicy AutoPolicy()
         => new(
             GpuPlacementPolicyModes.Auto,
-            GpuPlacementRiskLevels.Low,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
             GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,

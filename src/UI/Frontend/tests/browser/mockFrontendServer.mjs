@@ -544,7 +544,6 @@ async function handleApi(request, response, url) {
         softwareId: mockSoftware.id,
         softwareName: mockSoftware.name,
         enabledMode: "Manual",
-        maxRisk: "Low",
         allowedProviders: [],
         schedulingMode: "Ordinary",
         startupTargetGpu: "SystemDefaultGpu",

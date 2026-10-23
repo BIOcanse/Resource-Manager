@@ -163,7 +163,6 @@ public sealed class GpuPlacementPolicyResolverTests
         var softwarePolicy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software-a", "Software A") with
         {
             EnabledMode = GpuPlacementPolicyModes.Auto,
-            MaxRisk = GpuPlacementRiskLevels.Medium,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var processPolicy = GpuPlacementPolicyDefaults.CreateProcessPolicy(
@@ -251,7 +250,6 @@ public sealed class GpuPlacementPolicyResolverTests
         {
             Inherit = false,
             EnabledMode = GpuPlacementPolicyModes.Manual,
-            MaxRisk = GpuPlacementRiskLevels.Medium,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var resolver = new GpuPlacementPolicyResolver(Document([softwarePolicy], [processPolicy]));
@@ -259,7 +257,6 @@ public sealed class GpuPlacementPolicyResolverTests
         var resolved = resolver.Resolve("software-a", "Software A", SoftwareKinds.Other, "helper", "C:\\Apps\\SoftwareA\\helper.exe");
 
         Assert.Equal(GpuPlacementPolicyModes.Manual, resolved.EnabledMode);
-        Assert.Equal(GpuPlacementRiskLevels.Medium, resolved.MaxRisk);
         Assert.Equal(GpuPlacementSchedulingModes.Precise, resolved.SchedulingMode);
         Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, resolved.StartupTargetGpu);
         Assert.Equal(GpuPlacementRuntimeSchedulingModes.Precise, resolved.RuntimeSchedulingMode);

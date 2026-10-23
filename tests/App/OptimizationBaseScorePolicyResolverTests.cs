@@ -124,7 +124,6 @@ public sealed class OptimizationBaseScorePolicyResolverTests
             null,
             inherit,
             GpuPlacementPolicyModes.Inherit,
-            GpuPlacementRiskLevels.Low,
             GpuPlacementProviderIds.Defaults,
             GpuPlacementExplicitSelectionModes.DefaultSkip,
             baseScoreOverride,
