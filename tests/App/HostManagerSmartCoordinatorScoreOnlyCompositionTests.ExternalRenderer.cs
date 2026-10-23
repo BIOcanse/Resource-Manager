@@ -63,8 +63,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var row = Assert.Single(rows);
         var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(row.SoftwareId, "Owned renderer") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         });
         var process = new HostManagerAutomaticPlacementProcess("retained", row.SoftwareId, "Owned renderer", row.ProcessId,
@@ -246,8 +245,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         host.Services.GetRequiredService<IGpuPlacementProcessHistoryStore>()), identity, ledger, root));
             var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy(ownedFact.SoftwareId, "Owned renderer") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+                RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             };
             var enabled = fixture.RuntimePlan with { Version = fixture.RuntimePlan.Version + 1,

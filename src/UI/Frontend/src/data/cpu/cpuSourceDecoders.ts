@@ -314,10 +314,6 @@ function decodeExclusiveBinding(value: unknown, path: string): CpuExclusiveBindi
     expandedLockedPhysicalCoreIds: requireStringArray(
       record.expandedLockedPhysicalCoreIds,
       `${path}.expandedLockedPhysicalCoreIds`),
-    locksAffinity: requireBoolean(record.locksAffinity, `${path}.locksAffinity`),
-    absolutePerformanceModeEnabled: requireBoolean(
-      record.absolutePerformanceModeEnabled,
-      `${path}.absolutePerformanceModeEnabled`),
     maximumOccupancyMode: requireNonEmptyString(
       record.maximumOccupancyMode,
       `${path}.maximumOccupancyMode`),

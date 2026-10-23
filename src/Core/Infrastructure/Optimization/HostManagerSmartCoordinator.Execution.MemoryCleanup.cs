@@ -251,7 +251,9 @@ public sealed partial class HostManagerSmartCoordinator
                         return MemoryCleanupTargetFactProjectionResult.Invalid;
                 }
 
-                if (target.CanApplyAutomaticPolicy && liveIdentityUnknown)
+                var cleanupAllowed = target.CanApplyAutomaticPolicy
+                    && !target.GpuPlacementPolicy.MemorySchedulingExcluded;
+                if (cleanupAllowed && liveIdentityUnknown)
                 {
                     unknownCandidateCount++;
                 }
@@ -264,8 +266,7 @@ public sealed partial class HostManagerSmartCoordinator
                     expectedStartedAt,
                     target.RuntimeState,
                     target.BaseScore,
-                    target.CanApplyAutomaticPolicy
-                        && exactLiveIdentity));
+                    cleanupAllowed && exactLiveIdentity));
             }
         }
         return new MemoryCleanupTargetFactProjectionResult(
@@ -333,6 +334,10 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
+        // Memory scheduling exclusion is resolved again for each candidate's current software, like
+        // protection. The cycle's publication lease holds new plans back, so this is the plan the round
+        // was planned with; an exclusion published during the round applies from the next round.
+        var gpuPlacementPlan = runtimePlanProvider.Current.GpuPlacement;
 
         var currentCandidates = new List<AutomaticMemoryCleanupCandidate>(
             request.Candidates.Count);
@@ -374,7 +379,8 @@ public sealed partial class HostManagerSmartCoordinator
                 current,
                 maximumBaseScore,
                 current.RuntimeState,
-                protectionLevel);
+                protectionLevel,
+                gpuPlacementPlan.Resolve(current.SoftwareId, null, null, null).MemorySchedulingExcluded);
             if (admission == HostManagerMemoryCleanupCandidateAdmissionStatus.Eligible)
             {
                 admission = HostManagerMemoryCleanupPrePonrAdmission.EvaluateLiveIdentity(

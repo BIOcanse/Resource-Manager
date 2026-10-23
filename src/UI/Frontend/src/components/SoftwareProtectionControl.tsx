@@ -35,10 +35,9 @@ export function SoftwareProtectionControl(props: { softwareId: string }) {
     } catch { if (current === request) { setEnabled(previous); setState("error"); } }
   }
 
+  // 放在策略页“调度参与”组第一行，与三个“不参与”开关并列但互不联动；保护立即保存，不进策略草稿。
   // 开关沿用设置页的 .settings-switch；整行是 label，点文字也能切换。
-  return <section class="software-detail-section software-protection-section">
-    <h3>{uiText.softwareDetail.protection.title}</h3>
-    <p class="software-detail-hint">{uiText.softwareDetail.protection.hint}</p>
+  return <div class="software-protection-section" role="group" aria-label={uiText.softwareDetail.protection.title}>
     <label class="policy-toggle">
       <span>{uiText.softwareDetail.protection.enabled}</span>
       <span class="settings-switch">
@@ -46,7 +45,8 @@ export function SoftwareProtectionControl(props: { softwareId: string }) {
         <span />
       </span>
     </label>
+    <p class="software-detail-hint">{uiText.softwareDetail.protection.hint}</p>
     <Show when={state() === "error"}><p class="software-protection-message error" role="alert">{uiText.softwareDetail.protection.failed}</p></Show>
     <Show when={state() === "loading" || state() === "saving"}><p class="software-protection-message" role="status">{uiText.softwareDetail.processing}</p></Show>
-  </section>;
+  </div>;
 }

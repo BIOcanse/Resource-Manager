@@ -60,9 +60,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             const string softwareId = "software:owned-opengl-first-use";
             var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, "Owned OpenGL cycle") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto,
-                SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
                 RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             });

@@ -53,7 +53,8 @@ public sealed partial class HostManagerSmartCoordinator
                 processStartKey,
                 target.SoftwareId,
                 target.CanApplyAutomaticPolicy
-                    && protectionLevel < OptimizationProtectionLevels.Level2NoOptimization,
+                    && protectionLevel < OptimizationProtectionLevels.Level2NoOptimization
+                    && !target.GpuPlacementPolicy.MemorySchedulingExcluded,
                 target.CanApplyAdaptedPolicy));
         }
 

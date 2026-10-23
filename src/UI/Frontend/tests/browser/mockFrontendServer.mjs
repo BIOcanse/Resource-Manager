@@ -536,6 +536,9 @@ async function handleApi(request, response, url) {
       sources: []
     });
   }
+  if (path === "/api/gpu-placement/process-history/observe" && request.method === "POST") {
+    return json(response, 200, { softwareId: mockSoftware.id, softwareName: mockSoftware.name, processes: [] });
+  }
   if (path === "/api/gpu-placement/software/frontend-harness.software") {
     return json(response, 200, {
       softwareId: mockSoftware.id,
@@ -543,20 +546,16 @@ async function handleApi(request, response, url) {
       softwarePolicy: {
         softwareId: mockSoftware.id,
         softwareName: mockSoftware.name,
-        enabledMode: "Manual",
         allowedProviders: [],
-        schedulingMode: "Ordinary",
         startupTargetGpu: "SystemDefaultGpu",
-        runtimeSchedulingMode: "Ordinary",
-        explicitSelectionMode: "DefaultSkip",
         runtimeHotSwitchEnabled: false,
         preferredRuntimeSwitchMethod: "FutureFrameTakeover",
         baseScoreOverride: null,
         processOverrideAllowed: false,
-        gpuExclusive: false,
-        absolutePerformanceModeEnabled: false,
+        cpuSchedulingExcluded: false,
+        memorySchedulingExcluded: false,
+        gpuSchedulingExcluded: false,
         cpuMaximumOccupancyMode: "AllCores",
-        cpuExclusiveLocksAffinity: false,
         cpuManualExclusivePositionIds: [],
         cpuManualLockedPositionIds: []
       },

@@ -17,7 +17,7 @@ export default async function localizationJourney(page, baseUrl) {
   });
   const scenario = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ runtimeEffectOwners: true })
+    body: JSON.stringify({ runtimeEffectOwners: true, gpuPlacementEnabled: true })
   });
   if (!scenario.ok) throw new Error("Unable to enable the mock runtime controls");
   await enableMetricFields(baseUrl);
@@ -151,17 +151,31 @@ export default async function localizationJourney(page, baseUrl) {
     const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const details = page.getByRole("dialog", { name: "示例软件" });
-    await details.getByRole("heading", { name: app.softwareDetail.protection.title, exact: true }).waitFor();
-    await details.getByText(app.softwareDetail.protection.hint, { exact: true }).waitFor();
-    const protection = details.getByRole("checkbox", { name: app.softwareDetail.protection.enabled, exact: true });
+    const policyTab = details.getByRole("tab", { name: app.softwareDetail.tab.policy, exact: true });
+    await policyTab.click();
+    // 保护与三个“不参与”开关同在策略页“调度参与”组，按当前语言显示，互不联动。
+    await details.getByRole("heading", { name: app.softwareDetail.participation.title, exact: true }).waitFor();
+    const protectionGroup = details.getByRole("group", { name: app.softwareDetail.protection.title, exact: true });
+    await protectionGroup.getByText(app.softwareDetail.protection.hint, { exact: true }).waitFor();
+    for (const [label, hint] of [
+      [app.softwareDetail.participation.cpu, app.softwareDetail.participation.cpuHint],
+      [app.softwareDetail.participation.memory, app.softwareDetail.participation.memoryHint],
+      [app.softwareDetail.participation.gpu, app.softwareDetail.participation.gpuHint]]) {
+      await details.getByRole("checkbox", { name: label, exact: true }).waitFor();
+      await details.getByText(hint, { exact: true }).waitFor();
+    }
+    const protection = protectionGroup.getByRole("checkbox", { name: app.softwareDetail.protection.enabled, exact: true });
     await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
     await protection.check();
     await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
     if (!await protection.isChecked()) throw new Error(`${option.id}: protection not enabled`);
     await details.locator('button.icon-button').first().click();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
+    await policyTab.click();
     await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
     if (!await protection.isChecked()) throw new Error(`${option.id}: protection did not reload`);
+    if (await details.getByRole("checkbox", { name: app.softwareDetail.participation.cpu, exact: true }).isChecked())
+      throw new Error(`${option.id}: protection changed an opt-out switch`);
     await protection.uncheck();
     await page.waitForFunction(() => !document.querySelector('.policy-toggle input')?.disabled);
     if (await protection.isChecked()) throw new Error(`${option.id}: protection not removed`);

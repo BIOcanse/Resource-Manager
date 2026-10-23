@@ -52,9 +52,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             const string displayName = "Owned mpv first use";
             var policy = ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy(softwareId, displayName) with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto,
-                SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise,
                 RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             });

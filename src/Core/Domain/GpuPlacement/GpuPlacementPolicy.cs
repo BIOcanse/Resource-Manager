@@ -5,29 +5,7 @@ namespace ResourceManager.App.Domain.GpuPlacement;
 
 public static class GpuPlacementPolicyDocumentVersions
 {
-    public const string Current = "1.3.0";
-}
-
-public static class GpuPlacementPolicyModes
-{
-    public const string Inherit = "Inherit";
-    public const string Disabled = "Disabled";
-    public const string Preview = "Preview";
-    public const string Auto = "Auto";
-    public const string Manual = "Manual";
-
-    public static string Normalize(string? value, string fallback = Preview)
-    {
-        return value?.Trim() switch
-        {
-            Inherit => Inherit,
-            Disabled => Disabled,
-            Preview => Preview,
-            Auto => Auto,
-            Manual => Manual,
-            _ => fallback
-        };
-    }
+    public const string Current = "2.0.0";
 }
 
 public static class GpuPlacementProviderIds
@@ -123,28 +101,6 @@ public static class GpuPlacementTargets
     }
 }
 
-public static class GpuPlacementExplicitSelectionModes
-{
-    public const string DefaultSkip = "DefaultSkip";
-    public const string PreviewOnly = "PreviewOnly";
-    public const string AllowLow = "AllowLow";
-    public const string AllowMedium = "AllowMedium";
-    public const string AllowHigh = "AllowHigh";
-
-    public static string Normalize(string? value, string fallback = DefaultSkip)
-    {
-        return value?.Trim() switch
-        {
-            DefaultSkip => DefaultSkip,
-            PreviewOnly => PreviewOnly,
-            AllowLow => AllowLow,
-            AllowMedium => AllowMedium,
-            AllowHigh => AllowHigh,
-            _ => fallback
-        };
-    }
-}
-
 public static class GpuPlacementRuntimeSwitchMethods
 {
     public const string FutureFrameTakeover = "FutureFrameTakeover";
@@ -156,38 +112,6 @@ public static class GpuPlacementRuntimeSwitchMethods
         {
             FutureFrameTakeover => FutureFrameTakeover,
             WindowRerender => WindowRerender,
-            _ => fallback
-        };
-    }
-}
-
-public static class GpuPlacementSchedulingModes
-{
-    public const string Precise = "Precise";
-    public const string Ordinary = "Ordinary";
-
-    public static string Normalize(string? value, string fallback = Precise)
-    {
-        return value?.Trim() switch
-        {
-            Precise => Precise,
-            Ordinary => Ordinary,
-            _ => fallback
-        };
-    }
-}
-
-public static class GpuPlacementRuntimeSchedulingModes
-{
-    public const string Precise = "Precise";
-    public const string Ordinary = "Ordinary";
-
-    public static string Normalize(string? value, string fallback = Precise)
-    {
-        return value?.Trim() switch
-        {
-            Precise => Precise,
-            Ordinary => Ordinary,
             _ => fallback
         };
     }
@@ -225,22 +149,17 @@ public sealed record GpuPlacementPolicyDocument(
 public sealed record GpuPlacementSoftwarePolicy(
     string SoftwareId,
     string SoftwareName,
-    string EnabledMode,
     IReadOnlyList<string> AllowedProviders,
-    string SchedulingMode,
     string StartupTargetGpu,
-    string RuntimeSchedulingMode,
-    string ExplicitSelectionMode,
     bool? RuntimeHotSwitchEnabled,
     string PreferredRuntimeSwitchMethod,
     double? BaseScoreOverride,
     bool ProcessOverrideAllowed,
     DateTimeOffset UpdatedAt,
-    bool? KeepCpuProcessesOnMainCcd = null,
-    bool GpuExclusive = false,
-    bool AbsolutePerformanceModeEnabled = false,
+    bool CpuSchedulingExcluded,
+    bool MemorySchedulingExcluded,
+    bool GpuSchedulingExcluded,
     string CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores,
-    bool CpuExclusiveLocksAffinity = false,
     IReadOnlyList<string>? CpuManualExclusivePositionIds = null,
     IReadOnlyList<string>? CpuManualLockedPositionIds = null);
 
@@ -250,9 +169,7 @@ public sealed record GpuPlacementProcessPolicy(
     string ProcessName,
     string? ExecutablePath,
     bool Inherit,
-    string EnabledMode,
     IReadOnlyList<string> AllowedProviders,
-    string ExplicitSelectionMode,
     double? BaseScoreOverride,
     DateTimeOffset UpdatedAt,
     bool StartupInterceptionEnabled = false);
@@ -362,22 +279,17 @@ public static class GpuPlacementPolicyDefaults
         return new GpuPlacementSoftwarePolicy(
             softwareId,
             softwareName,
-            GpuPlacementPolicyModes.Auto,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementRuntimeSchedulingModes.Precise,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover,
             null,
             true,
             updatedAt ?? DateTimeOffset.MinValue,
-            false,
-            false,
-            false,
+            CpuSchedulingExcluded: false,
+            MemorySchedulingExcluded: false,
+            GpuSchedulingExcluded: false,
             CpuMaximumOccupancyModes.AllCores,
-            false,
             [],
             []);
     }
@@ -393,9 +305,7 @@ public static class GpuPlacementPolicyDefaults
             process.ProcessName,
             process.ExecutablePath,
             true,
-            GpuPlacementPolicyModes.Inherit,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             updatedAt ?? DateTimeOffset.MinValue);
     }

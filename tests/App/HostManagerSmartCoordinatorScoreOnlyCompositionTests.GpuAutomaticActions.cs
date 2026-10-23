@@ -382,8 +382,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         => new("gpu-app-target", "software:gpu-app", "GPU app", 42412, 133900000000000001, "gpu-app", @"C:\fixture\gpu-app.exe",
             true, ResolvedGpuPlacementPolicy.FromSoftware(GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software:gpu-app", "GPU app") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+                RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],}), 30, new Dictionary<ulong, double> { [123] = 30 }, new Dictionary<ulong, double>());
 
     private static Task<HostManagerPlacementDesired?> CreateGpuDesired(HostManagerSmartCoordinator coordinator,

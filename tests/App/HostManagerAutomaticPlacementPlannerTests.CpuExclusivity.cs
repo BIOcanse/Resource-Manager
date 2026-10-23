@@ -140,6 +140,33 @@ public sealed partial class HostManagerAutomaticPlacementPlannerTests
         Assert.True(Reserve(session, [game], 4, []).IsOwner("game"));
     }
 
+    [Fact]
+    public void CpuSchedulingExclusionRemovesTheSoftwareFromExclusivityWithoutChangingOthers()
+    {
+        var game = ExclusiveGame("game", 10, 100);
+        var manual = CreateProcess("manual", 20, 200, null, AutoPolicy() with { CpuManualExclusivePositionIds = ["core:2"] })
+            with { SoftwareId = "manual" };
+        using (var session = CreateExclusiveSession(qualification: 0))
+        {
+            var participating = Reserve(session, [game, manual], 1, [(game, new[] { ("core:0", 75d) })]);
+            Assert.Equal(["core:0"], participating.BySoftware["game"]);
+            Assert.Equal(["core:2"], participating.BySoftware["manual"]);
+        }
+
+        using (var session = CreateExclusiveSession(qualification: 0))
+        {
+            var excludedGame = game with { Policy = game.Policy with { CpuSchedulingExcluded = true } };
+            var reservations = Reserve(session, [excludedGame, manual], 1, [(excludedGame, new[] { ("core:0", 75d) })]);
+            Assert.False(reservations.IsOwner("game"));
+            Assert.Equal(["core:2"], reservations.BySoftware["manual"]);
+        }
+
+        var excludedManual = manual with { Policy = manual.Policy with { CpuSchedulingExcluded = true } };
+        var projection = ExclusiveProjection([excludedManual], 1, []);
+        Assert.Empty(projection.Software);
+        Assert.Empty(projection.Manual);
+    }
+
     private static HostManagerAutomaticPlacementProcess ExclusiveGame(string software, int pid, double score)
         => CreateProcess(software, pid, score, null, AutoPolicy()) with { SoftwareKind = "game", SoftwareId = software };
 

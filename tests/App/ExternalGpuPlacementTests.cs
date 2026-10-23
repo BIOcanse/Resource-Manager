@@ -507,8 +507,7 @@ public sealed class ExternalGpuPlacementTests
         using var files = new GpuGraphicsApiIdentificationTests.Fixture();
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var sources = new NoSampling();
@@ -529,8 +528,7 @@ public sealed class ExternalGpuPlacementTests
         using var files = new GpuGraphicsApiIdentificationTests.Fixture();
         var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var sources = new NoSampling();

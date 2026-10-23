@@ -414,9 +414,30 @@
   background: var(--surface);
 }
 
-/* 二级保护：文字在左、设置页同款开关在右，整行可点。 */
+/* 策略页按“调度参与 / 基础分 / CPU / GPU / 进程覆盖”分组，组间留白分隔。 */
+.software-policy-group {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.software-policy-group h4 {
+  margin: 0;
+}
+
+.software-policy-group .cpu-manual-placement {
+  margin-top: 0;
+}
+
+/* 保护：在“调度参与”组第一行，文字在左、设置页同款开关在右，整行可点；说明在开关下方。 */
+.software-protection-section {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
 .software-protection-section .policy-toggle {
-  margin-top: 10px;
   min-height: 40px;
   display: flex;
   align-items: center;
@@ -437,7 +458,7 @@
 }
 
 .software-protection-message {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;

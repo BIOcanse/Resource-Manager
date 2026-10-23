@@ -5,7 +5,9 @@ using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
-public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : IGpuPlacementPolicyStore
+public sealed partial class JsonGpuPlacementPolicyStore(
+    IHostEnvironment environment,
+    ILogger<JsonGpuPlacementPolicyStore> logger) : IGpuPlacementPolicyStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -118,15 +120,14 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
         }
     }
 
+    // Runs inside the gate. A 2.0.0 file is read as is; a missing or 1.x version is migrated
+    // and atomically written back before it is returned; any other version is refused.
     private async Task<GpuPlacementPolicyDocument> LoadCoreAsync(CancellationToken cancellationToken)
     {
+        byte[] content;
         try
         {
-            await using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var document = await JsonSerializer.DeserializeAsync<GpuPlacementPolicyDocument>(
-                stream, JsonOptions, cancellationToken);
-            if (document is null) throw new InvalidDataException("The GPU placement policy file is empty.");
-            return NormalizeDocument(document);
+            content = await File.ReadAllBytesAsync(storagePath, cancellationToken);
         }
         catch (FileNotFoundException)
         {
@@ -136,6 +137,24 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
         {
             return GpuPlacementPolicyDocument.Empty;
         }
+
+        var version = ReadDocumentVersion(content);
+        if (string.Equals(version, GpuPlacementPolicyDocumentVersions.Current, StringComparison.Ordinal))
+        {
+            var document = JsonSerializer.Deserialize<GpuPlacementPolicyDocument>(content, JsonOptions);
+            if (document is null) throw new InvalidDataException("The GPU placement policy file is empty.");
+            return NormalizeDocument(document);
+        }
+
+        if (!IsLegacyDocumentVersion(version))
+        {
+            throw new InvalidDataException(
+                $"The GPU placement policy file version '{version}' is newer than this application supports.");
+        }
+
+        var migrated = NormalizeDocument(MigrateLegacyDocument(content));
+        await SaveCoreAsync(migrated, cancellationToken);
+        return migrated;
     }
 
     private async Task SaveCoreAsync(
@@ -212,36 +231,20 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             ? RequireText(policy.SoftwareId, "软件标识不能为空。")
             : CleanText(policy.SoftwareId) ?? "";
         var softwareName = CleanText(policy.SoftwareName) ?? softwareId;
-        var schedulingMode = GpuPlacementSchedulingModes.Normalize(policy.SchedulingMode);
-        var runtimeSchedulingMode = schedulingMode.Equals(GpuPlacementSchedulingModes.Ordinary, StringComparison.OrdinalIgnoreCase)
-            ? GpuPlacementRuntimeSchedulingModes.Ordinary
-            : GpuPlacementRuntimeSchedulingModes.Normalize(policy.RuntimeSchedulingMode);
-        var startupTargetGpu = GpuPlacementTargets.Normalize(policy.StartupTargetGpu);
-        if (schedulingMode.Equals(GpuPlacementSchedulingModes.Ordinary, StringComparison.OrdinalIgnoreCase))
-        {
-            startupTargetGpu = GpuPlacementTargets.NormalizeSystemTarget(startupTargetGpu);
-        }
-        var cpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode);
-
         return new GpuPlacementSoftwarePolicy(
             softwareId,
             softwareName,
-            GpuPlacementPolicyModes.Normalize(policy.EnabledMode),
             NormalizeProviderIds(policy.AllowedProviders),
-            schedulingMode,
-            startupTargetGpu,
-            runtimeSchedulingMode,
-            GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
+            GpuPlacementTargets.Normalize(policy.StartupTargetGpu),
             policy.RuntimeHotSwitchEnabled,
             GpuPlacementRuntimeSwitchMethods.Normalize(policy.PreferredRuntimeSwitchMethod),
             NormalizeBaseScoreOverride(policy.BaseScoreOverride),
             policy.ProcessOverrideAllowed,
             updatedAt,
-            cpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase),
-            policy.GpuExclusive,
-            policy.AbsolutePerformanceModeEnabled,
-            cpuMaximumOccupancyMode,
-            policy.CpuExclusiveLocksAffinity,
+            policy.CpuSchedulingExcluded,
+            policy.MemorySchedulingExcluded,
+            policy.GpuSchedulingExcluded,
+            CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
             NormalizeCpuPositionIds(policy.CpuManualExclusivePositionIds),
             NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds));
     }
@@ -258,7 +261,7 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
                 throw new InvalidOperationException("GPU 调度进程策略不能为空。");
             }
 
-            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementPolicyModes.Inherit, GpuPlacementProviderIds.Defaults, GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.MinValue);
+            return new GpuPlacementProcessPolicy("", "", "", null, true, GpuPlacementProviderIds.Defaults, null, DateTimeOffset.MinValue);
         }
 
         var softwareId = throwOnInvalid
@@ -274,9 +277,7 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
             processName,
             CleanText(policy.ExecutablePath),
             policy.Inherit,
-            GpuPlacementPolicyModes.Normalize(policy.EnabledMode, GpuPlacementPolicyModes.Inherit),
             NormalizeProviderIds(policy.AllowedProviders),
-            GpuPlacementExplicitSelectionModes.Normalize(policy.ExplicitSelectionMode),
             policy.Inherit ? null : NormalizeBaseScoreOverride(policy.BaseScoreOverride),
             updatedAt,
             policy.StartupInterceptionEnabled);
@@ -328,15 +329,11 @@ public sealed class JsonGpuPlacementPolicyStore(IHostEnvironment environment) : 
     {
         return policy with
         {
-            SchedulingMode = GpuPlacementSchedulingModes.Normalize(policy.SchedulingMode),
             StartupTargetGpu = GpuPlacementTargets.Normalize(policy.StartupTargetGpu),
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Normalize(policy.RuntimeSchedulingMode),
             RuntimeHotSwitchEnabled = policy.RuntimeHotSwitchEnabled
                 ?? GpuPlacementPolicyDefaults.ResolveDefaultRuntimeHotSwitchEnabled(softwareKind),
             PreferredRuntimeSwitchMethod = GpuPlacementRuntimeSwitchMethods.Normalize(policy.PreferredRuntimeSwitchMethod),
             CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
-            KeepCpuProcessesOnMainCcd = CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode)
-                .Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase),
             CpuManualExclusivePositionIds = NormalizeCpuPositionIds(policy.CpuManualExclusivePositionIds),
             CpuManualLockedPositionIds = NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds)
         };

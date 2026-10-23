@@ -109,8 +109,7 @@ public sealed class GpuRuntimeRecreationNativeTests(ITestOutputHelper output)
             using var files = new D3d11ProxyShimRuntimeTests.PolicyFiles();
             var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("renderer", "Renderer") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+                RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
             };
             var store = new JsonGpuPlacementProcessHistoryStore(files);

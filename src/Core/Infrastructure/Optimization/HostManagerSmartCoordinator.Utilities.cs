@@ -27,7 +27,9 @@ public sealed partial class HostManagerSmartCoordinator
         CompiledOptimizationModePlan modePlan,
         HostManagerTargetInfo target)
     {
-        return modePlan.AutomaticProcessPoliciesEnabled && target.CanApplyAutomaticPolicy;
+        return modePlan.AutomaticProcessPoliciesEnabled
+            && target.CanApplyAutomaticPolicy
+            && !target.GpuPlacementPolicy.CpuSchedulingExcluded;
     }
 
     private static int? TryGetForegroundProcessId()

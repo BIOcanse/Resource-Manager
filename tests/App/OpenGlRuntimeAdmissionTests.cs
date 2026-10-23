@@ -10,9 +10,7 @@ public sealed class OpenGlRuntimeAdmissionTests
     [Theory]
     [InlineData("allowed", false)]
     [InlineData("global-off", false)]
-    [InlineData("disabled", false)]
-    [InlineData("preview", false)]
-    [InlineData("ordinary", false)]
+    [InlineData("gpu-scheduling-excluded", false)]
     [InlineData("hot-switch-off", false)]
     [InlineData("empty-permission", false)]
     [InlineData("process-disabled", false)]
@@ -37,11 +35,7 @@ public sealed class OpenGlRuntimeAdmissionTests
         var history = new RunningGpuPlacementIdentityTests.HistoryReader(new JsonGpuPlacementProcessHistoryStore(files));
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
-            EnabledMode = boundary == "disabled" ? GpuPlacementPolicyModes.Disabled
-                : boundary == "preview" ? GpuPlacementPolicyModes.Preview : GpuPlacementPolicyModes.Auto,
-            SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = boundary == "ordinary" ? GpuPlacementRuntimeSchedulingModes.Ordinary
-                : GpuPlacementRuntimeSchedulingModes.Precise,
+            GpuSchedulingExcluded = boundary == "gpu-scheduling-excluded",
             RuntimeHotSwitchEnabled = boundary != "hot-switch-off",
             AllowedProviders = boundary == "empty-permission" ? [] : [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };

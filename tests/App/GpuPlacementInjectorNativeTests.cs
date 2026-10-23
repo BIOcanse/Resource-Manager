@@ -23,8 +23,7 @@ public sealed partial class GpuPlacementInjectorNativeTests(ITestOutputHelper ou
         await using var child = await OwnedProbe.StartAsync(api, output);
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("actual-software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var initial = new JsonGpuPlacementProcessHistoryStore(files);

@@ -41,7 +41,8 @@ internal sealed class HostManagerCpuExclusivityProjection
             .ToDictionary(static item => item.Id, static item => item.Index, StringComparer.OrdinalIgnoreCase);
         var ccdIndexes = ccdIds.Select((id, index) => (id, Index: checked((uint)index)))
             .ToDictionary(static item => item.id, static item => item.Index, StringComparer.OrdinalIgnoreCase);
-        var groups = processes.GroupBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
+        var groups = processes.Where(static process => !process.Policy.CpuSchedulingExcluded)
+            .GroupBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .Select(group => (Id: group.Key, Key: Key(group.Key.ToUpperInvariant()), Processes: group.OrderBy(static p => p.ProcessId).ThenBy(static p => p.ProcessStartKey).ToArray()))
             .OrderBy(static group => group.Key).ToArray();
         if (cores.Length > capacity.CoreCapacity || ccdIds.Length > capacity.CcdCapacity || groups.Length > capacity.TargetCapacity)

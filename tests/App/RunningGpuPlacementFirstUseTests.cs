@@ -419,8 +419,7 @@ public sealed class RunningGpuPlacementFirstUseTests
         internal readonly HostingEnvironment Environment = new() { ContentRootPath = GpuWindowLedgerTestData.NewRoot("first-api-composition") };
         internal readonly GpuPlacementSoftwarePolicy Software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         internal readonly JsonGpuPlacementProcessHistoryStore History;

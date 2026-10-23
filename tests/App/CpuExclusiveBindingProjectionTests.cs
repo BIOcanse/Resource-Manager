@@ -13,18 +13,16 @@ public sealed class CpuExclusiveBindingProjectionTests
         var policy = new GpuPlacementSoftwarePolicy(
             "software:one",
             "Example",
-            GpuPlacementPolicyModes.Auto,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.AutoIdleGpu,
-            GpuPlacementTargets.AutoIdleGpu,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover,
             null,
             true,
             DateTimeOffset.UnixEpoch,
-            CpuExclusiveLocksAffinity: true,
+            CpuSchedulingExcluded: false,
+            MemorySchedulingExcluded: false,
+            GpuSchedulingExcluded: false,
             CpuManualExclusivePositionIds: ["ccd:0", "core:2"],
             CpuManualLockedPositionIds: ["core:1", "core:3"]);
 
@@ -41,7 +39,6 @@ public sealed class CpuExclusiveBindingProjectionTests
         Assert.Equal(["ccd:0", "core:2"], binding.RequestedExclusivePositionIds);
         Assert.Equal(["core:0", "core:1", "core:2"], binding.ExpandedExclusivePhysicalCoreIds);
         Assert.Equal(["core:1", "core:3"], binding.ExpandedLockedPhysicalCoreIds);
-        Assert.True(binding.LocksAffinity);
     }
 
     [Fact]
@@ -74,17 +71,16 @@ public sealed class CpuExclusiveBindingProjectionTests
         new(
             softwareId,
             name,
-            GpuPlacementPolicyModes.Auto,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementSchedulingModes.Precise,
             GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementTargets.SystemDefaultGpu,
-            GpuPlacementExplicitSelectionModes.DefaultSkip,
             null,
             GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover,
             null,
             true,
             updatedAt,
+            CpuSchedulingExcluded: false,
+            MemorySchedulingExcluded: false,
+            GpuSchedulingExcluded: false,
             CpuManualExclusivePositionIds: positions);
 
     private static CpuTopologySnapshot CreateTopology()

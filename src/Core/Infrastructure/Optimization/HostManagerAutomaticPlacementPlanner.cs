@@ -96,6 +96,7 @@ internal static partial class HostManagerAutomaticPlacementPlanner
 
         var candidates = processes
             .Where(static process => process.CanApplyPhysicalPlacement)
+            .Where(static process => !process.Policy.CpuSchedulingExcluded)
             .Where(process => process.CanonicalCpuScore is >= 0 || reservations?.ExcludedFor(process.SoftwareId).Count > 0)
             .OrderByDescending(static process => process.CanonicalCpuScore ?? 0)
             .ThenBy(static process => process.TargetId, StringComparer.OrdinalIgnoreCase)
@@ -206,7 +207,6 @@ internal static partial class HostManagerAutomaticPlacementPlanner
             .Where(static process => process.ExecutablePath is not null)
             .Where(static process => process.CanMigrateGpu)
             .Where(static process => process.CanonicalGpuScores.Count != 0)
-            .Where(static process => AllowsPlacementWrite(process.Policy.EnabledMode))
             .Where(process => runtimeGpuShimEnabled && process.Policy.AcceptsExternalRuntimeGpuScheduling())
             .Select(static process => new GpuCandidate(
                 process,
@@ -316,10 +316,6 @@ internal static partial class HostManagerAutomaticPlacementPlanner
             state.AssignedCount++;
         }
     }
-
-    private static bool AllowsPlacementWrite(string enabledMode)
-        => enabledMode.Equals(GpuPlacementPolicyModes.Auto, StringComparison.OrdinalIgnoreCase)
-            || enabledMode.Equals(GpuPlacementPolicyModes.Manual, StringComparison.OrdinalIgnoreCase);
 
     private static void ValidateCapacity(
         CpuTopologySnapshot? topology,

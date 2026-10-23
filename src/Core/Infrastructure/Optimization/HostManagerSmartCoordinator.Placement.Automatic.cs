@@ -630,7 +630,7 @@ public sealed partial class HostManagerSmartCoordinator
         CpuTopologySnapshot topology,
         HostManagerAutomaticPlacementProcess process)
     {
-        if (!process.CanApplyPhysicalPlacement)
+        if (!process.CanApplyPhysicalPlacement || process.Policy.CpuSchedulingExcluded)
         {
             return false;
         }

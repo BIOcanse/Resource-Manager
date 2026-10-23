@@ -30,6 +30,7 @@ import resourceTableContentStateJourney from "./resourceTableContentStateJourney
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import softwareIssueJourney from "./softwareIssueJourney.js";
+import softwareParticipationJourney from "./softwareParticipationJourney.js";
 import taskCenterJourney from "./taskCenterJourney.js";
 import themeConsistencyJourney from "./themeConsistencyJourney.js";
 import uiPrimitivesJourney from "./uiPrimitivesJourney.js";
@@ -53,6 +54,7 @@ const allJourneys = [
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
+  ["software-participation", softwareParticipationJourney],
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
   ["software-issues", softwareIssueJourney],

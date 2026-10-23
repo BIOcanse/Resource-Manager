@@ -38,8 +38,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
         var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy(process.SoftwareId, process.DisplayName) with
         {
-            EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-            RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+            RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
         var injector = new WindowsGpuPlacementInjector(NullLogger<WindowsGpuPlacementInjector>.Instance);

@@ -30,8 +30,6 @@ public static class CpuExclusiveBindingProjection
                 CpuPositionIdResolver.ExpandToPhysicalCoreIds(
                     policy.CpuManualLockedPositionIds,
                     topology),
-                policy.CpuExclusiveLocksAffinity,
-                policy.AbsolutePerformanceModeEnabled,
                 CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
                 policy.UpdatedAt))
             .OrderBy(static binding => binding.SoftwareName, StringComparer.CurrentCultureIgnoreCase)

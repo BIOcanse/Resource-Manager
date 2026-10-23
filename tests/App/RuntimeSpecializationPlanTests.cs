@@ -28,9 +28,9 @@ public sealed class RuntimeSpecializationPlanTests
         var explicitOn = game with { SoftwareId = "explicit-on", RuntimeHotSwitchEnabled = true };
         var explicitOff = ordinary with { SoftwareId = "explicit-off", RuntimeHotSwitchEnabled = false };
         var process = new GpuPlacementProcessPolicy("game", "renderer", "renderer.exe", @"C:\Game\renderer.exe",
-            false, GpuPlacementPolicyModes.Inherit,
+            false,
             GpuPlacementProviderIds.Defaults,
-            GpuPlacementExplicitSelectionModes.DefaultSkip, null, DateTimeOffset.UnixEpoch);
+            null, DateTimeOffset.UnixEpoch);
         var document = new GpuPlacementPolicyDocument(GpuPlacementPolicyDocumentVersions.Current,
             [game, highPerformance, ordinary, explicitOn, explicitOff], [process], DateTimeOffset.UnixEpoch);
         var topology = new CpuTopologySnapshot(DateTimeOffset.UnixEpoch, "fixture",
@@ -41,8 +41,7 @@ public sealed class RuntimeSpecializationPlanTests
 
         Assert.False(plan.Resolve("game", "Game", SoftwareKinds.Game, null).RuntimeHotSwitchEnabled);
         Assert.False(plan.Resolve("game", "Game", SoftwareKinds.Game, "renderer").RuntimeHotSwitchEnabled);
-        Assert.Equal(GpuPlacementPolicyModes.Auto,
-            plan.Resolve("game", "Game", SoftwareKinds.Game, "renderer").EnabledMode);
+        Assert.False(plan.Resolve("game", "Game", SoftwareKinds.Game, "renderer").GpuSchedulingExcluded);
         Assert.False(plan.Resolve("work", "Work", SoftwareKinds.HighPerformance, null).RuntimeHotSwitchEnabled);
         Assert.True(plan.Resolve("ordinary", "Ordinary", SoftwareKinds.Other, null).RuntimeHotSwitchEnabled);
         Assert.True(plan.Resolve("explicit-on", "Game", SoftwareKinds.Game, null).RuntimeHotSwitchEnabled);
@@ -169,9 +168,7 @@ public sealed class RuntimeSpecializationPlanTests
             "worker.exe",
             @"C:\Apps\worker.exe",
             Inherit: false,
-            GpuPlacementPolicyModes.Manual,
             [GpuPlacementProviderIds.D3dDeviceCreateShim],
-            GpuPlacementExplicitSelectionModes.AllowLow,
             BaseScoreOverride: null,
             DateTimeOffset.UnixEpoch);
         var plan = new CompiledGpuPlacementPlan(
@@ -189,7 +186,7 @@ public sealed class RuntimeSpecializationPlanTests
         var resolved = plan.Resolve("software-a", "Software A", SoftwareKinds.Other, "proc-key");
 
         Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, resolved.StartupTargetGpu);
-        Assert.Equal(GpuPlacementPolicyModes.Manual, resolved.EnabledMode);
+        Assert.False(resolved.GpuSchedulingExcluded);
         Assert.True(resolved.AllowsRuntimeShimExecution());
     }
 

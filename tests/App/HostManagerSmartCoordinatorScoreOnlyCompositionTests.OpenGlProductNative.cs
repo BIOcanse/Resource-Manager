@@ -52,8 +52,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var history = new JsonGpuPlacementProcessHistoryStore(historyEnvironment);
             var software = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "OpenGL fixture") with
             {
-                EnabledMode = GpuPlacementPolicyModes.Auto, SchedulingMode = GpuPlacementSchedulingModes.Precise,
-                RuntimeSchedulingMode = GpuPlacementRuntimeSchedulingModes.Precise, RuntimeHotSwitchEnabled = true,
+                RuntimeHotSwitchEnabled = true,
                 AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim],};
             var callbackRuntime = new WindowsGpuCallbackPreparationRuntime();
             D3d11ProxyShimRuntime runtime = null!;
