@@ -38,7 +38,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<GpuLaunchInterceptionReconciler>());
         }
         services.AddSingleton<IRunningGpuPlacementActionService, ExternalOnlyRunningGpuPlacementActionService>();
-        services.AddSingleton<LegacyGpuPreferenceActionRestorer>();
         return services;
     }
 }
