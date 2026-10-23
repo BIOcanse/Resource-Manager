@@ -8,6 +8,7 @@ namespace ResourceManager.Shared.ServiceHosting;
 public sealed record WindowsServiceState(uint State, uint StartType, string BinaryPath, string Account)
 {
     public bool Running => State == 4;
+    public uint ProcessId { get; init; }
 }
 
 public static class WindowsServiceRegistration
@@ -90,6 +91,15 @@ public static class WindowsServiceRegistration
             Check(ControlService(service, 1, out _));
             WaitForState(service, 1);
         }
+    }
+
+    public static void WaitForStopped(string serviceName, string executablePath)
+    {
+        using var manager = OpenManager(1);
+        using var service = OpenServiceW(manager, serviceName, 1 | 4);
+        if (service.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        RequireExpectedBinary(Read(service), executablePath);
+        WaitForState(service, 1);
     }
 
     public static void DeleteOwned(string serviceName, string executablePath)
@@ -177,10 +187,11 @@ public static class WindowsServiceRegistration
         {
             Check(QueryServiceConfigW(service, buffer, bytes, out _));
             var config = Marshal.PtrToStructure<ServiceConfig>(buffer);
-            Check(QueryServiceStatus(service, out var status));
+            Check(QueryServiceStatusEx(service, 0, out var status,
+                checked((uint)Marshal.SizeOf<ServiceStatusProcess>()), out _));
             return new WindowsServiceState(status.CurrentState, config.StartType,
                 Marshal.PtrToStringUni(config.BinaryPath) ?? "",
-                Marshal.PtrToStringUni(config.Account) ?? "");
+                Marshal.PtrToStringUni(config.Account) ?? "") { ProcessId = status.ProcessId };
         }
         finally { Marshal.FreeHGlobal(buffer); }
     }
@@ -236,6 +247,13 @@ public static class WindowsServiceRegistration
             ServiceSpecificExitCode, CheckPoint, WaitHint;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ServiceStatusProcess
+    {
+        public uint ServiceType, CurrentState, ControlsAccepted, Win32ExitCode,
+            ServiceSpecificExitCode, CheckPoint, WaitHint, ProcessId, ServiceFlags;
+    }
+
     private sealed class ServiceHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
         public ServiceHandle() : base(true) { }
@@ -257,6 +275,9 @@ public static class WindowsServiceRegistration
         string? binary, string? group, IntPtr tag, string? dependencies, string? account, string? password, string? display);
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool QueryServiceStatus(ServiceHandle service, out ServiceStatus status);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool QueryServiceStatusEx(ServiceHandle service, int infoLevel,
+        out ServiceStatusProcess status, uint size, out uint needed);
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool ControlService(ServiceHandle service, uint control, out ServiceStatus status);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

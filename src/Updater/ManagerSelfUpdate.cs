@@ -8,21 +8,21 @@ namespace ResourceManager.Updater;
 
 internal static class ManagerSelfUpdate
 {
-    public static bool Schedule(ReleasePackageLayout package, string installRoot, string installedExecutable,
+    public static bool Schedule(ReleasePackageLayout package, string installRoot,
         ToolText? text = null)
-        => Schedule(package, installRoot, installedExecutable, start =>
+        => Schedule(package, installRoot, start =>
         {
             using var helper = Process.Start(start)
                 ?? throw new InvalidOperationException((text ?? ToolText.FromInstallRoot(installRoot)).ManagerHelperStartFailed);
         }, text);
 
-    internal static bool Schedule(ReleasePackageLayout package, string installRoot, string installedExecutable,
+    internal static bool Schedule(ReleasePackageLayout package, string installRoot,
         Action<ProcessStartInfo> launch, ToolText? text = null)
     {
         // ApplyAsync has committed this protected copy. Never execute the user's download tree.
         var source = UpdateManagerPaths.PackagedExecutable(Path.GetFullPath(installRoot));
         using var verifiedSource = OpenVerifiedManager(installRoot, package.Version, text);
-        if (SameFileContents(verifiedSource, installedExecutable)) return false;
+        if (SameFileContents(verifiedSource, UpdateManagerPaths.InstalledExecutable(installRoot))) return false;
         var start = new ProcessStartInfo(source)
         {
             UseShellExecute = false,

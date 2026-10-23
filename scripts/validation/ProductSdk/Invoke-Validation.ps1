@@ -220,6 +220,7 @@ if($Stage -in @('Sources','Pack','Consumers')) {
         ('-p:CompilerResponseFile='+(Join-Path $taskRepo 'scripts/validation/ProductSdk/serial-compiler.rsp')),
         ('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $taskRoot 'ledger-native')),
         ('-p:ResourceManagerLedgerPowerShell='+$taskCompilePowerShell),
+        ('-p:DiskCheckpointPowerShell='+$taskCompilePowerShell),
         ('-p:RestoreConfigFile='+(Join-Path $taskRoot 'NuGet.official.config')),
         ('-p:RestorePackagesPath='+(Join-Path $taskCompileArtifacts 'packages'))
     )
@@ -243,8 +244,7 @@ if($Stage -in @('Sources','Pack','Consumers')) {
         if(@($taskCompileNativeContext.outputs|Where-Object {[string]$_.path -ieq [string]$taskCompileNativeContext.properties.NativeCoreOutput}).Count -ne 1){throw 'NativeCoreOutput is not bound to a verified output.'}
     }
     if($taskDiskInputs) {
-        $taskCompileProperties+=@(('-p:DiskCheckpointNativeRoot='+$taskDiskInputs.context.artifactRoot),
-            ('-p:DiskCheckpointPowerShell='+$taskCompilePowerShell))
+        $taskCompileProperties+=('-p:DiskCheckpointNativeRoot='+$taskDiskInputs.context.artifactRoot)
     }
     if(-not [string]::IsNullOrWhiteSpace($LedgerBuildRoot)) {
         $taskCompileProperties+=('-p:ResourceManagerLedgerBuildRoot='+[IO.Path]::GetFullPath($LedgerBuildRoot))

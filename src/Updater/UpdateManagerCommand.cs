@@ -90,7 +90,7 @@ public static class UpdateManagerCommand
         var operation = args[0] == "--repair" ? UpdateOperation.Repair : UpdateOperation.Update;
         var plan = UpdatePlan.Create(args[1], args[2], operation);
         if (args[0] == "--plan-only") return text.Format(text.PreflightFormat, plan.Package.Version);
-        RequireInstalledManager(executablePath, plan.InstallRoot, text);
+        RequireApplyManager(executablePath, plan, text);
         using var updateLock = AcquireOperationLock(plan.InstallRoot, text);
         var pending = PackageSwitchTransaction.ListPending(plan.InstallRoot);
         if (pending.Count > 0)
@@ -112,7 +112,7 @@ public static class UpdateManagerCommand
         }
         try
         {
-            if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, executablePath, text))
+            if (ManagerSelfUpdate.Schedule(plan.Package, plan.InstallRoot, text))
                 result += " " + text.SelfReplaceNotice;
         }
         catch (Exception exception)
@@ -198,6 +198,23 @@ public static class UpdateManagerCommand
         if (!File.Exists(expected)) throw new FileNotFoundException(text.MissingManager, expected);
         ReleasePackageLayout.RejectReparse(expected);
         ReleasePackageLayout.RejectReparse(UpdateManagerPaths.InstalledDirectory(installRoot));
+    }
+
+    internal static void RequireApplyManager(string executablePath, UpdatePlan plan, ToolText text)
+    {
+        var actual = Path.GetFullPath(executablePath);
+        if (actual.Equals(UpdateManagerPaths.InstalledExecutable(plan.InstallRoot),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            RequireInstalledManager(actual, plan.InstallRoot, text);
+            return;
+        }
+        if (!actual.Equals(UpdateManagerPaths.PackagedExecutable(plan.Package.Root),
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(text.ExternalManagerRequired);
+        // UpdatePlan already verified this exact selected package. Recheck its
+        // manager at the execution boundary, not an arbitrary matching filename.
+        using var verified = ManagerSelfUpdate.OpenVerifiedManager(plan.Package.Root, plan.Package.Version, text);
     }
 
     internal static FileStream AcquireOperationLock(string installRoot, ToolText? text = null)

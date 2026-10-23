@@ -305,11 +305,13 @@ internal static class PackageSwitchTransaction
         destinationFile.SetAccessControl(destinationSecurity);
     }
 
-    private static void CopyOwnedAccessRules(FileSystemSecurity source, FileSystemSecurity destination)
+    internal static void CopyOwnedAccessRules(FileSystemSecurity source, FileSystemSecurity destination)
     {
         if (source.AreAccessRulesProtected)
             destination.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         var owner = source.GetOwner(typeof(SecurityIdentifier));
+        var descriptor = new CommonSecurityDescriptor(destination is DirectorySecurity, false,
+            destination.GetSecurityDescriptorBinaryForm(), 0);
         foreach (FileSystemAccessRule rule in source.GetAccessRules(
                      includeExplicit: true, includeInherited: true, targetType: typeof(SecurityIdentifier)))
         {
@@ -318,9 +320,15 @@ internal static class PackageSwitchTransaction
             // retain that user's existing rights explicitly, without granting
             // new rights from a directory name or copying unrelated ancestor rules.
             if (rule.IsInherited && !rule.IdentityReference.Equals(owner)) continue;
-            destination.AddAccessRule(new FileSystemAccessRule(rule.IdentityReference,
-                rule.FileSystemRights, rule.InheritanceFlags, rule.PropagationFlags, rule.AccessControlType));
+            // Inherited Windows ACEs can retain GENERIC_* bits. The typed
+            // FileSystemAccessRule constructor rejects those valid raw masks.
+            descriptor.DiscretionaryAcl!.AddAccess(rule.AccessControlType,
+                (SecurityIdentifier)rule.IdentityReference, (int)rule.FileSystemRights,
+                rule.InheritanceFlags, rule.PropagationFlags);
         }
+        var binary = new byte[descriptor.BinaryLength];
+        descriptor.GetBinaryForm(binary, 0);
+        destination.SetSecurityDescriptorBinaryForm(binary, AccessControlSections.Access);
     }
 
     private static void WriteJournal(string workspace, UpdatePlan plan, string stage)
