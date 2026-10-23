@@ -6,14 +6,14 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.27";
+    public const string CurrentVersion = "1.0.28";
     public const int MinLogicRefreshIntervalMs = 500;
     public const int MaxLogicRefreshIntervalMs = 300_000;
     public const int MonitorRefreshResponsiveIntervalMs = 1_000;
     public const int ResourceTableRefreshResponsiveIntervalMs = 1_000;
     public const int LocalSystemRefreshBalancedIntervalMs = 60_000;
-    public const byte VramMoveDownPhysicalMemoryDangerPercent = 10;
-    public const byte PhysicalMemoryMoveDownVirtualMemoryDangerPercent = 12;
+    public const byte GpuOverflowUsagePercent = 95;
+    public const byte GpuOverflowDedicatedMemoryPercent = 80;
     public const byte PhysicalMemoryAutomaticCleanupPercent = 6;
     public const byte VirtualMemoryAutomaticCleanupPercent = 8;
     public const byte PhysicalMemoryOptimizationTargetUsagePercent = 70;
@@ -32,8 +32,8 @@ public static class AppSettingsDefaults
             new AppPerformanceSettings(
                 OptimizationMode: AppOptimizationModes.Normal,
                 PreciseGpuPlacementEnabled: false,
-                VramMoveDownPhysicalMemoryDangerPercent: VramMoveDownPhysicalMemoryDangerPercent,
-                PhysicalMemoryMoveDownVirtualMemoryDangerPercent: PhysicalMemoryMoveDownVirtualMemoryDangerPercent,
+                GpuOverflowUsagePercent: GpuOverflowUsagePercent,
+                GpuOverflowDedicatedMemoryPercent: GpuOverflowDedicatedMemoryPercent,
                 PhysicalMemoryAutomaticCleanupPercent: PhysicalMemoryAutomaticCleanupPercent,
                 VirtualMemoryAutomaticCleanupPercent: VirtualMemoryAutomaticCleanupPercent,
                 PhysicalMemoryOptimizationTargetUsagePercent: PhysicalMemoryOptimizationTargetUsagePercent,

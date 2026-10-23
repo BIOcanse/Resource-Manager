@@ -229,8 +229,8 @@ export interface AppUpdateSettings {
 export interface AppPerformanceSettings {
   optimizationMode: AppOptimizationMode;
   preciseGpuPlacementEnabled: boolean;
-  vramMoveDownPhysicalMemoryDangerPercent: number;
-  physicalMemoryMoveDownVirtualMemoryDangerPercent: number;
+  gpuOverflowUsagePercent: number;
+  gpuOverflowDedicatedMemoryPercent: number;
   physicalMemoryAutomaticCleanupPercent: number;
   virtualMemoryAutomaticCleanupPercent: number;
   physicalMemoryOptimizationTargetUsagePercent: number;

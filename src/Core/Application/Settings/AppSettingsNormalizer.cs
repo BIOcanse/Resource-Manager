@@ -29,8 +29,8 @@ public static class AppSettingsNormalizer
         return new AppPerformanceSettings(
             NormalizeOptimizationMode(performance?.OptimizationMode),
             performance?.PreciseGpuPlacementEnabled ?? AppSettingsDefaults.Create().Performance.PreciseGpuPlacementEnabled,
-            NormalizeDangerPercent(performance?.VramMoveDownPhysicalMemoryDangerPercent, AppSettingsDefaults.VramMoveDownPhysicalMemoryDangerPercent),
-            NormalizeDangerPercent(performance?.PhysicalMemoryMoveDownVirtualMemoryDangerPercent, AppSettingsDefaults.PhysicalMemoryMoveDownVirtualMemoryDangerPercent),
+            NormalizeGpuOverflowPercent(performance?.GpuOverflowUsagePercent, AppSettingsDefaults.GpuOverflowUsagePercent),
+            NormalizeGpuOverflowPercent(performance?.GpuOverflowDedicatedMemoryPercent, AppSettingsDefaults.GpuOverflowDedicatedMemoryPercent),
             NormalizeDangerPercent(performance?.PhysicalMemoryAutomaticCleanupPercent, AppSettingsDefaults.PhysicalMemoryAutomaticCleanupPercent),
             NormalizeDangerPercent(performance?.VirtualMemoryAutomaticCleanupPercent, AppSettingsDefaults.VirtualMemoryAutomaticCleanupPercent),
             NormalizeTargetUsagePercent(performance?.PhysicalMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.PhysicalMemoryOptimizationTargetUsagePercent),
@@ -355,6 +355,9 @@ public static class AppSettingsNormalizer
             AppSettingsDefaults.MinAdaptedResourceDangerPercent,
             AppSettingsDefaults.MaxAdaptedResourceDangerPercent);
     }
+
+    private static byte NormalizeGpuOverflowPercent(byte? percent, byte fallback)
+        => (byte)Math.Clamp((int)(percent ?? fallback), 1, 100);
 
     private static byte NormalizeTargetUsagePercent(byte? percent, byte fallback)
     {

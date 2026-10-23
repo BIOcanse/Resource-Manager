@@ -186,17 +186,6 @@
                     "value_source": "registry",
                     "value": { "enabled": true, "core_enter_percent": 75, "core_exit_percent": 20, "ccd_enter_percent": 60, "ccd_exit_percent": 30, "qualification_completed_rounds": 3 },
                     "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
-                  },
-                  {
-                    "index": 1,
-                    "id": "gpu_overflow_thresholds",
-                    "description": "Performance-tier overflow when either measured GPU usage or dedicated memory usage reaches its threshold.",
-                    "value_type": "object",
-                    "update_class": "publish_plan",
-                    "status": "active",
-                    "value_source": "registry",
-                    "value": { "usage_percent": 95, "dedicated_memory_percent": 80 },
-                    "consumers": ["HostManagerPlanCompiler.CompilePlacementCoordinatorHotPublish"]
                   }
                 ]
               }

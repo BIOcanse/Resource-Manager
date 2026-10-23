@@ -109,7 +109,8 @@ let deviceTopologyRevision = 0;
 let operationsPublicationRevision = 0;
 let operationsCurrentValue = null;
 const defaultAppSettings = {
-  version: "1.0.23",
+  version: "1.0.28",
+  performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80 },
   appearance: {
     uiStyle: scenario.settingsUiStyle,
     theme: scenario.settingsTheme,

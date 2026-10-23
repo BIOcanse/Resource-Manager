@@ -84,10 +84,10 @@ export interface SettingsCopy {
     memoryOptimizationTargetDescription: string;
     physicalMemoryOptimizationTargetLabel: string;
     virtualMemoryOptimizationTargetLabel: string;
-    moveDownDangerTitle: string;
-    moveDownDangerDescription: string;
-    vramMoveDownPhysicalMemoryDangerLabel: string;
-    physicalMemoryMoveDownVirtualMemoryDangerLabel: string;
+    gpuOverflowTitle: string;
+    gpuOverflowDescription: string;
+    gpuOverflowUsageLabel: string;
+    gpuOverflowDedicatedMemoryLabel: string;
     refreshCadenceTitle: string;
     refreshCadenceDescription: string;
     presetNumericModeOptions: Array<{ id: AppPresetNumericSettingMode; label: string; description: string }>;

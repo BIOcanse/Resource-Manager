@@ -5,6 +5,21 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AppSettingsNormalizerTests
 {
+    [Theory]
+    [InlineData(0, 255, 1, 100)]
+    [InlineData(100, 1, 100, 1)]
+    [InlineData(95, 80, 95, 80)]
+    public void GpuOverflowThresholds_ClampToValidPolicyPercentages(byte usage, byte memory, int expectedUsage, int expectedMemory)
+    {
+        var defaults = AppSettingsDefaults.Create();
+        var actual = AppSettingsNormalizer.Normalize(defaults with
+        {
+            Performance = defaults.Performance with { GpuOverflowUsagePercent = usage, GpuOverflowDedicatedMemoryPercent = memory }
+        });
+        Assert.Equal(expectedUsage, actual.Performance.GpuOverflowUsagePercent);
+        Assert.Equal(expectedMemory, actual.Performance.GpuOverflowDedicatedMemoryPercent);
+    }
+
     [Fact]
     public void MissingSections_DoNotOptIntoOptionalServices()
     {
@@ -39,15 +54,15 @@ public sealed class AppSettingsNormalizerTests
     }
 
     [Fact]
-    public void AutomaticCleanupLines_AreNormalizedIndependentlyFromMoveDownChecks()
+    public void AutomaticCleanupLines_AreNormalizedIndependentlyFromGpuOverflow()
     {
         var defaults = AppSettingsDefaults.Create();
         var settings = defaults with
         {
             Performance = defaults.Performance with
             {
-                VramMoveDownPhysicalMemoryDangerPercent = 20,
-                PhysicalMemoryMoveDownVirtualMemoryDangerPercent = 24,
+                GpuOverflowUsagePercent = 20,
+                GpuOverflowDedicatedMemoryPercent = 24,
                 PhysicalMemoryAutomaticCleanupPercent = 5,
                 VirtualMemoryAutomaticCleanupPercent = 7
             }
@@ -55,8 +70,8 @@ public sealed class AppSettingsNormalizerTests
 
         var normalized = AppSettingsNormalizer.Normalize(settings);
 
-        Assert.Equal(20, normalized.Performance.VramMoveDownPhysicalMemoryDangerPercent);
-        Assert.Equal(24, normalized.Performance.PhysicalMemoryMoveDownVirtualMemoryDangerPercent);
+        Assert.Equal(20, normalized.Performance.GpuOverflowUsagePercent);
+        Assert.Equal(24, normalized.Performance.GpuOverflowDedicatedMemoryPercent);
         Assert.Equal(5, normalized.Performance.PhysicalMemoryAutomaticCleanupPercent);
         Assert.Equal(7, normalized.Performance.VirtualMemoryAutomaticCleanupPercent);
     }

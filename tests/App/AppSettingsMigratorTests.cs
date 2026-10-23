@@ -9,6 +9,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsMigratorTests
 {
     [Fact]
+    public void Version127_DiscardsRetiredDangerFieldsAndAddsGpuOverflowDefaults()
+    {
+        using var input = JsonDocument.Parse("""
+            { "version": "1.0.27", "performance": {
+                "vramMoveDownPhysicalMemoryDangerPercent": 23,
+                "physicalMemoryMoveDownVirtualMemoryDangerPercent": 31
+            } }
+            """);
+        var migrated = AppSettingsMigrator.MigrateForRead(input.RootElement);
+        Assert.Equal("1.0.28", migrated.Version);
+        Assert.Equal(95, migrated.Performance.GpuOverflowUsagePercent);
+        Assert.Equal(80, migrated.Performance.GpuOverflowDedicatedMemoryPercent);
+        using var saved = JsonDocument.Parse(JsonSerializer.Serialize(migrated, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var performance = saved.RootElement.GetProperty("performance");
+        Assert.False(performance.TryGetProperty("vramMoveDownPhysicalMemoryDangerPercent", out _));
+        Assert.False(performance.TryGetProperty("physicalMemoryMoveDownVirtualMemoryDangerPercent", out _));
+    }
+
+    [Fact]
     public void MigrateForRead_PreservesAutomaticUpdatePreference()
     {
         var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
@@ -29,7 +48,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.16", false)]
     [InlineData("1.0.26", true)]
     [InlineData("1.0.27", true)]
-    [InlineData("1.0.28", false)]
+    [InlineData("1.0.28", true)]
+    [InlineData("1.0.29", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -283,7 +303,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -300,7 +320,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -320,7 +340,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.27\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -565,12 +585,12 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.27",
+          "version": "1.0.28",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
-            "vramMoveDownPhysicalMemoryDangerPercent": 10,
-            "physicalMemoryMoveDownVirtualMemoryDangerPercent": 12,
+            "gpuOverflowUsagePercent": 95,
+            "gpuOverflowDedicatedMemoryPercent": 80,
             "gpuPerformanceUseCases": ["general"],
             "smartMonitoringMode": "enabled",
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },

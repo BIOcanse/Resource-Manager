@@ -198,8 +198,8 @@ public sealed record AppPresetNumericSetting(
 public sealed record AppPerformanceSettings(
     string OptimizationMode,
     bool PreciseGpuPlacementEnabled,
-    byte VramMoveDownPhysicalMemoryDangerPercent,
-    byte PhysicalMemoryMoveDownVirtualMemoryDangerPercent,
+    byte GpuOverflowUsagePercent,
+    byte GpuOverflowDedicatedMemoryPercent,
     byte PhysicalMemoryAutomaticCleanupPercent,
     byte VirtualMemoryAutomaticCleanupPercent,
     byte PhysicalMemoryOptimizationTargetUsagePercent,

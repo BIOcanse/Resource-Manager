@@ -214,6 +214,27 @@ export default async function settingsSourceJourney(page, baseUrl = "http://127.
     === JSON.stringify(["general", "ai"]),
     "GPU performance use cases did not save both selected values");
 
+  const gpuUsage = page.getByRole("spinbutton", { name: "独显使用率 %", exact: true });
+  const gpuMemory = page.getByRole("spinbutton", { name: "独显专用显存占用率 %", exact: true });
+  assert(await gpuUsage.inputValue() === "95" && await gpuMemory.inputValue() === "80",
+    "GPU overflow defaults do not match the actual policy");
+  assert(await page.getByText("下移危险阈值", { exact: true }).count() === 0, "Retired danger settings are still visible");
+  await gpuUsage.fill("72");
+  await gpuUsage.blur();
+  await gpuMemory.fill("68");
+  await gpuMemory.blur();
+  const overflowSave = page.waitForResponse((response) => response.request().method() === "PATCH"
+    && new URL(response.url()).pathname === "/api/settings/app");
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await overflowSave;
+  const overflowPatch = settingsPatchBodies.at(-1)?.changes?.performance;
+  assert(overflowPatch?.gpuOverflowUsagePercent === 72 && overflowPatch?.gpuOverflowDedicatedMemoryPercent === 68,
+    `GPU overflow settings did not save their exact values: ${JSON.stringify(overflowPatch)}`);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "性能", exact: true }).click();
+  assert(await gpuUsage.inputValue() === "72" && await gpuMemory.inputValue() === "68", "GPU thresholds did not survive reload");
+
   // 信息更新频率只显示当前模式生效的输入：自动调度两者都不显示，锁定预设只有预设下拉框，自定义只有毫秒输入框。
   const cadenceMode = page.getByRole("radiogroup", { name: "资源表", exact: true });
   const cadencePreset = page.getByRole("combobox", { name: "资源表 预设", exact: true });

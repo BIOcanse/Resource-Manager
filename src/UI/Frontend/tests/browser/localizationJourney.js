@@ -90,6 +90,19 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
 
+    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByText(settings.performance.gpuOverflowTitle, { exact: true }).waitFor();
+    await page.getByText(settings.performance.gpuOverflowDescription, { exact: true }).waitFor();
+    for (const [label, value] of [
+      [settings.performance.gpuOverflowUsageLabel, "95"],
+      [settings.performance.gpuOverflowDedicatedMemoryLabel, "80"]
+    ]) {
+      const threshold = page.getByRole("spinbutton", { name: label, exact: true });
+      if (await threshold.inputValue() !== value || await threshold.getAttribute("min") !== "1"
+        || await threshold.getAttribute("max") !== "100")
+        throw new Error(`${option.id}: localized GPU overflow setting has incorrect value or bounds: ${label}`);
+    }
+
     const scenarioResponse = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayEdid: "ready" }) });
     if (!scenarioResponse.ok) throw new Error(option.id + ": EDID fixture unavailable");
     await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
