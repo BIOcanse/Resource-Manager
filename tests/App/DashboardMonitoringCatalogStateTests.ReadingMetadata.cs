@@ -77,6 +77,30 @@ public sealed partial class DashboardMonitoringCatalogStateTests
             MetricCatalog.FromSnapshot(state.Current).Single(item => item.Id == "system.vrmTemperature").DisabledReason!.Code);
     }
 
+    [Fact]
+    public void InstalledComponentIsNotReportedAsMissingBeforeItsSourceIsSampled()
+    {
+        const string alias = "system.motherboardTemperature";
+        var binding = CatalogBinding("motherboard_all_temperature_reported_celsius", "hardware-monitor.core",
+            "field", alias, "unverified", preferred: false);
+        var snapshot = CreateSnapshot(1, "gpu", []) with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding> { ["field"] = binding } };
+        var definitions = MetricCatalog.FromSnapshot(snapshot);
+        Assert.Equal(BackendMessageCodes.Metric.NeedsComponent, definitions.Single(item => item.Id == alias).DisabledReason!.Code);
+
+        var missing = MetricCatalog.WithInstalledComponents(definitions, new HashSet<string>(StringComparer.OrdinalIgnoreCase))
+            .Single(item => item.Id == alias);
+        Assert.Equal("hardware-sensors-pawnio-provider", missing.RequiredComponentId);
+        Assert.Equal(BackendMessageCodes.Metric.NeedsComponent, missing.DisabledReason!.Code);
+
+        var installed = MetricCatalog.WithInstalledComponents(definitions,
+                new HashSet<string>(["Hardware-Sensors-PawnIO-Provider"], StringComparer.OrdinalIgnoreCase))
+            .Single(item => item.Id == alias);
+        Assert.False(installed.Selectable);
+        Assert.Null(installed.RequiredComponentId);
+        Assert.Null(installed.RequiredComponentName);
+        Assert.Equal(BackendMessageCodes.Metric.NoValidReading, installed.DisabledReason!.Code);
+    }
+
     private static MetricDeviceFieldBinding CatalogBinding(string name, string source, string request,
         string alias, string availability, bool preferred)
     {

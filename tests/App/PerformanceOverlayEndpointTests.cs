@@ -13,6 +13,7 @@ using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Overlay;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -35,6 +36,7 @@ public sealed class PerformanceOverlayEndpointTests
             registry, new UnavailableGpuScheduling(),
             NullLogger<GpuLaunchInterceptionReconciler>.Instance));
         builder.Services.AddSingleton<DashboardMonitoringCatalogState>();
+        builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         await using var app = builder.Build();
         typeof(ResourceManagerEndpointRouteBuilderExtensions)
             .GetMethod("MapPerformanceOverlayEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!

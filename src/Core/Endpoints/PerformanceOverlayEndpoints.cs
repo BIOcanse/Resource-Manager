@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Overlay;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
@@ -17,9 +18,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (ArgumentException exception) { return Results.BadRequest(new { error = exception.Message }); }
         }).AllowAnonymous();
 
-        app.MapGet("/api/performance-overlay/metrics/catalog", (
-            DashboardMonitoringCatalogState catalog) =>
-            Results.Ok(MetricCatalog.ForPerformanceOverlay(catalog.Current)))
+        app.MapGet("/api/performance-overlay/metrics/catalog", async (
+            DashboardMonitoringCatalogState catalog,
+            IComponentManager componentManager,
+            CancellationToken cancellationToken) =>
+            Results.Ok(MetricCatalog.WithInstalledComponents(
+                MetricCatalog.ForPerformanceOverlay(catalog.Current),
+                await InstalledComponentIdsAsync(componentManager, cancellationToken))))
             .AllowAnonymous();
 
         app.MapGet("/api/performance-overlay/software/{softwareId}", async (
