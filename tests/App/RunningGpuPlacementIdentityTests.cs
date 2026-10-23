@@ -75,5 +75,9 @@ public sealed class RunningGpuPlacementIdentityTests
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
             GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, CancellationToken token)
             => throw new InvalidOperationException("Preparation and selection only read committed software information.");
+
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, string evidenceSource, CancellationToken token)
+            => throw new InvalidOperationException("Preparation and selection only read committed software information.");
     }
 }

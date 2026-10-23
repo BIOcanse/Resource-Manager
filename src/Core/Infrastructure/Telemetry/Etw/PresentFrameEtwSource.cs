@@ -13,7 +13,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// 高频的 Present 事件不能连累其他采集。有订阅才开，最后一个订阅释放就停；功能区冻结时停。
 /// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”。
 /// </summary>
-public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
+public sealed partial class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
     : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IDisposable
 {
     internal static readonly Guid DxgiProvider = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
@@ -54,6 +54,7 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
     private Task? processor;
     private Timer? flushTimer;
     private int leases;
+    private int frameLeases;
     private bool failed;
     private bool disposed;
     private int observedEventsLost;
@@ -69,6 +70,7 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            Interlocked.Increment(ref frameLeases);
             if (leases++ == 0 && mode != ResourceManagerComputeZoneMode.Freeze)
             {
                 Start();
@@ -232,7 +234,10 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
         {
             try
             {
-                Apply(ledger, data);
+                ApplyGraphicsApiEvent(data);
+                // An API-only lease uses the supplied process birth identity. It does not
+                // invoke the frame ledger's process-handle fallback for other processes.
+                if (Volatile.Read(ref frameLeases) > 0) Apply(ledger, data);
             }
             catch (Exception error)
             {
@@ -406,6 +411,7 @@ public sealed class PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger)
     {
         lock (lifecycle)
         {
+            Interlocked.Decrement(ref frameLeases);
             if (leases > 0 && --leases == 0)
             {
                 Stop();

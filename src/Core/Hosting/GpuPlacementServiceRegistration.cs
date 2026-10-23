@@ -6,6 +6,7 @@ using ResourceManager.App.Infrastructure.GpuPlacement.Preparation;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace ResourceManager.App.Hosting;
 
@@ -18,6 +19,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuPlacementPolicyStore, JsonGpuPlacementPolicyStore>();
         services.AddSingleton<IGpuGraphicsApiDetector, WindowsGpuGraphicsApiDetector>();
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
+        services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
+        if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
+            services.AddHostedService<GpuPlacementProcessHistoryObserver>();
         services.AddSingleton<IWindowsGraphicsPreferenceStore, WindowsGraphicsPreferenceStore>();
         services.AddSingleton<D3d11ProxyShimRuntime>();
         services.AddSingleton<WindowsGpuPlacementInjector>();

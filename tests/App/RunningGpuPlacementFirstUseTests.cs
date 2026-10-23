@@ -412,6 +412,10 @@ public sealed class RunningGpuPlacementFirstUseTests
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string id, string name,
             GpuPlacementProcessInstance process, GpuGraphicsApi api, CancellationToken token)
             => failSave ? throw new IOException("save fixture") : inner.SaveFirstGraphicsApiAsync(id, name, process, api, token);
+
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string id, string name,
+            GpuPlacementProcessInstance process, GpuGraphicsApi api, string evidence, CancellationToken token)
+            => failSave ? throw new IOException("save fixture") : inner.SaveFirstGraphicsApiAsync(id, name, process, api, evidence, token);
     }
 
     private sealed class Fixture

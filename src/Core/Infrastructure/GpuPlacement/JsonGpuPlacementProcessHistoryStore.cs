@@ -106,15 +106,25 @@ public sealed class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environ
         }
     }
 
-    public async Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(
+    public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(
         string softwareId,
         string softwareName,
         GpuPlacementProcessInstance process,
         GpuGraphicsApi graphicsApi,
         CancellationToken cancellationToken)
+        => SaveFirstGraphicsApiAsync(softwareId, softwareName, process, graphicsApi, "actual-api-observation", cancellationToken);
+
+    public async Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(
+        string softwareId,
+        string softwareName,
+        GpuPlacementProcessInstance process,
+        GpuGraphicsApi graphicsApi,
+        string evidenceSource,
+        CancellationToken cancellationToken)
     {
         var normalizedId = RequireText(softwareId, "软件标识不能为空。");
         var normalizedName = CleanText(softwareName) ?? normalizedId;
+        var evidence = RequireText(evidenceSource, "API evidence source is required.");
         ArgumentNullException.ThrowIfNull(process);
         if (process.ProcessId <= 4 || process.ProcessStartKey == 0
             || string.IsNullOrWhiteSpace(process.ExecutablePath)
@@ -139,10 +149,10 @@ public sealed class JsonGpuPlacementProcessHistoryStore(IHostEnvironment environ
 
             var now = DateTimeOffset.Now;
             var identified = (existing ?? CreateObservedProcess(new(
-                process.ProcessName, path, null, process.ProcessId, ["actual-api-observation"]), now)) with
+                process.ProcessName, path, null, process.ProcessId, [evidence]), now)) with
             {
                 GraphicsApi = graphicsApi,
-                EvidenceSources = CleanEvidenceSources((existing?.EvidenceSources ?? []).Append("actual-api-observation"))
+                EvidenceSources = CleanEvidenceSources((existing?.EvidenceSources ?? []).Append(evidence))
             };
             var next = current with
             {

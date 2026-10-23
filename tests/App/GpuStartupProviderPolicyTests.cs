@@ -331,6 +331,10 @@ public sealed class GpuStartupProviderPolicyTests
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
             GpuPlacementProcessInstance instance, GpuGraphicsApi graphicsApi, CancellationToken cancellationToken)
             => throw new InvalidOperationException("Startup must only read previously recorded API information.");
+
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance instance, GpuGraphicsApi graphicsApi, string evidenceSource, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Startup must only read previously recorded API information.");
     }
 
     private sealed class PlanProvider(CompiledRuntimePlan current) : IRuntimePlanProvider

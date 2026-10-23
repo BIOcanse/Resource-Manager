@@ -638,6 +638,10 @@ public sealed class ExternalGpuPlacementTests
             Api = graphicsApi;
             return Task.FromResult(GpuPlacementSoftwareProcessHistory.Empty(softwareId, softwareName));
         }
+
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, string evidenceSource, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("The external bridge records API evidence through the default observation source.");
     }
 
     private sealed class UnusedHistory : IGpuPlacementProcessHistoryStore
@@ -648,6 +652,10 @@ public sealed class ExternalGpuPlacementTests
             CancellationToken cancellationToken) => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
         public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
             GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
+
+        public Task<GpuPlacementSoftwareProcessHistory> SaveFirstGraphicsApiAsync(string softwareId, string softwareName,
+            GpuPlacementProcessInstance process, GpuGraphicsApi graphicsApi, string evidenceSource, CancellationToken cancellationToken)
             => throw new InvalidOperationException("Not used by the legacy-plan rejection test.");
     }
 }
