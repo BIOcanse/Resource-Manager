@@ -173,7 +173,7 @@ Detailed CPU and GPU monitoring, instead of a single utilization percentage that
 - **Hardware adjustment:** ✅ means writes and readback have been verified on a specific model. 🟡 means supported by design, with integration or physical testing still required. ❌ means excluded from the design.
 - **Monitoring and device information:** ✅ means the reading returned current values on a real machine: an AMD Ryzen 9 8940HX laptop with an NVIDIA GeForce RTX 5060 Laptop GPU and AMD Radeon 610M integrated graphics, without an NPU, checked read-only on 2026-10-22. The values were not compared against other tools. 🟡 means implemented and tested with recorded or simulated data, but not yet confirmed on real hardware. ❌ means not supported.
 
-This list describes the source code as of 2026-10-22. The latest published beta is 0.2.8 (2026-10-01); many of the readings below were added after it and arrive with the next beta. What your PC shows depends on its hardware, drivers and installed components. A reading that the hardware does not report is shown as unavailable.
+This list describes the 0.3.0 beta (2026-10-23). What your PC shows depends on its hardware, drivers and installed components. A reading that the hardware does not report is shown as unavailable.
 
 ### Hardware adjustment
 
@@ -199,7 +199,7 @@ GPU means discrete graphics; iGPU means integrated graphics.
 
 **Adjustment scope and implementation status:**
 
-The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tuning** to the control page, dependency manager, readback and restore flow. Desktop motherboard fans use Fan Control Core's Super I/O backend. These changes have interface tests and are **not yet verified on physical hardware**. The 0.2.8 beta did not change the adjustment scope. In the current source, on / off controls offer three choices: return to firmware, on and off. The remaining design gaps are listed below.
+The **0.2.7 stage release** connects **Intel CPU controls and AMD desktop GPU tuning** to the control page, dependency manager, readback and restore flow. Desktop motherboard fans use Fan Control Core's Super I/O backend. These changes have interface tests and are **not yet verified on physical hardware**. The 0.2.8 beta did not change the adjustment scope. Since 0.3.0, on / off controls offer three choices: return to firmware, on and off, and laptop fan curves run through Fan Control Core v0.2.0. A Uniwill laptop reports curve support; writing curves has not yet been verified on physical hardware. The remaining design gaps are listed below.
 
 - **AMD CPUs / APUs**: STAPM, slow and fast power limits, PBO Scalar and CPU Curve Optimizer. Hardware Bridge required; the processor, firmware and available driver determine each capability. Curve Optimizer requires readback. TDC / EDC current limits and temperature limit remain unavailable until mapping or readback is confirmed.
 - **Intel CPUs**: PL1 / PL2, independent time windows and core / cache / iGPU / system-agent voltage offsets are implemented through the signed PawnIO IntelMSR module. Installation is explicit; firmware locks and OC mailbox errors are reported. **MMIO, TCC, Turbo ratios / switch, HWP / EPP and CPU / iGPU power balance remain incomplete**: the current signed modules do not permit their required registers. Installing the current component does not unlock these items.
