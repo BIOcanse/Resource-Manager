@@ -112,6 +112,16 @@ This helps you catch **memory leaks**, **misbehaving software**, **disk killers*
 
 ---
 
+## 💽 Disk Usage
+
+Wondering where your space went? After a scan, files and folders are laid out as a **treemap** sized by how much they actually take up; open a block to go one level deeper until you find what is filling the disk.
+
+![Disk usage](docs/screenshots/en/13-disk-usage.png)
+
+Scan every disk, one disk, or a single folder. **Fast scan** reads the NTFS file-system index directly and needs administrator rights; **Full scan** walks the folders one by one, which is slower but works on any disk. Scanning only reads file information and never changes or deletes files.
+
+---
+
 ## 🎛️ Hardware Control
 
 Balance performance, power and noise from one place. The control page brings together the CPU, GPU and fan adjustments available on your hardware, with live readings beside the controls so you can see the current state before changing it.
