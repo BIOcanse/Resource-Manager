@@ -1,6 +1,7 @@
 import type { AppCopy } from "../index.ts";
 
 export const fieldLabel: AppCopy["fieldLabel"] = {
+  cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD 온도 (Tdie)", hint: "AMD 프로세서의 CCD 하나의 Tdie 온도로, 해당 CCD의 SMN 온도 센서에서 읽습니다. 프로세서 전체의 Tctl과는 별개입니다. 센서 주소는 CPU 모델별 오픈 소스 자료를 따르며 AMD 문서로 확인된 것은 아닙니다." },
   npu_all_engine_running_time_microseconds: { label: "NPU 엔진 실행 시간 (원시)", hint: "NPU 엔진 하나의 누적 실행 시간(마이크로초, DXCore) 원시값으로, 시작점이 정의되어 있지 않아 사용률 계산에만 쓸 수 있습니다." },
   npu_all_engine_busy_percent: { label: "NPU 엔진 사용률", hint: "작업 관리자와 같은 방식으로 계산한 엔진 사용 시간으로, 이 NPU의 각 엔진이 실제 시간 중 실행된 비율의 최댓값이며 100%를 넘을 수 있고 작업 관리자에 표시되는 숫자와 같다고 보장하지 않습니다." },
   npu_all_engine_reported_running_time_ratio_percent: { label: "NPU 단일 엔진 사용률", hint: "NPU 엔진 하나의 실행 시간 증가분을 실제 경과 시간으로 나눈 백분율(DXCore)로, 100%를 넘을 수 있으며 작업 관리자와 같은 방식으로 계산하지만 그 숫자와 같다고 보장하지 않습니다." },

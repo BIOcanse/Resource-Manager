@@ -1,5 +1,6 @@
 using System.Management;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite.Vendors.Amd.Smu;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -15,20 +16,27 @@ internal static class AmdSmuHardwareBinding
         => new(LocateModulePath(contentRoot) ?? Path.Combine(PackagePathResolver.ResolvePackageRoot(contentRoot),
                 "Dependencies", ComponentId, ModuleFileName), CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2));
 
-    private static string? LocateModulePath(string contentRootPath)
+    internal static AmdCcdMetricResource CreateCcdResource(string contentRoot)
+        => new(target => new AmdCcdTemperatureReader(target.Family, target.Model, 1,
+            () => AmdSmuPawnIoSession.OpenSmn(new(
+                LocateModulePath(contentRoot, "AMDFamily17.bin") ?? Path.Combine(
+                    PackagePathResolver.ResolvePackageRoot(contentRoot), "Dependencies", ComponentId, "AMDFamily17.bin"),
+                CandidatePawnIoLibraryPaths().ToArray(), true, TimeSpan.FromSeconds(2)))));
+
+    private static string? LocateModulePath(string contentRootPath, string moduleFileName = ModuleFileName)
     {
-        return CandidateModulePaths(contentRootPath)
+        return CandidateModulePaths(contentRootPath, moduleFileName)
             .Where(static path => !string.IsNullOrWhiteSpace(path))
             .Select(Path.GetFullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(File.Exists);
     }
 
-    private static IEnumerable<string> CandidateModulePaths(string contentRootPath)
+    private static IEnumerable<string> CandidateModulePaths(string contentRootPath, string moduleFileName)
     {
         var packageRoot = PackagePathResolver.ResolvePackageRoot(contentRootPath);
-        yield return Path.Combine(packageRoot, "Dependencies", ComponentId, ModuleFileName);
-        yield return Path.Combine(PackagePathResolver.ResolvePackageRoot(AppContext.BaseDirectory), "Dependencies", ComponentId, ModuleFileName);
+        yield return Path.Combine(packageRoot, "Dependencies", ComponentId, moduleFileName);
+        yield return Path.Combine(PackagePathResolver.ResolvePackageRoot(AppContext.BaseDirectory), "Dependencies", ComponentId, moduleFileName);
     }
 
     private static IEnumerable<string> CandidatePawnIoLibraryPaths()

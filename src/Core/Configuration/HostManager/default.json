@@ -1,6 +1,6 @@
 {
   "schema_version": 42,
-  "profile_revision": 67,
+  "profile_revision": 68,
   "profile_name": "default",
   "build_specialize": {
     "target_os": "windows",

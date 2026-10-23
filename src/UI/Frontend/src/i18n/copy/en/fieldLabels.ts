@@ -2,6 +2,7 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"> = {
   fieldLabel: {
+    cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD temperature (Tdie)", hint: "Tdie temperature of one CCD on an AMD processor, read from that CCD's SMN temperature sensor; separate from the whole-processor Tctl. The sensor addresses follow open-source references for each CPU model and are not confirmed by AMD documentation." },
     npu_all_engine_running_time_microseconds: { label: "NPU engine running time (raw)", hint: "Raw cumulative running time of one NPU engine in microseconds (DXCore); its starting point is not defined, so it is only useful for computing busy rates." },
     npu_all_engine_busy_percent: { label: "NPU engine busy", hint: "Engine busy time using the same algorithm as Task Manager: the largest share of real time any engine of this NPU spent running; it can exceed 100% and is not guaranteed to match the number Task Manager shows." },
     npu_all_engine_reported_running_time_ratio_percent: { label: "NPU single-engine busy", hint: "One NPU engine's running-time increase divided by the actual elapsed time, in percent (DXCore); it can exceed 100% and, although computed like Task Manager, is not guaranteed to match its number." },

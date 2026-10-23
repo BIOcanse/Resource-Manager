@@ -1,6 +1,7 @@
 import type { AppCopy } from "../index.ts";
 
 export const fieldLabel: AppCopy["fieldLabel"] = {
+  cpu_amd_ccd_tdie_temperature_celsius: { label: "CCD-Temperatur (Tdie)", hint: "Tdie-Temperatur eines CCD eines AMD-Prozessors, gelesen aus dem SMN-Temperatursensor dieses CCD; getrennt von der Tctl des gesamten Prozessors. Die Sensoradressen folgen je CPU-Modell offenen Quellen und sind nicht durch AMD-Dokumentation bestätigt." },
   npu_all_engine_running_time_microseconds: { label: "NPU-Engine-Laufzeit (roh)", hint: "Kumulierte Rohlaufzeit einer NPU-Engine in Mikrosekunden (DXCore); ihr Startpunkt ist nicht definiert, daher eignet sie sich nur zur Berechnung von Auslastungen." },
   npu_all_engine_busy_percent: { label: "NPU-Engine-Auslastung", hint: "Engine-Auslastung nach demselben Verfahren wie der Task-Manager: der größte Anteil an der realen Zeit, den eine Engine dieser NPU aktiv war; der Wert kann über 100 % liegen und muss nicht mit der Zahl im Task-Manager übereinstimmen." },
   npu_all_engine_reported_running_time_ratio_percent: { label: "NPU-Einzel-Engine-Auslastung", hint: "Laufzeitzuwachs einer einzelnen NPU-Engine geteilt durch die tatsächlich verstrichene Zeit, in Prozent (DXCore); kann über 100 % liegen und muss trotz gleicher Berechnung wie im Task-Manager nicht mit dessen Zahl übereinstimmen." },

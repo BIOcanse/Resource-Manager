@@ -224,7 +224,8 @@ public enum MetricFieldCode
     AdlxNpuFrequencyMhz,
     NumaNodeCapacityMiB,
     IntelEffectiveFrequencyMhz,
-    NpuDeviceEngineBusyPercent
+    NpuDeviceEngineBusyPercent,
+    AmdCcdTdieTemperature
 }
 
 public sealed record MetricFieldDefinition(
@@ -242,6 +243,9 @@ public static partial class MetricFieldRegistry
     // This table is the contract; no field name is parsed to infer its meaning.
     private static IReadOnlyList<MetricFieldDefinition> BaseDefinitions { get; } =
     [
+        new(MetricFieldCode.AmdCcdTdieTemperature, "cpu_amd_ccd_tdie_temperature_celsius", MetricResource.Cpu, MetricVendor.Amd,
+            "°C", "die.{die}.amdCcdTdieTemperature", "CCD Tdie from a valid AMD SMN sensor; experimental family/model mapping, independent of package Tctl")
+            { HasLegacyAddress = false },
         new(MetricFieldCode.NpuEngineRunningTimeMicroseconds, "npu_all_engine_running_time_microseconds", MetricResource.Npu, MetricVendor.All, "µs", "npu.engine.{engine}.runningTimeMicroseconds", "DXCore AdapterEngineRunningTimeMicroseconds raw running time in microseconds for one exact NPU engine in its retained adapter directory; counter epoch is not promised") { ValueKind = "unsigned64", HasLegacyAddress = false },
         new(MetricFieldCode.NpuDeviceEngineBusyPercent, "npu_all_engine_busy_percent", MetricResource.Npu, MetricVendor.All, "%", "npu.{npu}.engineBusy", "Engine busy time using the same engine-running-time algorithm as Task Manager: maximum per-engine running-time delta ratio across the complete bound engine directory; numeric equality with Task Manager is not asserted") { HasLegacyAddress = false },
         new(MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent, "npu_all_engine_reported_running_time_ratio_percent", MetricResource.Npu, MetricVendor.All, "%", "npu.engine.{engine}.reportedRunningTimeRatioPercent", "Per-engine DXCore running-time delta in microseconds divided by actual monotonic QPC elapsed time, scaled to percent; original value may exceed100; Task Manager-style algorithm does not imply numeric equality") { HasLegacyAddress = false },

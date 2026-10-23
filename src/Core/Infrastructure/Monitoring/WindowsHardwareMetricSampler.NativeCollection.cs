@@ -83,6 +83,8 @@ public sealed partial class WindowsHardwareMetricSampler
         ReadNvapiDrs = (profiles, limits, token) => nvidiaNvapiZone.ReadDrs(profiles, limits, token),
         DiscoverNvapiDrs = (limits, token) => nvidiaNvapiZone.DiscoverDrs(limits, token),
         ReadAdlxAsync = (request, inventory, token) => amdAdlxZone.ReadAsync(request, inventory, token), ReadAmdSmu = request => amdSmuZone.Read(request),
+        ReadAmdCcdIdentities = (cpu, maximum) => amdSmuZone.ReadCcdIdentities(cpu, maximum),
+        ReadAmdCcd = (identities, requested) => amdSmuZone.ReadCcd(identities, requested),
         ReadIntelGpu = (inventory, request, token) => intelGclZone.Read(inventory, request, token),
         OpenIgclFanDirectory = intelGclZone.OpenFanTopology, ReadIgclFans = intelGclZone.ReadFans,
         ReadIntelMsr = (devices, request) => intelMsrZone.Read(devices, request),

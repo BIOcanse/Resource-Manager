@@ -29,6 +29,7 @@ internal static class HostReadWriteDependencies
             (NativeMetricSnapshotSourceCatalog.NvidiaNvapi, "nvidia-nvapi-provider"),
             (NativeMetricSnapshotSourceCatalog.AmdAdlx, "amd-adlx-provider"),
             (NativeMetricSnapshotSourceCatalog.AmdSmu, "amd-smu-pawnio-provider"),
+            (NativeMetricSnapshotSourceCatalog.AmdSmn, "amd-smu-pawnio-provider"),
             (NativeMetricSnapshotSourceCatalog.IntelMsr, "intel-msr-pawnio-provider"),
             ("control.intel.msr", "intel-msr-pawnio-provider"),
             ("control.amd.hardware-bridge", "hardware-bridge"),
@@ -57,7 +58,12 @@ internal static class HostReadWriteDependencies
     {
         var result = FromProvider(source, providers.Probe(component));
         if (definition?.PayloadSource is { IncludeArchiveContents: false } payload
-            && payload.FileNames.Any(name => !File.Exists(Path.Combine(directory, name))))
+            && payload.FileNames.Where(name => source switch
+                {
+                    NativeMetricSnapshotSourceCatalog.AmdSmu => name == "RyzenSMU.bin",
+                    NativeMetricSnapshotSourceCatalog.AmdSmn => name == "AMDFamily17.bin",
+                    _ => true
+                }).Any(name => !File.Exists(Path.Combine(directory, name))))
             return new(source, DependencyAvailability.Missing, "dependency-module-missing");
         return result;
     }

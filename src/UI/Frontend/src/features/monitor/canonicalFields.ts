@@ -7,6 +7,7 @@
  */
 
 export const canonicalFieldNames: readonly string[] = Object.freeze([
+  "cpu_amd_ccd_tdie_temperature_celsius",
   "npu_all_engine_running_time_microseconds",
   "npu_all_engine_busy_percent",
   "npu_all_engine_reported_running_time_ratio_percent",

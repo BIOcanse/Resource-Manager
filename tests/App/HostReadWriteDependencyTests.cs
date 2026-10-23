@@ -33,6 +33,12 @@ public sealed class HostReadWriteDependencyTests
             Assert.Equal(DependencyAvailability.Ready, dependencies.Query(source).Availability);
             Assert.Equal(component, providers.Queries[^1]);
         }
+        Assert.Equal("dependency-module-missing", dependencies.Query("amd.smn").Reason);
+        File.WriteAllText(modules.AmdSmnModule, "recorded SMN module, never loaded");
+        Assert.Equal(DependencyAvailability.Ready, dependencies.Query("amd.smn").Availability);
+        File.Delete(modules.AmdModule);
+        Assert.Equal(DependencyAvailability.Ready, dependencies.Query("amd.smn").Availability);
+        Assert.Equal("dependency-module-missing", dependencies.Query("amd.smu").Reason);
     }
 
     [Theory]
@@ -66,8 +72,8 @@ public sealed class HostReadWriteDependencyTests
         var package = Path.Combine(modules.Root, "selected.zip");
         using (var archive = System.IO.Compression.ZipFile.Open(package, System.IO.Compression.ZipArchiveMode.Create))
         {
-            using var module = new StreamWriter(archive.CreateEntry("release/RyzenSMU.bin").Open());
-            module.Write("recorded module, never loaded");
+            foreach (var name in new[] { "RyzenSMU.bin", "AMDFamily17.bin" })
+            { using var module = new StreamWriter(archive.CreateEntry("release/" + name).Open()); module.Write("recorded module, never loaded"); }
         }
         try
         {
@@ -106,6 +112,7 @@ public sealed class HostReadWriteDependencyTests
     {
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "rm-read-write-modules-" + Guid.NewGuid().ToString("N"));
         internal string AmdModule => Path.Combine(Root, "Dependencies", "amd-smu-pawnio-provider", "RyzenSMU.bin");
+        internal string AmdSmnModule => Path.Combine(Root, "Dependencies", "amd-smu-pawnio-provider", "AMDFamily17.bin");
         internal string IntelModule => Path.Combine(Root, "Dependencies", "intel-msr-pawnio-provider", "IntelMSR.bin");
         internal ModuleRoot()
         {
@@ -114,6 +121,7 @@ public sealed class HostReadWriteDependencyTests
         }
         public void Dispose()
         {
+            File.Delete(AmdSmnModule);
             foreach (var path in new[] { AmdModule, IntelModule })
             { File.Delete(path); Directory.Delete(Path.GetDirectoryName(path)!); }
             Directory.Delete(Path.Combine(Root, "Dependencies")); Directory.Delete(Root);

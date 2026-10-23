@@ -204,6 +204,7 @@ public sealed class HostManagerMetricSnapshotOwner :
                 topology = topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
                 RequireGpuTopology(topology);
                 var priorCatalog = observed.Workspace.ReadCatalog();
@@ -261,6 +262,7 @@ public sealed class HostManagerMetricSnapshotOwner :
                     BatteryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                     NpuEngineStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                     NpuMemoryStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+                    AmdCcdStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                     NetworkInterfaceStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                     NumaStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
                     IntelCpuCoreStatus = NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
@@ -526,6 +528,7 @@ public sealed class HostManagerMetricSnapshotOwner :
             topology ??= topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
+                    NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
             RequireGpuTopology(topology);
             if (current is { } active)
@@ -578,7 +581,7 @@ public sealed class HostManagerMetricSnapshotOwner :
         NativeMetricSnapshotCatalogTopologySnapshot topology,
         NativeMetricSnapshotCatalogHandleMap handleMap)
         => NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, topology.GpuAdapters,
-            topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor, topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory);
+            topology.StorageSensors, topology.SystemFans, handleMap, topology.CpuVendor, topology.Batteries, topology.NumaNodes, topology.IntelCpuIdentities, topology.NetworkInterfaces, topology.NpuMemoryIdentities, topology.NpuEngineIdentities, topology.NpuEngineDirectory, topology.AmdCcdIdentities);
 
     private string ResolvePersistencePath(string relativePath)
     {

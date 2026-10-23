@@ -10,6 +10,7 @@ public static partial class MetricFieldRegistry
         string source, bool nvmeDevice, string? declaredQuantity = null)
         => (field.Code, source) switch
         {
+            (MetricFieldCode.AmdCcdTdieTemperature, "amd.smn") => new("cpu.ccd_die_temperature", 10),
             (MetricFieldCode.CpuTemperature, "amd.smu") => new("cpu.control_temperature", 10),
             (MetricFieldCode.CpuTemperature, "hardware-monitor.core")
                 => new(declaredQuantity ?? "cpu.temperature_reported", 20),

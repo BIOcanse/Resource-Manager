@@ -31,6 +31,7 @@ public sealed record WindowsMetricResourceOptions
     public string? IntelModulePath { get; init; }
     public string? PawnIoLibraryPath { get; init; }
     public AmdSmuPawnIoOpenOptions? AmdSmu { get; init; }
+    public AmdSmnPawnIoOpenOptions? AmdSmn { get; init; }
     public string? MechrevoLibraryPath { get; init; }
     public bool EnableMechrevo { get; init; }
     public double? MaximumCpuBoostMegahertz { get; init; }
@@ -69,6 +70,9 @@ public sealed partial class WindowsHardwareMetricResources
             options.IntelModulePath ?? throw new FileNotFoundException("Intel PawnIO module path was not supplied."),
             options.PawnIoLibraryPath ?? throw new FileNotFoundException("PawnIO library path was not supplied.")));
         AmdSmuCpuSensorReader? smu = null;
+        var ccd = new AmdCcdMetricResource(target => new AmdCcdTemperatureReader(target.Family, target.Model,
+            1, () => AmdSmuPawnIoSession.OpenSmn(options.AmdSmn
+                ?? throw new FileNotFoundException("AMD SMN PawnIO options were not supplied."))));
         var mechrevo = new MechrevoUwAcpiMetricResource(() => options.MechrevoLibraryPath,
             path => new MechrevoUwAcpiReader(path));
         var storage = new WindowsStorageOwner(options.StorageCapabilityCacheLifetime, clock,
@@ -148,6 +152,9 @@ public sealed partial class WindowsHardwareMetricResources
                 }
                 return smu.Read(request);
             },
+            ReadAmdCcdIdentities = ccd.Discover,
+            ReadAmdCcd = (identities, requested) => identities.Where(identity => requested.Contains(identity.ExactIdentityKey))
+                .ToDictionary(identity => identity.ExactIdentityKey, ccd.Read, StringComparer.Ordinal),
             ReadBatteryIdentities = () => battery.ReadIdentities(),
             ReadBattery = (devices, selected) => devices.Where(device => selected.ContainsKey(device.DisplayIndex))
                 .Select(device => battery.Read(device, selected[device.DisplayIndex])).ToArray(),
@@ -179,6 +186,7 @@ public sealed partial class WindowsHardwareMetricResources
         if (amdDesktopControl is not null) result.owned.Add(amdDesktopControl);
         if (integratedControl is not null) result.owned.Add(integratedControl);
         result.owned.Add(hardwareMonitor);
+        result.owned.Add(ccd);
         result.owned.Add(nvidiaControl);
         result.owned.Add(nvapi);
         result.owned.Add(frequency);

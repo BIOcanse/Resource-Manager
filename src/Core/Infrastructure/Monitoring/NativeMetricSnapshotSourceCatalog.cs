@@ -16,6 +16,7 @@ internal static class NativeMetricSnapshotSourceCatalog
     internal const string IntelGcl = NativeMetricSnapshotSources.IntelGcl;
     internal const string IntelMsr = NativeMetricSnapshotSources.IntelMsr;
     internal const string AmdSmu = NativeMetricSnapshotSources.AmdSmu;
+    internal const string AmdSmn = NativeMetricSnapshotSources.AmdSmn;
     internal const string WindowsStorageSensors = NativeMetricSnapshotSources.WindowsStorageSensors;
     internal const string WindowsNvmeHealth = NativeMetricSnapshotSources.WindowsNvmeHealth;
     internal const string WindowsAtaSmart = NativeMetricSnapshotSources.WindowsAtaSmart;
@@ -44,7 +45,7 @@ internal static class NativeMetricSnapshotSourceCatalog
             AmdAdlx => MonitoringSourceZoneIds.VendorAmdAdlx,
             IntelGcl => MonitoringSourceZoneIds.VendorIntelGcl,
             IntelMsr => MonitoringSourceZoneIds.VendorIntelMsr,
-            AmdSmu => MonitoringSourceZoneIds.VendorAmdSmu,
+            AmdSmu or AmdSmn => MonitoringSourceZoneIds.VendorAmdSmu,
             WindowsStorageSensors or WindowsNvmeHealth or WindowsAtaSmart or WindowsDiskPerformance =>
                 MonitoringSourceZoneIds.WindowsStorageSensors,
             WindowsNpuEngine => MonitoringSourceZoneIds.WindowsNpuEngine,

@@ -24,6 +24,7 @@ public sealed record NetworkInterfaceCatalogIdentity(int DisplayIndex, Guid Guid
 
 public static class NativeMetricSnapshotSources
 {
+    public const string AmdSmn = "amd.smn";
     public const string WindowsNpuEngine = "windows.npu-engine";
     public const string WindowsNpuMemory = "windows.npu-memory";
     public const string WindowsCpu = "windows.cpu";
