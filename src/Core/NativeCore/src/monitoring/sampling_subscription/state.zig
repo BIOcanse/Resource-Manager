@@ -80,7 +80,9 @@ pub const Session = struct {
 
         const source_capacity: usize = @intCast(config.maximum_source_count);
         const item_capacity: usize = @intCast(config.maximum_item_count);
-        const membership_capacity: usize = @intCast(config.maximum_membership_count);
+        // Configured capacities are admission limits; membership storage follows
+        // the real source-item rows observed by this session.
+        const membership_capacity: usize = 0;
 
         const sources = try allocator.alloc(SourceSlot, source_capacity);
         errdefer allocator.free(sources);
@@ -216,10 +218,10 @@ pub const Session = struct {
         }
         @memset(self.sources, .{});
         @memset(self.items, .{});
-        @memset(self.memberships, .{});
+        self.replaceMemberships(&.{}, "reset");
         @memset(self.source_index, no_index);
         @memset(self.item_index, no_index);
-        @memset(self.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
+        self.replaceIssuedTriggers(&.{}, "reset");
         self.issued_trigger_count = 0;
         self.issued_trigger_plan_epoch = 0;
         self.last_plan_epoch = 0;
@@ -518,11 +520,12 @@ pub const Session = struct {
             self.sourceItemCount(source_index)
         else
             0;
-        if (references.len > self.freeMembershipCount() + reusable_memberships) return .out_of_memory;
-
-        const source_index = existing_source_index orelse self.allocateSource(input.source_handle) orelse
-            unreachable;
-        const source = &self.sources[source_index];
+        const required_memberships = self.membershipCount() - reusable_memberships + references.len;
+        if (required_memberships > self.config.maximum_membership_count) return .out_of_memory;
+        // Prepare the replacement source and exact membership rows before any
+        // authoritative state changes. Membership indices never leave this module.
+        var updated_source = if (existing_source_index) |index| self.sources[index] else SourceSlot{};
+        const source = &updated_source;
         const previous_last_seen = source.last_seen_milliseconds;
         const previous_sampling_flags = source.sampling_flags;
         const previous_effective_interval = if (source.active)
@@ -547,6 +550,26 @@ pub const Session = struct {
         const period = self.effectiveSourceInterval(source);
         const sampling_flags_changed = previous_sampling_flags != source.sampling_flags or
             (previous_effective_interval != 0 and previous_effective_interval != period);
+
+        if (required_memberships != self.memberships.len) {
+            const candidate = self.allocator.alloc(MembershipSlot, required_memberships) catch return .out_of_memory;
+            @memset(candidate, .{});
+            var retained_count: usize = 0;
+            for (self.memberships) |membership| {
+                if (!membership.active) continue;
+                if (existing_source_index != null and membership.source_index == existing_source_index.?) {
+                    const handle = self.items[membership.item_index].item_handle;
+                    if (sampling_flags_changed or membership.period_milliseconds != period or
+                        membership.sampling_flags != source.sampling_flags or
+                        std.mem.indexOfScalar(u64, handles, handle) == null) continue;
+                }
+                candidate[retained_count] = membership;
+                retained_count += 1;
+            }
+            self.replaceMemberships(candidate, "track-demand");
+        }
+        const source_index = existing_source_index orelse self.allocateSource(input.source_handle) orelse unreachable;
+        self.sources[source_index] = updated_source;
 
         for (self.memberships) |*membership| {
             if (!membership.active or membership.source_index != source_index) continue;
@@ -651,6 +674,15 @@ pub const Session = struct {
             return .stale_frame;
         }
         const source_index = self.findSource(input.source_handle) orelse return .no_data;
+        const required = self.memberships.len - self.sourceItemCount(source_index);
+        const candidate = self.allocator.alloc(MembershipSlot, required) catch return .out_of_memory;
+        var retained: usize = 0;
+        for (self.memberships) |membership| {
+            if (!membership.active or membership.source_index == source_index) continue;
+            candidate[retained] = membership;
+            retained += 1;
+        }
+        self.replaceMemberships(candidate, "source-remove");
         self.removeSourceAt(source_index);
         _ = self.rebuildItemAggregates();
         self.refreshItemDeadlines(input.command_at_milliseconds);
@@ -667,12 +699,18 @@ pub const Session = struct {
         return count;
     }
 
-    fn freeMembershipCount(self: *const Session) usize {
-        var count: usize = 0;
-        for (self.memberships) |membership| if (!membership.active) {
-            count += 1;
-        };
-        return count;
+    pub fn replaceMemberships(self: *Session, candidate: []MembershipSlot, reason: []const u8) void {
+        const previous = self.memberships.len;
+        self.allocator.free(self.memberships);
+        self.memberships = candidate;
+        if (previous != candidate.len) std.log.defaultLog(.info, .sampling_subscription, "workspace resize column=memberships old_rows={d} new_rows={d} old_bytes={d} new_bytes={d} reason={s}", .{ previous, candidate.len, previous * @sizeOf(MembershipSlot), candidate.len * @sizeOf(MembershipSlot), reason });
+    }
+
+    pub fn replaceIssuedTriggers(self: *Session, candidate: []protocol.TriggerOutput, reason: []const u8) void {
+        const previous = self.scratch_issued_triggers.len;
+        self.allocator.free(self.scratch_issued_triggers);
+        self.scratch_issued_triggers = candidate;
+        if (previous != candidate.len) std.log.defaultLog(.info, .sampling_subscription, "workspace resize column=issued-triggers old_rows={d} new_rows={d} old_bytes={d} new_bytes={d} reason={s}", .{ previous, candidate.len, previous * @sizeOf(protocol.TriggerOutput), candidate.len * @sizeOf(protocol.TriggerOutput), reason });
     }
 
     fn allocateSource(self: *Session, handle: u64) ?u32 {

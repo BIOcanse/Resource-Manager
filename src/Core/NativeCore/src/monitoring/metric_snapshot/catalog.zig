@@ -66,12 +66,12 @@ pub const MetricRecord = struct {
 };
 
 pub const Bank = struct {
-    sources: []SourceRecord,
-    rules: []RuleRecord,
-    metrics: []MetricRecord,
-    source_index: []u32,
-    rule_index: []u32,
-    metric_index: []u32,
+    sources: []SourceRecord = &.{},
+    rules: []RuleRecord = &.{},
+    metrics: []MetricRecord = &.{},
+    source_index: []u32 = &.{},
+    rule_index: []u32 = &.{},
+    metric_index: []u32 = &.{},
     source_count: u32 = 0,
     rule_count: u32 = 0,
     metric_count: u32 = 0,

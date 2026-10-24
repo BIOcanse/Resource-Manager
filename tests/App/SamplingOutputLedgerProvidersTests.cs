@@ -66,7 +66,7 @@ public sealed class SamplingOutputLedgerProvidersTests
         foreach (var roleId in new[] { 1, 2, 4, 5, 6, 7 })
         {
             using var role = sampling.Owner.Acquire(roleId);
-            roleBytes.Add(roleId, new NativeSamplingOutputLayout(role.Session.Capacity).StorageLength);
+            roleBytes.Add(roleId, 0); // Empty real output rows remain ordinary storage.
         }
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         var metric = provider.GetRequiredService<WindowsHardwareMetricSampler>();
@@ -98,7 +98,7 @@ public sealed class SamplingOutputLedgerProvidersTests
         var expectedBytes = roleBytes.Values.Aggregate(0UL, static (total, bytes) => checked(total + bytes));
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         {
-            while (ledger.ReadTable().RegisteredBytes != expectedBytes)
+            while (!roleBytes.Keys.All(roleId => HasPlanned(sampling, roleId)))
                 await Task.Delay(10, deadline.Token);
         }
 
@@ -177,15 +177,16 @@ public sealed class SamplingOutputLedgerProvidersTests
         var move = subscription.MoveNextAsync().AsTask();
         Assert.True(captureEntered.Wait(TimeSpan.FromSeconds(5)));
         using var role = sampling.Owner.Acquire(4);
-        var layout = new NativeSamplingOutputLayout(role.Session.Capacity);
+        var layout = SamplingOutputScratchTests.RealLayout(1, 1, 1);
         var store = Assert.Single(stores);
-        Assert.Equal(layout.StorageLength, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(layout.StorageLength, store.Length);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
 
         Assert.Throws<IOException>(() => source.Dispose());
         Assert.True(captureExited.IsSet);
         Assert.False(store.Closed);
         Assert.Equal(1, store.CloseCalls);
-        Assert.Equal(layout.StorageLength, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
 
         enumerationCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await move);
@@ -195,6 +196,21 @@ public sealed class SamplingOutputLedgerProvidersTests
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         source.Dispose();
         Assert.Equal(2, store.CloseCalls);
+    }
+
+    private static bool HasPlanned(HostManagerSamplingSubscriptionTestFixture sampling, int roleId)
+    {
+        using var role = sampling.Owner.Acquire(roleId);
+        var cap = role.Session.Capacity;
+        var header = new NativeSamplingSubscriptionSnapshotHeader
+        {
+            AbiVersion = NativeSamplingSubscriptionAbi.Version,
+            StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<NativeSamplingSubscriptionSnapshotHeader>()
+        };
+        Assert.Equal(NativeSamplingSubscriptionStatus.Ok, role.Session.Snapshot(ref header,
+            new NativeSamplingSubscriptionSourceView[checked((int)cap.SourceCapacity)],
+            new NativeSamplingSubscriptionItemState[checked((int)cap.ItemCapacity)]));
+        return header.LastPlanEpoch != 0;
     }
 
     private static readonly Type[] ProviderTypes =
@@ -270,14 +286,8 @@ internal sealed class SamplingOutputCapacityBatch : IDisposable
         {
             var role = Assert.Single(plan.SamplingSubscription.Recreate.Roles,
                 row => row.RoleId == roleId);
-            var capacity = new NativeSamplingSubscriptionCapacity
-            {
-                DueItemCapacity = checked((uint)role.MaximumDueItemCount),
-                SourceViewCapacity = checked((uint)role.MaximumSourceViewCount),
-                ExpiredSourceCapacity = checked((uint)role.MaximumExpiredSourceCount),
-                TriggerCapacity = checked((uint)role.MaximumMembershipCount)
-            };
-            var length = new NativeSamplingOutputLayout(in capacity).StorageLength;
+            // A representative real working set, independent of configured admission maxima.
+            var length = SamplingOutputScratchTests.RealLayout(64, 2, 128).StorageLength;
             for (var slot = 0; slot < 2; slot++)
             {
                 var resource = owner.CreateScratch(length);

@@ -64,7 +64,7 @@ pub fn plan(
         scratch.Range.slice(protocol.MetricPlanOutput, metric_plans) orelse return .invalid_argument,
     };
     if (!scratch.disjoint(&ranges)) return .invalid_argument;
-    const handles = session.scratch_layout.column(u64, scratch_bytes, session.scratch_layout.plan_handles, session.config.maximum_plan_metric_count);
+    const handles = session.scratch_layout.column(u64, scratch_bytes, session.scratch_layout.plan_handles, session.scratch_layout.plan_metric_count);
     stageSourceModes(session, input.plan_epoch, source_modes);
     // A due-only request does not cancel slower active subscriptions. Only explicit
     // source modes invalidate the baseline here; demand cancellation is separate.

@@ -528,6 +528,7 @@ public sealed class HostManagerMetricSnapshotOwner :
                 ResolvePersistencePath(
                     plan.Recreate.PersistenceRelativePath), createScratch,
                 warning => logger.LogWarning("{MetricSnapshotPersistenceWarning}", warning));
+            workspace.ResizeLog = message => logger.LogInformation("{NativeWorkspaceResize}", message);
             topology ??= topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(

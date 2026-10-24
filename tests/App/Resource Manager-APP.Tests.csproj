@@ -47,6 +47,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Fixtures\Memory\windows-sdk-pagefile.json" />
+    <EmbeddedResource Include="Fixtures\Metrics\c13-metric-catalog.json.gz" />
     <Using Include="Xunit" />
     <EmbeddedResource Include="Fixtures\Hid\windows-sdk-layout.json" />
     <EmbeddedResource Include="Fixtures\Network\windows-sdk-tables*.json" />

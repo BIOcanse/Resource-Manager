@@ -9,7 +9,7 @@ public sealed class DashboardMonitoringCatalogState
 {
     private readonly object gate = new();
     private HardwareMetricSnapshot? current;
-    private CatalogIdentity identity;
+    private CatalogIdentity? identity;
     private string revision = Guid.NewGuid().ToString("N");
 
     public event Action? Changed;
@@ -63,7 +63,7 @@ public sealed class DashboardMonitoringCatalogState
         lock (gate)
         {
             Volatile.Write(ref current, snapshot);
-            if (nextIdentity == identity)
+            if (nextIdentity.Equals(identity))
             {
                 return;
             }
@@ -111,31 +111,61 @@ public sealed class DashboardMonitoringCatalogState
             || name.Equals("engineBusy", StringComparison.OrdinalIgnoreCase);
     }
 
-    private readonly record struct CatalogIdentity(
-        ulong WorkspaceIdentity,
-        ulong ConfigurationGeneration,
-        ulong CatalogGeneration,
-        string SelectableMetricSignature)
+    // Keep the compared fields typed: a hash rejects differences quickly, and a
+    // matching hash still requires full equality. No per-field formatted copies.
+    private sealed class CatalogIdentity : IEquatable<CatalogIdentity>
     {
-        internal static CatalogIdentity Create(HardwareMetricSnapshot snapshot)
+        private readonly ulong workspaceIdentity;
+        private readonly ulong configurationGeneration;
+        private readonly ulong catalogGeneration;
+        private readonly (int Index, string Identity)[] adapters;
+        private readonly (string Id, string ScopeKind, string ScopeKey)[] metrics;
+        private readonly (string Device, string Address, string Source, MetricReadingSource? Reading)[] bindings;
+        private readonly int hash;
+
+        private CatalogIdentity(HardwareMetricSnapshot snapshot)
         {
+            workspaceIdentity = snapshot.WorkspaceIdentity;
+            configurationGeneration = snapshot.ConfigurationGeneration;
+            catalogGeneration = snapshot.CatalogGeneration;
             var boundAddresses = snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases)
                 .Concat(snapshot.FieldBindings.Keys).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var adapterIdentity = snapshot.Gpus
-                .OrderBy(static gpu => gpu.Index)
-                .Select(static gpu => $"{gpu.Index}:{gpu.IdentityKey ?? string.Empty}");
-            var metricIdentity = MetricCatalog.FromSnapshot(snapshot)
+            adapters = snapshot.Gpus.OrderBy(static gpu => gpu.Index)
+                .Select(static gpu => (gpu.Index, gpu.IdentityKey ?? string.Empty)).ToArray();
+            metrics = MetricCatalog.FromSnapshot(snapshot)
                 .Where(definition => definition.Selectable || boundAddresses.Contains(definition.Id))
                 .OrderBy(static definition => definition.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(static definition =>
-                    $"{definition.Id}:{definition.ScopeKind ?? string.Empty}:{definition.ScopeKey ?? string.Empty}");
-            return new CatalogIdentity(
-                snapshot.WorkspaceIdentity,
-                snapshot.ConfigurationGeneration,
-                snapshot.CatalogGeneration,
-                string.Join('|', adapterIdentity.Concat(metricIdentity).Concat(snapshot.FieldBindings.Values
-                    .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
-                    .Select(static binding => $"{binding.DeviceIdentity}:{binding.RequestAddress}:{binding.SourceId}:{binding.Field.Reading}"))));
+                .Select(static definition => (definition.Id, definition.ScopeKind ?? string.Empty,
+                    definition.ScopeKey ?? string.Empty)).ToArray();
+            bindings = snapshot.FieldBindings.Values
+                .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
+                .Select(static binding => (binding.DeviceIdentity, binding.RequestAddress,
+                    binding.SourceId, binding.Field.Reading)).ToArray();
+            var builder = new HashCode();
+            builder.Add(workspaceIdentity);
+            builder.Add(configurationGeneration);
+            builder.Add(catalogGeneration);
+            builder.Add(adapters.Length);
+            foreach (var adapter in adapters) builder.Add(adapter);
+            builder.Add(metrics.Length);
+            foreach (var metric in metrics) builder.Add(metric);
+            builder.Add(bindings.Length);
+            foreach (var binding in bindings) builder.Add(binding);
+            hash = builder.ToHashCode();
         }
+
+        internal static CatalogIdentity Create(HardwareMetricSnapshot snapshot) => new(snapshot);
+
+        public bool Equals(CatalogIdentity? other)
+            => other is not null && hash == other.hash
+                && workspaceIdentity == other.workspaceIdentity
+                && configurationGeneration == other.configurationGeneration
+                && catalogGeneration == other.catalogGeneration
+                && adapters.AsSpan().SequenceEqual(other.adapters)
+                && metrics.AsSpan().SequenceEqual(other.metrics)
+                && bindings.AsSpan().SequenceEqual(other.bindings);
+
+        public override bool Equals(object? obj) => obj is CatalogIdentity other && Equals(other);
+        public override int GetHashCode() => hash;
     }
 }

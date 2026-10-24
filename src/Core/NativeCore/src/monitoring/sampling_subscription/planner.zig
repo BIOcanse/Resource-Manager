@@ -29,10 +29,10 @@ pub fn plan(
     {
         return .invalid_argument;
     }
-    if (due_capacity < session.config.maximum_due_item_count or
-        source_capacity < session.config.maximum_source_view_count or
-        expired_capacity < session.config.maximum_expired_source_count or
-        trigger_capacity < session.config.maximum_membership_count)
+    if (due_capacity < session.knownItemCount() or
+        source_capacity < session.activeSourceCount() or
+        expired_capacity < session.activeSourceCount() or
+        trigger_capacity < session.membershipCount())
     {
         return .buffer_too_small;
     }
@@ -50,6 +50,59 @@ pub fn plan(
         return .invalid_argument;
     const triggers = requireOutput(protocol.TriggerOutput, trigger_pointer, trigger_capacity) orelse
         return .invalid_argument;
+    // Build exact replacements while failure can still leave all native state
+    // and the previous issued authorization unchanged.
+    var surviving_memberships: usize = 0;
+    for (session.memberships) |membership| {
+        if (membership.active and !sourceExpired(session, &session.sources[membership.source_index], header.command_at_milliseconds))
+            surviving_memberships += 1;
+    }
+    var membership_candidate: ?[]state.MembershipSlot = null;
+    defer if (membership_candidate) |candidate| session.allocator.free(candidate);
+    if (surviving_memberships != session.memberships.len) {
+        const candidate = session.allocator.alloc(state.MembershipSlot, surviving_memberships) catch return .out_of_memory;
+        membership_candidate = candidate;
+        var index: usize = 0;
+        for (session.memberships) |membership| {
+            if (!membership.active or sourceExpired(session, &session.sources[membership.source_index], header.command_at_milliseconds)) continue;
+            candidate[index] = membership;
+            index += 1;
+        }
+    }
+
+    @memset(session.scratch_trigger_due_milliseconds, std.math.maxInt(u64));
+    for (session.memberships) |membership| {
+        if (!membership.active or
+            membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
+            membership.next_trigger_milliseconds == 0 or
+            membership.next_trigger_milliseconds > header.command_at_milliseconds)
+        {
+            continue;
+        }
+        const source = &session.sources[membership.source_index];
+        const item = &session.items[membership.item_index];
+        if (!source.active or sourceExpired(session, source, header.command_at_milliseconds) or !item.active) continue;
+        const item_index: usize = @intCast(membership.item_index);
+        session.scratch_trigger_due_milliseconds[item_index] = @min(
+            session.scratch_trigger_due_milliseconds[item_index],
+            membership.next_trigger_milliseconds,
+        );
+    }
+
+    var required_triggers: usize = 0;
+    for (session.memberships) |membership| {
+        if (!membership.active or membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
+            membership.next_trigger_milliseconds == 0 or membership.next_trigger_milliseconds > header.command_at_milliseconds) continue;
+        const source = &session.sources[membership.source_index];
+        const item = &session.items[membership.item_index];
+        if (!source.active or sourceExpired(session, source, header.command_at_milliseconds) or !item.active) continue;
+        if (membership.next_trigger_milliseconds == session.scratch_trigger_due_milliseconds[membership.item_index]) required_triggers += 1;
+    }
+    var issued_candidate: ?[]protocol.TriggerOutput = null;
+    defer if (issued_candidate) |candidate| session.allocator.free(candidate);
+    if (required_triggers != session.scratch_issued_triggers.len)
+        issued_candidate = session.allocator.alloc(protocol.TriggerOutput, required_triggers) catch return .out_of_memory;
+
     @memset(due, std.mem.zeroes(protocol.DueItemOutput));
     @memset(sources, std.mem.zeroes(protocol.SourceViewOutput));
     @memset(expired, std.mem.zeroes(protocol.ExpiredSourceOutput));
@@ -76,7 +129,10 @@ pub fn plan(
         session.deactivateSourceAt(@intCast(source_index));
         any_expired = true;
     }
-    if (any_expired) session.clearInactiveSourceMemberships();
+    if (membership_candidate) |candidate| {
+        session.replaceMemberships(candidate, "source-expiry");
+        membership_candidate = null;
+    } else if (any_expired) session.clearInactiveSourceMemberships();
 
     const active_item_count = session.rebuildItemAggregates();
     session.refreshItemDeadlines(header.command_at_milliseconds);
@@ -85,25 +141,6 @@ pub fn plan(
         if (!source.active) continue;
         sources[source_count] = sourceOutput(session, &source, @intCast(source_index));
         source_count += 1;
-    }
-
-    @memset(session.scratch_trigger_due_milliseconds, std.math.maxInt(u64));
-    for (session.memberships) |membership| {
-        if (!membership.active or
-            membership.sampling_flags & protocol.SourceFlags.periodic_triggers == 0 or
-            membership.next_trigger_milliseconds == 0 or
-            membership.next_trigger_milliseconds > header.command_at_milliseconds)
-        {
-            continue;
-        }
-        const source = &session.sources[membership.source_index];
-        const item = &session.items[membership.item_index];
-        if (!source.active or !item.active) continue;
-        const item_index: usize = @intCast(membership.item_index);
-        session.scratch_trigger_due_milliseconds[item_index] = @min(
-            session.scratch_trigger_due_milliseconds[item_index],
-            membership.next_trigger_milliseconds,
-        );
     }
 
     var candidate_count: usize = 0;
@@ -203,8 +240,12 @@ pub fn plan(
     std.sort.pdq(protocol.SourceViewOutput, sources[0..source_count], {}, sourceLessThan);
     std.sort.pdq(protocol.ExpiredSourceOutput, expired[0..expired_count], {}, expiredLessThan);
 
-    @memset(session.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
-    @memcpy(session.scratch_issued_triggers[0..trigger_count], triggers[0..trigger_count]);
+    std.debug.assert(trigger_count == required_triggers);
+    if (issued_candidate) |candidate| {
+        session.replaceIssuedTriggers(candidate, "plan-issued");
+        issued_candidate = null;
+    }
+    @memcpy(session.scratch_issued_triggers, triggers[0..trigger_count]);
     session.issued_trigger_count = @intCast(trigger_count);
     session.issued_trigger_plan_epoch = header.plan_epoch;
     session.last_plan_epoch = header.plan_epoch;
@@ -229,6 +270,11 @@ pub fn plan(
     header.state_revision = session.state_revision;
     header.flags = flags;
     return .ok;
+}
+
+fn sourceExpired(session: *const state.Session, source: *const state.SourceSlot, now: u64) bool {
+    return source.active and !source.persistent and now > source.last_seen_milliseconds and
+        now - source.last_seen_milliseconds > session.config.active_ttl_milliseconds;
 }
 
 pub fn sourceOutput(

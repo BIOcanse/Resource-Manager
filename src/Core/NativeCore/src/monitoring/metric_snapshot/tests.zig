@@ -31,12 +31,13 @@ test "floating counters commit fractional SDK deltas atomically for ratio and pe
         const modes = testModes();
         for (0..2) |index| {
             const at: u64 = 200 + index * 1000;
-            const epoch: u64 = 2 + index * 2;
+            const epoch: u64 = 2 + index * 3;
             var output = std.mem.zeroes(protocol.PlanOutput);
             var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
             var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
             try std.testing.expectEqual(ResultCode.ok, runPlan(session, session_scratch, epoch, index + 1, at, 0, &requested, &modes, &output, &source_plans, &metric_plans));
             var header = metricCompletion(epoch + 1, index + 1, 10, 1, index + 1, at, 1, 1, 0);
+            header.catalog_generation = session.catalog_generation;
             header.capability_generation = source_plans[0].capability_generation;
             header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
             try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, session_scratch));
@@ -49,6 +50,7 @@ test "floating counters commit fractional SDK deltas atomically for ratio and pe
             observation.value_high_bits = @bitCast(@as(f64, if (index == 0) 10.125 else 12.125));
             try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{observation}));
             var finalize = finalizeInput(epoch + 1, index + 1, 10, at);
+            finalize.catalog_generation = session.catalog_generation;
             const rule_index = session.active.findRule(1_001).?;
             if (index == 1) {
                 finalize.catalog_generation += 1;
@@ -60,6 +62,16 @@ test "floating counters commit fractional SDK deltas atomically for ratio and pe
             const record = session.active.rules[rule_index];
             if (index == 0) {
                 try std.testing.expectEqual(protocol.MetricStatus.unavailable, record.status);
+                var expanded: [4]protocol.MetricDefinitionInput = undefined;
+                @memcpy(expanded[0..3], &rules);
+                expanded[3] = rules[2];
+                expanded[3].rule_handle = 3001;
+                expanded[3].metric_handle = 300;
+                expanded[3].semantic_fingerprint += 1;
+                try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, epoch + 2, 2, at, &sources, &expanded));
+                try std.testing.expectEqual(record.counter_baseline.primary, session.active.rules[0].counter_baseline.primary);
+                try std.testing.expectEqual(record.counter_baseline.reference, session.active.rules[0].counter_baseline.reference);
+                try std.testing.expect(session.active.rules[0].counter_baseline.valid);
             } else {
                 try std.testing.expectEqual(protocol.MetricStatus.current, record.status);
                 try std.testing.expectEqual(@as(f64, if (kind == .floating_counter_percentage) 25 else 0.25), @as(f64, @bitCast(record.value_bits)));
@@ -2841,6 +2853,10 @@ test "declared capacities and resident budget are exact production gates" {
     const probe_scratch = try testScratch(&config);
     defer std.testing.allocator.free(probe_scratch);
     const probe = try state.Session.create(&config);
+    const empty_required = probe.requiredByteCount();
+    var sources = testSources();
+    var rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(probe, 1, 1, 100, &sources, &rules));
     const exact_resident = probe.requiredByteCount();
     probe.destroy();
     config.resident_byte_budget = exact_resident;
@@ -2848,15 +2864,13 @@ test "declared capacities and resident budget are exact production gates" {
     defer std.testing.allocator.free(session_scratch);
     const session = try state.Session.create(&config);
     defer session.destroy();
-    try std.testing.expectEqual(exact_resident, session.requiredByteCount());
-    try std.testing.expectEqual(exact_resident, session.capacity().resident_byte_count + session.capacity().scratch_byte_count);
+    try std.testing.expectEqual(empty_required, session.requiredByteCount());
 
-    var sources = testSources();
-    var rules = testRules();
     try std.testing.expectEqual(
         ResultCode.ok,
         replaceCatalog(session, 1, 1, 100, &sources, &rules),
     );
+    try std.testing.expectEqual(exact_resident, session.capacity().resident_byte_count + session.capacity().scratch_byte_count);
     var source_plans = std.mem.zeroes([source_count]protocol.SourcePlanOutput);
     var metric_plans = std.mem.zeroes([rule_count]protocol.MetricPlanOutput);
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
@@ -2945,7 +2959,134 @@ test "declared capacities and resident budget are exact production gates" {
     );
 
     config.resident_byte_budget = exact_resident - 1;
+    const limited = try state.Session.create(&config);
+    defer limited.destroy();
+    try std.testing.expectEqual(ResultCode.invalid_argument, replaceCatalog(limited, 1, 1, 100, &sources, &rules));
+    try std.testing.expectEqual(@as(u64, 0), limited.catalog_generation);
+    config.resident_byte_budget = empty_required - 1;
     try std.testing.expectError(error.InvalidConfiguration, state.Session.create(&config));
+}
+
+test "catalog banks and scratch follow real rows across growth shrink and rejected replacements" {
+    var config = testConfig(1);
+    config.maximum_source_count = 1024;
+    config.maximum_metric_count = 4096;
+    config.maximum_rule_count = 8192;
+    config.maximum_persistence_source_count = 1024;
+    config.maximum_persistence_rule_count = 8192;
+    config.maximum_source_mode_count = 1024;
+    config.maximum_source_plan_count = 1024;
+    config.source_index_capacity = 1024;
+    config.metric_index_capacity = 4096;
+    config.rule_index_capacity = 8192;
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    const empty_resident = session.capacity().resident_byte_count;
+    try std.testing.expectEqual(@as(u64, 8), session.capacity().scratch_byte_count);
+    try std.testing.expectEqual(@as(usize, 0), session.active.rules.len);
+    try std.testing.expectEqual(@as(usize, 0), session.staging.rules.len);
+    try std.testing.expectEqual(@as(u32, 8192), session.capacity().rule_capacity);
+
+    const sources = testSources();
+    const rules = testRules();
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 1, 1, 100, &sources, &rules));
+    const small_capacity = session.capacity();
+    try std.testing.expect(small_capacity.resident_byte_count < 64 * 1024);
+    try std.testing.expectEqual(@as(usize, 3), session.active.sources.len);
+    try std.testing.expectEqual(@as(usize, 3), session.active.rules.len);
+    try std.testing.expectEqual(@as(usize, 2), session.active.metrics.len);
+    try std.testing.expectEqual(@as(usize, 3), session.staging.rules.len);
+    try std.testing.expectEqual(@as(usize, 3), session.source_modes.len);
+    try std.testing.expectEqual(@as(usize, 3), session.planned_rule_flags.len);
+    try std.testing.expectEqual(@as(u32, 3), session.scratch_layout.observation_count);
+    try std.testing.expectEqual(@as(u32, 2), session.scratch_layout.plan_metric_count);
+    const bytes = try std.testing.allocator.alignedAlloc(u8, .@"8", small_capacity.scratch_byte_count);
+    defer std.testing.allocator.free(bytes);
+    try completeCpuCycle(session, bytes, 2, 3, 1, 200, 300, 1, 100, 200, 100, 1000);
+    try completeCpuCycle(session, bytes, 4, 5, 2, 400, 500, 2, 120, 260, 140, 1200);
+    const cpu_before = session.active.sources[0];
+    const value_before = session.active.metrics[0].output.value_bits;
+    try std.testing.expect(cpu_before.cpu_baseline_valid);
+    try std.testing.expectEqual(protocol.MetricStatus.current, session.active.rules[0].status);
+
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    var source_plans = std.mem.zeroes([4]protocol.SourcePlanOutput);
+    var metric_plans = std.mem.zeroes([4]protocol.MetricPlanOutput);
+    const modes = testModes();
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, bytes, 6, 3, 600, 0, &.{planMetric(200)}, &modes, &output, &source_plans, &metric_plans));
+    var header = metricCompletion(7, 3, 10, 1, 3, 700, 1, 1, 0);
+    header.capability_generation = source_plans[0].capability_generation;
+    header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
+    try std.testing.expectEqual(ResultCode.ok, session_module.beginCompletion(session, &header, bytes));
+    try std.testing.expectEqual(ResultCode.ok, session_module.submitRequested(session, &.{requestedRule(2001)}));
+    var unsupported = unsignedObservation(2001, 200, 10, 2, 700, 0);
+    unsupported.source_observation_sequence = 3;
+    unsupported.valid_mask = protocol.ObservationValid.required;
+    unsupported.status = @intFromEnum(protocol.ObservationStatus.unsupported);
+    try std.testing.expectEqual(ResultCode.ok, session_module.submitObservations(session, &.{unsupported}));
+    const finish = finalizeInput(7, 3, 10, 700);
+    try std.testing.expectEqual(ResultCode.ok, session_module.finalizeCompletion(session, &finish));
+    try std.testing.expectEqual(protocol.MetricStatus.unsupported, session.active.rules[2].status);
+    const suppressed_until = session.active.rules[2].unsupported_until_capability_generation;
+
+    var expanded_sources: [4]protocol.SourcePolicyInput = undefined;
+    @memcpy(expanded_sources[0..3], &sources);
+    expanded_sources[3] = sourcePolicy(40, .metrics, 4, 0x01);
+    var expanded_rules: [4]protocol.MetricDefinitionInput = undefined;
+    @memcpy(expanded_rules[0..3], &rules);
+    expanded_rules[3] = rules[2];
+    expanded_rules[3].rule_handle = 3001;
+    expanded_rules[3].metric_handle = 300;
+    expanded_rules[3].source_handle = 40;
+    expanded_rules[3].source_priority = 4;
+    expanded_rules[3].semantic_fingerprint += 1;
+
+    var invalid_rules = expanded_rules;
+    invalid_rules[3].source_handle = 50;
+    const active_address = @intFromPtr(session.active.rules.ptr);
+    const revision = session.state_revision;
+    try std.testing.expectEqual(ResultCode.invalid_argument, replaceCatalog(session, 8, 2, 800, &expanded_sources, &invalid_rules));
+    try std.testing.expectEqual(active_address, @intFromPtr(session.active.rules.ptr));
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(small_capacity.resident_byte_count, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(value_before, session.active.metrics[0].output.value_bits);
+    const original_budget = session.config.resident_byte_budget;
+    const original_allocator = session.allocator;
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 8 });
+    session.allocator = failing.allocator();
+    const failed_allocation_result = replaceCatalog(session, 8, 2, 800, &expanded_sources, &expanded_rules);
+    session.allocator = original_allocator;
+    try std.testing.expectEqual(ResultCode.out_of_memory, failed_allocation_result);
+    try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+    try std.testing.expectEqual(active_address, @intFromPtr(session.active.rules.ptr));
+    try std.testing.expectEqual(revision, session.state_revision);
+    session.config.resident_byte_budget = session.requiredByteCount();
+    try std.testing.expectEqual(ResultCode.invalid_argument, replaceCatalog(session, 8, 2, 800, &expanded_sources, &expanded_rules));
+    session.config.resident_byte_budget = original_budget;
+    try std.testing.expectEqual(active_address, @intFromPtr(session.active.rules.ptr));
+
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 8, 2, 800, &expanded_sources, &expanded_rules));
+    try std.testing.expectEqual(@as(usize, 4), session.active.rules.len);
+    try std.testing.expectEqual(@as(usize, 4), session.staging.rules.len);
+    try std.testing.expectEqual(@as(usize, 3), session.active.metrics.len);
+    try std.testing.expectEqual(cpu_before.cpu_idle_ticks, session.active.sources[0].cpu_idle_ticks);
+    try std.testing.expectEqual(cpu_before.cpu_monotonic_ticks, session.active.sources[0].cpu_monotonic_ticks);
+    try std.testing.expectEqual(value_before, session.active.metrics[0].output.value_bits);
+    try std.testing.expectEqual(protocol.MetricStatus.unsupported, session.active.rules[2].status);
+    try std.testing.expectEqual(suppressed_until, session.active.rules[2].unsupported_until_capability_generation);
+    try std.testing.expect(session.capacity().resident_byte_count > small_capacity.resident_byte_count);
+    try std.testing.expect(session.capacity().scratch_byte_count > small_capacity.scratch_byte_count);
+
+    try std.testing.expectEqual(ResultCode.ok, replaceCatalog(session, 9, 3, 900, &sources, &rules));
+    try std.testing.expectEqual(small_capacity.resident_byte_count, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(small_capacity.scratch_byte_count, session.capacity().scratch_byte_count);
+    try std.testing.expectEqual(value_before, session.active.metrics[0].output.value_bits);
+    // The exact small region remains sufficient after a rejected growth and a shrink.
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, bytes, 10, 4, 1000, 0, &.{planMetric(100)}, &modes, &output, &source_plans, &metric_plans));
+    const reset = controlInput(11, 1100);
+    try std.testing.expectEqual(ResultCode.ok, session_module.reset(session, &reset));
+    try std.testing.expectEqual(empty_resident, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(@as(u64, 8), session.capacity().scratch_byte_count);
 }
 
 fn completeCpuCycle(
@@ -3261,6 +3402,16 @@ fn replaceCatalog(
     sources: []const protocol.SourcePolicyInput,
     rules: []const protocol.MetricDefinitionInput,
 ) ResultCode {
+    var actual_metric_count: u32 = 0;
+    var previous_metric: u64 = 0;
+    for (rules) |rule| {
+        if (rule.metric_handle != previous_metric) actual_metric_count += 1;
+        previous_metric = rule.metric_handle;
+    }
+    var inventory_source_count: u32 = 0;
+    for (sources) |source| {
+        if (source.source_role == @intFromEnum(protocol.SourceRole.gpu_inventory)) inventory_source_count += 1;
+    }
     var input = protocol.CatalogReplaceInput{
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.CatalogReplaceInput),
@@ -3270,8 +3421,8 @@ fn replaceCatalog(
         .command_at_milliseconds = command_at,
         .source_count = @intCast(sources.len),
         .rule_count = @intCast(rules.len),
-        .metric_count = metric_count,
-        .gpu_inventory_source_count = 1,
+        .metric_count = actual_metric_count,
+        .gpu_inventory_source_count = inventory_source_count,
         .source_index_capacity = session.config.source_index_capacity,
         .metric_index_capacity = session.config.metric_index_capacity,
         .rule_index_capacity = session.config.rule_index_capacity,
@@ -3672,14 +3823,14 @@ test "integer timed counters commit original rate and microsecond percentage ato
 }
 
 fn testScratch(config: *const protocol.Config) ![]align(8) u8 {
-    const layout = try scratch_module.Layout.init(config);
+    const layout = try scratch_module.Layout.init(config, config.maximum_rule_count, config.maximum_metric_count);
     return std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count);
 }
 
 test "external metric region is the real completion storage and failures retain its address" {
     const native_abi = @import("abi.zig");
     var config = testConfig(1);
-    const layout = try scratch_module.Layout.init(&config);
+    const layout = try scratch_module.Layout.init(&config, rule_count, metric_count);
     const first = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + 8);
     defer std.testing.allocator.free(first);
     const second = try testScratch(&config);
@@ -3689,7 +3840,7 @@ test "external metric region is the real completion storage and failures retain 
     const session = try state.Session.create(&config);
     var alive = true;
     defer if (alive) session.destroy();
-    try std.testing.expectEqual(session.requiredByteCount(), session.residentByteCount() + layout.byte_count);
+    try std.testing.expectEqual(session.requiredByteCount(), session.residentByteCount() + session.scratch_layout.byte_count);
     try std.testing.expectEqual(@as(u32, 8), session.capacity().scratch_alignment);
     try std.testing.expectEqual(@as(usize, 0), session.observations.len);
     var sources = testSources();
@@ -3707,7 +3858,7 @@ test "external metric region is the real completion storage and failures retain 
     var header = metricCompletion(3, 1, 10, 1, 1, 300, 1, 1, 0);
     header.capability_generation = source_plans[0].capability_generation;
     header.plan_token_fingerprint = source_plans[0].plan_token_fingerprint;
-    try std.testing.expectEqual(ResultCode.buffer_too_small, session_module.beginCompletion(session, &header, second[0 .. second.len - 1]));
+    try std.testing.expectEqual(ResultCode.buffer_too_small, session_module.beginCompletion(session, &header, second[0 .. layout.byte_count - 1]));
     try std.testing.expectEqual(ResultCode.invalid_argument, session_module.beginCompletion(session, &header, first[1 .. layout.byte_count + 1]));
     try std.testing.expectEqual(@as(usize, 0), session.observations.len);
     try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), native_abi.rm_metric_snapshot_begin_completion(@ptrCast(session), &header, null, second.len));
@@ -3781,7 +3932,7 @@ test "successful abort detaches every external completion slice" {
 test "Plan rejects real aliases before clearing any actual capacity or committing state" {
     const native_abi = @import("abi.zig");
     var config = testConfig(1);
-    const layout = try scratch_module.Layout.init(&config);
+    const layout = try scratch_module.Layout.init(&config, rule_count, metric_count);
     const allocation = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + 4096);
     defer std.testing.allocator.free(allocation);
     // Leave real storage before and after the required prefix to exercise exact extents.
@@ -3900,7 +4051,7 @@ test "Plan rejects real aliases before clearing any actual capacity or committin
 test "Begin rejects valid header in real scratch without binding or writing then accepts adjacent tail" {
     const native_abi = @import("abi.zig");
     var config = testConfig(1);
-    const layout = try scratch_module.Layout.init(&config);
+    const layout = try scratch_module.Layout.init(&config, rule_count, metric_count);
     const region = try std.testing.allocator.alignedAlloc(u8, .@"8", layout.byte_count + @sizeOf(protocol.CompletionHeader));
     defer std.testing.allocator.free(region);
     const session = try state.Session.create(&config);

@@ -65,6 +65,7 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
 
     public NativeMetricSnapshotConfiguration Configuration { get; }
     public NativeMetricSnapshotCatalogConfiguration CatalogConfiguration { get; }
+    internal Action<string>? ResizeLog { set => session.ResizeLog = value; }
 
     public NativeMetricSnapshotCapacity Capacity
     {

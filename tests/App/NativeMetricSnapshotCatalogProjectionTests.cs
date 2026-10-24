@@ -264,18 +264,18 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     public void ExactGpuIdentitiesExpandVendorAndDedicatedRulesDeterministically()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
-        NativeMetricSnapshotGpuCatalogIdentity[] identities =
-        [
-            new(1, "AMD GPU", "gpu-amd", 0x202UL, 1, VendorAmd, false),
-            new(
-                0,
-                "NVIDIA GPU",
-                "gpu-nvidia",
-                0x101UL,
-                1,
-                VendorNvidia,
-                true)
-        ];
+        var nvidia = NvidiaFanFixture.Adapter(0, 0x101, NvidiaFanFixture.ParentA) with { Name = "NVIDIA GPU" };
+        var amd = NvidiaFanFixture.Adapter(1, 0x202, @"PCI\VEN_1002&DEV_2484\AMD") with
+        {
+            Name = "AMD GPU", VendorId = 0x1002, Kind = WindowsGpuAdapterKind.Integrated,
+            PhysicalIdentities = [NvidiaFanFixture.Adapter(1, 0x202, @"PCI\VEN_1002&DEV_2484\AMD").PhysicalIdentities[0]
+                with { VendorId = 0x1002 }]
+        };
+        WindowsGpuAdapter[] recordedInventory = [amd, nvidia];
+        var captured = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(
+            new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 0, recordedInventory));
+        Assert.Null(captured.FailureCode);
+        var identities = captured.Rows;
 
         var first = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             plan,
@@ -338,35 +338,16 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.Contains(
             RulesForMetric(first, "gpu.1.graphicsClock"),
             static row => row.SourceHandle == 9);
-        WindowsGpuAdapter[] samePhysicalInventory =
-        [
-            new(
-                9,
-                "Renamed AMD GPU",
-                0x1002,
-                1,
-                1,
-                new AdapterLuid { LowPart = 0x202, HighPart = 0 },
-                false,
-                0,
-                WindowsGpuAdapterKind.Dedicated),
-            new(
-                4,
-                "Renamed NVIDIA GPU",
-                0x10DE,
-                2,
-                1,
-                new AdapterLuid { LowPart = 0x101, HighPart = 0 },
-                false,
-                0,
-                WindowsGpuAdapterKind.Dedicated)
-        ];
+        var samePhysicalInventory = recordedInventory.Reverse()
+            .Select(static adapter => adapter with { Name = "Renamed " + adapter.Name }).ToArray();
         Assert.True(WindowsHardwareMetricSampler.MatchesExactGpuInventory(
             first,
             samePhysicalInventory));
         Assert.False(WindowsHardwareMetricSampler.MatchesExactGpuInventory(
             first,
             samePhysicalInventory[1..]));
+        Assert.False(WindowsHardwareMetricSampler.MatchesExactGpuInventory(first,
+            samePhysicalInventory.Select(static adapter => adapter with { Index = adapter.Index + 4 }).ToArray()));
     }
 
     [Fact]
@@ -564,7 +545,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
     private const uint VendorNvidia = 1;
     private const uint VendorAmd = 2;
     [Fact]
-    public void CurrentAbiRetainsTheHistorical512SlotCapacityDeltaWithinTheSame64MiBBudget()
+    public void ActualCatalogUsageAndReadAllocationsDoNotDependOnConfiguredUpperBounds()
     {
         var configuration = ResourceManager.ReadWrite.Windows.Metrics.Configuration.WindowsMetricConfiguration.Default;
         var original = configuration.Configuration;
@@ -579,15 +560,35 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         intermediate.MaximumObservationCount = 12800;
         intermediate.MaximumPlanMetricCount = 12800;
         intermediate.MaximumMetricPlanCount = 12800;
-        // Preserve this earlier 12,288 -> 12,800 sizing comparison explicitly.
-        // The current default capacity is covered by the catalog-envelope test below.
+        // The upper bounds remain validation ceilings; the same real catalog
+        // must consume the same native work area and managed read-result bytes.
         using var before = new NativeMetricSnapshotWorkspace(original,
             configuration.CatalogConfiguration with { MaximumMetricCount = 12288 });
         using var after = new NativeMetricSnapshotWorkspace(intermediate,
             configuration.CatalogConfiguration with { MaximumMetricCount = 12800 });
         Assert.Equal(0x000B_0000U, before.Configuration.AbiVersion); Assert.Equal(before.Configuration.AbiVersion, after.Configuration.AbiVersion);
         Assert.Equal(12288U, before.Capacity.MetricCapacity); Assert.Equal(12800U, after.Capacity.MetricCapacity);
-        Assert.Equal(1_013_760UL, (after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) - (before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount));
+        Assert.Equal(before.Capacity.ResidentByteCount, after.Capacity.ResidentByteCount);
+        Assert.Equal(before.Capacity.ScratchByteCount, after.Capacity.ScratchByteCount);
+        var emptyResidentBytes = before.Capacity.ResidentByteCount;
+        var catalog = NativeMetricSnapshotCatalogProjection.Create(configuration.CatalogConfiguration,
+            [new(0, "Recorded GPU", "recorded-gpu", 0xA1, 1, VendorNvidia, true)], [], [], NativeMetricSnapshotCatalogHandleMap.Empty);
+        var capturedAt = DateTimeOffset.UtcNow;
+        before.ReplaceCatalog(catalog, capturedAt);
+        after.ReplaceCatalog(catalog, capturedAt);
+        Assert.True(before.Capacity.ResidentByteCount > emptyResidentBytes);
+        Assert.Equal(before.Capacity.ResidentByteCount, after.Capacity.ResidentByteCount);
+        Assert.Equal(before.Capacity.ScratchByteCount, after.Capacity.ScratchByteCount);
+        _ = before.ReadCommitted();
+        _ = after.ReadCommitted();
+        Assert.Equal(ReadAllocations(before), ReadAllocations(after));
+
+        static long ReadAllocations(NativeMetricSnapshotWorkspace workspace)
+        {
+            var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            for (var iteration = 0; iteration < 32; iteration++) GC.KeepAlive(workspace.ReadCommitted());
+            return GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        }
         Assert.Equal(67_108_864UL, before.Configuration.ResidentByteBudget); Assert.Equal(before.Configuration.ResidentByteBudget, after.Configuration.ResidentByteBudget);
         Assert.True(checked(before.Capacity.ResidentByteCount + before.Capacity.ScratchByteCount) <= before.Configuration.ResidentByteBudget);
         Assert.True(checked(after.Capacity.ResidentByteCount + after.Capacity.ScratchByteCount) <= after.Configuration.ResidentByteBudget);

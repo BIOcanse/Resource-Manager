@@ -68,6 +68,9 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
     private bool started;
     private bool disposed;
 
+    internal void ReportWorkspaceResize(string message)
+        => logger.LogInformation("{NativeWorkspaceResize}", message);
+
     public HostManagerSamplingSubscriptionOwner(
         RuntimePlanProvider planProvider,
         HostManagerSamplingSubscriptionRuntime deployment,

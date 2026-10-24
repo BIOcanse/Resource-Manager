@@ -19,7 +19,7 @@ public sealed class MetricScratchLedgerLifecycleTests
         var configuration = NativeMetricSnapshotAbiTests.CreateConfiguration();
         var session = new NativeMetricSnapshotSession(in configuration,
             (length, alignment) => MetricSnapshotScratch.Create(owner.CreateScratch, length, alignment));
-        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session);
+        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session, metricCount: 8);
         call.Begin(); call.Submit(42);
         Assert.Equal(NativeMetricSnapshotStatus.Ok, session.FinalizeCompletion(in call.Finalize));
         Assert.Equal(session.Capacity.ScratchByteCount + 7, owner.ReadTable().RegisteredBytes);
@@ -38,7 +38,7 @@ public sealed class MetricScratchLedgerLifecycleTests
         var configuration = NativeMetricSnapshotAbiTests.CreateConfiguration();
         using var session = new NativeMetricSnapshotSession(in configuration,
             (length, alignment) => MetricSnapshotScratch.Create(owner.CreateScratch, length, alignment));
-        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session);
+        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session, metricCount: 8);
         call.Begin();
         Assert.Equal(LedgerStatus.InUse, manager.TryClose());
         Assert.Equal(NativeMetricSnapshotStatus.Ok, session.QueryHeader(out var header));
@@ -58,9 +58,9 @@ public sealed class MetricScratchLedgerLifecycleTests
         using var session = new NativeMetricSnapshotSession(in configuration,
             (length, alignment) => MetricSnapshotScratch.Create(bytes =>
             { factories++; return identity = owner.CreateScratch(bytes); }, length, alignment));
-        var uid = identity!.Uid;
-        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session);
+        var call = new NativeMetricSnapshotAbiTests.ScratchCalls(session, metricCount: 8);
         call.Begin(); call.Submit(0);
+        var uid = identity!.Uid;
         Assert.Equal(NativeMetricSnapshotStatus.Ok, session.FinalizeCompletion(in call.Finalize));
         owner.SetMode(LedgerTableMode.Optimize);
         Assert.Equal(1UL, owner.Tick().Released);
@@ -73,7 +73,7 @@ public sealed class MetricScratchLedgerLifecycleTests
         using var candidateUse = candidateOperation.Acquire();
         scoreUse.Complete(); oldUse.Complete(); candidateUse.Complete();
         call.Begin(2);
-        Assert.Equal(1, factories);
+        Assert.Equal(2, factories);
         Assert.Equal(uid, identity.Uid);
         var registered = 8192UL + 8192UL + 16384UL + session.Capacity.ScratchByteCount + 7;
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
@@ -84,17 +84,8 @@ public sealed class MetricScratchLedgerLifecycleTests
         oldReportUse.Complete(); candidateReportUse.Complete();
         registered += 40960UL + 49152UL;
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-        var sampling = HostManagerTestPlanFactory.CreatePlan().SamplingSubscription.Recreate.Roles[2];
-        var samplingCapacity = new NativeSamplingSubscriptionCapacity
-        {
-            DueItemCapacity = checked((uint)sampling.MaximumDueItemCount),
-            SourceViewCapacity = checked((uint)sampling.MaximumSourceViewCount),
-            ExpiredSourceCapacity = checked((uint)sampling.MaximumExpiredSourceCount),
-            TriggerCapacity = checked((uint)sampling.MaximumMembershipCount)
-        };
-        var oldSamplingBytes = new NativeSamplingOutputLayout(in samplingCapacity).StorageLength;
-        samplingCapacity.TriggerCapacity = checked(samplingCapacity.TriggerCapacity + 1);
-        var candidateSamplingBytes = new NativeSamplingOutputLayout(in samplingCapacity).StorageLength;
+        var oldSamplingBytes = SamplingOutputScratchTests.RealLayout(64, 2, 128).StorageLength;
+        var candidateSamplingBytes = SamplingOutputScratchTests.RealLayout(128, 2, 256).StorageLength;
         using var oldSampling = owner.CreateScratch(oldSamplingBytes);
         using var candidateSampling = owner.CreateScratch(candidateSamplingBytes);
         using var oldSamplingUse = oldSampling.Acquire();

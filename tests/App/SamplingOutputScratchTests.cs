@@ -44,9 +44,10 @@ public sealed class SamplingOutputScratchTests
         {
             // A caller UTC can lag the existing monotonic command clock.
             Assert.False(tracker.Remove("not-tracked", Now.AddMinutes(1)));
-            tracker.TrackPersistent("source", ["item"], Now, TimeSpan.FromSeconds(1),
+            tracker.TrackPersistent("source", RealItems(64), Now, TimeSpan.FromSeconds(1),
                 NativeSamplingSubscriptionSourceFlags.PeriodicTriggers | NativeSamplingSubscriptionSourceFlags.FreshOnTrigger);
             var tracked = Snapshot(host);
+            Assert.Equal(64U, tracked.MembershipCount);
             Assert.True(tracked.LastCommandAtMilliseconds >= (ulong)Now.AddMinutes(1).ToUnixTimeMilliseconds());
             Assert.True(tracked.NextWakeMilliseconds > (ulong)Now.AddSeconds(1).ToUnixTimeMilliseconds());
             var firstAt = DateTimeOffset.FromUnixTimeMilliseconds(checked((long)tracked.NextWakeMilliseconds));
@@ -59,8 +60,8 @@ public sealed class SamplingOutputScratchTests
             Assert.True(store.WrittenSourceHandle > 0);
             Assert.Equal(64U, store.WrittenDueStructSize);
             Assert.Equal(48U, store.WrittenTriggerStructSize);
-            Assert.Equal("item", Assert.Single(first.DueItemIds));
-            Assert.Single(first.Triggers);
+            Assert.Equal(64, first.DueItemIds.Count);
+            Assert.Equal(64, first.Triggers.Length);
             var uid = store.Resource.Uid;
             var firstAllocation = Assert.Single(store.Allocations);
 
@@ -180,23 +181,17 @@ public sealed class SamplingOutputScratchTests
         var tracker = Tracker(host, Factory(owner, stores, store => store.FailAcquireOnce = stores.Count == 2));
         try
         {
-            tracker.Track(["item"], Now);
+            tracker.Track(RealItems(64), Now);
             var first = tracker.CreatePlan(Now);
             tracker.MarkSampled(first.Request!, Now);
             var old = Assert.Single(stores);
             var oldBytes = owner.ReadTable().RegisteredBytes;
-            var changed = HostManagerTestPlanFactory.CreatePlan(root =>
-            {
-                root["profile_revision"] = 89;
-                root["host_recreate"]!["sampling_subscription"]!["roles"]![2]!["maximum_membership_count"] = 32768;
-            });
-            host.Provider.Publish(ResourceManager.App.Domain.RuntimeSpecialization.CompiledRuntimePlan.Default with
-            { Version = 2, HostManager = changed });
+            tracker.Track(RealItems(128), Now.AddSeconds(2));
             Assert.Throws<IOException>(() => tracker.CreatePlan(Now.AddSeconds(2)));
             Assert.False(old.Closed);
             Assert.Equal(oldBytes, owner.ReadTable().RegisteredBytes);
             var next = tracker.CreatePlan(Now.AddSeconds(2));
-            Assert.Equal(1UL, next.Schedule.PlanEpoch); // New session replay reset its plan epoch; failed allocation did not consume it.
+            Assert.Equal(2UL, next.Schedule.PlanEpoch); // Failed acquisition did not consume a plan epoch.
             tracker.MarkSampled(next.Request!, Now.AddSeconds(2));
             Assert.Equal(3, stores.Count);
             Assert.True(stores[1].Closed); // Failed candidate was explicitly closed before allocating another.
@@ -254,7 +249,7 @@ public sealed class SamplingOutputScratchTests
         var tracker = Tracker(host, Factory(owner, stores), items =>
         {
             Assert.Equal(LedgerStatus.InUse, owner.TryClose());
-            Assert.True(owner.ReadTable().RegisteredBytes > 0);
+            Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // One real row stays below a page.
             return items.ToArray();
         });
         tracker.Track(["item"], Now);
@@ -283,7 +278,50 @@ public sealed class SamplingOutputScratchTests
     private static NativeSamplingOutputLayout Layout(HostManagerSamplingSubscriptionTestFixture host)
     {
         using var lease = host.Owner.Acquire(3);
-        return new NativeSamplingOutputLayout(lease.Session.Capacity);
+        return RealLayout(64, 1, 64);
+    }
+
+    internal static string[] RealItems(int count)
+        => Enumerable.Range(0, count).Select(index => $"item-{index}").ToArray();
+
+    internal static NativeSamplingOutputLayout RealLayout(uint items, uint sources, uint memberships)
+        => new(new NativeSamplingSubscriptionCapacity
+        {
+            DueItemCapacity = Math.Max(1U, items), SourceViewCapacity = Math.Max(1U, sources),
+            ExpiredSourceCapacity = Math.Max(1U, sources), TriggerCapacity = Math.Max(1U, memberships)
+        });
+
+    [Fact]
+    public void RealRowsGrowTheExistingCandidateAndRetainTheHighWaterAfterRemoval()
+    {
+        using var host = new HostManagerSamplingSubscriptionTestFixture();
+        using var owner = new ResourceManagerLedgerOwner();
+        var stores = new List<RecordedScratch>();
+        var tracker = Tracker(host, Factory(owner, stores));
+        try
+        {
+            tracker.Track(RealItems(1), Now);
+            Assert.Equal(1U, Snapshot(host).MembershipCount);
+            var first = tracker.CreatePlan(Now);
+            Assert.Equal(RealLayout(1, 1, 1).StorageLength, Assert.Single(stores).Length);
+            Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
+            tracker.MarkSampled(first.Request!, Now);
+            tracker.Track(RealItems(64), Now.AddSeconds(2));
+            Assert.Equal(64U, Snapshot(host).MembershipCount);
+            var grown = tracker.CreatePlan(Now.AddSeconds(2));
+            Assert.Equal(2, stores.Count);
+            Assert.Equal(64, grown.DueItemIds.Count);
+            Assert.Equal(RealLayout(64, 1, 64).StorageLength, stores[1].Length);
+            tracker.MarkSampled(grown.Request!, Now.AddSeconds(2));
+            tracker.Track(RealItems(1), Now.AddSeconds(4));
+            Assert.Equal(1U, Snapshot(host).MembershipCount);
+            var smaller = tracker.CreatePlan(Now.AddSeconds(4));
+            Assert.Equal(2, stores.Count);
+            Assert.True(stores[0].Closed);
+            Assert.Single(smaller.DueItemIds);
+            tracker.MarkSampled(smaller.Request!, Now.AddSeconds(4));
+        }
+        finally { tracker.CloseOutputScratch(); }
     }
 
     private static NativeSamplingSubscriptionSnapshotHeader Snapshot(HostManagerSamplingSubscriptionTestFixture host)

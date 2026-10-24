@@ -13,7 +13,8 @@ internal sealed class NativeItemSamplingSubscriptionTracker<TRequest> :
         bool coalesceItemsIntoLatestCapture,
         Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch = null)
         : base(new HostSamplingSessionOwnerAdapter(owner), roleId, createSourceKey, getItemIds, createRequest,
-            coalesceItemsIntoLatestCapture, createOutputScratch) { }
+            coalesceItemsIntoLatestCapture, createOutputScratch)
+        => ResizeLog = owner is null ? null : owner.ReportWorkspaceResize;
 }
 
 internal sealed class HostSamplingSessionOwnerAdapter(HostManagerSamplingSubscriptionOwner owner) :

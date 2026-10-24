@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -9,7 +10,11 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
     private readonly object sync = new();
     private IntPtr handle;
     private NativeMetricSnapshotCapacity capacity;
-    private readonly INativeMetricSnapshotScratch scratch;
+    private INativeMetricSnapshotScratch? scratch;
+    private readonly Func<ulong, uint, INativeMetricSnapshotScratch> createScratch;
+    private NativeMetricSnapshotConfiguration configuration;
+    private uint catalogSourceCount, catalogRuleCount, catalogMetricCount;
+    private uint scratchRuleCount, scratchMetricCount;
     // Retained even if ending use throws. Native may reference it across calls.
     private NativeMetricSnapshotScratchLease? scratchUse;
     private MemoryHandle scratchPin;
@@ -23,6 +28,8 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
         Func<ulong, uint, INativeMetricSnapshotScratch> createScratch)
     {
         ArgumentNullException.ThrowIfNull(createScratch);
+        this.createScratch = createScratch;
+        this.configuration = configuration;
         var actualVersion = NativeMethods.GetAbiVersion();
         if (actualVersion != NativeMetricSnapshotAbi.Version)
         {
@@ -65,6 +72,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
     }
 
     public NativeMetricSnapshotCapacity Capacity => capacity;
+    internal Action<string>? ResizeLog { get; set; }
 
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
@@ -102,6 +110,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
                 in configuration);
             if (status == NativeMetricSnapshotStatus.Ok)
             {
+                this.configuration = configuration;
                 capacity = QueryAndValidateCapacity(RequireHandle(), in configuration);
             }
 
@@ -123,9 +132,15 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
     {
         lock (sync)
         {
-            return (NativeMetricSnapshotStatus)NativeMethods.Reset(
+            var status = (NativeMetricSnapshotStatus)NativeMethods.Reset(
                 RequireHandle(),
                 in input);
+            if (status == NativeMetricSnapshotStatus.Ok)
+            {
+                capacity = QueryAndValidateCapacity(RequireHandle(), in configuration);
+                LogCatalogResize(0, 0, 0, "catalog-reset");
+            }
+            return status;
         }
     }
 
@@ -139,13 +154,19 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             fixed (NativeMetricSnapshotSourcePolicyInput* sourcePointer = sources)
             fixed (NativeMetricSnapshotMetricDefinitionInput* rulePointer = rules)
             {
-                return (NativeMetricSnapshotStatus)NativeMethods.ReplaceCatalog(
+                var status = (NativeMetricSnapshotStatus)NativeMethods.ReplaceCatalog(
                     RequireHandle(),
                     in input,
                     sourcePointer,
                     checked((uint)sources.Length),
                     rulePointer,
                     checked((uint)rules.Length));
+                if (status == NativeMetricSnapshotStatus.Ok)
+                {
+                    capacity = QueryAndValidateCapacity(RequireHandle(), in configuration);
+                    LogCatalogResize(input.SourceCount, input.RuleCount, input.MetricCount, "catalog-replacement");
+                }
+                return status;
             }
         }
     }
@@ -400,7 +421,7 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             // Native Destroy has ended every reference before we unpin/end use.
             // Failed endUse/retirement is retained and Dispose may retry it.
             EndScratch(false);
-            scratch.Dispose();
+            scratch?.Dispose();
         }
 
         GC.SuppressFinalize(this);
@@ -408,7 +429,9 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
 
     private unsafe IntPtr AcquireScratch()
     {
-        scratchUse = scratch.Acquire();
+        EnsureScratch();
+        var resource = scratch!;
+        scratchUse = resource.Acquire();
         try
         {
             scratchPin = scratchUse.Pin();
@@ -423,6 +446,45 @@ public sealed partial class NativeMetricSnapshotSession : IDisposable
             return (IntPtr)(void*)aligned;
         }
         catch { EndScratch(false); throw; }
+    }
+
+    private void EnsureScratch()
+    {
+        if (scratch is not null && scratch.Length >= capacity.ScratchByteCount) return;
+        // The completion has ended before this path. Retire the old refillable
+        // resource before creating the next high-water identity, as PDH does.
+        var oldBytes = scratch?.Length ?? 0;
+        scratch?.Dispose();
+        scratch = null;
+        var candidate = createScratch(capacity.ScratchByteCount, capacity.ScratchAlignment)
+            ?? throw new InvalidOperationException("The metric scratch factory returned no resource.");
+        scratch = candidate; // Retain retirement obligations even if validation fails.
+        if (candidate.Length < capacity.ScratchByteCount)
+            throw new InvalidOperationException("The metric scratch resource is too short.");
+        LogResize(
+            $"Native resize workArea=metric-completion-scratch oldRows=rules:{scratchRuleCount},metrics:{scratchMetricCount} newRows=rules:{catalogRuleCount},metrics:{catalogMetricCount} oldBytes={oldBytes} newBytes={candidate.Length} reason=catalog-high-water");
+        scratchRuleCount = catalogRuleCount;
+        scratchMetricCount = catalogMetricCount;
+    }
+
+    private void LogCatalogResize(uint sources, uint rules, uint metrics, string reason)
+    {
+        if (catalogSourceCount == sources && catalogRuleCount == rules && catalogMetricCount == metrics) return;
+        foreach (var area in new[] { "metric-active-bank", "metric-staging-bank" })
+            LogResize(
+                $"Native resize workArea={area} oldRows=sources:{catalogSourceCount},rules:{catalogRuleCount},metrics:{catalogMetricCount} newRows=sources:{sources},rules:{rules},metrics:{metrics} reason={reason}");
+        if (catalogSourceCount != sources || catalogRuleCount != rules)
+            LogResize(
+                $"Native resize workArea=metric-plan-authority oldRows=sources:{catalogSourceCount},rules:{catalogRuleCount} newRows=sources:{sources},rules:{rules} reason={reason}");
+        catalogSourceCount = sources;
+        catalogRuleCount = rules;
+        catalogMetricCount = metrics;
+    }
+
+    private void LogResize(string message)
+    {
+        if (ResizeLog is { } report) report(message);
+        else Trace.TraceInformation(message); // Explicit ordinary-library diagnostic sink.
     }
 
     private void EndScratch(bool publish)

@@ -124,7 +124,7 @@ pub fn complete(
         membership.last_planned_epoch = 0;
     }
 
-    @memset(session.scratch_issued_triggers, std.mem.zeroes(protocol.TriggerOutput));
+    session.replaceIssuedTriggers(&.{}, "completion");
     session.issued_trigger_count = 0;
     session.issued_trigger_plan_epoch = 0;
 

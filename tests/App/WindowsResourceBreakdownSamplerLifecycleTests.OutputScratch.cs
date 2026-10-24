@@ -86,15 +86,25 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         await sampler.StartAsync(CancellationToken.None);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (ledger.ReadTable().RegisteredBytes == 0)
+        while (true)
         {
             if (sampler.CaptureSamplingWorkerTask() is { IsFaulted: true } failed) await failed;
+            using var role = subscriptions.Owner.Acquire(3);
+            var cap = role.Session.Capacity;
+            var header = new ResourceManager.Subscription.Native.NativeSamplingSubscriptionSnapshotHeader
+            {
+                AbiVersion = ResourceManager.Subscription.Native.NativeSamplingSubscriptionAbi.Version,
+                StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<ResourceManager.Subscription.Native.NativeSamplingSubscriptionSnapshotHeader>()
+            };
+            Assert.Equal(ResourceManager.Subscription.Native.NativeSamplingSubscriptionStatus.Ok,
+                role.Session.Snapshot(ref header,
+                    new ResourceManager.Subscription.Native.NativeSamplingSubscriptionSourceView[checked((int)cap.SourceCapacity)],
+                    new ResourceManager.Subscription.Native.NativeSamplingSubscriptionItemState[checked((int)cap.ItemCapacity)]));
+            if (header.LastPlanEpoch != 0) break;
             await Task.Delay(10, deadline.Token);
         }
         await sampler.StopAsync(deadline.Token);
-        using var role = subscriptions.Owner.Acquire(3);
-        var layout = new NativeSamplingOutputLayout(role.Session.Capacity);
-        Assert.Equal(layout.StorageLength, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Empty real rows fit ordinary storage.
         Assert.Equal(0, hardware.CaptureCount);
         Assert.Equal(0, catalog.CaptureCount);
         Assert.Equal(0, disk.Reads);

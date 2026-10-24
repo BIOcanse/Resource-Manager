@@ -84,7 +84,7 @@ pub const Session = struct {
         var allocations = AllocationSet{};
         errdefer allocations.deinit(allocator);
         try allocations.allocate(allocator, config);
-        const layout = scratch.Layout.init(config) catch return error.InvalidConfiguration;
+        const layout = scratch.Layout.init(config, 0, 0) catch return error.InvalidConfiguration;
         const required = std.math.add(u64, allocations.residentByteCount(), layout.byte_count) catch
             return error.InvalidConfiguration;
         if (required > config.resident_byte_budget) return error.InvalidConfiguration;
@@ -166,12 +166,7 @@ pub const Session = struct {
 
     pub fn residentByteCount(self: *const Session) u64 {
         var total: u64 = @sizeOf(Session);
-        total += sliceBytes(catalog.SourceRecord, self.active.sources.len) * 2;
-        total += sliceBytes(catalog.RuleRecord, self.active.rules.len) * 2;
-        total += sliceBytes(catalog.MetricRecord, self.active.metrics.len) * 2;
-        total += sliceBytes(u32, self.active.source_index.len) * 2;
-        total += sliceBytes(u32, self.active.rule_index.len) * 2;
-        total += sliceBytes(u32, self.active.metric_index.len) * 2;
+        total += bankBytes(&self.active) + bankBytes(&self.staging);
         total += sliceBytes(GpuRecord, self.gpu_active.len) * 2;
         total += sliceBytes(u32, self.gpu_index.len) * 2;
         total += sliceBytes(u32, self.gpu_luid_index.len) * 2;
@@ -187,6 +182,24 @@ pub const Session = struct {
 
     pub fn requiredByteCount(self: *const Session) u64 {
         return self.residentByteCount() + self.scratch_layout.byte_count;
+    }
+
+    pub fn catalogShapeMatches(self: *const Session, sources: u32, rules: u32, metrics: u32) bool {
+        return self.active.sources.len == sources and self.active.rules.len == rules and
+            self.active.metrics.len == metrics;
+    }
+
+    pub fn catalogByteCount(self: *const Session) u64 {
+        return bankBytes(&self.active) + bankBytes(&self.staging) +
+            sliceBytes(SourceModeState, self.source_modes.len) +
+            sliceBytes(bool, self.planned_rule_flags.len);
+    }
+
+    pub fn activateCatalogAllocation(self: *Session, candidate: *CatalogAllocation) void {
+        std.mem.swap(catalog.Bank, &self.active, &candidate.active);
+        std.mem.swap(catalog.Bank, &self.staging, &candidate.staging);
+        std.mem.swap([]SourceModeState, &self.source_modes, &candidate.source_modes);
+        std.mem.swap([]bool, &self.planned_rule_flags, &candidate.planned_rule_flags);
     }
 
     pub fn detachCompletion(self: *Session) void {
@@ -254,8 +267,8 @@ const AllocationSet = struct {
         allocator: std.mem.Allocator,
         config: *const protocol.Config,
     ) !void {
-        self.active = try allocateBank(allocator, config);
-        self.staging = try allocateBank(allocator, config);
+        self.active = .{};
+        self.staging = .{};
         self.gpu_active = try allocator.alloc(GpuRecord, config.maximum_gpu_adapter_count);
         @memset(self.gpu_active.?, .{});
         self.gpu_staging = try allocator.alloc(GpuRecord, config.maximum_gpu_adapter_count);
@@ -282,9 +295,9 @@ const AllocationSet = struct {
         @memset(self.gpu_identity_luid_index.?, catalog.no_index);
         self.gpu_identity_key_index = try allocator.alloc(u32, config.gpu_key_index_capacity);
         @memset(self.gpu_identity_key_index.?, catalog.no_index);
-        self.source_modes = try allocator.alloc(SourceModeState, config.maximum_source_count);
+        self.source_modes = try allocator.alloc(SourceModeState, 0);
         @memset(self.source_modes.?, .{});
-        self.planned_rule_flags = try allocator.alloc(bool, config.maximum_rule_count);
+        self.planned_rule_flags = try allocator.alloc(bool, 0);
         @memset(self.planned_rule_flags.?, false);
     }
 
@@ -426,26 +439,63 @@ const AllocationSet = struct {
     }
 };
 
+// Catalog replacement prepares both banks and plan authority before activation.
+// Failure releases only this candidate; the current catalog remains untouched.
+pub const CatalogAllocation = struct {
+    active: catalog.Bank = .{},
+    staging: catalog.Bank = .{},
+    source_modes: []SourceModeState = &.{},
+    planned_rule_flags: []bool = &.{},
+
+    pub fn create(allocator: std.mem.Allocator, sources: u32, rules: u32, metrics: u32) !CatalogAllocation {
+        var self = CatalogAllocation{};
+        errdefer self.deinit(allocator);
+        self.active = try allocateBank(allocator, sources, rules, metrics);
+        self.staging = try allocateBank(allocator, sources, rules, metrics);
+        self.source_modes = try allocator.alloc(SourceModeState, sources);
+        @memset(self.source_modes, .{});
+        self.planned_rule_flags = try allocator.alloc(bool, rules);
+        @memset(self.planned_rule_flags, false);
+        return self;
+    }
+
+    pub fn byteCount(self: *const CatalogAllocation) u64 {
+        return bankBytes(&self.active) + bankBytes(&self.staging) +
+            sliceBytes(SourceModeState, self.source_modes.len) +
+            sliceBytes(bool, self.planned_rule_flags.len);
+    }
+
+    pub fn deinit(self: *CatalogAllocation, allocator: std.mem.Allocator) void {
+        deinitBank(allocator, &self.active);
+        deinitBank(allocator, &self.staging);
+        allocator.free(self.source_modes);
+        allocator.free(self.planned_rule_flags);
+        self.* = .{};
+    }
+};
+
 fn allocateBank(
     allocator: std.mem.Allocator,
-    config: *const protocol.Config,
+    source_count: u32,
+    rule_count: u32,
+    metric_count: u32,
 ) !catalog.Bank {
-    const sources = try allocator.alloc(catalog.SourceRecord, config.maximum_source_count);
+    const sources = try allocator.alloc(catalog.SourceRecord, source_count);
     errdefer allocator.free(sources);
     @memset(sources, .{});
-    const rules = try allocator.alloc(catalog.RuleRecord, config.maximum_rule_count);
+    const rules = try allocator.alloc(catalog.RuleRecord, rule_count);
     errdefer allocator.free(rules);
     @memset(rules, .{});
-    const metrics = try allocator.alloc(catalog.MetricRecord, config.maximum_metric_count);
+    const metrics = try allocator.alloc(catalog.MetricRecord, metric_count);
     errdefer allocator.free(metrics);
     @memset(metrics, .{});
-    const source_index = try allocator.alloc(u32, config.source_index_capacity);
+    const source_index = try allocator.alloc(u32, try indexCapacity(source_count));
     errdefer allocator.free(source_index);
     @memset(source_index, catalog.no_index);
-    const rule_index = try allocator.alloc(u32, config.rule_index_capacity);
+    const rule_index = try allocator.alloc(u32, try indexCapacity(rule_count));
     errdefer allocator.free(rule_index);
     @memset(rule_index, catalog.no_index);
-    const metric_index = try allocator.alloc(u32, config.metric_index_capacity);
+    const metric_index = try allocator.alloc(u32, try indexCapacity(metric_count));
     errdefer allocator.free(metric_index);
     @memset(metric_index, catalog.no_index);
     return .{
@@ -456,6 +506,10 @@ fn allocateBank(
         .rule_index = rule_index,
         .metric_index = metric_index,
     };
+}
+
+fn indexCapacity(count: u32) !u32 {
+    return if (count == 0) 0 else try std.math.ceilPowerOfTwo(u32, count);
 }
 
 fn deinitBank(allocator: std.mem.Allocator, bank: *catalog.Bank) void {

@@ -195,17 +195,8 @@ public sealed class ResourceManagerComputeScratchTests
                         var registered = trees + 8192 + 8192 + 16384 + 32768 + 40960 + 49152;
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.All(readers, reader => Assert.Equal(81, reader.Tree.Count));
-                        var sampling = HostManagerTestPlanFactory.CreatePlan().SamplingSubscription.Recreate.Roles[2];
-                        var samplingCapacity = new NativeSamplingSubscriptionCapacity
-                        {
-                            DueItemCapacity = checked((uint)sampling.MaximumDueItemCount),
-                            SourceViewCapacity = checked((uint)sampling.MaximumSourceViewCount),
-                            ExpiredSourceCapacity = checked((uint)sampling.MaximumExpiredSourceCount),
-                            TriggerCapacity = checked((uint)sampling.MaximumMembershipCount)
-                        };
-                        var oldSamplingBytes = new NativeSamplingOutputLayout(in samplingCapacity).StorageLength;
-                        samplingCapacity.TriggerCapacity = checked(samplingCapacity.TriggerCapacity + 1);
-                        var candidateSamplingBytes = new NativeSamplingOutputLayout(in samplingCapacity).StorageLength;
+                        var oldSamplingBytes = SamplingOutputScratchTests.RealLayout(64, 2, 128).StorageLength;
+                        var candidateSamplingBytes = SamplingOutputScratchTests.RealLayout(128, 2, 256).StorageLength;
                         using var oldSampling = owner.CreateScratch(oldSamplingBytes);
                         using var candidateSampling = owner.CreateScratch(candidateSamplingBytes);
                         using var oldSamplingUse = oldSampling.Acquire();

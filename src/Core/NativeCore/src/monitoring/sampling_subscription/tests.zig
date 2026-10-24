@@ -455,7 +455,7 @@ test "plan output capacity is validated before expiry mutation" {
     const session = try session_module.Session.create(&config);
     defer session.destroy();
 
-    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 1, 0, 0, &.{10}));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 1, 0, 0, &.{ 10, 20 }));
     var header = planHeader(2, 1, 6_001, 1, output_capacity, output_capacity, trigger_output_capacity);
     var due = std.mem.zeroes([output_capacity]protocol.DueItemOutput);
     var sources = std.mem.zeroes([output_capacity]protocol.SourceViewOutput);
@@ -478,6 +478,112 @@ test "plan output capacity is validated before expiry mutation" {
     const snapshot_result = runSnapshot(session);
     try std.testing.expectEqual(ResultCode.ok, snapshot_result.code);
     try std.testing.expectEqual(@as(u32, 1), snapshot_result.header.active_source_count);
+}
+
+test "sampling membership growth preserves issued authorization and uses real rows" {
+    var config = testConfig();
+    config.maximum_membership_count = 65_536;
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    try std.testing.expectEqual(@as(usize, 0), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers | protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{10}));
+    try std.testing.expectEqual(@as(usize, 1), session.memberships.len);
+    var header = planHeader(2, 1, 2_000, 1, 1, 1, 1);
+    var due: [1]protocol.DueItemOutput = undefined;
+    var sources: [1]protocol.SourceViewOutput = undefined;
+    var expired: [1]protocol.ExpiredSourceOutput = undefined;
+    var triggers: [1]protocol.TriggerOutput = undefined;
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &header, &due, 1, &sources, 1, &expired, 1, &triggers, 1));
+    const issued = triggers[0];
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 3, 2_000, 2_000, 200, flags, 1_000, &.{ 20, 30 }));
+    try std.testing.expectEqual(@as(usize, 3), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 1), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(issued, session.scratch_issued_triggers[0]);
+    var forged = triggers;
+    forged[0].sequence += 1;
+    try std.testing.expectEqual(ResultCode.stale_frame, completeWithTriggers(session, 4, 1, 2_000, 2_000, .sampled, &.{10}, &forged).code);
+    try std.testing.expectEqual(ResultCode.ok, completeWithTriggers(session, 4, 1, 2_000, 2_000, .sampled, &.{10}, &triggers).code);
+    try std.testing.expectEqual(@as(u64, 2), session.memberships[session.findMembership(100, 10).?].trigger_sequence);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 5, 2_000, 2_000, 200, flags, 1_000, &.{20}));
+    try std.testing.expectEqual(@as(usize, 2), session.memberships.len);
+    try std.testing.expectEqual(@as(u64, 2), session.memberships[session.findMembership(100, 10).?].trigger_sequence);
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 6, 2_000, 200));
+    try std.testing.expectEqual(@as(usize, 1), session.memberships.len);
+    const second = runPlan(session, 7, 2, 3_000);
+    try std.testing.expectEqual(ResultCode.ok, second.code);
+    try std.testing.expectEqual(@as(usize, 1), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 8, 3_000, 100));
+    try std.testing.expectEqual(@as(usize, 0), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 1), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(ResultCode.ok, completeWithTriggers(session, 9, 2, 3_000, 3_000, .sampled, &.{10}, second.result.triggers[0..1]).code);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(ResultCode.ok, track(session, 10, 3_000, 3_000, 300, 0, 0, &.{ 40, 50 }));
+    try std.testing.expectEqual(@as(usize, 2), session.memberships.len);
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, 11, 3, 8_001).code);
+    try std.testing.expectEqual(@as(usize, 0), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 12, 8_001, 8_001, 400, flags, 1_000, &.{60}));
+    try std.testing.expectEqual(ResultCode.ok, runPlan(session, 13, 4, 9_001).code);
+    try std.testing.expectEqual(@as(usize, 1), session.scratch_issued_triggers.len);
+    var reset = controlInput(14, 9_001, 1);
+    try std.testing.expectEqual(ResultCode.ok, session.reset(&reset));
+    try std.testing.expectEqual(@as(usize, 0), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    const capacity = session.capacity();
+    try std.testing.expectEqual(@as(u32, 65_536), capacity.membership_capacity);
+}
+
+test "sampling membership replacement allocation failures preserve state and issued plan" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const allocator = session.allocator;
+    const flags = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval |
+        protocol.SourceFlags.periodic_triggers | protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 1, 1_000, 1_000, 100, flags, 1_000, &.{10}));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 2, 1_000, 1_000, 200, 0, 0, &.{ 20, 30 }));
+    var failing_plan = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    session.allocator = failing_plan.allocator();
+    const rejected_plan = runPlan(session, 3, 1, 2_000);
+    session.allocator = allocator;
+    try std.testing.expectEqual(ResultCode.out_of_memory, rejected_plan.code);
+    try std.testing.expectEqual(@as(u64, 0), session.last_plan_epoch);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
+    const issued = runPlan(session, 3, 1, 2_000);
+    try std.testing.expectEqual(ResultCode.ok, issued.code);
+    const revision = session.state_revision;
+    var failing_track = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    session.allocator = failing_track.allocator();
+    const rejected_track = track(session, 4, 2_000, 2_000, 200, 0, 0, &.{20});
+    session.allocator = allocator;
+    try std.testing.expectEqual(ResultCode.out_of_memory, rejected_track);
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(usize, 3), session.memberships.len);
+    var failing_remove = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    session.allocator = failing_remove.allocator();
+    const rejected_remove = remove(session, 4, 2_000, 200);
+    session.allocator = allocator;
+    try std.testing.expectEqual(ResultCode.out_of_memory, rejected_remove);
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(usize, 3), session.memberships.len);
+    var failing_expiry = std.testing.FailingAllocator.init(allocator, .{ .fail_index = 0 });
+    session.allocator = failing_expiry.allocator();
+    const rejected_expiry = runPlan(session, 4, 2, 6_001);
+    session.allocator = allocator;
+    try std.testing.expectEqual(ResultCode.out_of_memory, rejected_expiry.code);
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(u64, 1), session.last_plan_epoch);
+    try std.testing.expectEqual(@as(usize, 1), session.scratch_issued_triggers.len);
+    try std.testing.expectEqual(issued.result.triggers[0], session.scratch_issued_triggers[0]);
+    try std.testing.expectEqual(ResultCode.ok, completeWithTriggers(session, 4, 1, 2_000, 2_000, .sampled, &.{10}, issued.result.triggers[0..1]).code);
+    var reset = controlInput(5, 2_000, 1);
+    try std.testing.expectEqual(ResultCode.ok, session.reset(&reset));
+    try std.testing.expectEqual(@as(usize, 0), session.memberships.len);
+    try std.testing.expectEqual(@as(usize, 0), session.scratch_issued_triggers.len);
 }
 
 test "reset preserves anti-replay epoch and reconfigure rejects capacity drift" {

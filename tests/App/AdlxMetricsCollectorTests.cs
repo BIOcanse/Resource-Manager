@@ -231,12 +231,12 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var inventory=Inventory(); var inventoryZone=new WindowsGpuAdapterOrderMonitoringZone(()=>inventory);
         using var owner=new HostManagerMetricSnapshotOwner(slots.Provider,new HostManagerMetricSnapshotRuntime(slots.Provider,slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(()=>new(1,NativeMetricSnapshotCatalogTopologyStatus.Complete,
-                [new(9,"AMD A","gpu-a",0xA1,1,2,true),new(3,"AMD B","gpu-b",0xB1,1,2,true)],
+                RecordedGpuIdentities(Inventory()),
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,[],NativeMetricSnapshotCatalogTopologyStatus.Complete,[])),
             new Environment(root),NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None); var dashboard=new DashboardMonitoringCatalogState();
         using(var lease=owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
-        var device=dashboard.Current!.FieldBindings.Values.Single(binding=>binding.Field.Code==MetricFieldCode.AdlxActivity && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+        var device=dashboard.Current!.FieldBindings.Values.Single(binding=>binding.Field.Code==MetricFieldCode.AdlxActivity && binding.DeviceIdentity == RecordedGpuIdentities(Inventory()).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var row=Row(10,PnpA,AllFlags); row.VoltageMillivolts=1250; row.SampleTimestampMilliseconds=9007199254740993; row.NpuActivityLevelPercent=0; row.NpuFrequencyMhz=1800;
         var native=new Bridge { Metadata=[Row(10,PnpA),Row(20,PnpB)],Values=[row] };
         var zone=new AmdAdlxMonitoringZone(new AmdAdlxBridgeReader(native));
@@ -327,6 +327,12 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         var bytes=MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref row,1));
         Encoding.UTF8.GetBytes(pnp).CopyTo(bytes.Slice(Marshal.OffsetOf<NativeAdlxGpuMetrics>(nameof(NativeAdlxGpuMetrics.PnpString)).ToInt32(),512));
         return row;
+    }
+    private static IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> RecordedGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
+    {
+        var captured = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(inventory);
+        Assert.Null(captured.FailureCode);
+        return captured.Rows;
     }
     private static WindowsGpuAdapterInventoryRead Inventory(uint vendor=0x1002)=>new(SamplingObservationStatus.Current,1,DateTimeOffset.UtcNow.UtcTicks,2,0,0,1,[Adapter(9,PnpA,0xA1,vendor),Adapter(3,PnpB,0xB1,vendor)]);
     private static WindowsGpuAdapter Adapter(int index,string pnp,uint luid,uint vendor)=>new(index,"AMD",vendor,0x744C,0,new AdapterLuid { LowPart=luid },false,8UL<<30,WindowsGpuAdapterKind.Dedicated)

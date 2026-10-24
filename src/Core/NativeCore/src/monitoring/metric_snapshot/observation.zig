@@ -50,6 +50,9 @@ pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader, 
         }
     }
     if (!validCompletionShape(header)) return .invalid_argument;
+    if (header.requested_rule_count > session.scratch_layout.requested_count or
+        @as(u64, header.observation_count) + header.cpu_counter_count > session.scratch_layout.observation_count)
+        return .invalid_argument;
     const next_revision = session.nextRevision() orelse return .unavailable;
     const layout = session.scratch_layout;
     const scratch_status = layout.validate(scratch_bytes);
@@ -57,10 +60,10 @@ pub fn begin(session: *state.Session, header: *const protocol.CompletionHeader, 
     const region = scratch.Range.init(scratch_bytes.ptr, layout.byte_count) orelse return .invalid_argument;
     const input = scratch.Range.init(header, @sizeOf(protocol.CompletionHeader)) orelse return .invalid_argument;
     if (scratch.Range.overlaps(region, input)) return .invalid_argument;
-    session.requested_rule_indices = layout.column(u32, scratch_bytes, layout.requested, session.config.maximum_requested_count);
-    session.requested_rule_flags = layout.column(bool, scratch_bytes, layout.requested_flags, session.config.maximum_rule_count);
-    session.observation_slot_by_rule = layout.column(u32, scratch_bytes, layout.observation_slots, session.config.maximum_rule_count);
-    session.observations = layout.column(protocol.ObservationInput, scratch_bytes, layout.observations, session.config.maximum_observation_count);
+    session.requested_rule_indices = layout.column(u32, scratch_bytes, layout.requested, layout.requested_count);
+    session.requested_rule_flags = layout.column(bool, scratch_bytes, layout.requested_flags, layout.rule_count);
+    session.observation_slot_by_rule = layout.column(u32, scratch_bytes, layout.observation_slots, layout.rule_count);
+    session.observations = layout.column(protocol.ObservationInput, scratch_bytes, layout.observations, layout.observation_count);
     session.clearCompletion();
     session.completion = header.*;
     session.phase = .completion_open;
@@ -778,9 +781,12 @@ fn applyRequestedRules(
 }
 
 pub fn synchronizeBank(target: *catalog.Bank, source: *const catalog.Bank) void {
-    @memcpy(target.sources, source.sources);
-    @memcpy(target.rules, source.rules);
-    @memcpy(target.metrics, source.metrics);
+    // A replacement prepares equally shaped banks before either becomes current.
+    std.debug.assert(target.sources.len >= source.source_count and
+        target.rules.len >= source.rule_count and target.metrics.len >= source.metric_count);
+    @memcpy(target.sources[0..source.source_count], source.sources[0..source.source_count]);
+    @memcpy(target.rules[0..source.rule_count], source.rules[0..source.rule_count]);
+    @memcpy(target.metrics[0..source.metric_count], source.metrics[0..source.metric_count]);
     @memcpy(target.source_index, source.source_index);
     @memcpy(target.rule_index, source.rule_index);
     @memcpy(target.metric_index, source.metric_index);

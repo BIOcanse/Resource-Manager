@@ -114,7 +114,7 @@ public static class NativeMetricSnapshotCommittedProjection
                 .Where(static binding => binding.Field is not null)
                 .ToDictionary(static binding => binding.MetricId,
                     binding => new MetricDeviceFieldBinding(binding.DeviceIdentity,
-                        binding.Field! with { Reading = sourceSelection?.Fields.GetValueOrDefault(binding.MetricHandle) },
+                        WithReading(binding.Field!, sourceSelection?.Fields.GetValueOrDefault(binding.MetricHandle)),
                         binding.MetricId, binding.SourceId)
                     {
                         NpuEngine = binding.NpuEngine,
@@ -134,6 +134,9 @@ public static class NativeMetricSnapshotCommittedProjection
             CommittedGeneration = frame.Header.CommittedGeneration
         };
     }
+
+    private static MetricFieldDefinition WithReading(MetricFieldDefinition field, MetricReadingSource? reading)
+        => field.Reading == reading ? field : field with { Reading = reading };
 
     private static string NormalizeDatasetId(string metricId)
     {
@@ -488,7 +491,11 @@ public static class NativeMetricSnapshotCommittedProjection
             var detail = SourceId(
                 frame,
                 reading.Output.SourceHandle);
-            if (id == binding.MetricId && field?.Meaning is { } meaning) detail += "; " + meaning;
+            if (id == binding.MetricId)
+            {
+                // Custom hand-built frames can omit catalog presentation metadata.
+                detail = binding.FieldDetail ?? (field?.Meaning is { } meaning ? detail + "; " + meaning : detail);
+            }
             if (id != binding.MetricId && binding.FieldCode == MetricFieldCode.MemoryUsed)
             {
                 presentation = new PresentationValue(
@@ -546,7 +553,7 @@ public static class NativeMetricSnapshotCommittedProjection
             items[id] = new MetricValue(
                 id,
                 id == binding.MetricId ? field?.Name ?? id : legacyLabel?.Invoke(id) ?? id,
-                field?.Resource.ToString() ?? string.Empty,
+                binding.FieldGroup ?? field?.Resource.ToString() ?? string.Empty,
                 isBitmask ? string.Empty : presentation.Display,
                 isBitmask ? null : presentation.Numeric,
                 presentation.Unit,

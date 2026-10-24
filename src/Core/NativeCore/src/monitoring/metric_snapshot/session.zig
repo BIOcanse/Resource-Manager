@@ -5,6 +5,7 @@ const state = @import("state.zig");
 const planner = @import("planner.zig");
 const observation = @import("observation.zig");
 const inventory = @import("inventory.zig");
+const scratch = @import("scratch.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 pub const Session = state.Session;
@@ -82,6 +83,11 @@ pub fn reset(session: *Session, input: *const protocol.ControlInput) ResultCode 
     @memset(session.source_modes, .{});
     @memset(session.planned_rule_flags, false);
     session.clearCompletion();
+    session.detachCompletion();
+    var empty_allocation = state.CatalogAllocation{};
+    session.activateCatalogAllocation(&empty_allocation);
+    empty_allocation.deinit(session.allocator);
+    session.scratch_layout = scratch.Layout.init(&session.config, 0, 0) catch unreachable;
     session.planned_rule_count = 0;
     session.catalog_generation = 0;
     session.catalog_fingerprint = 0;
@@ -114,31 +120,49 @@ pub fn replaceCatalog(
     const expected_fingerprint = catalogFingerprint(sources, rules);
     if (expected_fingerprint != input.semantic_fingerprint) return .invalid_argument;
     const next_revision = session.nextRevision() orelse return .unavailable;
-    if (!session.staging.build(&session.active, input, sources, rules)) {
-        observation.synchronizeBank(&session.staging, &session.active);
+    const next_layout = scratch.Layout.init(&session.config, input.rule_count, input.metric_count) catch
+        return .invalid_argument;
+    var allocation: ?state.CatalogAllocation = null;
+    defer if (allocation) |*candidate| candidate.deinit(session.allocator);
+    if (!session.catalogShapeMatches(input.source_count, input.rule_count, input.metric_count)) {
+        allocation = state.CatalogAllocation.create(session.allocator, input.source_count, input.rule_count, input.metric_count) catch
+            return .out_of_memory;
+        const next_required = session.residentByteCount() - session.catalogByteCount() +
+            allocation.?.byteCount() + next_layout.byte_count;
+        if (next_required > session.config.resident_byte_budget) return .invalid_argument;
+    }
+    const candidate = if (allocation) |*value| &value.active else &session.staging;
+    var published = false;
+    defer if (!published) {
+        if (allocation == null) observation.synchronizeBank(&session.staging, &session.active);
         inventory.synchronizeStagingWithActive(session);
+    };
+    if (!candidate.build(&session.active, input, sources, rules)) {
         return .invalid_argument;
     }
-    const preserved_data = bankHasData(&session.staging);
-    const preserve_gpu = shouldPreserveGpuInventory(session, &session.staging);
+    const preserved_data = bankHasData(candidate);
+    const preserve_gpu = shouldPreserveGpuInventory(session, candidate);
     inventory.prepareCatalogReplacement(session, preserve_gpu);
-    observation.recomputeBank(&session.staging);
+    observation.recomputeBank(candidate);
     const next_semantic = observation.semanticFingerprintFor(
-        &session.staging,
+        candidate,
         expected_fingerprint,
         session.gpu_staging,
     );
     var next_committed = session.committed_generation;
     if (next_semantic != session.semantic_fingerprint) {
-        next_committed = session.nextCommittedGeneration() orelse {
-            observation.synchronizeBank(&session.staging, &session.active);
-            inventory.synchronizeStagingWithActive(session);
-            return .unavailable;
-        };
+        next_committed = session.nextCommittedGeneration() orelse return .unavailable;
     }
 
-    std.mem.swap(catalog.Bank, &session.active, &session.staging);
-    observation.synchronizeBank(&session.staging, &session.active);
+    session.detachCompletion();
+    if (allocation) |*value| {
+        observation.synchronizeBank(&value.staging, &value.active);
+        session.activateCatalogAllocation(value);
+    } else {
+        std.mem.swap(catalog.Bank, &session.active, &session.staging);
+        observation.synchronizeBank(&session.staging, &session.active);
+    }
+    session.scratch_layout = next_layout;
     inventory.commitStaged(session);
     session.catalog_generation = input.catalog_generation;
     session.catalog_fingerprint = expected_fingerprint;
@@ -151,6 +175,7 @@ pub fn replaceCatalog(
     session.committed_generation = next_committed;
     session.state_revision = next_revision;
     session.phase = if (preserved_data) .ready else .catalog_ready;
+    published = true;
     return .ok;
 }
 

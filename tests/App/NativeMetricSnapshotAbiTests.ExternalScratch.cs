@@ -109,23 +109,29 @@ public sealed partial class NativeMetricSnapshotAbiTests
     {
         internal readonly NativeMetricSnapshotSession Session;
         internal NativeMetricSnapshotFinalizeInput Finalize;
-        internal ScratchCalls(NativeMetricSnapshotSession session)
+        internal ScratchCalls(NativeMetricSnapshotSession session, int metricCount = 1)
         {
             Session = session;
+            ReplaceScratchCatalog(session, metricCount, 1, 1);
+        }
+
+        internal static void ReplaceScratchCatalog(NativeMetricSnapshotSession session,
+            int metricCount, ulong generation, ulong epoch)
+        {
             NativeMetricSnapshotSourcePolicyInput[] sources =
                 [new() { StructSize = Size<NativeMetricSnapshotSourcePolicyInput>(), SourceHandle = 1,
                     SourceRole = (uint)NativeMetricSnapshotSourceRole.Metrics,
                     Priority = 1, CapabilityMask = 1, SemanticFingerprint = 11 }];
-            NativeMetricSnapshotMetricDefinitionInput[] rules =
-                [new() { StructSize = Size<NativeMetricSnapshotMetricDefinitionInput>(), RuleHandle = 1, MetricHandle = 1,
+            NativeMetricSnapshotMetricDefinitionInput[] rules = Enumerable.Range(1, metricCount)
+                .Select(index => new NativeMetricSnapshotMetricDefinitionInput { StructSize = Size<NativeMetricSnapshotMetricDefinitionInput>(), RuleHandle = (ulong)index, MetricHandle = (ulong)index,
                     SourceHandle = 1, ScopeHandle = 1, MetricKind = (uint)NativeMetricSnapshotMetricKind.CustomNumeric,
                     ScopeKind = (uint)NativeMetricSnapshotScopeKind.Host, ValueKind = (uint)NativeMetricSnapshotValueKind.Unsigned64, CapabilityMask = 1,
-                    SourcePriority = 1, MaximumValueBits = ulong.MaxValue, SemanticFingerprint = 22 }];
+                    SourcePriority = 1, MaximumValueBits = ulong.MaxValue, SemanticFingerprint = 22 }).ToArray();
             var replace = new NativeMetricSnapshotCatalogReplaceInput
             {
                 AbiVersion = NativeMetricSnapshotAbi.Version, StructSize = Size<NativeMetricSnapshotCatalogReplaceInput>(),
-                ConfigurationGeneration = 1, CatalogGeneration = 1, OperationEpoch = 1,
-                CommandAtMilliseconds = 100, SourceCount = 1, RuleCount = 1, MetricCount = 1,
+                ConfigurationGeneration = 1, CatalogGeneration = generation, OperationEpoch = epoch,
+                CommandAtMilliseconds = 100, SourceCount = 1, RuleCount = (uint)metricCount, MetricCount = (uint)metricCount,
                 SourceIndexCapacity = session.Capacity.SourceIndexCapacity,
                 MetricIndexCapacity = session.Capacity.MetricIndexCapacity,
                 RuleIndexCapacity = session.Capacity.RuleIndexCapacity,
@@ -183,7 +189,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
             Assert.Equal(NativeMetricSnapshotStatus.Ok, Session.QueryHeader(out var header));
             var input = new NativeMetricSnapshotReadInput
             { AbiVersion = NativeMetricSnapshotAbi.Version, StructSize = Size<NativeMetricSnapshotReadInput>(),
-                ConfigurationGeneration = 1, CatalogGeneration = 1, CatalogFingerprint = header.CatalogFingerprint,
+                  ConfigurationGeneration = 1, CatalogGeneration = header.CatalogGeneration, CatalogFingerprint = header.CatalogFingerprint,
                 StateRevision = header.StateRevision, CommittedGeneration = header.CommittedGeneration };
             var metrics = new NativeMetricSnapshotMetricOutput[Session.Capacity.MetricCapacity];
             Assert.Equal(NativeMetricSnapshotStatus.Ok, Session.Read(in input,

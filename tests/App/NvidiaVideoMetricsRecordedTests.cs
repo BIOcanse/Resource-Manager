@@ -126,11 +126,13 @@ public sealed class NvidiaVideoMetricsRecordedTests
         var root = Path.Combine(Path.GetTempPath(), $"nvml-video-{Guid.NewGuid():N}");
         var adapters = new WindowsGpuAdapter[]
         {
-            new(9, "NVIDIA A", 0x10DE, 1, 0, new() { LowPart = 0xA1 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated),
-            new(3, "NVIDIA B", 0x10DE, 2, 0, new() { LowPart = 0xB1 }, false, 8UL << 30, WindowsGpuAdapterKind.Dedicated)
+            NvidiaFanFixture.Adapter(9, 0xA1, NvidiaFanFixture.ParentA) with { Name = "NVIDIA A" },
+            NvidiaFanFixture.Adapter(3, 0xB1, NvidiaFanFixture.ParentB) with { Name = "NVIDIA B" }
         };
         var inventory = new WindowsGpuAdapterInventoryRead(
             SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 2, 0, 0, 1, adapters);
+        var capturedTopology = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(inventory);
+        Assert.Null(capturedTopology.FailureCode);
         var inventoryZone = new WindowsGpuAdapterOrderMonitoringZone(() => inventory);
         using var owner = new HostManagerMetricSnapshotOwner(
             slots.Provider,
@@ -138,7 +140,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => new(
                 1,
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,
-                [new(9, "NVIDIA A", "gpu-a", 0xA1, 1, 1, true), new(3, "NVIDIA B", "gpu-b", 0xB1, 1, 1, true)],
+                capturedTopology.Rows,
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,
                 [],
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,
@@ -156,7 +158,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
 
         var device = dashboard.Current!.FieldBindings.Values.Single(binding =>
             binding.Field.Code == MetricFieldCode.NvmlEncoderUtilization
-            && binding.DeviceIdentity.Contains("gpu-a", StringComparison.Ordinal)).DeviceIdentity;
+            && binding.DeviceIdentity == capturedTopology.Rows.Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var phase = 0;
         var readerCalls = 0;
         var encoderCalls = 0;

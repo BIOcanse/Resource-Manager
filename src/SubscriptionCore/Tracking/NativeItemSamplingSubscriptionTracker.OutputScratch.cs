@@ -8,6 +8,8 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private INativeSamplingOutputScratch? outputScratch;
     private INativeSamplingOutputScratch? pendingOutputClose;
     private NativeSamplingOutputScratchLease? outputUse;
+    private NativeSamplingSubscriptionCapacity outputRows;
+    internal Action<string>? ResizeLog { get; set; }
     private bool outputOperationActive;
     private bool outputClosing;
 
@@ -28,12 +30,27 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         if (outputUse is not null)
             throw new InvalidOperationException("The prior sampling output use could not be returned; close must be retried.");
         ClosePendingOutputScratch();
-        var layout = new NativeSamplingOutputLayout(in capacity);
+        // These maps contain the real tracked rows, including pending item
+        // identities. The native session remains the owner of trigger state.
+        var rows = capacity;
+        uint memberships = 0;
+        foreach (var payload in sourcePayloads.Values)
+            memberships = checked(memberships + (coalesceItemsIntoLatestCapture ? 1U : checked((uint)payload.ItemIds.Count)));
+        rows.DueItemCapacity = Math.Max(outputRows.DueItemCapacity, Math.Max(1U, checked((uint)itemIds.Count)));
+        rows.SourceViewCapacity = Math.Max(outputRows.SourceViewCapacity, Math.Max(1U, checked((uint)sourcePayloads.Count)));
+        rows.ExpiredSourceCapacity = Math.Max(outputRows.ExpiredSourceCapacity, Math.Max(1U, checked((uint)sourcePayloads.Count)));
+        rows.TriggerCapacity = Math.Max(outputRows.TriggerCapacity, Math.Max(1U, memberships));
+        // A replacement session may lower its configured admission limits.
+        rows.DueItemCapacity = Math.Min(rows.DueItemCapacity, capacity.DueItemCapacity);
+        rows.SourceViewCapacity = Math.Min(rows.SourceViewCapacity, capacity.SourceViewCapacity);
+        rows.ExpiredSourceCapacity = Math.Min(rows.ExpiredSourceCapacity, capacity.ExpiredSourceCapacity);
+        rows.TriggerCapacity = Math.Min(rows.TriggerCapacity, capacity.TriggerCapacity);
+        var layout = new NativeSamplingOutputLayout(in rows);
         INativeSamplingOutputScratch? candidate = null;
         try
         {
             var resource = outputScratch;
-            if (resource is null || resource.Length != layout.StorageLength)
+            if (resource is null || resource.Length < layout.StorageLength)
             {
                 candidate = createOutputScratch(layout.Length, NativeSamplingOutputLayout.Alignment)
                     ?? throw new InvalidOperationException("The sampling output factory returned no resource.");
@@ -51,7 +68,11 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 pendingOutputClose = outputScratch;
                 outputScratch = candidate;
                 candidate = null;
+                var message = $"Sampling output workspace resize role={roleId} old_rows={outputRows.DueItemCapacity}/{outputRows.SourceViewCapacity}/{outputRows.ExpiredSourceCapacity}/{outputRows.TriggerCapacity} new_rows={rows.DueItemCapacity}/{rows.SourceViewCapacity}/{rows.ExpiredSourceCapacity}/{rows.TriggerCapacity} old_bytes={pendingOutputClose?.Length ?? 0} new_bytes={resource.Length} reason=tracked-demand";
+                if (ResizeLog is { } report) report(message);
+                else System.Diagnostics.Trace.TraceInformation(message);
             }
+            outputRows = rows;
             return view;
         }
         catch

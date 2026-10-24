@@ -64,6 +64,8 @@ public readonly record struct NativeMetricSnapshotRuleCatalogBinding(
     ulong MaximumValueBits)
 {
     public MetricFieldDefinition? Field { get; init; }
+    internal string? FieldDetail { get; init; }
+    internal string? FieldGroup { get; init; }
     public MetricFieldCode FieldCode => Field?.Code ?? MetricFieldCode.Unknown;
     public string DeviceIdentity { get; init; } = string.Empty;
     public int DisplayIndex { get; init; } = -1;
@@ -330,9 +332,36 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 SemanticFingerprint = policy.SemanticFingerprint
             })
             .ToImmutableArray();
+        // Metadata belongs to this catalog, while addresses belong to each device.
+        var metadata = new Dictionary<(string Template, string Source, uint ValueKind), FieldMetadata>();
+        var sourceLabels = plan.SourcePolicies.ToDictionary(static source => source.SourceId,
+            static source => source.SourceId, StringComparer.Ordinal);
+        FieldMetadata Metadata(NativeMetricSnapshotRuleTemplate template)
+        {
+            var key = (template.MetricIdTemplate, template.SourceId, template.ValueKind);
+            if (metadata.TryGetValue(key, out var existing)) return existing;
+            var field = MetricFieldRegistry.FindByTemplate(template.MetricIdTemplate, template.SourceId);
+            var valueKind = (NativeMetricSnapshotValueKind)template.ValueKind switch
+            {
+                NativeMetricSnapshotValueKind.Float64 => "float64",
+                NativeMetricSnapshotValueKind.Signed64 => "signed64",
+                NativeMetricSnapshotValueKind.Unsigned64 => "unsigned64",
+                NativeMetricSnapshotValueKind.Unsigned128 => "unsigned128",
+                NativeMetricSnapshotValueKind.Boolean => "boolean",
+                NativeMetricSnapshotValueKind.Bytes => "bytes",
+                _ => throw new InvalidOperationException("Unknown metric value kind.")
+            };
+            if (field is not null && field.ValueKind != valueKind) field = field with { ValueKind = valueKind };
+            var source = sourceLabels[template.SourceId];
+            var result = new FieldMetadata(field, source,
+                field?.Meaning is { } meaning ? source + "; " + meaning : source,
+                field?.Resource.ToString() ?? string.Empty);
+            metadata.Add(key, result);
+            return result;
+        }
         var expanded = plan.RuleTemplates
             .SelectMany(template => ExpandTemplate(
-                template,
+                template, Metadata(template),
                 resolvedGpuAdapters,
                 resolvedStorageSensors,
                 resolvedSystemFans,
@@ -427,7 +456,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                     rule.Template.SourceHandle,
                     rule.ScopeHandle,
                     rule.MetricId,
-                     rule.Template.SourceId,
+                     rule.Metadata.SourceId,
                      rule.Template.MetricKind,
                      rule.Template.ValueKind,
                      rule.Template.CapabilityMask,
@@ -436,6 +465,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                      rule.Template.MaximumValueBits)
                 {
                     Field = rule.Field,
+                    FieldDetail = rule.Metadata.Detail,
+                    FieldGroup = rule.Metadata.Group,
                     DeviceIdentity = rule.DeviceIdentity,
                     DisplayIndex = rule.DisplayIndex,
                     LegacyMetricId = rule.LegacyMetricId,
@@ -558,7 +589,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         => this with { MetricHandles = MetricHandles.SetItems(LegacyMetricHandles) };
 
     private static IEnumerable<ExpandedRule> ExpandTemplate(
-        NativeMetricSnapshotRuleTemplate template,
+        NativeMetricSnapshotRuleTemplate template, FieldMetadata metadata,
         IReadOnlyList<ResolvedGpuIdentity> gpuAdapters,
         IReadOnlyList<ResolvedOrdinalIdentity> storageSensors,
         IReadOnlyList<ResolvedOrdinalIdentity> systemFans,
@@ -570,35 +601,35 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         return template.ScopeExpansion switch
         {
             1 => [CreateStatic(
-                template,
+                template, metadata,
                 HostScopeHandle,
                 "static|host")],
             2 => [CreateStatic(
-                template,
+                template, metadata,
                 CpuScopeHandle,
                 "static|cpu")],
             3 => [CreateStatic(
-                template,
+                template, metadata,
                 MemoryScopeHandle,
                 "static|memory")],
             7 => [CreateStatic(
-                template,
+                template, metadata,
                 VirtualMemoryScopeHandle,
                 "static|virtual-memory")],
             4 => ExpandBounded(
-                template,
+                template, metadata,
                 gpuAdapters.Where(adapter =>
                     (template.GpuVendorMask & adapter.VendorMask) != 0
                     && ((template.ApplicabilityMask & DedicatedOnly) == 0
                         || adapter.SupportsDedicatedMetrics)),
                 "{gpu}"),
-            5 => ExpandBounded(template, template.SourceId switch
+            5 => ExpandBounded(template, metadata, template.SourceId switch
             {
                 NativeMetricSnapshotSources.WindowsNvmeHealth => storageSensors.Where(static disk => disk.SupportsNvmeHealth),
                 NativeMetricSnapshotSources.WindowsAtaSmart => storageSensors.Where(static disk => disk.SupportsAtaSmart),
                 _ => storageSensors
             }, "{disk}"),
-            6 => ExpandBounded(template, template.SourceId switch
+            6 => ExpandBounded(template, metadata, template.SourceId switch
                 {
                     NativeMetricSnapshotSources.IntelGcl => systemFans.Where(static fan => fan.IgclFan is not null),
                     NativeMetricSnapshotSources.NvidiaNvml => systemFans.Where(static fan => fan.NvmlFan is not null),
@@ -607,19 +638,19 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                     _ => []
                 },
                 "{fan}"),
-            8 => ExpandBounded(template, batteries.Where(battery => WindowsBatteryReader.AppliesTo(
-                MetricFieldRegistry.FindByTemplate(template.MetricIdTemplate, template.SourceId)?.Code
+            8 => ExpandBounded(template, metadata, batteries.Where(battery => WindowsBatteryReader.AppliesTo(
+                metadata.Field?.Code
                     ?? MetricFieldCode.Unknown, battery.IsRelative)), "{battery}"),
-            16 => ExpandBounded(template, npus, "{npu}"),
-            17 => ExpandBounded(template, npuEngines, "{engine}"),
-            14 => ExpandBounded(template, networkInterfaces, "{interface}"),
-            9 => ExpandBounded(template, numaNodes, "{numa}"),
-            13 when template.SourceId == NativeMetricSnapshotSources.AmdSmn => ExpandBounded(template, amdCcds, "{die}"),
-            10 or 11 or 12 or 13 or 15 => ExpandBounded(template, intelCpus.Where(cpu =>
+            16 => ExpandBounded(template, metadata, npus, "{npu}"),
+            17 => ExpandBounded(template, metadata, npuEngines, "{engine}"),
+            14 => ExpandBounded(template, metadata, networkInterfaces, "{interface}"),
+            9 => ExpandBounded(template, metadata, numaNodes, "{numa}"),
+            13 when template.SourceId == NativeMetricSnapshotSources.AmdSmn => ExpandBounded(template, metadata, amdCcds, "{die}"),
+            10 or 11 or 12 or 13 or 15 => ExpandBounded(template, metadata, intelCpus.Where(cpu =>
                 cpu.Cpu.Kind == (template.ScopeExpansion switch { 10 => IntelMsrTargetKind.PhysicalCore,
                     11 => IntelMsrTargetKind.Package, 13 => IntelMsrTargetKind.PhysicalDie,
                     15 => IntelMsrTargetKind.Platform, _ => IntelMsrTargetKind.LogicalProcessor })
-                && cpu.Cpu.AppliesTo(MetricFieldRegistry.FindByTemplate(template.MetricIdTemplate, template.SourceId)?.Code
+                && cpu.Cpu.AppliesTo(metadata.Field?.Code
                     ?? MetricFieldCode.Unknown)), template.ScopeExpansion switch { 10 => "{core}", 11 => "{package}", 13 => "{die}", 15 => "{platform}", _ => "{thread}" }),
             _ => throw new InvalidOperationException(
                 "The compiled metric-snapshot scope expansion is invalid.")
@@ -627,19 +658,19 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     }
 
     private static ExpandedRule CreateStatic(
-        NativeMetricSnapshotRuleTemplate template,
+        NativeMetricSnapshotRuleTemplate template, FieldMetadata metadata,
         ulong scopeHandle,
         string exactScopeKey)
-        => CreateExpanded(template, scopeHandle, exactScopeKey, -1, template.MetricIdTemplate) with
+        => CreateExpanded(template, metadata, scopeHandle, exactScopeKey, -1, template.MetricIdTemplate) with
         { Device = CreateStaticDevice(template.ScopeExpansion) };
 
     private static ExpandedRule CreateIndexed(
-        NativeMetricSnapshotRuleTemplate template,
+        NativeMetricSnapshotRuleTemplate template, FieldMetadata metadata,
         string placeholder,
         int index,
         ulong scopeHandle,
         string exactScopeKey)
-        => CreateExpanded(template, scopeHandle, exactScopeKey, index,
+        => CreateExpanded(template, metadata, scopeHandle, exactScopeKey, index,
             template.MetricIdTemplate.Replace(
                 placeholder,
                 index.ToString(
@@ -647,20 +678,10 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 StringComparison.Ordinal));
 
     private static ExpandedRule CreateExpanded(
-        NativeMetricSnapshotRuleTemplate template, ulong scopeHandle,
+        NativeMetricSnapshotRuleTemplate template, FieldMetadata metadata, ulong scopeHandle,
         string exactScopeKey, int index, string legacyId)
     {
-        var field = MetricFieldRegistry.FindByTemplate(template.MetricIdTemplate, template.SourceId);
-        if (field is not null) field = field with { ValueKind = (NativeMetricSnapshotValueKind)template.ValueKind switch
-        {
-            NativeMetricSnapshotValueKind.Float64 => "float64",
-            NativeMetricSnapshotValueKind.Signed64 => "signed64",
-            NativeMetricSnapshotValueKind.Unsigned64 => "unsigned64",
-            NativeMetricSnapshotValueKind.Unsigned128 => "unsigned128",
-            NativeMetricSnapshotValueKind.Boolean => "boolean",
-            NativeMetricSnapshotValueKind.Bytes => "bytes",
-            _ => throw new InvalidOperationException("Unknown metric value kind.")
-        } };
+        var field = metadata.Field;
         var definitionKey = field?.Name ?? template.MetricIdTemplate;
         var address = field is null ? legacyId : $"{scopeHandle:X16}/{field.Name}";
         return new ExpandedRule(
@@ -670,12 +691,12 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             $"metric|{definitionKey}|{exactScopeKey}",
             $"rule|{template.TemplateId}|{exactScopeKey}",
             template)
-        { Field = field, DeviceIdentity = exactScopeKey, DisplayIndex = index,
+        { Field = field, Metadata = metadata, DeviceIdentity = exactScopeKey, DisplayIndex = index,
             LegacyMetricId = field?.HasLegacyAddress == false ? string.Empty : legacyId };
     }
 
     private static IEnumerable<ExpandedRule> ExpandBounded<T>(
-        NativeMetricSnapshotRuleTemplate template,
+        NativeMetricSnapshotRuleTemplate template, FieldMetadata metadata,
         IEnumerable<T> source,
         string placeholder)
         where T : IResolvedOrdinalIdentity
@@ -691,7 +712,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         return values.Select(identity =>
         {
             var expanded = CreateIndexed(
-            template,
+            template, metadata,
             placeholder,
             identity.DisplayIndex,
             identity.ScopeHandle,
@@ -923,6 +944,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
     private const ulong MemoryScopeHandle = 0x1000_0000_0000_0003UL;
     private const ulong VirtualMemoryScopeHandle = 0x1000_0000_0000_0004UL;
 
+    private sealed record FieldMetadata(MetricFieldDefinition? Field, string SourceId, string Detail, string Group);
+
     private sealed record ExpandedRule(
         string MetricId,
         ulong ScopeHandle,
@@ -931,6 +954,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         string StableRuleKey,
         NativeMetricSnapshotRuleTemplate Template)
     {
+        public FieldMetadata Metadata { get; init; } = null!;
         public MetricFieldDefinition? Field { get; init; }
         public string DeviceIdentity { get; init; } = string.Empty;
         public int DisplayIndex { get; init; } = -1;

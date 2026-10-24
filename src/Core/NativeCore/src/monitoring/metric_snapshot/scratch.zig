@@ -10,17 +10,24 @@ pub const Layout = struct {
     requested: usize,
     observation_slots: usize,
     requested_flags: usize,
+    observation_count: u32,
+    plan_metric_count: u32,
+    requested_count: u32,
+    rule_count: u32,
     byte_count: usize,
 
-    pub fn init(config: *const protocol.Config) !Layout {
+    pub fn init(config: *const protocol.Config, rule_count: u32, metric_count: u32) !Layout {
+        const observation_count = @min(config.maximum_observation_count, rule_count);
+        const plan_metric_count = @min(config.maximum_plan_metric_count, metric_count);
+        const requested_count = @min(config.maximum_requested_count, rule_count);
         var offset: usize = 0;
-        const observations = try take(&offset, protocol.ObservationInput, config.maximum_observation_count);
-        const plan_handles = try take(&offset, u64, config.maximum_plan_metric_count);
-        const requested = try take(&offset, u32, config.maximum_requested_count);
-        const observation_slots = try take(&offset, u32, config.maximum_rule_count);
-        const requested_flags = try take(&offset, bool, config.maximum_rule_count);
-        const byte_count = try alignOffset(offset, alignment);
-        return .{ .observations = observations, .plan_handles = plan_handles, .requested = requested, .observation_slots = observation_slots, .requested_flags = requested_flags, .byte_count = byte_count };
+        const observations = try take(&offset, protocol.ObservationInput, observation_count);
+        const plan_handles = try take(&offset, u64, plan_metric_count);
+        const requested = try take(&offset, u32, requested_count);
+        const observation_slots = try take(&offset, u32, rule_count);
+        const requested_flags = try take(&offset, bool, rule_count);
+        const byte_count = @max(alignment, try alignOffset(offset, alignment));
+        return .{ .observations = observations, .plan_handles = plan_handles, .requested = requested, .observation_slots = observation_slots, .requested_flags = requested_flags, .observation_count = observation_count, .plan_metric_count = plan_metric_count, .requested_count = requested_count, .rule_count = rule_count, .byte_count = byte_count };
     }
 
     pub fn validate(self: Layout, bytes: []u8) ResultCode {
