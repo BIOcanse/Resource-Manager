@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 public static class NativeFileQueryAbi
 {
-    public const uint Version = 0x0002_0000;
+    public const uint Version = 0x0003_0000;
     public const uint UnicodeTokenizerVersion = 0x0006_0100;
     public const uint UnicodeRemoveDiacriticsMode = 2;
     public const uint TrigramTokenizerContractVersion = 0x0001_0000;

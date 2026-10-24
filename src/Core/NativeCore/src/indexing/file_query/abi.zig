@@ -27,6 +27,21 @@ pub export fn rm_file_query_destroy(handle: ?*anyopaque) callconv(.c) void {
     session.destroy();
 }
 
+pub export fn rm_file_query_scratch_byte_count(handle: ?*anyopaque) callconv(.c) u64 {
+    const session = castSession(handle) orelse return 0;
+    return session.scratch_byte_count;
+}
+
+pub export fn rm_file_query_bind_scratch(handle: ?*anyopaque, pointer: ?[*]u8, length: u64) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    return code(session.bindScratch(pointer, length));
+}
+
+pub export fn rm_file_query_release_scratch(handle: ?*anyopaque) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    return code(session.releaseScratch());
+}
+
 pub export fn rm_file_query_reconfigure(
     handle: ?*anyopaque,
     config: ?*const protocol.Config,

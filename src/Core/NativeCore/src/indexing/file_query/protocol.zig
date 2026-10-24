@@ -1,7 +1,7 @@
 const std = @import("std");
 const unicode61 = @import("unicode61.zig");
 
-pub const abi_version: u32 = 0x0002_0000;
+pub const abi_version: u32 = 0x0003_0000;
 // ASCII space/tab/CR/LF boundary trim plus ASCII-only case-insensitive substring matching.
 pub const text_matching_version: u32 = 0x0001_0000;
 pub const unicode_remove_diacritics_mode: u32 = 2;

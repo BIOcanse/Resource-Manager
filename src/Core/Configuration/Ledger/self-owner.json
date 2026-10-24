@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "indexBucketCount": 64,
+  "indexBucketCount": 128,
   "tables": [
     {
       "capacity": 8,
@@ -14,7 +14,7 @@
       }
     },
     {
-      "capacity": 28,
+      "capacity": 93,
       "partitionCapacity": 0,
       "reservedStart": 0,
       "reservedCount": 0,

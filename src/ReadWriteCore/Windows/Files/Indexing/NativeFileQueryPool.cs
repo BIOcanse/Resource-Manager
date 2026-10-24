@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Native;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
@@ -14,6 +15,7 @@ public sealed class NativeFileQueryLease : IDisposable
 {
     private Action<NativeFileQuerySession, bool>? release;
     private bool reusable;
+    private readonly object releaseGate = new();
 
     internal NativeFileQueryLease(
         NativeFileQuerySession session,
@@ -29,7 +31,11 @@ public sealed class NativeFileQueryLease : IDisposable
 
     public void Dispose()
     {
-        Interlocked.Exchange(ref release, null)?.Invoke(Session, reusable);
+        lock (releaseGate)
+        {
+            release?.Invoke(Session, reusable);
+            release = null;
+        }
     }
 }
 
@@ -37,6 +43,7 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
 {
     private readonly ConcurrentQueue<NativeFileQuerySession> available = new();
     private readonly SemaphoreSlim signal;
+    private readonly object lifecycleGate = new();
     private long nextEpoch;
     private int disposed;
 
@@ -44,6 +51,10 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
         in NativeFileQueryConfiguration configuration,
         int sessionCount,
         ulong totalResidentByteBudget)
+        : this(in configuration, sessionCount, totalResidentByteBudget, NativeFileQueryScratch.CreateOrdinary) { }
+
+    internal NativeFileQueryPool(in NativeFileQueryConfiguration configuration, int sessionCount,
+        ulong totalResidentByteBudget, Func<ulong, uint, INativeFileQueryScratch> createScratch)
     {
         if (sessionCount <= 0 || totalResidentByteBudget == 0)
         {
@@ -58,7 +69,7 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
             ulong resident = 0;
             for (var index = 0; index < sessionCount; index++)
             {
-                var session = new NativeFileQuerySession(in configuration);
+                var session = new NativeFileQuerySession(in configuration, createScratch);
                 sessions.Add(session);
                 resident = checked(resident + session.Capacity.ResidentByteCount);
             }
@@ -89,11 +100,20 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         await signal.WaitAsync(cancellationToken).ConfigureAwait(false);
-        if (Volatile.Read(ref disposed) != 0 || !available.TryDequeue(out var session))
+        lock (lifecycleGate)
         {
-            throw new ObjectDisposedException(nameof(NativeFileQueryPool));
+            if (Volatile.Read(ref disposed) != 0 || !available.TryDequeue(out var session))
+                throw new ObjectDisposedException(nameof(NativeFileQueryPool));
+            try
+            {
+                // A failed prior acquisition may still own a use whose return
+                // failed. Retry that explicit return before borrowing again.
+                session.EndQuery(false);
+                session.BeginQuery();
+            }
+            catch { available.Enqueue(session); signal.Release(); throw; }
+            return new NativeFileQueryLease(session, Release);
         }
-        return new NativeFileQueryLease(session, Release);
     }
 
     public ulong NextEpoch()
@@ -107,25 +127,33 @@ public sealed class NativeFileQueryPool : INativeFileQueryLeaseSource, IDisposab
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        lock (lifecycleGate)
         {
-            return;
+            if (disposed == 2) return;
+            Volatile.Write(ref disposed, 1);
+            // Leave a failed close owned by the queue for the next Dispose.
+            while (available.TryPeek(out var session))
+            {
+                session.Dispose();
+                available.TryDequeue(out _);
+            }
+            signal.Dispose();
+            Volatile.Write(ref disposed, 2);
         }
-        while (available.TryDequeue(out var session))
-        {
-            session.Dispose();
-        }
-        signal.Dispose();
     }
 
     private void Release(NativeFileQuerySession session, bool reusable)
     {
-        if (reusable && Volatile.Read(ref disposed) == 0)
+        lock (lifecycleGate)
         {
-            available.Enqueue(session);
-            signal.Release();
-            return;
+            session.EndQuery(reusable);
+            if (reusable && Volatile.Read(ref disposed) == 0)
+            {
+                available.Enqueue(session);
+                signal.Release();
+                return;
+            }
+            session.Dispose();
         }
-        session.Dispose();
     }
 }

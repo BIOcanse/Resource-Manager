@@ -44,6 +44,7 @@ pub fn begin(
     {
         return .abi_mismatch;
     }
+    if (!session.scratch_bound) return .unavailable;
     if (session.phase != .empty) return .invalid_argument;
     if (input.operation_epoch <= session.last_operation_epoch or
         input.query_epoch <= session.last_query_epoch)

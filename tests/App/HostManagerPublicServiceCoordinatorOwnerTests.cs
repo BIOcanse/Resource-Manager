@@ -8,6 +8,8 @@ using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.PublicServices;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.Ledger;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -19,12 +21,49 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         await using var fixture = await Fixture.CreateAsync();
         await Task.Delay(100);
         Assert.Equal(0, fixture.Provider.CatalogCallCount);
+        Assert.Equal(0UL, fixture.Ledger.ReadTable().RegisteredBytes);
 
         await Assert.ThrowsAsync<AiModelRuntimeUnavailableException>(
             () => fixture.Owner.ListModelsAsync(CancellationToken.None));
         await WaitForCatalogAsync(fixture.Owner);
 
         Assert.Equal(1, fixture.Provider.CatalogCallCount);
+    }
+
+    [Fact]
+    public async Task ModelWorkAreaIsReturnedToLedgerAndRebuiltAfterTick()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        Assert.Equal(0UL, fixture.Ledger.ReadTable().RegisteredBytes);
+        await WaitForCatalogAsync(fixture.Owner);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", CancellationToken.None));
+        Assert.True(fixture.Ledger.ReadTable().RegisteredBytes > 0);
+        fixture.Ledger.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(1UL, fixture.Ledger.Tick().Released);
+        Assert.Equal(0UL, fixture.Ledger.ReadTable().RegisteredBytes);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", CancellationToken.None));
+        Assert.Equal(1, fixture.Provider.CatalogCallCount);
+        Assert.True(fixture.Ledger.ReadTable().RegisteredBytes > 0);
+        Assert.Equal(1UL, fixture.Ledger.Tick().Released);
+    }
+
+    [Fact]
+    public async Task InflightTaskSurvivesReclamationOfModelWorkArea()
+    {
+        await using var fixture = await Fixture.CreateAsync(holdFirstLoadIgnoringCancellation: true);
+        await WaitForCatalogAsync(fixture.Owner);
+        var loading = fixture.Owner.LoadAsync(new AiModelLoadRequest(
+            "community/open-model", 4096, null, null, null), CancellationToken.None);
+        try
+        {
+            await fixture.Provider.WaitForLoadCallsAsync(1);
+            fixture.Ledger.SetMode(LedgerTableMode.Optimize);
+            Assert.Equal(1UL, fixture.Ledger.Tick().Released);
+        }
+        finally { fixture.Provider.ReleaseFirstLoad(); }
+        var result = await loading.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("community/open-model", result.InstanceId);
+        Assert.Equal(1, fixture.Provider.LoadCallCount);
     }
 
     [Fact]
@@ -285,8 +324,10 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
     private sealed class Fixture(
         HostManagerPublicServiceCoordinatorOwner owner,
         RecordingModelProvider provider,
-        RuntimePlanProvider planProvider) : IAsyncDisposable
+        RuntimePlanProvider planProvider,
+        ResourceManagerLedgerOwner ledger) : IAsyncDisposable
     {
+        internal ResourceManagerLedgerOwner Ledger { get; } = ledger;
         internal HostManagerPublicServiceCoordinatorOwner Owner { get; } = owner;
 
         internal RecordingModelProvider Provider { get; } = provider;
@@ -325,6 +366,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                 loadFailures,
                 holdFirstLoadIgnoringCancellation,
                 cancelFirstLoad);
+            var ledger = new ResourceManagerLedgerOwner();
             var owner = new HostManagerPublicServiceCoordinatorOwner(
                 planProvider,
                 new HostManagerPublicServiceCoordinatorRuntime(
@@ -332,9 +374,9 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                     deployment),
                 new HostManagerRuntimeIdentity(),
                 provider,
-                NullLogger<HostManagerPublicServiceCoordinatorOwner>.Instance);
+                NullLogger<HostManagerPublicServiceCoordinatorOwner>.Instance, ledger);
             await owner.StartAsync(CancellationToken.None);
-            return new Fixture(owner, provider, planProvider);
+            return new Fixture(owner, provider, planProvider, ledger);
         }
 
         internal void PublishPlan(Action<JsonObject> mutate)
@@ -404,6 +446,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         {
             await Owner.StopAsync(CancellationToken.None);
             Owner.Dispose();
+            Ledger.Dispose();
         }
 
         private static AppLocalPublicServiceSettings EnabledPublicServiceSettings { get; }

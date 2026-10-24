@@ -3,6 +3,8 @@ const abi = @import("abi.zig");
 const index = @import("index.zig");
 const protocol = @import("protocol.zig");
 const session_module = @import("session.zig");
+const catalog = @import("catalog.zig");
+const state = @import("state.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 test "module local C ABI carries one opaque session through routing lifecycle" {
@@ -320,6 +322,8 @@ test "route policy alone controls rate limit bypass and request flags stay empty
 test "model acquisition owns retry timeout attempt identity and last good lifetime" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
 
     const first = try session.planModelAcquisition(modelAcquisitionPlan(1, 10));
     try std.testing.expectEqual(
@@ -444,6 +448,8 @@ test "task planning never inherits model acquisition retry wake" {
 test "model aliases leases subscriptions and task ordering share one authority" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const resolved = try session.resolveModel(
@@ -513,6 +519,8 @@ test "model aliases leases subscriptions and task ordering share one authority" 
 test "successful model task makes provider catalog acquisition immediately due" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const queued = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -545,6 +553,8 @@ test "task outcome policy alone decides retry versus terminal failure" {
         protocol.TaskHttpRetryPolicyMask.throttled;
     var session = try session_module.Session.create(std.testing.allocator, config);
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const retry_task = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -582,6 +592,8 @@ test "task outcome policy alone decides retry versus terminal failure" {
 test "exact task completion settles a provider effect after its recovery deadline" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const queued = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -614,6 +626,8 @@ test "task retry policy stops at the explicit maximum attempt count" {
     config.maximum_task_attempt_count = 3;
     var session = try session_module.Session.create(std.testing.allocator, config);
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const queued = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -656,6 +670,8 @@ test "task retry policy stops at the explicit maximum attempt count" {
 test "queued task cancellation drains exact payloads and rejects running effects" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const first = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -684,6 +700,8 @@ test "queued task cancellation drains exact payloads and rejects running effects
 test "task attempt exhaustion rejects the whole plan without consuming command identity" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const first = try session.enqueueTask(taskInput(3, 20, 3, 41, 501, 500, .load));
@@ -706,6 +724,8 @@ test "task attempt exhaustion rejects the whole plan without consuming command i
 test "expired lease and subscription stop blocking model unload before task selection" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     _ = try session.beginLease(.{
@@ -734,6 +754,8 @@ test "expired lease and subscription stop blocking model unload before task sele
 test "stale epoch and monotonic rollback do not mutate the accepted command frontier" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 100);
 
     try std.testing.expectError(
@@ -759,6 +781,8 @@ test "stale epoch and monotonic rollback do not mutate the accepted command fron
 test "fixed task slots are reused without reusing task identity across long lifecycle" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     var epoch: u64 = 3;
@@ -806,6 +830,8 @@ test "fixed task slots are reused without reusing task identity across long life
 test "active model references make catalog replacement fail closed" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
     _ = try session.upsertSubscription(.{
         .struct_size = @sizeOf(protocol.SubscriptionUpsertInput),
@@ -851,6 +877,8 @@ test "active model references make catalog replacement fail closed" {
 test "duplicate folded model aliases are rejected atomically" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
 
     const text = "MODELmodel";
@@ -893,6 +921,8 @@ test "duplicate folded model aliases are rejected atomically" {
 test "subscription handle cannot be reassigned to another caller" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
     _ = try session.upsertSubscription(subscriptionInput(3, 20, 700, 8, 41, 300, 5_000));
 
@@ -908,6 +938,8 @@ test "subscription handle cannot be reassigned to another caller" {
 test "rejected model replacement does not expire runtime state or consume command" {
     var session = try session_module.Session.create(std.testing.allocator, testConfig());
     defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
     try installModels(session, 1, 10);
     _ = try session.upsertSubscription(.{
         .struct_size = @sizeOf(protocol.SubscriptionUpsertInput),
@@ -1033,6 +1065,161 @@ test "capability output is stable and buffer size is explicit" {
     try std.testing.expectEqual(@as(u64, 2), output[0].capability_handle);
     try std.testing.expectEqual(@as(u64, 9), output[1].capability_handle);
 }
+
+test "model scratch binding is explicit and capacity excludes borrowed bytes" {
+    const config = testConfig();
+    var session = try session_module.Session.create(std.testing.allocator, config);
+    defer session.destroy();
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.models.len);
+    try std.testing.expectEqual(@as(usize, 0), session.staging_models.text.len);
+    try std.testing.expectEqual(try session_module.requiredResidentBytes(config), session.capacity().resident_byte_count);
+    const bytes = try session.modelScratchBytes();
+    var insufficient_budget = config;
+    insufficient_budget.resident_byte_budget = session.capacity().resident_byte_count + bytes - 1;
+    try std.testing.expectError(error.ResidentBudgetExceeded, session_module.Session.create(std.testing.allocator, insufficient_budget));
+    const backing = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(bytes + 8));
+    defer std.testing.allocator.free(backing);
+    try std.testing.expectError(error.BufferTooSmall, session.bindModelScratch(backing[0..@intCast(bytes - 1)], 0, &.{}, &.{}, &.{}));
+    try std.testing.expectError(error.InvalidArgument, session.bindModelScratch(backing[1..], 0, &.{}, &.{}, &.{}));
+    try std.testing.expectError(error.InvalidArgument, session.bindModelScratch(backing, 1, &.{}, &.{}, &.{}));
+    try std.testing.expectError(error.InvalidState, session.resolveModel(modelResolve(1, 1, "absent"), "absent"));
+    try std.testing.expectEqual(@as(u64, 0), session.snapshot().last_command_epoch);
+    try session.bindModelScratch(backing[0..@intCast(bytes)], 0, &.{}, &.{}, &.{});
+    try std.testing.expectError(error.InvalidState, session.bindModelScratch(backing, 0, &.{}, &.{}, &.{}));
+    session.unbindModelScratch();
+    session.unbindModelScratch();
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.model_index.len);
+
+    // Changing model capacity does not allocate any more resident session storage.
+    var larger = config;
+    larger.maximum_model_count = 1024;
+    larger.maximum_model_alias_count = 4096;
+    larger.model_index_capacity = 2048;
+    larger.alias_index_capacity = 8192;
+    larger.maximum_model_text_bytes = 16_777_216;
+    try std.testing.expectEqual(try session_module.requiredResidentBytes(config), try session_module.requiredResidentBytes(larger));
+    try std.testing.expectEqual(@as(u64, 34_291_712), try session_module.requiredModelScratchBytes(larger));
+
+    var runtime_default = larger;
+    runtime_default.maximum_capability_count = 16;
+    runtime_default.maximum_route_count = 32;
+    runtime_default.maximum_request_count = 4096;
+    runtime_default.maximum_rate_bucket_count = 4096;
+    runtime_default.maximum_lease_count = 4096;
+    runtime_default.maximum_subscription_count = 4096;
+    runtime_default.maximum_task_count = 2048;
+    runtime_default.capability_index_capacity = 32;
+    runtime_default.request_index_capacity = 8192;
+    runtime_default.rate_bucket_index_capacity = 8192;
+    runtime_default.lease_index_capacity = 8192;
+    runtime_default.subscription_index_capacity = 8192;
+    runtime_default.task_index_capacity = 4096;
+    runtime_default.maximum_catalog_text_bytes = 65_536;
+    try std.testing.expectEqual(@as(usize, 976), @sizeOf(session_module.Session));
+    try std.testing.expectEqual(@as(u64, 48), state.request_slot_size);
+    try std.testing.expectEqual(@as(u64, 40), state.rate_bucket_slot_size);
+    try std.testing.expectEqual(@as(u64, 40), state.lease_slot_size);
+    try std.testing.expectEqual(@as(u64, 48), state.subscription_slot_size);
+    try std.testing.expectEqual(@as(u64, 112), state.task_slot_size);
+    try std.testing.expectEqual(@as(u64, 32), catalog.capability_slot_size);
+    try std.testing.expectEqual(@as(u64, 56), catalog.route_slot_size);
+    try std.testing.expectEqual(@as(u64, 1_743_312), try session_module.requiredResidentBytes(runtime_default));
+    try std.testing.expectEqual(@as(u64, 36_035_024), (try session_module.requiredResidentBytes(runtime_default)) + (try session_module.requiredModelScratchBytes(runtime_default)));
+}
+
+test "model scratch can be discarded and rebuilt without losing runtime ownership" {
+    var session = try session_module.Session.create(std.testing.allocator, testConfig());
+    defer session.destroy();
+    const text = "open-modelsecond-modelopen-model-loaded";
+    const models = [_]protocol.ModelInput{ model(41, 1, 101), model(42, 1, 102) };
+    const aliases = [_]protocol.ModelAliasInput{ alias(41, 0, 10), alias(42, 10, 12), alias(41, 22, 17) };
+    {
+        var scratch = try TestModelScratch.init(session);
+        defer scratch.deinit();
+        try installModels(session, 1, 10);
+        _ = try session.upsertSubscription(subscriptionInput(3, 12, 700, 8, 41, 300, 5_000));
+        _ = try session.enqueueTask(taskInput(4, 13, 8, 41, 500, 100, .load));
+    }
+    const before = session.snapshot();
+    try std.testing.expectEqual(@as(u64, 1), before.model_generation);
+    try std.testing.expectEqual(@as(u32, 2), before.model_count);
+    try std.testing.expectEqual(@as(u32, 3), before.alias_count);
+    try std.testing.expectEqual(@as(u32, 1), before.subscription_count);
+    try std.testing.expectEqual(@as(u32, 1), before.queued_task_count);
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.models.len);
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.aliases.len);
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.model_index.len);
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.alias_index.len);
+    try std.testing.expectEqual(@as(usize, 0), session.active_models.text.len);
+    try std.testing.expectError(error.InvalidState, session.resolveModel(modelResolve(5, 14, "open-model"), "open-model"));
+    const refresh = try session.planModelAcquisition(modelAcquisitionPlan(5, 20));
+    try std.testing.expectEqual(@intFromEnum(protocol.ModelAcquisitionPlanStatus.start), refresh.status);
+    {
+        const bytes = try session.modelScratchBytes();
+        const replacement = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(bytes));
+        defer std.testing.allocator.free(replacement);
+        @memset(replacement, 0xA5);
+        try std.testing.expectError(error.InvalidArgument, session.bindModelScratch(replacement, 2, &models, &aliases, text));
+        try std.testing.expectEqual(@as(usize, 0), session.active_models.models.len);
+        try session.bindModelScratch(replacement, 1, &models, &aliases, text);
+        defer session.unbindModelScratch();
+        const resolved = try session.resolveModel(modelResolve(6, 21, "OPEN-MODEL"), "OPEN-MODEL");
+        try std.testing.expectEqual(@intFromEnum(protocol.ModelResolveStatus.matched), resolved.status);
+        try std.testing.expectEqual(@as(u64, 41), resolved.model_handle);
+        try std.testing.expectEqual(@as(usize, 0), session.staging_models.model_count);
+        try std.testing.expectEqual(@as(u32, 1), session.snapshot().subscription_count);
+        try std.testing.expectEqual(@as(u32, 1), session.snapshot().queued_task_count);
+        // Reconstruction must not settle the actual refresh attempt.
+        const running = try session.planModelAcquisition(modelAcquisitionPlan(7, 22));
+        try std.testing.expectEqual(refresh.attempt_handle, running.attempt_handle);
+        try std.testing.expectEqual(@intFromEnum(protocol.ModelAcquisitionPlanStatus.running), running.status);
+    }
+    try session.completeModelAcquisition(modelAcquisitionCompletion(8, 23, refresh.attempt_handle, .failed));
+    var planned: [1]protocol.TaskOutput = undefined;
+    const plan = try session.planTasks(taskPlan(9, 24, planned.len), &planned);
+    try std.testing.expectEqual(@as(u32, 1), plan.output_count);
+    try std.testing.expectEqual(@as(u64, 500), planned[0].payload_handle);
+    _ = try session.completeTask(taskComplete(10, 25, planned[0].task_handle, planned[0].attempt, .succeeded));
+    try std.testing.expectEqual(@as(u32, 0), session.snapshot().queued_task_count);
+}
+
+test "model scratch ABI reports layout and borrows caller storage" {
+    var config = testConfig();
+    var handle: ?*anyopaque = null;
+    try std.testing.expectEqual(@as(i32, 0), abi.rm_public_service_coordinator_create(&config, &handle));
+    defer abi.rm_public_service_coordinator_destroy(handle);
+    var bytes: u64 = 123;
+    var alignment: u32 = 123;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_public_service_coordinator_query_model_scratch(null, &bytes, &alignment));
+    try std.testing.expectEqual(@as(u64, 0), bytes);
+    try std.testing.expectEqual(@as(u32, 0), alignment);
+    try std.testing.expectEqual(@as(i32, 0), abi.rm_public_service_coordinator_query_model_scratch(handle, &bytes, &alignment));
+    try std.testing.expectEqual(try session_module.requiredModelScratchBytes(config), bytes);
+    try std.testing.expectEqual(@as(u32, 8), alignment);
+    const backing = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(bytes));
+    defer std.testing.allocator.free(backing);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.buffer_too_small), abi.rm_public_service_coordinator_bind_model_scratch(handle, backing.ptr, bytes - 1, 0, null, 0, null, 0, null, 0));
+    try std.testing.expectEqual(@as(i32, 0), abi.rm_public_service_coordinator_bind_model_scratch(handle, backing.ptr, bytes, 0, null, 0, null, 0, null, 0));
+    try std.testing.expectEqual(@as(i32, 0), abi.rm_public_service_coordinator_unbind_model_scratch(handle));
+    try std.testing.expectEqual(@as(i32, 0), abi.rm_public_service_coordinator_unbind_model_scratch(handle));
+}
+
+const TestModelScratch = struct {
+    session: *session_module.Session,
+    bytes: []align(8) u8,
+
+    fn init(session: *session_module.Session) !TestModelScratch {
+        const bytes = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(try session.modelScratchBytes()));
+        errdefer std.testing.allocator.free(bytes);
+        try session.bindModelScratch(bytes, 0, &.{}, &.{}, &.{});
+        return .{ .session = session, .bytes = bytes };
+    }
+
+    fn deinit(self: *TestModelScratch) void {
+        self.session.unbindModelScratch();
+        std.testing.allocator.free(self.bytes);
+    }
+};
 
 fn testConfig() protocol.Config {
     return .{

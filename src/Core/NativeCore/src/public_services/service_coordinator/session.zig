@@ -15,15 +15,17 @@ pub const Session = struct {
     config: protocol.Config,
     active_catalog: catalog.CatalogBank,
     staging_catalog: catalog.CatalogBank,
-    active_models: catalog.ModelBank,
-    staging_models: catalog.ModelBank,
+    active_models: catalog.ModelBank = .{},
+    staging_models: catalog.ModelBank = .{},
     runtime: state.RuntimeState,
     last_command_epoch: u64 = 0,
     last_command_monotonic_milliseconds: u64 = 0,
 
     pub fn create(allocator: std.mem.Allocator, config: protocol.Config) Error!*Session {
         const resident_bytes = try requiredResidentBytes(config);
-        try validateConfig(config, resident_bytes);
+        const maximum_owned_and_borrowed_bytes = std.math.add(u64, resident_bytes, try requiredModelScratchBytes(config)) catch
+            return error.CapacityExceeded;
+        try validateConfig(config, maximum_owned_and_borrowed_bytes);
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
         const active_catalog = try catalog.CatalogBank.init(allocator, config);
@@ -36,16 +38,6 @@ pub const Session = struct {
             var value = staging_catalog;
             value.deinit(allocator);
         }
-        const active_models = try catalog.ModelBank.init(allocator, config);
-        errdefer {
-            var value = active_models;
-            value.deinit(allocator);
-        }
-        const staging_models = try catalog.ModelBank.init(allocator, config);
-        errdefer {
-            var value = staging_models;
-            value.deinit(allocator);
-        }
         const runtime = try state.RuntimeState.init(allocator, config);
         errdefer {
             var value = runtime;
@@ -56,8 +48,6 @@ pub const Session = struct {
             .config = config,
             .active_catalog = active_catalog,
             .staging_catalog = staging_catalog,
-            .active_models = active_models,
-            .staging_models = staging_models,
             .runtime = runtime,
         };
         return self;
@@ -67,8 +57,6 @@ pub const Session = struct {
         const allocator = self.allocator;
         self.active_catalog.deinit(allocator);
         self.staging_catalog.deinit(allocator);
-        self.active_models.deinit(allocator);
-        self.staging_models.deinit(allocator);
         self.runtime.deinit(allocator);
         allocator.destroy(self);
     }
@@ -100,6 +88,55 @@ pub const Session = struct {
         };
     }
 
+    pub fn modelScratchBytes(self: *const Session) Error!u64 {
+        return requiredModelScratchBytes(self.config);
+    }
+
+    pub fn bindModelScratch(
+        self: *Session,
+        scratch: []u8,
+        generation: u64,
+        models: []const protocol.ModelInput,
+        aliases: []const protocol.ModelAliasInput,
+        text: []const u8,
+    ) Error!void {
+        if (self.active_models.models.len != 0) return error.InvalidState;
+        if (@intFromPtr(scratch.ptr) % model_scratch_alignment != 0) return error.InvalidArgument;
+        if (scratch.len < try self.modelScratchBytes()) return error.BufferTooSmall;
+        if (generation != self.active_models.generation or
+            models.len != self.active_models.model_count or
+            aliases.len != self.active_models.alias_count or
+            text.len != self.active_models.text_count)
+        {
+            return error.InvalidArgument;
+        }
+        var fixed = std.heap.FixedBufferAllocator.init(scratch);
+        var active = try catalog.ModelBank.initBorrowed(fixed.allocator(), self.config);
+        const staging = try catalog.ModelBank.initBorrowed(fixed.allocator(), self.config);
+        if (generation != 0) {
+            var header = std.mem.zeroes(protocol.ModelReplaceInput);
+            header.struct_size = @sizeOf(protocol.ModelReplaceInput);
+            header.model_generation = generation;
+            header.model_count = @intCast(models.len);
+            header.alias_count = @intCast(aliases.len);
+            header.text_byte_count = @intCast(text.len);
+            // Reconstruction does not complete or alter runtime acquisition state.
+            header.acquisition_attempt_handle = 1;
+            try active.stage(header, models, aliases, text);
+        }
+        self.active_models = active;
+        self.staging_models = staging;
+    }
+
+    pub fn unbindModelScratch(self: *Session) void {
+        self.active_models.unbind();
+        self.staging_models = .{};
+    }
+
+    fn requireModelScratch(self: *const Session) Error!void {
+        if (self.active_models.models.len == 0) return error.InvalidState;
+    }
+
     pub fn replaceCatalog(
         self: *Session,
         header: protocol.CatalogReplaceInput,
@@ -122,6 +159,7 @@ pub const Session = struct {
         aliases: []const protocol.ModelAliasInput,
         text: []const u8,
     ) Error!void {
+        try self.requireModelScratch();
         try self.validateCommand(header.command_epoch, header.command_monotonic_milliseconds);
         if (header.model_generation <= self.active_models.generation or
             !self.runtime.acceptsModelReplacement(
@@ -232,6 +270,7 @@ pub const Session = struct {
         input: protocol.ModelResolveInput,
         alias: []const u8,
     ) Error!protocol.ModelResolveOutput {
+        try self.requireModelScratch();
         if (input.struct_size != @sizeOf(protocol.ModelResolveInput) or
             input.reserved_u32 != 0 or
             input.alias.offset != 0 or
@@ -268,6 +307,7 @@ pub const Session = struct {
         self: *Session,
         input: protocol.LeaseBeginInput,
     ) Error!protocol.LeaseOutput {
+        try self.requireModelScratch();
         if (input.struct_size != @sizeOf(protocol.LeaseBeginInput) or
             input.reserved_u32 != 0 or
             !protocol.allZero([2]u64, input.reserved))
@@ -294,6 +334,7 @@ pub const Session = struct {
         self: *Session,
         input: protocol.SubscriptionUpsertInput,
     ) Error!protocol.SubscriptionOutput {
+        try self.requireModelScratch();
         if (input.struct_size != @sizeOf(protocol.SubscriptionUpsertInput) or
             !protocol.allZero([2]u64, input.reserved))
         {
@@ -319,6 +360,7 @@ pub const Session = struct {
         self: *Session,
         input: protocol.TaskEnqueueInput,
     ) Error!protocol.TaskOutput {
+        try self.requireModelScratch();
         if (input.struct_size != @sizeOf(protocol.TaskEnqueueInput) or
             input.reserved_u32 != 0 or
             !protocol.allZero([2]u64, input.reserved))
@@ -443,11 +485,6 @@ pub fn requiredResidentBytes(config: protocol.Config) Error!u64 {
     try addArray(&total, 2, config.maximum_route_count, catalog.route_slot_size);
     try addArray(&total, 2, config.capability_index_capacity, @sizeOf(index.HandleEntry));
     try addArray(&total, 2, config.maximum_catalog_text_bytes, @sizeOf(u8));
-    try addArray(&total, 2, config.maximum_model_count, catalog.model_slot_size);
-    try addArray(&total, 2, config.maximum_model_alias_count, catalog.alias_slot_size);
-    try addArray(&total, 2, config.model_index_capacity, @sizeOf(index.HandleEntry));
-    try addArray(&total, 2, config.alias_index_capacity, @sizeOf(index.HashEntry));
-    try addArray(&total, 2, config.maximum_model_text_bytes, @sizeOf(u8));
     try addArray(&total, 1, config.maximum_request_count, state.request_slot_size);
     try addArray(&total, 1, config.maximum_rate_bucket_count, state.rate_bucket_slot_size);
     try addArray(&total, 1, config.maximum_lease_count, state.lease_slot_size);
@@ -459,6 +496,28 @@ pub fn requiredResidentBytes(config: protocol.Config) Error!u64 {
     try addArray(&total, 1, config.subscription_index_capacity, @sizeOf(index.HandleEntry));
     try addArray(&total, 1, config.task_index_capacity, @sizeOf(index.HandleEntry));
     return total;
+}
+
+pub const model_scratch_alignment: u32 = 8;
+
+pub fn requiredModelScratchBytes(config: protocol.Config) Error!u64 {
+    var total: u64 = 0;
+    var bank: usize = 0;
+    while (bank < 2) : (bank += 1) {
+        try alignScratch(&total);
+        try addArray(&total, 1, config.maximum_model_count, catalog.model_slot_size);
+        try addArray(&total, 1, config.maximum_model_alias_count, catalog.alias_slot_size);
+        try addArray(&total, 1, config.model_index_capacity, @sizeOf(index.HandleEntry));
+        try addArray(&total, 1, config.alias_index_capacity, @sizeOf(index.HashEntry));
+        try addArray(&total, 1, config.maximum_model_text_bytes, @sizeOf(u8));
+    }
+    if (total > std.math.maxInt(usize)) return error.CapacityExceeded;
+    return total;
+}
+
+fn alignScratch(total: *u64) Error!void {
+    const extra = (model_scratch_alignment - total.* % model_scratch_alignment) % model_scratch_alignment;
+    total.* = std.math.add(u64, total.*, extra) catch return error.CapacityExceeded;
 }
 
 fn validateConfig(config: protocol.Config, resident_bytes: u64) Error!void {

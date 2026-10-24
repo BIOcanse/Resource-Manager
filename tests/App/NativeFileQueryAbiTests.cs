@@ -9,7 +9,7 @@ public sealed class NativeFileQueryAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0002_0000U, NativeFileQueryAbi.Version);
+        Assert.Equal(0x0003_0000U, NativeFileQueryAbi.Version);
         Assert.Equal(0x0006_0100U, NativeFileQueryAbi.UnicodeTokenizerVersion);
         Assert.Equal(2U, NativeFileQueryAbi.UnicodeRemoveDiacriticsMode);
         Assert.Equal(0x0001_0000U, NativeFileQueryAbi.TrigramTokenizerContractVersion);

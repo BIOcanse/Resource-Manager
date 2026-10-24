@@ -257,7 +257,8 @@ public sealed class SqliteSoftwareFileIndexTests : IDisposable
 
 internal static class NativeFileQueryTestWorkspaceFactory
 {
-    internal static NativeFileQueryWorkspace Create()
+    internal static NativeFileQueryWorkspace Create(
+        Func<ulong, uint, ResourceManager.ReadWrite.Native.INativeFileQueryScratch>? createScratch = null)
     {
         const long residentBudget = 12L * 1024 * 1024;
         var capacity = new CompiledHostManagerFileQueryCapacityPlan(
@@ -303,6 +304,6 @@ internal static class NativeFileQueryTestWorkspaceFactory
                 TotalResidentByteBudget: residentBudget),
             ConfigurationGeneration: 1,
             ConfigurationSha256: new string('B', 64));
-        return new NativeFileQueryWorkspace(plan);
+        return new NativeFileQueryWorkspace(plan, createScratch ?? ResourceManager.ReadWrite.Native.NativeFileQueryScratch.CreateOrdinary);
     }
 }

@@ -49,7 +49,7 @@ public sealed class MetricScratchLedgerLifecycleTests
     }
 
     [Fact]
-    public void EvictedMetricRefillsTheSameIdentityAndTwentyEightRealUsesRejectATwentyNinthWithoutFallback()
+    public void EvictedMetricRefillsTheSameIdentityAndFullScratchTableRejectsAnotherUseWithoutFallback()
     {
         using var owner = new ResourceManagerLedgerOwner();
         var configuration = NativeMetricSnapshotAbiTests.CreateConfiguration();
@@ -165,19 +165,37 @@ public sealed class MetricScratchLedgerLifecycleTests
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         ResourceManagerLedgerOwner.ComputeScratch? pdhIdentity = null;
         using var pdh = new PdhParsingScratch(length => pdhIdentity = owner.CreateScratch(length), owner.NativePageSize);
+        var additionalResources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        var additionalUses = new List<ComputeScratchLease>();
         pdh.BeginSample();
         try
         {
             pdh.Supply(8192);
             registered += pdhIdentity!.Length;
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-            using var twentyNinth = owner.CreateScratch(8192);
-            var blocked = Assert.Throws<LedgerException>(() => { using var unexpected = twentyNinth.Acquire(); });
+            // Preserve the original 28 real workspace uses, and occupy the 65
+            // newly declared slots (64 query sessions plus one model workspace).
+            for (var index = 0; index < 65; index++)
+            {
+                var resource = owner.CreateScratch(8192);
+                additionalResources.Add(resource);
+                var use = resource.Acquire();
+                additionalUses.Add(use);
+                use.Complete();
+                registered += resource.Length;
+            }
+            using var excess = owner.CreateScratch(8192);
+            var blocked = Assert.Throws<LedgerException>(() => { using var unexpected = excess.Acquire(); });
             Assert.Equal(LedgerStatus.Blocked, blocked.Status);
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
             Assert.Equal(0UL, owner.Tick().Released);
         }
-        finally { pdh.EndSample(); }
+        finally
+        {
+            foreach (var use in additionalUses) use.Dispose();
+            foreach (var resource in additionalResources) resource.Dispose();
+            pdh.EndSample();
+        }
         call.Submit(ulong.MaxValue, 2);
         Assert.Equal(NativeMetricSnapshotStatus.Ok, session.FinalizeCompletion(in call.Finalize));
         Assert.Equal(ulong.MaxValue, call.Read().ValueBits);

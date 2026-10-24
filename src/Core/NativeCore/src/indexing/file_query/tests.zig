@@ -97,6 +97,9 @@ test "file query short and FTS plans are explicit and deterministic" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -171,6 +174,10 @@ test "file query module-local C ABI completes an exact lifecycle" {
         abi.rm_file_query_create(&actual_config, &handle),
     );
     defer abi.rm_file_query_destroy(handle);
+    const native_session: *session_module.Session = @ptrCast(@alignCast(handle.?));
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(native_session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_file_query_bind_scratch(handle, scratch.ptr, scratch.len));
     var capacity = std.mem.zeroes(protocol.Capacity);
     try std.testing.expectEqual(
         @intFromEnum(ResultCode.ok),
@@ -252,6 +259,9 @@ test "file query deduplicates sources and ranks stable matches" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -343,6 +353,9 @@ test "file query rejects a drifting batch atomically" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -392,6 +405,9 @@ test "file query emits distinct Unicode trigrams and explicit path tokens" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -464,6 +480,9 @@ test "file query path planning matches the fixed Unicode 6.1 token categories" {
         var actual_config = config();
         const session = try session_module.Session.create(&actual_config);
         defer session.destroy();
+        const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+        defer std.testing.allocator.free(scratch);
+        try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
         var output = std.mem.zeroes(protocol.PlanOutput);
         var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -505,6 +524,9 @@ test "file query escapes quotes and removes repeated trigrams" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -579,6 +601,9 @@ test "file query trims only the published query boundary and rejects an empty re
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -681,6 +706,9 @@ test "file query output buffers are transactional and require zero initializatio
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var output = std.mem.zeroes(protocol.PlanOutput);
     output.flags = 1;
@@ -728,6 +756,9 @@ test "file query ranks by configured source then rune count name and handle" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
     try beginQuery(session, 1, "game");
 
     const bytes = "gameb.exegamea.exegame.exe";
@@ -773,6 +804,9 @@ test "file query duplicate ordinals and stale epochs do not mutate state" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
     try beginQuery(session, 4, "game");
 
     const bytes = "game.exegame.bin";
@@ -821,6 +855,9 @@ test "file query enforces the explicit per-source candidate budget atomically" {
     actual_config.candidate_limit_ceiling = 4;
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var plan_output = std.mem.zeroes(protocol.PlanOutput);
     var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
@@ -869,6 +906,9 @@ test "file query finalize capacity failure is retryable without phase mutation" 
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
     try beginQuery(session, 1, "game");
 
     var tiny_results = [_]protocol.ResultOutput{std.mem.zeroes(protocol.ResultOutput)};
@@ -924,6 +964,9 @@ test "file query reconfigure is generation strict and shape stable" {
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var stale = actual_config;
     try std.testing.expectEqual(ResultCode.stale_frame, session.reconfigure(&stale));
@@ -947,6 +990,9 @@ test "file query runs one thousand lifecycles from the create-time resident set"
     var actual_config = config();
     const session = try session_module.Session.create(&actual_config);
     defer session.destroy();
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.capacity().resident_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
 
     var operation_epoch: u64 = 1;
     var query_epoch: u64 = 1;
@@ -1045,4 +1091,43 @@ fn candidate(entry: u64, ordinal: u32, offset: u32, length: u32) protocol.Candid
         .flags = 0,
         .reserved = .{ 0, 0 },
     };
+}
+
+
+test "file query construction has no columns and explicit scratch release permits poisoned refill" {
+    try std.testing.expectEqual(@as(usize, 456), @sizeOf(session_module.Session));
+    var actual_config = config();
+    const session = try session_module.Session.create(&actual_config);
+    defer session.destroy();
+    try std.testing.expectEqual(@as(usize, 0), session.candidates.len);
+    try std.testing.expectEqual(@as(usize, 0), session.candidate_text_bytes.len);
+    var output = std.mem.zeroes(protocol.PlanOutput);
+    var sources = [_]protocol.SourcePlanOutput{std.mem.zeroes(protocol.SourcePlanOutput)} ** 3;
+    var plan_bytes = [_]u8{0} ** 1024;
+    var input = beginInput(1, 1, 6);
+    try std.testing.expectEqual(ResultCode.unavailable, session_module.begin(session, &input, "ledger".ptr, 6, &output, &sources, sources.len, &plan_bytes, plan_bytes.len));
+    const scratch = try std.testing.allocator.alignedAlloc(u8, .@"8", @intCast(session.scratch_byte_count));
+    defer std.testing.allocator.free(scratch);
+    try std.testing.expectEqual(ResultCode.buffer_too_small, session.bindScratch(scratch.ptr, scratch.len - 1));
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.bindScratch(scratch.ptr + 1, scratch.len));
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
+    try std.testing.expectEqual(ResultCode.ok, session_module.begin(session, &input, "ledger".ptr, 6, &output, &sources, sources.len, &plan_bytes, plan_bytes.len));
+    try std.testing.expectEqualSlices(u8, "ledger", scratch[0..6]); // The planner writes the supplied region.
+    try std.testing.expect(@intFromPtr(session.candidates.ptr) >= @intFromPtr(scratch.ptr));
+    try std.testing.expect(@intFromPtr(session.rank_order.ptr) + session.rank_order.len * @sizeOf(u32) <= @intFromPtr(scratch.ptr) + scratch.len);
+    try std.testing.expectEqual(ResultCode.ok, session.releaseScratch());
+    try std.testing.expectEqual(@as(usize, 0), session.entry_index.len);
+    try std.testing.expectEqual(@as(usize, 0), session.candidates.len);
+    @memset(scratch, 0xa5);
+    try std.testing.expectEqual(ResultCode.ok, session.bindScratch(scratch.ptr, scratch.len));
+    try std.testing.expectEqual(@as(u32, 0), session.unique_candidate_count);
+    try std.testing.expectEqual(@as(u32, 0), session.candidate_text_byte_count);
+    try std.testing.expectEqual(@import("state.zig").no_index, session.entry_index[0]);
+    output = std.mem.zeroes(protocol.PlanOutput);
+    @memset(&sources, std.mem.zeroes(protocol.SourcePlanOutput));
+    @memset(&plan_bytes, 0);
+    try std.testing.expectEqual(ResultCode.stale_frame, session_module.begin(session, &input, "ledger".ptr, 6, &output, &sources, sources.len, &plan_bytes, plan_bytes.len));
+    input = beginInput(2, 2, 6);
+    try std.testing.expectEqual(ResultCode.ok, session_module.begin(session, &input, "refill".ptr, 6, &output, &sources, sources.len, &plan_bytes, plan_bytes.len));
+    try std.testing.expectEqualSlices(u8, "refill", scratch[0..6]);
 }

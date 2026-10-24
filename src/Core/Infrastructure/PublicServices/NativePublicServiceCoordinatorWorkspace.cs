@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Adaptation;
 
 namespace ResourceManager.App.Infrastructure.PublicServices;
 
@@ -13,13 +14,20 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         throwOnInvalidBytes: true);
     private readonly object commandGate = new();
     private readonly NativePublicServiceCoordinatorSession session;
+    private readonly IComputeScratch modelScratch;
+    private readonly (ulong ByteCount, uint Alignment) modelScratchRequirement;
+    private readonly NativePublicServiceModelProjection modelProjection;
+    private readonly ulong providerHandle;
+    private ModelUse? pendingModelUse;
     private ulong nextCommandEpoch;
 
     internal NativePublicServiceCoordinatorWorkspace(
         CompiledHostManagerPublicServiceCoordinatorPlan plan,
         ulong hostInstanceId,
         ulong sessionIncarnation,
-        ulong catalogGeneration)
+        ulong catalogGeneration,
+        Func<ulong, IComputeScratch> createScratch,
+        NativePublicServiceModelProjection modelProjection)
     {
         ArgumentNullException.ThrowIfNull(plan);
         if (!plan.IsPublished)
@@ -86,10 +94,15 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         session = new NativePublicServiceCoordinatorSession(in configuration);
         try
         {
+            this.modelProjection = modelProjection;
+            providerHandle = plan.HotPublish.AiProviderHandle;
+            modelScratchRequirement = session.QueryModelScratch();
+            modelScratch = createScratch(checked(modelScratchRequirement.ByteCount + modelScratchRequirement.Alignment - 1));
             PublishCatalog(plan.HotPublish, catalogGeneration);
         }
         catch
         {
+            modelScratch?.Dispose();
             session.Dispose();
             throw;
         }
@@ -286,6 +299,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     {
         lock (commandGate)
         {
+            using var modelsUse = AcquireModels();
             var command = NextCommand();
             var input = new NativePublicServiceModelReplaceInput
             {
@@ -309,6 +323,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         var aliasBytes = StrictUtf8.GetBytes(alias);
         lock (commandGate)
         {
+            using var modelsUse = AcquireModels();
             var command = NextCommand();
             var input = new NativePublicServiceModelResolveInput
             {
@@ -337,6 +352,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     {
         lock (commandGate)
         {
+            using var modelsUse = AcquireModels();
             var command = NextCommand();
             var input = new NativePublicServiceTaskEnqueueInput
             {
@@ -481,7 +497,77 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         return snapshot;
     }
 
-    public void Dispose() => session.Dispose();
+    public void Dispose()
+    {
+        lock (commandGate)
+        {
+            pendingModelUse?.Dispose();
+            pendingModelUse = null;
+            modelScratch.Dispose();
+            session.Dispose();
+        }
+    }
+
+    private ModelUse AcquireModels()
+    {
+        // A failed return remains owned and is retried before borrowing again.
+        pendingModelUse?.Dispose();
+        pendingModelUse = null;
+        RequireOk(session.Snapshot(out var snapshot), "read model generation");
+        var source = snapshot.ModelGeneration == 0 ? null
+            : modelProjection.Project(modelProjection.Capture().Descriptors, providerHandle);
+        var use = new ModelUse(this, modelScratch.Acquire());
+        pendingModelUse = use;
+        try
+        {
+            use.Bind(snapshot.ModelGeneration, source);
+            return use;
+        }
+        catch
+        {
+            use.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class ModelUse(NativePublicServiceCoordinatorWorkspace workspace,
+        ComputeScratchLease lease) : IDisposable
+    {
+        private MemoryHandle pin;
+        private bool pinned, bound, completed, returned;
+
+        internal unsafe void Bind(ulong generation, NativePublicServiceModelProjectionBatch? source)
+        {
+            pin = lease.GetMemoryChunk(0, 1).Pin();
+            pinned = true;
+            var requirement = workspace.modelScratchRequirement;
+            var start = (nuint)pin.Pointer;
+            if (start == 0) throw new InvalidOperationException("Model scratch has no backing address.");
+            var mask = checked((nuint)requirement.Alignment - 1);
+            var aligned = checked(start + mask) & ~mask;
+            var skip = checked((ulong)(aligned - start));
+            if (skip > lease.Length || requirement.ByteCount > lease.Length - skip)
+                throw new InvalidOperationException("Model scratch does not fit its allocation.");
+            RequireOk(workspace.session.BindModelScratch((IntPtr)aligned, requirement.ByteCount, generation,
+                source?.Models ?? [], source?.Aliases ?? [], source?.Text ?? []), "bind model scratch");
+            bound = true;
+        }
+
+        public void Dispose()
+        {
+            if (returned) return;
+            if (bound)
+            {
+                RequireOk(workspace.session.UnbindModelScratch(), "unbind model scratch");
+                bound = false;
+            }
+            if (pinned) { pin.Dispose(); pinned = false; }
+            if (!completed) { lease.Complete(); completed = true; }
+            lease.Dispose();
+            returned = true;
+            if (ReferenceEquals(workspace.pendingModelUse, this)) workspace.pendingModelUse = null;
+        }
+    }
 
     internal static ulong MonotonicMilliseconds()
         => checked((ulong)Environment.TickCount64);

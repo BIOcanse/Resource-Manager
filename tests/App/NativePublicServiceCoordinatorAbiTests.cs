@@ -9,7 +9,7 @@ public sealed class NativePublicServiceCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0003_0000U, NativePublicServiceCoordinatorAbi.Version);
+        Assert.Equal(0x0004_0000U, NativePublicServiceCoordinatorAbi.Version);
         Assert.Equal(224, Unsafe.SizeOf<NativePublicServiceCoordinatorConfiguration>());
         Assert.Equal(112, Unsafe.SizeOf<NativePublicServiceCoordinatorCapacity>());
         Assert.Equal(32, Unsafe.SizeOf<NativePublicServiceCapabilityInput>());

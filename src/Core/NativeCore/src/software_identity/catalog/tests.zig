@@ -2,6 +2,7 @@ const std = @import("std");
 const abi = @import("abi.zig");
 const protocol = @import("protocol.zig");
 const session_module = @import("session.zig");
+const bank_module = @import("bank.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 test "installed process and portable exact evidence keep strict catalog semantics" {
@@ -108,6 +109,7 @@ test "catalog replacement validates roots rules and identities before active swa
     try std.testing.expectEqual(before.state_revision, after.state_revision);
     try std.testing.expectEqual(before.catalog_fingerprint_low, after.catalog_fingerprint_low);
     try std.testing.expectEqual(before.catalog_fingerprint_high, after.catalog_fingerprint_high);
+    try std.testing.expectEqual(before.resident_byte_count, after.resident_byte_count);
 
     var query = QueryFixture.init(.installed_software);
     query.appendNumeric(.steam_app_id, 489_830);
@@ -173,6 +175,37 @@ test "known identity scoring uses explicit strong gate weights and tie conflicts
     const reconfigured_result = runKnownQuery(session, 5, &same_contains);
     try std.testing.expectEqual(ResultCode.ok, reconfigured_result.code);
     try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), reconfigured_result.output.status);
+}
+
+test "catalog allocation failures release candidates and preserve active matching" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var catalog = CatalogFixture.init();
+    try std.testing.expectEqual(ResultCode.ok, applyCatalog(session, 1, 1, &catalog));
+    const before = snapshot(session);
+    const original_allocator = session.allocator;
+
+    var failure_index: usize = 0;
+    while (failure_index < 9) : (failure_index += 1) {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = failure_index });
+        const result = blk: {
+            session.allocator = failing.allocator();
+            defer session.allocator = original_allocator;
+            break :blk applyCatalog(session, 2, 2, &catalog);
+        };
+        try std.testing.expectEqual(ResultCode.out_of_memory, result);
+        try std.testing.expect(failing.has_induced_failure);
+        try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+        const after = snapshot(session);
+        try std.testing.expectEqual(before.catalog_generation, after.catalog_generation);
+        try std.testing.expectEqual(before.state_revision, after.state_revision);
+        try std.testing.expectEqual(before.catalog_fingerprint_low, after.catalog_fingerprint_low);
+        try std.testing.expectEqual(before.resident_byte_count, after.resident_byte_count);
+    }
+    var query = QueryFixture.init(.process);
+    query.appendKey(.executable_name, "vlc");
+    try expectExactMatched(runQuery(session, 1, &query).output, 20, .confirmed);
 }
 
 test "known root chooses longest root and equal authority is conflict" {
@@ -326,7 +359,99 @@ test "fixed capacity and resident budget remain explicit" {
 
     var insufficient = config;
     insufficient.resident_byte_budget = summary.resident_byte_count - 1;
-    try std.testing.expectError(error.InvalidConfiguration, session_module.Session.create(&insufficient));
+    const bounded_session = try session_module.Session.create(&insufficient);
+    defer bounded_session.destroy();
+    const bounded_before = snapshot(bounded_session);
+    try std.testing.expectEqual(
+        ResultCode.invalid_argument,
+        bounded_session.replace(&replace_input, &entries, &aliases, &.{}, &keys),
+    );
+    try std.testing.expectEqual(bounded_before.resident_byte_count, snapshot(bounded_session).resident_byte_count);
+    try std.testing.expectEqual(@as(u64, 0), snapshot(bounded_session).catalog_generation);
+}
+
+test "catalog storage follows actual content and replacement releases old buffers" {
+    // Keep the managed resident-byte acceptance calculation bound to native layouts.
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(bank_module.EntrySlot));
+    try std.testing.expectEqual(@as(usize, 32), @sizeOf(bank_module.AliasSlot));
+    try std.testing.expectEqual(@as(usize, 24), @sizeOf(bank_module.RootSlot));
+    try std.testing.expectEqual(@as(usize, 176), @sizeOf(bank_module.Bank));
+    try std.testing.expectEqual(@as(usize, 480), @sizeOf(session_module.Session));
+    var config = testConfig();
+    config.required_prohibited_alias_count = 0;
+    config.required_launcher_token_count = 0;
+    config.required_managed_child_rule_count = 0;
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const empty_bytes = session.capacity().resident_byte_count;
+    try std.testing.expectEqual(@as(u64, @sizeOf(session_module.Session)), empty_bytes);
+    try std.testing.expectEqual(@as(usize, 0), session.active.key_bytes.len);
+    try std.testing.expectEqual(@as(usize, 0), session.active.entry_index.len);
+
+    var fixture = IdentityTieCatalog.init();
+    const small_keys = "sameappalpha";
+    var small_alias = fixture.aliases[0];
+    small_alias.key_offset = 7;
+    var input = rawReplacementInput(&config, 1, 1, 1, 1, 0, small_keys.len, 0, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.replace(
+        &input,
+        fixture.entries[0..1],
+        &.{small_alias},
+        &.{},
+        small_keys,
+    ));
+    const small_bytes = session.capacity().resident_byte_count;
+    try std.testing.expect(small_bytes > empty_bytes);
+    try std.testing.expectEqual(@as(usize, 1), session.active.entries.len);
+    try std.testing.expectEqual(@as(usize, 1), session.active.aliases.len);
+    try std.testing.expectEqual(@as(usize, 1), session.active.entry_index.len);
+    try std.testing.expectEqual(small_keys.len, session.active.key_bytes.len);
+
+    input = rawReplacementInput(&config, 2, 2, 2, 2, 0, fixture.key_count, 0, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.replace(
+        &input,
+        &fixture.entries,
+        &fixture.aliases,
+        &.{},
+        fixture.keys[0..fixture.key_count],
+    ));
+    const large_bytes = session.capacity().resident_byte_count;
+    try std.testing.expect(large_bytes > small_bytes);
+    try std.testing.expectEqual(@as(usize, 2), session.candidate_marks.len);
+    var query = QueryFixture.init(.process);
+    query.appendKey(.executable_name, "beta");
+    try expectExactMatched(runQuery(session, 1, &query).output, 20, .confirmed);
+
+    var limited = config;
+    limited.generation += 1;
+    limited.resident_byte_budget = large_bytes;
+    try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&limited));
+    input.configuration_generation = limited.generation;
+    input.catalog_generation = 3;
+    input.operation_epoch = 3;
+    const before_failed = snapshot(session);
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.replace(
+        &input,
+        &fixture.entries,
+        &fixture.aliases,
+        &.{},
+        fixture.keys[0..fixture.key_count],
+    ));
+    try std.testing.expectEqual(before_failed.catalog_generation, snapshot(session).catalog_generation);
+    try std.testing.expectEqual(large_bytes, session.capacity().resident_byte_count);
+    try expectExactMatched(runQuery(session, 2, &query).output, 20, .confirmed);
+
+    input = rawReplacementInput(&limited, 3, 3, 0, 0, 0, 0, 0, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.replace(&input, &.{}, &.{}, &.{}, &.{}));
+    try std.testing.expectEqual(empty_bytes, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(@as(usize, 0), session.active.key_bytes.len);
+    try std.testing.expectEqual(@as(usize, 0), session.candidate_marks.len);
+    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), runQuery(session, 3, &query).output.status);
+    try std.testing.expectEqual(config.maximum_entry_count, session.capacity().entry_capacity);
+
+    input.entry_count = config.maximum_entry_count + 1;
+    try std.testing.expectEqual(ResultCode.abi_mismatch, session.replace(&input, &.{}, &.{}, &.{}, &.{}));
+    try std.testing.expectEqual(empty_bytes, session.capacity().resident_byte_count);
 }
 
 test "empty catalog and strict query shapes are explicit" {
