@@ -283,6 +283,113 @@ test "catalog plan CPU baseline GPU inventory and exact snapshot are one state m
     try std.testing.expectEqual(@as(u32, 0), source_outputs[0].reset_count);
     try std.testing.expectEqual(@as(u64, 200), metric_outputs[0].sample_duration_milliseconds);
     try std.testing.expectEqual(@as(u64, 101), gpu_outputs[0].adapter_handle);
+
+    // Callers that need only source facts may omit the other read columns.
+    var source_only_outputs = std.mem.zeroes([source_count]protocol.SourceOutput);
+    const source_only_read = readInput(header);
+    try std.testing.expectEqual(
+        ResultCode.ok,
+        session_module.readSnapshot(
+            session,
+            &source_only_read,
+            &source_only_outputs,
+            &.{},
+            &.{},
+            &.{},
+        ),
+    );
+    try std.testing.expectEqualDeep(source_outputs, source_only_outputs);
+    const native_abi = @import("abi.zig");
+    source_only_outputs = std.mem.zeroes([source_count]protocol.SourceOutput);
+    try std.testing.expectEqual(
+        @intFromEnum(ResultCode.ok),
+        native_abi.rm_metric_snapshot_read(
+            @ptrCast(session),
+            &source_only_read,
+            source_only_outputs[0..].ptr,
+            source_count,
+            null,
+            0,
+            null,
+            0,
+            null,
+            0,
+        ),
+    );
+    try std.testing.expectEqualDeep(source_outputs, source_only_outputs);
+
+    // An omitted column is valid, but every supplied non-empty column still
+    // needs enough space for the active output count.
+    var short_sources = std.mem.zeroes([source_count - 1]protocol.SourceOutput);
+    try std.testing.expectEqual(
+        ResultCode.buffer_too_small,
+        session_module.readSnapshot(
+            session,
+            &source_only_read,
+            &short_sources,
+            &metric_outputs,
+            &gpu_outputs,
+            &rule_outputs,
+        ),
+    );
+    var short_metrics = std.mem.zeroes([metric_count - 1]protocol.MetricOutput);
+    try std.testing.expectEqual(
+        ResultCode.buffer_too_small,
+        session_module.readSnapshot(
+            session,
+            &source_only_read,
+            &source_outputs,
+            &short_metrics,
+            &gpu_outputs,
+            &rule_outputs,
+        ),
+    );
+    var short_gpu = std.mem.zeroes([1]protocol.GpuInventoryOutput);
+    try std.testing.expectEqual(
+        ResultCode.buffer_too_small,
+        session_module.readSnapshot(
+            session,
+            &source_only_read,
+            &source_outputs,
+            &metric_outputs,
+            &short_gpu,
+            &rule_outputs,
+        ),
+    );
+    var short_rules = std.mem.zeroes([rule_count - 1]protocol.RuleStateOutput);
+    try std.testing.expectEqual(
+        ResultCode.buffer_too_small,
+        session_module.readSnapshot(
+            session,
+            &source_only_read,
+            &source_outputs,
+            &metric_outputs,
+            &gpu_outputs,
+            &short_rules,
+        ),
+    );
+
+    var stale_read = source_only_read;
+    stale_read.catalog_generation += 1;
+    try std.testing.expectEqual(
+        ResultCode.stale_frame,
+        session_module.readSnapshot(
+            session,
+            &stale_read,
+            &source_only_outputs,
+            &.{},
+            &.{},
+            &.{},
+        ),
+    );
+    var counts_after = std.mem.zeroes(protocol.SnapshotHeader);
+    try std.testing.expectEqual(ResultCode.ok, session_module.querySnapshotHeader(session, &counts_after));
+    try std.testing.expectEqual(header.source_count, counts_after.source_count);
+    try std.testing.expectEqual(header.metric_count, counts_after.metric_count);
+    try std.testing.expectEqual(header.gpu_adapter_count, counts_after.gpu_adapter_count);
+    try std.testing.expectEqual(header.rule_count, counts_after.rule_count);
+    try std.testing.expectEqual(header.committed_generation, counts_after.committed_generation);
+    try std.testing.expectEqualDeep(header, counts_after);
 }
 
 test "catalog replacement is atomic and permits priority independent handle ordering" {

@@ -16,6 +16,27 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsLoopbackApiAdministratorReaderTests
 {
     [Fact]
+    public void ProcessIdentityReadsDoNotAllocateMaximumSizedImageBuffers()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        for (var warm = 0; warm < 16; warm++)
+            Assert.True(WindowsLoopbackApiAdministratorReader.TryReadProcessIdentity(Environment.ProcessId, out _));
+        const int iterations = 64;
+        var expected = Path.GetFullPath(Environment.ProcessPath!);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var iteration = 0; iteration < iterations; iteration++)
+        {
+            if (!WindowsLoopbackApiAdministratorReader.TryReadProcessIdentity(Environment.ProcessId, out var identity)
+                || !string.Equals(expected, identity.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Current process identity was not verified.");
+        }
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Includes independent identity/path results, SID and token projections.
+        // The old image buffer alone was 64 KiB per operation.
+        Assert.InRange(allocated, 0, iterations * 16_384L);
+    }
+
+    [Fact]
     public void RejectedConnectionsDoNotCreateDisposableTokenPlaceholders()
     {
         var context = new DefaultHttpContext();

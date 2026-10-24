@@ -20,41 +20,70 @@ internal sealed class MetricReadingSourceTracker
     private readonly Dictionary<ulong, string> quantities = [];
     private readonly Dictionary<string, Capability> projectedCapabilities = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ulong> sourceCapabilityEpochs = new(StringComparer.Ordinal);
+    private readonly Dictionary<ulong, NativeMetricSnapshotSourceOutput> sourceRows = [];
+    private readonly Dictionary<(string Device, string Quantity), string> readingIds = [];
+    private readonly Dictionary<string, int> preferredCandidates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LegacyChoice> legacyCandidates = new(StringComparer.OrdinalIgnoreCase);
+    private SelectionDefinition[] selectionDefinitions = [];
+    private bool selectionDefinitionsValid;
     private ulong workspace;
     private ulong configuration;
     private ulong catalogGeneration;
     private string? integratedGpu;
 
     private sealed record Capability(ulong Epoch, string Availability);
-    private sealed record Candidate(NativeMetricSnapshotRuleCatalogBinding Binding,
-        string Device, MetricPhysicalReadingRule Rule, string Availability, string ReadingId);
+    private readonly record struct SelectionDefinition(
+        NativeMetricSnapshotRuleCatalogBinding Binding,
+        string Device,
+        string Quantity,
+        int SourceRank,
+        int AliasRank,
+        string ReadingId,
+        string LegacyAddress,
+        bool UnmappedApu,
+        bool DynamicQuantity,
+        bool SharedReadingId);
+    private readonly record struct Candidate(string Quantity, string Availability, string ReadingId);
+    private readonly record struct LegacyChoice(bool HasPreferred, int CandidateIndex);
 
     public void Observe(NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity,
         IEnumerable<NativeMetricSnapshotSourceCompletion> completions)
     {
-        EnsureGeneration(frame, workspaceIdentity);
-        var sources = frame.Sources.ToDictionary(static row => row.SourceHandle);
+        EnsureGeneration(frame.Header, workspaceIdentity);
+        LoadSourceRows(frame.Sources);
+        var selectionMetadataChanged = false;
         foreach (var binding in frame.Catalog.MetricBindings.Values)
-            if (sources.TryGetValue(binding.SourceHandle, out var sourceForBinding))
+            if (sourceRows.TryGetValue(binding.SourceHandle, out var sourceForBinding))
                 sourceCapabilityEpochs[binding.SourceId] = sourceForBinding.CapabilityGeneration;
         foreach (var completion in completions)
         {
-            if (!sources.TryGetValue(completion.SourceHandle, out var source)
+            if (!sourceRows.TryGetValue(completion.SourceHandle, out var source)
                 || source.SourceIncarnation != completion.SourceIncarnation
                 || source.SourceObservationSequence != completion.SourceObservationSequence) continue;
-            if (completion.IntegratedGpuDeviceIdentity is { } gpu) integratedGpu = gpu;
+            if (completion.IntegratedGpuDeviceIdentity is { } gpu
+                && !string.Equals(integratedGpu, gpu, StringComparison.Ordinal))
+            {
+                integratedGpu = gpu;
+                selectionMetadataChanged = true;
+            }
             foreach (var binding in frame.Catalog.MetricBindings.Values.Where(row => row.SourceHandle == completion.SourceHandle))
             {
                 var existing = capabilities.GetValueOrDefault(binding.MetricHandle);
                 if (existing?.Epoch != source.CapabilityGeneration)
                 {
                     capabilities.Remove(binding.MetricHandle);
-                    quantities.Remove(binding.MetricHandle);
+                    selectionMetadataChanged |= quantities.Remove(binding.MetricHandle);
                 }
                 if (completion.Status == NativeMetricSnapshotSourceStatus.Unsupported)
                     capabilities[binding.MetricHandle] = new(source.CapabilityGeneration, "unsupported");
             }
-            foreach (var pair in completion.ReadingQuantities) quantities[pair.Key] = pair.Value;
+            foreach (var pair in completion.ReadingQuantities)
+            {
+                if (quantities.TryGetValue(pair.Key, out var previous)
+                    && string.Equals(previous, pair.Value, StringComparison.Ordinal)) continue;
+                quantities[pair.Key] = pair.Value;
+                selectionMetadataChanged = true;
+            }
             foreach (var handle in completion.SupportedMetricHandles)
                 SetCapability(handle, "available");
             foreach (var observation in completion.Observations)
@@ -103,53 +132,74 @@ internal sealed class MetricReadingSourceTracker
             if (supported is not null)
                 foreach (var alias in aliases) capabilities[alias.MetricHandle] = supported;
         }
+        if (selectionMetadataChanged) InvalidateSelectionDefinitions();
     }
 
     public MetricReadingSelection Select(NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity)
     {
-        EnsureGeneration(frame, workspaceIdentity);
-        var sources = frame.Sources.ToDictionary(static row => row.SourceHandle);
-        var nvmeDevices = frame.Catalog.MetricBindings.Values
-            .Where(static row => row.FieldCode == MetricFieldCode.NvmeCompositeTemperature)
-            .Select(static row => row.DeviceIdentity).ToHashSet(StringComparer.Ordinal);
-        var candidates = frame.Catalog.MetricBindings.Values.Where(static row => row.Field is not null).Select(row =>
+        return Select(frame.Catalog, frame.Header, frame.Sources, workspaceIdentity);
+    }
+
+    private MetricReadingSelection Select(NativeMetricSnapshotCatalogProjection catalog,
+        NativeMetricSnapshotSnapshotHeader header,
+        IReadOnlyList<NativeMetricSnapshotSourceOutput> sources,
+        ulong workspaceIdentity)
+    {
+        EnsureGeneration(header, workspaceIdentity);
+        LoadSourceRows(sources);
+        EnsureSelectionDefinitions(catalog);
+        preferredCandidates.Clear();
+        legacyCandidates.Clear();
+        for (var i = 0; i < selectionDefinitions.Length; i++)
         {
-            var fact = capabilities.GetValueOrDefault(row.MetricHandle);
-            var currentCapability = sources.TryGetValue(row.SourceHandle, out var source)
-                && fact?.Epoch == source.CapabilityGeneration;
-            var rule = MetricFieldRegistry.ReadingRule(row.Field!, row.SourceId,
-                nvmeDevices.Contains(row.DeviceIdentity), currentCapability ? quantities.GetValueOrDefault(row.MetricHandle) : null);
-            var device = row.FieldCode == MetricFieldCode.CpuIgpuTemperature && row.SourceId == "amd.smu"
-                && integratedGpu is not null ? integratedGpu : row.DeviceIdentity;
-            if (row.FieldCode == MetricFieldCode.CpuIgpuTemperature && integratedGpu is null)
-                rule = rule with { Quantity = "cpu.apu_temperature_unmapped" };
-            var available = currentCapability ? fact!.Availability : "unverified";
-            var id = ReadingId(device, rule.Quantity);
-            return new Candidate(row, device, rule, available, id);
-        }).ToArray();
-        var preferred = candidates.GroupBy(static row => row.ReadingId, StringComparer.Ordinal)
-            .ToDictionary(static group => group.Key, static group => group.Where(static row => row.Availability == "available")
-                .OrderBy(static row => row.Rule.SourceRank).ThenBy(static row => row.Rule.AliasRank)
-                .ThenBy(static row => row.Binding.Field!.Name, StringComparer.Ordinal)
-                .ThenBy(static row => row.Binding.DeviceIdentity, StringComparer.Ordinal).FirstOrDefault(), StringComparer.Ordinal);
-        var fields = candidates.ToDictionary(static row => row.Binding.MetricHandle, row =>
+            var definition = selectionDefinitions[i];
+            var candidate = CreateCandidate(definition);
+            if (definition.SharedReadingId && candidate.Availability == "available")
+            {
+                if (!preferredCandidates.TryGetValue(candidate.ReadingId, out var current)
+                    || IsPreferredCandidate(i, current))
+                    preferredCandidates[candidate.ReadingId] = i;
+            }
+        }
+
+        var fields = new Dictionary<ulong, MetricReadingSource>(selectionDefinitions.Length);
+        for (var i = 0; i < selectionDefinitions.Length; i++)
         {
-            var best = preferred[row.ReadingId];
-            return new MetricReadingSource(row.ReadingId, row.Rule.Quantity, row.Rule.SourceRank,
-                row.Availability, best?.Binding.MetricHandle == row.Binding.MetricHandle,
-                best?.Binding.DeviceIdentity, best?.Binding.Field!.Name);
-        });
-        var legacy = frame.Catalog.LegacyMetricHandles.ToDictionary(static pair => pair.Key,
-            static pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        foreach (var group in candidates.Where(row => LegacyAddress(row.Binding).Length != 0)
-                     .GroupBy(row => LegacyAddress(row.Binding), StringComparer.OrdinalIgnoreCase))
+            var definition = selectionDefinitions[i];
+            var candidate = CreateCandidate(definition);
+            var bestIndex = i;
+            var hasPreferred = definition.SharedReadingId
+                ? preferredCandidates.TryGetValue(candidate.ReadingId, out bestIndex)
+                : candidate.Availability == "available";
+            var best = hasPreferred ? selectionDefinitions[bestIndex] : default;
+            fields.Add(definition.Binding.MetricHandle,
+                new MetricReadingSource(candidate.ReadingId, candidate.Quantity, definition.SourceRank,
+                    candidate.Availability,
+                    hasPreferred && best.Binding.MetricHandle == definition.Binding.MetricHandle,
+                    hasPreferred ? best.Binding.DeviceIdentity : null,
+                    hasPreferred ? best.Binding.Field!.Name : null));
+
+            if (definition.LegacyAddress.Length == 0) continue;
+            if (!legacyCandidates.TryGetValue(definition.LegacyAddress, out var choice))
+            {
+                legacyCandidates.Add(definition.LegacyAddress,
+                    hasPreferred ? new(true, bestIndex) : new(false, -1));
+            }
+            else if (hasPreferred && (!choice.HasPreferred
+                || IsPreferredLegacyCandidate(bestIndex, choice.CandidateIndex)))
+            {
+                legacyCandidates[definition.LegacyAddress] = new(true, bestIndex);
+            }
+        }
+
+        var legacy = new Dictionary<string, ulong>(catalog.LegacyMetricHandles.Count,
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var (address, handle) in catalog.LegacyMetricHandles)
+            legacy.Add(address, handle);
+        foreach (var (address, choice) in legacyCandidates)
         {
-            // Resolve through the same preferred reading metadata used by the UI.
-            var best = group.Select(row => preferred[row.ReadingId]).Where(static row => row is not null)
-                .OrderBy(static row => row!.Rule.SourceRank).ThenBy(row => sources[row!.Binding.SourceHandle].Priority)
-                .ThenBy(static row => row!.Binding.MetricHandle).FirstOrDefault();
-            if (best is null) legacy.Remove(group.Key);
-            else legacy[group.Key] = best.Binding.MetricHandle;
+            if (!choice.HasPreferred) legacy.Remove(address);
+            else legacy[address] = selectionDefinitions[choice.CandidateIndex].Binding.MetricHandle;
         }
         return new(fields, legacy);
     }
@@ -181,23 +231,30 @@ internal sealed class MetricReadingSourceTracker
 
     public MetricSampleRequest ExpandLegacyRequest(MetricSampleRequest request,
         NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity)
+        => ExpandLegacyRequest(request, frame.Catalog, frame.Header, frame.Sources, workspaceIdentity);
+
+    internal MetricSampleRequest ExpandLegacyRequest(MetricSampleRequest request,
+        NativeMetricSnapshotCatalogProjection catalog,
+        NativeMetricSnapshotSnapshotHeader header,
+        IReadOnlyList<NativeMetricSnapshotSourceOutput> sources,
+        ulong workspaceIdentity)
     {
         if (request.IsAll || request.IsCatalogProbe) return request;
-        var selection = Select(frame, workspaceIdentity);
+        var selection = Select(catalog, header, sources, workspaceIdentity);
         var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var id in request.Ids)
         {
-            var bindings = frame.Catalog.MetricBindings.Values
+            var bindings = catalog.MetricBindings.Values
                 .Where(row => string.Equals(LegacyAddress(row), id, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (bindings.Length == 0) { expanded.Add(id); continue; }
             if (selection.LegacyHandles.TryGetValue(id, out var handle))
-                expanded.Add(frame.Catalog.MetricIds[handle]);
+                expanded.Add(catalog.MetricIds[handle]);
             // Unverified support is probed through the same requested target
             // and owner; no new sampler or polling loop. Transient failures
             // remain subject to the existing source cooldown.
             var readingIds = bindings.Select(row => selection.Fields.GetValueOrDefault(row.MetricHandle)?.Id)
                 .Where(static id => id is not null).ToHashSet(StringComparer.Ordinal);
-            foreach (var binding in frame.Catalog.MetricBindings.Values
+            foreach (var binding in catalog.MetricBindings.Values
                          .Where(row => readingIds.Contains(selection.Fields.GetValueOrDefault(row.MetricHandle)?.Id)))
                 if (selection.Fields.GetValueOrDefault(binding.MetricHandle)?.SourceAvailability == "unverified")
                     expanded.Add(binding.MetricId);
@@ -207,14 +264,167 @@ internal sealed class MetricReadingSourceTracker
         return request.IncludesCatalog ? result.WithCatalog() : result;
     }
 
-    private void EnsureGeneration(NativeMetricSnapshotCommittedFrame frame, ulong workspaceIdentity)
+    private void EnsureGeneration(NativeMetricSnapshotSnapshotHeader header, ulong workspaceIdentity)
     {
-        if (workspace == workspaceIdentity && configuration == frame.Header.ConfigurationGeneration
-            && catalogGeneration == frame.Header.CatalogGeneration) return;
+        if (workspace == workspaceIdentity && configuration == header.ConfigurationGeneration
+            && catalogGeneration == header.CatalogGeneration) return;
         capabilities.Clear(); quantities.Clear(); projectedCapabilities.Clear(); sourceCapabilityEpochs.Clear(); integratedGpu = null;
         workspace = workspaceIdentity;
-        configuration = frame.Header.ConfigurationGeneration;
-        catalogGeneration = frame.Header.CatalogGeneration;
+        configuration = header.ConfigurationGeneration;
+        catalogGeneration = header.CatalogGeneration;
+        sourceRows.Clear();
+        readingIds.Clear();
+        sourceRows.TrimExcess();
+        readingIds.TrimExcess();
+        selectionDefinitions = [];
+        selectionDefinitionsValid = false;
+        preferredCandidates.Clear();
+        legacyCandidates.Clear();
+        preferredCandidates.TrimExcess();
+        legacyCandidates.TrimExcess();
+    }
+
+    private void LoadSourceRows(IReadOnlyList<NativeMetricSnapshotSourceOutput> sources)
+    {
+        sourceRows.EnsureCapacity(sources.Count);
+        sourceRows.Clear();
+        foreach (var source in sources) sourceRows.Add(source.SourceHandle, source);
+    }
+
+    private void EnsureSelectionDefinitions(NativeMetricSnapshotCatalogProjection catalog)
+    {
+        if (selectionDefinitionsValid) return;
+        var nvmeDevices = new HashSet<string>(StringComparer.Ordinal);
+        var definitionCount = 0;
+        foreach (var binding in catalog.MetricBindings.Values)
+        {
+            if (binding.Field is null) continue;
+            definitionCount++;
+            if (binding.FieldCode == MetricFieldCode.NvmeCompositeTemperature)
+                nvmeDevices.Add(binding.DeviceIdentity);
+        }
+
+        var definitions = new SelectionDefinition[definitionCount];
+        var candidateIndex = 0;
+        foreach (var binding in catalog.MetricBindings.Values)
+        {
+            if (binding.Field is not { } field) continue;
+            var unmappedApu = binding.FieldCode == MetricFieldCode.CpuIgpuTemperature && integratedGpu is null;
+            var device = binding.FieldCode == MetricFieldCode.CpuIgpuTemperature
+                && binding.SourceId == "amd.smu" && integratedGpu is not null
+                ? integratedGpu : binding.DeviceIdentity;
+            var rule = MetricFieldRegistry.ReadingRule(
+                field,
+                binding.SourceId,
+                nvmeDevices.Contains(binding.DeviceIdentity));
+            var quantity = unmappedApu ? "cpu.apu_temperature_unmapped" : rule.Quantity;
+            definitions[candidateIndex++] = new(
+                binding,
+                device,
+                quantity,
+                rule.SourceRank,
+                rule.AliasRank,
+                ReadingId(device, quantity),
+                LegacyAddress(binding),
+                unmappedApu,
+                binding.FieldCode == MetricFieldCode.CpuTemperature
+                    && binding.SourceId == "hardware-monitor.core",
+                false);
+        }
+
+        var readingGroupCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var definition in definitions)
+            readingGroupCounts[definition.ReadingId] = readingGroupCounts.GetValueOrDefault(definition.ReadingId) + 1;
+        var dynamicDevices = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var definition in definitions)
+            if (definition.DynamicQuantity) dynamicDevices.Add(definition.Device);
+        var sharedCandidateCount = 0;
+        var legacyAddressCount = 0;
+        for (var i = 0; i < definitions.Length; i++)
+        {
+            var definition = definitions[i];
+            var sharedReadingId = readingGroupCounts[definition.ReadingId] != 1
+                || dynamicDevices.Contains(definition.Device);
+            if (sharedReadingId)
+            {
+                definitions[i] = definition with { SharedReadingId = true };
+                sharedCandidateCount++;
+            }
+            if (definition.LegacyAddress.Length != 0) legacyAddressCount++;
+        }
+
+        selectionDefinitions = definitions;
+        preferredCandidates.EnsureCapacity(sharedCandidateCount);
+        legacyCandidates.EnsureCapacity(legacyAddressCount);
+        selectionDefinitionsValid = true;
+    }
+
+    private void InvalidateSelectionDefinitions()
+    {
+        selectionDefinitions = [];
+        selectionDefinitionsValid = false;
+        readingIds.Clear();
+        readingIds.TrimExcess();
+        preferredCandidates.Clear();
+        preferredCandidates.TrimExcess();
+        legacyCandidates.Clear();
+    }
+
+    private string GetReadingId(string device, string quantity)
+    {
+        var key = (device, quantity);
+        if (readingIds.TryGetValue(key, out var readingId))
+            return readingId;
+        readingId = ReadingId(device, quantity);
+        readingIds.Add(key, readingId);
+        return readingId;
+    }
+
+    private Candidate CreateCandidate(SelectionDefinition definition)
+    {
+        var binding = definition.Binding;
+        var fact = capabilities.GetValueOrDefault(binding.MetricHandle);
+        var currentCapability = sourceRows.TryGetValue(binding.SourceHandle, out var source)
+            && fact?.Epoch == source.CapabilityGeneration;
+        var quantity = definition.Quantity;
+        if (!definition.UnmappedApu
+            && currentCapability
+            && binding.FieldCode == MetricFieldCode.CpuTemperature
+            && binding.SourceId == "hardware-monitor.core"
+            && quantities.TryGetValue(binding.MetricHandle, out var declaredQuantity))
+            quantity = declaredQuantity;
+        var readingId = string.Equals(quantity, definition.Quantity, StringComparison.Ordinal)
+            ? definition.ReadingId
+            : GetReadingId(definition.Device, quantity);
+        return new(quantity, currentCapability ? fact!.Availability : "unverified", readingId);
+    }
+
+    private bool IsPreferredCandidate(int candidateIndex, int currentIndex)
+    {
+        var candidate = selectionDefinitions[candidateIndex];
+        var current = selectionDefinitions[currentIndex];
+        var comparison = candidate.SourceRank.CompareTo(current.SourceRank);
+        if (comparison != 0) return comparison < 0;
+        comparison = candidate.AliasRank.CompareTo(current.AliasRank);
+        if (comparison != 0) return comparison < 0;
+        comparison = StringComparer.Ordinal.Compare(candidate.Binding.Field!.Name, current.Binding.Field!.Name);
+        return comparison != 0
+            ? comparison < 0
+            : StringComparer.Ordinal.Compare(candidate.Binding.DeviceIdentity, current.Binding.DeviceIdentity) < 0;
+    }
+
+    private bool IsPreferredLegacyCandidate(int candidateIndex, int currentIndex)
+    {
+        var candidate = selectionDefinitions[candidateIndex].Binding;
+        var current = selectionDefinitions[currentIndex].Binding;
+        var comparison = selectionDefinitions[candidateIndex].SourceRank
+            .CompareTo(selectionDefinitions[currentIndex].SourceRank);
+        if (comparison != 0) return comparison < 0;
+        comparison = sourceRows[candidate.SourceHandle].Priority.CompareTo(
+            sourceRows[current.SourceHandle].Priority);
+        return comparison != 0
+            ? comparison < 0
+            : candidate.MetricHandle < current.MetricHandle;
     }
 
     private static string ReadingId(string device, string quantity)

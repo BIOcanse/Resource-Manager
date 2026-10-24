@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using ResourceManager.ReadWrite.Native;
 
@@ -491,11 +492,37 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 "read committed snapshot");
             return new NativeMetricSnapshotCommittedFrame(
                 header,
-                sources.ToImmutableArray(),
-                metrics.ToImmutableArray(),
-                gpuInventory.ToImmutableArray(),
-                rules.ToImmutableArray(),
+                ImmutableCollectionsMarshal.AsImmutableArray(sources),
+                ImmutableCollectionsMarshal.AsImmutableArray(metrics),
+                ImmutableCollectionsMarshal.AsImmutableArray(gpuInventory),
+                ImmutableCollectionsMarshal.AsImmutableArray(rules),
                 projection);
+        }
+    }
+
+    internal (NativeMetricSnapshotSnapshotHeader Header,
+        ImmutableArray<NativeMetricSnapshotSourceOutput> Sources) ReadSources()
+    {
+        lock (gate)
+        {
+            ThrowIfDisposed();
+            _ = activeProjection
+                ?? throw new InvalidOperationException(
+                    "The metric-snapshot catalog is not ready.");
+            var header = QueryHeader();
+            var read = CreateReadInput(header);
+            var sources = new NativeMetricSnapshotSourceOutput[
+                checked((int)header.SourceCount)];
+            RequireOk(
+                session.Read(
+                    in read,
+                    sources,
+                    Span<NativeMetricSnapshotMetricOutput>.Empty,
+                    Span<NativeMetricSnapshotGpuInventoryOutput>.Empty,
+                    Span<NativeMetricSnapshotRuleStateOutput>.Empty),
+                "read committed metric sources");
+            return (header,
+                ImmutableCollectionsMarshal.AsImmutableArray(sources));
         }
     }
 

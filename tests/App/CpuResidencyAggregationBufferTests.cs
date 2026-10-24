@@ -87,6 +87,104 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
+    public void SlidingWindowReusesSliceSegmentsAcrossWrapAndResetWhileSnapshotsStayIndependent()
+    {
+        const int maximumClosedSlices = 64;
+        const int firstWarmThroughQpc = 256;
+        const int measuredIterations = 2048;
+        var buffer = CreateBuffer(windowMilliseconds: 8, maximumClosedSlices: maximumClosedSlices);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        int[] expectedProcessors = [0];
+        CpuResidencyAggregationSnapshot? first = null;
+        CpuResidencyAggregationSnapshot? last = null;
+
+        for (var qpc = 1; qpc <= firstWarmThroughQpc; qpc++)
+        {
+            var oldProcessId = qpc % 2 == 1 ? 100 : 200;
+            var oldThreadId = qpc % 2 == 1 ? 10 : 20;
+            var newProcessId = qpc % 2 == 1 ? 200 : 100;
+            var newThreadId = qpc % 2 == 1 ? 20 : 10;
+            Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
+            if (qpc >= 8)
+            {
+                last = buffer.Snapshot(expectedProcessors);
+                if (qpc == 8)
+                {
+                    first = last;
+                }
+            }
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 1; index <= measuredIterations; index++)
+        {
+            var qpc = firstWarmThroughQpc + index;
+            var oldProcessId = qpc % 2 == 1 ? 100 : 200;
+            var oldThreadId = qpc % 2 == 1 ? 10 : 20;
+            var newProcessId = qpc % 2 == 1 ? 200 : 100;
+            var newThreadId = qpc % 2 == 1 ? 20 : 10;
+            Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
+            last = buffer.Snapshot(expectedProcessors);
+        }
+
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.InRange(allocatedBytes, 0, 2 * 1024 * 1024);
+        Assert.NotNull(first);
+        Assert.NotNull(last);
+        Assert.True(last.IsComplete);
+        Assert.Equal(2, last.Records.Count);
+        Assert.Equal(new[] { 100, 200 }, last.Records.Select(static record => record.ProcessId));
+        Assert.Equal(8, last.Records.Sum(static record => record.ExecutionTimeQpc));
+        Assert.Equal(4, Assert.Single(last.Records, static record => record.ProcessId == 100).ExecutionTimeQpc);
+        Assert.Equal(4, Assert.Single(last.Records, static record => record.ProcessId == 200).ExecutionTimeQpc);
+        Assert.InRange(buffer.GetDiagnostics().ClosedSliceCount, 0, maximumClosedSlices);
+        Assert.NotSame(first.Records, last.Records);
+        Assert.Equal(8, first.Records.Sum(static record => record.ExecutionTimeQpc));
+
+        buffer.ResetContinuity();
+        Assert.Equal(0, buffer.GetDiagnostics().ClosedSliceCount);
+        Switch(buffer, firstWarmThroughQpc + measuredIterations, 0, 0, 0, 100, 10);
+        for (var qpc = firstWarmThroughQpc + measuredIterations + 1;
+            qpc <= firstWarmThroughQpc + measuredIterations + 8;
+            qpc++)
+        {
+            var oldProcessId = qpc % 2 == 1 ? 100 : 200;
+            var oldThreadId = qpc % 2 == 1 ? 10 : 20;
+            var newProcessId = qpc % 2 == 1 ? 200 : 100;
+            var newThreadId = qpc % 2 == 1 ? 20 : 10;
+            Switch(buffer, qpc, 0, oldProcessId, oldThreadId, newProcessId, newThreadId);
+        }
+
+        var afterReset = buffer.Snapshot(expectedProcessors);
+        Assert.True(afterReset.IsComplete);
+        Assert.Equal(8, afterReset.Records.Sum(static record => record.ExecutionTimeQpc));
+        Assert.Equal(8, first.Records.Sum(static record => record.ExecutionTimeQpc));
+    }
+
+    [Fact]
+    public void RepeatedSameInstanceProcessCallbacksDoNotAllocateIdentityRecords()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 8);
+        StartProcess(buffer, 0, 100, 1000, "Game", 10, uniqueProcessKey: 11);
+        for (var qpc = 1; qpc <= 32; qpc++)
+        {
+            buffer.ObserveProcessStart(qpc, DateTimeOffset.UnixEpoch, 100, 11, 1000, " Game ");
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var qpc = 33; qpc <= 10_032; qpc++)
+        {
+            buffer.ObserveProcessStart(qpc, DateTimeOffset.UnixEpoch, 100, 11, 1000, " Game ");
+        }
+
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.InRange(allocatedBytes, 0, 32 * 1024);
+    }
+
+    [Fact]
     public void SnapshotUsesTheLatestClosedBoundarySharedByEveryProcessor()
     {
         var buffer = CreateBuffer(windowMilliseconds: 500);

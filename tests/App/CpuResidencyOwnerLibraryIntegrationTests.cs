@@ -99,6 +99,79 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     }
 
     [Fact]
+    public void WarmProcessProjectionDoesNotMaterializeAggregateRecordCopies()
+    {
+        const int threadCount = 128;
+        const int processorCount = 8;
+        var topology = Enumerable.Range(0, processorCount)
+            .ToDictionary(
+                static processorId => processorId,
+                static processorId => new CpuResidencyCoreAccounting(
+                    $"core:{processorId}", $"ccd:{processorId}", 1, 1));
+        var plan = new CpuResidencyCaptureConfiguration(
+            1000,
+            1024,
+            topology.ToFrozenDictionary(),
+            "recorded projection allocation map");
+        var records = new CpuExecutionTimeAggregate[threadCount * processorCount];
+        for (var threadIndex = 0; threadIndex < threadCount; threadIndex++)
+        {
+            for (var processorId = 0; processorId < processorCount; processorId++)
+            {
+                records[threadIndex * processorCount + processorId] = new(
+                    1,
+                    100,
+                    1000,
+                    "projection-allocation",
+                    10_000 + threadIndex,
+                    100 + threadIndex,
+                    processorId,
+                    10 + threadIndex + processorId,
+                    1 + processorId);
+            }
+        }
+        var aggregate = new CpuResidencyAggregationSnapshot(
+            1000,
+            0,
+            1000,
+            At,
+            true,
+            records);
+        var expected = EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(plan, 7, aggregate);
+        for (var iteration = 0; iteration < 8; iteration++)
+        {
+            expected = EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(plan, 7, aggregate);
+        }
+
+        IReadOnlyList<CpuProcessCoreResidency>? last = null;
+        const int measuredIterations = 32;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var iteration = 0; iteration < measuredIterations; iteration++)
+        {
+            last = EtwCpuResidencyCaptureOwner.BuildProcessSnapshot(plan, 7, aggregate);
+        }
+        var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        GC.KeepAlive(last);
+
+        Assert.InRange(allocatedBytes, 0, 8 * 1024 * 1024);
+        Assert.NotSame(expected, last);
+        var process = Assert.Single(last!);
+        Assert.Equal(threadCount, process.ThreadCount);
+        Assert.Equal(78_848, process.ExecutionTimeMilliseconds);
+        Assert.Equal(4608, process.SwitchCount);
+        Assert.Equal(processorCount, process.LogicalProcessors.Count);
+        Assert.Equal(processorCount, process.PhysicalCores.Count);
+        Assert.Equal(processorCount, process.Ccds.Count);
+        Assert.Equal(7, process.LogicalProcessors[0].LogicalProcessorId);
+        Assert.Equal("core:7", process.PhysicalCores[0].PhysicalCoreId);
+        Assert.Equal("ccd:7", process.Ccds[0].CcdId);
+        Assert.Equal(227, process.Threads[0].ThreadId);
+        Assert.Equal(7, process.Threads[0].PrimaryLogicalProcessorId);
+        Assert.Equal(8, process.Threads[0].PhysicalCoreIds!.Count);
+        Assert.NotSame(expected[0].Threads, process.Threads);
+    }
+
+    [Fact]
     public void OriginalClosedWindowProjectionUsesMeasuredBoundaryAndAttributedDenominator()
     {
         var window = Window();

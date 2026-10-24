@@ -11,6 +11,82 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MetricReadingSourceSelectionTests
 {
     [Fact]
+    public void SelectionReusesStableCatalogFactsWhileReturningFreshResults()
+    {
+        const int iterations = 32;
+        const int bindingCount = 128;
+        var frame = Frame(Enumerable.Range(1, bindingCount)
+            .Select(index => Binding(
+                (ulong)index,
+                10,
+                "amd.smu",
+                MetricFieldCode.GpuHotspotTemperature,
+                $"device-{index}"))
+            .ToArray());
+
+        // Exercise the warmed code path before counting the first build of
+        // stable catalog-derived selection facts.
+        var warmup = new MetricReadingSourceTracker();
+        _ = warmup.Select(frame, 1);
+        _ = warmup.Select(frame, 1);
+
+        var tracker = new MetricReadingSourceTracker();
+        var beforeCold = GC.GetAllocatedBytesForCurrentThread();
+        var cold = tracker.Select(frame, 1);
+        var coldAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeCold;
+        MetricReadingSelection? firstWarm = null;
+        MetricReadingSelection? lastWarm = null;
+        var beforeWarm = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < iterations; i++)
+        {
+            var selection = tracker.Select(frame, 1);
+            if (selection.Fields.Count != bindingCount
+                || !ReferenceEquals(cold.Fields[1].Id, selection.Fields[1].Id)
+                || ReferenceEquals(cold.Fields[1], selection.Fields[1]))
+                throw new InvalidOperationException("A steady selection changed its stable ID or reused a result object.");
+            if (i == 0) firstWarm = selection;
+            if (i == iterations - 1) lastWarm = selection;
+        }
+        var warmAllocated = GC.GetAllocatedBytesForCurrentThread() - beforeWarm;
+        var warm = firstWarm!;
+
+        Assert.Equal(bindingCount, cold.Fields.Count);
+        Assert.Equal(bindingCount, warm.Fields.Count);
+        Assert.Same(cold.Fields[1].Id, warm.Fields[1].Id);
+        Assert.NotSame(cold.Fields[1], warm.Fields[1]);
+        Assert.NotSame(cold.Fields[1], lastWarm!.Fields[1]);
+        var warmCeiling = iterations * (bindingCount * 160L + 8_192L);
+        Assert.InRange(warmAllocated, 0L, warmCeiling);
+        Assert.True(coldAllocated >= warmAllocated / iterations + bindingCount * 32L,
+            $"Expected catalog fact setup to allocate more than a steady selection; cold={coldAllocated}, warm total={warmAllocated}.");
+    }
+
+    [Fact]
+    public void DynamicReadingQuantityChangesDoNotReuseHistoricalReadingIds()
+    {
+        var binding = Binding(1, 10, "hardware-monitor.core", MetricFieldCode.CpuTemperature, "cpu-opaque");
+        var frame = Frame(binding);
+        var tracker = new MetricReadingSourceTracker();
+
+        for (var i = 0; i < 32; i++)
+        {
+            var quantity = $"cpu.sensor_quantity_{i}";
+            var completion = Complete(10, 1) with
+            {
+                ReadingQuantities = ImmutableDictionary<ulong, string>.Empty.Add(1, quantity)
+            };
+            tracker.Observe(frame, 1, [completion]);
+            var reading = tracker.Select(frame, 1).Fields[1];
+            Assert.Equal(quantity, reading.Quantity);
+            Assert.Equal(MetricReadingSourceTrackerTestId("cpu-opaque", quantity), reading.Id);
+        }
+
+        static string MetricReadingSourceTrackerTestId(string device, string quantity)
+            => "reading-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(device + "\0" + quantity)));
+    }
+
+    [Fact]
     public void PreferredSourceAndLegacySchedulingAddressUseTheSameDecisionWithoutRemovingRawFields()
     {
         var frame = Frame(Temperature(1, 10, "amd.smu"), Temperature(2, 20, "amd.adlx"));

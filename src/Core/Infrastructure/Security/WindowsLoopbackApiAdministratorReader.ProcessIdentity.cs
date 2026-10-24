@@ -4,7 +4,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security;
 using System.Security.Principal;
-using System.Text;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Infrastructure.Adaptation.Transport;
 
@@ -53,17 +52,15 @@ public sealed partial class WindowsLoopbackApiAdministratorReader
         try
         {
             using var windowsIdentity = new WindowsIdentity(token.DangerousGetHandle());
-            var image = new StringBuilder(32768);
-            var length = checked((uint)image.Capacity);
             if (windowsIdentity.User is not { } sid
                 || !WindowsAdapterTransportNativeMethods.ProcessIdToSessionId(checked((uint)processId), out var session)
                 || !WindowsAdapterTransportNativeMethods.GetProcessTimes(process, out var created, out _, out _, out _)
-                || !WindowsAdapterTransportNativeMethods.QueryFullProcessImageNameW(process, 0, image, ref length)
+                || !WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var image)
                 || confirmConnection is not null && !confirmConnection())
                 return false;
             identity = new(new(processId, DateTime.FromFileTimeUtc(created.ToInt64()).Ticks,
                 sid.Value, checked((int)session), new WindowsPrincipal(windowsIdentity).IsInRole(WindowsBuiltInRole.Administrator)),
-                Path.GetFullPath(image.ToString()));
+                Path.GetFullPath(image));
             processToken = token;
             accepted = true;
             return true;
