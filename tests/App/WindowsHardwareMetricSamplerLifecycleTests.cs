@@ -12,6 +12,50 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsHardwareMetricSamplerLifecycleTests
 {
     [Fact]
+    public async Task MeasurementSubscriptionPublishesChangedTopologyWithoutCatalogDemand()
+    {
+        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
+        var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No NUMA demand"),
+            () => new MemoryMetrics(512, 1024, 50, true, "recorded-memory")
+            {
+                AvailableBytes = 512,
+                ObservationStatus = SamplingObservationStatus.Current
+            });
+        using var sampler = CreateSampler(fixture.Slots, fixture.Catalog, fixture.Owner, memory);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await sampler.CaptureSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellation.Token);
+        var original = fixture.Catalog.Current!;
+        var changes = 0;
+        fixture.Catalog.Changed += () => Interlocked.Increment(ref changes);
+        var request = MetricSampleRequest.ForIds(["memory.percent"]);
+        Assert.False(request.IncludesCatalog);
+        await sampler.StartAsync(cancellation.Token);
+        try
+        {
+            await using var stream = sampler.SubscribeAsync("memory-viewer", request, TimeSpan.FromMilliseconds(100),
+                cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+            Assert.True(await stream.MoveNextAsync());
+            fixture.Topology = MetricSnapshotOwnerTestFixture.Topology([new(7, "new-disk", 1) { SupportsNvmeHealth = true }]);
+            fixture.Owner.RequestTopologyRefresh();
+            do { Assert.True(await stream.MoveNextAsync()); }
+            while (fixture.Catalog.Current!.WorkspaceIdentity == original.WorkspaceIdentity);
+
+            var updated = fixture.Catalog.Current!;
+            Assert.Equal(fixture.Owner.CurrentWorkspaceIdentity, updated.WorkspaceIdentity);
+            var diskAddress = updated.FieldBindings.Values.First(binding => binding.DeviceIdentity == "new-disk").RequestAddress;
+            Assert.Contains(diskAddress, fixture.Catalog.SelectSubscribable(MetricSampleRequest.ForIds([diskAddress])).Ids);
+            Assert.Equal(SamplingObservationStatus.Current, updated.Datasets[SamplingDatasetIds.StorageInventory].Status);
+            var topologyReads = fixture.TopologyReads;
+            var catalogChanges = Volatile.Read(ref changes);
+            Assert.True(await stream.MoveNextAsync());
+            Assert.True(await stream.MoveNextAsync());
+            Assert.Equal(topologyReads, fixture.TopologyReads);
+            Assert.Equal(catalogChanges, Volatile.Read(ref changes));
+        }
+        finally { await sampler.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
     public async Task LatePlanCallbackCannotReplaceCurrentHistoryRequirements()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
@@ -211,10 +255,12 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
 
     private static WindowsHardwareMetricSampler CreateSampler(
         HostManagerSamplingSubscriptionTestFixture subscriptions,
-        DashboardMonitoringCatalogState catalog)
+        DashboardMonitoringCatalogState catalog,
+        HostManagerMetricSnapshotOwner? owner = null,
+        WindowsMemoryMonitoringZone? memory = null)
         => new(
             cpuZone: null!,
-            memoryZone: null!,
+            memoryZone: memory!,
             virtualMemoryZone: null!,
             gpuAdapterOrderZone: null!,
             cpuFrequencyZone: null!,
@@ -226,9 +272,10 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             amdSmuZone: null!,
             integratedGpuSensorRoute: new AmdIntegratedGpuSensorRoute(),
             platformSensorReader: null!,
-            metricSnapshotOwner: null!,
+            metricSnapshotOwner: owner!,
             dashboardMonitoringCatalog: catalog,
-            monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry([]),
+            monitoringSourceZoneRegistry: new MonitoringSourceZoneRegistry(memory is null ? []
+                : MonitoringSourceZoneCatalog.SourceIds.Select(id => id == memory.DisplayName ? memory : new MonitoringSourceZone(id))),
             samplingSubscriptionOwner: subscriptions.Owner,
             runtimePlanProvider: subscriptions.Provider,
             logger: NullLogger<WindowsHardwareMetricSampler>.Instance);

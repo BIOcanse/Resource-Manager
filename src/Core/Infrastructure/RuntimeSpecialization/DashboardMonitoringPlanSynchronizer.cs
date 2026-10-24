@@ -65,6 +65,7 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
+        string? lastRebuildFailure = null;
         while (!cancellationToken.IsCancellationRequested)
         {
             try
@@ -90,6 +91,7 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
                         await runtimeSpecialization.RebuildAsync(initialCatalogReconciled
                             ? "monitoring-catalog-changed" : "monitoring-catalog-ready", cancellationToken);
                         initialCatalogReconciled = true;
+                        lastRebuildFailure = null;
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
@@ -97,9 +99,10 @@ public sealed class DashboardMonitoringPlanSynchronizer : IHostedService, IDispo
                     }
                     catch (Exception exception)
                     {
-                        logger.LogWarning(exception, "The dashboard monitoring plan rebuild failed; it will be retried without sampling demand.");
-                        await Task.Delay(CatalogSubscriptionInterval, cancellationToken);
-                        SignalCatalogChange();
+                        var failure = $"{exception.GetType().FullName}:{exception.Message}";
+                        logger.Log(lastRebuildFailure == failure ? LogLevel.Debug : LogLevel.Warning,
+                            exception, "The dashboard monitoring plan rebuild failed; the next catalog change will retry it.");
+                        lastRebuildFailure = failure;
                     }
                 }
             }
