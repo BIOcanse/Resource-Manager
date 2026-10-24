@@ -1,6 +1,11 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.Dependencies;
+using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Dependencies;
+using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Operations;
 using ResourceManager.App.Infrastructure.ServiceHosting;
@@ -13,6 +18,38 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SoftwareUninstallerCallerTests
 {
     private const string UserSid = "S-1-5-21-1-2-3-1001";
+
+    [Fact]
+    public async Task InventoryRefreshFailureDoesNotRewriteSuccessfulManagedDependencyCleanup()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"rm-inventory-cleanup-{Guid.NewGuid():N}");
+        var dependencyRoot = Path.Combine(root, "Dependencies");
+        var installDirectory = Path.Combine(dependencyRoot, "one");
+        Directory.CreateDirectory(installDirectory);
+        await File.WriteAllTextAsync(Path.Combine(installDirectory, "owned.txt"), "managed");
+        try
+        {
+            var manager = new SoftwareOperationManager(
+                new DependencyStatusManager(dependencyRoot, installDirectory),
+                null!,
+                new EmptyChangeTracker(),
+                null!,
+                new ThrowingSoftwareRegistryView(),
+                NullLogger<SoftwareOperationManager>.Instance);
+
+            var result = await manager.UninstallAsync(
+                new SoftwareOperationRequest("dependency:one", ConfirmOperation: true),
+                caller: null,
+                CancellationToken.None);
+
+            Assert.Equal("RemovedManagedRoot", result.State);
+            Assert.False(Directory.Exists(installDirectory));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
 
     [Fact]
     public void QueuedUninstallCarriesOnlyServerSelectedUserIdentity()
@@ -148,5 +185,69 @@ public sealed class SoftwareUninstallerCallerTests
         public uint LaunchNativeUi(uint sessionId, string executable, string arguments) => throw new NotSupportedException();
         public uint LaunchUserShell(uint sessionId, string expectedUserSid, string executable, string arguments)
         { Launches.Add((sessionId, expectedUserSid, executable, arguments)); return 1; }
+    }
+
+    private sealed class DependencyStatusManager(string dependencyRoot, string installDirectory)
+        : IOptionalDependencyManager
+    {
+        private readonly OptionalDependencyStatus status = new(
+            new OptionalDependencyDefinition(
+                "one", "One", "Vendor", "Test", "https://example.invalid", null, null,
+                "one.exe", [], "one", false, false, [], ""),
+            "installed",
+            dependencyRoot,
+            Path.Combine(dependencyRoot, "installers"),
+            installDirectory,
+            null,
+            false,
+            true,
+            false,
+            false,
+            installDirectory,
+            installDirectory,
+            "test",
+            BackendMessage.Create(
+                BackendMessageDomains.Dependency,
+                BackendMessageCodes.Dependency.ComponentFilesExtracted));
+
+        public Task<IReadOnlyList<OptionalDependencyStatus>> GetStatusesAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<OptionalDependencyStatus>>([status]);
+
+        public Task<OptionalDependencyStatus?> GetStatusAsync(string id, CancellationToken cancellationToken)
+            => Task.FromResult<OptionalDependencyStatus?>(id == "one" ? status : null);
+
+        public Task<DependencyVersionOptions> GetVersionOptionsAsync(string id, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<OptionalDependencyDownloadResult> DownloadAsync(
+            string id, bool acknowledgeExternalTerms, string? versionChoice, CancellationToken cancellationToken,
+            IProgress<DependencyDownloadProgress>? progress = null)
+            => throw new NotSupportedException();
+
+        public Task<OptionalDependencyLaunchResult> LaunchInstallerAsync(
+            string id, bool acknowledgeExternalTerms, string? versionChoice, CancellationToken cancellationToken,
+            SoftwareOperationCaller? caller = null)
+            => throw new NotSupportedException();
+    }
+
+    private sealed class EmptyChangeTracker : IFileChangeTracker
+    {
+        public Task<FileInventorySnapshot> CaptureAsync(FileChangeTrackingScope scope, CancellationToken cancellationToken)
+            => Task.FromResult(new FileInventorySnapshot(
+                scope.OwnerId, DateTimeOffset.UtcNow, scope.RootPaths, scope.MaxReportedChanges,
+                new Dictionary<string, FileInventoryEntry>(), []));
+
+        public FileChangeReport Compare(FileInventorySnapshot before, FileInventorySnapshot after)
+            => new(before.OwnerId, before.CapturedAt, after.CapturedAt, before.RootPaths,
+                0, 0, 0, 0, 0, [], [], [], false);
+    }
+
+    private sealed class ThrowingSoftwareRegistryView : ISoftwareRegistryView
+    {
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
+            => throw new IOException("The post-cleanup inventory read is unavailable.");
+
+        public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 }

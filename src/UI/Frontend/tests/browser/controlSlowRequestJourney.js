@@ -29,9 +29,9 @@ export default async function controlSlowRequestJourney(page, baseUrl) {
   const card = page.locator(".control-object").filter({ hasText: "Slow Fan" });
   await card.getByRole("radio", { name: "软件管理", exact: true }).click();
   await card.getByRole("checkbox", { name: "转速曲线", exact: true }).check();
-  const highPoint = card.getByRole("slider", { name: /95/ });
+  const highPoint = card.getByRole("slider", { name: "100 °C", exact: true });
   await highPoint.waitFor({ timeout: 20_000 });
-  assert.equal(await highPoint.getAttribute("aria-valuenow"), "100", "Slow read must preserve the real high-temperature point");
+  assert.equal(await highPoint.getAttribute("aria-valuenow"), "100", "Slow read must map the high-temperature tail to the 100°C grid endpoint");
   await highPoint.press("ArrowDown");
   const completedWrite = page.waitForResponse(response => response.request().method() === "PUT"
     && response.url().endsWith("/api/control/state/slow"), { timeout: 20_000 });
@@ -39,7 +39,7 @@ export default async function controlSlowRequestJourney(page, baseUrl) {
   assert.equal((await completedWrite).status(), 200);
   await card.getByText("已改动，未应用", { exact: true }).waitFor({ state: "hidden", timeout: 3000 });
   assert.equal(writes.length, 1, "Slow write must finish rather than be canceled at ten seconds");
-  assert.deepEqual(writes[0][0].curve.at(-1), { temperatureCelsius: 95, percent: 99 });
+  assert.deepEqual(writes[0][0].curve.at(-1), { temperatureCelsius: 100, percent: 99 });
   assert.equal(await card.getByRole("button", { name: "应用", exact: true }).isDisabled(), true);
-  return { readDelayMs: 12_000, writeDelayMs: 12_000, retainedHighTemperature: 95 };
+  return { readDelayMs: 12_000, writeDelayMs: 12_000, highTemperatureGridPoint: 100 };
 }

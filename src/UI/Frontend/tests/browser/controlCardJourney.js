@@ -46,16 +46,16 @@ export default async function controlCardJourney(page, baseUrl) {
   assert.equal(await a.locator(".fan-curve-grid").count(), 22);
   assert.equal(await a.locator(".control-curve-execution .settings-segment").count(), 2);
   assert.equal(await a.locator(".control-curve-execution [aria-checked=true]").count(), 1);
-  const highPoint = b.getByRole("slider", { name: "120 °C", exact: true });
+  const highPoint = b.getByRole("slider", { name: "100 °C", exact: true });
   const highX = await highPoint.locator(".fan-curve-point").getAttribute("cx");
-  assert.ok(Number(highX) >= 10 && Number(highX) <= 95, "Loaded 120°C point must be inside the chart plot");
+  assert.ok(Number(highX) >= 10 && Number(highX) <= 95, "A loaded 120°C tail maps to the visible 100°C grid endpoint");
   await highPoint.press("ArrowDown");
   assert.equal(await highPoint.getAttribute("aria-valuenow"), "99");
   await a.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".control-object-actions button:disabled").length < 4);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].id, "A");
-  assert.deepEqual(writes[0].settings[0].curve.at(-1), { temperatureCelsius: 95, percent: 100 }, "Loaded high-temperature tail survives Apply");
+  assert.deepEqual(writes[0].settings[0].curve.at(-1), { temperatureCelsius: 100, percent: 100 }, "A loaded 95°C tail maps to the 100°C grid endpoint on Apply");
   assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), true);
   await b.getByRole("button", { name: "撤销改动", exact: true }).click();
   assert.equal(await b.getByRole("radio", { name: "固件自动管理", exact: true }).getAttribute("aria-checked"), "true");
@@ -106,8 +106,16 @@ export default async function controlCardJourney(page, baseUrl) {
   await b.getByRole("button", { name: "应用", exact: true }).click();
   await page.waitForFunction(() => !document.querySelector(".control-workspace")?.hasAttribute("aria-busy"));
   assert.deepEqual(writes.at(-1), { id: "B", settings: [{ capabilityId: "fan.curve", curveExecution: "firmware",
-    curve: [...[40,45,50,55,60,65,70,75,80,85].map((temperatureCelsius, i) => ({ temperatureCelsius, percent: 10 + i * 10 })),
-      { temperatureCelsius: 120, percent: 99 }] }] }, "Editing the visible high-temperature point reaches the existing Apply endpoint");
+    curve: [
+      { temperatureCelsius: 30, percent: 10 }, { temperatureCelsius: 35, percent: 10 },
+      { temperatureCelsius: 40, percent: 10 }, { temperatureCelsius: 45, percent: 20 },
+      { temperatureCelsius: 50, percent: 30 }, { temperatureCelsius: 55, percent: 40 },
+      { temperatureCelsius: 60, percent: 50 }, { temperatureCelsius: 65, percent: 60 },
+      { temperatureCelsius: 70, percent: 70 }, { temperatureCelsius: 75, percent: 80 },
+      { temperatureCelsius: 80, percent: 90 }, { temperatureCelsius: 85, percent: 100 },
+      { temperatureCelsius: 90, percent: 100 }, { temperatureCelsius: 95, percent: 100 },
+      { temperatureCelsius: 100, percent: 99 }
+    ] }] }, "The loaded curve is resampled to the firmware grid and the visible 100°C endpoint reaches Apply");
   return { cardScopedWrites: writes.length, retainedConcurrentEdit: true, gridLines: 22,
-    highTemperaturePoint: 120, viewports: [1440, 390] };
+    highTemperaturePoint: 100, viewports: [1440, 390] };
 }

@@ -185,7 +185,7 @@ assert.doesNotMatch(
 const refreshSchedulerSource = readSource("app/usePageRefreshScheduler.ts");
 assert.match(
   refreshSchedulerSource,
-  /options\.selfSchedulingSource\.subscribeSnapshot\(\s*selfSchedulingSubscriptionIntervalMs/,
+  /options\.selfSchedulingSource\.subscribeSnapshot\(\s*intervalMs/,
   "self-scheduling must be one backend current-value subscription");
 assert.match(
   refreshSchedulerSource,
@@ -204,7 +204,7 @@ assert.match(refreshSchedulerSource, /refreshVisiblePageData/);
 // 隐藏即暂停：本机状态订阅和其他数据源一样按 frontendVisible() 停止，没有按设置分支的“隐藏也刷新”。
 assert.match(
   refreshSchedulerSource,
-  /if \(!frontendVisible\(\)\) \{\s*return;\s*\}\s*const unsubscribe = options\.localSystemSource\.subscribe/,
+  /if \(!frontendVisible\(\) \|\| intervalMs === null\) \{\s*return;\s*\}\s*const unsubscribe = options\.localSystemSource\.subscribe/,
   "local system status must stop with the hidden window like every other source");
 assert.doesNotMatch(
   refreshSchedulerSource,
@@ -248,8 +248,8 @@ assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorBars\)/
 assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorTable\)/);
 assert.match(monitorStoreSource, /options\.resourceTableActive\(\)\s*&& resourceTableMode\(\) !== "performance"/);
 // 监控和资源表按刷新调度器算好的间隔订阅，“自动调度”才看得到本程序 CPU 档位和窗口前台状态。
-assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.monitor/);
-assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\.refreshIntervalMs\.resourceTable/);
+assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\?\.monitor/);
+assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\?\.resourceTable/);
 
 for (const relativePath of [
   "types.ts",

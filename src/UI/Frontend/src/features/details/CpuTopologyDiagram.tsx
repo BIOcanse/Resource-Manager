@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import {
   createEffect,
   createMemo,
@@ -76,6 +77,7 @@ export function CpuTopologyDiagram(props: {
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsCpuModel]);
   const frontendWork = useFrontendWork();
   const frontendRuntime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
   const [topology, setTopology] =
     createSignal<SourceSnapshot<CpuTopologySnapshot | null> | null>(null);
   const [residency, setResidency] =
@@ -85,7 +87,8 @@ export function CpuTopologyDiagram(props: {
   const [frequencyFields, setFrequencyFields] =
     createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
   createEffect(() => {
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel)) {
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel) || intervalMs === undefined) {
       setTopology(null);
       setResidency(null);
       setNumaFields(null);
@@ -93,19 +96,19 @@ export function CpuTopologyDiagram(props: {
       return;
     }
     const stopTopology = frontendRuntime.sources.cpuTopology.subscribeSnapshot(
-      60_000,
+      intervalMs,
       setTopology);
     const stopResidency = frontendRuntime.sources.cpuResidency.subscribeSnapshot(
-      1_000,
+      intervalMs,
       setResidency);
     const stopNuma = frontendRuntime.sources.metricFields.subscribeSnapshot(
       { fields: numaFieldNames },
-      5_000,
+      intervalMs,
       setNumaFields);
     // 有效频率随拓扑视图订阅一次，弹窗只负责显示：订阅集合变化会让整条推送流重连。
     const stopFrequency = frontendRuntime.sources.metricFields.subscribeSnapshot(
       { fields: [effectiveFrequencyFieldName] },
-      1_000,
+      intervalMs,
       setFrequencyFields);
     onCleanup(() => {
       stopFrequency();

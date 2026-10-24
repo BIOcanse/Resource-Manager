@@ -5,6 +5,7 @@ using ResourceManager.App.Domain.Operations;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.Shared.Runtime;
+using Microsoft.Extensions.Logging;
 
 namespace ResourceManager.App.Infrastructure.Software;
 
@@ -12,7 +13,9 @@ public sealed class SoftwareOperationManager(
     IOptionalDependencyManager dependencyManager,
     IInstalledSoftwareInventory installedSoftwareInventory,
     IFileChangeTracker fileChangeTracker,
-    IInteractiveUserSessionBroker sessionBroker) : ISoftwareOperationManager
+    IInteractiveUserSessionBroker sessionBroker,
+    ISoftwareRegistryView? softwareRegistryView = null,
+    ILogger<SoftwareOperationManager>? logger = null) : ISoftwareOperationManager
 {
     private const string DependencyPrefix = "dependency:";
 
@@ -29,7 +32,21 @@ public sealed class SoftwareOperationManager(
         if (request.Id.StartsWith(DependencyPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var dependencyId = request.Id[DependencyPrefix.Length..];
-            return await CleanupDependencyRootAsync(dependencyId, cancellationToken);
+            var result = await CleanupDependencyRootAsync(dependencyId, cancellationToken);
+            if (softwareRegistryView is not null)
+            {
+                try
+                {
+                    _ = await softwareRegistryView.GetSoftwareAsync(caller?.WindowsSid, cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    logger?.LogWarning(exception,
+                        "Could not refresh software inventory after managed dependency cleanup {DependencyId}.",
+                        dependencyId);
+                }
+            }
+            return result;
         }
 
         if (request.Id.StartsWith("windows-installed:", StringComparison.OrdinalIgnoreCase))

@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
@@ -52,16 +53,9 @@ import type {
   ControlStateView
 } from "./controlTypes.ts";
 
-/**
- * 实际状态订多勤。
- *
- * 后端那一侧读取只返回当前值、不触发采样（采样是后台独立的一条路），
- * 所以订得勤一点也不会多碰一次硬件；这个间隔只决定界面多久刷新一次。
- */
-const ActualStateIntervalMs = 2000;
-
 export function ControlWorkspace(props: { onNotice: (message: string) => void }) {
   const runtime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
   const frontendWork = useFrontendWork();
   useFrontendVisibilityDemand("control.workspace", [frontendWorkIds.controlActual]);
   const visible = () => frontendWork.isNeeded(frontendWorkIds.controlActual);
@@ -158,9 +152,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const [actualSource, setActualSource] = createSignal<SourceSnapshot<ControlActualState> | null>(null);
   const actual = () => actualSource()?.data ?? null;
   createEffect(() => {
-    if (!visible()) { setActualSource(null); return; }
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!visible() || intervalMs === undefined) { setActualSource(null); return; }
     const unsubscribe = runtime.sources.controlActualState.subscribeSnapshot(
-      ActualStateIntervalMs,
+      intervalMs,
       setActualSource);
     onCleanup(() => { unsubscribe(); setActualSource(null); });
   });

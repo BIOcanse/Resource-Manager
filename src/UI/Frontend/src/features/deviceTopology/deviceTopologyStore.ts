@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import {
   createEffect,
   createMemo,
@@ -23,7 +24,6 @@ import {
   requestedDeviceTopologyPortId
 } from "./deviceTopologySelection";
 
-const subscriptionIntervalMilliseconds = 1_000;
 const initialDeviceTopologyState: DeviceTopologySnapshotState = {
   schemaVersion: "4.0.0",
   state: "warming",
@@ -47,17 +47,19 @@ export interface DeviceTopologyStoreView {
 
 export function useDeviceTopologyState(): DeviceTopologyStoreView {
   const runtime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
   const frontendWork = useFrontendWork();
   const [source, setSource] = createSignal<SourceSnapshot<DeviceTopologySnapshotState> | null>(null);
   const state = () => source()?.data ?? initialDeviceTopologyState;
 
   createEffect(() => {
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology)) {
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology) || intervalMs === undefined) {
       setSource(null);
       return;
     }
     const unsubscribe = runtime.sources.deviceTopology.subscribeSnapshot(
-      subscriptionIntervalMilliseconds,
+      intervalMs,
       setSource);
     onCleanup(() => { unsubscribe(); setSource(null); });
   });

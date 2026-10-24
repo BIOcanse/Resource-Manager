@@ -7,11 +7,11 @@ namespace ResourceManager.App.Application.Settings;
 public static class AppSettingsDefaults
 {
     public const string CurrentVersion = "1.0.28";
-    public const int MinLogicRefreshIntervalMs = 500;
-    public const int MaxLogicRefreshIntervalMs = 300_000;
-    public const int MonitorRefreshResponsiveIntervalMs = 1_000;
-    public const int ResourceTableRefreshResponsiveIntervalMs = 1_000;
-    public const int LocalSystemRefreshBalancedIntervalMs = 60_000;
+    public const int MinLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MinIntervalMs;
+    public const int MaxLogicRefreshIntervalMs = AppFrontendRefreshIntervalPolicy.MaxIntervalMs;
+    public const int MonitorRefreshResponsiveIntervalMs = AppFrontendRefreshIntervalPolicy.MonitorResponsiveIntervalMs;
+    public const int ResourceTableRefreshResponsiveIntervalMs = AppFrontendRefreshIntervalPolicy.ResourceTableResponsiveIntervalMs;
+    public const int LocalSystemRefreshBalancedIntervalMs = AppFrontendRefreshIntervalPolicy.LocalSystemBalancedIntervalMs;
     public const byte GpuOverflowUsagePercent = 95;
     public const byte GpuOverflowDedicatedMemoryPercent = 80;
     public const byte PhysicalMemoryAutomaticCleanupPercent = 6;
@@ -40,15 +40,9 @@ public static class AppSettingsDefaults
                 VirtualMemoryOptimizationTargetUsagePercent: VirtualMemoryOptimizationTargetUsagePercent,
                 GpuPerformanceUseCases: [AppGpuPerformanceUseCases.General],
                 SmartMonitoringMode: AppAdaptiveBooleanModes.Enabled,
-                MonitorRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Responsive,
-                    MonitorRefreshResponsiveIntervalMs),
-                ResourceTableRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Responsive,
-                    ResourceTableRefreshResponsiveIntervalMs),
-                LocalSystemRefreshIntervalMs: CreateLogicRefreshIntervalDefault(
-                    AppLogicRefreshIntervalPresets.Balanced,
-                    LocalSystemRefreshBalancedIntervalMs)),
+                MonitorRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.Monitor,
+                ResourceTableRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.ResourceTable,
+                LocalSystemRefreshIntervalMs: AppFrontendRefreshIntervalPolicy.Defaults.LocalSystem),
             new AppAppearanceSettings(
                 defaultAppearance.UiStyle,
                 defaultAppearance.Theme,

@@ -1,3 +1,4 @@
+import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { AlertTriangle, FolderOpen } from "lucide-solid";
 import { getDefaultGpuPlacementSoftwarePolicy } from "../api";
@@ -380,13 +381,15 @@ function GpuPlacementPolicySection(props: {
 }) {
   const frontendRuntime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
+  const readIntervals = useFrontendReadIntervals();
   const [cpuTopology, setCpuTopology] = createSignal<CpuTopologySnapshot | null>(null);
   createEffect(() => {
-    if (!frontendWork.frontendVisible()) {
+    const intervalMs = readIntervals.current()?.monitor;
+    if (!frontendWork.frontendVisible() || intervalMs === undefined) {
       setCpuTopology(null);
       return;
     }
-    const unsubscribe = frontendRuntime.sources.cpuTopology.subscribeSnapshot(60_000,
+    const unsubscribe = frontendRuntime.sources.cpuTopology.subscribeSnapshot(intervalMs,
       (snapshot) => setCpuTopology(snapshot.data));
     onCleanup(() => {
       unsubscribe();

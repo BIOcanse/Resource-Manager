@@ -364,7 +364,16 @@ export interface AppDebugSettings {
   hostManagerSmartCoordinatorPerformanceLogEnabled: boolean;
 }
 
+export type FrontendReadIntervals = Readonly<Record<AppLogicRefreshIntervalKey, number>>;
+export interface FrontendRefreshIntervals {
+  readonly foreground: FrontendReadIntervals;
+  readonly backgroundOptimized: FrontendReadIntervals;
+  readonly presets: Readonly<Record<AppLogicRefreshIntervalKey, Readonly<Record<AppLogicRefreshIntervalPreset, number>>>>;
+  readonly defaults: Readonly<Record<AppLogicRefreshIntervalKey, AppPresetNumericSetting>>;
+}
+
 export interface AppSettingsResult {
+  frontendRefreshIntervals?: FrontendRefreshIntervals;
   settings?: AppSettings;
   revision?: string;
   storagePath?: string;

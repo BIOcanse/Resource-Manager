@@ -1,5 +1,6 @@
 ﻿using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Domain.Components;
+using ResourceManager.App.Application.BrowserRuntimes;
 
 using ResourceManager.App.Domain.Messages;
 
@@ -61,6 +62,19 @@ public sealed partial class ComponentManager
         }
 
         var result = await dependencyManager.LaunchInstallerAsync(id, acknowledgeExternalTerms, versionChoice, cancellationToken, caller);
+        if (id.Equals(BrowserRuntimeCatalogIds.InstallComponentId, StringComparison.OrdinalIgnoreCase)
+            && browserRuntimeCatalog is not null)
+        {
+            try
+            {
+                _ = await browserRuntimeCatalog.GetSnapshotAsync(forceRefresh: true, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                logger?.LogWarning(exception,
+                    "Could not refresh browser runtime inventory after component install {ComponentId}.", id);
+            }
+        }
         var status = await GetStatusAsync(id, caller?.WindowsSid, cancellationToken);
         return new ComponentActionResult(
             id,

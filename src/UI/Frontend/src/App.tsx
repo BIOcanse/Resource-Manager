@@ -1,3 +1,4 @@
+import { FrontendReadIntervalsProvider } from "./app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
 import { useGlobalFeedback } from "./app/useGlobalFeedback";
 import { AppRoutes } from "./app/AppRoutes";
@@ -67,6 +68,10 @@ export default function App() {
     requestClient: frontendRuntime.requestClient
   });
   const management = createManagementStore({
+    activePage,
+    inventoryRevisionSource: frontendRuntime.sources.managementInventoryRevision,
+    inventoryActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementInventory),
+    browserRuntimesActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes),
     confirmDialog,
     showToast,
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled,
@@ -79,11 +84,12 @@ export default function App() {
     reportSource: frontendRuntime.sources.optimizationReports,
     statusSource: frontendRuntime.sources.smartCoordinatorStatus,
     statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
+    statusIntervalMs: () => pageRefresh.cpuRuntimePlan()?.monitor ?? null,
     reportsActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationReports),
     requestClient: frontendRuntime.requestClient
   });
-  // 刷新间隔的“自动调度”要看本程序的 CPU 档位和窗口是否在前台，这两样由刷新调度器持有，
-  // 所以它先于监控存储创建，监控按它算好的间隔订阅。
+  // 后端已展开刷新间隔；这里按本程序 CPU 档位和本地前台状态选择已发布的上下文。
+  // 调度器先于监控存储创建，所有读数消费者直接使用选中的间隔。
   const pageRefresh = usePageRefreshScheduler({
     operations: frontendRuntime.operationRegistry,
     activePage,
@@ -91,12 +97,7 @@ export default function App() {
     selfSchedulingSource: frontendRuntime.sources.selfScheduling,
     frontendWork,
     runtimeCapabilities,
-    performanceSettings: () => {
-      const loadState = settings.loadState();
-      return loadState === "ready" || loadState === "refreshing"
-        ? settings.settings().performance
-        : undefined;
-    },
+    refreshIntervals: settings.frontendRefreshIntervals,
     management: {
       activeSubpage: management.activeSubpage,
       refreshState: management.refreshState,
@@ -110,9 +111,9 @@ export default function App() {
     }
   });
   const metricSnapshotIntervalMs = createMemo(() =>
-    pageRefresh.cpuRuntimePlan().refreshIntervalMs.monitor);
+    pageRefresh.cpuRuntimePlan()?.monitor ?? null);
   const resourceTableIntervalMs = createMemo(() =>
-    pageRefresh.cpuRuntimePlan().refreshIntervalMs.resourceTable);
+    pageRefresh.cpuRuntimePlan()?.resourceTable ?? null);
   const monitor: MonitorStore = createMonitorStore({
     smartMonitoringEnabled: () => settings.settings().performance?.smartMonitoringMode === "enabled",
     onMetricDependenciesRequested: () => void management.refreshComponents(),
@@ -308,6 +309,7 @@ export default function App() {
 
   return (
     <FrontendWorkProvider controller={frontendWork}>
+      <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={pageRefresh.cpuRuntimePlan}>
       <>
       <AppShell
         activePage={activePage}
@@ -400,6 +402,7 @@ export default function App() {
       <ConfirmDialogHost request={confirmQueue()[0] ?? null} onResolve={resolveConfirmDialog} />
       <ToastHost items={toasts()} onDismiss={dismissToast} />
       </>
+      </FrontendReadIntervalsProvider>
     </FrontendWorkProvider>
   );
 }
