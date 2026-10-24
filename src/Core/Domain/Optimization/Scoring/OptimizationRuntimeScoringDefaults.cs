@@ -17,7 +17,6 @@ public static class OptimizationRuntimeScoringDefaults
             SoftwareKinds.HighPerformance => 85,
             SoftwareKinds.WindowsSystem or SoftwareKinds.WindowsComponent or SoftwareKinds.WindowsService => 90,
             SoftwareKinds.Adapted => 80,
-            SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeRoot => 55,
             SoftwareKinds.Controlled => 45,
             SoftwareKinds.Managed => 42,
             SoftwareKinds.Unattributed => 30,

@@ -27,7 +27,6 @@ public static class HostManagerTargetCapabilityClassifier
         {
             SoftwareKinds.Adapted => false,
             SoftwareKinds.WindowsSystem or SoftwareKinds.WindowsComponent or SoftwareKinds.WindowsService => false,
-            SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot => false,
             SoftwareKinds.Unattributed => false,
             _ => true
         };
@@ -46,7 +45,6 @@ public static class HostManagerTargetCapabilityClassifier
         {
             SoftwareKinds.Adapted => true,
             SoftwareKinds.WindowsSystem or SoftwareKinds.WindowsComponent or SoftwareKinds.WindowsService => false,
-            SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot => false,
             SoftwareKinds.Unattributed => false,
             _ => true
         };
