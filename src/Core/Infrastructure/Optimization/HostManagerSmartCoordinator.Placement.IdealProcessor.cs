@@ -11,6 +11,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private IReadOnlyList<HostManagerPlacementDesired> CreateIdealProcessorDesired(
+        IThreadIdealProcessorReadCycle idealReads,
         CpuTopologySnapshot topology, CompiledHardwareScorePlan hardwareScores,
         IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
         IReadOnlyList<HostManagerAutomaticCpuPlacement> hardPlacements,
@@ -23,7 +24,7 @@ public sealed partial class HostManagerSmartCoordinator
             && p.CanonicalCpuScore is >= 0 && p.Policy.CpuManualLockedPositionIds.Count == 0
             && p.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.AllCores, StringComparison.OrdinalIgnoreCase)))
         {
-            var threads = processPolicyWriter.ReadProcessThreadIdealProcessors(process.ProcessId, process.ProcessStartKey, maximumThreadCount);
+            var threads = idealReads.ReadProcessThreads(process.ProcessId, process.ProcessStartKey, maximumThreadCount);
             if (threads.Status != RecoveryReadStatus.Found || threads.Value is null || threads.Value.Count == 0) continue;
             var baseline = processPolicyWriter.ReadPlacementStateForRecovery(process.ProcessId,
                 OperatingSystem.IsWindowsVersionAtLeast(10) ? ProcessPlacementReadFields.DefaultCpuSets : ProcessPlacementReadFields.Affinity);
@@ -71,10 +72,14 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private HostManagerPlacementObservation ObserveIdealProcessor(
-        HostManagerAppliedPlacementReceipt placement, HostManagerAppliedRecord record, ulong receiptDigest, ulong previousDigest)
+        HostManagerAppliedPlacementReceipt placement, HostManagerAppliedRecord record, ulong receiptDigest, ulong previousDigest,
+        IThreadIdealProcessorReadCycle? idealReads = null)
     {
         if (!ThreadIdealProcessorPlacementRecord.TryRead(record, out var value)) return HostManagerPlacementObservation.Unchecked;
-        var read = processPolicyWriter.ReadThreadIdealProcessor(value.ProcessId, value.ProcessStartKey, value.ThreadId);
+        // Write/restore verification calls this without the planning context and must read afresh.
+        var read = idealReads is null
+            ? processPolicyWriter.ReadThreadIdealProcessor(value.ProcessId, value.ProcessStartKey, value.ThreadId)
+            : idealReads.ReadThread(value.ProcessId, value.ProcessStartKey, value.ThreadId);
         if (read.Status == RecoveryReadStatus.Unavailable) return HostManagerPlacementObservation.Unavailable(read.NativeErrorCode);
         if (read.Status != RecoveryReadStatus.Found || read.Value is not { } current || !value.Matches(current))
             return HostManagerPlacementObservation.NotFound(read.NativeErrorCode);

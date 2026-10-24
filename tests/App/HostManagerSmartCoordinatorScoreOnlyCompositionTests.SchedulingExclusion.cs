@@ -416,6 +416,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .GetMethod("CreateAutomaticPlacementDesiredAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(fixture.Coordinator,
             [
+                fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle(),
                 null, null, processes, new HostManagerAutomaticPlacementPlan([], []), existing,
                 CancellationToken.None, false, true, null, true, null, null, 0
             ])!;

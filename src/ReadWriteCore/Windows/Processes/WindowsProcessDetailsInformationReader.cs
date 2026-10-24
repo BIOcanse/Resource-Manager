@@ -226,9 +226,18 @@ internal static class WindowsProcessSystemThreadParser
 
     internal static bool TryParse(byte[] data, IReadOnlySet<int> selectedPids, WindowsProcessDetailsOptions options,
         out Dictionary<int, IReadOnlyList<WindowsProcessThreadState>> processes)
+        => TryParseCore(data, selectedPids, options, selectAll: false, out processes);
+
+    // Idle/System are not placement targets and can contain synthetic thread IDs (including zero).
+    internal static bool TryParsePlacementInventory(byte[] data, WindowsProcessDetailsOptions options,
+        out Dictionary<int, IReadOnlyList<WindowsProcessThreadState>> processes)
+        => TryParseCore(data, null, options, selectAll: true, out processes);
+
+    private static bool TryParseCore(byte[] data, IReadOnlySet<int>? selectedPids, WindowsProcessDetailsOptions options,
+        bool selectAll, out Dictionary<int, IReadOnlyList<WindowsProcessThreadState>> processes)
     {
         processes = [];
-        if (data is null || selectedPids is null || options is null || data.Length == 0
+        if (data is null || (!selectAll && selectedPids is null) || options is null || data.Length == 0
             || data.Length > options.MaximumSystemInformationBufferBytes) return false;
         var headerSize = Marshal.SizeOf<SystemProcessInformationHeader>();
         var threadSize = Marshal.SizeOf<SystemThreadInformation>();
@@ -254,7 +263,7 @@ internal static class WindowsProcessSystemThreadParser
 
                 var pidValue = PointerValue(header.UniqueProcessId);
                 if (pidValue <= uint.MaxValue && !seenPids.Add((uint)pidValue)) return false;
-                if (pidValue <= int.MaxValue && selectedPids.Contains((int)pidValue))
+                if (pidValue <= int.MaxValue && (selectAll ? pidValue > 4 : selectedPids!.Contains((int)pidValue)))
                 {
                     var threads = new List<WindowsProcessThreadState>(checked((int)header.NumberOfThreads));
                     var threadIds = new HashSet<uint>();

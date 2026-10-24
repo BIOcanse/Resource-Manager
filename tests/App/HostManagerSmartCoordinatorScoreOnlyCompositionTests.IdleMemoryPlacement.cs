@@ -37,7 +37,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using (priorRestore) priorRestore!.EnterPointOfNoReturn();
         var task = (Task<bool>)typeof(HostManagerSmartCoordinator).GetMethod("RunPreparedAutomaticPlacementCycleAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(fixture.Coordinator,
-                [admission, fixture.StateStore.Current, Array.Empty<HostManagerPlacementDesired>(), new[] { placement }, CancellationToken.None])!;
+                [admission, fixture.StateStore.Current, Array.Empty<HostManagerPlacementDesired>(), new[] { placement }, CancellationToken.None,
+                    fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle()])!;
         Assert.True(await task);
         Assert.Equal(record, Assert.Single(Assert.Single(fixture.StateStore.Current.AppliedPlacements).Records));
         Assert.Equal(1U, admission.NewPointOfNoReturnRemaining);
@@ -69,7 +70,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         admission.InitializeBudgets(1, 1);
         var task = (Task<bool>)typeof(HostManagerSmartCoordinator).GetMethod("RunPreparedAutomaticPlacementCycleAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(fixture.Coordinator,
-                [admission, fixture.StateStore.Current, Array.Empty<HostManagerPlacementDesired>(), new[] { placement }, CancellationToken.None])!;
+                [admission, fixture.StateStore.Current, Array.Empty<HostManagerPlacementDesired>(), new[] { placement }, CancellationToken.None,
+                    fixture.ProcessPolicyWriter.CreateThreadIdealProcessorReadCycle()])!;
         Assert.True(await task);
         Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
         Assert.Equal(1U, admission.NewPointOfNoReturnRemaining);

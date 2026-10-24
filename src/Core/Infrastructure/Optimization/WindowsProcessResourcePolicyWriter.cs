@@ -18,6 +18,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
     {
         this.nativeBatchExecutor = nativeBatchExecutor
             ?? throw new ArgumentNullException(nameof(nativeBatchExecutor));
+        readIdealParent = ReadProcessInstanceForRecovery;
     }
 
     public DateTimeOffset? TryReadProcessStartedAt(int processId)
@@ -356,40 +357,43 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
                 return null;
             }
 
-            _ = NativeMethods.GetThreadSelectedCpuSets(handle, IntPtr.Zero, 0, out var requiredCount);
-            if (requiredCount == 0)
-            {
-                return new ThreadCpuSetPolicySnapshot(processId, threadId, createdAt, []);
-            }
-
-            var buffer = Marshal.AllocHGlobal(checked((int)requiredCount * sizeof(uint)));
-            try
-            {
-                if (!NativeMethods.GetThreadSelectedCpuSets(handle, buffer, requiredCount, out var returnedCount))
-                {
-                    return null;
-                }
-
-                var ids = new uint[returnedCount];
-                for (var index = 0; index < ids.Length; index++)
-                {
-                    ids[index] = unchecked((uint)Marshal.ReadInt32(buffer, index * sizeof(uint)));
-                }
-
-                return new ThreadCpuSetPolicySnapshot(
-                    processId,
-                    threadId,
-                    createdAt,
-                    ids.Distinct().Order().ToArray());
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
+            var ids = TryReadThreadSelectedCpuSetsOnHandle(handle);
+            return ids is null ? null : new ThreadCpuSetPolicySnapshot(processId, threadId, createdAt, ids);
         }
         finally
         {
             NativeMethods.CloseHandle(handle);
+        }
+    }
+
+    private static IReadOnlyList<uint>? TryReadThreadSelectedCpuSetsOnHandle(IntPtr handle)
+    {
+        _ = NativeMethods.GetThreadSelectedCpuSets(handle, IntPtr.Zero, 0, out var requiredCount);
+        if (requiredCount == 0)
+        {
+            return [];
+        }
+
+        var buffer = Marshal.AllocHGlobal(checked((int)requiredCount * sizeof(uint)));
+        try
+        {
+            if (!NativeMethods.GetThreadSelectedCpuSets(handle, buffer, requiredCount, out var returnedCount)
+                || returnedCount > requiredCount)
+            {
+                return null;
+            }
+
+            var ids = new uint[returnedCount];
+            for (var index = 0; index < ids.Length; index++)
+            {
+                ids[index] = unchecked((uint)Marshal.ReadInt32(buffer, index * sizeof(uint)));
+            }
+
+            return ids.Distinct().Order().ToArray();
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
 

@@ -6973,6 +6973,19 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal Func<int, ulong, int, RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>>? IdealThreadsReadHandler { get; set; }
         internal Func<int, ulong, int, RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>>? IdealReadHandler { get; set; }
         internal Func<ThreadIdealProcessorPolicySnapshot, ThreadIdealProcessor, ProcessResourcePolicyWriteResult>? IdealWriteHandler { get; set; }
+        internal int IdealReadCycles { get; private set; }
+        public IThreadIdealProcessorReadCycle CreateThreadIdealProcessorReadCycle()
+        {
+            IdealReadCycles++;
+            return new RecordingIdealReadCycle(this);
+        }
+        private sealed class RecordingIdealReadCycle(RecordingProcessPolicyWriter owner) : IThreadIdealProcessorReadCycle
+        {
+            public RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>> ReadProcessThreads(int pid, ulong key, int maximum)
+                => owner.ReadProcessThreadIdealProcessors(pid, key, maximum);
+            public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> ReadThread(int pid, ulong key, int tid)
+                => owner.ReadThreadIdealProcessor(pid, key, tid);
+        }
         public RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>> ReadProcessThreadIdealProcessors(int pid, ulong key, int maximum)
         {
             TotalCalls++;

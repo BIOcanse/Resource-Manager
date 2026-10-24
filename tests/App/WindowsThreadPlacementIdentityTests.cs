@@ -8,6 +8,23 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsThreadPlacementIdentityTests
 {
+    [Fact]
+    public void BoundedPlacementInventoryReadsOnlyThisTestProcessesThreadFacts()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        var start = checked((ulong)process.StartTime.ToFileTime());
+        var writer = new WindowsProcessResourcePolicyWriter(new NativeProcessPolicyBatchExecutor(NativeProcessPolicyBatchAbi.Version, 256));
+        var read = writer.ReadProcessThreadIdealProcessors(process.Id, start, 262144);
+        Assert.Equal(RecoveryReadStatus.Found, read.Status);
+        Assert.NotEmpty(read.Value!);
+        Assert.All(read.Value!, thread =>
+        {
+            Assert.Equal(process.Id, thread.ProcessId);
+            Assert.Equal(start, thread.ProcessStartKey);
+            Assert.True(thread.ThreadStartKey >= start);
+        });
+    }
+
     [Theory]
     [InlineData(0L)]
     [InlineData(1L)] [InlineData(10_000L)] [InlineData(5_000_000L)] [InlineData(10_000_000L)]
