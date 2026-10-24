@@ -244,7 +244,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         // The provider census remains complete above. Host scheduling deliberately
         // admits only records whose runtime-state observation is current.
-        var schedulableProcesses = processFacts.ProjectValidFacts(fixture.MetricSampler.Snapshot.GpuInventory).Processes
+        var projectedProcesses = processFacts.ProjectValidFacts(fixture.MetricSampler.Snapshot.GpuInventory).Processes;
+        var schedulableProcesses = projectedProcesses
             .Where(static fact => fact.ValidMetricMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState))
             .ToArray();
@@ -310,7 +311,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal("manual", Assert.IsType<string>(record.Properties["trigger"]));
         Assert.True(Assert.IsType<bool>(record.Properties["scoreOnly"]));
         var counts = Assert.IsType<Dictionary<string, object?>>(record.Properties["counts"]);
-        Assert.Equal(schedulableFacts.Processes.Count, Assert.IsType<int>(counts["sampleProcesses"]));
+        // The sample keeps every identified process; a process without a current runtime state is only left out of scheduling.
+        Assert.Equal(projectedProcesses.Count, Assert.IsType<int>(counts["sampleProcesses"]));
         Assert.InRange(
             Assert.IsType<int>(counts["scoredProcesses"]),
             1,
