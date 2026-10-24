@@ -26,6 +26,12 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         "UserData", "GpuPlacement", "External");
     private readonly object gate = new();
     private Task? activeCompletion;
+    private readonly RendererAbsenceCache? rendererAbsenceCache;
+
+    internal WindowsExternalGpuPlacementRuntime(IHostEnvironment environment, ExternalGpuResidentObservation observations,
+        ILogger<WindowsExternalGpuPlacementRuntime> logger, IHostManagerRollbackStateStore stateStore,
+        RendererAbsenceCache absenceCache) : this(environment, observations, logger, stateStore)
+        => rendererAbsenceCache = absenceCache;
 
     public bool HasUnreleasedControl
     {
@@ -58,9 +64,18 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
 
     public ExternalGpuPlacementPlan? Prepare(IReadOnlyList<GpuPlacementProcessInstance> processes)
     {
+        using var reads = CreateQualificationReadCycle();
+        return Prepare(processes, reads);
+    }
+
+    internal RendererQualificationReadCycle CreateQualificationReadCycle()
+        => new(WindowsRendererQualificationNativeApi.Instance);
+
+    internal ExternalGpuPlacementPlan? Prepare(IReadOnlyList<GpuPlacementProcessInstance> processes, RendererQualificationReadCycle reads)
+    {
         RetireFinishedAttempts();
         if (HasUnreleasedControl) return null;
-        var eligible = processes.Select(ReadPlan).OfType<ExternalGpuPlacementPlan>().ToArray();
+        var eligible = processes.Select(process => ReadPlan(process, reads, useAbsenceCache: true)).OfType<ExternalGpuPlacementPlan>().ToArray();
         return eligible.Length == 1 && !HasFailedAttempt(evidenceRoot, eligible[0].Root) ? eligible[0] : null;
     }
 
@@ -79,17 +94,62 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
 
     private ExternalGpuPlacementPlan? ReadPlan(GpuPlacementProcessInstance process)
     {
-        var clients = ConfirmRenderer(process);
+        using var reads = CreateQualificationReadCycle();
+        return ReadPlan(process, reads, useAbsenceCache: false);
+    }
+
+    private ExternalGpuPlacementPlan? ReadPlan(GpuPlacementProcessInstance process, RendererQualificationReadCycle reads, bool useAbsenceCache)
+        => ReadQualifiedRendererPlan(process, reads, ConfirmRenderer, File.Exists(executable), File.Exists(rendererExecutable),
+            useAbsenceCache ? rendererAbsenceCache : null);
+
+    internal static ExternalGpuPlacementPlan? ReadQualifiedRendererPlan(GpuPlacementProcessInstance process,
+        RendererQualificationReadCycle reads,
+        Func<GpuPlacementProcessInstance, IReadOnlyList<WindowsGpuRendererConfirmation.AdapterClient>> confirmRenderer,
+        bool chromiumAvailable, bool qtAvailable, RendererAbsenceCache? absenceCache)
+    {
+        reads.ReadPlanCount++;
+        if (!chromiumAvailable && !qtAvailable) return null;
+        var absence = absenceCache?.Read(process);
+        if (absence is { IsAbsent: true }) { reads.NegativeHits++; return null; }
+        var publicationObservation = absence is { } observed ? reads.RememberAbsenceObservation(process, observed) : (RendererAbsenceCache.Observation?)null;
+        var clients = confirmRenderer(process);
         var apis = clients.Where(client => client.GraphicsApi is not null)
             .Aggregate((GpuGraphicsApi)0, (all, client) => all | client.GraphicsApi!.Value);
         if (apis == 0) return null;
-        if (File.Exists(executable) && WindowsGpuRendererConfirmation.ConfirmsOnlyD3D11(clients)
-            && ChromiumGpuProcessIdentity.Read(process, apis) is { } chromium)
+        reads.ConfirmedApiCount++;
+        var plan = ReadRendererPlan(process, clients, chromiumAvailable, qtAvailable, reads);
+        if (plan is null && publicationObservation is { } observation && HasNoRendererMarkers(process, reads))
+            absenceCache!.PublishAbsent(process, observation);
+        return plan;
+    }
+
+    internal static ExternalGpuPlacementPlan? ReadRendererPlan(GpuPlacementProcessInstance process,
+        IReadOnlyList<WindowsGpuRendererConfirmation.AdapterClient> clients,
+        bool chromiumAvailable, bool qtAvailable, RendererQualificationReadCycle reads)
+    {
+        var apis = clients.Where(client => client.GraphicsApi is not null)
+            .Aggregate((GpuGraphicsApi)0, (all, client) => all | client.GraphicsApi!.Value);
+        if (apis == 0) return null;
+        if (chromiumAvailable && WindowsGpuRendererConfirmation.ConfirmsOnlyD3D11(clients)
+            && ChromiumGpuProcessIdentity.Read(process, apis, reads) is { } chromium)
             return chromium;
-        if (!File.Exists(rendererExecutable)) return null;
-        var qt = QtQuickGpuProcessIdentity.Read(process);
+        if (!qtAvailable) return null;
+        var qt = QtQuickGpuProcessIdentity.Read(process, reads);
         var required = qt?.Renderer == ExternalGpuRenderer.QtQuickVulkan ? GpuGraphicsApi.Vulkan : GpuGraphicsApi.D3D12;
         return qt is not null && apis.HasFlag(required) ? qt : null;
+    }
+
+    internal static bool HasNoRendererMarkers(GpuPlacementProcessInstance identity, RendererQualificationReadCycle reads)
+    {
+        try
+        {
+            var process = reads.Get(identity);
+            return process?.Modules() is { } modules
+                && !modules.Any(module => module.Name.Equals("Qt6Quick.dll", StringComparison.OrdinalIgnoreCase))
+                && !process.Arguments().Contains("--type=gpu-process", StringComparer.Ordinal);
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException or OverflowException
+            or IOException or UnauthorizedAccessException) { return false; }
     }
 
     internal static bool HasFailedAttempt(string root, GpuPlacementProcessInstance browser)

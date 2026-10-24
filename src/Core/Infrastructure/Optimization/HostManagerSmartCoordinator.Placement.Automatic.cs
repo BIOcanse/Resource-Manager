@@ -85,6 +85,8 @@ public sealed partial class HostManagerSmartCoordinator
                 cpuPlacementEnabled,
                 gpuPlacementEnabled,
                 cpuReservations);
+            logger.LogDebug("Automatic GPU placement planned {GpuIntentCount} GPU intents from {ProcessCount} process facts after route preflight.",
+                planned.Gpu.Count, processes.Count);
             fullDesired = await CreateAutomaticPlacementDesiredAsync(
                 idealReads,
                 topology,

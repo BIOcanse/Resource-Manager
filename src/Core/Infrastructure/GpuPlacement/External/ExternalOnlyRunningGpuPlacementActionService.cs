@@ -18,8 +18,39 @@ public sealed class ExternalOnlyRunningGpuPlacementActionService(
     public bool HasUnreleasedExternalControl => runtime.HasUnreleasedControl;
     public Task RecoverExternalControlAsync(CancellationToken cancellationToken) => runtime.RecoverAsync(cancellationToken);
 
+    public IRunningGpuPlacementPreparationCycle CreatePreparationReadCycle()
+        => new PreparationCycle(this, runtime.CreateQualificationReadCycle());
+
+    private sealed class PreparationCycle(ExternalOnlyRunningGpuPlacementActionService owner, RendererQualificationReadCycle reads)
+        : IRunningGpuPlacementPreparationCycle
+    {
+        private int disposed;
+        public Task<RunningGpuPlacementPreparation> PrepareAsync(RunningGpuPlacementActionRequest request, CancellationToken token)
+            => owner.PrepareAsync(request, token, reads);
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            try { reads.Dispose(); }
+            finally
+            {
+                owner.ReportPreparationReads(reads);
+            }
+        }
+    }
+
+    private void ReportPreparationReads(RendererQualificationReadCycle reads)
+        => logger?.LogDebug("External renderer preparation pass: {Candidates} ReadPlan calls, {ConfirmedApis} confirmed API candidates, {ModuleReads} module inventories, {NegativeHits} absent-renderer cache hits.",
+            reads.ReadPlanCount, reads.ConfirmedApiCount, reads.ModuleReads, reads.NegativeHits);
+
     public Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken)
+    {
+        using var cycle = CreatePreparationReadCycle();
+        return cycle.PrepareAsync(request, cancellationToken);
+    }
+
+    private Task<RunningGpuPlacementPreparation> PrepareAsync(
+        RunningGpuPlacementActionRequest request, CancellationToken cancellationToken, RendererQualificationReadCycle reads)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
@@ -35,7 +66,7 @@ public sealed class ExternalOnlyRunningGpuPlacementActionService(
         var allowed = processes.Where(process => policy.Resolve(request.SoftwareId, request.DisplayName, request.SoftwareKind,
             JsonGpuPlacementProcessHistoryStore.BuildProcessKey(process.ProcessName, process.ExecutablePath))
             .AcceptsExternalRuntimeGpuScheduling()).ToArray();
-        var external = runtime.Prepare(allowed);
+        var external = runtime.Prepare(allowed, reads);
         if (external is null)
             return Task.FromResult(new RunningGpuPlacementPreparation(null,
                 "No confirmed external renderer route is available for this process."));

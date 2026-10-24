@@ -6,6 +6,8 @@ namespace ResourceManager.App.Application.GpuPlacement;
 
 public interface IRunningGpuPlacementActionService
 {
+    IRunningGpuPlacementPreparationCycle CreatePreparationReadCycle()
+        => new DelegatingGpuPlacementPreparationCycle(this);
     bool HasUnreleasedExternalControl => false;
     void ReconcileExitedProcessInstances(
         SchedulingProcessFactSnapshot processFacts,
@@ -25,6 +27,19 @@ public interface IRunningGpuPlacementActionService
 
     Task<RunningGpuPlacementActionResult> TryApplyAsync(
         RunningGpuPlacementActionPlan plan, RunningGpuPlacementExecution execution, CancellationToken cancellationToken);
+}
+
+/// <summary>One caller-owned route inspection pass. Execution never borrows its read facts.</summary>
+public interface IRunningGpuPlacementPreparationCycle : IDisposable
+{
+    Task<RunningGpuPlacementPreparation> PrepareAsync(RunningGpuPlacementActionRequest request, CancellationToken cancellationToken);
+}
+
+internal sealed class DelegatingGpuPlacementPreparationCycle(IRunningGpuPlacementActionService owner) : IRunningGpuPlacementPreparationCycle
+{
+    public Task<RunningGpuPlacementPreparation> PrepareAsync(RunningGpuPlacementActionRequest request, CancellationToken token)
+        => owner.PrepareAsync(request, token);
+    public void Dispose() { }
 }
 
 public sealed record RunningGpuPlacementExecution(
