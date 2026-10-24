@@ -199,10 +199,20 @@ public sealed class RendererQualificationReadCycleTests
         var basic = new WindowsProcessBasicMetricReader();
         var start = basic.ReadCurrentCreationFileTime(Environment.ProcessId)!.Value;
         var path = basic.Read(Environment.ProcessId, start, ProcessMetricReadMask.ImagePath).ImagePath!;
+        // The test host loads and unloads modules while other tests run, and the reader reports a table that
+        // changed during enumeration as unavailable. A fresh read cycle reads the table again.
+        IReadOnlyList<RendererModuleName>? modules = null;
+        var attempts = 0;
+        while (modules is null && attempts++ < 5)
+        {
+            using var attempt = new RendererQualificationReadCycle(WindowsRendererQualificationNativeApi.Instance);
+            var attemptProcess = attempt.Get(new GpuPlacementProcessInstance(Environment.ProcessId, (ulong)start, "test", path));
+            Assert.NotNull(attemptProcess);
+            modules = attemptProcess.Modules();
+        }
+        Assert.NotEmpty(Assert.IsAssignableFrom<IReadOnlyList<RendererModuleName>>(modules));
         using var reads = new RendererQualificationReadCycle(WindowsRendererQualificationNativeApi.Instance);
-        var process = reads.Get(new GpuPlacementProcessInstance(Environment.ProcessId, (ulong)start, "test", path));
-        Assert.NotNull(process);
-        Assert.NotEmpty(process.Modules()!);
+        Assert.NotNull(reads.Get(new GpuPlacementProcessInstance(Environment.ProcessId, (ulong)start, "test", path)));
         Assert.Null(reads.Get(new GpuPlacementProcessInstance(Environment.ProcessId, (ulong)start + 1, "test", path)));
         Assert.Null(reads.Get(new GpuPlacementProcessInstance(Environment.ProcessId, (ulong)start, "test", path + ".wrong")));
         Assert.Null(QtQuickGpuProcessIdentity.Read(new(Environment.ProcessId, (ulong)start, "test", path), reads));
