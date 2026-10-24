@@ -117,37 +117,11 @@ internal sealed partial class HostManagerTransactionJournalRuntime
         string relativePath,
         string parameterName)
     {
-        if (string.IsNullOrWhiteSpace(relativePath) ||
-            Path.IsPathRooted(relativePath) ||
-            relativePath.Contains('\\') ||
-            relativePath.Length >= 2 && char.IsAsciiLetter(relativePath[0]) && relativePath[1] == ':')
+        try
         {
-            throw new ArgumentException(
-                "The compiled transaction-journal path must be a canonical relative path.",
-                parameterName);
+            return HostManagerDurableStorePaths.ResolveRelativePath(root, relativePath);
         }
-
-        var segments = relativePath.Split('/', StringSplitOptions.None);
-        if (segments.Any(static segment =>
-                string.IsNullOrEmpty(segment) || segment is "." or ".."))
-        {
-            throw new ArgumentException(
-                "The compiled transaction-journal path contains an invalid segment.",
-                parameterName);
-        }
-
-        var resolved = Path.GetFullPath(Path.Combine(root, Path.Combine(segments)));
-        var rootPrefix = Path.EndsInDirectorySeparator(root)
-            ? root
-            : root + Path.DirectorySeparatorChar;
-        if (!resolved.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException(
-                "The compiled transaction-journal path escapes the Host Manager data root.",
-                parameterName);
-        }
-
-        return resolved;
+        catch (InvalidDataException exception) { throw new ArgumentException(exception.Message, parameterName, exception); }
     }
 
     private static bool PathsOverlap(string first, string second)

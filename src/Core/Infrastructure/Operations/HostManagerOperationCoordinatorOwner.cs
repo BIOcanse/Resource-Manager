@@ -81,10 +81,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
         this.deployment = deployment;
         this.effectRouter = effectRouter;
         this.logger = logger;
-        hostManagerDataRoot = Path.GetFullPath(Path.Combine(
-            PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-            "UserData",
-            "HostManager"));
+        hostManagerDataRoot = Path.Combine(
+            ResourceManager.App.Infrastructure.Optimization.HostManagerDurableStorePaths.ResolveRuntimeDataRoot(
+                PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath)), "HostManager");
     }
 
     public HostManagerOperationSnapshot? Get(string operationId)

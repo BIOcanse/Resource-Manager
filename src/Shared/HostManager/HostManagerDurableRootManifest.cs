@@ -212,6 +212,42 @@ internal sealed class HostManagerDurableRootManifest
     internal void ValidateExistingCanonical(ReadOnlySpan<byte> canonicalImage)
         => ValidateCanonical(canonicalImage, allowAdoption: false);
 
+    // A transfer carries an interrupted transition unchanged. The runtime owner
+    // will reconcile it using the same prior/next canonical digest rules.
+    internal static string ValidateForTransfer(string canonicalPath, string? transferManifestPath = null)
+    {
+        var manifestPath = transferManifestPath ?? ResolveAdjacentManifestPath(canonicalPath);
+        byte[] image;
+        using (var file = File.OpenRead(manifestPath))
+        {
+            if (file.Length is not ManifestSize and not LegacyManifestSize)
+                throw new InvalidDataException("Invalid transferred durable root manifest length.");
+            image = new byte[(int)file.Length];
+            file.ReadExactly(image);
+        }
+        string[] kinds = ["transaction-journal", "applied-ownership", "operation-coordinator",
+            "rollback-state", "memory-cleanup-attempt-journal"];
+        var kind = kinds.SingleOrDefault(value => image.AsSpan(16, 32).SequenceEqual(
+            SHA256.HashData(Encoding.UTF8.GetBytes(value))))
+            ?? throw new InvalidDataException("Unknown transferred Host Manager durable store.");
+        var store = new HostManagerDurableRootManifest(canonicalPath, manifestPath, kind,
+            WindowsHostManagerDurableRootManifestCommitter.Instance);
+        var manifest = store.Read(out _, migrateLegacy: false)!;
+        if (!File.Exists(canonicalPath))
+        {
+            if (manifest.State != StateInitializing && !(manifest.State == StatePending
+                    && IsZeroDigest(manifest.CanonicalSha256)))
+                throw new InvalidDataException("A transferred durable root lost its canonical file.");
+            return kind;
+        }
+        using var stream = new FileStream(canonicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var digest = SHA256.HashData(stream);
+        if (manifest.State == StateInitializing || DigestsEqual(digest, manifest.CanonicalSha256)
+            || manifest.State == StatePending && DigestsEqual(digest, manifest.PendingCanonicalSha256))
+            return kind;
+        throw new InvalidDataException("Transferred durable root does not match its canonical file.");
+    }
+
     private void ValidateCanonical(
         ReadOnlySpan<byte> canonicalImage,
         bool allowAdoption)
@@ -305,7 +341,7 @@ internal sealed class HostManagerDurableRootManifest
     private ManifestState? Read()
         => Read(out _);
 
-    private ManifestState? Read(out byte[]? image)
+    private ManifestState? Read(out byte[]? image, bool migrateLegacy = true)
     {
         image = null;
         FileStream stream;
@@ -345,7 +381,7 @@ internal sealed class HostManagerDurableRootManifest
         if (image.Length == LegacyManifestSize)
         {
             var legacyState = DecodeLegacy(image);
-            image = Write(legacyState);
+            if (migrateLegacy) image = Write(legacyState);
             return legacyState;
         }
 

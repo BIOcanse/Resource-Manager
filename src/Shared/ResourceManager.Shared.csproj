@@ -4,10 +4,16 @@
     <AssemblyName>ResourceManager.Shared</AssemblyName>
     <RootNamespace>ResourceManager.Shared</RootNamespace>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="ResourceManager" />
+    <InternalsVisibleTo Include="ResourceManager.Updater.Core" />
+    <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
     <EmbeddedResource Include="Localization\ToolLocales\*.json" />
     <EmbeddedResource Include="Appearance\ui-styles.json" />
+    <EmbeddedResource Include="..\Core\Configuration\HostManager\default.json"
+                      LogicalName="ResourceManager.Shared.HostManager.default.json" />
   </ItemGroup>
 </Project>

@@ -12,8 +12,6 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
 {
     internal static readonly TimeSpan DefaultCheckpointInterval = TimeSpan.FromMinutes(1);
     private const string DurableStoreKind = "rollback-state";
-    private const string StorageGenerationDirectory = "generation-00000001";
-    private const string CanonicalFileName = "rollback-state.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -714,21 +712,13 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         var normalizedStableRoot = Path.GetFullPath(stableInstallRoot);
         var packageRoot = Path.GetFullPath(
             PackagePathResolver.ResolvePackageRoot(contentRootPath));
-        var rollbackRoot = Path.GetFullPath(Path.Combine(
-            normalizedStableRoot,
-            "UserData",
-            "HostManager",
-            "RollbackState"));
-        var canonicalPath = Path.GetFullPath(Path.Combine(
-            rollbackRoot,
-            StorageGenerationDirectory,
-            CanonicalFileName));
+        var storePaths = HostManagerDurableStorePaths.ResolveRollbackState(normalizedStableRoot);
+        var rollbackRoot = Path.GetDirectoryName(storePaths.ManifestPath)!;
+        var canonicalPath = storePaths.CanonicalPath;
         var ownerLeasePath = Path.Combine(
             rollbackRoot,
             "rollback-state.owner.lock");
-        var rootManifestPath = Path.Combine(
-            rollbackRoot,
-            "rollback-state.root.manifest");
+        var rootManifestPath = storePaths.ManifestPath;
         var legacyPaths = new[]
             {
                 Path.Combine(

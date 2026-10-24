@@ -398,7 +398,7 @@ internal sealed class HostManagerAuthorityRetirementManager : IDisposable
             Path.GetFullPath(stableInstallRoot));
         return new HostManagerAuthorityRetirementPaths(
             normalizedStableRoot,
-            Path.GetFullPath(Path.Combine(normalizedStableRoot, "UserData")),
+            HostManagerDurableStorePaths.ResolveRuntimeDataRoot(normalizedStableRoot),
             Path.GetFullPath(Path.Combine(
                 normalizedStableRoot,
                 "UserData",

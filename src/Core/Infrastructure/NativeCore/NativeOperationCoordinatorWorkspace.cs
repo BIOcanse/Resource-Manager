@@ -6,10 +6,6 @@ using ResourceManager.App.Domain.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.NativeCore;
 
-internal sealed record NativeOperationCanonicalImage(
-    NativeOperationPersistenceHeader Header,
-    NativeOperationOutput[] Records);
-
 internal sealed record NativeOperationPlanBatch(
     NativeOperationPlanOutput Plan,
     NativeOperationActionOutput[] Actions);

@@ -500,32 +500,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
     }
 
     private string ResolveLedgerPath(string relativePath)
-    {
-        var dataRoot = retirements.DataRoot;
-        if (string.IsNullOrWhiteSpace(relativePath) ||
-            Path.IsPathRooted(relativePath) ||
-            relativePath.Contains('\\'))
-        {
-            throw new InvalidDataException(
-                "The applied-ownership ledger path must be a canonical relative path.");
-        }
-        var segments = relativePath.Split('/', StringSplitOptions.None);
-        if (segments.Any(static segment => string.IsNullOrEmpty(segment) || segment is "." or ".."))
-        {
-            throw new InvalidDataException(
-                "The applied-ownership ledger path contains an invalid segment.");
-        }
-        var resolved = Path.GetFullPath(Path.Combine(dataRoot, Path.Combine(segments)));
-        var prefix = Path.EndsInDirectorySeparator(dataRoot)
-            ? dataRoot
-            : dataRoot + Path.DirectorySeparatorChar;
-        if (!resolved.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException(
-                "The applied-ownership ledger path escapes the Host Manager data root.");
-        }
-        return resolved;
-    }
+        => HostManagerDurableStorePaths.ResolveRelativePath(retirements.DataRoot, relativePath);
 
     private static void ValidateCapacity(
         NativeAppliedOwnershipCapacity capacity,

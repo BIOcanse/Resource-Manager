@@ -3,10 +3,6 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
-internal readonly record struct HostManagerComputeProcessIdentity(
-    int ProcessId,
-    ulong ProcessStartKey);
-
 internal readonly record struct HostManagerComputeRuntimeFact(
     NativeComputeScoringRuntimeState RuntimeState,
     double CpuPolicyMultiplier,

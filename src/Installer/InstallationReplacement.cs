@@ -41,7 +41,7 @@ internal sealed class InstallationReplacement(UninstallationPlan previous, IInst
             || child.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    internal void Run(string preparedRoot, Action installPrepared)
+    internal void Run(string preparedRoot, Action installPrepared, string? finalInstallRoot = null)
     {
         runtime.RequireOwned();
         var stopped = false;
@@ -56,7 +56,7 @@ internal sealed class InstallationReplacement(UninstallationPlan previous, IInst
                 throw new InvalidOperationException("Recover the interrupted update before reinstalling.");
             stopped = true; // Stop can fail after stopping part of the product.
             runtime.StopProduct();
-            PackageSwitchTransaction.CopyUserData(previous.Root, preparedRoot);
+            PackageSwitchTransaction.CopyUserData(previous.Root, preparedRoot, finalInstallRoot: finalInstallRoot);
             UpdatePlan.CheckCompatibility(preparedRoot, preparedRoot);
             PackageUserDirectoryAccess.Prepare(preparedRoot);
             runtime.RequireOwned();

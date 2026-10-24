@@ -2,8 +2,10 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.Json;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Optimization;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
@@ -27,6 +29,28 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
     private const uint ReceiptCatalogVersion = 1;
     private const int PayloadDescriptorSize = 128;
     private const int ReceiptSize = 208;
+
+    internal static bool HasOutstandingObligations(string canonicalPath)
+    {
+        using var profile = JsonDocument.Parse(HostManagerDurableStorePaths.ReadDefaultProfileBytes());
+        var capacity = profile.RootElement.GetProperty("host_recreate").GetProperty("operation_coordinator")
+            .GetProperty("capacity").Deserialize<CompiledHostManagerOperationCoordinatorCapacityPlan>(
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })
+            ?? throw new InvalidDataException("The operation coordinator capacity is missing.");
+        if (!capacity.IsPublished) throw new InvalidDataException("The operation coordinator capacity is invalid.");
+        using var stream = new FileStream(canonicalPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (stream.Length <= 0 || (ulong)stream.Length > capacity.MaximumEnvelopeByteCount || stream.Length > int.MaxValue)
+            throw new InvalidDataException("The operation canonical envelope length is invalid.");
+        var image = new byte[(int)stream.Length];
+        stream.ReadExactly(image);
+        var envelope = Decode(image, capacity, ulong.MaxValue);
+        return HasOutstandingObligations(envelope);
+    }
+
+    internal static bool HasOutstandingObligations(HostManagerOperationCanonicalEnvelope envelope)
+        => envelope.NativeImage.Records.Any(record => (NativeOperationState)record.State is not
+                (NativeOperationState.Succeeded or NativeOperationState.Failed or NativeOperationState.Canceled))
+            || envelope.Receipts.HasOutstandingObligations;
 
     internal static byte[] Encode(
         HostManagerOperationCanonicalEnvelope source,
@@ -483,7 +507,7 @@ internal static class HostManagerOperationCanonicalEnvelopeCodec
                 || expectedBefore.SessionInstanceId != receipt.SessionInstanceId
                 || expectedBefore.OperationId != receipt.OperationId
                 || expectedBefore.AttemptToken != receipt.AttemptToken
-                || HostManagerOperationRequestCodec.DecodeEffectExpectedBefore(
+                || HostManagerOperationEffectEvidenceCodec.DecodeEffectExpectedBefore(
                     expectedBefore.Payload) != record.RequestHandle)
             {
                 throw new InvalidDataException(

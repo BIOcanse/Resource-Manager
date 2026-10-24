@@ -13,6 +13,11 @@ public sealed partial class FrontendSessionCredentialHostedService
     {
         var operation = new byte[1];
         await pipe.ReadExactlyAsync(operation, cancellationToken);
+        if (operation[0] == NativeUiOpenSessionContract.OpenOperation)
+        {
+            await RespondToLauncherAsync(pipe, expectedSession, expectedSid, expectedFrontend, cancellationToken);
+            return;
+        }
         if (operation[0] == FrontendSessionCredentialContract.ProtocolVersion)
         {
             await RespondToFrontendAsync(pipe, expectedSession, expectedSid, expectedFrontend, cancellationToken);

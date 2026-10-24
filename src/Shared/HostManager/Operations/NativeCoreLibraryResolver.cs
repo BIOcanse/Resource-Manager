@@ -11,9 +11,10 @@ internal static class NativeCoreLibraryResolver
 
     [ModuleInitializer]
     internal static void Register()
-        => NativeLibrary.SetDllImportResolver(
-            typeof(NativeCoreLibraryResolver).Assembly,
-            Resolve);
+        => RegisterFor(typeof(NativeCoreLibraryResolver).Assembly);
+
+    internal static void RegisterFor(Assembly assembly)
+        => NativeLibrary.SetDllImportResolver(assembly, Resolve);
 
     internal static string GetCanonicalPath()
         => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FileName));

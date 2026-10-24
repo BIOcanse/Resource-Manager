@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+using ResourceManager.App.Infrastructure.Optimization;
 
 namespace ResourceManager.Shared.Packages;
 
@@ -70,7 +71,8 @@ public static class UserDataArchive
         _ = ReadVerified(zip);
     }
 
-    public static void Import(string installRoot, string archivePath, Action<string>? validateData = null)
+    public static void Import(string installRoot, string archivePath, Action<string>? validateData = null,
+        IHostManagerUserDataArrival? hostManagerArrival = null)
     {
         installRoot = Path.GetFullPath(installRoot).TrimEnd(Path.DirectorySeparatorChar);
         ReleasePackageLayout.RejectReparse(installRoot);
@@ -102,8 +104,12 @@ public static class UserDataArchive
                 }
             }
             validateData?.Invoke(next);
-            foreach (var name in DirectoryNames)
+            (hostManagerArrival ?? HostManagerUserDataArrival.Instance).Prepare(next, installRoot);
+            // The target-bound authority is prepared locally, never read from ZIP.
+            var promotedDirectories = DirectoryNames.Append(HostManagerUserDataArrival.AuthorityDirectory);
+            foreach (var name in promotedDirectories)
             {
+                if (!Directory.Exists(Path.Combine(next, name))) continue;
                 var target = Path.Combine(installRoot, name);
                 if (Directory.Exists(target)) { Directory.Move(target, Path.Combine(previous, name)); moved.Add(name); }
                 Directory.Move(Path.Combine(next, name), target);
