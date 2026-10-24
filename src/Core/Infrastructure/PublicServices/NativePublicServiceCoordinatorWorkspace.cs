@@ -16,8 +16,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     private readonly NativePublicServiceCoordinatorSession session;
     private readonly IComputeScratch modelScratch;
     private readonly (ulong ByteCount, uint Alignment) modelScratchRequirement;
-    private readonly NativePublicServiceModelProjection modelProjection;
-    private readonly ulong providerHandle;
+    private NativePublicServiceModelProjectionBatch? acceptedModels;
     private ModelUse? pendingModelUse;
     private ulong nextCommandEpoch;
 
@@ -26,8 +25,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         ulong hostInstanceId,
         ulong sessionIncarnation,
         ulong catalogGeneration,
-        Func<ulong, IComputeScratch> createScratch,
-        NativePublicServiceModelProjection modelProjection)
+        Func<ulong, IComputeScratch> createScratch)
     {
         ArgumentNullException.ThrowIfNull(plan);
         if (!plan.IsPublished)
@@ -94,8 +92,6 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         session = new NativePublicServiceCoordinatorSession(in configuration);
         try
         {
-            this.modelProjection = modelProjection;
-            providerHandle = plan.HotPublish.AiProviderHandle;
             modelScratchRequirement = session.QueryModelScratch();
             modelScratch = createScratch(checked(modelScratchRequirement.ByteCount + modelScratchRequirement.Alignment - 1));
             PublishCatalog(plan.HotPublish, catalogGeneration);
@@ -293,9 +289,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     internal void PublishModels(
         ulong acquisitionAttemptHandle,
         ulong modelGeneration,
-        ReadOnlySpan<NativePublicServiceModelInput> models,
-        ReadOnlySpan<NativePublicServiceModelAliasInput> aliases,
-        ReadOnlySpan<byte> text)
+        NativePublicServiceModelProjectionBatch batch)
     {
         lock (commandGate)
         {
@@ -307,14 +301,24 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
                 CommandEpoch = command.Epoch,
                 CommandMonotonicMilliseconds = command.MonotonicMilliseconds,
                 ModelGeneration = modelGeneration,
-                ModelCount = checked((uint)models.Length),
-                AliasCount = checked((uint)aliases.Length),
-                TextByteCount = checked((uint)text.Length),
+                ModelCount = checked((uint)batch.Models.Length),
+                AliasCount = checked((uint)batch.Aliases.Length),
+                TextByteCount = checked((uint)batch.Text.Length),
                 AcquisitionAttemptHandle = acquisitionAttemptHandle
             };
             RequireOk(
-                session.ReplaceModels(in input, models, aliases, text),
+                session.ReplaceModels(in input, batch.Models, batch.Aliases, batch.Text),
                 "replace models");
+            // Native has committed this batch even if returning its work area fails.
+            acceptedModels = batch;
+        }
+    }
+
+    internal NativePublicServiceModelPayloadSnapshot CaptureModels()
+    {
+        lock (commandGate)
+        {
+            return acceptedModels?.Payloads ?? NativePublicServiceModelPayloadSnapshot.Empty;
         }
     }
 
@@ -514,13 +518,11 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         pendingModelUse?.Dispose();
         pendingModelUse = null;
         RequireOk(session.Snapshot(out var snapshot), "read model generation");
-        var source = snapshot.ModelGeneration == 0 ? null
-            : modelProjection.Project(modelProjection.Capture().Descriptors, providerHandle);
         var use = new ModelUse(this, modelScratch.Acquire());
         pendingModelUse = use;
         try
         {
-            use.Bind(snapshot.ModelGeneration, source);
+            use.Bind(snapshot.ModelGeneration, acceptedModels);
             return use;
         }
         catch

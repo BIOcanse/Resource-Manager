@@ -16,6 +16,63 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerPublicServiceCoordinatorOwnerTests
 {
     [Fact]
+    public async Task ReplacementWaitsForTheSinglePendingWorkspaceToFinishItsLastOperation()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        using var returning = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        fixture.Scratches[0].BeforeReturn = () =>
+        {
+            returning.Set();
+            Assert.True(resume.Wait(TimeSpan.FromSeconds(5)));
+        };
+        var resolving = Task.Run(() => fixture.Owner.IsAllowedAsync(
+            "community/open-model", CancellationToken.None));
+        try
+        {
+            Assert.True(returning.Wait(TimeSpan.FromSeconds(5)));
+            PublishReplacement(31_000);
+            Assert.Equal(2, fixture.Scratches.Count);
+            PublishReplacement(32_000);
+            Assert.Equal(2, fixture.Scratches.Count);
+        }
+        finally
+        {
+            fixture.Scratches[0].BeforeReturn = null;
+            resume.Set();
+        }
+        Assert.False(await resolving.WaitAsync(TimeSpan.FromSeconds(5)));
+        await WaitForCatalogAsync(fixture.Owner);
+        PublishReplacement(33_000);
+        Assert.Equal(3, fixture.Scratches.Count);
+
+        void PublishReplacement(int timeout) => fixture.PublishPlan(root =>
+        {
+            root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + timeout;
+            root["host_recreate"]!["public_service_coordinator"]!["request_timeout_ms"] = timeout;
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcceptedCatalogIsListedAndUsedAfterItsWorkAreaReturnFails(bool failComplete)
+    {
+        await using var fixture = await Fixture.CreateAsync(
+            failCatalogReturn: !failComplete, failCatalogComplete: failComplete);
+        await WaitForCatalogAsync(fixture.Owner);
+        var models = await fixture.Owner.ListModelsAsync(CancellationToken.None);
+        Assert.Equal("community/open-model", Assert.Single(models).Key);
+        Assert.True(await fixture.Owner.IsAllowedAsync("community/open-model", CancellationToken.None));
+        Assert.Equal(1, fixture.Provider.CatalogCallCount);
+        var result = await fixture.Owner.LoadAsync(new AiModelLoadRequest(
+            "community/open-model", 4096, null, null, null), CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("community/open-model", result.InstanceId);
+        Assert.Equal(1, fixture.Provider.LoadCallCount);
+    }
+
+    [Fact]
     public async Task StartupDoesNotProbeTheModelProviderUntilCatalogIsRequested()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -325,19 +382,23 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         HostManagerPublicServiceCoordinatorOwner owner,
         RecordingModelProvider provider,
         RuntimePlanProvider planProvider,
-        ResourceManagerLedgerOwner ledger) : IAsyncDisposable
+        ResourceManagerLedgerOwner ledger,
+        List<PublicServiceLedgerScratchTests.FailingScratch> scratches) : IAsyncDisposable
     {
         internal ResourceManagerLedgerOwner Ledger { get; } = ledger;
         internal HostManagerPublicServiceCoordinatorOwner Owner { get; } = owner;
 
         internal RecordingModelProvider Provider { get; } = provider;
+        internal List<PublicServiceLedgerScratchTests.FailingScratch> Scratches { get; } = scratches;
 
         internal static async Task<Fixture> CreateAsync(
             int loadFailures = 0,
             int taskTimeoutMilliseconds = 30_000,
             int requestTimeoutMilliseconds = 30_000,
             bool holdFirstLoadIgnoringCancellation = false,
-            bool cancelFirstLoad = false)
+            bool cancelFirstLoad = false,
+            bool failCatalogReturn = false,
+            bool failCatalogComplete = false)
         {
             var hostPlan = HostManagerTestPlanFactory.CreatePlan(
                 root =>
@@ -367,6 +428,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                 holdFirstLoadIgnoringCancellation,
                 cancelFirstLoad);
             var ledger = new ResourceManagerLedgerOwner();
+            var scratches = new List<PublicServiceLedgerScratchTests.FailingScratch>();
             var owner = new HostManagerPublicServiceCoordinatorOwner(
                 planProvider,
                 new HostManagerPublicServiceCoordinatorRuntime(
@@ -374,9 +436,17 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                     deployment),
                 new HostManagerRuntimeIdentity(),
                 provider,
-                NullLogger<HostManagerPublicServiceCoordinatorOwner>.Instance, ledger);
+                NullLogger<HostManagerPublicServiceCoordinatorOwner>.Instance,
+                length =>
+                {
+                    var scratch = new PublicServiceLedgerScratchTests.FailingScratch(
+                        ledger.CreateScratch(length), failReturn: failCatalogReturn)
+                        { FailNextComplete = failCatalogComplete };
+                    scratches.Add(scratch);
+                    return scratch;
+                });
             await owner.StartAsync(CancellationToken.None);
-            return new Fixture(owner, provider, planProvider, ledger);
+            return new Fixture(owner, provider, planProvider, ledger, scratches);
         }
 
         internal void PublishPlan(Action<JsonObject> mutate)

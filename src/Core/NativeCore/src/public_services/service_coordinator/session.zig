@@ -123,6 +123,8 @@ pub const Session = struct {
             // Reconstruction does not complete or alter runtime acquisition state.
             header.acquisition_attempt_handle = 1;
             try active.stage(header, models, aliases, text);
+        } else {
+            active.reset();
         }
         self.active_models = active;
         self.staging_models = staging;
@@ -179,7 +181,6 @@ pub const Session = struct {
         self.commitCommand(header.command_epoch, header.command_monotonic_milliseconds);
         self.runtime.expire(self.config, header.command_monotonic_milliseconds);
         std.mem.swap(catalog.ModelBank, &self.active_models, &self.staging_models);
-        self.staging_models.reset();
         self.runtime.completeModelAcquisitionSuccess(
             self.config,
             header.acquisition_attempt_handle,

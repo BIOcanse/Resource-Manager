@@ -309,13 +309,16 @@ test "fixed capacity and resident budget remain explicit" {
     config.maximum_query_fact_count = 1;
     config.maximum_query_signal_count = 1;
     config.maximum_query_key_byte_count = 6;
-    config.entry_index_capacity = 64;
-    config.alias_index_capacity = 64;
-    config.identity_index_capacity = 64;
+    config.entry_index_capacity = 128;
+    config.alias_index_capacity = 128;
+    config.identity_index_capacity = 256;
     config.root_index_capacity = 1;
     config.required_prohibited_alias_count = 0;
     config.required_launcher_token_count = 0;
     config.required_managed_child_rule_count = 0;
+    var full_index = config;
+    full_index.alias_index_capacity = capacity;
+    try std.testing.expectError(error.InvalidConfiguration, session_module.Session.create(&full_index));
     const session = try session_module.Session.create(&config);
     defer session.destroy();
 
@@ -355,19 +358,28 @@ test "fixed capacity and resident budget remain explicit" {
     const summary = snapshot(session);
     try std.testing.expectEqual(@as(u32, capacity), summary.entry_count);
     try std.testing.expectEqual(@as(u32, capacity), summary.alias_count);
+    try std.testing.expectEqual(@as(usize, 128), session.active.entry_index.len);
+    try std.testing.expectEqual(@as(usize, 256), session.active.identity_index.len);
+    try std.testing.expectEqual(@as(usize, 128), session.active.alias_index.len);
+    try std.testing.expect(std.mem.count(u32, session.active.entry_index, &.{std.math.maxInt(u32)}) == capacity);
+    try std.testing.expectEqual(@as(?u32, null), session.active.findEntry(999));
+    try std.testing.expectEqual(@as(?u32, null), session.active.findAlias(.executable_name, 0, "absent"));
     try std.testing.expect(summary.resident_byte_count > 0);
 
     var insufficient = config;
     insufficient.resident_byte_budget = summary.resident_byte_count - 1;
+    try std.testing.expectError(error.InvalidConfiguration, session_module.Session.create(&insufficient));
+    const maximum_bytes = @sizeOf(session_module.Session) + 2 * (summary.resident_byte_count - @sizeOf(session_module.Session));
+    insufficient.resident_byte_budget = maximum_bytes - 1;
+    try std.testing.expectError(error.InvalidConfiguration, session_module.Session.create(&insufficient));
+    insufficient.resident_byte_budget = maximum_bytes;
     const bounded_session = try session_module.Session.create(&insufficient);
     defer bounded_session.destroy();
-    const bounded_before = snapshot(bounded_session);
-    try std.testing.expectEqual(
-        ResultCode.invalid_argument,
-        bounded_session.replace(&replace_input, &entries, &aliases, &.{}, &keys),
-    );
-    try std.testing.expectEqual(bounded_before.resident_byte_count, snapshot(bounded_session).resident_byte_count);
-    try std.testing.expectEqual(@as(u64, 0), snapshot(bounded_session).catalog_generation);
+    try std.testing.expectEqual(@as(u64, @sizeOf(session_module.Session)), bounded_session.capacity().resident_byte_count);
+    try std.testing.expectEqual(ResultCode.ok, bounded_session.replace(&replace_input, &entries, &aliases, &.{}, &keys));
+    replace_input.catalog_generation = 2;
+    replace_input.operation_epoch = 2;
+    try std.testing.expectEqual(ResultCode.ok, bounded_session.replace(&replace_input, &entries, &aliases, &.{}, &keys));
 }
 
 test "catalog storage follows actual content and replacement releases old buffers" {
@@ -404,7 +416,7 @@ test "catalog storage follows actual content and replacement releases old buffer
     try std.testing.expect(small_bytes > empty_bytes);
     try std.testing.expectEqual(@as(usize, 1), session.active.entries.len);
     try std.testing.expectEqual(@as(usize, 1), session.active.aliases.len);
-    try std.testing.expectEqual(@as(usize, 1), session.active.entry_index.len);
+    try std.testing.expectEqual(@as(usize, 2), session.active.entry_index.len);
     try std.testing.expectEqual(small_keys.len, session.active.key_bytes.len);
 
     input = rawReplacementInput(&config, 2, 2, 2, 2, 0, fixture.key_count, 0, 0, 0);
@@ -522,9 +534,9 @@ test "canonical ordering epochs dirty outputs and shape drift fail closed" {
 
     var next_config = config;
     next_config.generation = 2;
-    next_config.maximum_root_count += 1;
-    try std.testing.expectEqual(ResultCode.invalid_argument, session.reconfigure(&next_config));
     next_config.maximum_root_count -= 1;
+    try std.testing.expectEqual(ResultCode.invalid_argument, session.reconfigure(&next_config));
+    next_config.maximum_root_count += 1;
     try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&next_config));
 }
 

@@ -13,8 +13,6 @@ internal sealed class NativePublicServiceModelProjection
         throwOnInvalidBytes: true);
     private readonly Dictionary<string, ulong> modelHandles =
         new(StringComparer.Ordinal);
-    private NativePublicServiceModelPayloadSnapshot current =
-        NativePublicServiceModelPayloadSnapshot.Empty;
     private ulong nextModelHandle;
 
     internal NativePublicServiceModelProjectionBatch Project(
@@ -81,15 +79,6 @@ internal sealed class NativePublicServiceModelProjection
                 descriptors.ToArray(),
                 new ReadOnlyDictionary<ulong, AiModelDescriptor>(payloads)));
     }
-
-    internal void Commit(NativePublicServiceModelPayloadSnapshot snapshot)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        Volatile.Write(ref current, snapshot);
-    }
-
-    internal NativePublicServiceModelPayloadSnapshot Capture()
-        => Volatile.Read(ref current);
 
     private ulong GetOrCreateModelHandle(string providerKey)
     {

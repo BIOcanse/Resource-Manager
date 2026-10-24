@@ -2,6 +2,7 @@ using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.ReadWrite.Native;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
@@ -58,7 +59,7 @@ public sealed class HostManagerFileQueryOwner :
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
     private readonly RuntimePlanProvider planProvider;
-    private readonly ResourceManagerLedgerOwner memoryOwner;
+    private readonly Func<ulong, uint, INativeFileQueryScratch> createScratch;
     private readonly HostManagerFileQueryRuntime deployment;
     private readonly ILogger<HostManagerFileQueryOwner> logger;
     private WorkspaceHolder? current;
@@ -73,11 +74,19 @@ public sealed class HostManagerFileQueryOwner :
         HostManagerFileQueryRuntime deployment,
         ILogger<HostManagerFileQueryOwner> logger,
         ResourceManagerLedgerOwner memoryOwner)
+        : this(planProvider, deployment, logger,
+            (length, alignment) => FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment)) { }
+
+    internal HostManagerFileQueryOwner(
+        RuntimePlanProvider planProvider,
+        HostManagerFileQueryRuntime deployment,
+        ILogger<HostManagerFileQueryOwner> logger,
+        Func<ulong, uint, INativeFileQueryScratch> createScratch)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.logger = logger;
-        this.memoryOwner = memoryOwner;
+        this.createScratch = createScratch;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -132,15 +141,18 @@ public sealed class HostManagerFileQueryOwner :
                 inner.Session,
                 (_, reusable) =>
                 {
-                    if (reusable) inner.MarkReusable();
-                    inner.Dispose();
-                    holder.Release();
+                    try
+                    {
+                        if (reusable) inner.MarkReusable();
+                        inner.Dispose();
+                    }
+                    finally { Release(holder); }
                 });
         }
         catch
         {
-            inner?.Dispose();
-            holder.Release();
+            try { inner?.Dispose(); }
+            finally { Release(holder); }
             throw;
         }
     }
@@ -156,11 +168,6 @@ public sealed class HostManagerFileQueryOwner :
 
     public void Dispose()
     {
-        if (disposed)
-        {
-            return;
-        }
-
         if (started)
         {
             planProvider.Published -= OnPublished;
@@ -169,23 +176,29 @@ public sealed class HostManagerFileQueryOwner :
         gate.EnterWriteLock();
         try
         {
-            DrainPendingRetirement();
-            current?.Retire();
-            current = null;
-            appliedPlan = null;
             disposed = true;
+            DrainPendingRetirement();
+            if (current?.Retire() == true) current = null;
+            appliedPlan = null;
         }
         finally
         {
             gate.ExitWriteLock();
         }
-        gate.Dispose();
+        // Late lease callbacks can still retain a failed close after shutdown.
+        // Keep the gate usable so another Dispose can retry those obligations.
     }
 
     private void DrainPendingRetirement()
     {
-        pendingRetirement?.Retire();
-        pendingRetirement = null;
+        if (pendingRetirement?.Retire() == true) pendingRetirement = null;
+    }
+
+    private void Release(WorkspaceHolder holder)
+    {
+        gate.EnterWriteLock();
+        try { holder.Release(); }
+        finally { gate.ExitWriteLock(); }
     }
 
     private void OnPublished(CompiledRuntimePlan plan)
@@ -198,6 +211,9 @@ public sealed class HostManagerFileQueryOwner :
         try
         {
             DrainPendingRetirement();
+            if (pendingRetirement is not null)
+                throw new InvalidOperationException(
+                    "The previous file-query session pool is still in use; replacement must wait for its retirement.");
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256
                 && appliedPlan.Build == desired.Build
                 && appliedPlan.Recreate == desired.Recreate)
@@ -217,8 +233,7 @@ public sealed class HostManagerFileQueryOwner :
             WorkspaceHolder? next = null;
             try
             {
-                replacement = new NativeFileQueryWorkspace(desired,
-                    (length, alignment) => FileQueryScratch.Create(memoryOwner.CreateScratch, length, alignment));
+                replacement = new NativeFileQueryWorkspace(desired, createScratch);
                 next = new WorkspaceHolder(replacement);
                 replacement = null;
                 deployment.CompleteSucceeded(token);
@@ -276,7 +291,7 @@ public sealed class HostManagerFileQueryOwner :
             Interlocked.Increment(ref referenceCount);
         }
 
-        internal void Retire()
+        internal bool Retire()
         {
             if (Interlocked.Exchange(ref retired, 1) == 0)
             {
@@ -289,6 +304,7 @@ public sealed class HostManagerFileQueryOwner :
                     throw;
                 }
             }
+            return Volatile.Read(ref referenceCount) == 0;
         }
 
         internal void Release()
@@ -298,9 +314,10 @@ public sealed class HostManagerFileQueryOwner :
                 try { Workspace.Dispose(); }
                 catch
                 {
-                    // The lease that attempted the final release still owns
-                    // this holder until its explicit retry closes the pool.
+                    // Transfer the failed close back to the owner for Retire
+                    // to retry; the lease reference was already released.
                     Interlocked.Increment(ref referenceCount);
+                    Volatile.Write(ref retired, 0);
                     throw;
                 }
             }

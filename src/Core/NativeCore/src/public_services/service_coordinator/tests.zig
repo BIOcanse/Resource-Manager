@@ -1084,7 +1084,12 @@ test "model scratch binding is explicit and capacity excludes borrowed bytes" {
     try std.testing.expectError(error.InvalidArgument, session.bindModelScratch(backing, 1, &.{}, &.{}, &.{}));
     try std.testing.expectError(error.InvalidState, session.resolveModel(modelResolve(1, 1, "absent"), "absent"));
     try std.testing.expectEqual(@as(u64, 0), session.snapshot().last_command_epoch);
+    @memset(backing, 0xa5);
     try session.bindModelScratch(backing[0..@intCast(bytes)], 0, &.{}, &.{}, &.{});
+    try std.testing.expectEqual(@as(u8, 0xa5), session.staging_models.text[0]);
+    try std.testing.expectEqual(@as(u8, 0xa5), session.active_models.text[0]);
+    const absent = try session.resolveModel(modelResolve(1, 1, "absent"), "absent");
+    try std.testing.expectEqual(@as(u64, 0), absent.model_handle);
     try std.testing.expectError(error.InvalidState, session.bindModelScratch(backing, 0, &.{}, &.{}, &.{}));
     session.unbindModelScratch();
     session.unbindModelScratch();
@@ -1163,6 +1168,8 @@ test "model scratch can be discarded and rebuilt without losing runtime ownershi
         try std.testing.expectEqual(@as(usize, 0), session.active_models.models.len);
         try session.bindModelScratch(replacement, 1, &models, &aliases, text);
         defer session.unbindModelScratch();
+        try std.testing.expectEqual(@as(u8, 0xa5), session.active_models.text[text.len]);
+        try std.testing.expectEqual(@as(u8, 0xa5), session.staging_models.text[0]);
         const resolved = try session.resolveModel(modelResolve(6, 21, "OPEN-MODEL"), "OPEN-MODEL");
         try std.testing.expectEqual(@intFromEnum(protocol.ModelResolveStatus.matched), resolved.status);
         try std.testing.expectEqual(@as(u64, 41), resolved.model_handle);
