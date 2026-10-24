@@ -6,6 +6,43 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativePortableSoftwareRegistryPayloadCatalogTests
 {
     [Fact]
+    public void RejectedOperationsDiscardOnlyTheirNewPayloadsWithoutReusingIssuedNumbers()
+    {
+        var catalog = new NativePortableSoftwareRegistryPayloadCatalog(1);
+        var live = catalog.GetOrAdd(NativePortableSoftwarePayloadKind.SoftwareId, "catalog:live");
+        ulong previous = live;
+        for (var i = 0; i < 1000; i++)
+        {
+            var checkpoint = catalog.CaptureCheckpoint();
+            var failed = catalog.GetOrAdd(NativePortableSoftwarePayloadKind.RootPath, $"c:/rejected/{i}");
+            Assert.True(failed > previous);
+            previous = failed;
+            catalog.DiscardUnaccepted(checkpoint);
+            Assert.Equal(1, catalog.Count);
+            Assert.Equal(live, catalog.GetOrAdd(NativePortableSoftwarePayloadKind.SoftwareId, "catalog:live"));
+        }
+    }
+
+    [Fact]
+    public void RetiringUnreferencedPayloadsKeepsLiveHandlesAndNeverReusesRetiredHandles()
+    {
+        var catalog = new NativePortableSoftwareRegistryPayloadCatalog(1);
+        var live = catalog.GetOrAdd(NativePortableSoftwarePayloadKind.SoftwareId, "catalog:live");
+        ulong retired = 0;
+        for (var i = 0; i < 1000; i++)
+        {
+            retired = catalog.GetOrAdd(NativePortableSoftwarePayloadKind.RootPath, $"c:/old/{i}");
+            catalog.Retain(new HashSet<ulong> { live });
+            Assert.Equal(1, catalog.Count);
+        }
+        Assert.False(catalog.TryResolve(NativePortableSoftwarePayloadKind.RootPath, retired, out _));
+        Assert.Equal(live, catalog.GetOrAdd(NativePortableSoftwarePayloadKind.SoftwareId, "catalog:live"));
+        Assert.True(catalog.GetOrAdd(NativePortableSoftwarePayloadKind.RootPath, "c:/old/999") > retired);
+        catalog.Retain(new HashSet<ulong>());
+        Assert.Equal(0, catalog.Count);
+    }
+
+    [Fact]
     public void SameNamespaceAndExactTextReuseOneHandle()
     {
         var catalog = new NativePortableSoftwareRegistryPayloadCatalog(firstHandle: 100);

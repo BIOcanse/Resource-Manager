@@ -30,6 +30,20 @@ public sealed class GpuAllocationLedgerTests
     private static readonly Dictionary<int, long> Births = new() { [41] = 100, [42] = 120 };
 
     [Fact]
+    public void TransferHistoryObeysTheExistingPhysicalPlacementBoundAndEvictionReleasesIt()
+    {
+        var ledger = Ledger();
+        var bytes = 8UL * 1024 * 1024 * 1024;
+        for (ulong placement = 0; placement < 4096; placement++)
+            ledger.RecordTransferredSource(1, 2, 2, placement, bytes);
+        ledger.RecordTransferredSource(1, 2, 2, 4095, bytes); // Duplicate observations consume no slot.
+        Assert.Throws<InvalidDataException>(() => ledger.RecordTransferredSource(1, 2, 2, 4096, bytes));
+        ledger.CompleteEviction(2);
+        ledger.RecordTransferredSource(1, 2, 2, 4096, bytes);
+        ledger.DiscardResident(1, 2, 2, 4096);
+    }
+
+    [Fact]
     public void ShareUsesDistinctProcessesAndAllReferencesMustClose()
     {
         var ledger = Ledger();

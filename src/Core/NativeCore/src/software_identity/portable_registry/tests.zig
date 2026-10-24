@@ -728,3 +728,60 @@ fn findPathSnapshot(paths: []const protocol.PathSnapshot, path_handle: u64) ?pro
     for (paths) |path| if (path.path_handle == path_handle) return path;
     return null;
 }
+
+
+test "unused portable path limits allocate no text and canonical text dies with its path" {
+    var config = explicitConfig();
+    config.maximum_executable_path_byte_count = 2048;
+    config.maximum_root_path_byte_count = 2048;
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    const empty_bytes = session.capacity().resident_byte_count;
+    try std.testing.expectEqual(@as(u64, 0), session.active.pathTextByteCount());
+    try std.testing.expectEqual(@as(u64, 0), session.staging.pathTextByteCount());
+    const executable = "c:/portable/tool/a.exe";
+    const root = "c:/portable/tool";
+    var observation = observeInput(&config, 1, 1000, 100, 10, 100, 1000, 1001, 101, 201, executable.len, root.len, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.observe(&observation, executable ++ root));
+    const text_bytes = executable.len + config.maximum_root_path_byte_count;
+    try std.testing.expectEqual(@as(u64, text_bytes), session.active.pathTextByteCount());
+    try std.testing.expectEqual(empty_bytes + text_bytes, session.capacity().resident_byte_count);
+    // Root replacement retains the full declared limit without allocating mid-mutation.
+    var confirm = confirmRootInput(&config, 2, 10, 202, 3);
+    var confirmed: u32 = 0;
+    try std.testing.expectEqual(ResultCode.ok, session.confirmRoot(&confirm, "c:/", &confirmed));
+    const slot = session.active.findPath(101).?;
+    try std.testing.expectEqualStrings(executable, session.active.executablePath(slot));
+    try std.testing.expectEqualStrings("c:/", session.active.rootPath(slot));
+    var missing = markMissingInput(&config, 3, 10, 101);
+    try std.testing.expectEqual(ResultCode.ok, session.markMissing(&missing));
+    const plan = try capturePlan(session, &config, 1, 4);
+    try commitOperations(session, &config, 1, plan.operations[0..plan.output.operation_count]);
+    try std.testing.expectEqual(empty_bytes, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(@as(u64, 0), session.active.pathTextByteCount());
+    // Import swaps and clears the old authoritative bank; an empty feature keeps no text.
+    observation.operation_epoch = 4;
+    try std.testing.expectEqual(ResultCode.ok, session.observe(&observation, executable ++ root));
+    var import = importInput(&config, 1, 5, 1000, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.importPersisted(&import, &.{}, &.{}));
+    try std.testing.expectEqual(empty_bytes, session.capacity().resident_byte_count);
+    try std.testing.expectEqual(@as(u64, 0), session.staging.pathTextByteCount());
+}
+
+test "portable path text allocation failure preserves registration and operation state" {
+    var config = explicitConfig();
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    session.active.allocator = failing.allocator();
+    defer session.active.allocator = session.allocator;
+    const executable = "c:/portable/tool/a.exe";
+    const root = "c:/portable/tool";
+    var observation = observeInput(&config, 1, 1000, 100, 10, 100, 1000, 1001, 101, 201, executable.len, root.len, 0);
+    try std.testing.expectEqual(ResultCode.out_of_memory, session.observe(&observation, executable ++ root));
+    try std.testing.expectEqual(@as(u32, 0), session.active.registration_count);
+    try std.testing.expectEqual(@as(u32, 0), session.active.path_count);
+    try std.testing.expectEqual(@as(u64, 0), session.last_operation_epoch);
+    session.active.allocator = session.allocator;
+    try std.testing.expectEqual(ResultCode.ok, session.observe(&observation, executable ++ root));
+}

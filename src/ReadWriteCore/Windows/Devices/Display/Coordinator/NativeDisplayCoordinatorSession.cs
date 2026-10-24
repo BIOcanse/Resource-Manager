@@ -11,7 +11,8 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
     private IntPtr handle;
     private NativeDisplayCoordinatorCapacity capacity;
 
-    internal NativeDisplayCoordinatorSession(in NativeDisplayCoordinatorConfiguration configuration)
+    internal NativeDisplayCoordinatorSession(in NativeDisplayCoordinatorConfiguration configuration,
+        Func<ulong, ResourceManager.ReadWrite.Native.INativeDisplayNormalizationScratch>? createScratch = null)
     {
         var actualVersion = NativeMethods.GetAbiVersion();
         if (actualVersion != NativeDisplayCoordinatorAbi.Version)
@@ -20,9 +21,9 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
                 $"Native display-coordinator ABI mismatch: expected 0x{NativeDisplayCoordinatorAbi.Version:X8}, actual 0x{actualVersion:X8}.");
         }
 
-        var status = (NativeDisplayCoordinatorStatus)NativeMethods.Create(
-            in configuration,
-            out handle);
+        var status = (NativeDisplayCoordinatorStatus)(createScratch is null
+            ? NativeMethods.Create(in configuration, out handle)
+            : NativeMethods.CreateExternal(in configuration, out handle));
         if (status != NativeDisplayCoordinatorStatus.Ok || handle == IntPtr.Zero)
         {
             handle = IntPtr.Zero;
@@ -33,10 +34,18 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
         try
         {
             capacity = QueryAndValidateCapacity(handle, in configuration);
+            if (createScratch is not null)
+            {
+                normalizationScratch = createScratch(configuration.MaximumTextByteCount)
+                    ?? throw new InvalidOperationException("Display normalization scratch factory returned no resource.");
+                if (normalizationScratch.Length != configuration.MaximumTextByteCount)
+                    throw new InvalidOperationException("Display normalization scratch length mismatch.");
+            }
         }
         catch
         {
-            NativeMethods.Destroy(Interlocked.Exchange(ref handle, IntPtr.Zero));
+            try { normalizationScratch?.Dispose(); }
+            finally { NativeMethods.Destroy(Interlocked.Exchange(ref handle, IntPtr.Zero)); }
             throw;
         }
     }
@@ -75,20 +84,25 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
     {
         lock (sync)
         {
-            fixed (NativeDisplayFact* factPointer = facts)
-            fixed (NativeDisplayTextInput* textPointer = texts)
-            fixed (byte* bytePointer = bytes)
+            BeginNormalization();
+            try
             {
-                return (NativeDisplayCoordinatorStatus)NativeMethods.SubmitSource(
-                    RequireHandle(),
-                    in header,
-                    factPointer,
-                    checked((uint)facts.Length),
-                    textPointer,
-                    checked((uint)texts.Length),
-                    bytePointer,
-                    checked((uint)bytes.Length));
+                fixed (NativeDisplayFact* factPointer = facts)
+                fixed (NativeDisplayTextInput* textPointer = texts)
+                fixed (byte* bytePointer = bytes)
+                {
+                    return (NativeDisplayCoordinatorStatus)NativeMethods.SubmitSource(
+                        RequireHandle(),
+                        in header,
+                        factPointer,
+                        checked((uint)facts.Length),
+                        textPointer,
+                        checked((uint)texts.Length),
+                        bytePointer,
+                        checked((uint)bytes.Length));
+                }
             }
+            finally { EndNormalization(); }
         }
     }
 
@@ -96,9 +110,14 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
     {
         lock (sync)
         {
-            return (NativeDisplayCoordinatorStatus)NativeMethods.Finalize(
-                RequireHandle(),
-                in input);
+            BeginNormalization();
+            try
+            {
+                return (NativeDisplayCoordinatorStatus)NativeMethods.Finalize(
+                    RequireHandle(),
+                    in input);
+            }
+            finally { EndNormalization(); }
         }
     }
 
@@ -276,21 +295,26 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
     {
         lock (sync)
         {
-            fixed (NativeDisplayFact* factPointer = facts)
-            fixed (NativeDisplayTextInput* textPointer = texts)
-            fixed (byte* bytePointer = bytes)
+            BeginNormalization();
+            try
             {
-                return (NativeDisplayCoordinatorStatus)NativeMethods.ImportPersistence(
-                    RequireHandle(),
-                    in input,
-                    in header,
-                    factPointer,
-                    checked((uint)facts.Length),
-                    textPointer,
-                    checked((uint)texts.Length),
-                    bytePointer,
-                    checked((uint)bytes.Length));
+                fixed (NativeDisplayFact* factPointer = facts)
+                fixed (NativeDisplayTextInput* textPointer = texts)
+                fixed (byte* bytePointer = bytes)
+                {
+                    return (NativeDisplayCoordinatorStatus)NativeMethods.ImportPersistence(
+                        RequireHandle(),
+                        in input,
+                        in header,
+                        factPointer,
+                        checked((uint)facts.Length),
+                        textPointer,
+                        checked((uint)texts.Length),
+                        bytePointer,
+                        checked((uint)bytes.Length));
+                }
             }
+            finally { EndNormalization(); }
         }
     }
 
@@ -305,6 +329,8 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
         _ = disposing;
         lock (sync)
         {
+            EndNormalization();
+            normalizationScratch?.Dispose();
             var current = Interlocked.Exchange(ref handle, IntPtr.Zero);
             if (current != IntPtr.Zero)
             {

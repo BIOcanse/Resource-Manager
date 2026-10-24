@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.DeviceTopology;
@@ -25,6 +26,8 @@ public sealed class HostManagerDisplayCoordinatorOwner :
     private readonly List<CheckpointStore> pendingCheckpointCloses = [];
     private CheckpointBinding? allowedBinding;
     private CheckpointStore? currentCheckpointStore;
+    private readonly object retiredWorkspaceGate = new();
+    private readonly List<WorkspaceHolder> retiredWorkspaces = [];
     private int disposeStarted;
     private WorkspaceHolder? current;
     private CompiledHostManagerDisplayCoordinatorPlan? appliedPlan;
@@ -40,9 +43,11 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         HostManagerDisplayCoordinatorRuntime deployment,
         RuntimePersistenceCapabilityPolicy persistenceCapability,
         IHostEnvironment environment,
-        ILogger<HostManagerDisplayCoordinatorOwner> logger)
+        ILogger<HostManagerDisplayCoordinatorOwner> logger,
+        ResourceManagerLedgerOwner ledgerOwner)
         : this(planProvider, deployment, persistenceCapability, environment, logger,
-            static (configuration, callbacks) => new NativeDisplayCoordinatorWorkspace(in configuration, callbacks),
+            (configuration, callbacks) => new NativeDisplayCoordinatorWorkspace(in configuration, callbacks,
+                bytes => new DisplayNormalizationScratch(ledgerOwner.CreateScratch(bytes))),
             static path => new NativeDisplayCoordinatorPersistenceStore(path,
                 Path.Combine(AppContext.BaseDirectory, "Native", "DiskCheckpoint", "native.json")))
     {
@@ -130,6 +135,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         if (Interlocked.Exchange(ref disposeStarted, 1) != 0)
         {
             lock (checkpointGate) RetryPendingCheckpointCloses();
+            RetryRetiredWorkspaces();
             return;
         }
         if (started)
@@ -154,7 +160,8 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             current = null;
             appliedPlan = null;
             disposed = true;
-            previous?.Retire();
+            RetireWorkspace(previous);
+            RetryRetiredWorkspaces();
         }
         finally
         {
@@ -207,6 +214,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
+            RetryRetiredWorkspaces();
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256) return;
             var token = current is null
                 ? deployment.BeginInitialCreate(hostPlan)
@@ -302,7 +310,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             {
                 lock (checkpointGate) CloseCheckpointStore(retiredStore);
             }
-            try { previous?.Retire(); }
+            try { RetireWorkspace(previous); RetryRetiredWorkspaces(); }
             catch (Exception ex)
             {
                 logger.LogError(ex, "The retired display-coordinator workspace could not be disposed.");
@@ -347,9 +355,9 @@ public sealed class HostManagerDisplayCoordinatorOwner :
                 CloseCheckpointStore(candidate);
         }
         Exception? failure = null;
-        try { holder?.Retire(); }
+        try { RetireWorkspace(holder); }
         catch (Exception ex) { failure = ex; }
-        try { workspace?.Dispose(); }
+        try { if (workspace is not null) RetireWorkspace(new WorkspaceHolder(workspace)); }
         catch (Exception ex) { failure = failure is null ? ex : new AggregateException(failure, ex); }
         return failure;
     }
@@ -381,6 +389,25 @@ public sealed class HostManagerDisplayCoordinatorOwner :
                 if (throwOnFailure) throw;
                 logger.LogError(ex, "The display checkpoint writer Close retry failed for {RootPath}.", pending.RootPath);
             }
+        }
+    }
+
+    private void RetireWorkspace(WorkspaceHolder? holder)
+    {
+        if (holder is null) return;
+        lock (retiredWorkspaceGate)
+        {
+            if (!retiredWorkspaces.Contains(holder)) retiredWorkspaces.Add(holder);
+            holder.Retire();
+        }
+    }
+
+    private void RetryRetiredWorkspaces()
+    {
+        lock (retiredWorkspaceGate)
+        {
+            for (var i = retiredWorkspaces.Count - 1; i >= 0; i--)
+                if (retiredWorkspaces[i].TryClose()) retiredWorkspaces.RemoveAt(i);
         }
     }
 
@@ -445,6 +472,8 @@ public sealed class HostManagerDisplayCoordinatorOwner :
     {
         private int referenceCount = 1;
         private int retired;
+        private readonly object closeGate = new();
+        private bool closed;
 
         internal NativeDisplayCoordinatorWorkspace Workspace { get; } = workspace;
 
@@ -465,12 +494,21 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             }
         }
 
+        internal bool TryClose()
+        {
+            lock (closeGate)
+            {
+                if (closed) return true;
+                if (Volatile.Read(ref referenceCount) != 0 || Volatile.Read(ref retired) == 0) return false;
+                Workspace.Dispose();
+                closed = true;
+                return true;
+            }
+        }
+
         internal void Release()
         {
-            if (Interlocked.Decrement(ref referenceCount) == 0)
-            {
-                Workspace.Dispose();
-            }
+            if (Interlocked.Decrement(ref referenceCount) == 0) _ = TryClose();
         }
     }
 

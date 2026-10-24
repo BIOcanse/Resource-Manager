@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using ResourceManager.App.Domain.Indexing;
 using ResourceManager.App.Infrastructure.NativeCore;
 
@@ -9,8 +8,6 @@ public partial class SqliteIndexedFileOwner(
     INativeFileQueryLeaseSource fileQuery,
     Action<Exception, string, string>? reportRefreshFailure = null)
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> softwareGates = new(StringComparer.OrdinalIgnoreCase);
-
     public async Task<SoftwareFileIndexSnapshot> GetOrRefreshAsync(
         SoftwareFileIndexRequest request,
         TimeSpan maximumAge,
@@ -20,47 +17,39 @@ public partial class SqliteIndexedFileOwner(
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SoftwareId);
         var normalized = NormalizeRequest(request);
-        var gate = softwareGates.GetOrAdd(normalized.SoftwareId, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(cancellationToken);
-        try
+        using var refresh = await AcquireRefreshAsync(normalized.SoftwareId, cancellationToken);
+        var cached = await GetSnapshotAsync(normalized.SoftwareId, cancellationToken);
+        if (!forceRefresh && IsFreshAndComplete(cached, normalized.Roots, maximumAge))
         {
-            var cached = await GetSnapshotAsync(normalized.SoftwareId, cancellationToken);
-            if (!forceRefresh && IsFreshAndComplete(cached, normalized.Roots, maximumAge))
-            {
-                return cached!;
-            }
-
-            var allSucceeded = true;
-            foreach (var root in normalized.Roots)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                try
-                {
-                    await RefreshRootAsync(normalized, root, cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    allSucceeded = false;
-                    reportRefreshFailure?.Invoke(ex, normalized.SoftwareId, root.Path);
-                }
-            }
-
-            if (allSucceeded)
-            {
-                await RemoveStaleRootsAsync(normalized.SoftwareId, normalized.Roots, cancellationToken);
-            }
-
-            return await GetSnapshotAsync(normalized.SoftwareId, cancellationToken)
-                ?? EmptySnapshot(normalized);
+            return cached!;
         }
-        finally
+
+        var allSucceeded = true;
+        foreach (var root in normalized.Roots)
         {
-            gate.Release();
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await RefreshRootAsync(normalized, root, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                allSucceeded = false;
+                reportRefreshFailure?.Invoke(ex, normalized.SoftwareId, root.Path);
+            }
         }
+
+        if (allSucceeded)
+        {
+            await RemoveStaleRootsAsync(normalized.SoftwareId, normalized.Roots, cancellationToken);
+        }
+
+        return await GetSnapshotAsync(normalized.SoftwareId, cancellationToken)
+            ?? EmptySnapshot(normalized);
     }
 
     private static SoftwareFileIndexRequest NormalizeRequest(SoftwareFileIndexRequest request)

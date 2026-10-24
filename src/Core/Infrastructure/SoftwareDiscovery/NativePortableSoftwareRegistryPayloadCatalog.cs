@@ -147,6 +147,44 @@ internal sealed class NativePortableSoftwareRegistryPayloadCatalog
                 $"Portable software payload handle {handle} is not registered as {expectedKind}.");
     }
 
+    internal readonly record struct Checkpoint(ulong NextHandle, bool Exhausted);
+
+    internal Checkpoint CaptureCheckpoint()
+    {
+        lock (stateGate) return new(nextHandle, exhausted);
+    }
+
+    // The registry serializes the operation and calls this only when native did not
+    // accept it. Existing canonical handles stay valid; issued numbers are not reused.
+    internal void DiscardUnaccepted(Checkpoint checkpoint)
+    {
+        if (checkpoint.Exhausted) return;
+        lock (stateGate)
+        {
+            foreach (var payload in payloadByHandle.Values.ToArray())
+            {
+                if (payload.Handle < checkpoint.NextHandle) continue;
+                payloadByHandle.Remove(payload.Handle);
+                handleByPayload.Remove(new(payload.Kind, payload.Text));
+            }
+        }
+    }
+
+    internal void Retain(IReadOnlySet<ulong> liveHandles)
+    {
+        ArgumentNullException.ThrowIfNull(liveHandles);
+        lock (stateGate)
+        {
+            foreach (var payload in payloadByHandle.Values.ToArray())
+            {
+                if (liveHandles.Contains(payload.Handle)) continue;
+                payloadByHandle.Remove(payload.Handle);
+                handleByPayload.Remove(new(payload.Kind, payload.Text));
+            }
+        }
+        // nextHandle is never rewound: retired handles cannot alias new payloads.
+    }
+
     public int Count
     {
         get
