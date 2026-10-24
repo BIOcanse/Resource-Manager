@@ -94,6 +94,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         ImmutableDictionary<ulong, NativeMetricSnapshotRuleCatalogBinding>.Empty;
     public ImmutableDictionary<string, ulong> LegacyMetricHandles { get; init; } =
         ImmutableDictionary<string, ulong>.Empty;
+    public ImmutableArray<NativeMetricSnapshotGpuCatalogIdentity> GpuIdentities { get; init; } = [];
     public ImmutableArray<NativeMetricSnapshotOrdinalCatalogIdentity> StorageIdentities { get; init; } = [];
     public uint IgclFanEffectiveMaximumInstanceCount { get; init; }
     public ImmutableArray<NativeMetricSnapshotOrdinalCatalogIdentity> SystemFanIdentities { get; init; } = [];
@@ -526,6 +527,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             nativeFingerprint,
             catalogIdentitySha256)
         {
+            GpuIdentities = gpuAdapters.ToImmutableArray(),
             StorageIdentities = storageSensors.ToImmutableArray(),
             SystemFanIdentities = systemFans.ToImmutableArray(),
             IgclFanEffectiveMaximumInstanceCount = intelFanMaximum,

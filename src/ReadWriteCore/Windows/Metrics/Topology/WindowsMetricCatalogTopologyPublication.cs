@@ -4,12 +4,6 @@ using ResourceManager.ReadWrite.Vendors.Intel.Msr;
 namespace ResourceManager.ReadWrite.Windows.Metrics.Topology;
 public static class WindowsMetricCatalogTopologyPublication
 {
-    public static void RequireGpuTopology(NativeMetricSnapshotCatalogTopologySnapshot topology)
-    {
-        if (topology.GpuStatus != NativeMetricSnapshotCatalogTopologyStatus.Complete || topology.Generation == 0)
-            throw new InvalidOperationException("The required exact GPU topology is unavailable.");
-    }
-
     public static NativeMetricSnapshotCatalogProjection ProjectCatalog(NativeMetricSnapshotCatalogConfiguration configuration,
         NativeMetricSnapshotCatalogTopologySnapshot topology, NativeMetricSnapshotCatalogHandleMap handleMap)
         => NativeMetricSnapshotCatalogProjection.Create(configuration, topology.GpuAdapters,
@@ -20,6 +14,8 @@ public static class WindowsMetricCatalogTopologyPublication
         NativeMetricSnapshotCatalogProjection prior)
         => topology with
         {
+            GpuAdapters = topology.GpuStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
+                ? prior.GpuIdentities : topology.GpuAdapters,
             AmdCcdIdentities = topology.AmdCcdStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
                 ? prior.AmdCcdIdentities : topology.AmdCcdIdentities,
             NpuEngineIdentities = topology.NpuEngineStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable

@@ -206,7 +206,6 @@ public sealed class HostManagerMetricSnapshotOwner :
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
-                RequireGpuTopology(topology);
                 var priorCatalog = observed.Workspace.ReadCatalog();
                 var availableTopology = RetainUnavailableOptionalIdentities(topology, priorCatalog);
                 var desiredCatalog = ProjectCatalog(plan, availableTopology, priorCatalog.HandleMap);
@@ -531,7 +530,6 @@ public sealed class HostManagerMetricSnapshotOwner :
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), current?.Workspace.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(
                     NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(plan).RuleTemplates));
-            RequireGpuTopology(topology);
             if (current is { } active)
                 topology = RetainUnavailableOptionalIdentities(topology, active.Workspace.ReadCatalog());
             var catalog = ProjectCatalog(plan, topology, workspace.CreateCatalogHandleMap());
@@ -573,9 +571,6 @@ public sealed class HostManagerMetricSnapshotOwner :
             throw new AggregateException(failures);
         }
     }
-
-    private static void RequireGpuTopology(NativeMetricSnapshotCatalogTopologySnapshot topology)
-        => ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsMetricCatalogTopologyPublication.RequireGpuTopology(topology);
 
     private static NativeMetricSnapshotCatalogProjection ProjectCatalog(
         CompiledHostManagerMetricSnapshotPlan plan,
