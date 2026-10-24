@@ -262,6 +262,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         }, new CachedResourceSource(), out var provider);
         await owner.StartAsync(CancellationToken.None);
         await owner.StopAsync(CancellationToken.None);
+        // Stop can cancel the first hosted cycle mid-persist; settle it so the injected failure reaches the candidate.
+        await owner.RefreshReportsAsync(CancellationToken.None);
         var old = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace");
         var status = owner.GetStatus();
         persistence.FailNext = true;
