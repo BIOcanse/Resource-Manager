@@ -9,6 +9,43 @@ public sealed class KernelEtwSubscriptionDispatcherTests
     private static readonly KernelEtwSessionContext Context = new(17, DateTimeOffset.UnixEpoch);
 
     [Fact]
+    public void DeniedReductionRemovesWithdrawnCallbacksAndPreservesTheSurvivor()
+    {
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
+        var removed = new Consumer(2, KernelTraceEventParser.Keywords.NetworkTCPIP);
+        dispatcher.InitializeSubscriptions([first.Registration, removed.Registration], Context);
+        Assert.Throws<UnauthorizedAccessException>(() => dispatcher.UpdateSubscriptions(
+            [first.Registration], Context, _ => throw new UnauthorizedAccessException("fixture denied")));
+        EmitProcessStart(dispatcher);
+        Assert.Equal(1, first.Received);
+        Assert.Equal(0, removed.Received);
+        Assert.Equal(1, first.BindCount);
+
+        // Restoring a subscription covered by the still-enabled union needs no control call.
+        dispatcher.UpdateSubscriptions([first.Registration, removed.Registration], Context,
+            _ => throw new InvalidOperationException("Denied reduction must retain the native flags."));
+        EmitProcessStart(dispatcher);
+        Assert.Equal(2, first.Received);
+        Assert.Equal(1, removed.Received);
+    }
+
+    [Fact]
+    public void WithdrawingAllCallbacksDoesNotWriteKeywordsAndAllowsRebindingOnTheSameSession()
+    {
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        var first = new Consumer(1, KernelTraceEventParser.Keywords.Process);
+        dispatcher.InitializeSubscriptions([first.Registration], Context);
+        dispatcher.UpdateSubscriptions([], Context, _ => throw new InvalidOperationException("No control call expected."));
+        EmitProcessStart(dispatcher);
+        Assert.Equal(0, first.Received);
+        Assert.False(first.Source!.IsActive);
+        dispatcher.UpdateSubscriptions([first.Registration], Context, _ => throw new InvalidOperationException("Flags remain enabled."));
+        EmitProcessStart(dispatcher);
+        Assert.Equal(1, first.Received);
+    }
+
+    [Fact]
     public void SameKeywordSubscriptionActivatesWithoutEventsOrRebindingExistingConsumers()
     {
         var dispatcher = new KernelEtwSubscriptionDispatcher();

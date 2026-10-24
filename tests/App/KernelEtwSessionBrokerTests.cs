@@ -6,6 +6,133 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class KernelEtwSessionBrokerTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void DeniedUpdateKeepsExistingDeliveryAndRetriesOnlyPendingKeywords(bool win32)
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        var received = 0;
+        using var first = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ThreadCSwitch += _ => received++));
+        var original = Assert.Single(factory.Calls).Runtime;
+        var before = broker.GetSnapshot();
+        original.UpdateFailure = win32 ? new System.ComponentModel.Win32Exception(5, "fixture access denied")
+            : new UnauthorizedAccessException("fixture access denied");
+        using var pending = broker.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        var sameKeywordReceived = 0;
+        using var covered = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ThreadCSwitch += _ => sameKeywordReceived++));
+        broker.Owner.Reconcile();
+        original.EmitContextSwitch();
+
+        Assert.Equal(1, received);
+        Assert.Equal(1, sameKeywordReceived);
+        Assert.Single(factory.Calls);
+        Assert.Equal(0, original.StopCount);
+        var denied = broker.GetSnapshot();
+        Assert.Equal(before.Generation, denied.Generation);
+        Assert.Equal(before.StartedAt, denied.StartedAt);
+        Assert.Equal(before.EnabledKeywords, denied.EnabledKeywords);
+        Assert.True(denied.ForKeywords(KernelTraceEventParser.Keywords.ContextSwitch).IsRunning);
+        Assert.Equal("Unavailable", denied.ForKeywords(KernelTraceEventParser.Keywords.DiskIO).State);
+        Assert.Contains("fixture access denied", denied.ForKeywords(KernelTraceEventParser.Keywords.DiskIO).Message);
+
+        original.UpdateFailure = null;
+        broker.Owner.Reconcile();
+        Assert.True(broker.GetSnapshot().ForKeywords(KernelTraceEventParser.Keywords.DiskIO).IsRunning);
+        Assert.Equal(before.Generation, broker.GetSnapshot().Generation);
+        Assert.Equal(0, original.StopCount);
+    }
+
+    [Fact]
+    public void DeniedLastStopKeepsOwnershipAndCanServeAgainBeforeStopRetrySucceeds()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        var first = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        var before = broker.GetSnapshot();
+        runtime.StopResult = new(false, false, false, ["SessionStop: UnauthorizedAccessException: fixture denied"])
+        { ControlDenied = true };
+        first.Dispose();
+        broker.Owner.Reconcile();
+        Assert.True(runtime.IsProcessing);
+        Assert.True(broker.GetSnapshot().IsRunning);
+        Assert.Equal(before.EnabledKeywords, broker.GetSnapshot().EnabledKeywords);
+        Assert.Contains("fixture denied", broker.GetSnapshot().Message);
+        Assert.Equal(2, runtime.StopCount);
+
+        var received = 0;
+        var second = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ThreadCSwitch += _ => received++));
+        runtime.EmitContextSwitch();
+        Assert.Equal(1, received);
+        Assert.Single(factory.Calls);
+        Assert.Equal(before.Generation, broker.GetSnapshot().Generation);
+        second.Dispose();
+        runtime.StopResult = KernelEtwSessionStopResult.Released;
+        broker.Owner.Reconcile();
+        Assert.False(runtime.IsProcessing);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.Single(factory.Calls);
+    }
+
+    [Fact]
+    public void DiskConsumerReportsTheKeywordDenialWhileCpuContinues()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        var received = 0;
+        using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ThreadCSwitch += _ => received++));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.UpdateFailure = new System.ComponentModel.Win32Exception(5, "fixture disk control denied");
+        using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
+
+        var denied = disk.Read();
+        Assert.Equal("Unavailable", denied.ProviderState.State);
+        Assert.Contains("fixture disk control denied", denied.ProviderState.Message);
+        Assert.False(disk.IsRunning);
+        runtime.EmitContextSwitch();
+        Assert.Equal(1, received);
+        Assert.Equal(0, runtime.StopCount);
+
+        runtime.UpdateFailure = null;
+        broker.Owner.Reconcile();
+        Assert.True(disk.IsRunning);
+        Assert.NotEqual("Unavailable", disk.Read().ProviderState.State);
+        Assert.Single(factory.Calls);
+    }
+
+    [Fact]
+    public void DeniedRestartStopKeepsServingActiveConsumersWithoutBlockingReconciliation()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        var received = 0;
+        using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (source, _) => source.ThreadCSwitch += _ => received++));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.UpdateFailure = new InvalidOperationException("fixture update failure requires release");
+        runtime.StopResult = new(false, false, false, ["SessionStop: fixture access denied"])
+        { ControlDenied = true };
+        using var disk = broker.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        runtime.EmitContextSwitch();
+        Assert.Equal(1, received);
+        Assert.True(broker.GetSnapshot().IsRunning);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Single(factory.Calls);
+
+        runtime.UpdateFailure = null;
+        runtime.StopResult = KernelEtwSessionStopResult.Released;
+        broker.Owner.Reconcile();
+        Assert.True(broker.GetSnapshot().ForKeywords(KernelTraceEventParser.Keywords.DiskIO).IsRunning);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Single(factory.Calls);
+    }
+
     [Fact]
     public void FailedSubscriptionUpdateReleasesTheRuntimeBeforeCreatingItsReplacement()
     {
@@ -421,6 +548,7 @@ public sealed class KernelEtwSessionBrokerTests
                     StartFailure = attempt == 1 ? FirstRuntimeStartFailure : null,
                     StopResult = RuntimeStopResult,
                 };
+                runtime.Dispatcher.InitializeSubscriptions(subscriptions, context);
                 calls.Add(new CreateCall(
                     sessionName,
                     keywords,
@@ -438,6 +566,9 @@ public sealed class KernelEtwSessionBrokerTests
         private int eventsLost;
         private int stopCount;
         public List<KernelTraceEventParser.Keywords> Updates { get; } = [];
+        public KernelEtwSubscriptionDispatcher Dispatcher { get; } = new();
+        public void EmitContextSwitch() => Dispatcher.Dispatch<Microsoft.Diagnostics.Tracing.Parsers.Kernel.CSwitchTraceData>(
+            null!, static (source, data) => source.DeliverThreadCSwitch(data));
         public Exception? UpdateFailure { get; set; }
         public bool IsProcessing => Volatile.Read(ref isProcessing) != 0;
         public int EventsLost
@@ -447,7 +578,7 @@ public sealed class KernelEtwSessionBrokerTests
         }
         public int StopCount => Volatile.Read(ref stopCount);
         public Exception? StartFailure { get; init; }
-        public KernelEtwSessionStopResult StopResult { get; init; } =
+        public KernelEtwSessionStopResult StopResult { get; set; } =
             KernelEtwSessionStopResult.Released;
 
         public void UpdateSubscriptions(
@@ -455,7 +586,10 @@ public sealed class KernelEtwSessionBrokerTests
             KernelEtwSessionContext context)
         {
             Assert.True(IsProcessing);
-            if (UpdateFailure is not null) throw UpdateFailure;
+            Dispatcher.UpdateSubscriptions(subscriptions, context, _ =>
+            {
+                if (UpdateFailure is not null) throw UpdateFailure;
+            });
             Updates.Add(subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
                 static (all, subscription) => all | subscription.Keywords));
         }
@@ -479,8 +613,10 @@ public sealed class KernelEtwSessionBrokerTests
                 return StopResult;
             }
 
-            Volatile.Write(ref isProcessing, 0);
             Interlocked.Increment(ref stopCount);
+            if (!StopResult.SessionStopSucceeded && !StopResult.ProcessingCompleted) return StopResult;
+            Dispatcher.CancelAll();
+            Volatile.Write(ref isProcessing, 0);
             return StopResult;
         }
 

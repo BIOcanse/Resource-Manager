@@ -6,6 +6,62 @@ namespace Resource_Manager_APP.Tests;
 public sealed class KernelEtwSessionKeywordControlTests
 {
     [Fact]
+    public void DeniedStopPreservesCallbacksAndRetriesTheNativeCall()
+    {
+        var native = new FakeNativeControl();
+        var control = new KernelEtwSessionKeywordControl(native.Identity.Name, native);
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        KernelEtwEventSource? source = null;
+        dispatcher.InitializeSubscriptions([new(1, "cpu", KernelTraceEventParser.Keywords.ContextSwitch,
+            (bound, _) => source = bound)], new(1, DateTimeOffset.UnixEpoch));
+        // TraceEvent sessions start lazily at EnableKernelProvider. This fixture never
+        // starts or controls an OS session; only the injected native controller is used.
+        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
+        { StopOnDispose = false };
+        var runtime = new TraceEventSessionProcessingRuntime(session, control, dispatcher);
+        native.StopFailure = new UnauthorizedAccessException("fixture stop denied");
+
+        var first = runtime.Stop(TimeSpan.Zero);
+        var second = runtime.Stop(TimeSpan.Zero);
+
+        Assert.False(first.IsReleased);
+        Assert.True(first.ControlDenied);
+        Assert.False(first.SessionDisposeSucceeded);
+        Assert.Contains("fixture stop denied", Assert.Single(first.Failures));
+        Assert.False(second.IsReleased);
+        Assert.True(source!.IsActive);
+        Assert.Equal(2, native.Stops.Count);
+        Assert.All(native.Stops, stop => Assert.Equal((native.Identity.Handle, native.Identity.Name), stop));
+        native.StopFailure = null;
+        control.StopSession();
+        Assert.Equal(3, native.Stops.Count);
+    }
+
+    [Fact]
+    public void ReplacedSessionCannotBeStopped()
+    {
+        var native = new FakeNativeControl();
+        var control = new KernelEtwSessionKeywordControl(native.Identity.Name, native);
+        native.Identity = native.Identity with { Handle = native.Identity.Handle + 1 };
+        Assert.Throws<InvalidOperationException>(control.StopSession);
+        Assert.Empty(native.Stops);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AnAbsentSessionIsAlreadyStopped(bool absentAtQuery)
+    {
+        var native = new FakeNativeControl();
+        var control = new KernelEtwSessionKeywordControl(native.Identity.Name, native);
+        var missing = new System.ComponentModel.Win32Exception(4201);
+        if (absentAtQuery) native.QueryFailure = missing;
+        else native.StopFailure = missing;
+        control.StopSession();
+        Assert.Equal(absentAtQuery ? 0 : 1, native.Stops.Count);
+    }
+
+    [Fact]
     public void UpdateUsesTheFullQueriedHandleAndTheCurrentKeywordUnion()
     {
         var native = new FakeNativeControl();
@@ -141,6 +197,14 @@ public sealed class KernelEtwSessionKeywordControlTests
         public List<(ulong Handle, ulong Flags)> Updates { get; } = [];
         public Exception? QueryFailure { get; set; }
         public Exception? UpdateFailure { get; set; }
+        public Exception? StopFailure { get; set; }
+        public List<(ulong Handle, string Name)> Stops { get; } = [];
+
+        public void StopSession(ulong sessionHandle, string sessionName)
+        {
+            Stops.Add((sessionHandle, sessionName));
+            if (StopFailure is not null) throw StopFailure;
+        }
 
         public KernelEtwNativeSessionIdentity Query(string sessionName)
         {

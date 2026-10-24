@@ -42,6 +42,8 @@ public sealed record KernelEtwSessionStopResult(
     bool ProcessingCompleted,
     IReadOnlyList<string> Failures)
 {
+    public bool ControlDenied { get; init; }
+
     public bool IsReleased => SessionStopSucceeded
         && SessionDisposeSucceeded
         && ProcessingCompleted
@@ -240,6 +242,35 @@ internal sealed class TraceEventSessionProcessingRuntime(
             }
 
             var failures = new List<string>();
+            var sessionStopSucceeded = false;
+            try
+            {
+                // TraceEvent.Stop marks itself stopped even when ControlTrace is denied.
+                // Use the owned native controller so a later reconcile really retries.
+                if (keywordControl is not null)
+                {
+                    keywordControl.StopSession();
+                    session.StopOnDispose = false;
+                    sessionStopSucceeded = true;
+                }
+                else sessionStopSucceeded = session.Stop(noThrow: false);
+                if (!sessionStopSucceeded)
+                {
+                    failures.Add("SessionStop: the ETW controller did not confirm stop.");
+                }
+            }
+            catch (Exception ex) when (KernelEtwSessionKeywordControl.IsAccessDenied(ex))
+            {
+                // A denied control operation did not stop the owned session. Leave
+                // callbacks, Process and the session handle alive; do not cache this result.
+                return new(false, false, processingTask?.IsCompleted ?? true,
+                    [$"SessionStop: {ex.GetType().Name}: {ex.Message}"]) { ControlDenied = true };
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"SessionStop: {ex.GetType().Name}: {ex.Message}");
+            }
+
             dispatcher?.CancelAll();
             try
             {
@@ -248,20 +279,6 @@ internal sealed class TraceEventSessionProcessingRuntime(
             catch (Exception ex)
             {
                 failures.Add($"StopProcessing: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            var sessionStopSucceeded = false;
-            try
-            {
-                sessionStopSucceeded = session.Stop(noThrow: false);
-                if (!sessionStopSucceeded)
-                {
-                    failures.Add("SessionStop: the ETW controller did not confirm stop.");
-                }
-            }
-            catch (Exception ex)
-            {
-                failures.Add($"SessionStop: {ex.GetType().Name}: {ex.Message}");
             }
 
             var sessionDisposeSucceeded = false;

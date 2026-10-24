@@ -10,6 +10,8 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 /// <summary>Borrowed broker; owns only its TCPIP lease, queue and original complete two-second window.</summary>
 public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
 {
+    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.NetworkTCPIP;
+
     private readonly IKernelEtwSessionBroker kernelEtwBroker;
     private readonly Func<bool> canRead;
     private readonly KernelEtwDiagnostics logger;
@@ -81,7 +83,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         var nowTickMilliseconds = readTickMilliseconds();
         lastRequestAt = now;
         EnsureStarted();
-        var brokerBefore = kernelEtwBroker.GetSnapshot();
+        var brokerBefore = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
         RefreshBrokerState(brokerBefore);
         Prune(nowTickMilliseconds);
         var processSnapshots = brokerBefore.IsRunning
@@ -91,7 +93,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         var observedTraffic = processSnapshots.WindowEvents is { } windowEvents
             ? BuildObservedTraffic(windowEvents, now)
             : null;
-        var brokerAfter = kernelEtwBroker.GetSnapshot();
+        var brokerAfter = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
         if (!brokerAfter.IsRunning || brokerAfter.Generation != brokerBefore.Generation
             || brokerAfter.Generation != Volatile.Read(ref sessionGeneration)
             || brokerAfter.EventsLost != brokerBefore.EventsLost
@@ -139,7 +141,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 }
             }
 
-            var snapshot = kernelEtwBroker.GetSnapshot();
+            var snapshot = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
             return snapshot.IsRunning
                 && snapshot.Generation == Volatile.Read(ref sessionGeneration);
         }
@@ -166,7 +168,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
             {
                 kernelSubscription = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
                     "network-tcpip-attribution",
-                    KernelTraceEventParser.Keywords.NetworkTCPIP,
+                    RequiredKeywords,
                     BindKernelEvents));
             }
             catch (Exception ex)
@@ -208,7 +210,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
     {
-        var snapshot = observedSnapshot ?? kernelEtwBroker.GetSnapshot();
+        var snapshot = (observedSnapshot ?? kernelEtwBroker.GetSnapshot()).ForKeywords(RequiredKeywords);
         if (snapshot.IsRunning
             && snapshot.Generation == Volatile.Read(ref sessionGeneration))
         {
@@ -218,7 +220,7 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 if (snapshot.EventsLost != observedBrokerLoss)
                 {
                     // A concurrent runtime rebind can supersede a previously read snapshot.
-                    snapshot = kernelEtwBroker.GetSnapshot();
+                    snapshot = kernelEtwBroker.GetSnapshot().ForKeywords(RequiredKeywords);
                     if (!snapshot.IsRunning || snapshot.Generation != Volatile.Read(ref sessionGeneration)) return;
                     if (snapshot.EventsLost == observedBrokerLoss) return;
                     ClearEventsCore(Volatile.Read(ref events));

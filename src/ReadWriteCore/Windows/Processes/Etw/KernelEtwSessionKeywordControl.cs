@@ -15,10 +15,17 @@ internal interface IKernelEtwNativeSessionControl
     KernelEtwNativeSessionIdentity Query(string sessionName);
 
     void SetSystemTraceFlags(ulong sessionHandle, ulong flags);
+
+    void StopSession(ulong sessionHandle, string sessionName);
 }
 
 internal sealed class KernelEtwSessionKeywordControl
 {
+    internal static bool IsAccessDenied(Exception exception)
+        => exception is UnauthorizedAccessException
+            || exception is Win32Exception { NativeErrorCode: 5 }
+            || exception.HResult == unchecked((int)0x80070005);
+
     internal const uint RealTimeMode = 0x00000100;
     internal const uint SystemLoggerMode = 0x02000000;
     private readonly IKernelEtwNativeSessionControl native;
@@ -43,13 +50,31 @@ internal sealed class KernelEtwSessionKeywordControl
     public void UpdateKeywords(KernelTraceEventParser.Keywords keywords)
     {
         var flags = CompileSystemTraceFlags(keywords);
+        VerifyOwnership();
+        native.SetSystemTraceFlags(identity.Handle, flags);
+    }
+
+    public void StopSession()
+    {
+        try
+        {
+            VerifyOwnership();
+            native.StopSession(identity.Handle, identity.Name);
+        }
+        catch (Win32Exception exception) when (exception.NativeErrorCode == 4201)
+        {
+            // Match TraceEvent.Stop: an absent session is already stopped.
+        }
+    }
+
+    private void VerifyOwnership()
+    {
         var current = native.Query(identity.Name);
         ValidateIdentity(current, identity.Name);
         if (current.Handle != identity.Handle || current.Guid != identity.Guid)
         {
-            throw new InvalidOperationException("The owned kernel ETW session was replaced before its keyword update.");
+            throw new InvalidOperationException("The owned kernel ETW session was replaced before its control operation.");
         }
-        native.SetSystemTraceFlags(identity.Handle, flags);
     }
 
     internal static ulong CompileSystemTraceFlags(KernelTraceEventParser.Keywords keywords)
@@ -83,10 +108,38 @@ internal sealed unsafe class WindowsKernelEtwNativeSessionControl : IKernelEtwNa
 {
     private const int NameCharacters = 1024;
     private const uint QueryControl = 0;
+    private const uint StopControl = 1;
     private const uint SystemTraceEnableFlagsInfo = 4;
     private const uint TracedGuid = 0x00020000;
 
     public KernelEtwNativeSessionIdentity Query(string sessionName)
+    {
+        var buffer = ControlSession(0, sessionName, QueryControl);
+        var propertiesSize = sizeof(EventTraceProperties);
+        fixed (byte* storage = buffer)
+        {
+            var properties = (EventTraceProperties*)storage;
+            var nameOffset = properties->LoggerNameOffset;
+            if (nameOffset < propertiesSize || nameOffset >= buffer.Length || nameOffset % sizeof(char) != 0)
+            {
+                throw new InvalidDataException("The ETW session query returned an invalid name offset.");
+            }
+            var name = new ReadOnlySpan<char>(storage + nameOffset,
+                Math.Min(NameCharacters, (buffer.Length - checked((int)nameOffset)) / sizeof(char)));
+            var terminator = name.IndexOf('\0');
+            if (terminator < 0) throw new InvalidDataException("The ETW session query returned an unterminated name.");
+            return new(
+                new string(name[..terminator]),
+                properties->Wnode.HistoricalContext,
+                properties->Wnode.Guid,
+                properties->LogFileMode);
+        }
+    }
+
+    public void StopSession(ulong sessionHandle, string sessionName)
+        => ControlSession(sessionHandle, sessionName, StopControl);
+
+    private static byte[] ControlSession(ulong sessionHandle, string sessionName, uint controlCode)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionName);
         if (sessionName.Length >= NameCharacters)
@@ -103,24 +156,11 @@ internal sealed unsafe class WindowsKernelEtwNativeSessionControl : IKernelEtwNa
             properties->LoggerNameOffset = checked((uint)propertiesSize);
             properties->LogFileNameOffset = checked((uint)(propertiesSize + NameCharacters * sizeof(char)));
             sessionName.AsSpan().CopyTo(new Span<char>(storage + propertiesSize, NameCharacters));
-            var status = ControlTraceW(0, sessionName, properties, QueryControl);
-            if (status != 0) throw new Win32Exception(unchecked((int)status), "Unable to query the owned kernel ETW session.");
-
-            var nameOffset = properties->LoggerNameOffset;
-            if (nameOffset < propertiesSize || nameOffset >= buffer.Length || nameOffset % sizeof(char) != 0)
-            {
-                throw new InvalidDataException("The ETW session query returned an invalid name offset.");
-            }
-            var name = new ReadOnlySpan<char>(storage + nameOffset,
-                Math.Min(NameCharacters, (buffer.Length - checked((int)nameOffset)) / sizeof(char)));
-            var terminator = name.IndexOf('\0');
-            if (terminator < 0) throw new InvalidDataException("The ETW session query returned an unterminated name.");
-            return new(
-                new string(name[..terminator]),
-                properties->Wnode.HistoricalContext,
-                properties->Wnode.Guid,
-                properties->LogFileMode);
+            var status = ControlTraceW(sessionHandle, sessionName, properties, controlCode);
+            if (status != 0) throw new Win32Exception(unchecked((int)status),
+                controlCode == StopControl ? "Unable to stop the owned kernel ETW session." : "Unable to query the owned kernel ETW session.");
         }
+        return buffer;
     }
 
     public void SetSystemTraceFlags(ulong sessionHandle, ulong flags)
