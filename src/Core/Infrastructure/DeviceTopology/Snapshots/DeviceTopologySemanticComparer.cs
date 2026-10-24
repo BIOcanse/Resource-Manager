@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
+using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
@@ -11,6 +12,7 @@ public sealed class DeviceTopologySemanticComparer
 
     public string ComputeHash(DeviceTopologySnapshot snapshot)
     {
+        snapshot = DeviceTopologyStructure.Create(snapshot);
         var normalized = snapshot with
         {
             CapturedAt = DateTimeOffset.UnixEpoch,

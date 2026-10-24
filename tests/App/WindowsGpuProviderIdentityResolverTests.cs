@@ -7,6 +7,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsGpuProviderIdentityResolverTests
 {
     [Fact]
+    public void UnavailablePhysicalIdentityOnlyRejectsItsOwnAdapter()
+    {
+        var healthy = CreateAdapter(0, 1, @"PCI\VEN_10DE&DEV_2684\A", 2, 0, 0, 0x10DE, 0x2684, 0);
+        var unavailable = CreateAdapter(1, 2, @"PCI\VEN_1002&DEV_164E\B", 5, 0, 0, 0x1002, 0x164E, 0) with
+        { PhysicalIdentityStatus = SamplingObservationStatus.Unavailable, PhysicalIdentities = [] };
+        var inventory = CreateInventory(unavailable, healthy);
+        Assert.True(WindowsGpuProviderIdentityResolver.ResolveLuid(inventory, 1, 0x10DE, 0x2684).IsCurrent);
+        Assert.True(WindowsGpuProviderIdentityResolver.ResolvePnp(inventory, healthy.PhysicalIdentities[0].PnpInstanceId).IsCurrent);
+        Assert.True(WindowsGpuProviderIdentityResolver.TryCreateNvapiPciEvidence(2, 0, 0x2684_10DE, 0, out var evidence));
+        Assert.True(WindowsGpuProviderIdentityResolver.ResolvePci(inventory, evidence).IsCurrent);
+        Assert.False(WindowsGpuProviderIdentityResolver.ResolveLuid(inventory, 2, 0x1002, 0x164E).IsCurrent);
+        Assert.False(WindowsGpuProviderIdentityResolver.ResolvePnp(inventory, @"PCI\VEN_1002&DEV_164E\B").IsCurrent);
+        var duplicate = healthy with { Index = 2, Luid = new AdapterLuid { LowPart = 3 } };
+        Assert.Equal(WindowsGpuProviderIdentityMatchStatus.Conflict,
+            WindowsGpuProviderIdentityResolver.ResolvePci(CreateInventory(unavailable, healthy, duplicate), evidence).Status);
+    }
+
+    [Fact]
     public void NvmlBdfResolvesOnlyTheExactPhysicalMember()
     {
         var inventory = CreateInventory(

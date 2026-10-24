@@ -30,6 +30,10 @@ const jaJpAppCopy: AppCopy = {
     control: "制御"
   },
   control: {
+    reassertionInterval: "再適用の間隔（秒）",
+    stateUnavailable: "確定済みの制御設定を読み取れないため、適用を停止しています。",
+    retryRead: "再読み込み",
+    curveUnavailable: "現在のファームウェア曲線を読み取れませんでした。再試行してください。代わりの曲線は作成していません。",
     title: "制御",
     intro: "ファン、グラフィックス、プロセッサーの調整をまとめています。調整できない項目も理由とともに表示します。",
     loadFailed: "制御可能なデバイスを読み取れませんでした。",

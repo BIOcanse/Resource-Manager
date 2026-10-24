@@ -122,7 +122,8 @@ public sealed class ControlReleaseTests
             System.Text.Json.JsonSerializer.Serialize(store.Value))!;
         writer.Refuse = false;
         var restarted = new ControlPlane(store, layer);
-        var recovered = await restarted.ReassertAsync(default);
+        await restarted.InitializeAsync(default);
+        var recovered = (await restarted.ReadStateAsync(default)).LastApply;
         Assert.Equal(ControlApplyStatuses.Applied, Assert.Single(recovered.Outcomes).Status);
         Assert.Empty(store.Value.PendingReleases);
         Assert.Empty(store.Value.Objects);
@@ -189,7 +190,8 @@ public sealed class ControlReleaseTests
         {
             ObjectCounts.Add(state.Objects.Count);
             if (ObjectCounts.Count == 1) { Entered.SetResult(); await Continue.Task.WaitAsync(token); }
-            return ControlApplyReport.Empty;
+            return new(state.Objects.SelectMany(target => target.Settings.Select(setting =>
+                new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Applied))).ToArray(), DateTimeOffset.UtcNow);
         }
     }
 }

@@ -11,6 +11,8 @@ public sealed record DeviceTopologySnapshot(
     IReadOnlyList<DeviceTopologyPort> Ports,
     IReadOnlyList<BackendMessage> Notes)
 {
+    // Source failures belong to this capture; healthy sources still publish their current facts.
+    public IReadOnlyList<DeviceTopologySourceDiagnostic> SourceDiagnostics { get; init; } = [];
     // Null means unqueried/unavailable (including older persisted snapshots); Empty confirms no hardware NPUs.
     public IReadOnlyList<DeviceTopologyNpuInformation>? NpuInformation { get; init; }
     // Null means directory unavailable; successful empty removes previous bindings.

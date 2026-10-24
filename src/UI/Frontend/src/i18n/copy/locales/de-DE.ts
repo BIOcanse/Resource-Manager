@@ -30,6 +30,10 @@ const deDeAppCopy: AppCopy = {
     control: "Steuerung"
   },
   control: {
+    reassertionInterval: "Intervall für erneutes Anwenden (Sekunden)",
+    stateUnavailable: "Die bestätigten Steuerungseinstellungen sind nicht verfügbar. Anwenden ist ausgesetzt.",
+    retryRead: "Erneut lesen",
+    curveUnavailable: "Die aktuelle Firmware-Kurve konnte nicht gelesen werden. Versuchen Sie es erneut; es wurde keine Ersatzkurve erstellt.",
     title: "Steuerung",
     intro: "Hier lassen sich Lüfter, Grafik und Prozessor einstellen. Auch nicht einstellbare Elemente werden mit dem jeweiligen Grund aufgeführt.",
     loadFailed: "Steuerbare Geräte konnten nicht gelesen werden.",

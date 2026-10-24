@@ -15,7 +15,7 @@ public sealed record WindowsLoginSession(uint SessionId, long LogonFileTime, str
 
 /// <summary>Passive stateless reader. Explicit Read enumerates all local WTS
 /// sessions and queries their original WTSINFOEX level 1; no session action is exposed.
-/// Null is a failed complete read, [] is a successful empty login enumeration.</summary>
+/// Null is a failed directory read, [] is a successful enumeration with no verified logins.</summary>
 public sealed class WindowsSessionInformationReader
 {
     internal static (int EnvelopeBytes, int DataOffset, int LogonOffset) NativeLayout =>
@@ -30,34 +30,55 @@ public sealed class WindowsSessionInformationReader
         {
             if (!WTSEnumerateSessionsW(0, 0, 1, out buffer, out var count)) return null;
             if (count > 131072 || (count != 0 && buffer == 0)) return null;
-            var rows = new List<WindowsLoginSession>();
-            var ids = new HashSet<uint>();
+            var ids = new List<uint>();
             var stride = Marshal.SizeOf<NativeSession>();
             for (uint index = 0; index < count; index++)
             {
                 token.ThrowIfCancellationRequested();
                 var enumerated = Marshal.PtrToStructure<NativeSession>(buffer + checked((int)index * stride));
-                if (!ids.Add(enumerated.SessionId)) return null;
-                nint information = 0;
-                try
-                {
-                    if (!WTSQuerySessionInformationW(0, enumerated.SessionId, 25, out information, out var bytes)
-                        || information == 0 || bytes < Marshal.SizeOf<NativeInformationEnvelope>()) return null;
-                    var envelope = Marshal.PtrToStructure<NativeInformationEnvelope>(information);
-                    if (envelope.Level != 1) return null;
-                    var fact = envelope.Data;
-                    var row = Decode(enumerated.SessionId, fact.SessionId, fact.LogonTime,
-                        fact.WinStationName ?? "", fact.Domain ?? "", fact.UserName ?? "", fact.State);
-                    if (row is not null) rows.Add(row);
-                }
-                finally { if (information != 0) WTSFreeMemory(information); }
+                ids.Add(enumerated.SessionId);
             }
-            token.ThrowIfCancellationRequested();
-            return rows.ToArray();
+            return ReadRows(ids, QuerySession, token);
         }
         catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or InvalidDataException)
         { return null; }
         finally { if (buffer != 0) WTSFreeMemory(buffer); }
+    }
+
+    internal static IReadOnlyList<WindowsLoginSession> ReadRows(IReadOnlyList<uint> ids,
+        Func<uint, WindowsLoginSession?> query, CancellationToken token = default)
+    {
+        var rows = new List<WindowsLoginSession>();
+        foreach (var group in ids.GroupBy(static id => id))
+        {
+            token.ThrowIfCancellationRequested();
+            if (group.Count() != 1) continue;
+            try
+            {
+                var row = query(group.Key);
+                if (row is not null) rows.Add(row);
+            }
+            catch (Exception error) when (error is InvalidDataException or ArgumentException or OverflowException)
+            { /* A retired or invalid row cannot invalidate other verified logins. */ }
+        }
+        token.ThrowIfCancellationRequested();
+        return rows.ToArray();
+    }
+
+    private static WindowsLoginSession? QuerySession(uint sessionId)
+    {
+        nint information = 0;
+        try
+        {
+            if (!WTSQuerySessionInformationW(0, sessionId, 25, out information, out var bytes)
+                || information == 0 || bytes < Marshal.SizeOf<NativeInformationEnvelope>()) return null;
+            var envelope = Marshal.PtrToStructure<NativeInformationEnvelope>(information);
+            if (envelope.Level != 1) return null;
+            var fact = envelope.Data;
+            return Decode(sessionId, fact.SessionId, fact.LogonTime,
+                fact.WinStationName ?? "", fact.Domain ?? "", fact.UserName ?? "", fact.State);
+        }
+        finally { if (information != 0) WTSFreeMemory(information); }
     }
 
     internal static WindowsLoginSession? Decode(uint enumeratedId, uint queriedId, long logonTime,

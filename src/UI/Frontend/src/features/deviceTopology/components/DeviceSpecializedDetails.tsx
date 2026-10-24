@@ -22,8 +22,10 @@ import type {
 import { formatBytes } from "../adapters/adapterEvidence";
 import "./specialized-device-details.css";
 import { uiText } from "../../../text.ts";
+import type { DeviceTopologyInformationSnapshot } from "../../../types.ts";
+import { currentVolumeFreeBytes } from "../deviceTopologyLiveInformation.ts";
 
-export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel }) {
+export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel; information: DeviceTopologyInformationSnapshot }) {
   return (
     <section class={`device-specialized-details kind-${props.model.kind}`} aria-label={uiText.deviceSpecialized.sectionLabel(props.model.deviceTypeLabel)}>
       <Switch>
@@ -40,7 +42,7 @@ export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel 
           {(model) => <HubDetails model={model()} />}
         </Match>
         <Match when={asKind<ExternalStorageDeviceModel>(props.model, "external-storage")}>
-          {(model) => <StorageDetails model={model()} />}
+          {(model) => <StorageDetails model={model()} information={props.information} />}
         </Match>
         <Match when={asKind<KeyboardDeviceModel>(props.model, "keyboard")}>
           {(model) => <InputDetails model={model()} label={uiText.deviceSpecialized.keyboardInput} />}
@@ -142,7 +144,7 @@ function HubDetails(props: { model: DockDeviceModel | UsbHubDeviceModel }) {
   );
 }
 
-function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
+function StorageDetails(props: { model: ExternalStorageDeviceModel; information: DeviceTopologyInformationSnapshot }) {
   return (
     <>
       <div class="device-storage-overview">
@@ -181,8 +183,8 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
                           <strong>{volume.driveLetter ?? volume.label ?? uiText.deviceSpecialized.volumeWithoutLetter}</strong>
                           <span>{volume.fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeMountState(volume.mountState)}</span>
                         </div>
-                        <small>{formatVolumeCapacity(volume.capacityBytes, volume.freeBytes)}</small>
-                        <VolumeUsage capacity={volume.capacityBytes} free={volume.freeBytes} />
+                        <small>{formatVolumeCapacity(volume.capacityBytes, currentVolumeFreeBytes(props.information, volume.driveLetter))}</small>
+                        <VolumeUsage capacity={volume.capacityBytes} free={currentVolumeFreeBytes(props.information, volume.driveLetter)} />
                       </div>
                     )}
                   </For>

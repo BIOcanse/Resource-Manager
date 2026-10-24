@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { controlObjectsDecoder, getControlObjectCurve, setControlObjectSettings, controlHardwareRequestTimeoutMs } from "../src/features/control/controlApi.ts";
-import { initialSettingFor } from "../src/features/control/controlInitialSetting.ts";
+import { curveSettingFromRead, initialSettingFor } from "../src/features/control/controlInitialSetting.ts";
 import { canConfigureRuntimePlacement } from "../src/components/gpuPlacementTargetOptions.ts";
 import type { ControlCapability } from "../src/features/control/controlTypes.ts";
 
@@ -36,3 +36,16 @@ await setControlObjectSettings(client, "fan:0", []);
 assert.deepEqual(requests.map(r => r.timeoutMs), [controlHardwareRequestTimeoutMs, controlHardwareRequestTimeoutMs]);
 assert.ok(controlHardwareRequestTimeoutMs >= 60_000);
 console.log("control review regressions: ok");
+
+assert.equal(curveSettingFromRead("fan.curve", null, [40, 60, 80], "firmware"), null,
+  "Unavailable firmware must not turn into writable fabricated points");
+assert.equal(curveSettingFromRead("fan.curve", [], [40, 60, 80], "firmware"), null,
+  "An empty firmware table is unavailable, not a zero-speed table");
+assert.deepEqual(curveSettingFromRead("fan.curve", [
+  { temperatureCelsius: 40, percent: 31 }, { temperatureCelsius: 80, percent: 73 }
+], [40, 60, 80], "firmware"), {
+  capabilityId: "fan.curve", curveExecution: "firmware", curve: [
+    { temperatureCelsius: 40, percent: 31 }, { temperatureCelsius: 60, percent: 52 },
+    { temperatureCelsius: 80, percent: 73 }
+  ]
+}, "Editable points derive only from a confirmed firmware table");

@@ -76,7 +76,7 @@ public sealed partial class PageFileInformationCollectorTests
     }
 
     [Fact]
-    public void RawSnapshotRoundTripAndSemanticHashIncludeUsageButIgnoreEnumerationOrder()
+    public void RawSnapshotRoundTripKeepsUsageButStructuralHashIgnoresUsageAndEnumerationOrder()
     {
         var a = Sample(); var b = Sample() with { DeviceIdentity = IdB, PathReported = PathB, UsedPages = 0 };
         var raw = DeviceInformationTestData.Snapshot() with { PageFileInformation = [a, b] };
@@ -85,7 +85,8 @@ public sealed partial class PageFileInformationCollectorTests
         Assert.Equal(a, decoded.PageFileInformation![0]); Assert.Equal(b, decoded.PageFileInformation[1]);
         var comparer = new DeviceTopologySemanticComparer();
         Assert.Equal(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { PageFileInformation = [b, a], CapturedAt = DateTimeOffset.UtcNow.AddDays(1) }));
-        Assert.NotEqual(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { PageFileInformation = [a with { UsedPages = 201 }, b] }));
+        Assert.Equal(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { PageFileInformation = [a with { UsedPages = 201 }, b] }));
+        Assert.NotEqual(comparer.ComputeHash(raw), comparer.ComputeHash(raw with { PageFileInformation = [a with { CapacityPages = 8192 }, b] }));
         var old = JsonSerializer.Deserialize<DeviceTopologySnapshot>("{\"capturedAt\":\"2026-10-06T00:00:00Z\",\"system\":{\"manufacturer\":\"\",\"model\":\"\",\"brandDisplayName\":\"\",\"brandLogoText\":\"\"},\"ports\":[],\"notes\":[]}", options)!;
         Assert.Empty(old.PageFileInformation!);
     }

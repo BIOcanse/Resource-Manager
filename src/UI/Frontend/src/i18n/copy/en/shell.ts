@@ -25,6 +25,10 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     control: "Control"
   },
   control: {
+    reassertionInterval: "Reapply interval (seconds)",
+    stateUnavailable: "Authoritative control settings are unavailable. Apply is paused.",
+    retryRead: "Read again",
+    curveUnavailable: "The current firmware curve could not be read. Try again; no replacement curve was created.",
     presentation: enControlPresentationCopy,
     title: "Control",
     intro: "Fan, graphics and processor tuning all live here. Whatever cannot be tuned is listed too, with the reason.",

@@ -83,7 +83,8 @@ public static class AppSettingsDefaults
                 Provider: "lm-studio",
                 Endpoint: "http://127.0.0.1:1234",
                 AutoStartEnabled: false),
-            new AppUpdateSettings(AutoUpdateEnabled: false));
+            new AppUpdateSettings(AutoUpdateEnabled: false),
+            new AppHardwareControlSettings());
     }
 
     public static AppPresetNumericSetting CreateLogicRefreshIntervalDefault(

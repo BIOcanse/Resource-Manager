@@ -37,24 +37,29 @@ public sealed partial class WindowsBatteryReader
                 || paths.Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
                 return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
             var identities = new List<BatteryCatalogIdentity>();
+            var rejected = 0;
             foreach (var path in paths.Order(StringComparer.OrdinalIgnoreCase))
             {
-                using var device = open(path);
-                if (device is null || ReadTag(device) is not { } tag)
-                    return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
-                if (tag == 0) continue; // An empty battery slot is not a device.
-                var info = ParseInformation(device.Query(QueryInformation, InformationRequest(tag, 0), 36));
-                var uniqueId = ReadString(device, tag, 7);
-                if (info is null || uniqueId is null)
-                    return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
-                var manufacturer = includeDeclarations ? ReadString(device, tag, 6) : null;
-                var serial = includeDeclarations ? ReadString(device, tag, 8) : null;
-                if (ReadTag(device) != tag)
-                    return new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []);
-                identities.Add(new(identities.Count, path, uniqueId, info)
-                { Manufacturer = manufacturer, SerialNumber = serial });
+                try
+                {
+                    using var device = open(path);
+                    if (device is null || ReadTag(device) is not { } tag)
+                    { rejected++; continue; }
+                    if (tag == 0) continue; // An empty battery slot is not a device.
+                    var info = ParseInformation(device.Query(QueryInformation, InformationRequest(tag, 0), 36));
+                    var uniqueId = ReadString(device, tag, 7);
+                    if (info is null || uniqueId is null)
+                    { rejected++; continue; }
+                    var manufacturer = includeDeclarations ? ReadString(device, tag, 6) : null;
+                    var serial = includeDeclarations ? ReadString(device, tag, 8) : null;
+                    if (ReadTag(device) != tag)
+                    { rejected++; continue; }
+                    identities.Add(new(identities.Count, path, uniqueId, info)
+                    { Manufacturer = manufacturer, SerialNumber = serial });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { rejected++; }
             }
-            return new(NativeMetricSnapshotCatalogTopologyStatus.Complete, identities);
+            return new(NativeMetricSnapshotCatalogTopologyStatus.Complete, identities) { RejectedCount = rejected };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

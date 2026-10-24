@@ -19,6 +19,7 @@ import resourceBarColorModesJourney from "./resourceBarColorModesJourney.js";
 import resourceBarProportionJourney from "./resourceBarProportionJourney.js";
 import controlReadingsJourney from "./controlReadingsJourney.js";
 import controlCardJourney from "./controlCardJourney.js";
+import controlAuditJourney from "./controlAuditJourney.js";
 import controlNumberInitialJourney from "./controlNumberInitialJourney.js";
 import controlSlowRequestJourney from "./controlSlowRequestJourney.js";
 import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
@@ -51,6 +52,7 @@ const allJourneys = [
   ["resource-bar-proportion", resourceBarProportionJourney],
   ["control-readings", controlReadingsJourney],
   ["control-card", controlCardJourney],
+  ["control-audit", controlAuditJourney],
   ["control-number-initial", controlNumberInitialJourney],
   ["control-slow-request", controlSlowRequestJourney],
   ["control-toggle-choice", controlToggleChoiceJourney],

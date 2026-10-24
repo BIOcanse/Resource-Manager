@@ -109,7 +109,7 @@ public sealed partial class FanCurveReceiptTests
         client.ResetDetection();
         Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
         Assert.Null(client.UnavailableReason);
-        Assert.True(client.NeedsTemperatures());
+        Assert.False(client.NeedsTemperatures());
         Assert.Equal(processId, helper.ProcessId);
         Assert.False(helper.HasExited);
         var refreshed = await client.SendAsync("describe", null, deadline.Token);

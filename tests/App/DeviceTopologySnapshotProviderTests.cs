@@ -274,8 +274,16 @@ public sealed class DeviceTopologySnapshotProviderTests
             await fixture.Provider.SampleNowAsync(cancellation.Token);
 
             Assert.True(await next);
-            Assert.Same(snapshot, subscription.Current.Snapshot);
+            var published = subscription.Current.Snapshot!;
+            Assert.Equal(new DeviceTopologySemanticComparer().ComputeHash(snapshot),
+                new DeviceTopologySemanticComparer().ComputeHash(published));
             Assert.Same(fixture.Provider.ReadState(), subscription.Current);
+            next = subscription.MoveNextAsync().AsTask();
+            Assert.False(next.IsCompleted);
+            await fixture.Provider.SampleNowAsync(cancellation.Token);
+            Assert.True(await next);
+            Assert.Same(published, subscription.Current.Snapshot);
+            Assert.Equal(1, subscription.Current.ContentGeneration);
             next = subscription.MoveNextAsync().AsTask();
             Assert.False(next.IsCompleted);
             await cancellation.CancelAsync();
@@ -285,7 +293,7 @@ public sealed class DeviceTopologySnapshotProviderTests
         await fixture.Provider.StartAsync(CancellationToken.None);
         await Task.Delay(50);
         await fixture.Provider.StopAsync(CancellationToken.None);
-        Assert.Equal(1, reader.ReadCount);
+        Assert.Equal(2, reader.ReadCount);
     }
 
     [Fact]

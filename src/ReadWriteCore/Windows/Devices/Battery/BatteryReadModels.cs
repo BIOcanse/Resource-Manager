@@ -23,7 +23,11 @@ public sealed record BatteryCatalogIdentity(int DisplayIndex, string DevicePath,
 }
 
 public sealed record BatteryTopologyRead(NativeMetricSnapshotCatalogTopologyStatus Status,
-    IReadOnlyList<BatteryCatalogIdentity> Identities);
+    IReadOnlyList<BatteryCatalogIdentity> Identities)
+{
+    // The interface directory succeeded, but these rows could not establish a stable battery identity.
+    public int RejectedCount { get; init; }
+}
 
 public sealed record BatteryMetricRead(string DeviceIdentity,
     IReadOnlyDictionary<MetricFieldCode, double> Values, uint? PowerState, bool RequiresTopologyRefresh);

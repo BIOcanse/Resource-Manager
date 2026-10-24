@@ -1,3 +1,4 @@
+using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Application.Control;
 
 namespace ResourceManager.App.Infrastructure.Control;
@@ -17,12 +18,13 @@ public sealed class JsonControlNoticeAcknowledgement : IControlNoticeAcknowledge
 
     public JsonControlNoticeAcknowledgement(
         IHostEnvironment environment,
-        ILogger<JsonControlNoticeAcknowledgement>? logger = null)
+        ILogger<JsonControlNoticeAcknowledgement>? logger = null,
+        StartupCapabilitySet? capabilities = null)
     {
         ArgumentNullException.ThrowIfNull(environment);
         markerPath = ControlDataPaths.FilePath(
             environment.ContentRootPath,
-            "notice-acknowledged.txt");
+            "notice-acknowledged.txt", capabilities);
         this.logger = logger;
     }
 

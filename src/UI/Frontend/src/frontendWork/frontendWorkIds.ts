@@ -1,4 +1,5 @@
 export const frontendWorkIds = {
+  controlActual: "control.actual",
   managementInventory: "management.inventory",
   managementBrowserRuntimes: "management.browser-runtimes",
   optimizationReports: "optimization.reports",

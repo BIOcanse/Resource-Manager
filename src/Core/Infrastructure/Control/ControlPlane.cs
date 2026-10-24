@@ -1,5 +1,7 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -12,11 +14,54 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// </summary>
 public sealed class ControlPlane(
     IControlDesiredStateStore store,
-    IControlWriteLayer writeLayer) : IControlPlane
+    IControlWriteLayer writeLayer,
+    StartupCapabilitySet? capabilities = null,
+    DashboardMonitoringCatalogState? catalog = null) : IControlPlane
 {
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);
     private ControlApplyReport lastApply = ControlApplyReport.Empty;
+    private ControlDesiredState applied = ControlDesiredState.Empty;
+    private bool initialized;
+
+    private bool CanMutate => capabilities is null || capabilities.Allows(
+        StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners);
+
+    public async Task InitializeAsync(CancellationToken cancellationToken)
+    {
+        if (!CanMutate) return;
+        await WaitForCatalogAsync(cancellationToken).ConfigureAwait(false);
+        await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (initialized) return;
+            initialized = true;
+            await ApplyStoredAsync(await store.LoadAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        }
+        finally { operations.Release(); }
+    }
+
+    private async Task WaitForCatalogAsync(CancellationToken token)
+    {
+        if (catalog is null || catalog.Current is { CatalogGeneration: > 0 }) return;
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Changed() { if (catalog.Current is { CatalogGeneration: > 0 }) ready.TrySetResult(); }
+        catalog.Changed += Changed;
+        try { Changed(); await ready.Task.WaitAsync(token).ConfigureAwait(false); }
+        finally { catalog.Changed -= Changed; }
+    }
+
+    private static ControlApplyReport Rejected(ControlDesiredState desired, string reason)
+        => new(desired.Objects.SelectMany(target => target.Settings.Select(setting =>
+            new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, reason))).ToArray(), DateTimeOffset.UtcNow);
+
+    private async Task<ControlStateView?> RejectMutationAsync(ControlDesiredState request, CancellationToken token)
+    {
+        if (CanMutate) return null;
+        var report = Rejected(request, "startup-profile-read-only");
+        WriteLastApply(report);
+        return new(await store.LoadAsync(token).ConfigureAwait(false), report);
+    }
 
     public async Task<ControlStateView> ReadStateAsync(CancellationToken cancellationToken)
     {
@@ -45,6 +90,8 @@ public sealed class ControlPlane(
         {
             ArgumentNullException.ThrowIfNull(desired);
 
+            if (await RejectMutationAsync(desired, cancellationToken).ConfigureAwait(false) is { } rejected) return rejected;
+
             var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
             // 空设定的对象整条去掉，不留一条空的 —— "不管这个对象"和"管它但什么都没设"
             // 在状态机里应当是同一件事的同一种写法。
@@ -69,6 +116,8 @@ public sealed class ControlPlane(
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(objectId);
             ArgumentNullException.ThrowIfNull(settings);
+
+            if (await RejectMutationAsync(new([new(objectId, settings)]), cancellationToken).ConfigureAwait(false) is { } rejected) return rejected;
 
             var current = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
             var objects = current.Objects
@@ -132,6 +181,7 @@ public sealed class ControlPlane(
         var selected = objectId is null ? next : new ControlDesiredState(
             next.Objects.Where(target => target.ObjectId == objectId).ToArray());
         var applied = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
+        UpdateApplied(selected, applied, releaseReport);
         var retained = ReadLastApply().Outcomes.Where(outcome => objectId is not null && outcome.ObjectId != objectId);
         var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).ToArray(), DateTimeOffset.UtcNow);
         WriteLastApply(report);
@@ -143,18 +193,37 @@ public sealed class ControlPlane(
         await operations.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var desired = await store.LoadAsync(cancellationToken).ConfigureAwait(false);
-            if (desired.Objects.Count == 0 && desired.PendingReleases.Count == 0)
-            {
-                // 没设过就什么都不做 —— 不去把机器"重置"成我们以为的默认值。
-                return ReadLastApply();
-            }
-            return (await ApplyStoredAsync(desired, cancellationToken).ConfigureAwait(false)).LastApply;
+            if (!CanMutate) return ReadLastApply();
+            var previous = ReadLastApply();
+            var selected = new ControlDesiredState(applied.Objects.Select(target => new ControlObjectDesiredState(target.ObjectId,
+                target.Settings.Where(setting => previous.Outcomes.Any(outcome => outcome.ObjectId == target.ObjectId
+                    && outcome.CapabilityId == setting.CapabilityId && outcome.Status == ControlApplyStatuses.Applied)).ToArray()))
+                .Where(target => target.Settings.Count > 0).ToArray());
+            if (selected.Objects.Count == 0) return previous;
+            var report = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
+            var updated = new ControlApplyReport(previous.Outcomes.Where(old => !report.Outcomes.Any(next =>
+                next.ObjectId == old.ObjectId && next.CapabilityId == old.CapabilityId)).Concat(report.Outcomes).ToArray(), DateTimeOffset.UtcNow);
+            WriteLastApply(updated);
+            return updated;
         }
         finally
         {
             operations.Release();
         }
+    }
+
+    private void UpdateApplied(ControlDesiredState requested, ControlApplyReport written, ControlApplyReport released)
+    {
+        var values = applied.Objects.SelectMany(target => target.Settings.Select(setting => (target.ObjectId, Setting: setting)))
+            .ToDictionary(value => (value.ObjectId, value.Setting.CapabilityId), value => value.Setting);
+        foreach (var result in released.Outcomes.Where(result => result.Status == ControlApplyStatuses.Applied))
+            values.Remove((result.ObjectId, result.CapabilityId));
+        foreach (var target in requested.Objects)
+            foreach (var setting in target.Settings)
+                if (written.Outcomes.Any(result => result.ObjectId == target.ObjectId && result.CapabilityId == setting.CapabilityId
+                    && result.Status == ControlApplyStatuses.Applied)) values[(target.ObjectId, setting.CapabilityId)] = setting;
+        applied = new(values.GroupBy(value => value.Key.ObjectId).Select(group =>
+            new ControlObjectDesiredState(group.Key, group.Select(value => value.Value).ToArray())).ToArray());
     }
 
     private ControlApplyReport ReadLastApply()

@@ -135,9 +135,6 @@ public sealed class FanControlRestoreProtocolTests
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
             var writer = new FanControlWriter(client);
             var curve = new ControlCurvePoint[] { new(60, 35), new(95, 100) };
-            using var firmwareReceipt = System.Text.Json.JsonDocument.Parse("{\"execution\":\"firmware\"}");
-            client.StoreCurveReceipt(0, firmwareReceipt.RootElement, curve);
-            Assert.Same(curve, await client.ReadCurveAsync(0, default));
             var result = await writer.RestoreAsync(target, new(capability, capability, ControlValueKinds.Curve, true),
                 retainOther ? new HashSet<string> { "fan.lock-maximum" } : new HashSet<string>(), default,
                 execution is null ? null : new ControlSetting(capability, CurveExecution: execution));
@@ -167,8 +164,7 @@ public sealed class FanControlRestoreProtocolTests
                 }
             }
             finally { foreach (var operation in operations) operation.Dispose(); }
-            if (sentAutomatic) Assert.Null(await client.ReadCurveAsync(0, default));
-            else Assert.Same(curve, await client.ReadCurveAsync(0, default));
+            Assert.Null(await client.ReadCurveAsync(0, default));
             Assert.Equal(Path.Combine(root, "UserData", "Control", "FanControlCore"), stateDirectory);
             if (execution == "software")
             {

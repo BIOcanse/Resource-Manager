@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.ReadWrite.Vendors.Intel;
 using ResourceManager.ReadWrite.Windows.Gpu.Control;
+using ResourceManager.App.Hosting.StartupCapabilities;
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// <summary>Product route/consent state/copy/path adapter; both original execution paths are in one SDK resource.</summary>
 public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
@@ -12,11 +13,12 @@ public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
     internal const string IntelTargetMissing = "无法将所选核显与 Intel 驱动设备唯一对应，未读取或写入其他显卡。";
     private readonly IntegratedGpuControlResource resource;
     internal IntegratedGpuControlResource Resource => resource;
-    public IntegratedGpuControlWriter(HardwareBridgeClient bridge,IControlOverclockConsent consent,IHostEnvironment environment,ILogger<IntegratedGpuControlWriter>? logger=null)
-        : this(bridge,consent,environment,new IntelGraphicsControlBridge(),logger) { }
+    public IntegratedGpuControlWriter(HardwareBridgeClient bridge,IControlOverclockConsent consent,IHostEnvironment environment,ILogger<IntegratedGpuControlWriter>? logger=null,
+        StartupCapabilitySet? capabilities = null)
+        : this(bridge,consent,environment,new IntelGraphicsControlBridge(),logger,capabilities) { }
     internal IntegratedGpuControlWriter(HardwareBridgeClient bridge,IControlOverclockConsent consent,IHostEnvironment environment,
-        IIntelGraphicsControlHardware intel,ILogger<IntegratedGpuControlWriter>? logger=null)
-        => resource=new(bridge,intel,new(ControlDataPaths.FilePath(environment.ContentRootPath,"amd-igpu-curve-optimizer-baseline.txt"),consent.IsAcceptedAsync),Describe,
+        IIntelGraphicsControlHardware intel,ILogger<IntegratedGpuControlWriter>? logger=null,StartupCapabilitySet? capabilities=null)
+        => resource=new(bridge,intel,new(ControlDataPaths.FilePath(environment.ContentRootPath,"amd-igpu-curve-optimizer-baseline.txt",capabilities),consent.IsAcceptedAsync),Describe,
             logger is null ? null : (error,code,args) => logger.LogWarning(error,"{Detail}",Describe(code,args)));
     private static IntegratedGpuControlTarget Target(ControlObject t) => new(t.Id,
         t.Kind != ControlObjectKinds.Gpu || t.GpuAttachment != ControlGpuAttachments.Integrated ? IntegratedGpuControlRoute.Rejected

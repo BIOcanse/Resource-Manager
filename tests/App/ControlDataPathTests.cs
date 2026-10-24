@@ -5,6 +5,28 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ControlDataPathTests
 {
     [Fact]
+    public void ReadOnlyPathResolutionUsesLegacyWithoutCopyingOrCreatingDestination()
+    {
+        var package = Path.Combine(Path.GetTempPath(), "rm-readonly-control-path-" + Guid.NewGuid().ToString("N"));
+        var content = Path.Combine(package, "Bin", "ResourceManager");
+        var oldDirectory = Path.Combine(content, "UserData", "Control");
+        Directory.CreateDirectory(oldDirectory);
+        var legacy = Path.Combine(oldDirectory, "access-level.txt");
+        try
+        {
+            File.WriteAllText(legacy, "root");
+            Assert.Equal(legacy, ControlDataPaths.FilePath(content, "access-level.txt",
+                ResourceManager.App.Hosting.StartupCapabilities.StartupCapabilitySet.NormalReadOnly));
+            Assert.False(Directory.Exists(Path.Combine(package, "UserData")));
+        }
+        finally
+        {
+            File.Delete(legacy);
+            foreach (var directory in new[] { oldDirectory, Path.Combine(content, "UserData"), content, Path.Combine(package, "Bin"), package }) Directory.Delete(directory);
+        }
+    }
+
+    [Fact]
     public void InstalledContentRootMigratesLegacyControlFileAndKeepsNewerRootFile()
     {
         var package = Path.Combine(Path.GetTempPath(), "rm-control-path-" + Guid.NewGuid().ToString("N"));

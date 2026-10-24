@@ -196,7 +196,7 @@ public sealed partial class DeviceTopologyCaptureOwner(
 
                 var current = ReadState();
                 var publishedSnapshot = changed || current.Snapshot is null
-                    ? snapshot
+                    ? DeviceTopologyStructure.Create(snapshot)
                     : current.Snapshot;
                 nextState = current with
                 {
@@ -208,9 +208,9 @@ public sealed partial class DeviceTopologyCaptureOwner(
                     LastSuccessAt = snapshot.CapturedAt,
                     LastAttemptAt = attemptedAt,
                     FailureCode = null,
-                    AttemptDiagnostics = []
+                    AttemptDiagnostics = snapshot.SourceDiagnostics.ToArray()
                 };
-                Publish(nextState);
+                Publish(nextState, snapshot);
                 failureFingerprint = null;
                 publicationSignal.Publish();
             }))
@@ -292,10 +292,10 @@ public sealed partial class DeviceTopologyCaptureOwner(
         return permission.TryPublish(publish);
     }
 
-    private void Publish(DeviceTopologySnapshotState next)
+    private void Publish(DeviceTopologySnapshotState next, DeviceTopologySnapshot? informationSnapshot = null)
     {
         var projectedFields = topology!.ProjectInformation(
-            next.Snapshot,
+            informationSnapshot ?? next.Snapshot,
             next.State == DeviceTopologySnapshotStatus.Ready && next.Source == DeviceTopologySnapshotSource.Live
                 ? next.LastSuccessAt
                 : null);

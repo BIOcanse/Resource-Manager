@@ -109,13 +109,18 @@ public static class AppSettingsMigrator
                 Endpoint: ReadString(root, "aiModelService", "endpoint", defaults.AiModelService.Endpoint),
                 AutoStartEnabled: ReadBoolean(root, "aiModelService", "autoStartEnabled", defaults.AiModelService.AutoStartEnabled)),
             new AppUpdateSettings(
-                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled)));
+                ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled)),
+            new AppHardwareControlSettings(
+                ReadInt32(root, "control", "reassertionIntervalSeconds", 120)));
 
         return AppSettingsNormalizer.Normalize(settings);
     }
 
     public static bool RequiresRewrite(JsonElement root)
     {
+        if (!root.TryGetProperty("control", out var control) || control.ValueKind != JsonValueKind.Object
+            || !control.TryGetProperty("reassertionIntervalSeconds", out var interval)
+            || interval.ValueKind != JsonValueKind.Number || !interval.TryGetInt32(out var seconds) || seconds is < 1 or > 86400) return true;
         if (!root.TryGetProperty("version", out var version)
             || version.ValueKind != JsonValueKind.String
             || !string.Equals(version.GetString(), AppSettingsDefaults.CurrentVersion, StringComparison.Ordinal)

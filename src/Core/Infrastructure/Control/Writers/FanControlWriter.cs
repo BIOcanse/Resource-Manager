@@ -1,6 +1,8 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Control;
+using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
@@ -14,7 +16,9 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// </summary>
 public sealed class FanControlWriter(
     FanControlCoreClient core,
-    ILogger<FanControlWriter>? logger = null) : IControlWriter
+    ILogger<FanControlWriter>? logger = null,
+    IMetricSampler? sampler = null,
+    DashboardMonitoringCatalogState? catalog = null) : IControlWriter
 {
     internal const string LockMaximumCapabilityId = "fan.lock-maximum";
     internal const string CurveCapabilityId = "fan.curve";
@@ -185,9 +189,6 @@ public sealed class FanControlWriter(
             return false;
         var resetCurve = capability.Id == CurveCapabilityId && execution == ControlFanCurveExecutions.Firmware;
         if (resetCurve && !description.SupportsFirmwareCurveReset) return false;
-        // Restoring a temporary duty override can restore the firmware table too.
-        // Even a failed receipt cannot prove the old table is still intact.
-        core.InvalidateCurve(index);
         var response = await core.SendAsync("auto",
             new Dictionary<string, object?> { ["fan"] = index, ["resetFirmwareCurve"] = resetCurve }, cancellationToken).ConfigureAwait(false);
         var restored = response is { } result && Flag(result, "ok")
@@ -220,7 +221,7 @@ public sealed class FanControlWriter(
         }
         if (string.Equals(capability.Id, CurveCapabilityId, StringComparison.Ordinal))
         {
-            return await WriteCurveAsync(target, capability, setting, fanIndex, cancellationToken)
+            return await WriteCurveAsync(target, capability, setting, description, cancellationToken)
                 .ConfigureAwait(false);
         }
         if (!string.Equals(capability.Id, LockMaximumCapabilityId, StringComparison.Ordinal))
@@ -232,7 +233,6 @@ public sealed class FanControlWriter(
         // **这两个是对称的两个状态，不是一个开关的两个位置** ——
         // 关掉之后风扇归固件管，我们设的东西一律不再生效，界面要能表达这一点。
         var wantsMaximum = setting.Toggle == true;
-        core.InvalidateCurve(fanIndex);
         var response = await core.SendAsync(
             wantsMaximum ? "boost" : "auto",
             new Dictionary<string, object?> { ["fan"] = fanIndex },
@@ -270,13 +270,13 @@ public sealed class FanControlWriter(
     /// <summary>
     /// 把用户选择的固件或软件曲线交给核心执行。
     /// 固件回执来自实际表，软件回执来自活跃执行计划；只有完整有效的回执
-    /// 才能确认应用并保存为曲线读值，不用提交值或部分回执替代。
+    /// 才能确认应用，不用提交值或部分回执替代。
     /// </summary>
     private async Task<ControlApplyOutcome> WriteCurveAsync(
         ControlObject target,
         ControlCapability capability,
         ControlSetting setting,
-        int fanIndex,
+        FanCoreFan description,
         CancellationToken cancellationToken)
     {
         if (setting.Curve is not { Count: > 0 } curve)
@@ -284,7 +284,32 @@ public sealed class FanControlWriter(
             return Failed(target, capability, "这条设定里没有曲线。");
         }
 
-        core.InvalidateCurve(fanIndex);
+        var fanIndex = description.Index;
+        var software = setting.CurveExecution == ControlFanCurveExecutions.Software
+            || setting.CurveExecution is null && description.FirmwareCurve is null;
+        if (software && sampler is not null)
+        {
+            // Explicit Apply is a one-shot consumer. Seed the helper before asking it
+            // to accept a software plan; only a successful plan starts the ongoing lease.
+            try
+            {
+                var snapshot = await sampler.CaptureSnapshotAsync(
+                    FanCurveTemperatureFeed.TemperatureRequest(catalog?.Current), cancellationToken).ConfigureAwait(false);
+                var samples = FanCurveTemperatureFeed.Collect(snapshot, DateTimeOffset.UtcNow);
+                var hasRequiredTemperature = description.Role == ControlFanRoles.Gpu
+                    ? samples.Keys.Any(name => name.StartsWith("gpu", StringComparison.OrdinalIgnoreCase))
+                    : samples.ContainsKey("cpu");
+                if (!hasRequiredTemperature
+                    || !await core.PushTemperaturesAsync(samples, cancellationToken, skipIfBusy: false).ConfigureAwait(false))
+                    return Failed(target, capability, "还没有收到这个风扇要看的温度，软件曲线跑不起来。");
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                logger?.LogWarning(error, "软件风扇曲线启动前读取温度失败。");
+                return Failed(target, capability, "还没有收到这个风扇要看的温度，软件曲线跑不起来。");
+            }
+        }
+
         var response = await core.SendAsync(
             "setcurve",
             new Dictionary<string, object?>
@@ -315,7 +340,6 @@ public sealed class FanControlWriter(
         {
             return Failed(target, capability, "写下去了，但回读的值没有变。");
         }
-        core.StoreCurveReceipt(fanIndex, result, readBack);
 
         return new ControlApplyOutcome(
             target.Id,
@@ -409,8 +433,6 @@ public sealed class FanControlWriter(
             return Failed(target, capability, "定速要一个百分比，收到的不是。");
         }
 
-        // Some backends implement fixed duty by modifying their firmware table.
-        core.InvalidateCurve(fanIndex);
         var response = await core.SendAsync(
             "set",
             new Dictionary<string, object?> { ["fan"] = fanIndex, ["percent"] = percent },

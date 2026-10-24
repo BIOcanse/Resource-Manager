@@ -27,7 +27,7 @@ try {
       lastSuccessAt: null,
       lastAttemptAt: null,
       failureCode: null,
-      attemptDiagnostics: []
+      informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
     }), { status: 200 });
   }) as typeof fetch;
 

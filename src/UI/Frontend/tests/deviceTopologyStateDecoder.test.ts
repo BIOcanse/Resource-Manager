@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
+import { currentVolumeFreeBytes } from "../src/features/deviceTopology/deviceTopologyLiveInformation.ts";
 
 const port = {
   id: "port-1",
@@ -212,7 +213,7 @@ const source = {
   lastSuccessAt: "2026-08-22T15:20:30.000Z",
   lastAttemptAt: "2026-08-22T15:20:30.000Z",
   failureCode: null,
-  attemptDiagnostics: [],
+  informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: [],
   ignored: true
 };
 
@@ -227,7 +228,35 @@ assert.equal(
   "ignored" in (decoded.snapshot!.ports[0] as unknown as Record<string, unknown>),
   false);
 
+const information = {
+  observedAt: "2026-08-22T15:20:30.000Z",
+  devices: [{ deviceIdentity: "volume-guid-a", objectType: "volume", fields: [
+    { definition: { name: "volume_all_mount_paths_reported" }, value: ["E:\\"] },
+    { definition: { name: "volume_all_free_bytes_actual" }, value: "500" }
+  ] }]
+};
+const current = deviceTopologyStateDecoder.decode({ ...source, informationFields: information });
+assert.equal(currentVolumeFreeBytes(current.informationFields, "e:"), 500);
+const changedInformation = structuredClone(information);
+changedInformation.devices[0].fields[1].value = "450";
+const changed = deviceTopologyStateDecoder.decode({ ...source, informationFields: changedInformation });
+assert.equal(changed.contentGeneration, current.contentGeneration);
+assert.equal(currentVolumeFreeBytes(changed.informationFields, "E:\\"), 450);
+assert.equal(currentVolumeFreeBytes({ ...current.informationFields, observedAt: null }, "E:"), null);
+assert.equal(currentVolumeFreeBytes(current.informationFields, "F:"), null);
+assert.equal(currentVolumeFreeBytes(current.informationFields, null), null);
+assert.equal(currentVolumeFreeBytes({ ...current.informationFields, devices: [
+  ...current.informationFields.devices, { ...current.informationFields.devices[0], deviceIdentity: "other-volume" }
+] }, "E:"), null);
+for (const value of [null, "unavailable", "9007199254740993", -1]) {
+  const unavailable = structuredClone(current.informationFields);
+  unavailable.devices[0].fields[1].value = value;
+  assert.equal(currentVolumeFreeBytes(unavailable, "E:"), null);
+}
+
 const invalidCases: Array<[unknown, string]> = [
+  [{ ...source, informationFields: undefined }, "$.informationFields"],
+  [{ ...source, informationFields: { ...information, observedAt: "bad-time" } }, "$.informationFields.observedAt"],
   [{ ...source, schemaVersion: "1.0.0" }, "$.schemaVersion"],
   [{ ...source, state: "unknown" }, "$.state"],
   [{ ...source, source: "disk" }, "$.source"],
@@ -291,7 +320,7 @@ assert.deepEqual(deviceTopologyStateDecoder.decode({
   lastSuccessAt: null,
   lastAttemptAt: null,
   failureCode: null,
-  attemptDiagnostics: []
+  informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
 }), {
   schemaVersion: "4.0.0",
   state: "warming",
@@ -302,7 +331,7 @@ assert.deepEqual(deviceTopologyStateDecoder.decode({
   lastSuccessAt: null,
   lastAttemptAt: null,
   failureCode: null,
-  attemptDiagnostics: []
+  informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
 });
 
 const edidWire = JSON.parse(readFileSync(new URL("./fixtures/displayEdid.json", import.meta.url), "utf8"));

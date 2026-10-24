@@ -1400,7 +1400,7 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
     lastSuccessAt: capturedAt,
     lastAttemptAt: capturedAt,
     failureCode: null,
-    attemptDiagnostics: []
+    informationFields: { observedAt: null, devices: [] }, attemptDiagnostics: []
   };
 }
 

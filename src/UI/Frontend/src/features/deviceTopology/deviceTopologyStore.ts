@@ -31,7 +31,8 @@ const initialDeviceTopologyState: DeviceTopologySnapshotState = {
   lastSuccessAt: null,
   lastAttemptAt: null,
   failureCode: null,
-  attemptDiagnostics: []
+  attemptDiagnostics: [],
+  informationFields: { observedAt: null, devices: [] }
 };
 
 export interface DeviceTopologyStoreView {

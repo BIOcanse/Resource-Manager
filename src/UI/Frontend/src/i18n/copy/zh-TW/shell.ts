@@ -23,6 +23,10 @@ export const zhShellCopy = {
     control: "控制面"
   },
   control: {
+    reassertionInterval: "重新套用間隔（秒）",
+    stateUnavailable: "尚未讀取到權威控制設定，暫時無法套用。",
+    retryRead: "重新讀取",
+    curveUnavailable: "無法讀取目前的韌體曲線。請重試；未產生替代曲線。",
     presentation: zhControlPresentationCopy,
     title: "控制面",
     intro: "風扇、顯示卡、處理器的調節都在這一頁。控不了的也列出來，並說明差什麼。",

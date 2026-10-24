@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
@@ -83,7 +84,8 @@ public sealed class JsonDeviceTopologySnapshotStore : IDeviceTopologySnapshotSto
                 Directory.CreateDirectory(directory);
             }
 
-            var document = snapshot with { MachineIdentity = machineIdentity };
+            var document = snapshot with { MachineIdentity = machineIdentity,
+                Snapshot = DeviceTopologyStructure.Create(snapshot.Snapshot) };
             await using (var stream = new FileStream(
                              temporaryPath,
                              FileMode.Create,

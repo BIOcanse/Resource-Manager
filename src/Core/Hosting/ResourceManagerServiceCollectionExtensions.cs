@@ -99,7 +99,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IControlPresets, ControlPresets>();
         // 登记表：见过的设备只增不减，配置挂在它上面，拔掉卡也不会变成孤儿。
         services.AddSingleton<IControlInstanceRegistry, JsonControlInstanceRegistry>();
-        // 设定要一直维持：启动后和之后每隔一段重新施加一次。
+        // 目录就绪后应用保存的选择一次；之后按设置间隔只维持成功应用的项。
         //
         // 只在允许运行时写入的档位里注册。只读服务图不该带着一个会写硬件的后台服务 ——
         // 这也是那两个服务图测试守着的东西。
@@ -116,9 +116,6 @@ public static partial class ResourceManagerServiceCollectionExtensions
              * 所以注册它不等于一定会跑起来。
              */
             services.AddHostedService<FanCurveTemperatureFeed>();
-            // 开机后把固件里现在跑的那条曲线先读进缓存，否则用户第一次勾选
-            // 要干等十几秒，等到的还是一条超时之后退回的默认曲线。
-            services.AddHostedService<FanCurveCacheWarmer>();
             // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
             // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
             services.AddSingleton<ControlActualStateReader>();

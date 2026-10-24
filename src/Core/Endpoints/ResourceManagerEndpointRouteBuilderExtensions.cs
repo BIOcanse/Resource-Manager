@@ -26,11 +26,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapSubscriptionChannelEndpoints();
         app.MapSystemEndpoints(startupCapabilities);
         app.MapDebugEndpoints();
-        app.MapSettingsEndpoints();
+        app.MapSettingsEndpoints(startupCapabilities);
         app.MapUpdateEndpoints();
         app.MapResourceMonitorEndpoints();
         app.MapDiskUsageEndpoints(startupCapabilities);
-        app.MapControlEndpoints();
+        app.MapControlEndpoints(startupCapabilities);
         app.MapDebugAmdSmuEndpoint();
         app.MapDebugGpuControlEndpoint();
         app.MapFrontendRuntimeStateEndpoints();

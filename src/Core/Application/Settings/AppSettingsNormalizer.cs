@@ -21,7 +21,8 @@ public static class AppSettingsNormalizer
             NormalizeDebug(settings.Debug),
             NormalizePublicService(settings.PublicService),
             NormalizeAiModelService(settings.AiModelService),
-            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false));
+            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false),
+            new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400)));
     }
 
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)

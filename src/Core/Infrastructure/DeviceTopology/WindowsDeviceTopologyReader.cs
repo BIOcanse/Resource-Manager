@@ -71,7 +71,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
         if (pnp.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "pnp-wmi",
@@ -83,7 +83,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var nativeDevices = WindowsDeviceTopologyNativeReader.ReadSnapshot();
         if (nativeDevices.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "setupapi-cfgmgr32",
@@ -95,7 +95,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var usbPorts = WindowsUsbHubIoctlReader.ReadSnapshot();
         if (usbPorts.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "usb-hub-ioctl",
@@ -107,7 +107,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var networkAdapters = WindowsNetworkAdapterTopologyReader.ReadSnapshot();
         if (networkAdapters.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "network-adapters",
@@ -122,7 +122,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             displaySnapshot = displayCoordinator.Refresh();
             if (displaySnapshot.State != HostManagerDisplayCoordinatorReadState.Ready)
             {
-                AddRequiredSourceFailure(
+                AddSourceFailure(
                     diagnostics,
                     notes,
                     "display-coordinator",
@@ -133,7 +133,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         }
         catch (Exception ex)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "display-coordinator",
@@ -150,7 +150,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var storageDevices = WindowsStorageDeviceCapabilityReader.ReadSnapshot();
         if (storageDevices.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "storage-capabilities",
@@ -207,10 +207,6 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         {
             notes.Add(Note(BackendMessageCodes.DeviceTopology.NoVisibleNodes));
         }
-        if (diagnostics.Count > 0)
-        {
-            throw new DeviceTopologyIncompleteSourcesException(diagnostics);
-        }
 
         var firmware = SmbiosFirmwareInformationReader.Read();
         var gpu = ReadGpuDeclarations(nvidiaZone, gpuInventoryZone, amdZone);
@@ -220,6 +216,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             ports,
             notes)
         {
+            SourceDiagnostics = diagnostics.ToArray(),
             MemoryModules = firmware?.Modules ?? [],
             FirmwareDeclarations = firmware?.Declarations,
             Batteries = ReadBatteryDeclarations(batteryZone),
@@ -365,7 +362,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var controllers = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbControllers);
         if (controllers.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "usb-controller-wmi",
@@ -390,7 +387,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var hubs = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbHubs);
         if (hubs.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "usb-hub-wmi",
@@ -415,7 +412,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var associations = TopologyWmiFacts.Read(WindowsDeviceTopologyWmiFact.UsbAssociations);
         if (associations.Error is not null)
         {
-            AddRequiredSourceFailure(
+            AddSourceFailure(
                 diagnostics,
                 notes,
                 "usb-association-wmi",
@@ -457,7 +454,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
     private static BackendMessage Note(byte code, params string[] args)
         => BackendMessage.Create(BackendMessageDomains.DeviceTopology, code, args);
 
-    private static void AddRequiredSourceFailure(
+    private static void AddSourceFailure(
         ICollection<DeviceTopologySourceDiagnostic> diagnostics,
         ICollection<BackendMessage> notes,
         string sourceId,
@@ -468,7 +465,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         var message = Note(messageCode, detail);
         diagnostics.Add(new DeviceTopologySourceDiagnostic(
             sourceId,
-            DeviceTopologySourceDiagnosticStatus.RequiredIncomplete,
+            DeviceTopologySourceDiagnosticStatus.OptionalDegraded,
             code,
             message));
         notes.Add(message);

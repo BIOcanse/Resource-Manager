@@ -30,6 +30,10 @@ const koKrAppCopy: AppCopy = {
     control: "제어"
   },
   control: {
+    reassertionInterval: "다시 적용 간격(초)",
+    stateUnavailable: "확정된 제어 설정을 읽을 수 없어 적용이 중지되었습니다.",
+    retryRead: "다시 읽기",
+    curveUnavailable: "현재 펌웨어 곡선을 읽지 못했습니다. 다시 시도하세요. 대체 곡선은 생성하지 않았습니다.",
     title: "제어",
     intro: "팬, 그래픽과 프로세서 조정을 한곳에 모았습니다. 조정할 수 없는 항목도 이유와 함께 표시합니다.",
     loadFailed: "제어 가능한 장치를 읽지 못했습니다.",

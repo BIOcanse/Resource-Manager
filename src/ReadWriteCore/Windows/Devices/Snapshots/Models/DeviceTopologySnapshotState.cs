@@ -16,7 +16,7 @@ public sealed record DeviceTopologySnapshotState(
     string? FailureCode,
     IReadOnlyList<DeviceTopologySourceDiagnostic> AttemptDiagnostics)
 {
-    [JsonIgnore]
+    // Current information travels with each publication, independently of structural content generation.
     public DeviceInformationSnapshot InformationFields { get; init; } = DeviceInformationSnapshot.Empty;
 
     [JsonIgnore]

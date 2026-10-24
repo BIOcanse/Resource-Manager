@@ -18,9 +18,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// <item><b>间隔 0.1 秒，而且必须这么小。</b> 温度能在一秒内冲上去十几度；
 ///   0.1 秒推送让核心及时看到最新读数，再按曲线目标和加速度调速。
 ///   核心不对温度做滤波；放大推送间隔只会增加读数等待，拖慢对温度上冲的响应。</item>
-/// <item><b>用不上就一次都不推。</b> 走固件曲线的机器（曲线交给固件自己查表）
-///   根本不需要我们参与，核心会在 describe 里说 <c>needsTemperatures=false</c>，
-///   那时这条订阅连起都不起 —— 不做无用功。</item>
+/// <item><b>用不上就一次都不推。</b> 只有成功应用的软件曲线持有温度订阅，
+///   最后一条撤销或核心退出时立即释放；支持软件曲线不等于正在执行。</item>
 /// <item><b>推送停了要能被发现。</b> 推的是"现在多少"，核心那边带时效：
 ///   连续几秒收不到就把风扇交还固件。所以这里**不补推历史、不排队**，
 ///   赶不上的那一拍直接丢掉 —— 迟到的温度比没有温度更糟。</item>
@@ -37,98 +36,76 @@ public sealed class FanCurveTemperatureFeed(
     /// </summary>
     internal static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>
-    /// 启动后先等一会儿再问核心要不要温度。
-    ///
-    /// 问它就要起一次子进程握手，而开机那阵子本来就忙；
-    /// 而且这台机器需不需要推温度，晚几秒知道没有任何损失。
-    /// </summary>
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(10);
-
-    /// <summary>不需要推的时候，隔多久再问一次。</summary>
-    private static readonly TimeSpan IdleRecheck = TimeSpan.FromMinutes(5);
-
     private const string SubscriptionId = "control.fan-curve.temperature";
     internal static readonly TimeSpan MaximumSampleAge = TimeSpan.FromSeconds(3);
+    private readonly object subscriptionGate = new();
+    private readonly SemaphoreSlim activated = new(0, 1);
+    private IDisposable? lease;
+    private MetricSampleRequest? request;
+    private bool finished;
+
+    private void UpdateSubscription()
+    {
+        lock (subscriptionGate)
+        {
+            lease?.Dispose();
+            lease = null;
+            request = null;
+            if (finished || !core.NeedsTemperatures()) return;
+            request = TemperatureRequest(catalog.Current);
+            lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
+            if (activated.CurrentCount == 0) activated.Release();
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken).ConfigureAwait(false);
-            // while，不递归。
+            core.TemperatureDemandChanged += UpdateSubscription;
+            catalog.Changed += UpdateSubscription;
+            UpdateSubscription();
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (!core.NeedsTemperatures())
+                await activated.WaitAsync(stoppingToken).ConfigureAwait(false);
+                using var timer = new PeriodicTimer(Interval);
+                while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
                 {
-                    /*
-                     * 这台机器的曲线归固件执行，不需要我们喂温度。
-                     *
-                     * 隔一阵再问一次而不是就此收工：用户可能装上组件、
-                     * 或者把某把风扇改成软件接管，那时就需要了。
-                     */
-                    await Task.Delay(IdleRecheck, stoppingToken).ConfigureAwait(false);
-                    continue;
+                    MetricSampleRequest? currentRequest;
+                    lock (subscriptionGate) currentRequest = request;
+                    if (currentRequest is null) break;
+                    try
+                    {
+                        // ReadLatest only reads; sampling belongs to the lease.
+                        if (metrics.ReadLatest(currentRequest) is { } snapshot
+                            && Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
+                        {
+                            await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception error) when (error is not OperationCanceledException)
+                    {
+                        logger?.LogDebug(error, "这一拍温度没推过去。");
+                    }
                 }
-                await FeedAsync(stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
             // 关机，正常路径。
         }
-    }
-
-    private async Task FeedAsync(CancellationToken stoppingToken)
-    {
-        /*
-         * 只订这几项。
-         *
-         * **不要图省事订 All**：那会让整条采集链路按 0.1 秒去跑所有指标
-         * （进程列表、磁盘、网络……），为了两个温度读数把整机开销抬上去。
-         * 订阅的频率是按逻辑项算的，订得越窄，代价越小。
-         */
-        var changed = 0;
-        void OnCatalogChanged() => Interlocked.Exchange(ref changed, 1);
-        catalog.Changed += OnCatalogChanged;
-        try
+        finally
         {
-            var request = TemperatureRequest(catalog.Current);
-            using var lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
-
-            using var timer = new PeriodicTimer(Interval);
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+            core.TemperatureDemandChanged -= UpdateSubscription;
+            catalog.Changed -= UpdateSubscription;
+            lock (subscriptionGate)
             {
-                if (Volatile.Read(ref changed) != 0) return;
-                if (!core.NeedsTemperatures())
-                {
-                    // 情况变了（比如用户把曲线改回固件执行），退出去重新判断。
-                    return;
-                }
-                try
-                {
-                    // 读当前值，**不触发采样也不等待采样** —— 采样是订阅那条独立的路。
-                    if (metrics.ReadLatest(request) is not { } snapshot)
-                    {
-                        continue;
-                    }
-                    if (Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
-                    {
-                        await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
-                    }
-                }
-                catch (Exception error) when (error is not OperationCanceledException)
-                {
-                    /*
-                     * 一拍没推成不该把这条喂料停掉 —— 停了核心那边会因为收不到温度
-                     * 把风扇交还固件，而问题可能只是这一次没赶上。
-                     * 真的一直推不动，核心自己的时效机制会兜底。
-                     */
-                    logger?.LogDebug(error, "这一拍温度没推过去。");
-                }
+                finished = true;
+                lease?.Dispose();
+                lease = null;
+                request = null;
             }
         }
-        finally { catalog.Changed -= OnCatalogChanged; }
     }
 
     /// <summary>

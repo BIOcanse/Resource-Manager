@@ -213,6 +213,7 @@ export interface DashboardSettingsResult {
 
 export interface AppSettings {
   version?: string;
+  control?: { reassertionIntervalSeconds: number };
   performance?: AppPerformanceSettings;
   appearance?: AppAppearanceSettings;
   systemIntegration?: AppSystemIntegrationSettings;
@@ -859,6 +860,16 @@ export interface DeviceTopologySnapshotState {
   lastAttemptAt?: string | null;
   failureCode?: string | null;
   attemptDiagnostics: DeviceTopologySourceDiagnostic[];
+  informationFields: DeviceTopologyInformationSnapshot;
+}
+
+export interface DeviceTopologyInformationSnapshot {
+  observedAt: string | null;
+  devices: {
+    deviceIdentity: string;
+    objectType: string;
+    fields: { definition: { name: string }; value: unknown }[];
+  }[];
 }
 
 export interface DeviceTopologySnapshot {

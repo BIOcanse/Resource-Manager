@@ -11,6 +11,72 @@ namespace Resource_Manager_APP.Tests;
 public sealed class DeviceTopologyCaptureOwnerLibraryTests
 {
     [Fact]
+    public async Task LiveReadingsPublishWithoutReplacingOrPersistingUnchangedStructure()
+    {
+        var route = new NetworkRoute("ipv4", "0.0.0.0", 0, null, "192.0.2.1", null,
+            0, 600, 300, 1, 3, false, false, false, false, 10, 0);
+        var address = new NetworkUnicastAddress("ipv4", "192.0.2.2", 24, null, 0, 1, 1, 4,
+            600, 300, false, "134116992000000000");
+        var first = Snapshot() with
+        {
+            NetworkInterfaceInformation = [new("network", "guid", 1, 1, [address]) { Routes = [route] }],
+            NetworkEndpointInformation = new([], [], [], []),
+            VolumeSpaceInformation = [new("volume") { TotalBytes = 1000, AvailableBytes = 500, UsedBytes = 500 }],
+            PageFileInformation = [new("pagefile") { UsedPages = 10, PeakUsedPages = 20 }]
+        };
+        var second = first with
+        {
+            CapturedAt = first.CapturedAt.AddSeconds(1),
+            NetworkInterfaceInformation = [first.NetworkInterfaceInformation[0] with
+            { UnicastAddresses = [address with { ValidLifetimeSeconds = 599, PreferredLifetimeSeconds = 299 }],
+                Routes = [route with { AgeSeconds = 11, ValidLifetimeSeconds = 599 }] }],
+            NetworkEndpointInformation = new([new("ipv4", new("192.0.2.2", null, 123), null, 2, 5)], [], [], []),
+            VolumeSpaceInformation = [first.VolumeSpaceInformation[0] with { AvailableBytes = 450, UsedBytes = 550 }],
+            PageFileInformation = [first.PageFileInformation[0] with { UsedPages = 11, PeakUsedPages = 21 }]
+        };
+        var read = first;
+        var persisted = new List<DeviceTopologyChangedCapture>();
+        using var owner = new DeviceTopologyCaptureOwner(new FirmwareReader(() => []), Policy(() => read, persisted.Add));
+        await owner.CaptureInformationAsync(default);
+        var original = owner.ReadState();
+        read = second;
+        await owner.CaptureInformationAsync(default);
+        var current = owner.ReadState();
+        Assert.Same(original.Snapshot, current.Snapshot);
+        Assert.Equal(original.ContentGeneration, current.ContentGeneration);
+        var durable = Assert.Single(persisted).Snapshot;
+        Assert.Null(durable.VolumeSpaceInformation![0].AvailableBytes);
+        Assert.Null(durable.NetworkInterfaceInformation![0].Routes);
+        Assert.Null(durable.NetworkEndpointInformation.TcpIpv4);
+        Assert.Null(durable.PageFileInformation![0].UsedPages);
+        var expected = DeviceTopologyInformationProjection.Create(second, second.CapturedAt);
+        foreach (var device in expected.Devices)
+            Assert.Equal(System.Text.Json.JsonSerializer.Serialize(device.Fields),
+                System.Text.Json.JsonSerializer.Serialize(current.InformationFields.Devices.Single(row => row.DeviceIdentity == device.DeviceIdentity).Fields));
+        Assert.Equal(second.CapturedAt, current.InformationFields.ObservedAt);
+        read = second with { VolumeSpaceInformation = [second.VolumeSpaceInformation[0] with { MountPaths = ["D:\\"] }] };
+        await owner.CaptureInformationAsync(default);
+        Assert.Equal(original.ContentGeneration + 1, owner.ReadState().ContentGeneration);
+        Assert.Equal(2, persisted.Count);
+    }
+
+    [Fact]
+    public async Task LocalSourceFailureStillPublishesHealthyCurrentInformationAndDiagnostics()
+    {
+        var diagnostic = new DeviceTopologySourceDiagnostic("usb-hub-ioctl", DeviceTopologySourceDiagnosticStatus.OptionalDegraded,
+            "usb-unavailable", BackendMessage.Create(BackendMessageDomains.DeviceTopology, BackendMessageCodes.DeviceTopology.UsbHubIoctlFailed, "removed"));
+        var snapshot = Snapshot() with { SourceDiagnostics = [diagnostic], Notes = [diagnostic.MessageCode] };
+        using var owner = new DeviceTopologyCaptureOwner(new FirmwareReader(() => []), Policy(() => snapshot));
+        await owner.CaptureInformationAsync(default);
+        var current = owner.ReadState();
+        Assert.Equal(DeviceTopologySnapshotStatus.Ready, current.State);
+        Assert.Equal(diagnostic, Assert.Single(current.AttemptDiagnostics));
+        Assert.Equal(snapshot.CapturedAt, current.InformationFields.ObservedAt);
+        Assert.Contains(current.InformationFields.Devices.Single(row => row.DeviceIdentity == "machine").Fields,
+            field => field.Definition.Name == "machine_all_manufacturer" && field.Value?.GetString() == "manufacturer");
+    }
+
+    [Fact]
     public async Task SharedOwnerPreservesBothFramesAndSignalsOnlyTheCapturedBranch()
     {
         var acpi = new FirmwareReader(() => AcpiFirmwareTestData.Tables());
