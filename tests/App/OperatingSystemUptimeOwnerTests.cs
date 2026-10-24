@@ -176,7 +176,8 @@ public sealed class OperatingSystemUptimeOwnerTests
                     Assert.True(await slowPending.WaitAsync(timeout.Token));
                     var slowCurrent = Assert.Single(stream.Current);
                     Assert.Equal(FieldObservationStatus.Current, slowCurrent.Status);
-                    Assert.Equal(slowCurrent, fields.Reads.ReadCached(field));
+                    // The faster owner keeps publishing, so the cache may already hold a later uptime.
+                    FieldReadingAssert.CurrentOrNewer(slowCurrent, fields.Reads.ReadCached(field));
                     Assert.True(Volatile.Read(ref reads) >= 3);
                     Assert.Equal(0, topology.Reads);
                     Assert.Equal(0, acpi.Reads);
