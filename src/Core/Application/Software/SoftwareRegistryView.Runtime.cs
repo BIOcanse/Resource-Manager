@@ -16,8 +16,7 @@ public sealed partial class SoftwareRegistryView
             if (index >= 0)
             {
                 var record = records[index];
-                if (runtime.CategorySource is not null && !record.HasExplicitKind
-                    && record.Kind is not (SoftwareKinds.Adapted or SoftwareKinds.Controlled))
+                if (runtime.CategorySource is not null && !record.HasExplicitKind)
                 {
                     records[index] = record with
                     {
@@ -28,8 +27,7 @@ public sealed partial class SoftwareRegistryView
                 continue;
             }
 
-            if (runtime.Kind is not (SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot)
-                && runtime.CategorySource is null) continue;
+            if (runtime.Kind == SoftwareKinds.Unattributed) continue;
 
             records.Add(new SoftwareRecord(
                 runtime.Id, runtime.Name, runtime.Kind, runtime.DisplayKind,

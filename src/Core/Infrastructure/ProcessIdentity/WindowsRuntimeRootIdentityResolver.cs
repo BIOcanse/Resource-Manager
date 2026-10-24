@@ -58,12 +58,25 @@ public sealed class WindowsRuntimeRootIdentityResolver : IRuntimeRootIdentityRes
 
     private static string? InferRuntimeRoot(string processPath)
     {
-        return TryInferLocalAppDataRoot(processPath)
+        return InferAppDataProductRoot(processPath)
             ?? TryInferBuildProjectRoot(processPath)
             ?? TryInferChildOfRoot(processPath, ProgramFilesRoot)
             ?? TryInferChildOfRoot(processPath, ProgramFilesX86Root)
             ?? TryInferPortableAnchorRoot(processPath)
             ?? NormalizePath(Path.GetDirectoryName(processPath));
+    }
+
+    internal static string? InferAppDataProductRoot(string processPath)
+    {
+        var segments = SplitPath(processPath);
+        for (var index = 1; index < segments.Length - 3; index++)
+        {
+            if (!segments[index].Equals("AppData", StringComparison.OrdinalIgnoreCase)
+                || !(segments[index + 1].Equals("Local", StringComparison.OrdinalIgnoreCase)
+                    || segments[index + 1].Equals("Roaming", StringComparison.OrdinalIgnoreCase))) continue;
+            return TryInferAppDataProductRoot(processPath, CombineSegments(segments[..(index + 2)]));
+        }
+        return TryInferLocalAppDataRoot(processPath);
     }
 
     private static string? TryInferBuildProjectRoot(string processPath)
@@ -194,6 +207,7 @@ public sealed class WindowsRuntimeRootIdentityResolver : IRuntimeRootIdentityRes
     private static bool IsWindowsOwnedPath(string path)
     {
         return IsUnderKnownRoot(path, WindowsRoot)
+            || WindowsSystemProcessClassifier.IsPlatformComponentPath(path)
             || IsUnderKnownRoot(path, Path.Combine(ProgramFilesRoot ?? string.Empty, "WindowsApps"))
             || IsUnderKnownRoot(path, Path.Combine(ProgramFilesX86Root ?? string.Empty, "WindowsApps"));
     }

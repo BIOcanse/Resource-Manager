@@ -7,6 +7,27 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void UnreadableEntryDoesNotPreventLaterEntries(bool denied)
+    {
+        var visited = new List<string>();
+        foreach (var name in new[] { "first", "bad", "last" })
+            WindowsInstalledSoftwareInventory.ReadInventoryEntry(name, entry =>
+            {
+                if (entry == "bad")
+                {
+                    if (denied) throw new UnauthorizedAccessException();
+                    throw new IOException();
+                }
+                visited.Add(entry);
+            });
+        Assert.Equal(new[] { "first", "last" }, visited);
+        Assert.Throws<OperationCanceledException>(() => WindowsInstalledSoftwareInventory.ReadInventoryEntry(
+            "cancel", _ => throw new OperationCanceledException()));
+    }
+
     private readonly string testRoot = Path.Combine(
         Path.GetTempPath(),
         $"resource-manager-installed-inventory-{Guid.NewGuid():N}");

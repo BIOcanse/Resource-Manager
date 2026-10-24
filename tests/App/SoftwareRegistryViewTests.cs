@@ -17,6 +17,36 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class SoftwareRegistryViewTests
 {
+    [Fact]
+    public async Task ClassifyingLauncherDoesNotReplaceItsInstalledChildGame()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var view = CreateRuntimeReminderView([
+            new("manual:old", "Steam", SoftwareKinds.Other, "other", "manual", [], [@"D:\Steam"], "", "installed:steam", now, now)],
+            [new("installed:steam", "Steam", null, null, @"D:\Steam", [@"D:\Steam"], null, "steam"),
+             new("installed:game", "Game", null, null, @"D:\Steam\Games\Game", [@"D:\Steam\Games\Game"], null, "game")]);
+        var records = await view.GetSoftwareAsync(default);
+        Assert.Contains(records, record => record.Id == "installed:game");
+        Assert.Contains(records, record => record.Id == "installed:steam" && record.HasExplicitKind);
+    }
+
+    [Fact]
+    public async Task PortableDefaultsComeFromTheCurrentCatalogWhilePathsRemainRegistered()
+    {
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "portable", "Current Name", SoftwareKinds.Game, "test", ExecutableNames: ["CurrentPortableGame.exe"]));
+        var portable = new StaticPortableSoftwareRegistry([new("catalog:portable", "portable", "Stale Name", SoftwareKinds.Other,
+            [@"D:\Portable\game.exe"], [@"D:\Portable"], DateTimeOffset.UtcNow, IdentityConfirmed: true, RequiresRootPathConfirmation: false)]);
+        var view = new SoftwareRegistryView(new StaticAdapterSoftwareRegistry([]), new InMemoryControlledSoftwareRegistry(),
+            new EmptyDependencyManager(), new EmptyManualSoftwareRegistry(),
+            new StaticSoftwarePolicyProfileProvider(new(new Dictionary<string, SoftwarePolicyGroup>(), new Dictionary<string, SoftwarePolicyAssignment>())),
+            new StaticInstalledSoftwareInventory([]), catalog, portable);
+        var record = Assert.Single(await view.GetSoftwareAsync(default), item => item.Id == "catalog:portable");
+        Assert.Equal("Current Name", record.Name);
+        Assert.Equal(SoftwareKinds.Game, record.Kind);
+        Assert.Equal(@"D:\Portable", Assert.Single(record.RootPaths));
+    }
+
     internal static SoftwareRegistryView CreateRuntimeReminderView(
         IReadOnlyList<ManualSoftwareRecord>? manual = null,
         IReadOnlyList<InstalledSoftwareEntry>? installed = null)
@@ -153,9 +183,9 @@ public sealed class SoftwareRegistryViewTests
 
         var record = Assert.Single(
             await view.GetSoftwareAsync(CancellationToken.None),
-            item => item.Id == manualRecord.Id);
+            item => item.Id == sourceSoftwareId);
 
-        Assert.Equal(manualRecord.Id, record.Id);
+        Assert.Equal(sourceSoftwareId, record.Id);
         Assert.True(record.HasExplicitKind);
         Assert.Equal("game-skyrim-special-edition", record.SoftwareIdentityId);
     }
@@ -317,7 +347,7 @@ public sealed class SoftwareRegistryViewTests
         Assert.Equal(1, portable.RefreshCount);
         Assert.Contains(cached, static item => item.Id == "catalog:game-skyrim-special-edition");
         var record = Assert.Single(refreshed, static item => item.Id == "catalog:game-skyrim-special-edition");
-        Assert.Equal(SoftwareKinds.Game, record.Kind);
+        Assert.Equal(SoftwareKinds.Other, record.Kind);
         Assert.Equal("portable", record.State);
         Assert.Equal("game-skyrim-special-edition", record.SoftwareIdentityId);
         Assert.False(record.Operations.CanUninstall);

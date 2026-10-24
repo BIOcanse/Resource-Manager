@@ -44,40 +44,12 @@ public sealed partial class SoftwareRegistryView
 
     private static bool HasKnownSoftwareMatch(InstalledSoftwareEntry entry, IReadOnlyList<SoftwareRecord> knownRecords)
     {
-        var entryNameKey = NormalizeSoftwareKey(entry.Name);
         return knownRecords.Any(record =>
-            NormalizeSoftwareKey(record.Name) == entryNameKey
-            || RootOverlaps(entry.RootPaths, record.RootPaths));
-    }
-
-    private static bool RootOverlaps(IReadOnlyList<string> entryRoots, IReadOnlyList<string> knownRoots)
-    {
-        if (entryRoots.Count == 0)
-        {
-            return false;
-        }
-
-        var normalizedKnownRoots = knownRoots
-            .Select(NormalizePathForCompare)
-            .Where(static root => root is not null)
-            .Select(static root => root!)
-            .ToArray();
-        return entryRoots
-            .Select(NormalizePathForCompare)
-            .Where(static root => root is not null)
-            .Any(entryRoot => normalizedKnownRoots.Any(knownRoot =>
-                IsSameOrUnder(entryRoot!, knownRoot)
-                || IsSameOrUnder(knownRoot, entryRoot!)));
-    }
-
-    private static string NormalizeSoftwareKey(string value)
-    {
-        var chars = value
-            .Trim()
-            .Select(static ch => char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '\0')
-            .Where(static ch => ch != '\0')
-            .ToArray();
-        return new string(chars);
+            record.Id.Equals(entry.Id, StringComparison.OrdinalIgnoreCase)
+            || record.Name.Equals(entry.Name, StringComparison.OrdinalIgnoreCase)
+                && entry.RootPaths.Select(NormalizePathForCompare).Where(root => root is not null)
+                    .Any(root => record.RootPaths.Select(NormalizePathForCompare)
+                        .Any(known => root!.Equals(known, StringComparison.OrdinalIgnoreCase))));
     }
 
     private static string? NormalizePathForCompare(string? value)

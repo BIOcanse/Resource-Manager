@@ -97,12 +97,11 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
 
                 var visible = NativeMethods.IsWindowVisible(window);
                 var iconic = NativeMethods.IsIconic(window);
-                var hasTitle = NativeMethods.GetWindowTextLength(window) > 0;
-                if (visible && !iconic && hasTitle)
+                if (visible && !iconic)
                 {
                     state.HasVisibleWindow = true;
                 }
-                else if (hasTitle)
+                else if (visible && iconic)
                 {
                     state.HasBackgroundWindow = true;
                 }
@@ -174,9 +173,7 @@ internal sealed record WindowsProcessRuntimeStateSnapshot(
                     ? HostManagerRuntimeStates.ForegroundUnfocused
                     : background
                         ? HostManagerRuntimeStates.BackgroundWindow
-                        : hidden
-                            ? HostManagerRuntimeStates.TrayOnly
-                            : HostManagerRuntimeStates.BackgroundProcess;
+                        : HostManagerRuntimeStates.BackgroundProcess;
             result.Add(
                 expected,
                 new ProcessRuntimeStateFact(

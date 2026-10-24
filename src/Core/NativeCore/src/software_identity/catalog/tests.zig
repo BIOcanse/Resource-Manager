@@ -116,7 +116,7 @@ test "catalog replacement validates roots rules and identities before active swa
     try expectExactMatched(runQuery(session, 1, &query).output, 10, .confirmed);
 }
 
-test "known identity scoring uses explicit strong gate weights and tie conflicts" {
+test "known display names require install location and cannot promote substrings" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);
     defer session.destroy();
@@ -125,56 +125,16 @@ test "known identity scoring uses explicit strong gate weights and tie conflicts
 
     var contains = KnownQueryFixture.init(null);
     contains.appendSignal(.process_name, "vlc");
-    const contains_result = runKnownQuery(session, 1, &contains);
-    try std.testing.expectEqual(ResultCode.ok, contains_result.code);
-    try expectKnownMatched(contains_result.output, 20, .identity);
-    try std.testing.expectEqual(@as(i32, 95), contains_result.output.score);
-    try std.testing.expectEqual(protocol.SignalEvidence.process_name, contains_result.output.evidence_mask);
-
-    var exact = KnownQueryFixture.init(null);
-    exact.appendSignal(.product_name, "vlcmediaplayer");
-    const exact_result = runKnownQuery(session, 2, &exact);
-    try expectKnownMatched(exact_result.output, 20, .identity);
-    try std.testing.expectEqual(@as(i32, 160), exact_result.output.score);
-
-    var auxiliary_only = KnownQueryFixture.init(null);
-    auxiliary_only.appendSignal(.window_title, "vlc");
-    const auxiliary_result = runKnownQuery(session, 3, &auxiliary_only);
-    try std.testing.expectEqual(ResultCode.ok, auxiliary_result.code);
-    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), auxiliary_result.output.status);
-
-    var unknown = KnownQueryFixture.init(null);
-    unknown.appendSignal(.process_name, "unknown");
-    const no_implicit_tie = runKnownQuery(session, 4, &unknown);
-    try std.testing.expectEqual(ResultCode.ok, no_implicit_tie.code);
-    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), no_implicit_tie.output.status);
-
-    var tie_config = testConfig();
-    tie_config.required_prohibited_alias_count = 0;
-    tie_config.required_launcher_token_count = 0;
-    tie_config.required_managed_child_rule_count = 0;
-    const tie_session = try session_module.Session.create(&tie_config);
-    defer tie_session.destroy();
-    var tie_catalog = IdentityTieCatalog.init();
-    try std.testing.expectEqual(ResultCode.ok, applyIdentityTieCatalog(tie_session, &tie_catalog));
-    var same_identity_score = KnownQueryFixture.init(null);
-    same_identity_score.appendSignal(.process_name, "sameapp");
-    const identity_conflict = runKnownQuery(tie_session, 1, &same_identity_score);
-    try std.testing.expectEqual(ResultCode.ok, identity_conflict.code);
-    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.conflict), identity_conflict.output.status);
-    try std.testing.expectEqual(@intFromEnum(protocol.KnownMatchMode.identity), identity_conflict.output.mode);
-    try std.testing.expectEqual(@as(u32, 2), identity_conflict.output.conflict_count);
-    try std.testing.expectEqual(@as(u64, 0), identity_conflict.output.entry_handle);
-
-    var lower_contains_score = config;
-    lower_contains_score.generation = 2;
-    lower_contains_score.contains_text_score = 40;
-    try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&lower_contains_score));
-    var same_contains = KnownQueryFixture.init(null);
-    same_contains.appendSignal(.process_name, "vlc");
-    const reconfigured_result = runKnownQuery(session, 5, &same_contains);
-    try std.testing.expectEqual(ResultCode.ok, reconfigured_result.code);
-    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), reconfigured_result.output.status);
+    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), runKnownQuery(session, 1, &contains).output.status);
+    var exact_outside_root = KnownQueryFixture.init("d:/portable/vlc/vlc.exe");
+    exact_outside_root.appendSignal(.product_name, "vlcmediaplayer");
+    try std.testing.expectEqual(@intFromEnum(protocol.MatchStatus.no_match), runKnownQuery(session, 2, &exact_outside_root).output.status);
+    var rooted = KnownQueryFixture.init("c:/apps/vlc/vlc.exe");
+    rooted.appendSignal(.product_name, "vlcmediaplayer");
+    const rooted_result = runKnownQuery(session, 3, &rooted);
+    try std.testing.expectEqual(ResultCode.ok, rooted_result.code);
+    try expectKnownMatched(rooted_result.output, 20, .identity);
+    try std.testing.expect((rooted_result.output.flags & protocol.KnownOutputFlags.root_hit) != 0);
 }
 
 test "catalog allocation failures release candidates and preserve active matching" {

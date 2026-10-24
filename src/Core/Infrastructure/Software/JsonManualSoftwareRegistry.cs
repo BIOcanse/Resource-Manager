@@ -49,7 +49,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
                 || HasSameSourceSoftware(record, normalized));
             var existingCreatedAt = existing?.CreatedAt ?? now;
             var record = new ManualSoftwareRecord(
-                id,
+                normalized.SourceSoftwareId ?? existing?.Id ?? id,
                 normalized.Name,
                 normalized.Kind,
                 DisplayKind(normalized.Kind),
@@ -64,6 +64,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
                 now);
             records.RemoveAll(existingRecord =>
                 existingRecord.Id.Equals(id, StringComparison.OrdinalIgnoreCase)
+                || existingRecord.Id.Equals(record.Id, StringComparison.OrdinalIgnoreCase)
                 || HasSameSourceSoftware(existingRecord, normalized));
             records.Add(record);
 
@@ -186,6 +187,7 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
         return materialized
             .Select(static record => record with
             {
+                Id = string.IsNullOrWhiteSpace(record.SourceSoftwareId) ? record.Id : record.SourceSoftwareId,
                 DisplayKind = DisplayKind(record.Kind),
                 RootPaths = NormalizeRootPaths(record.RootPaths),
                 Sources = record.Sources is { Count: > 0 } ? record.Sources : ["手动分类"]
@@ -229,10 +231,9 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
 
     private static string BuildId(ManualSoftwareRequest request)
     {
-        var source = string.IsNullOrWhiteSpace(request.SourceSoftwareId)
-            ? $"{request.Kind}|{request.Name}|{string.Join("|", request.RootPaths)}"
-            : $"{request.Kind}|{request.SourceSoftwareId}";
-        return $"manual:{request.Kind}:{ShortHash(source)}";
+        if (!string.IsNullOrWhiteSpace(request.SourceSoftwareId)) return request.SourceSoftwareId;
+        var source = $"{request.Name}|{string.Join("|", request.RootPaths)}";
+        return $"manual:{ShortHash(source)}";
     }
 
     private static IReadOnlyList<string> NormalizeRootPaths(IEnumerable<string>? paths)
