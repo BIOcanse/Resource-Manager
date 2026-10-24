@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -17,6 +18,7 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed partial class SqlitePersistenceTests : IDisposable
 {
+    private readonly ResourceManagerLedgerOwner ledgerOwner = new();
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-sqlite-{Guid.NewGuid():N}");
 
     [Theory]
@@ -411,6 +413,7 @@ public sealed partial class SqlitePersistenceTests : IDisposable
 
     public void Dispose()
     {
+        ledgerOwner.Dispose();
         SqliteConnection.ClearAllPools();
         try
         {
@@ -430,7 +433,7 @@ public sealed partial class SqlitePersistenceTests : IDisposable
         return new ResourceManagerDatabase(CreateEnvironment());
     }
 
-    private static SqlitePortableSoftwareRegistry CreatePortableRegistry(ResourceManagerDatabase database)
+    private SqlitePortableSoftwareRegistry CreatePortableRegistry(ResourceManagerDatabase database)
     {
         var deployment = new HostManagerDeploymentState();
         var provider = new RuntimePlanProvider(deployment);
@@ -443,7 +446,8 @@ public sealed partial class SqlitePersistenceTests : IDisposable
             database,
             provider,
             new HostManagerPortableSoftwareRegistryRuntime(provider, deployment),
-            NullLogger<SqlitePortableSoftwareRegistry>.Instance);
+            NullLogger<SqlitePortableSoftwareRegistry>.Instance,
+            ledgerOwner);
     }
 
     private static async Task InsertPortableRowAsync(

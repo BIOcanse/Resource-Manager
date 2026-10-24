@@ -1670,3 +1670,32 @@ fn nextPowerOfTwo(value: u32) u32 {
     while (result < value) result *= 2;
     return result;
 }
+
+
+test "external normalization storage is absent when idle and detached canonical state remains readable" {
+    const config = testConfig(8);
+    const ordinary = try state.Session.create(&config);
+    defer ordinary.destroy();
+    const session = try state.Session.createExternal(&config);
+    defer session.destroy();
+    try std.testing.expectEqual(@as(usize, 0), session.normalization_scratch.len);
+    try std.testing.expectEqual(ordinary.capacity().resident_byte_count - config.maximum_text_byte_count,
+        session.capacity().resident_byte_count);
+    try expectCode(.ok, session.beginRefresh(&refreshInput(config, 1)));
+    try expectCode(.invalid_argument, session.finalize(&finalizeInput(config, 1)));
+    const bytes = try std.testing.allocator.alloc(u8, config.maximum_text_byte_count);
+    defer std.testing.allocator.free(bytes);
+    try expectCode(.invalid_argument, session.bindNormalizationScratch(bytes.ptr, bytes.len - 1));
+    try expectCode(.ok, session.bindNormalizationScratch(bytes.ptr, bytes.len));
+    try submitDisplayConfig(session, config, 1, 1, false);
+    try submitDxgi(session, config, 1, 1, 1);
+    try submitEmptyComplete(session, config, 1, 1, .edid);
+    try submitEmptyComplete(session, config, 1, 1, .setup_api_monitor);
+    try submitEmptyComplete(session, config, 1, 1, .oem_connector_profile);
+    try expectCode(.ok, session.finalize(&finalizeInput(config, 1)));
+    try expectCode(.ok, session.bindNormalizationScratch(null, 0));
+    try std.testing.expectEqual(@as(usize, 0), session.normalization_scratch.len);
+    var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try expectCode(.ok, session.snapshot(&snapshot));
+    try std.testing.expect(snapshot.node_count > 0);
+}

@@ -253,6 +253,39 @@ public sealed class IndexedFileOwnerLibraryIntegrationTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await borrow.CollectAsync(fields, new Permit(), cancellation.Token));
         Assert.Same(before, query.ReadInformation());
     }
+    [Fact]
+    public async Task RefreshSynchronizationRetainsOnlyActiveKeysIncludingWaitersAndCancellation()
+    {
+        using var fixture = await Fixture.Create();
+        for (var i = 0; i < 1000; i++)
+        {
+            using (await fixture.Owner.AcquireRefreshAsync($"software:{i}", default))
+                Assert.Equal(1, fixture.Owner.RefreshGateCount);
+            Assert.Equal(0, fixture.Owner.RefreshGateCount);
+        }
+        var held = await fixture.Owner.AcquireRefreshAsync("same", default);
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = fixture.Owner.AcquireRefreshAsync("SAME", cancellation.Token).AsTask();
+        var next = fixture.Owner.AcquireRefreshAsync("same", default).AsTask();
+        Assert.False(next.IsCompleted);
+        using (await fixture.Owner.AcquireRefreshAsync("different", default))
+            Assert.Equal(2, fixture.Owner.RefreshGateCount);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+        Assert.Equal(1, fixture.Owner.RefreshGateCount);
+        held.Dispose(); held.Dispose();
+        using (await next.WaitAsync(TimeSpan.FromSeconds(5)))
+            Assert.Equal(1, fixture.Owner.RefreshGateCount);
+        Assert.Equal(0, fixture.Owner.RefreshGateCount);
+        // The public path also releases its key when database access is cancelled.
+        cancellation.Cancel();
+        var request = new ResourceManager.App.Domain.Indexing.SoftwareFileIndexRequest(
+            "cancelled", "Cancelled", []);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Owner.GetOrRefreshAsync(
+            request, TimeSpan.Zero, true, cancellation.Token));
+        Assert.Equal(0, fixture.Owner.RefreshGateCount);
+    }
+
     private sealed class Permit(bool active = true) : IMetricPublicationPermit
     {
         public ulong WorkspaceIncarnation => 1; public ulong ConfigurationGeneration => 1;

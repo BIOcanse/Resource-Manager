@@ -22,6 +22,31 @@ pub export fn rm_display_coordinator_create(
     return code(.ok);
 }
 
+// Explicit product storage route; ordinary independent callers keep the original create API.
+pub export fn rm_display_coordinator_create_external(
+    config: ?*const protocol.Config,
+    handle: ?*?*anyopaque,
+) callconv(.c) i32 {
+    const output = handle orelse return code(.invalid_argument);
+    output.* = null;
+    const session = session_module.Session.createExternal(config orelse return code(.invalid_argument)) catch |err| switch (err) {
+        error.InvalidConfiguration => return code(.abi_mismatch),
+        else => return code(.out_of_memory),
+    };
+    output.* = @ptrCast(session);
+    return code(.ok);
+}
+
+pub export fn rm_display_coordinator_bind_normalization_scratch(
+    handle: ?*anyopaque,
+    pointer: ?[*]u8,
+    length: u64,
+) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    if (length > @import("std").math.maxInt(usize)) return code(.invalid_argument);
+    return code(session.bindNormalizationScratch(pointer, @intCast(length)));
+}
+
 pub export fn rm_display_coordinator_destroy(handle: ?*anyopaque) callconv(.c) void {
     const session = castSession(handle) orelse return;
     session.destroy();

@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Adaptation;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -17,7 +18,8 @@ public sealed class SqlitePortableSoftwareRegistry(
     ResourceManagerDatabase database,
     RuntimePlanProvider runtimePlanProvider,
     HostManagerPortableSoftwareRegistryRuntime deployment,
-    ILogger<SqlitePortableSoftwareRegistry> logger) : IPortableSoftwareRegistry, IHostedService, IDisposable
+    ILogger<SqlitePortableSoftwareRegistry> logger,
+    ResourceManagerLedgerOwner ledgerOwner) : IPortableSoftwareRegistry, IHostedService, IDisposable
 {
     private static readonly UTF8Encoding StrictUtf8 = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -32,10 +34,13 @@ public sealed class SqlitePortableSoftwareRegistry(
             FullMode = BoundedChannelFullMode.DropWrite
         });
     private RegistryContext? context;
+    private RegistryContext? pendingContextClose;
     private CancellationTokenSource? writerCts;
     private Task? writerTask;
     private bool started;
     private bool disposed;
+
+    internal int RetainedPayloadCount => context?.Payloads.Count ?? 0;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -100,17 +105,26 @@ public sealed class SqlitePortableSoftwareRegistry(
         try
         {
             var current = RequireContext();
-            var now = DateTimeOffset.UtcNow;
-            var envelope = current.Projection.ProjectObserve(
-                observation,
-                current.Session.ConfigurationGeneration,
-                NextEpoch(ref current.OperationEpoch, "operation"),
-                now,
-                now);
-            var input = envelope.Input;
-            RequireStatus(
-                current.Session.Observe(in input, envelope.KeyBytes.Span),
-                "observe");
+            var checkpoint = current.Payloads.CaptureCheckpoint();
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
+                var envelope = current.Projection.ProjectObserve(
+                    observation,
+                    current.Session.ConfigurationGeneration,
+                    NextEpoch(ref current.OperationEpoch, "operation"),
+                    now,
+                    now);
+                var input = envelope.Input;
+                RequireStatus(
+                    current.Session.Observe(in input, envelope.KeyBytes.Span),
+                    "observe");
+            }
+            catch
+            {
+                current.Payloads.DiscardUnaccepted(checkpoint);
+                throw;
+            }
         }
         finally
         {
@@ -182,23 +196,34 @@ public sealed class SqlitePortableSoftwareRegistry(
         try
         {
             var current = RequireContext();
-            var envelope = current.Projection.ProjectConfirmRoot(
-                request.SoftwareId,
-                rootPath,
-                current.Session.ConfigurationGeneration,
-                NextEpoch(ref current.OperationEpoch, "operation"),
-                DateTimeOffset.UtcNow);
-            var input = envelope.Input;
-            var status = current.Session.ConfirmRoot(
-                in input,
-                envelope.KeyBytes.Span,
-                out var confirmedCount);
-            if (status == NativePortableSoftwareRegistryStatus.NoData)
+            var checkpoint = current.Payloads.CaptureCheckpoint();
+            NativePortableSoftwareRegistryStatus status;
+            uint confirmedCount;
+            try
             {
-                throw new KeyNotFoundException(
-                    $"未找到便携软件登记或该目录下的程序入口：{request.SoftwareId}");
+                var envelope = current.Projection.ProjectConfirmRoot(
+                    request.SoftwareId,
+                    rootPath,
+                    current.Session.ConfigurationGeneration,
+                    NextEpoch(ref current.OperationEpoch, "operation"),
+                    DateTimeOffset.UtcNow);
+                var input = envelope.Input;
+                status = current.Session.ConfirmRoot(
+                    in input,
+                    envelope.KeyBytes.Span,
+                    out confirmedCount);
+                if (status == NativePortableSoftwareRegistryStatus.NoData)
+                {
+                    throw new KeyNotFoundException(
+                        $"未找到便携软件登记或该目录下的程序入口：{request.SoftwareId}");
+                }
+                RequireStatus(status, "confirm-root");
             }
-            RequireStatus(status, "confirm-root");
+            catch
+            {
+                current.Payloads.DiscardUnaccepted(checkpoint);
+                throw;
+            }
             await FlushAllDirtyCoreAsync(current, cancellationToken);
 
             var snapshot = CaptureSnapshot(current);
@@ -240,6 +265,7 @@ public sealed class SqlitePortableSoftwareRegistry(
         operationGate.Wait();
         try
         {
+            ClosePendingContext();
             context?.Dispose();
             context = null;
             disposed = true;
@@ -247,8 +273,14 @@ public sealed class SqlitePortableSoftwareRegistry(
         finally
         {
             operationGate.Release();
-            operationGate.Dispose();
+            if (disposed) operationGate.Dispose();
         }
+    }
+
+    private void ClosePendingContext()
+    {
+        pendingContextClose?.Dispose();
+        pendingContextClose = null;
     }
 
     private void OnPublished(CompiledRuntimePlan plan)
@@ -276,6 +308,7 @@ public sealed class SqlitePortableSoftwareRegistry(
         await operationGate.WaitAsync(cancellationToken);
         try
         {
+            ClosePendingContext();
             var desired = hostPlan.PortableSoftwareRegistry;
             if (context?.Plan.ConfigurationSha256 == desired.ConfigurationSha256
                 && context.Plan.Build == desired.Build
@@ -306,11 +339,16 @@ public sealed class SqlitePortableSoftwareRegistry(
                 var previous = context;
                 context = replacement;
                 replacement = null;
-                previous?.Dispose();
+                pendingContextClose = previous;
+                ClosePendingContext();
             }
             catch (Exception ex)
             {
-                replacement?.Dispose();
+                if (replacement is not null)
+                {
+                    pendingContextClose = replacement;
+                    ClosePendingContext();
+                }
                 try
                 {
                     deployment.CompleteFailed(token, "portable-software-registry-apply-failed");
@@ -341,7 +379,7 @@ public sealed class SqlitePortableSoftwareRegistry(
         DateTimeOffset commandUtc)
     {
         var payloads = new NativePortableSoftwareRegistryPayloadCatalog(firstHandle: 1);
-        var workspace = new NativePortableSoftwareRegistryWorkspace(plan);
+        var workspace = new NativePortableSoftwareRegistryWorkspace(plan, ledgerOwner.CreateScratch);
         try
         {
             var capacity = workspace.Session.Capacity;
@@ -421,37 +459,31 @@ public sealed class SqlitePortableSoftwareRegistry(
         }
     }
 
-    private static async Task FlushAllDirtyCoreAsync(
+    private async Task FlushAllDirtyCoreAsync(
         RegistryContext current,
         CancellationToken cancellationToken)
     {
         while (true)
         {
-            Array.Clear(current.PersistenceOperations);
             var input = new NativePortableSoftwarePlanPersistenceInput
             {
                 AbiVersion = NativePortableSoftwareRegistryAbi.Version,
                 StructSize = checked((uint)Marshal.SizeOf<NativePortableSoftwarePlanPersistenceInput>()),
                 ConfigurationGeneration = current.Session.ConfigurationGeneration,
                 PlanEpoch = NextEpoch(ref current.PlanEpoch, "persistence plan"),
-                MaximumOperationCount = checked((uint)current.PersistenceOperations.Length),
+                MaximumOperationCount = checked((uint)current.Workspace.OperationCapacity),
                 ValidMask = (ulong)NativePortableSoftwarePlanValidity.Required
             };
-            RequireStatus(
-                current.Session.PlanPersistence(
-                    in input,
-                    current.PersistenceOperations,
-                    out var output),
-                "plan-persistence");
-            ValidatePlanOutput(current, in input, in output);
+            RequireStatus(current.Workspace.PlanPersistence(in input, out var operations, out var output), "plan-persistence");
+            ValidatePlanOutput(current, in input, in output, operations);
             if (output.OperationCount == 0)
             {
+                // All delete feedback is settled, so a complete current snapshot owns
+                // every remaining payload handle. No timer or independent eviction.
+                _ = CaptureSnapshot(current);
                 return;
             }
 
-            var operations = current.PersistenceOperations
-                .AsSpan(0, checked((int)output.OperationCount))
-                .ToArray();
             var feedback = await current.PersistenceStore.PersistAsync(
                 operations,
                 cancellationToken);
@@ -479,10 +511,9 @@ public sealed class SqlitePortableSoftwareRegistry(
         uint expectedRegistrationCount = 0;
         uint expectedPathCount = 0;
         var firstPage = true;
+        var clean = false;
         while (true)
         {
-            Array.Clear(current.RegistrationSnapshots);
-            Array.Clear(current.PathSnapshots);
             var input = new NativePortableSoftwareSnapshotInput
             {
                 AbiVersion = NativePortableSoftwareRegistryAbi.Version,
@@ -491,22 +522,17 @@ public sealed class SqlitePortableSoftwareRegistry(
                 SnapshotEpoch = NextEpoch(ref current.SnapshotEpoch, "snapshot"),
                 RegistrationCursor = registrationCursor,
                 PathCursor = pathCursor,
-                MaximumRegistrationCount = checked((uint)current.RegistrationSnapshots.Length),
-                MaximumPathCount = checked((uint)current.PathSnapshots.Length),
+                MaximumRegistrationCount = checked((uint)current.Workspace.RegistrationCapacity),
+                MaximumPathCount = checked((uint)current.Workspace.PathCapacity),
                 ValidMask = (ulong)NativePortableSoftwareSnapshotValidity.Required
             };
-            RequireStatus(
-                current.Session.Snapshot(
-                    in input,
-                    current.RegistrationSnapshots,
-                    current.PathSnapshots,
-                    out var output),
-                "snapshot");
+            RequireStatus(current.Workspace.ReadSnapshot(in input, out var registrationRows, out var pathRows, out var output), "snapshot");
             ValidateSnapshotOutput(current, in input, in output);
             if (firstPage)
             {
                 expectedRegistrationCount = output.RegistrationCount;
                 expectedPathCount = output.PathCount;
+                clean = output.DirtyPathCount == 0;
                 firstPage = false;
             }
             else if (output.RegistrationCount != expectedRegistrationCount
@@ -516,14 +542,8 @@ public sealed class SqlitePortableSoftwareRegistry(
                     "Native portable software snapshot totals changed while the serialized capture was in progress.");
             }
 
-            registrations.AddRange(
-                current.RegistrationSnapshots.AsSpan(
-                    0,
-                    checked((int)output.RegistrationOutputCount)).ToArray());
-            paths.AddRange(
-                current.PathSnapshots.AsSpan(
-                    0,
-                    checked((int)output.PathOutputCount)).ToArray());
+            registrations.AddRange(registrationRows);
+            paths.AddRange(pathRows);
             registrationCursor = output.NextRegistrationCursor;
             pathCursor = output.NextPathCursor;
             var registrationMore = (
@@ -544,7 +564,25 @@ public sealed class SqlitePortableSoftwareRegistry(
                 "Native portable software snapshot pages do not represent the exact published totals.");
         }
 
-        return ProjectSnapshot(current.Payloads, registrations, paths);
+        var result = ProjectSnapshot(current.Payloads, registrations, paths);
+        if (clean)
+        {
+            var liveHandles = new HashSet<ulong>();
+            foreach (var row in registrations)
+            {
+                liveHandles.Add(row.SoftwareHandle);
+                liveHandles.Add(row.CatalogEntryHandle);
+                liveHandles.Add(row.DisplayNameHandle);
+                liveHandles.Add(row.SoftwareKindHandle);
+            }
+            foreach (var row in paths)
+            {
+                liveHandles.Add(row.PathHandle);
+                liveHandles.Add(row.RootHandle);
+            }
+            current.Payloads.Retain(liveHandles);
+        }
+        return result;
     }
 
     private static RegistrySnapshot ProjectSnapshot(
@@ -865,7 +903,8 @@ public sealed class SqlitePortableSoftwareRegistry(
     private static void ValidatePlanOutput(
         RegistryContext current,
         in NativePortableSoftwarePlanPersistenceInput input,
-        in NativePortableSoftwarePersistencePlanOutput output)
+        in NativePortableSoftwarePersistencePlanOutput output,
+        ReadOnlySpan<NativePortableSoftwarePersistenceOperation> operations)
     {
         if (output.AbiVersion != NativePortableSoftwareRegistryAbi.Version
             || output.StructSize != Marshal.SizeOf<NativePortableSoftwarePersistencePlanOutput>()
@@ -881,11 +920,11 @@ public sealed class SqlitePortableSoftwareRegistry(
             || output.FirstMutationVersion
                 != (output.OperationCount == 0
                     ? 0
-                    : current.PersistenceOperations[0].MutationVersion)
+                    : operations[0].MutationVersion)
             || output.LastMutationVersion
                 != (output.OperationCount == 0
                     ? 0
-                    : current.PersistenceOperations[output.OperationCount - 1].MutationVersion))
+                    : operations[checked((int)output.OperationCount - 1)].MutationVersion))
         {
             throw new InvalidOperationException(
                 "Native portable software persistence plan violates the fixed output contract.");
@@ -1068,15 +1107,6 @@ public sealed class SqlitePortableSoftwareRegistry(
         public NativePortableSoftwareRegistryPayloadCatalog Payloads { get; } = payloads;
         public NativePortableSoftwareRegistryProjection Projection { get; } = projection;
         public NativePortableSoftwareRegistryPersistenceStore PersistenceStore { get; } = persistenceStore;
-        public NativePortableSoftwarePersistenceOperation[] PersistenceOperations { get; } =
-            new NativePortableSoftwarePersistenceOperation[
-                checked((int)workspace.Session.Capacity.PersistenceOperationCapacity)];
-        public NativePortableSoftwareRegistrationSnapshot[] RegistrationSnapshots { get; } =
-            new NativePortableSoftwareRegistrationSnapshot[
-                checked((int)workspace.Session.Capacity.RegistrationSnapshotCapacity)];
-        public NativePortableSoftwarePathSnapshot[] PathSnapshots { get; } =
-            new NativePortableSoftwarePathSnapshot[
-                checked((int)workspace.Session.Capacity.PathSnapshotCapacity)];
         public ulong OperationEpoch = operationEpoch;
         public ulong ImportGeneration = importGeneration;
         public ulong PlanEpoch;

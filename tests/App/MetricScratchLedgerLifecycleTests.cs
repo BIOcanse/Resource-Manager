@@ -174,8 +174,9 @@ public sealed class MetricScratchLedgerLifecycleTests
             registered += pdhIdentity!.Length;
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
             // Preserve the original 28 real workspace uses, and occupy current
-            // plus pending query pools (2 * 64) and model workspaces (2).
-            for (var index = 0; index < 130; index++)
+            // plus pending query pools (2 * 64), model workspaces (2),
+            // and portable registry output workspaces (2) and display normalization workspaces (2).
+            for (var index = 0; index < 134; index++)
             {
                 var resource = owner.CreateScratch(8192);
                 additionalResources.Add(resource);

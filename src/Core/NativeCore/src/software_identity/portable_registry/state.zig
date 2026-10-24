@@ -49,6 +49,13 @@ pub const Session = struct {
         return self;
     }
 
+    fn allocatedByteCount(self: *const Session) u64 {
+        const reserved_text = @as(u64, self.config.maximum_path_count) *
+            (@as(u64, self.config.maximum_executable_path_byte_count) + self.config.maximum_root_path_byte_count) * 2;
+        return self.resident_byte_count - reserved_text +
+            self.active.pathTextByteCount() + self.staging.pathTextByteCount();
+    }
+
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
         allocator.free(self.sort_indices);
@@ -85,7 +92,7 @@ pub const Session = struct {
             .registration_index_capacity = self.config.registration_index_capacity,
             .path_index_capacity = self.config.path_index_capacity,
             .reserved_u32 = 0,
-            .resident_byte_count = self.resident_byte_count,
+            .resident_byte_count = self.allocatedByteCount(),
             .reserved = .{ 0, 0, 0, 0 },
         };
     }
@@ -103,10 +110,15 @@ pub const Session = struct {
             return .stale_frame;
         }
         const result = self.staging.loadPersisted(&self.config, input, rows, key_bytes);
-        if (result != .ok) return result;
+        if (result != .ok) {
+            self.staging.clear();
+            return result;
+        }
         const previous = self.active;
         self.active = self.staging;
         self.staging = previous;
+        // The old bank is no longer authoritative after the atomic swap.
+        self.staging.clear();
         self.import_generation = input.import_generation;
         self.last_operation_epoch = input.operation_epoch;
         self.last_command_utc_ms = input.command_utc_ms;
@@ -184,6 +196,11 @@ pub const Session = struct {
             }
         }
         if (!self.canAllocateMutations(required_mutation_count)) return .out_of_memory;
+        var new_text: ?[]u8 = if (existing_path_slot == null)
+            self.active.allocatePathText(executable) catch return .out_of_memory
+        else
+            null;
+        defer if (new_text) |text| self.allocator.free(text);
         if (registration_slot == null) {
             registration_slot = self.active.createRegistration(
                 input.software_handle,
@@ -211,7 +228,9 @@ pub const Session = struct {
                 input.observed_at_utc_ms,
                 (input.path_flags & protocol.PathFlags.identity_confirmed) != 0,
                 (input.path_flags & protocol.PathFlags.root_confirmed) != 0,
+                new_text.?,
             ) orelse return .out_of_memory;
+            new_text = null;
         }
 
         const path = &self.active.paths[observed_path_slot.?];
@@ -471,7 +490,7 @@ pub const Session = struct {
             .next_registration_cursor = registration_page.next_cursor,
             .next_path_cursor = path_page.next_cursor,
             .flags = flags,
-            .resident_byte_count = self.resident_byte_count,
+            .resident_byte_count = self.allocatedByteCount(),
             .reserved = .{ 0, 0 },
         };
         return .ok;

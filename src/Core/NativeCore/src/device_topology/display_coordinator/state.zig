@@ -19,6 +19,7 @@ pub const Session = struct {
     next: Bank,
     batch_text_map: []u32,
     normalization_scratch: []u8,
+    owns_normalization_scratch: bool,
     identity_index: []IdentityIndexSlot,
     union_parent: []u32,
     union_rank: []u8,
@@ -50,6 +51,14 @@ pub const Session = struct {
     round_monotonic_ms: u64 = 0,
 
     pub fn create(config: *const protocol.Config) !*Session {
+        return createWithScratchOwnership(config, true);
+    }
+
+    pub fn createExternal(config: *const protocol.Config) !*Session {
+        return createWithScratchOwnership(config, false);
+    }
+
+    fn createWithScratchOwnership(config: *const protocol.Config, owns_scratch: bool) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
         const resident = residentByteCount(config) catch
             return error.InvalidConfiguration;
@@ -66,7 +75,7 @@ pub const Session = struct {
         errdefer next.destroy();
         const batch_text_map = try allocator.alloc(u32, config.maximum_text_binding_count);
         errdefer allocator.free(batch_text_map);
-        const normalization_scratch = try allocator.alloc(u8, config.maximum_text_byte_count);
+        const normalization_scratch = try allocator.alloc(u8, if (owns_scratch) config.maximum_text_byte_count else 0);
         errdefer allocator.free(normalization_scratch);
         const identity_index = try allocator.alloc(IdentityIndexSlot, config.identity_index_capacity);
         errdefer allocator.free(identity_index);
@@ -100,12 +109,13 @@ pub const Session = struct {
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .resident_byte_count = resident,
+            .resident_byte_count = resident - (if (owns_scratch) @as(u64, 0) else config.maximum_text_byte_count),
             .active = active,
             .working = working,
             .next = next,
             .batch_text_map = batch_text_map,
             .normalization_scratch = normalization_scratch,
+            .owns_normalization_scratch = owns_scratch,
             .identity_index = identity_index,
             .union_parent = union_parent,
             .union_rank = union_rank,
@@ -117,6 +127,20 @@ pub const Session = struct {
         return self;
     }
 
+    pub fn bindNormalizationScratch(self: *Session, pointer: ?[*]u8, length: usize) ResultCode {
+        lockMutex(&self.mutex);
+        defer unlockMutex(&self.mutex);
+        if (self.owns_normalization_scratch) return .invalid_argument;
+        if (pointer) |bytes| {
+            if (length != self.config.maximum_text_byte_count or self.normalization_scratch.len != 0) return .invalid_argument;
+            self.normalization_scratch = bytes[0..length];
+        } else {
+            if (length != 0) return .invalid_argument;
+            self.normalization_scratch = &.{};
+        }
+        return .ok;
+    }
+
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
         allocator.free(self.text_remap);
@@ -126,7 +150,7 @@ pub const Session = struct {
         allocator.free(self.union_rank);
         allocator.free(self.union_parent);
         allocator.free(self.identity_index);
-        allocator.free(self.normalization_scratch);
+        if (self.owns_normalization_scratch) allocator.free(self.normalization_scratch);
         allocator.free(self.batch_text_map);
         self.next.destroy();
         self.working.destroy();
@@ -198,6 +222,7 @@ pub const Session = struct {
     ) ResultCode {
         lockMutex(&self.mutex);
         defer unlockMutex(&self.mutex);
+        if (self.normalization_scratch.len != self.config.maximum_text_byte_count) return .invalid_argument;
         if (self.phase != .collecting) return .invalid_argument;
         if (!protocol.validBatch(
             header,
@@ -269,6 +294,7 @@ pub const Session = struct {
     ) ResultCode {
         lockMutex(&self.mutex);
         defer unlockMutex(&self.mutex);
+        if (self.normalization_scratch.len != self.config.maximum_text_byte_count) return .invalid_argument;
         if (self.phase != .collecting) return .invalid_argument;
         if (!protocol.validFinalize(
             input,
@@ -613,6 +639,7 @@ pub const Session = struct {
     ) ResultCode {
         lockMutex(&self.mutex);
         defer unlockMutex(&self.mutex);
+        if (self.normalization_scratch.len != self.config.maximum_text_byte_count) return .invalid_argument;
         if (!protocol.validPersistenceInput(input, &self.config)) return .abi_mismatch;
         if (input.operation_epoch <= self.last_persistence_epoch) return .stale_frame;
         if (self.phase != .warming or self.content_generation != 0 or self.last_refresh_epoch != 0) {

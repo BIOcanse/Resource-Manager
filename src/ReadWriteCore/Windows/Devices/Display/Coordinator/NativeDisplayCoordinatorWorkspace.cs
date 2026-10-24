@@ -47,6 +47,12 @@ public sealed class NativeDisplayCoordinatorWorkspace : IDisposable
         : this(configuration, new NativeDisplayCoordinatorSession(in configuration),
             WindowsDisplayPathTopologyReader.ReadSnapshot, persistence) { }
 
+    internal NativeDisplayCoordinatorWorkspace(in NativeDisplayCoordinatorConfiguration configuration,
+        NativeDisplayCoordinatorPersistenceCallbacks? persistence,
+        Func<ulong, ResourceManager.ReadWrite.Native.INativeDisplayNormalizationScratch> createScratch)
+        : this(configuration, new NativeDisplayCoordinatorSession(in configuration, createScratch),
+            WindowsDisplayPathTopologyReader.ReadSnapshot, persistence) { }
+
     internal NativeDisplayCoordinatorWorkspace(NativeDisplayCoordinatorConfiguration configuration,
         INativeDisplayCoordinatorSession session, Func<DeviceTopologyDisplayPathSnapshot> capture,
         NativeDisplayCoordinatorPersistenceCallbacks? persistence = null)
@@ -192,8 +198,8 @@ public sealed class NativeDisplayCoordinatorWorkspace : IDisposable
             {
                 return;
             }
-            disposed = true;
             session.Dispose();
+            disposed = true;
         }
     }
 

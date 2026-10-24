@@ -15,6 +15,8 @@ pub const RegistrationSlot = struct {
 };
 
 pub const PathSlot = struct {
+    // Canonical text belongs only to occupied paths, never to unused capacity.
+    text: []u8 = &.{},
     occupied: bool = false,
     delete_pending: bool = false,
     dirty: bool = false,
@@ -30,10 +32,9 @@ pub const PathSlot = struct {
 };
 
 pub const Bank = struct {
+    allocator: std.mem.Allocator,
     registrations: []RegistrationSlot,
     paths: []PathSlot,
-    executable_path_bytes: []u8,
-    root_path_bytes: []u8,
     registration_index: []u32,
     path_index: []u32,
     maximum_executable_path_byte_count: u32,
@@ -46,26 +47,16 @@ pub const Bank = struct {
         errdefer allocator.free(registrations);
         const paths = try allocator.alloc(PathSlot, config.maximum_path_count);
         errdefer allocator.free(paths);
-        const executable_bytes = try allocator.alloc(
-            u8,
-            try std.math.mul(usize, config.maximum_path_count, config.maximum_executable_path_byte_count),
-        );
-        errdefer allocator.free(executable_bytes);
-        const root_bytes = try allocator.alloc(
-            u8,
-            try std.math.mul(usize, config.maximum_path_count, config.maximum_root_path_byte_count),
-        );
-        errdefer allocator.free(root_bytes);
         const registration_index = try allocator.alloc(u32, config.registration_index_capacity);
         errdefer allocator.free(registration_index);
         const path_index = try allocator.alloc(u32, config.path_index_capacity);
         errdefer allocator.free(path_index);
 
+        @memset(paths, .{});
         var bank = Bank{
+            .allocator = allocator,
             .registrations = registrations,
             .paths = paths,
-            .executable_path_bytes = executable_bytes,
-            .root_path_bytes = root_bytes,
             .registration_index = registration_index,
             .path_index = path_index,
             .maximum_executable_path_byte_count = config.maximum_executable_path_byte_count,
@@ -78,8 +69,7 @@ pub const Bank = struct {
     pub fn deinit(self: *Bank, allocator: std.mem.Allocator) void {
         allocator.free(self.path_index);
         allocator.free(self.registration_index);
-        allocator.free(self.root_path_bytes);
-        allocator.free(self.executable_path_bytes);
+        self.clearPathText();
         allocator.free(self.paths);
         allocator.free(self.registrations);
         self.* = undefined;
@@ -87,9 +77,8 @@ pub const Bank = struct {
 
     pub fn clear(self: *Bank) void {
         @memset(self.registrations, .{});
+        self.clearPathText();
         @memset(self.paths, .{});
-        @memset(self.executable_path_bytes, 0);
-        @memset(self.root_path_bytes, 0);
         @memset(self.registration_index, no_index);
         @memset(self.path_index, no_index);
         self.registration_count = 0;
@@ -159,7 +148,9 @@ pub const Bank = struct {
             }
             if (self.findPath(row.path_handle) != null) return .invalid_argument;
             const path_slot = self.allocatePath() orelse return .out_of_memory;
+            const text = self.allocatePathText(executable) catch return .out_of_memory;
             self.paths[path_slot] = .{
+                .text = text,
                 .occupied = true,
                 .identity_confirmed = (row.flags & protocol.PathFlags.identity_confirmed) != 0,
                 .root_confirmed = (row.flags & protocol.PathFlags.root_confirmed) != 0,
@@ -247,9 +238,11 @@ pub const Bank = struct {
         first_observed_utc_ms: i64,
         identity_confirmed: bool,
         root_confirmed: bool,
+        text: []u8,
     ) ?u32 {
         const slot = self.allocatePath() orelse return null;
         self.paths[slot] = .{
+            .text = text,
             .occupied = true,
             .identity_confirmed = identity_confirmed,
             .root_confirmed = root_confirmed,
@@ -274,9 +267,8 @@ pub const Bank = struct {
     pub fn removePath(self: *Bank, path_slot: u32) void {
         const path = self.paths[path_slot];
         removePathIndex(self.path_index, self.paths, path.path_handle);
+        self.allocator.free(path.text);
         self.paths[path_slot] = .{};
-        @memset(self.executableStorage(path_slot), 0);
-        @memset(self.rootStorage(path_slot), 0);
         const registration = &self.registrations[path.registration_index];
         registration.path_count -= 1;
         self.path_count -= 1;
@@ -285,14 +277,12 @@ pub const Bank = struct {
 
     pub fn executablePath(self: *const Bank, path_slot: u32) []const u8 {
         const path = &self.paths[path_slot];
-        const start = @as(usize, path_slot) * self.maximum_executable_path_byte_count;
-        return self.executable_path_bytes[start .. start + path.executable_path_length];
+        return path.text[0..path.executable_path_length];
     }
 
     pub fn rootPath(self: *const Bank, path_slot: u32) []const u8 {
         const path = &self.paths[path_slot];
-        const start = @as(usize, path_slot) * self.maximum_root_path_byte_count;
-        return self.root_path_bytes[start .. start + path.root_path_length];
+        return path.text[path.executable_path_length..][0..path.root_path_length];
     }
 
     pub fn writeRootPath(self: *Bank, path_slot: u32, root_path: []const u8) void {
@@ -319,13 +309,32 @@ pub const Bank = struct {
     }
 
     fn executableStorage(self: *Bank, path_slot: u32) []u8 {
-        const start = @as(usize, path_slot) * self.maximum_executable_path_byte_count;
-        return self.executable_path_bytes[start .. start + self.maximum_executable_path_byte_count];
+        const path = &self.paths[path_slot];
+        return path.text[0..path.executable_path_length];
     }
 
     fn rootStorage(self: *Bank, path_slot: u32) []u8 {
-        const start = @as(usize, path_slot) * self.maximum_root_path_byte_count;
-        return self.root_path_bytes[start .. start + self.maximum_root_path_byte_count];
+        const path = &self.paths[path_slot];
+        return path.text[path.executable_path_length..];
+    }
+
+    pub fn allocatePathText(self: *const Bank, executable: []const u8) ![]u8 {
+        // Root confirmation can replace the root without allocating after mutations.
+        // Reserve only its declared per-path limit; the executable is immutable.
+        return self.allocator.alloc(u8, try std.math.add(usize, executable.len, self.maximum_root_path_byte_count));
+    }
+
+    fn clearPathText(self: *Bank) void {
+        for (self.paths) |*path| {
+            self.allocator.free(path.text);
+            path.text = &.{};
+        }
+    }
+
+    pub fn pathTextByteCount(self: *const Bank) u64 {
+        var bytes: u64 = 0;
+        for (self.paths) |path| bytes += path.text.len;
+        return bytes;
     }
 
     fn allocateRegistration(self: *const Bank) ?u32 {

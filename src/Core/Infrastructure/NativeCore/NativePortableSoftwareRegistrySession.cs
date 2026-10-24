@@ -9,6 +9,7 @@ internal sealed partial class NativePortableSoftwareRegistrySession : IDisposabl
     private IntPtr handle;
     private NativePortableSoftwareRegistryCapacity capacity;
     private ulong configurationGeneration;
+    private NativePortableSoftwareRegistryConfiguration configuration;
 
     public NativePortableSoftwareRegistrySession(
         in NativePortableSoftwareRegistryConfiguration configuration)
@@ -34,6 +35,7 @@ internal sealed partial class NativePortableSoftwareRegistrySession : IDisposabl
         {
             capacity = QueryAndValidateCapacity(handle, in configuration);
             configurationGeneration = configuration.Generation;
+            this.configuration = configuration;
         }
         catch
         {
@@ -50,7 +52,7 @@ internal sealed partial class NativePortableSoftwareRegistrySession : IDisposabl
         {
             lock (sync)
             {
-                _ = RequireHandle();
+                capacity = QueryAndValidateCapacity(RequireHandle(), in configuration);
                 return capacity;
             }
         }
@@ -83,6 +85,7 @@ internal sealed partial class NativePortableSoftwareRegistrySession : IDisposabl
             {
                 capacity = QueryAndValidateCapacity(current, in configuration);
                 configurationGeneration = configuration.Generation;
+                this.configuration = configuration;
             }
             return status;
         }

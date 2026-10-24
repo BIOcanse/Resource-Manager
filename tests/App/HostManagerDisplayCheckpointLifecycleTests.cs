@@ -15,6 +15,22 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerDisplayCheckpointLifecycleTests
 {
     [Fact]
+    public void RetiredWorkspaceCloseFailureStaysOwnedAndBlocksAnotherReplacementUntilRetrySucceeds()
+    {
+        using var fixture = new Fixture(mutable: false);
+        fixture.Apply("a.bin");
+        fixture.Contexts[0].Session.CloseFailuresRemaining = 2;
+        fixture.Apply("b.bin"); // Publication succeeds; old Close remains owned.
+        Assert.Equal(0, fixture.Contexts[0].Session.DisposeCount);
+        Assert.Throws<IOException>(() => fixture.Apply("c.bin"));
+        Assert.Equal(2, fixture.Contexts.Count);
+        fixture.Apply("c.bin");
+        Assert.Equal(1, fixture.Contexts[0].Session.DisposeCount);
+        Assert.Equal(3, fixture.Contexts.Count);
+    }
+
+
+    [Fact]
     public void NormalNeverCreatesCheckpointStoreOrDirectory()
     {
         using var fixture = new Fixture(mutable: false);
@@ -356,7 +372,7 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
     {
         private ulong generation;
         private long captured;
-        internal int DisposeCount;
+        internal int DisposeCount, CloseFailuresRemaining;
         internal Action? BeforeExport;
         public NativeDisplayCoordinatorCapacity Capacity => new()
         { MaximumObservationCount = 8, MaximumTextBindingCount = 32, MaximumTextByteCount = 4096 };
@@ -390,7 +406,7 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
         public NativeDisplayCoordinatorStatus ImportPersistence(in NativeDisplayPersistenceInput input,
             in NativeDisplayPersistenceHeader header, ReadOnlySpan<NativeDisplayFact> facts,
             ReadOnlySpan<NativeDisplayTextInput> texts, ReadOnlySpan<byte> bytes) => NativeDisplayCoordinatorStatus.Ok;
-        public void Dispose() { Assert.Equal(0, DisposeCount); DisposeCount++; }
+        public void Dispose() { if (CloseFailuresRemaining > 0) { CloseFailuresRemaining--; throw new IOException("recorded native Close failure"); } Assert.Equal(0, DisposeCount); DisposeCount++; }
     }
 
     private sealed class EnvironmentInfo(string root) : IHostEnvironment

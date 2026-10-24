@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Builds or verifies the product's paired Ledger identity and Native library.
 .DESCRIPTION
@@ -93,9 +93,9 @@ function Assert-ProductResult([string]$Root, [string]$ExpectedInputHash) {
     Invoke-Tool ([string]$receipt.buildToolPath) @('verify', [string]$nativeResult.generatedManifestPath)
     $generated = Get-Content -LiteralPath $nativeResult.generatedManifestPath -Raw | ConvertFrom-Json
     if ([int]$generated.uidWidthBits -ne 128 -or [int]$generated.tableCount -ne 2 -or
-        [int]$generated.fixedCount -ne 0 -or [int]$generated.resourceCapacity -ne 166 -or
-        [int]$generated.partitionCapacity -ne 0 -or [int]$generated.indexNodeCount -ne 166 -or [int]$generated.indexHomeCount -ne 256) {
-        throw 'Native manifest does not describe the product two-table owner (eight tree slots and one hundred fifty-eight compute scratch slots).'
+        [int]$generated.fixedCount -ne 0 -or [int]$generated.resourceCapacity -ne 170 -or
+        [int]$generated.partitionCapacity -ne 0 -or [int]$generated.indexNodeCount -ne 170 -or [int]$generated.indexHomeCount -ne 256) {
+        throw 'Native manifest does not describe the product two-table owner (eight tree slots and one hundred sixty-two compute scratch slots).'
     }
     foreach ($name in @('LedgerOwnerShape.g.cs', 'LedgerOwnerBuild.g.cs')) {
         $sourceRow = @($generated.outputs | Where-Object { $_.file -ceq $name })
@@ -118,8 +118,8 @@ if ($productShape.schemaVersion -ne 1 -or $productShape.indexBucketCount -ne 256
 $productTableCount = @($productShape.tables).Count.ToString([Globalization.CultureInfo]::InvariantCulture)
 for ($tableIndex = 0; $tableIndex -lt 2; $tableIndex++) {
     $table = $productShape.tables[$tableIndex]
-    # 28 existing workspaces + current and pending pools (64 sessions each) + two model workspaces.
-    $expectedCapacity = if ($tableIndex -eq 0) { 8 } else { 158 }
+    # 28 existing workspaces + current and pending pools (64 sessions each) + two model workspaces + two portable registry outputs + two display normalization workspaces.
+    $expectedCapacity = if ($tableIndex -eq 0) { 8 } else { 162 }
     if ($table.capacity -ne $expectedCapacity -or $table.partitionCapacity -ne 0 -or
         $table.reservedStart -ne 0 -or $table.reservedCount -ne 0) {
         throw "The product Ledger table $tableIndex does not match its declared payload role."

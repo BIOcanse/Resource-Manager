@@ -119,6 +119,8 @@ public sealed class GpuAllocationLedger(int maximumAllocations = 262144, int max
         var allocation = GetAllocation((adapter, global));
         if (allocation.Bytes != bytes)
             throw new NotSupportedException("Partial GPU transfers require range-specific eviction evidence.");
+        if (!allocation.TransferredSources.Contains((segment, placement)) && allocation.TransferredSources.Count >= 4096)
+            throw new InvalidDataException("GPU transferred placement limit exceeded.");
         allocation.TransferredSources.Add((segment, placement));
     }
 
