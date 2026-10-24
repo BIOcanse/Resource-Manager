@@ -10,6 +10,7 @@ public sealed partial class HostManagerSmartCoordinator
 {
     private const ulong DirectNativeRestoreActionIdNamespace = 1UL << 62;
     private long ownedRestoreActionSequence;
+    private (uint Scope, uint ProcessId, ulong StartKey, ulong Target, ulong Software)? lastNormalRestoreTarget;
 
     private async Task<bool> RestoreOwnedEffectsForNormalModeAsync(
         HostManagerCycleEffectAdmission effectAdmission,
@@ -19,7 +20,8 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken,
         bool placementStateAvailable = true,
         bool gpuControlAvailable = true,
-        bool forShutdown = false)
+        bool forShutdown = false,
+        Action? runPublicResourceLifecycle = null)
     {
         if (!(forShutdown && LifecycleState == HostManagerSmartCoordinatorLifecycleState.Closing)
             && !string.Equals(
@@ -33,101 +35,113 @@ public sealed partial class HostManagerSmartCoordinator
 
         ResetCpuExclusivityState();
         var placementsRestored = false;
-        if (placementStateAvailable)
-        {
-            var placementState = await LoadRollbackStateAsync(cancellationToken);
-            if (GpuActionFacts.AvailablePlacementEffects(placementState.AppliedPlacements)
-                .Any(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
-                    OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))
-                && effectAdmission.TryAcquire(
-                    HostManagerCycleEffectKind.LegacyPlacementRestore,
-                    out var placementPermit))
-            {
-                placementState = await RestorePlacementStateCoreAsync(
-                    placementPermit,
-                    cancellationToken,
-                    gpuControlAvailable);
-            }
-            placementsRestored = gpuControlAvailable
-                && !GpuActionFacts.HasPlacementEffects(placementState.AppliedPlacements)
-                && !GpuActionFacts.HasUnsettledActions(placementState.AppliedPlacements);
-        }
-
-        var snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
-            cancellationToken);
-        if (snapshot.Records.Count == 0)
-        {
-            return (await admission.ReadSnapshotAsync(cancellationToken)).Records.Count == 0
-                && placementsRestored;
-        }
-
-        authoritativeAppliedFactsRequired = true;
+        var snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(cancellationToken);
+        authoritativeAppliedFactsRequired |= snapshot.Records.Count != 0;
         var ownership = CreateAppliedOwnershipFactIndex(snapshot);
-        if (ownership.MemoryProcessRecords.Count != 0)
+        var restoreWork = ownership.MemoryProcessRecords.Values
+            .Select(record => (Kind: NormalRestoreWorkKind.Memory, Record: record,
+                Action: (NativeSmartCoordinatorAction?)null))
+            .Concat(CreateOwnedNormalRestoreActions(ownership).Select(action =>
+                (Kind: NormalRestoreWorkKind.Native,
+                 Record: action.Scope == NativeSmartCoordinatorActionScope.AdapterSoftware
+                    ? ownership.AdapterRecords[action.SoftwareKey]
+                    : ownership.ProcessRecords[new(action.TargetKey, action.SoftwareKey,
+                        action.ProcessId, action.ProcessStartKey)],
+                 Action: (NativeSmartCoordinatorAction?)action)))
+            .Append((Kind: NormalRestoreWorkKind.Placement, Record: default,
+                Action: (NativeSmartCoordinatorAction?)null))
+            .Concat(runPublicResourceLifecycle is null ? [] : new[]
+            {
+                (Kind: NormalRestoreWorkKind.PublicResource, Record: default(NativeAppliedOwnershipRecord),
+                    Action: (NativeSmartCoordinatorAction?)null)
+            })
+            .OrderBy(item => NormalRestoreWorkKey(item.Kind, item.Record.Primary))
+            .ToArray();
+        // Rotate the first admitted opportunity each cycle, even when its write failed unchanged.
+        // The cursor orders work only; durable ownership and the journal remain authoritative.
+        var start = lastNormalRestoreTarget is { } last
+            ? Array.FindIndex(restoreWork, item => NormalRestoreWorkKey(item.Kind, item.Record.Primary).CompareTo(last) > 0)
+            : 0;
+        if (start < 0) start = 0;
+        var cycleStartedAt = durableTimeSource.NextUtc();
+        uint attempted = 0;
+        (uint Scope, uint ProcessId, ulong StartKey, ulong Target, ulong Software)? nextTarget = null;
+        for (var offset = 0; offset < restoreWork.Length; offset++)
         {
-            if (!effectAdmission.TryAcquire(
-                    HostManagerCycleEffectKind.NonAdaptedMemoryTransaction,
-                    out var memoryPermit)
-                || !await RestoreAllOwnedProcessMemoryAsync(
-                    memoryPermit,
-                    processEffectValidationScope,
-                    ownership,
-                    admission,
-                    maximumActions,
-                    cancellationToken))
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = restoreWork[(start + offset) % restoreWork.Length];
+            if (item.Kind == NormalRestoreWorkKind.PublicResource)
             {
-                return false;
+                if (effectAdmission.NewPointOfNoReturnRemaining != 0)
+                    nextTarget ??= NormalRestoreWorkKey(item.Kind, item.Record.Primary);
+                runPublicResourceLifecycle!();
+                continue;
             }
-
-            snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
-                cancellationToken);
-            ownership = CreateAppliedOwnershipFactIndex(snapshot);
-        }
-
-        if (ownership.ProcessRecords.Count != 0 || ownership.AdapterRecords.Count != 0)
-        {
-            if (!effectAdmission.TryAcquire(
-                    HostManagerCycleEffectKind.NativeActionTransaction,
-                    out var nativePermit))
+            if (item.Kind == NormalRestoreWorkKind.Placement)
             {
-                return false;
-            }
-
-            var cycleStartedAt = durableTimeSource.NextUtc();
-            foreach (var action in CreateOwnedNormalRestoreActions(ownership))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (nativePermit.NewPointOfNoReturnRemaining < 1)
+                if (placementStateAvailable)
                 {
-                    return false;
+                    var placementState = await LoadRollbackStateAsync(cancellationToken);
+                    if (effectAdmission.RecoveryRemaining != 0
+                        && GpuActionFacts.AvailablePlacementEffects(placementState.AppliedPlacements)
+                            .Any(item => gpuControlAvailable || !string.Equals(item.ResourceKind,
+                                OptimizationResourceKinds.Gpu, StringComparison.OrdinalIgnoreCase))
+                        && effectAdmission.TryAcquire(HostManagerCycleEffectKind.LegacyPlacementRestore,
+                            out var placementPermit))
+                    {
+                        nextTarget ??= NormalRestoreWorkKey(item.Kind, item.Record.Primary);
+                        placementState = await RestorePlacementStateCoreAsync(
+                            placementPermit, cancellationToken, gpuControlAvailable);
+                    }
+                    placementsRestored = gpuControlAvailable
+                        && !GpuActionFacts.HasPlacementEffects(placementState.AppliedPlacements)
+                        && !GpuActionFacts.HasUnsettledActions(placementState.AppliedPlacements);
                 }
-
+                continue;
+            }
+            var domains = item.Action is { } nativeAction
+                ? (NativeTransactionJournalDomain)nativeAction.DomainMask
+                : NativeTransactionJournalDomain.PhysicalMemory;
+            if (await SkipPendingJournalTargetAsync(admission, item.Record.Primary,
+                    domains, cancellationToken))
+            {
+                continue;
+            }
+            if (attempted >= maximumActions || effectAdmission.RecoveryRemaining == 0)
+            {
+                continue;
+            }
+            var kind = item.Action is null
+                ? HostManagerCycleEffectKind.NonAdaptedMemoryTransaction
+                : HostManagerCycleEffectKind.NativeActionTransaction;
+            if (!effectAdmission.TryAcquire(kind, out var permit)
+                || item.Action is not null && permit.NewPointOfNoReturnRemaining == 0)
+            {
+                continue;
+            }
+            nextTarget ??= NormalRestoreWorkKey(item.Kind, item.Record.Primary);
+            if (item.Action is not { } action)
+            {
+                await RestoreOwnedProcessMemoryForNormalAsync(permit,
+                    processEffectValidationScope, item.Record, admission, cancellationToken);
+            }
+            else
+            {
                 var result = await ExecuteNativeTransactionAsync(
-                    nativePermit,
-                    processEffectValidationScope,
-                    action,
-                    sample: null,
-                    admission,
-                    cancellationToken);
-                ValidateNativeFeedback(
-                    result.Feedback,
-                    action,
+                    permit, processEffectValidationScope, action, sample: null,
+                    admission, cancellationToken);
+                ValidateNativeFeedback(result.Feedback, action,
                     cycleStartedAt.ToUnixTimeMilliseconds());
                 if (result.Settlement is { } settlement)
                 {
                     await CommitAcceptedNativeTransactionsAsync(
-                        admission,
-                        [settlement],
-                        CancellationToken.None);
-                }
-                if (result.Feedback.Status ==
-                    NativeSmartCoordinatorFeedbackStatus.StateUncertain)
-                {
-                    return false;
+                        admission, [settlement], CancellationToken.None);
                 }
             }
+            attempted++;
         }
 
+        if (nextTarget is { } next) lastNormalRestoreTarget = next;
         var finalOwnership = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
             cancellationToken);
         var finalJournal = await admission.ReadSnapshotAsync(cancellationToken);
@@ -135,78 +149,48 @@ public sealed partial class HostManagerSmartCoordinator
             && placementsRestored;
     }
 
-    private async Task<bool> RestoreAllOwnedProcessMemoryAsync(
+    private enum NormalRestoreWorkKind { Placement, Memory, Native, PublicResource }
+
+    private static (uint Scope, uint ProcessId, ulong StartKey, ulong Target, ulong Software)
+        NormalRestoreWorkKey(NormalRestoreWorkKind kind, NativeAppliedOwnershipPrimaryIdentity identity)
+        => kind switch
+        {
+            NormalRestoreWorkKind.Placement => (0, 0, 0, 0, 0),
+            NormalRestoreWorkKind.PublicResource => (3, 0, 0, 0, 0),
+            _ => (identity.Scope, identity.ProcessId, identity.ProcessStartKey,
+                identity.TargetId, identity.SoftwareId)
+        };
+
+    private async Task RestoreOwnedProcessMemoryForNormalAsync(
         HostManagerCycleEffectPermit permit,
         HostManagerProcessEffectValidationCycleSnapshot processEffectValidationScope,
-        NativeAppliedOwnershipFactIndex ownership,
+        NativeAppliedOwnershipRecord record,
         HostManagerTransactionJournalAdmission admission,
-        uint maximumActions,
         CancellationToken cancellationToken)
     {
-        permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
-        uint restored = 0;
-        var schedulingGeneration = nativeActionTransactions.CurrentJournalPlan
-            .HotPublish.ConfigurationGeneration;
-        foreach (var pair in ownership.MemoryProcessRecords
-            .OrderBy(static pair => pair.Key.ProcessId)
-            .ThenBy(static pair => pair.Key.ProcessStartKey)
-            .ThenBy(static pair => pair.Key.SoftwareKey)
-            .ThenBy(static pair => pair.Key.TargetKey))
+        var identity = record.Primary;
+        var directive = new HostManagerNonAdaptedMemoryProcessDirective(
+            nativeActionTransactions.CurrentJournalPlan.HotPublish.ConfigurationGeneration,
+            identity.SoftwareId,
+            SoftwareId: null,
+            checked((int)identity.ProcessId),
+            identity.ProcessStartKey,
+            identity.TargetId,
+            SoftwareRank: 0,
+            NativeMemoryMode.Normal,
+            HostManagerNonAdaptedMemoryProcessAction.RestoreOwnedConstraints,
+            TargetMemoryPriority: null);
+        var decision = HostManagerNonAdaptedMemoryModeExecutionAdmission.Decide(
+            directive, record, allowFreshApply: false);
+        if (decision.Kind != HostManagerNonAdaptedMemoryDirectiveDecisionKind.RestoreToBaseline)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (await SkipPendingJournalTargetAsync(admission, pair.Value.Primary,
-                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
-            {
-                continue;
-            }
-            if (restored >= maximumActions || permit.OwnedMemoryRestoreRemaining == 0)
-            {
-                return false;
-            }
-
-            var directive = new HostManagerNonAdaptedMemoryProcessDirective(
-                schedulingGeneration,
-                pair.Key.SoftwareKey,
-                SoftwareId: null,
-                checked((int)pair.Key.ProcessId),
-                pair.Key.ProcessStartKey,
-                pair.Key.TargetKey,
-                SoftwareRank: 0,
-                NativeMemoryMode.Normal,
-                HostManagerNonAdaptedMemoryProcessAction.RestoreOwnedConstraints,
-                TargetMemoryPriority: null);
-            var decision = HostManagerNonAdaptedMemoryModeExecutionAdmission.Decide(
-                directive,
-                pair.Value,
-                allowFreshApply: false);
-            if (decision.Kind !=
-                HostManagerNonAdaptedMemoryDirectiveDecisionKind.RestoreToBaseline)
-            {
-                throw new InvalidDataException(
-                    "A Normal-mode process-memory owner did not project to a baseline restore.");
-            }
-
-            var result = await RestoreOwnedProcessMemoryPriorityAsync(
-                permit,
-                processEffectValidationScope,
-                decision,
-                pair.Value,
-                NextOwnedRestoreActionId(NonAdaptedMemoryActionIdNamespace),
-                admission,
-                cancellationToken);
-            if (!result.TransactionPrepared
-                && await SkipPendingJournalTargetAsync(admission, pair.Value.Primary,
-                    NativeTransactionJournalDomain.PhysicalMemory, cancellationToken))
-            {
-                continue;
-            }
-            if (!result.TransactionPrepared || result.IsBlocked)
-            {
-                return false;
-            }
-            restored++;
+            throw new InvalidDataException(
+                "A Normal-mode process-memory owner did not project to a baseline restore.");
         }
-        return true;
+        _ = await RestoreOwnedProcessMemoryPriorityAsync(
+            permit, processEffectValidationScope, decision, record,
+            NextOwnedRestoreActionId(NonAdaptedMemoryActionIdNamespace),
+            admission, cancellationToken);
     }
 
     private IEnumerable<NativeSmartCoordinatorAction> CreateOwnedNormalRestoreActions(

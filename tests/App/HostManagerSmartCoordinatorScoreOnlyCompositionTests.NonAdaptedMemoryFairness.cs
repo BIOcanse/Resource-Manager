@@ -163,7 +163,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task UnavailableOwnedMemoryRestoreRetainsUnknownOwnerAndStopsCycle()
+    public async Task UnavailableOwnedMemoryRestoreRetainsUnknownOwnerAndContinuesPublicLifecycle()
     {
         const int processId = 24_305;
         var processStartedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -215,8 +215,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             record.Phase);
         Assert.Equal(1U, journal.Header.EffectInvocationUncertainCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
-        Assert.Equal(publicTicksBefore, fixture.PublicResourceManager.TickCalls);
-        Assert.Equal(0U, fixture.PublicResourceManager.NewEffectAttemptCount);
+        Assert.Equal(publicTicksBefore + 1, fixture.PublicResourceManager.TickCalls);
+        Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
     }
 
     [Fact]

@@ -52,6 +52,7 @@ pub const PlanHeader = extern struct {
     input_struct_size: u32,
     output_struct_size: u32,
     input_count: u32,
+    // The caller admits this many decisions before selection; batch counts are maxima.
     output_capacity: u32,
     output_count: u32,
     request_flags: u32,
@@ -692,6 +693,37 @@ test "normal cleanup repeatedly selects the current lowest score and distinguish
     inputs[1].process_start_key = 201;
     try std.testing.expectEqual(ResultCode.ok, session.plan(&header, &inputs, @intCast(inputs.len), &outputs, @intCast(outputs.len)));
     try std.testing.expectEqual(@as(u64, 201), outputs[0].process_start_key);
+}
+
+test "admitted one action selects the best of two candidates before reserving states" {
+    var config = testConfig(1);
+    const session = try Session.create(&config);
+    defer session.destroy();
+    var inputs = [_]CandidateInput{
+        .{ .struct_size = @sizeOf(CandidateInput), .flags = InputFlags.can_apply, .process_id = 42, .runtime_state = 5, .process_start_key = 100, .target_key = 1, .base_score = 40, .cpu_score = 20, .memory_used_percent = 30 },
+        .{ .struct_size = @sizeOf(CandidateInput), .flags = InputFlags.can_apply, .process_id = 43, .runtime_state = 5, .process_start_key = 200, .target_key = 2, .base_score = 35, .cpu_score = 10, .memory_used_percent = 40 },
+    };
+    var outputs: [1]DecisionOutput = undefined;
+    var header = testHeader(inputs.len, outputs.len, RequestFlags.allow_normal, 0.15, 0.15, 1, 1);
+    var pressure_maximum: u32 = 0;
+    try std.testing.expectEqual(ResultCode.ok, session.requiredOutputCapacity(&header, inputs.len, &pressure_maximum));
+    try std.testing.expectEqual(@as(u32, 2), pressure_maximum);
+
+    var round: usize = 0;
+    while (round < 2) : (round += 1) {
+        try std.testing.expectEqual(ResultCode.ok, session.plan(&header, &inputs, inputs.len, &outputs, outputs.len));
+        try std.testing.expectEqual(@as(u32, 1), header.output_count);
+        try std.testing.expectEqual(@as(u32, 1), outputs[0].source_input_index);
+        try std.testing.expectEqual(@as(u32, 1), session.in_flight_count);
+        var feedback = [_]FeedbackInput{.{
+            .struct_size = @sizeOf(FeedbackInput),
+            .state_slot = outputs[0].state_slot,
+            .state_generation = outputs[0].state_generation,
+            .flags = FeedbackFlags.attempted | FeedbackFlags.succeeded,
+        }};
+        try std.testing.expectEqual(ResultCode.ok, session.complete(&feedback, feedback.len));
+        try std.testing.expectEqual(@as(u32, 0), session.in_flight_count);
+    }
 }
 
 test "trim admission uses the optimization protected base score boundary" {

@@ -806,7 +806,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(fixture.PublicResourceManager.LastRequest!.Value
             .Shortage.MemoryAfterNormalReleaseRounds);
         Assert.Equal(1U, fixture.PublicResourceManager.NewEffectAttemptCount);
-        Assert.Equal(4, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Equal(3, fixture.MemoryCleanupPlanner.PlanCalls); // No plan is reserved after public work spends the budget.
         Assert.Equal(3, fixture.ProcessPolicyWriter.BatchCalls);
     }
 
@@ -2502,7 +2502,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task AutomaticMemoryCleanupAdmitsOnlyTheRemainingCycleBudget()
+    public async Task AutomaticMemoryCleanupOverfullPlanStillCannotCompleteATruncatedRound()
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: false,
@@ -2533,6 +2533,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget,
             result.Disposition);
         Assert.Equal(3, result.PlannedCount);
+        Assert.Equal(1U, fixture.MemoryCleanupPlanner.LastRequest!.MaximumDecisionCount);
         Assert.Equal(1, result.RequestedCount);
         Assert.Equal(1, result.TerminalCount);
         Assert.Equal(1, result.SucceededCount);
@@ -3589,11 +3590,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
         Assert.Empty(fixture.ProcessPolicyWriter.BatchRequests);
         Assert.Equal(5U, currentMemoryPriority);
-        Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
-        Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
-        var trimFeedback = Assert.Single(fixture.MemoryCleanupPlanner.LastFeedback);
-        Assert.False(trimFeedback.Attempted);
-        Assert.False(trimFeedback.Succeeded);
+        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Null(fixture.MemoryCleanupPlanner.LastRequest);
+        Assert.Empty(fixture.MemoryCleanupPlanner.LastFeedback);
         Assert.Equal(
             publicTickCallsBeforeFinalCycle + 1,
             fixture.PublicResourceManager.TickCalls);
@@ -7148,8 +7147,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             => new(ScopeId, RunNonce, ReleaseToken);
 
         internal static CoordinatorValidationScopeFixture Create(
-            HostManagerComputeProcessIdentity identity)
+            HostManagerComputeProcessIdentity identity,
+            TimeProvider? timeProvider = null)
         {
+            timeProvider ??= TimeProvider.System;
             var root = Path.Combine(
                 Path.GetTempPath(),
                 "resource-manager-score-only-validation",
@@ -7158,7 +7159,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var committer = new FailingValidationScopeCommitter();
             var authority = new HostManagerProcessEffectValidationScopeAuthority(
                 Path.Combine(root, "validation-scope", "scope.json"),
-                TimeProvider.System,
+                timeProvider,
                 new ExactJobMembershipProbe(),
                 committer);
             var runNonce = Guid.NewGuid();
@@ -7166,7 +7167,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var opened = authority.Open(new(
                 runNonce,
                 $"Global\\ResourceManager-NonAdaptedOptimizationLab-{Guid.NewGuid():N}",
-                DateTimeOffset.UtcNow.AddMinutes(10),
+                timeProvider.GetUtcNow().AddMinutes(10),
                 releaseToken,
                 [
                     new HostManagerProcessEffectValidationIdentity(

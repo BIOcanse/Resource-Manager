@@ -188,6 +188,58 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
             HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ValidateNativeSnapshotRows_AcceptsSoftwareProtectionFact(byte protectionLevel)
+    {
+        var snapshot = CreateSoftwareRowSnapshot();
+        var row = CreateSoftwareRow();
+        row.ValidMask |= NativeSmartCoordinatorInputValidity.Protection;
+        row.ProtectionLevel = protectionLevel;
+
+        HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot);
+    }
+
+    [Theory]
+    [InlineData(2, false)]
+    [InlineData(3, true)]
+    public void ValidateNativeSnapshotRows_RejectsInvalidSoftwareProtectionFact(
+        byte protectionLevel,
+        bool hasProtectionFact)
+    {
+        var snapshot = CreateSoftwareRowSnapshot();
+        var row = CreateSoftwareRow();
+        if (hasProtectionFact)
+        {
+            row.ValidMask |= NativeSmartCoordinatorInputValidity.Protection;
+        }
+        row.ProtectionLevel = protectionLevel;
+
+        Assert.Throws<InvalidDataException>(() =>
+            HostManagerSmartCoordinator.ValidateNativeSnapshotRows([row], snapshot));
+    }
+
+    private static NativeSmartCoordinatorSnapshot CreateSoftwareRowSnapshot()
+        => new()
+        {
+            CycleSequence = 3,
+            SoftwareCount = 1,
+            SnapshotRowCount = 1
+        };
+
+    private static NativeSmartCoordinatorSnapshotRow CreateSoftwareRow()
+    {
+        var row = CreateProcessRow();
+        row.ValidMask = NativeSmartCoordinatorInputValidity.SoftwareIdentity;
+        row.SoftwareKey = row.TargetKey;
+        row.ProcessId = 0;
+        row.ProcessStartKey = 0;
+        row.RowKind = NativeSmartCoordinatorSnapshotRowKind.Software;
+        return row;
+    }
+
     private static NativeSmartCoordinatorCapacity CreateCapacity()
         => new()
         {

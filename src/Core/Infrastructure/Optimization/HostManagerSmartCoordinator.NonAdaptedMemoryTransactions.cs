@@ -324,6 +324,11 @@ public sealed partial class HostManagerSmartCoordinator
             CancellationToken cancellationToken)
     {
         permit.Require(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction);
+        if (!HostManagerProcessEffectValidationCyclePolicy.AllowsFreshProcessMemory(
+                processEffectValidationScope))
+        {
+            return default;
+        }
         var directive = decision.TransactionDirective;
         if (await SkipPendingJournalTargetAsync(admission,
                 HostManagerNonAdaptedMemoryModeExecutionAdmission.CreatePrimary(directive),

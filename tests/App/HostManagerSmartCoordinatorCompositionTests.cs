@@ -250,9 +250,10 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
             HostManagerCycleEffectKind.AutomaticMemoryCleanup,
             out var cleanupPermit));
         cleanupPermit.Require(HostManagerCycleEffectKind.AutomaticMemoryCleanup);
-        Assert.False(admission.TryAcquire(
+        Assert.True(admission.TryAcquire(
             HostManagerCycleEffectKind.NonAdaptedMemoryTransaction,
             out _));
+        Assert.False(HostManagerProcessEffectValidationCyclePolicy.AllowsFreshProcessMemory(scope));
 
         foreach (var kind in new[]
         {
@@ -278,6 +279,27 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
                 out _));
         Assert.Throws<InvalidOperationException>(() => permit.Require(
             HostManagerCycleEffectKind.AutomaticMemoryCleanup));
+    }
+
+    [Theory]
+    [InlineData((int)HostManagerProcessEffectValidationScopeState.Active, false, false)]
+    [InlineData((int)HostManagerProcessEffectValidationScopeState.Active, true, true)]
+    [InlineData((int)HostManagerProcessEffectValidationScopeState.ExpiredBlocked, false, false)]
+    [InlineData((int)HostManagerProcessEffectValidationScopeState.ExpiredBlocked, true, false)]
+    [InlineData((int)HostManagerProcessEffectValidationScopeState.FaultedBlocked, true, false)]
+    public void ScopedMemoryRecoveryPermitDoesNotGrantFreshWriteCapability(
+        int stateValue, bool capability, bool freshAllowed)
+    {
+        var scope = new HostManagerProcessEffectValidationCycleSnapshot(
+            (HostManagerProcessEffectValidationScopeState)stateValue, Guid.NewGuid(), 1, "test-job", DateTimeOffset.MaxValue,
+            new HashSet<HostManagerComputeProcessIdentity>(), TimeProvider.System,
+            nonAdaptedMemoryTransactionAllowed: capability);
+        var admission = HostManagerCycleEffectAdmission.CreateForValidation(false, scope);
+        admission.InitializeBudgets(1, 1);
+        Assert.True(admission.TryAcquire(HostManagerCycleEffectKind.NonAdaptedMemoryTransaction, out var permit));
+        Assert.True(permit.TryReserveOwnedMemoryRestore(1, out var reservation));
+        reservation!.Dispose();
+        Assert.Equal(freshAllowed, HostManagerProcessEffectValidationCyclePolicy.AllowsFreshProcessMemory(scope));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ internal static class HostManagerProcessEffectValidationCyclePolicy
     private const ulong BaseScopedEffectMask =
         (1UL << ((int)HostManagerCycleEffectKind.NativeTransactionRecovery - 1)) |
         (1UL << ((int)HostManagerCycleEffectKind.ExitedOwnershipReconciliation - 1)) |
+        (1UL << ((int)HostManagerCycleEffectKind.NonAdaptedMemoryTransaction - 1)) |
         (1UL << ((int)HostManagerCycleEffectKind.NativeActionTransaction - 1)) |
         (1UL << ((int)HostManagerCycleEffectKind.NativeWorkspaceLifecycle - 1));
 
@@ -32,11 +33,6 @@ internal static class HostManagerProcessEffectValidationCyclePolicy
             && scope.AutomaticMemoryCleanupAllowed)
         {
             mask |= 1UL << ((int)HostManagerCycleEffectKind.AutomaticMemoryCleanup - 1);
-        }
-        if (state == HostManagerProcessEffectValidationScopeState.Active
-            && scope.NonAdaptedMemoryTransactionAllowed)
-        {
-            mask |= 1UL << ((int)HostManagerCycleEffectKind.NonAdaptedMemoryTransaction - 1);
         }
         return mask;
     }
@@ -66,4 +62,11 @@ internal static class HostManagerProcessEffectValidationCyclePolicy
         => processId > 0
             && processStartKey != 0
             && scope.IsProductionUnscoped;
+
+    // The cycle permit also carries owned recovery; fresh writes need the active capability.
+    internal static bool AllowsFreshProcessMemory(
+        in HostManagerProcessEffectValidationCycleSnapshot scope)
+        => scope.IsProductionUnscoped
+            || scope.State == HostManagerProcessEffectValidationScopeState.Active
+                && scope.NonAdaptedMemoryTransactionAllowed;
 }

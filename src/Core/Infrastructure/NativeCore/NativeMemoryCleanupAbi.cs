@@ -68,6 +68,7 @@ internal struct NativeMemoryCleanupPlanHeader
     public uint InputStructSize;
     public uint OutputStructSize;
     public uint InputCount;
+    // Also the admitted upper bound on native decision selection.
     public uint OutputCapacity;
     public uint OutputCount;
     public NativeMemoryCleanupRequestFlags RequestFlags;
