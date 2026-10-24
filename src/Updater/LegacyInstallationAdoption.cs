@@ -165,16 +165,19 @@ internal static class LegacyInstallationAdoption
         using (var targetStream = File.OpenRead(installedManager))
             sameManager = sourceStream.Length == targetStream.Length
                 && SHA256.HashData(sourceStream).AsSpan().SequenceEqual(SHA256.HashData(targetStream));
+        string? recoveryBackup = null;
         if (!sameManager)
         {
             var directory = UpdateManagerPaths.InstalledDirectory(plan.InstallRoot);
             var staged = Path.Combine(directory, "next-" + Guid.NewGuid().ToString("N") + ".exe");
             var backup = Path.Combine(directory, "previous-" + Guid.NewGuid().ToString("N") + ".exe");
             File.Copy(source, staged);
-            try { File.Replace(staged, installedManager, backup); }
+            try { File.Replace(staged, installedManager, backup); recoveryBackup = backup; }
             finally { if (File.Exists(staged)) File.Delete(staged); }
         }
         await RunInstalledApplyAsync(installedManager, package.Root, plan.InstallRoot, cancellationToken);
+        if (recoveryBackup is not null)
+            ManagerSelfUpdate.PrunePreviousExecutables(UpdateManagerPaths.InstalledDirectory(plan.InstallRoot), [recoveryBackup]);
         return $"已从 {plan.PreviousVersion} 更新到 {package.Version}，旧安装根保留在更新事务备份中。";
     }
 

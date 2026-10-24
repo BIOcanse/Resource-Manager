@@ -267,11 +267,24 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
 
     internal void CompleteModelAcquisition(
         ulong attemptHandle,
-        NativePublicServiceModelAcquisitionCompletionStatus status)
+        NativePublicServiceModelAcquisitionCompletionStatus status,
+        ulong deadlineMonotonicMilliseconds = ulong.MaxValue)
     {
         lock (commandGate)
         {
             var command = NextCommand();
+            if (command.MonotonicMilliseconds >= deadlineMonotonicMilliseconds)
+            {
+                // Native planning expires the attempt and owns its next due time.
+                var expiration = new NativePublicServiceModelAcquisitionPlanInput
+                {
+                    StructSize = SizeOf<NativePublicServiceModelAcquisitionPlanInput>(),
+                    CommandEpoch = command.Epoch,
+                    CommandMonotonicMilliseconds = command.MonotonicMilliseconds
+                };
+                RequireOk(session.PlanModelAcquisition(in expiration, out _), "expire model acquisition");
+                return;
+            }
             var input = new NativePublicServiceModelAcquisitionCompletionInput
             {
                 StructSize = SizeOf<NativePublicServiceModelAcquisitionCompletionInput>(),

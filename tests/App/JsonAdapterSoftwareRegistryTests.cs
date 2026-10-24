@@ -9,6 +9,46 @@ namespace Resource_Manager_APP.Tests;
 public sealed class JsonAdapterSoftwareRegistryTests
 {
     [Fact]
+    public async Task CorruptRegistryIsPreservedAndReadFailureIsNotCachedAsEmpty()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-registry-corrupt-" + Guid.NewGuid().ToString("N"));
+        var config = Directory.CreateDirectory(Path.Combine(root, "Config")).FullName;
+        var path = Path.Combine(config, "adapted-software.json");
+        try
+        {
+            File.WriteAllText(path, "{broken");
+            var registry = new JsonAdapterSoftwareRegistry(new TestHostEnvironment(root));
+            await Assert.ThrowsAsync<System.Text.Json.JsonException>(() => registry.GetAllAsync(default));
+            await Assert.ThrowsAsync<System.Text.Json.JsonException>(() => registry.RegisterAsync(CreateRequest("new"), CreateProbe(), default));
+            Assert.Equal("{broken", File.ReadAllText(path));
+            File.WriteAllText(path, "{\"schemaVersion\":\"1\",\"registrations\":[]}");
+            Assert.Empty(await registry.GetAllAsync(default));
+        }
+        finally { File.Delete(path); Directory.Delete(config); Directory.Delete(root); }
+    }
+
+    [Fact]
+    public async Task FailedReplacementPreservesCommittedRegistrationsAndCleansStaging()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "rm-registry-atomic-" + Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(root, "Config", "adapted-software.json");
+        try
+        {
+            var registry = new JsonAdapterSoftwareRegistry(new TestHostEnvironment(root));
+            await registry.RegisterAsync(CreateRequest("first"), CreateProbe(), default);
+            var before = File.ReadAllBytes(path);
+            using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var error = await Record.ExceptionAsync(() => registry.RegisterAsync(CreateRequest("second"), CreateProbe(), default));
+                Assert.True(error is IOException or UnauthorizedAccessException);
+            }
+            Assert.Equal(before, File.ReadAllBytes(path));
+            Assert.Single(await registry.GetAllAsync(default));
+            Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path)!, "*.tmp"));
+        }
+        finally { File.Delete(path); Directory.Delete(Path.GetDirectoryName(path)!); Directory.Delete(root); }
+    }
+    [Fact]
     public async Task LegacyResponseDoesNotGrantAdaptedStatusAndSameIdentityCanBeVerifiedAgain()
     {
         var root = Path.Combine(Path.GetTempPath(), "rm-adapter-legacy-" + Guid.NewGuid().ToString("N"));

@@ -17,6 +17,27 @@ public sealed class SqliteSoftwareFileIndexTests : IDisposable
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-file-index-{Guid.NewGuid():N}");
     private readonly List<IDisposable> nativeWorkspaces = [];
 
+    [Theory]
+    [InlineData("a")]
+    [InlineData("match")]
+    public async Task SearchContinuesBeyondRejectedCandidatePages(string query)
+    {
+        var index = CreateIndex();
+        var root = Directory.CreateDirectory(Path.Combine(testRoot, "filtered")).FullName;
+        for (var i = 0; i < 300; i++) File.WriteAllText(Path.Combine(root, $"{query}{i:D3}.txt"), "x");
+        var visible = query + "zzzzzz.txt";
+        File.WriteAllText(Path.Combine(root, visible), "ok");
+        await index.GetOrRefreshAsync(new("filter", "Filter", [new(root, "Program")]), TimeSpan.Zero, true, default);
+        var calls = 0;
+        var results = await index.SearchAsync(query, 1, default, (_, relative) =>
+        {
+            calls++;
+            return relative == visible;
+        });
+        Assert.Equal(visible, Assert.Single(results).FileName);
+        Assert.True(calls > 256);
+    }
+
     [Fact]
     public async Task RefreshAndSearch_TracksAddedChangedAndDeletedFiles()
     {

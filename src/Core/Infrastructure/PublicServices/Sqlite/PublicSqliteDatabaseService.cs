@@ -14,9 +14,16 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
     private const int MaximumBatchCommands = 128;
     private const int MaximumSqlLength = 1_048_576;
     private readonly string databaseRoot;
+    private readonly int maximumValueBytes;
+    private readonly long maximumOutputBytes;
 
-    public PublicSqliteDatabaseService(IHostEnvironment environment)
+    public PublicSqliteDatabaseService(IHostEnvironment environment, IConfiguration? configuration = null)
     {
+        maximumValueBytes = configuration?.GetValue<int?>("PublicSqlite:MaximumValueBytes") ?? 1_048_576;
+        maximumOutputBytes = configuration?.GetValue<long?>("PublicSqlite:MaximumOutputBytes") ?? 16_777_216;
+        if (maximumValueBytes is < 1 or > 16_777_216
+            || maximumOutputBytes < 64L + 12L * maximumValueBytes || maximumOutputBytes > 268_435_456)
+            throw new ArgumentOutOfRangeException(nameof(configuration), "Invalid public SQLite output byte limits.");
         databaseRoot = Path.Combine(
             PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
             "UserData",
@@ -66,7 +73,8 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
         var path = RequireExistingPath(databaseId);
         ValidateSql(request.Sql);
         await using var connection = await OpenAsync(path, create: false, cancellationToken);
-        return await QueryCoreAsync(connection, transaction: null, request.Sql, request.Parameters, request.MaxRows, cancellationToken);
+        return await QueryCoreAsync(connection, transaction: null, request.Sql, request.Parameters, request.MaxRows,
+            new OutputBudget(maximumOutputBytes, maximumValueBytes), cancellationToken);
     }
 
     public async Task<PublicSqliteCommandResult> ExecuteAsync(
@@ -96,6 +104,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
         var deferred = !string.Equals(request.TransactionMode, "immediate", StringComparison.OrdinalIgnoreCase);
         await using var transaction = connection.BeginTransaction(deferred);
         var results = new List<PublicSqliteCommandResult>(request.Commands.Count);
+        var budget = new OutputBudget(maximumOutputBytes, maximumValueBytes);
         try
         {
             foreach (var item in request.Commands)
@@ -109,6 +118,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
                         item.Sql,
                         item.Parameters,
                         item.MaxRows,
+                        budget,
                         cancellationToken));
                     continue;
                 }
@@ -118,6 +128,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
                     throw new ArgumentException("Batch command kind must be 'query' or 'execute'.");
                 }
 
+                budget.Charge(128);
                 results.Add(await ExecuteCoreAsync(
                     connection,
                     transaction,
@@ -171,6 +182,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
         string sql,
         IReadOnlyDictionary<string, JsonElement>? parameters,
         int? requestedMaxRows,
+        OutputBudget budget,
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand(connection, transaction, sql, parameters);
@@ -178,6 +190,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
         var columns = Enumerable.Range(0, reader.FieldCount)
             .Select(reader.GetName)
             .ToArray();
+        budget.Charge(128L + columns.Sum(static name => 64L + 12L * name.Length));
         var rows = new List<IReadOnlyList<PublicSqliteValue>>();
         var maxRows = Math.Clamp(requestedMaxRows ?? DefaultMaxRows, 1, MaximumRows);
         var truncated = false;
@@ -192,9 +205,17 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
             var values = new PublicSqliteValue[reader.FieldCount];
             for (var index = 0; index < values.Length; index++)
             {
+                // Reserve the largest permitted cell before the provider materializes it.
+                if (!budget.CanReadValue)
+                {
+                    truncated = true;
+                    break;
+                }
                 values[index] = ReadValue(reader.GetValue(index));
+                budget.Charge(values[index].Value is string text
+                    ? 64L + (values[index].Type == "blob" ? 4L : 12L) * text.Length : 64L);
             }
-
+            if (truncated) break;
             rows.Add(values);
         }
 
@@ -205,6 +226,18 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
             RowsAffected: reader.RecordsAffected,
             SQLitePCL.raw.sqlite3_last_insert_rowid(connection.Handle),
             truncated);
+    }
+
+    private sealed class OutputBudget(long remaining, int maximumValueBytes)
+    {
+        // Blob base64 expands by 4/3; text can require six JSON escape bytes per UTF-16 unit.
+        // 12x also covers the UTF-16 payload retained before response serialization.
+        public bool CanReadValue => remaining >= 64L + 12L * maximumValueBytes;
+        public void Charge(long bytes)
+        {
+            if (bytes > remaining) throw new ArgumentException("The SQLite response exceeds its output byte limit.");
+            remaining -= bytes;
+        }
     }
 
     private static async Task<PublicSqliteCommandResult> ExecuteCoreAsync(
@@ -313,6 +346,7 @@ public sealed class PublicSqliteDatabaseService : IPublicSqliteDatabaseService
             await connection.OpenAsync(cancellationToken);
             connection.EnableExtensions(enable: false);
             PublicSqliteAuthorizer.Apply(connection);
+            SQLitePCL.raw.sqlite3_limit(connection.Handle, SQLitePCL.raw.SQLITE_LIMIT_LENGTH, maximumValueBytes);
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 PRAGMA journal_mode = WAL;

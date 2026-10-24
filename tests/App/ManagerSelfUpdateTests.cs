@@ -10,6 +10,51 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ManagerSelfUpdateTests
 {
     [Fact]
+    public async Task MissingInstalledManagerCanBeScheduledAndRestoredFromVerifiedPayload()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        File.Delete(fixture.OldManager);
+        var launched = false;
+        Assert.True(ManagerSelfUpdate.Schedule(ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"),
+            fixture.Installed, _ => launched = true));
+        Assert.True(launched);
+        await ManagerSelfUpdate.ReplaceVerifiedAsync(UpdateManagerPaths.PackagedExecutable(fixture.Installed),
+            fixture.Installed, 123, fixture.OldManager, () => { }, default,
+            waitForExit: (_, _, _, _) => Task.CompletedTask);
+        Assert.Equal(File.ReadAllBytes(UpdateManagerPaths.PackagedExecutable(fixture.Installed)), File.ReadAllBytes(fixture.OldManager));
+    }
+
+    [Fact]
+    public async Task SuccessfulReplacementsKeepOnlyCurrentRecoveryExecutables()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        var directory = Path.GetDirectoryName(fixture.OldManager)!;
+        var unrelated = Path.Combine(directory, "previous-manual.exe");
+        File.WriteAllText(unrelated, "user");
+        for (var i = 0; i < 4; i++)
+        {
+            File.WriteAllText(fixture.OldManager, "old-" + i);
+            await ManagerSelfUpdate.ReplaceVerifiedAsync(UpdateManagerPaths.PackagedExecutable(fixture.Installed),
+                fixture.Installed, 123, fixture.OldManager, () => { }, default,
+                waitForExit: (_, _, _, _) => Task.CompletedTask);
+            var backup = Assert.Single(Directory.EnumerateFiles(directory, "previous-*.exe"), path => path != unrelated);
+            Assert.Equal("old-" + i, File.ReadAllText(backup));
+            Assert.Equal("user", File.ReadAllText(unrelated));
+        }
+    }
+
+    [Fact]
+    public void ExistingUnreadableManagerIsNotMistakenForMissing()
+    {
+        using var fixture = new Fixture();
+        fixture.CopyPayloadToInstalled();
+        using var locked = new FileStream(fixture.OldManager, FileMode.Open, FileAccess.Read, FileShare.None);
+        Assert.Throws<IOException>(() => ManagerSelfUpdate.Schedule(ReleasePackageLayout.ForRoot(fixture.Download, "0.3.0"),
+            fixture.Installed, _ => throw new Xunit.Sdk.XunitException("Unexpected launch")));
+    }
+    [Fact]
     public async Task VerifiedPackageManagerCanApplyButReplacementStillComparesTheOldInstalledManager()
     {
         using var fixture = new Fixture();

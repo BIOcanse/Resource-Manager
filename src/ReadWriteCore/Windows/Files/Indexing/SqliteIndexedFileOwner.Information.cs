@@ -14,8 +14,9 @@ public partial class SqliteIndexedFileOwner : IDisposable
     internal sealed record EntryBinding(long EntryId, string SoftwareId, string RootPath, string RelativePath);
     internal static readonly DeviceInformationDefinition[] Definitions = [DeviceInformationFieldRegistry.FileAllIndexedModifiedTimeActual,
         DeviceInformationFieldRegistry.FileAllIndexedPathActual, DeviceInformationFieldRegistry.FileAllIndexedSizeActual];
-    public Task<IReadOnlyList<SoftwareFileSearchResult>> SearchAsync(string query, int limit, CancellationToken cancellationToken)
-    { ObjectDisposedException.ThrowIf(IsDisposed, this); return SearchCoreAsync(query, limit, cancellationToken); }
+    public Task<IReadOnlyList<SoftwareFileSearchResult>> SearchAsync(string query, int limit, CancellationToken cancellationToken,
+        Func<string, string?, bool>? canReadPath = null)
+    { ObjectDisposedException.ThrowIf(IsDisposed, this); return SearchCoreAsync(query, limit, cancellationToken, canReadPath); }
     public IndexedFileInformationQuery CreateInformationQuery(string query, int limit, Func<string, string?, bool>? canReadPath = null)
     { ObjectDisposedException.ThrowIf(IsDisposed, this); return new(this, query, limit, canReadPath); }
     internal Task<IReadOnlyList<SoftwareFileSearchResult>> SearchInformationRowsAsync(string query, int limit,

@@ -84,11 +84,15 @@ internal static class ManagerSelfUpdate
                 if (relocating)
                     foreach (var name in new[] { "Start.exe", UninstallationPlan.ExecutableName })
                         payloads.Add((OpenVerifiedPayload(target, name, text: text), Path.Combine(managerDirectory, name)));
-                string? backup = null;
+                var backups = new List<string>();
                 foreach (var payload in payloads)
-                    backup = Promote(payload.Input, payload.Destination, text);
+                {
+                    var backup = Promote(payload.Input, payload.Destination, text);
+                    if (backup is not null) backups.Add(backup);
+                }
                 if (relocating) relocateRegistration();
-                WriteResult(resultPath, true, text.Format(text.ManagerSelfUpdatedBackupFormat, backup ?? registeredManager));
+                WriteResult(resultPath, true, text.Format(text.ManagerSelfUpdatedBackupFormat, backups.FirstOrDefault() ?? registeredManager));
+                PrunePreviousExecutables(managerDirectory, backups);
                 return text.ManagerSelfUpdated;
             }
             finally
@@ -108,6 +112,20 @@ internal static class ManagerSelfUpdate
         try { ReleasePackageLayout.RejectReparse(path); }
         catch (FileNotFoundException) { }
         catch (DirectoryNotFoundException) { }
+    }
+
+    internal static void PrunePreviousExecutables(string managerDirectory, IReadOnlyCollection<string> retained)
+    {
+        ReleasePackageLayout.RejectReparse(managerDirectory);
+        var count = 0;
+        foreach (var path in Directory.EnumerateFiles(managerDirectory, "previous-*.exe", SearchOption.TopDirectoryOnly))
+        {
+            if (++count > 100_000) throw new IOException("Manager recovery backup count exceeds its entry bound.");
+            var suffix = Path.GetFileNameWithoutExtension(path)["previous-".Length..];
+            if (!Guid.TryParseExact(suffix, "N", out _)) continue;
+            ReleasePackageLayout.RejectReparse(path);
+            if (!retained.Contains(path, StringComparer.OrdinalIgnoreCase)) File.Delete(path);
+        }
     }
 
     private static string? Promote(FileStream source, string destination, ToolText text)
@@ -223,9 +241,14 @@ internal static class ManagerSelfUpdate
 
     private static bool SameFileContents(Stream source, string second)
     {
-        using var target = File.OpenRead(second);
-        if (source.Length != target.Length) return false;
-        return SHA256.HashData(source).AsSpan().SequenceEqual(SHA256.HashData(target));
+        FileStream target;
+        try { target = File.OpenRead(second); }
+        catch (FileNotFoundException) { return false; }
+        using (target)
+        {
+            if (source.Length != target.Length) return false;
+            return SHA256.HashData(source).AsSpan().SequenceEqual(SHA256.HashData(target));
+        }
     }
 
     private static void WriteResult(string path, bool success, string message)
