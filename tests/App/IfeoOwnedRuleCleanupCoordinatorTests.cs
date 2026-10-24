@@ -1,10 +1,58 @@
 using Microsoft.Win32;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Domain.GpuPlacement;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class IfeoOwnedRuleCleanupCoordinatorTests
 {
+    [Fact]
+    public void DisabledPolicyReturnsCleanupFailureAndReconcileStillAppliesIndependentPolicy()
+    {
+        var store = new FakeOwnedRuleStore();
+        store.SetImage(RegistryView.Registry64, Image("denied.exe", new IfeoRuleSnapshot("owned", Owner, @"C:\denied.exe")));
+        store.ProtectWrites(RegistryView.Registry64, "denied.exe");
+        var registry = new WindowsIfeoGpuLaunchInterceptionRegistry(@"C:\missing-broker.exe", store);
+        var policy = new GpuPlacementProcessPolicy("software", "denied", "denied.exe", @"C:\denied.exe",
+            true, [], null, DateTimeOffset.MinValue);
+        Assert.Equal(GpuLaunchInterceptionStatuses.RegistryAccessDenied, registry.Apply(policy).Status);
+        var independent = policy with { ProcessKey = "independent", ExecutablePath = @"C:\missing-independent.exe", StartupInterceptionEnabled = true };
+        var statuses = registry.Reconcile(GpuPlacementPolicyDocument.Empty with { ProcessPolicies = [independent] }, []);
+        Assert.Contains(statuses, status => status.ProcessKey == "denied.exe" && status.Status == GpuLaunchInterceptionStatuses.RegistryAccessDenied);
+        Assert.Contains(statuses, status => status.ProcessKey == "independent");
+    }
+
+    [Fact]
+    public void StaleFailureDoesNotBlockOtherImagesOrViewsAndIsReported()
+    {
+        var store = new FakeOwnedRuleStore();
+        store.SetImage(RegistryView.Registry64, Image("denied.exe", new IfeoRuleSnapshot("owned", Owner, @"C:\denied.exe")));
+        store.ProtectWrites(RegistryView.Registry64, "denied.exe");
+        store.SetImage(RegistryView.Registry64, Image("ok.exe", new IfeoRuleSnapshot("owned", Owner, @"C:\ok.exe")));
+        store.SetImage(RegistryView.Registry32, Image("ok.exe", new IfeoRuleSnapshot("owned", Owner, @"C:\ok.exe")));
+        var failures = new IfeoOwnedRuleCleanupCoordinator(store, Owner).RemoveStale(
+            [RegistryView.Registry64, RegistryView.Registry32], EmptyDesiredPaths());
+        Assert.Equal("denied.exe", Assert.Single(failures).ImageName);
+        Assert.Empty(store.GetImage(RegistryView.Registry64, "ok.exe").Rules);
+        Assert.Empty(store.GetImage(RegistryView.Registry32, "ok.exe").Rules);
+        Assert.Single(store.GetImage(RegistryView.Registry64, "denied.exe").Rules);
+    }
+
+    [Fact]
+    public void CleanupRemovesOnlyUnchangedWritesAndRelinquishesForeignDebugger()
+    {
+        var rule = new IfeoRuleSnapshot("owned", Owner, @"C:\app.exe", "foreign debugger", "changed-id");
+        Assert.Equal(["ResourceManagerOwner"], IfeoOwnedRuleCleanupCoordinator.OwnedValuesToRemove(rule, "broker"));
+        var name = WindowsIfeoGpuLaunchInterceptionRegistry.CreateRuleName(rule.NormalizedFilterPath!);
+        var owned = rule with { Debugger = "broker", RuleId = name, RuleName = name };
+        Assert.Equal(["ResourceManagerOwner", "ResourceManagerRuleId", "Debugger", "FilterFullPath"],
+            IfeoOwnedRuleCleanupCoordinator.OwnedValuesToRemove(owned, "broker"));
+        Assert.DoesNotContain("FilterFullPath", IfeoOwnedRuleCleanupCoordinator.OwnedValuesToRemove(
+            owned with { NormalizedFilterPath = @"C:\changed.exe" }, "broker"));
+        Assert.Equal(IfeoParentCleanupAction.RemoveOwner,
+            IfeoOwnedRuleCleanupCoordinator.DecideParentCleanup(Image("app.exe") with { CurrentUseFilter = 2 }, Owner));
+    }
+
     private const string Owner = WindowsIfeoGpuLaunchInterceptionRegistry.OwnerValue;
 
     [Fact]

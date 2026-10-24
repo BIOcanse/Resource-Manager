@@ -38,7 +38,8 @@ public sealed class RuntimePlanCompiler(
     StrictHostManagerProfileLoader hostManagerProfileLoader,
     HostManagerPlanCompiler hostManagerPlanCompiler,
     RuntimeExecutionCapabilityPolicy executionCapabilities,
-    RuntimePersistenceCapabilityPolicy persistenceCapabilities)
+    RuntimePersistenceCapabilityPolicy persistenceCapabilities,
+    ILogger<RuntimePlanCompiler>? logger = null)
 {
     public async Task<CompiledRuntimePlan> CompileAsync(
         long version,
@@ -103,6 +104,10 @@ public sealed class RuntimePlanCompiler(
         }
         var registeredSourceZoneIds = monitoringSourceZoneRegistry.GetSourceIds();
         var firmwareProviderPlan = firmwareProviderPlanCompiler.Compile();
+        var hardwareScores = CompileHardwareScores(settings.Performance.GpuPerformanceUseCases,
+            cpuTopology.CpuName, cpuOverrides.ScoresByCoreIndex, gpuPerformanceScoreOverrideStore);
+        if (hardwareScores.GpuPerformanceScoreUnavailableReason is { } scoreError)
+            logger?.LogWarning("{GpuPerformanceScoreUnavailableReason}", scoreError);
 
         return new CompiledRuntimePlan(
             version,
@@ -117,11 +122,7 @@ public sealed class RuntimePlanCompiler(
                 gpuPolicyDocument,
                 cpuTopology),
             CompileBaseScorePlan(gpuPolicyDocument),
-            new CompiledHardwareScorePlan(
-                AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(settings.Performance.GpuPerformanceUseCases),
-                gpuPerformanceScoreOverrideStore.LoadScores(),
-                cpuTopology.CpuName,
-                cpuOverrides.ScoresByCoreIndex),
+            hardwareScores,
             CompiledOptimizationModePlan.Compile(settings.Performance.OptimizationMode),
             CompileDiagnosticsPlan(settings.Debug),
             CompileMonitoringPlan(
@@ -135,6 +136,25 @@ public sealed class RuntimePlanCompiler(
             CpuBaseline = cpuBaseline,
             CpuPlacementTopology = cpuTopology
         };
+    }
+
+    internal static CompiledHardwareScorePlan CompileHardwareScores(IReadOnlyList<string> useCases,
+        string cpuName, IReadOnlyDictionary<int, double> cpuScores, IGpuPerformanceScoreOverrideStore gpuStore)
+    {
+        try
+        {
+            return new(AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(useCases),
+                gpuStore.LoadScores(), cpuName, cpuScores);
+        }
+        catch (Exception error) when (error is System.Text.Json.JsonException or InvalidDataException or IOException
+            or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return new(AppSettingsNormalizer.NormalizeGpuPerformanceUseCases(useCases),
+                new Dictionary<string, double>(), cpuName, cpuScores)
+            {
+                GpuPerformanceScoreUnavailableReason = $"GPU performance overrides unavailable: {error.Message}"
+            };
+        }
     }
 
     private static CompiledAdapterDispatchPlan CompileAdapterDispatchPlan(

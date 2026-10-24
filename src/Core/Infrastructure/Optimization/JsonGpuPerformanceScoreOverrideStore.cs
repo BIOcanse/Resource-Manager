@@ -15,7 +15,6 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
 
     private readonly object gate = new();
     private readonly string storagePath;
-    private GpuPerformanceScoreOverrideDocument? cachedDocument;
 
     public JsonGpuPerformanceScoreOverrideStore(IHostEnvironment environment)
     {
@@ -47,14 +46,9 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
     {
         lock (gate)
         {
-            var document = LoadDocument();
             var normalizedScores = NormalizeScores(request.Scores);
             var updatedAt = DateTimeOffset.UtcNow;
-            var updated = document with
-            {
-                ScoresByGpuId = normalizedScores,
-                UpdatedAt = updatedAt
-            };
+            var updated = new GpuPerformanceScoreOverrideDocument(CurrentVersion, normalizedScores, updatedAt);
             SaveDocument(updated);
             return new GpuPerformanceScoreOverrideResult(
                 normalizedScores,
@@ -67,7 +61,6 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
     {
         lock (gate)
         {
-            _ = LoadDocument();
             var updatedAt = DateTimeOffset.UtcNow;
             var updated = new GpuPerformanceScoreOverrideDocument(
                 CurrentVersion,
@@ -83,26 +76,24 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
 
     private GpuPerformanceScoreOverrideDocument LoadDocument()
     {
-        if (cachedDocument is not null)
-        {
-            return cachedDocument;
-        }
-
         try
         {
             using var stream = new FileStream(storagePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var document = JsonSerializer.Deserialize<GpuPerformanceScoreOverrideDocument>(stream, JsonOptions)
                 ?? throw new InvalidDataException("The GPU performance score file is empty.");
-            cachedDocument = NormalizeDocument(document);
+            if (document.Version != CurrentVersion || document.ScoresByGpuId is null
+                || document.ScoresByGpuId.Any(item => string.IsNullOrWhiteSpace(item.Key)
+                    || !double.IsFinite(item.Value) || item.Value < 0))
+                throw new InvalidDataException("The GPU performance score file has an invalid document shape or score.");
+            return NormalizeDocument(document);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
-            cachedDocument = new GpuPerformanceScoreOverrideDocument(
+            return new GpuPerformanceScoreOverrideDocument(
                 CurrentVersion,
                 new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
                 DateTimeOffset.MinValue);
         }
-        return cachedDocument;
     }
 
     private void SaveDocument(GpuPerformanceScoreOverrideDocument document)
@@ -121,7 +112,6 @@ public sealed class JsonGpuPerformanceScoreOverrideStore : IGpuPerformanceScoreO
             stream.Flush(flushToDisk: true);
         }
         NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporaryPath, storagePath);
-        cachedDocument = normalized;
     }
 
     private static GpuPerformanceScoreOverrideDocument NormalizeDocument(GpuPerformanceScoreOverrideDocument? document)

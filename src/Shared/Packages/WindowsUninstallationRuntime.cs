@@ -60,6 +60,17 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
 
     public void RemoveService(UninstallationPlan plan) => WindowsServiceRegistration.DeleteOwned(WindowsServiceRegistration.ProductServiceName, plan.Backend);
 
+    public void RemoveLaunchInterception(UninstallationPlan plan)
+    {
+        var broker = Path.Combine(Path.GetDirectoryName(plan.Backend)!, "ResourceManager.GpuLaunchBroker.exe");
+        var start = new ProcessStartInfo(broker) { UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add("--remove-all-resource-manager-ifeo");
+        using var process = Process.Start(start) ?? throw new IOException("Cannot start launch interception cleanup.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new IOException($"Launch interception cleanup failed ({process.ExitCode}); installation files have been retained.");
+    }
+
     public void RemoveRegistration(UninstallationPlan plan)
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);

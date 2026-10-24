@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include <wincrypt.h>
 
 #include <algorithm>
 #include <array>
@@ -638,7 +639,39 @@ std::wstring ReadRegistryString(HKEY key, const wchar_t* valueName)
         : std::wstring();
 }
 
-std::vector<std::wstring> EnumerateSubKeys(HKEY key)
+bool FilterMatchesRule(const std::wstring& path, const std::wstring& ruleName)
+{
+    if (path.empty()) return false;
+    const auto fullPath = FullPath(path);
+    if (fullPath.empty()) return false;
+    const int length = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, fullPath.data(),
+        static_cast<int>(fullPath.size()), nullptr, 0, nullptr, nullptr, 0);
+    if (length <= 0) return false;
+    std::wstring upper(length, L'\0');
+    if (LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, fullPath.data(),
+        static_cast<int>(fullPath.size()), upper.data(), length, nullptr, nullptr, 0) != length) return false;
+    const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, upper.data(), length, nullptr, 0, nullptr, nullptr);
+    if (bytes <= 0) return false;
+    std::string utf8(bytes, '\0');
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, upper.data(), length, utf8.data(), bytes, nullptr, nullptr) != bytes) return false;
+    HCRYPTPROV provider = 0;
+    HCRYPTHASH hash = 0;
+    if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return false;
+    std::array<BYTE, 32> digest{};
+    DWORD size = static_cast<DWORD>(digest.size());
+    const bool valid = CryptCreateHash(provider, CALG_SHA_256, 0, 0, &hash)
+        && CryptHashData(hash, reinterpret_cast<const BYTE*>(utf8.data()), static_cast<DWORD>(utf8.size()), 0)
+        && CryptGetHashParam(hash, HP_HASHVAL, digest.data(), &size, 0);
+    if (hash) CryptDestroyHash(hash);
+    CryptReleaseContext(provider, 0);
+    if (!valid || size != digest.size()) return false;
+    std::wstring expected = L"ResourceManager-";
+    constexpr wchar_t hex[] = L"0123456789abcdef";
+    for (size_t index = 0; index < 12; ++index) { expected += hex[digest[index] >> 4]; expected += hex[digest[index] & 15]; }
+    return expected == ruleName;
+}
+
+std::vector<std::wstring> EnumerateSubKeys(HKEY key, DWORD& firstError, bool* complete = nullptr)
 {
     std::vector<std::wstring> names;
     for (DWORD index = 0;; ++index)
@@ -647,7 +680,12 @@ std::vector<std::wstring> EnumerateSubKeys(HKEY key)
         DWORD length = static_cast<DWORD>(name.size());
         const LONG status = RegEnumKeyExW(key, index, name.data(), &length, nullptr, nullptr, nullptr, nullptr);
         if (status == ERROR_NO_MORE_ITEMS) break;
-        if (status == ERROR_SUCCESS) names.emplace_back(name.data(), length);
+        if (status != ERROR_SUCCESS) {
+            if (firstError == ERROR_SUCCESS) firstError = status;
+            if (complete) *complete = false;
+            break;
+        }
+        names.emplace_back(name.data(), length);
     }
     return names;
 }
@@ -671,24 +709,27 @@ DWORD RemoveOwnedRulesFromView(REGSAM view, int& removed)
     }
 
     DWORD firstError = ERROR_SUCCESS;
-    for (const auto& imageName : EnumerateSubKeys(rawRoot))
+    for (const auto& imageName : EnumerateSubKeys(rawRoot, firstError))
     {
         HKEY imageReadKey = nullptr;
-        if (RegOpenKeyExW(
+        const LONG imageReadStatus = RegOpenKeyExW(
                 rawRoot,
                 imageName.c_str(),
                 0,
                 KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE,
-                &imageReadKey) != ERROR_SUCCESS)
+                &imageReadKey);
+        if (imageReadStatus != ERROR_SUCCESS)
         {
+            if (firstError == ERROR_SUCCESS) firstError = imageReadStatus;
             continue;
         }
 
         std::vector<std::wstring> ownedRules;
-        for (const auto& ruleName : EnumerateSubKeys(imageReadKey))
+        for (const auto& ruleName : EnumerateSubKeys(imageReadKey, firstError))
         {
             HKEY ruleKey = nullptr;
-            if (RegOpenKeyExW(imageReadKey, ruleName.c_str(), 0, KEY_QUERY_VALUE, &ruleKey) != ERROR_SUCCESS) continue;
+            const LONG ruleReadStatus = RegOpenKeyExW(imageReadKey, ruleName.c_str(), 0, KEY_QUERY_VALUE, &ruleKey);
+            if (ruleReadStatus != ERROR_SUCCESS) { if (firstError == ERROR_SUCCESS) firstError = ruleReadStatus; continue; }
             const bool owned = ReadRegistryString(ruleKey, L"ResourceManagerOwner") == OwnerValue;
             RegCloseKey(ruleKey);
             if (owned) ownedRules.push_back(ruleName);
@@ -712,40 +753,70 @@ DWORD RemoveOwnedRulesFromView(REGSAM view, int& removed)
 
         for (const auto& ruleName : ownedRules)
         {
-            const LONG deleteStatus = RegDeleteTreeW(imageWriteKey, ruleName.c_str());
-            if (deleteStatus == ERROR_SUCCESS || deleteStatus == ERROR_FILE_NOT_FOUND)
-            {
-                ++removed;
-            }
+            HKEY ruleKey = nullptr;
+            LONG status = RegOpenKeyExW(imageWriteKey, ruleName.c_str(), 0,
+                KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_ENUMERATE_SUB_KEYS, &ruleKey);
+            if (status == ERROR_FILE_NOT_FOUND) continue;
+            if (status != ERROR_SUCCESS) { if (firstError == ERROR_SUCCESS) firstError = status; continue; }
+            if (ReadRegistryString(ruleKey, L"ResourceManagerOwner") != OwnerValue) { RegCloseKey(ruleKey); continue; }
+            auto removeValue = [&](const wchar_t* name) {
+                const LONG result = RegDeleteValueW(ruleKey, name);
+                if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND && status == ERROR_SUCCESS) status = result;
+            };
+            const auto debugger = ReadRegistryString(ruleKey, L"Debugger");
+            const bool ownedDebugger = debugger == L"\"" + ModulePath() + L"\" --resource-manager-ifeo";
+            if (ownedDebugger) removeValue(L"Debugger");
+            if ((ownedDebugger || debugger.empty()) && FilterMatchesRule(ReadRegistryString(ruleKey, L"FilterFullPath"), ruleName))
+                removeValue(L"FilterFullPath");
+            if (ReadRegistryString(ruleKey, L"ResourceManagerRuleId") == ruleName) removeValue(L"ResourceManagerRuleId");
+            if (status == ERROR_SUCCESS) removeValue(L"ResourceManagerOwner");
+            DWORD subkeys = 0, values = 0;
+            const LONG query = RegQueryInfoKeyW(ruleKey, nullptr, nullptr, nullptr, &subkeys, nullptr,
+                nullptr, &values, nullptr, nullptr, nullptr, nullptr);
+            RegCloseKey(ruleKey);
+            if (status == ERROR_SUCCESS && query != ERROR_SUCCESS) status = query;
+            if (status == ERROR_SUCCESS && subkeys == 0 && values == 0)
+                status = RegDeleteKeyExW(imageWriteKey, ruleName.c_str(), view, 0);
+            if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND) ++removed;
             else if (firstError == ERROR_SUCCESS)
             {
-                firstError = static_cast<DWORD>(deleteStatus);
+                firstError = static_cast<DWORD>(status);
             }
         }
 
         bool hasFullPathRules = false;
-        for (const auto& ruleName : EnumerateSubKeys(imageWriteKey))
+        bool hasOwnedRules = false;
+        bool complete = true;
+        for (const auto& ruleName : EnumerateSubKeys(imageWriteKey, firstError, &complete))
         {
             HKEY ruleKey = nullptr;
-            if (RegOpenKeyExW(imageWriteKey, ruleName.c_str(), 0, KEY_QUERY_VALUE, &ruleKey) != ERROR_SUCCESS) continue;
-            hasFullPathRules = !ReadRegistryString(ruleKey, L"FilterFullPath").empty();
+            const LONG readStatus = RegOpenKeyExW(imageWriteKey, ruleName.c_str(), 0, KEY_QUERY_VALUE, &ruleKey);
+            if (readStatus != ERROR_SUCCESS) { complete = false; if (firstError == ERROR_SUCCESS) firstError = readStatus; continue; }
+            hasFullPathRules = hasFullPathRules || !ReadRegistryString(ruleKey, L"FilterFullPath").empty();
+            hasOwnedRules = hasOwnedRules || ReadRegistryString(ruleKey, L"ResourceManagerOwner") == OwnerValue;
             RegCloseKey(ruleKey);
-            if (hasFullPathRules) break;
         }
-        if (parentOwned)
+        if (parentOwned && complete && !hasOwnedRules
+            && ReadRegistryString(imageWriteKey, L"ResourceManagerUseFilterOwner") == OwnerValue)
         {
-            if (!hasFullPathRules)
+            bool parentSettled = true;
+            DWORD useFilter = 0, type = 0, size = sizeof(useFilter);
+            const LONG readFilter = RegQueryValueExW(imageWriteKey, L"UseFilter", nullptr, &type,
+                reinterpret_cast<BYTE*>(&useFilter), &size);
+            if (!hasFullPathRules && readFilter == ERROR_SUCCESS && type == REG_DWORD && size == sizeof(useFilter) && useFilter == 1)
             {
                 const LONG status = RegDeleteValueW(imageWriteKey, L"UseFilter");
-                if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND && firstError == ERROR_SUCCESS)
+                if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND)
                 {
-                    firstError = static_cast<DWORD>(status);
+                    parentSettled = false;
+                    if (firstError == ERROR_SUCCESS) firstError = static_cast<DWORD>(status);
                 }
             }
-            const LONG status = RegDeleteValueW(imageWriteKey, L"ResourceManagerUseFilterOwner");
-            if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND && firstError == ERROR_SUCCESS)
+            if (parentSettled)
             {
-                firstError = static_cast<DWORD>(status);
+                const LONG status = RegDeleteValueW(imageWriteKey, L"ResourceManagerUseFilterOwner");
+                if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND && firstError == ERROR_SUCCESS)
+                    firstError = static_cast<DWORD>(status);
             }
         }
         RegCloseKey(imageWriteKey);

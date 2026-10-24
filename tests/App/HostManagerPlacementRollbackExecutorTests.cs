@@ -7,6 +7,26 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerPlacementRollbackExecutorTests
 {
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(2, false)]
+    public void GpuWriteFailureRetainsOnlyItsOwnReceipt(int error, bool hadValue)
+    {
+        var graphics = new FakeGraphicsPreferenceStore(RecoveryReadResult<string>.Found("new"),
+            RecoveryReadResult<string>.Found("new"), RecoveryReadResult<string>.Found("old"))
+        {
+            WriteError = error switch { 0 => new UnauthorizedAccessException("denied"),
+                1 => new System.Security.SecurityException("denied"), _ => new IOException("denied") }
+        };
+        var executor = CreateExecutor(graphics: graphics);
+        Assert.Equal(HostManagerPlacementSettlementKind.RetryableFailure,
+            executor.RestoreRecord(GpuRecord("failed.exe", hadValue, "old", "new")).Kind);
+        Assert.Equal(HostManagerPlacementSettlementKind.AlreadyRestored,
+            executor.RestoreRecord(GpuRecord("independent.exe", true, "old", "new")).Kind);
+    }
+
     [Fact]
     public void GpuUnavailableRetainsRecordWithoutWrite()
     {
@@ -317,6 +337,7 @@ public sealed partial class HostManagerPlacementRollbackExecutorTests
     private sealed class FakeGraphicsPreferenceStore(params RecoveryReadResult<string>[] reads)
         : IWindowsGraphicsPreferenceStore
     {
+        public Exception? WriteError { get; init; }
         private readonly Queue<RecoveryReadResult<string>> reads = new(reads);
 
         public int WriteCount { get; private set; }
@@ -326,9 +347,9 @@ public sealed partial class HostManagerPlacementRollbackExecutorTests
                 ? RecoveryReadResult<string>.Unavailable(0, "no scripted read")
                 : reads.Dequeue();
 
-        public void WriteValue(string executablePath, string value) => WriteCount++;
+        public void WriteValue(string executablePath, string value) { WriteCount++; if (WriteError is not null) throw WriteError; }
 
-        public void DeleteValue(string executablePath) => WriteCount++;
+        public void DeleteValue(string executablePath) { WriteCount++; if (WriteError is not null) throw WriteError; }
 
         public string BuildPreferIntegratedGpuValue(string? currentValue) => "integrated";
 

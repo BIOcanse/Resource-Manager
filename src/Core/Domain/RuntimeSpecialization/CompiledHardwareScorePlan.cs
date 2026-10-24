@@ -10,6 +10,7 @@ public sealed record CompiledHardwareScorePlan(
     string CpuName,
     IReadOnlyDictionary<int, double> CpuPerformanceScoresByCoreIndex)
 {
+    public string? GpuPerformanceScoreUnavailableReason { get; init; }
     public static CompiledHardwareScorePlan Default { get; } = new(
         [AppGpuPerformanceUseCases.General],
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase),
@@ -18,6 +19,8 @@ public sealed record CompiledHardwareScorePlan(
 
     public double ResolveGpuPerformanceScore(GpuMetrics gpu)
     {
+        if (GpuPerformanceScoreUnavailableReason is { } reason)
+            throw new InvalidOperationException(reason);
         var gpuId = GpuPerformanceScoreIds.FromIndex(gpu.Index);
         return GpuPerformanceScoresByGpuId.TryGetValue(gpuId, out var overrideScore)
             ? GpuPerformanceScorePresetResolver.NormalizeManualScore(overrideScore)

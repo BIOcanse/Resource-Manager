@@ -63,8 +63,12 @@ public sealed class GpuPerformanceScoreOverrideStoreTests
         }
     }
 
-    [Fact]
-    public void CorruptExistingScoreFileCannotBeReadSavedOrResetAsEmpty()
+    [Theory]
+    [InlineData("{invalid")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    [InlineData("{\"version\":1,\"scoresByGpuId\":null}")]
+    public void CorruptExistingScoreFileIsUnavailableButCanBeReplacedOrReset(string corrupt)
     {
         var root = Path.Combine(Path.GetTempPath(), $"resource-manager-gpu-overrides-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
@@ -73,13 +77,22 @@ public sealed class GpuPerformanceScoreOverrideStoreTests
             var first = new JsonGpuPerformanceScoreOverrideStore(new TestHostEnvironment(root));
             var path = first.Save(new GpuPerformanceScoreOverrideRequest(
                 [new GpuPerformanceScoreOverrideItem("gpu:0", 80)])).StoragePath;
-            File.WriteAllText(path, "{invalid");
+            File.WriteAllText(path, corrupt);
             var reopened = new JsonGpuPerformanceScoreOverrideStore(new TestHostEnvironment(root));
 
-            Assert.Throws<JsonException>(() => reopened.LoadScores());
-            Assert.Throws<JsonException>(() => reopened.Save(new GpuPerformanceScoreOverrideRequest([])));
-            Assert.Throws<JsonException>(() => reopened.Reset());
-            Assert.Equal("{invalid", File.ReadAllText(path));
+            Assert.True(Record.Exception(() => reopened.LoadScores()) is JsonException or InvalidDataException);
+            Assert.Equal(corrupt, File.ReadAllText(path));
+            var scores = ResourceManager.App.Infrastructure.RuntimeSpecialization.RuntimePlanCompiler.CompileHardwareScores(
+                ["general"], "cpu", new Dictionary<int, double> { [0] = 42 }, reopened);
+            Assert.NotNull(scores.GpuPerformanceScoreUnavailableReason);
+            Assert.Equal(42, scores.ResolveCpuPerformanceScore(0, 10));
+            Assert.Throws<InvalidOperationException>(() => scores.ResolveGpuPerformanceScore(null!));
+            reopened.Save(new GpuPerformanceScoreOverrideRequest([new("gpu:0", 90)]));
+            Assert.Equal(90, reopened.LoadScores()["gpu:0"]);
+            File.WriteAllText(path, corrupt);
+            Assert.True(Record.Exception(() => reopened.LoadScores()) is JsonException or InvalidDataException);
+            Assert.Empty(reopened.Reset().ScoresByGpuId);
+            Assert.Empty(reopened.LoadScores());
         }
         finally
         {

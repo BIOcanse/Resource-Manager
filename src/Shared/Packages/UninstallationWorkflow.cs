@@ -6,6 +6,7 @@ public interface IUninstallationRuntime
 {
     void RequireOwned(UninstallationPlan plan);
     void StopProduct(UninstallationPlan plan);
+    void RemoveLaunchInterception(UninstallationPlan plan);
     void RemoveService(UninstallationPlan plan);
     void RemoveRegistration(UninstallationPlan plan);
     void ProtectArchive(string archive);
@@ -24,6 +25,7 @@ public static class UninstallationWorkflow
         using var operation = Directory.Exists(plan.ManagerDirectory) ? PackageOperationLock.AcquireDirectory(plan.ManagerDirectory) : null;
         var workspaces = UninstallationWorkspaces.Read(plan);
         runtime.StopProduct(plan);
+        runtime.RemoveLaunchInterception(plan);
         string? archive = null;
         if (keepData)
         {
