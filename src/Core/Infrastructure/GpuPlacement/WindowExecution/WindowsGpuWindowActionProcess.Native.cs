@@ -126,8 +126,6 @@ internal sealed partial class WindowsGpuWindowActionProcess
         internal static extern bool GetNamedPipeClientProcessId(SafePipeHandle pipe, out uint processId);
         [DllImport("kernel32.dll")]
         internal static extern IntPtr GetCurrentProcess();
-        [DllImport("kernel32.dll")]
-        internal static extern uint GetErrorMode();
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool DuplicateHandle(IntPtr sourceProcess, SafeProcessHandle sourceHandle,
