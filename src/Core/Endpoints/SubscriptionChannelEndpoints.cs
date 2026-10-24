@@ -251,11 +251,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         .GetSchedulingSnapshot,
                     interval)),
             // 控制面的实际状态：这台机器现在实际是什么样。
-            // 只返回当前值，采样由后台那条独立的路做 —— 订阅者再多也不会多碰一次硬件。
+            // 通道存活期间持有采样需求；发布只取当前值，不直接触碰硬件。
             ["/api/control/actual/subscribe"] =
-                new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
+                new((subscription, services, interval) => CompileControlActualSubscription(
                     subscription,
-                    () => services.GetRequiredService<IControlActualStateOwner>().Current,
+                    services.GetRequiredService<IControlActualStateOwner>(),
                     interval)),
             ["/api/local-system/status/subscribe"] =
                 new((subscription, services, interval) => CompileAlignedPeriodicSubscription(
@@ -608,6 +608,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
         });
     }
+
+    private static CompiledFrontendSubscription CompileControlActualSubscription(
+        ParsedFrontendSubscription subscription,
+        IControlActualStateOwner owner,
+        TimeSpan interval)
+        => subscription.Compile(async (writer, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var demand = owner.AcquireSubscription();
+            await PublishAlignedPeriodicSubscriptionAsync(subscription.Id, () => owner.Current,
+                interval, writer, cancellationToken);
+        });
 
     private static CompiledFrontendSubscription CompileAlignedPeriodicSubscription<T>(
         ParsedFrontendSubscription subscription,

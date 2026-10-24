@@ -12,7 +12,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// 这一份和统一写入层是**分开**的两条路：写走写入层，读走这里再进统一订阅源。
 /// 分开之后，两边各按各的节奏跑，不会因为共用一个对象而互相等锁。
 ///
-/// 采样在后台按固定间隔做，新结果先完整读出来再原子替换。读取端只拿当前值，
+/// 订阅持有需求租约时，采样在后台按固定间隔做，新结果先完整读出来再原子替换。
+/// 没有订阅就停止采样并保留当前值。读取端只拿当前值，
 /// 不触发采样也不等待 —— 订阅者再多，硬件那一侧也只有这一条采样路。
 /// </summary>
 public sealed class ControlActualStateReader(
@@ -30,33 +31,131 @@ public sealed class ControlActualStateReader(
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// 启动后先等一会儿。开机那阵子驱动、辅助进程、监控快照都还没就绪，
+    /// 需求出现后先等一会儿。开机那阵子驱动、辅助进程、监控快照都还没就绪，
     /// 这时候去读只会得到一堆"读不到"，然后把它当成当前值挂出去。
     /// </summary>
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(12);
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
+    private readonly TimeProvider clock = TimeProvider.System;
+    private readonly object subscriptionGate = new();
+    private readonly SemaphoreSlim demandChanged = new(0, 1);
+    private CancellationTokenSource? demand;
+    private int leases;
+    private bool stopped;
+    private int disposed;
     private volatile ControlActualState current = ControlActualState.Empty;
 
+    internal ControlActualStateReader(IControlObjectCatalog catalog, IEnumerable<IControlWriter> writers,
+        TimeProvider clock) : this(catalog, writers)
+    {
+        this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    }
+
     public ControlActualState Current => current;
+
+    public IDisposable AcquireSubscription()
+    {
+        lock (subscriptionGate)
+        {
+            ObjectDisposedException.ThrowIf(stopped, this);
+            if (leases++ == 0)
+            {
+                demand = new CancellationTokenSource();
+                if (demandChanged.CurrentCount == 0) demandChanged.Release();
+            }
+            return new SubscriptionLease(this);
+        }
+    }
+
+    private void ReleaseSubscription()
+    {
+        lock (subscriptionGate)
+        {
+            if (--leases == 0) CancelDemand();
+        }
+    }
+
+    // Called under subscriptionGate. The worker takes the token while holding the same gate.
+    private void CancelDemand()
+    {
+        demand?.Cancel();
+        demand?.Dispose();
+        demand = null;
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await Task.Delay(StartupDelay, stoppingToken).ConfigureAwait(false);
-            using var timer = new PeriodicTimer(Interval);
-            do
+            while (!stoppingToken.IsCancellationRequested)
             {
-                // 先完整读出来，再原子替换 —— 半份结果不该被谁看见。
-                current = await ReadOnceAsync(stoppingToken).ConfigureAwait(false);
+                await demandChanged.WaitAsync(stoppingToken).ConfigureAwait(false);
+                CancellationToken demandToken;
+                lock (subscriptionGate)
+                {
+                    if (demand is null) continue;
+                    demandToken = demand.Token;
+                }
+                using var sampling = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, demandToken);
+                try
+                {
+                    await Task.Delay(StartupDelay, clock, sampling.Token).ConfigureAwait(false);
+                    using var timer = new PeriodicTimer(Interval, clock);
+                    do
+                    {
+                        sampling.Token.ThrowIfCancellationRequested();
+                        var next = await ReadOnceAsync(sampling.Token).ConfigureAwait(false);
+                        lock (subscriptionGate)
+                        {
+                            // An obsolete read must not replace the value after the last lease exits.
+                            if (!sampling.IsCancellationRequested) current = next;
+                        }
+                    }
+                    while (await timer.WaitForNextTickAsync(sampling.Token).ConfigureAwait(false));
+                }
+                catch (OperationCanceledException) when (sampling.IsCancellationRequested) { }
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // 正常收摊。
         }
+        finally
+        {
+            lock (subscriptionGate)
+            {
+                stopped = true;
+                CancelDemand();
+            }
+        }
+    }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        lock (subscriptionGate)
+        {
+            stopped = true;
+            CancelDemand();
+        }
+        return base.StopAsync(cancellationToken);
+    }
+
+    public override void Dispose()
+    {
+        if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+        try { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); }
+        finally
+        {
+            demandChanged.Dispose();
+            base.Dispose();
+        }
+    }
+
+    private sealed class SubscriptionLease(ControlActualStateReader owner) : IDisposable
+    {
+        private ControlActualStateReader? current = owner;
+        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription();
     }
 
     private async Task<ControlActualState> ReadOnceAsync(CancellationToken cancellationToken)
@@ -77,7 +176,7 @@ public sealed class ControlActualStateReader(
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -87,7 +186,7 @@ public sealed class ControlActualStateReader(
             // 这一轮读到多少算多少，不拿旧值假装是新的。
             logger?.LogWarning(error, "读实际状态时出错，这一轮只取到 {Count} 项。", values.Count);
         }
-        return new ControlActualState(values, DateTimeOffset.UtcNow);
+        return new ControlActualState(values, clock.GetUtcNow());
     }
 
     private Task<ControlActualValue?>? ReadOne(

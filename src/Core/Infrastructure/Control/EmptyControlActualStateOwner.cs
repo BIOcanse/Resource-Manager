@@ -13,4 +13,12 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class EmptyControlActualStateOwner : IControlActualStateOwner
 {
     public ControlActualState Current => ControlActualState.Empty;
+
+    public IDisposable AcquireSubscription() => EmptySubscription.Instance;
+
+    private sealed class EmptySubscription : IDisposable
+    {
+        internal static readonly EmptySubscription Instance = new();
+        public void Dispose() { }
+    }
 }
