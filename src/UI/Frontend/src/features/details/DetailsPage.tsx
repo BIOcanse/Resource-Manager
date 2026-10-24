@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
+import { CpuBaselineRatioPanel } from "./CpuBaselineRatioPanel";
 import { CpuTopologyDiagram } from "./CpuTopologyDiagram";
 import { DeviceTopologyView } from "../deviceTopology/DeviceTopologyView";
 import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
@@ -79,6 +80,7 @@ export function DetailsPage(props: DetailsPageProps) {
               runtimeEffectsEnabled={props.runtimeCapabilities.runtimeEffectsEnabled()}
               onOpenSoftwareSettings={props.onOpenSoftwareSettings}
             />
+            <CpuBaselineRatioPanel runtimeEffectsEnabled={props.runtimeCapabilities.runtimeEffectsEnabled()} />
           </div>
           </TabsPanel>
           <TabsPanel value="report">

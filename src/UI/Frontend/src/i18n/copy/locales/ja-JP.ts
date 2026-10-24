@@ -1596,6 +1596,41 @@ const jaJpAppCopy: AppCopy = {
       preparing: "スレッド活動を準備中"
     }
   },
+  cpuBaseline: {
+    title: "CPU 基準比率",
+    description: "CPU の生スコアはこの比率で割られます。一般的な負荷が使い切れる CPU の割合を表し、2 CCD のプロセッサーでは 0.5 です。つまり 1 つの CCD を使い切る負荷が全負荷として扱われます。既定値は内蔵の CPU データセットから取得し、カスタム値が優先されます。",
+    unavailable: "CPU トポロジーをまだ読み取っていないため、基準比率はありません。",
+    readFailed: "CPU 基準比率の読み取りに失敗しました",
+    saveFailed: "CPU 基準比率の保存に失敗しました",
+    resetFailed: "CPU 基準比率を既定値に戻せませんでした",
+    matchedModel: "一致したモデル",
+    noMatchedModel: "一致なし",
+    defaultRatio: "既定の比率",
+    defaultSource: "既定値の出典",
+    datasetVersion: "データセットのバージョン",
+    currentRatio: "現在の比率",
+    multiplier: "スコア倍率",
+    overrideActive: "カスタム",
+    defaultActive: "既定",
+    ratioInput: "カスタム比率",
+    ratioHint: "0 より大きく 1 以下",
+    invalidRatio: "比率は 0 より大きく 1 以下である必要があります。",
+    edit: "編集",
+    save: "保存",
+    reset: "既定値に戻す",
+    cancel: "キャンセル",
+    savedNotApplied: "保存しましたが、実行計画の更新に失敗したため、まだ反映されていません。もう一度保存すると再試行します。",
+    retry: "再試行",
+    deliveryFailures: "反映されましたが、一部の実行コンポーネントに更新が届きませんでした。",
+    sources: {
+      "uncompensated": "補正なし",
+      "intel:homogeneous_physical_reference": "Intel: 同種コア基準",
+      "intel:measured_throughput_composition_estimate": "Intel: 実測スループットからの推定",
+      "intel:specification_p_share_estimate": "Intel: 仕様上の P コア比率による推定",
+      "amd:single-ccd": "AMD: シングル CCD",
+      "amd:symmetric-dual-ccd": "AMD: 対称デュアル CCD"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "GPU スケジューリングデータの読み取りに失敗しました。",
     telemetryLive: "ライブのハードウェア / プロセス帰属",

@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import cpuBaselineRatioJourney from "./cpuBaselineRatioJourney.js";
 import cpuCurrentValueSubscriptionJourney from "./cpuCurrentValueSubscriptionJourney.js";
 import cpuManualPlacementSubscriptionJourney from "./cpuManualPlacementSubscriptionJourney.js";
 import creditsJourney from "./creditsJourney.js";
@@ -82,6 +83,7 @@ const allJourneys = [
   ["disk-usage-feedback-refresh", diskUsageFeedbackRefreshJourney],
   ["disk-usage-operation-invalidation", diskUsageOperationInvalidationJourney],
   ["targeted-recording-source", targetedRecordingSourceJourney],
+  ["cpu-baseline-ratio", cpuBaselineRatioJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
   ["current-value-subscription", currentValueSubscriptionJourney],

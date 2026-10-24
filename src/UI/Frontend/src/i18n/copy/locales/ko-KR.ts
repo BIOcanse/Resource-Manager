@@ -1596,6 +1596,41 @@ const koKrAppCopy: AppCopy = {
       preparing: "스레드 활동 준비 중"
     }
   },
+  cpuBaseline: {
+    title: "CPU 기준 비율",
+    description: "CPU 원시 점수는 이 비율로 나뉩니다. 일반적인 부하가 채울 수 있는 CPU 비중을 뜻하며, CCD가 두 개인 프로세서에서는 0.5입니다. 즉 CCD 하나를 채우는 부하가 전체 부하로 계산됩니다. 기본값은 내장 CPU 데이터 세트에서 가져오며, 사용자 지정 값이 우선합니다.",
+    unavailable: "CPU 토폴로지를 아직 읽지 않아 기준 비율이 없습니다.",
+    readFailed: "CPU 기준 비율을 읽지 못했습니다",
+    saveFailed: "CPU 기준 비율을 저장하지 못했습니다",
+    resetFailed: "CPU 기준 비율을 기본값으로 되돌리지 못했습니다",
+    matchedModel: "일치한 모델",
+    noMatchedModel: "일치 없음",
+    defaultRatio: "기본 비율",
+    defaultSource: "기본값 출처",
+    datasetVersion: "데이터 세트 버전",
+    currentRatio: "현재 비율",
+    multiplier: "점수 배수",
+    overrideActive: "사용자 지정",
+    defaultActive: "기본값",
+    ratioInput: "사용자 지정 비율",
+    ratioHint: "0보다 크고 1 이하",
+    invalidRatio: "비율은 0보다 크고 1 이하여야 합니다.",
+    edit: "편집",
+    save: "저장",
+    reset: "기본값으로 복원",
+    cancel: "취소",
+    savedNotApplied: "저장했지만 실행 계획을 업데이트하지 못해 아직 적용되지 않았습니다. 다시 저장하면 재시도합니다.",
+    retry: "다시 시도",
+    deliveryFailures: "적용되었지만 일부 실행 구성 요소가 업데이트를 받지 못했습니다.",
+    sources: {
+      "uncompensated": "보정 없음",
+      "intel:homogeneous_physical_reference": "Intel: 동종 코어 기준",
+      "intel:measured_throughput_composition_estimate": "Intel: 측정 처리량 기반 추정",
+      "intel:specification_p_share_estimate": "Intel: 사양상 P 코어 비중 추정",
+      "amd:single-ccd": "AMD: 단일 CCD",
+      "amd:symmetric-dual-ccd": "AMD: 대칭 이중 CCD"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "GPU 스케줄링 데이터를 읽지 못했습니다.",
     telemetryLive: "실시간 하드웨어 / 프로세스 귀속",

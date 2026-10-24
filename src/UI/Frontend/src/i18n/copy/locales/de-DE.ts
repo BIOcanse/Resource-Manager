@@ -1596,6 +1596,41 @@ const deDeAppCopy: AppCopy = {
       preparing: "Threadaktivität wird vorbereitet"
     }
   },
+  cpuBaseline: {
+    title: "CPU-Basisverhältnis",
+    description: "Der CPU-Rohwert wird durch dieses Verhältnis geteilt. Es ist der Anteil der CPU, den eine typische Last auslasten kann: 0,5 bei einem Prozessor mit zwei CCDs, sodass eine Last, die ein CCD auslastet, als Volllast zählt. Der Standardwert stammt aus dem integrierten CPU-Datensatz; ein eigener Wert hat Vorrang.",
+    unavailable: "Die CPU-Topologie wurde noch nicht gelesen, daher gibt es noch kein Basisverhältnis.",
+    readFailed: "Lesen des CPU-Basisverhältnisses fehlgeschlagen",
+    saveFailed: "Speichern des CPU-Basisverhältnisses fehlgeschlagen",
+    resetFailed: "Wiederherstellen des Standard-CPU-Basisverhältnisses fehlgeschlagen",
+    matchedModel: "Erkanntes Modell",
+    noMatchedModel: "Keine Übereinstimmung",
+    defaultRatio: "Standardverhältnis",
+    defaultSource: "Standardquelle",
+    datasetVersion: "Datensatzversion",
+    currentRatio: "Aktuelles Verhältnis",
+    multiplier: "Bewertungsfaktor",
+    overrideActive: "Eigener Wert",
+    defaultActive: "Standard",
+    ratioInput: "Eigenes Verhältnis",
+    ratioHint: "Größer als 0, höchstens 1",
+    invalidRatio: "Das Verhältnis muss größer als 0 und höchstens 1 sein.",
+    edit: "Bearbeiten",
+    save: "Speichern",
+    reset: "Standard wiederherstellen",
+    cancel: "Abbrechen",
+    savedNotApplied: "Gespeichert, aber die Aktualisierung des Laufzeitplans ist fehlgeschlagen; der Wert ist noch nicht wirksam. Erneut speichern, um es nochmals zu versuchen.",
+    retry: "Erneut versuchen",
+    deliveryFailures: "Wirksam, aber einige Laufzeitkomponenten haben die Aktualisierung nicht erhalten.",
+    sources: {
+      "uncompensated": "Nicht kompensiert",
+      "intel:homogeneous_physical_reference": "Intel: homogene Kernreferenz",
+      "intel:measured_throughput_composition_estimate": "Intel: Schätzung aus gemessenem Durchsatz",
+      "intel:specification_p_share_estimate": "Intel: P-Kern-Anteil laut Spezifikation",
+      "amd:single-ccd": "AMD: ein CCD",
+      "amd:symmetric-dual-ccd": "AMD: zwei symmetrische CCDs"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "Das Lesen der GPU-Planungsdaten ist fehlgeschlagen.",
     telemetryLive: "Live-Zuordnung von Hardware / Prozessen",

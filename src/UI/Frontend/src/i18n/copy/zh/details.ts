@@ -67,6 +67,41 @@ export const zhDetailsCopy = {
       preparing: "线程活动准备中"
     }
   },
+  cpuBaseline: {
+    title: "CPU 基准比例",
+    description: "CPU 原始分会除以这个比例。它代表一个负载通常能占满的 CPU 份额，例如双 CCD 处理器为 0.5，占满一个 CCD 即按满载计分。默认值来自内置 CPU 数据集，自定义值优先。",
+    unavailable: "CPU 拓扑尚未读取，暂时没有基准比例。",
+    readFailed: "CPU 基准比例读取失败",
+    saveFailed: "CPU 基准比例保存失败",
+    resetFailed: "CPU 基准比例恢复默认失败",
+    matchedModel: "匹配型号",
+    noMatchedModel: "未匹配",
+    defaultRatio: "默认比例",
+    defaultSource: "默认来源",
+    datasetVersion: "数据集版本",
+    currentRatio: "当前比例",
+    multiplier: "计分倍数",
+    overrideActive: "自定义",
+    defaultActive: "默认",
+    ratioInput: "自定义比例",
+    ratioHint: "大于 0，最大 1",
+    invalidRatio: "比例必须大于 0 且不大于 1。",
+    edit: "编辑",
+    save: "保存",
+    reset: "恢复默认",
+    cancel: "取消",
+    savedNotApplied: "已保存，但运行计划更新失败，尚未生效。再次保存可重试。",
+    retry: "重试",
+    deliveryFailures: "已生效，但部分运行组件没有收到更新。",
+    sources: {
+      "uncompensated": "未补偿",
+      "intel:homogeneous_physical_reference": "Intel 同构核心参考",
+      "intel:measured_throughput_composition_estimate": "Intel 实测吞吐构成估算",
+      "intel:specification_p_share_estimate": "Intel 规格 P 核份额估算",
+      "amd:single-ccd": "AMD 单 CCD",
+      "amd:symmetric-dual-ccd": "AMD 对称双 CCD"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "GPU 调度数据读取失败。",
     telemetryLive: "实时硬件 / 进程归因",

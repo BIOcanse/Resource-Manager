@@ -1596,6 +1596,41 @@ const frFrAppCopy: AppCopy = {
       preparing: "Préparation de l'activité des threads"
     }
   },
+  cpuBaseline: {
+    title: "Ratio de base du processeur",
+    description: "Le score brut du processeur est divisé par ce ratio. Il représente la part du processeur qu'une charge typique peut occuper : 0,5 sur un processeur à deux CCD, si bien qu'une charge qui occupe un CCD compte comme une charge complète. La valeur par défaut provient du jeu de données processeur intégré ; une valeur personnalisée est prioritaire.",
+    unavailable: "La topologie du processeur n'a pas encore été lue ; aucun ratio de base n'est disponible.",
+    readFailed: "Échec de la lecture du ratio de base du processeur",
+    saveFailed: "Échec de l'enregistrement du ratio de base du processeur",
+    resetFailed: "Échec de la restauration du ratio de base par défaut",
+    matchedModel: "Modèle reconnu",
+    noMatchedModel: "Aucune correspondance",
+    defaultRatio: "Ratio par défaut",
+    defaultSource: "Source par défaut",
+    datasetVersion: "Version du jeu de données",
+    currentRatio: "Ratio actuel",
+    multiplier: "Multiplicateur de score",
+    overrideActive: "Personnalisé",
+    defaultActive: "Par défaut",
+    ratioInput: "Ratio personnalisé",
+    ratioHint: "Supérieur à 0, au plus 1",
+    invalidRatio: "Le ratio doit être supérieur à 0 et au plus égal à 1.",
+    edit: "Modifier",
+    save: "Enregistrer",
+    reset: "Rétablir la valeur par défaut",
+    cancel: "Annuler",
+    savedNotApplied: "Enregistré, mais la mise à jour du plan d'exécution a échoué : la valeur n'est pas encore appliquée. Enregistrez à nouveau pour réessayer.",
+    retry: "Réessayer",
+    deliveryFailures: "Appliqué, mais certains composants d'exécution n'ont pas reçu la mise à jour.",
+    sources: {
+      "uncompensated": "Non compensé",
+      "intel:homogeneous_physical_reference": "Intel : référence à cœurs homogènes",
+      "intel:measured_throughput_composition_estimate": "Intel : estimation par débit mesuré",
+      "intel:specification_p_share_estimate": "Intel : part des cœurs P selon les spécifications",
+      "amd:single-ccd": "AMD : un seul CCD",
+      "amd:symmetric-dual-ccd": "AMD : deux CCD symétriques"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "La lecture des données d'ordonnancement GPU a échoué.",
     telemetryLive: "Attribution matériel / processus en direct",

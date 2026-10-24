@@ -129,6 +129,7 @@ let diskScanOperation = null;
 let diskScanCompletionTimer = null;
 let targetedRecordingCompletionTimer = null;
 let targetedRecordingSequence = 0;
+let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
   version: "1.0.28",
@@ -672,6 +673,27 @@ async function handleApi(request, response, url) {
   if (path === "/api/cpu/residency") {
     return json(response, 200, fixtureCpuResidency());
   }
+  if (path === "/api/cpu/baseline-ratio") {
+    if (request.method === "GET") {
+      return json(response, 200, scenario.cpuTopologyEmpty ? null : cpuBaselineSettings());
+    }
+    if (request.method === "PUT" || request.method === "DELETE") {
+      if (request.method === "PUT") {
+        const ratio = JSON.parse(await readBody(request)).ratio;
+        if (!(Number.isFinite(ratio) && ratio > 0 && ratio <= 1)) {
+          return json(response, 400, { error: "CPU baseline ratio must be greater than zero and at most one, with a finite reciprocal." });
+        }
+        cpuBaselineOverrideRatio = ratio;
+      } else {
+        cpuBaselineOverrideRatio = null;
+      }
+      return json(response, 200, {
+        settings: cpuBaselineSettings(),
+        savedOverrideRatio: cpuBaselineOverrideRatio,
+        runtimeApplicationDisposition: "applied"
+      });
+    }
+  }
   if (path === "/api/cpu/topology/exclusive-bindings") {
     return json(response, 200, {
       capturedAt: now(),
@@ -1143,6 +1165,7 @@ function resetScenario() {
   diskScanOperation = null;
   targetedRecordingSequence = 0;
   targetedRecordings.clear();
+  cpuBaselineOverrideRatio = null;
   diskUsageSummary.totalBytes = 91_000_000;
   diskUsageSummary.scannedBytes = 91_000_000;
   diskUsageSummary.completedAt = "2026-10-09T12:00:00.000Z";
@@ -1264,6 +1287,23 @@ function metricSnapshot(requestedIds) {
     capturedAt: metricSlot.observedAt,
     catalogRevision: "mock-catalog-1",
     items
+  };
+}
+
+// 与后端 CpuBaselineRatioSettings 同形：ratio/multiplier 由默认值与用户值推出。
+function cpuBaselineSettings() {
+  const defaultRatio = 0.5;
+  const ratio = cpuBaselineOverrideRatio ?? defaultRatio;
+  return {
+    cpuName: "Frontend Harness CPU",
+    defaultRatio,
+    overrideRatio: cpuBaselineOverrideRatio,
+    defaultSource: "amd:symmetric-dual-ccd",
+    matchedModel: null,
+    datasetVersion: "2026-09-02",
+    ratio,
+    multiplier: 1 / ratio,
+    defaultMultiplier: 1 / defaultRatio
   };
 }
 

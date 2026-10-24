@@ -1596,6 +1596,41 @@ const esEsAppCopy: AppCopy = {
       preparing: "Preparando la actividad de subprocesos"
     }
   },
+  cpuBaseline: {
+    title: "Proporción base de la CPU",
+    description: "La puntuación bruta de la CPU se divide por esta proporción. Es la parte de la CPU que una carga típica puede ocupar: 0,5 en un procesador con dos CCD, de modo que una carga que ocupa un CCD cuenta como carga completa. El valor predeterminado procede del conjunto de datos de CPU integrado; un valor personalizado tiene prioridad.",
+    unavailable: "Aún no se ha leído la topología de la CPU, así que no hay proporción base.",
+    readFailed: "No se pudo leer la proporción base de la CPU",
+    saveFailed: "No se pudo guardar la proporción base de la CPU",
+    resetFailed: "No se pudo restaurar la proporción base predeterminada de la CPU",
+    matchedModel: "Modelo coincidente",
+    noMatchedModel: "Sin coincidencia",
+    defaultRatio: "Proporción predeterminada",
+    defaultSource: "Origen predeterminado",
+    datasetVersion: "Versión del conjunto de datos",
+    currentRatio: "Proporción actual",
+    multiplier: "Multiplicador de puntuación",
+    overrideActive: "Personalizado",
+    defaultActive: "Predeterminado",
+    ratioInput: "Proporción personalizada",
+    ratioHint: "Mayor que 0, como máximo 1",
+    invalidRatio: "La proporción debe ser mayor que 0 y como máximo 1.",
+    edit: "Editar",
+    save: "Guardar",
+    reset: "Restaurar predeterminado",
+    cancel: "Cancelar",
+    savedNotApplied: "Guardado, pero no se pudo actualizar el plan de ejecución, así que aún no está en vigor. Guarda de nuevo para reintentarlo.",
+    retry: "Reintentar",
+    deliveryFailures: "En vigor, pero algunos componentes de ejecución no recibieron la actualización.",
+    sources: {
+      "uncompensated": "Sin compensación",
+      "intel:homogeneous_physical_reference": "Intel: referencia de núcleos homogéneos",
+      "intel:measured_throughput_composition_estimate": "Intel: estimación por rendimiento medido",
+      "intel:specification_p_share_estimate": "Intel: proporción de núcleos P según especificaciones",
+      "amd:single-ccd": "AMD: un CCD",
+      "amd:symmetric-dual-ccd": "AMD: dos CCD simétricos"
+    }
+  },
   gpuScheduling: {
     dataReadFailed: "No se pudieron leer los datos de programación de GPU.",
     telemetryLive: "Atribución de hardware / procesos en directo",
