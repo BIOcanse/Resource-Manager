@@ -11,11 +11,6 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     cpu_capacity_shares: []f64,
-    last_scheduling_generation: u64,
-    last_process_source_generation: u64,
-    last_gpu_source_generation: u64,
-    last_gpu_topology_generation: u64,
-    last_gpu_topology_fingerprint: u64,
 
     pub fn create(config: *const protocol.Config, raw_cpu_weights: []const f64) !*Session {
         if (!protocol.validateConfig(config)) return error.InvalidConfiguration;
@@ -28,11 +23,6 @@ pub const Session = struct {
             .allocator = allocator,
             .config = config.*,
             .cpu_capacity_shares = shares,
-            .last_scheduling_generation = 0,
-            .last_process_source_generation = 0,
-            .last_gpu_source_generation = 0,
-            .last_gpu_topology_generation = 0,
-            .last_gpu_topology_fingerprint = 0,
         };
         return self;
     }
@@ -59,11 +49,6 @@ pub const Session = struct {
         self.allocator.free(self.cpu_capacity_shares);
         self.cpu_capacity_shares = shares;
         self.config = config.*;
-        self.last_scheduling_generation = 0;
-        self.last_process_source_generation = 0;
-        self.last_gpu_source_generation = 0;
-        self.last_gpu_topology_generation = 0;
-        self.last_gpu_topology_fingerprint = 0;
         return .ok;
     }
 
@@ -122,7 +107,6 @@ pub fn score(
     lock(&session.mutex);
     defer session.mutex.unlock();
     if (!validateEnvelope(session, envelope)) return .abi_mismatch;
-    if (envelope.scheduling_generation <= session.last_scheduling_generation) return .stale_generation;
     if (envelope.process_count > session.config.maximum_process_count or
         envelope.gpu_row_count > session.config.maximum_gpu_row_count or
         envelope.output_capacity > session.config.maximum_output_count) return .capacity_exceeded;
@@ -155,22 +139,6 @@ pub fn score(
         envelope.gpu_row_count != 0 or envelope.gpu_adapter_count != 0)
     {
         return .invalid_facts;
-    }
-
-    if (envelope.process_source_generation < session.last_process_source_generation)
-        return .stale_generation;
-    if (gpu_complete) {
-        if (envelope.gpu_source_generation < session.last_gpu_source_generation or
-            envelope.gpu_topology_generation < session.last_gpu_topology_generation)
-        {
-            return .stale_generation;
-        }
-        if (session.last_gpu_topology_generation != 0 and
-            envelope.gpu_topology_generation == session.last_gpu_topology_generation and
-            envelope.gpu_topology_fingerprint != session.last_gpu_topology_fingerprint)
-        {
-            return .conflicting_facts;
-        }
     }
 
     const process_count: usize = @intCast(envelope.process_count);
@@ -292,13 +260,6 @@ pub fn score(
         .reserved0 = 0,
         .reserved = 0,
     };
-    session.last_scheduling_generation = envelope.scheduling_generation;
-    session.last_process_source_generation = envelope.process_source_generation;
-    if (gpu_complete) {
-        session.last_gpu_source_generation = envelope.gpu_source_generation;
-        session.last_gpu_topology_generation = envelope.gpu_topology_generation;
-        session.last_gpu_topology_fingerprint = envelope.gpu_topology_fingerprint;
-    }
     return .ok;
 }
 

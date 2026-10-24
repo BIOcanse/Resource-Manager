@@ -2,6 +2,7 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
@@ -64,24 +65,23 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         AssertWeightedProcessScore(fixture, pid, expected: 36);
 
+        // Without residency the CPU domain is scored from the process's own CPU usage when the facts carry it.
         current = null;
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        Assert.Null(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
-        AssertWeightedProcessScore(fixture, pid, expected: 0);
-        var emptyCounts = Assert.IsType<Dictionary<string, object?>>(
+        Assert.Equal(removeScalarCpu ? null : HostManagerCpuOccupancySource.ProcessCpuUsage,
+            fixture.Coordinator.SchedulingAuthority.Compute?.CpuOccupancySource);
+        AssertWeightedProcessScore(fixture, pid, expected: removeScalarCpu ? 0 : 1.8 * 99);
+        var lastCounts = Assert.IsType<Dictionary<string, object?>>(
             fixture.DebugLogWriter.Records.Last().Properties["counts"]);
-        Assert.Equal(0, Assert.IsType<int>(emptyCounts["scoredProcesses"]));
+        Assert.Equal(removeScalarCpu ? 0 : 1, Assert.IsType<int>(lastCounts["scoredProcesses"]));
         var details = Assert.IsType<Dictionary<string, object?>>(
             fixture.DebugLogWriter.Records.Last().Properties["details"]);
         var inputCount = Assert.IsType<uint>(details["nativeInputCount"]);
         Assert.Equal(removeScalarCpu ? 1U : 2U, inputCount);
         Assert.Equal(inputCount, checked((uint)nativeInputs.Rows.Length));
-        Assert.All(nativeInputs.Rows, row =>
-        {
-            Assert.False(row.Flags.HasFlag(NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete));
-            Assert.False(row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
-            Assert.False(row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.SoftwareScore));
-        });
+        Assert.Equal(!removeScalarCpu, nativeInputs.Rows.Any(row =>
+            row.MetricKind == NativeSmartCoordinatorMetricKind.CpuUsagePercent
+            && row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore)));
         Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);
         Assert.Equal(0, fixture.MetricSampler.CaptureCalls);
         Assert.Empty(reader.Subscriptions);
