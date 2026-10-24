@@ -77,6 +77,7 @@ export default function App() {
     reportSource: frontendRuntime.sources.optimizationReports,
     statusSource: frontendRuntime.sources.smartCoordinatorStatus,
     statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
+    reportsActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationReports),
     requestClient: frontendRuntime.requestClient
   });
   // 刷新间隔的“自动调度”要看本程序的 CPU 档位和窗口是否在前台，这两样由刷新调度器持有，
