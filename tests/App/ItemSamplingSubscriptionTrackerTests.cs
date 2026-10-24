@@ -160,7 +160,11 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             .SetEquals(["cpu.usage", "memory.usage"]));
         tracker.MarkSampled(initialPlan.Request!, startedAt);
 
-        var oneSecondPlan = tracker.CreatePlan(startedAt.AddSeconds(1));
+        // Read the native completion timestamp: the tracker advances a monotonic
+        // command clock as well as accepting the supplied UTC time.
+        var sampledAt = ReadNativeState(fixture).Items.Min(static item => item.LastSampledMilliseconds);
+        var oneSecondAt = DateTimeOffset.FromUnixTimeMilliseconds(checked((long)sampledAt + 1_000));
+        var oneSecondPlan = tracker.CreatePlan(oneSecondAt);
 
         Assert.Equal(["cpu.usage"], oneSecondPlan.DueItemIds);
         Assert.Equal(
@@ -168,7 +172,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             oneSecondPlan.Request!.Ids,
             StringComparer.OrdinalIgnoreCase);
         Assert.Equal(2, oneSecondPlan.Schedule.ActiveItemCount);
-        tracker.MarkSampled(oneSecondPlan.Request, startedAt.AddSeconds(1));
+        tracker.MarkSampled(oneSecondPlan.Request, oneSecondAt);
     }
 
     [Fact]
@@ -602,7 +606,9 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             if (mode == "remove") Assert.True(tracker.Remove("same-source", now));
             if (mode == "expire")
             {
-                now += TimeSpan.FromMilliseconds(configuration.SamplingSubscription.HotPublish.Roles[0].ActiveTtlMilliseconds + 1);
+                var lastSeen = Assert.Single(ReadNativeState(fixture).Sources).LastSeenMilliseconds;
+                now = DateTimeOffset.FromUnixTimeMilliseconds(checked((long)lastSeen +
+                    configuration.SamplingSubscription.HotPublish.Roles[0].ActiveTtlMilliseconds + 1));
                 Assert.False(tracker.CreatePlan(now).IsActive);
             }
             var state = typeof(ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<MetricSampleRequest,
@@ -630,6 +636,21 @@ public sealed class ItemSamplingSubscriptionTrackerTests
         tracker.MarkSampled(next.Request!, now);
         tracker.Clear(now);
     }
+
+    private static (NativeSamplingSubscriptionSourceView[] Sources, NativeSamplingSubscriptionItemState[] Items)
+        ReadNativeState(HostManagerSamplingSubscriptionTestFixture fixture)
+        => fixture.Owner.Execute(1, session =>
+        {
+            var header = new NativeSamplingSubscriptionSnapshotHeader
+            {
+                AbiVersion = NativeSamplingSubscriptionAbi.Version,
+                StructSize = checked((uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeSamplingSubscriptionSnapshotHeader>())
+            };
+            var sources = new NativeSamplingSubscriptionSourceView[session.Capacity.SnapshotSourceCapacity];
+            var items = new NativeSamplingSubscriptionItemState[session.Capacity.SnapshotItemCapacity];
+            Assert.Equal(NativeSamplingSubscriptionStatus.Ok, session.Snapshot(ref header, sources, items));
+            return (sources[..checked((int)header.SourceOutputCount)], items[..checked((int)header.ItemOutputCount)]);
+        });
 
     private static NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateMetricTracker(
         HostManagerSamplingSubscriptionTestFixture fixture,

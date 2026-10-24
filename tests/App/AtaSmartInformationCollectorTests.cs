@@ -216,7 +216,7 @@ public sealed class AtaSmartInformationCollectorTests
     }
 
     [Fact]
-    public void NativePlanCommitsExactPagesClearsFailedPageAndRecoversThroughExistingCacheAndPersistence()
+    public void NativePlanCommitsExactPagesClearsFailureAndPersistsCatalogOnly()
     {
         using var fixture = new Fixture();
         var first = fixture.Commit(1, false);
@@ -244,9 +244,14 @@ public sealed class AtaSmartInformationCollectorTests
         var recovered = fixture.Commit(3, false);
         fixture.Workspace.ExportAndPersist(fixture.Now.AddSeconds(1));
         using var restored = NativeMetricSnapshotHostConfiguration.CreateWorkspace(fixture.Compiled, fixture.File);
-        restored.ReplaceCatalog(fixture.CreateCatalog(restored), fixture.Now.AddSeconds(2));
+        var restoredCatalog = fixture.CreateCatalog(restored);
+        Assert.Equal(fixture.DataHandle,
+            restoredCatalog.MetricBindings.Values.Single(binding => binding.FieldCode == MetricFieldCode.AtaSmartDataRaw).MetricHandle);
+        Assert.Equal(fixture.ThresholdHandle,
+            restoredCatalog.MetricBindings.Values.Single(binding => binding.FieldCode == MetricFieldCode.AtaSmartThresholdsRaw).MetricHandle);
+        restored.ReplaceCatalog(restoredCatalog, fixture.Now.AddSeconds(2));
         var persisted = NativeMetricSnapshotCommittedProjection.Create(restored.ReadCommitted(), "test", "test", 1);
-        Assert.Equal(Page(13), Assert.Single(MetricDeviceFields.Read(persisted, Device, new HashSet<string> { Thresholds })).Fields.Single().BytesValue);
+        Assert.Null(Assert.Single(MetricDeviceFields.Read(persisted, Device, new HashSet<string> { Thresholds })).Fields.Single().BytesValue);
         Assert.Equal(Page(13), Assert.Single(MetricDeviceFields.Read(recovered, Device, new HashSet<string> { Thresholds })).Fields.Single().BytesValue);
         Assert.Equal(MonitoringSourceZoneIds.WindowsStorageSensors, NativeMetricSnapshotSourceCatalog.ResolveZoneId("windows.ata-smart"));
         Assert.DoesNotContain(fixture.Catalog.RuleBindings.Values, binding => binding.SourceId == "windows.nvme-health");

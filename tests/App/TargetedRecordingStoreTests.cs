@@ -38,8 +38,8 @@ public sealed class TargetedRecordingStoreTests : IDisposable
 
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         await using var schema = connection.CreateCommand();
-        schema.CommandText = "PRAGMA user_version;";
-        Assert.Equal(12L, Convert.ToInt64(await schema.ExecuteScalarAsync()));
+        schema.CommandText = "SELECT COUNT(*) FROM schema_migrations WHERE name = 'targeted-recordings';";
+        Assert.Equal(1L, Convert.ToInt64(await schema.ExecuteScalarAsync()));
         Assert.Equal(3, await CountTargetedTablesAsync(connection));
 
         var report = Assert.IsType<TargetedRecordingReport>(await store.GetAsync(header.Id, CancellationToken.None));

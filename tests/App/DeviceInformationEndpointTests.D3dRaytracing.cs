@@ -25,11 +25,11 @@ public sealed partial class DeviceInformationEndpointTests
         var field = new FieldReference(identity, name);
 
         // Before any explicit capability discovery, both actual endpoints remain passive.
-        using (var fields = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")))
-            Assert.DoesNotContain(fields.RootElement.GetProperty("devices").EnumerateArray(),
-                device => device.GetProperty("deviceIdentity").GetString() == identity);
+        using var initialFields = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        Assert.DoesNotContain(initialFields.RootElement.GetProperty("devices").EnumerateArray(),
+            device => device.GetProperty("deviceIdentity").GetString() == identity);
         using (var state = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state")))
-            Assert.False(state.RootElement.TryGetProperty("informationFields", out _));
+            AssertInformationFieldsInStateMatchFieldsEndpoint(state.RootElement, initialFields.RootElement);
         Assert.Equal(0, genericReader.ReadCount);
         Assert.Equal(0, recorded.ReadCount);
 
@@ -85,7 +85,7 @@ public sealed partial class DeviceInformationEndpointTests
                 Assert.Null(reading.ObservedAt);
             }
             using var stateResponse = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-            Assert.False(stateResponse.RootElement.TryGetProperty("informationFields", out _));
+            AssertInformationFieldsInStateMatchFieldsEndpoint(stateResponse.RootElement, fieldsResponse.RootElement);
             Assert.Same(originalState, fixture.Provider.ReadState());
             Assert.Same(originalInformation, fixture.Provider.ReadState().InformationFields);
             Assert.Equal(readsBeforeGets, recorded.ReadCount);

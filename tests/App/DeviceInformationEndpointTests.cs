@@ -18,8 +18,11 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class DeviceInformationEndpointTests
 {
+    private static void AssertInformationFieldsInStateMatchFieldsEndpoint(JsonElement state, JsonElement fields)
+        => Assert.Equal(fields.GetRawText(), state.GetProperty("informationFields").GetRawText());
+
     [Fact]
-    public async Task CachedHttpRetainsDeclarationsClearsFailedValuesAndLeavesLegacyPayloadSeparate()
+    public async Task CachedHttpRetainsDeclarationsClearsFailedValuesAndIncludesCurrentInformationAlongsideSnapshot()
     {
         var snapshot = DeviceInformationTestData.Snapshot() with
         { MemoryModules = [DeviceInformationTestData.Module("dimm")], Batteries = [new("battery", "厂商", "声明序号", "X123")],
@@ -79,7 +82,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.All(fixture.Provider.ReadState().InformationFields.Devices.Single(d => d.DeviceIdentity == NetworkAddressInformationCollectorTests.IdentityA).Fields,
             static field => Assert.Null(field.Value));
         using var legacy = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-        Assert.False(legacy.RootElement.TryGetProperty("informationFields", out _));
+        AssertInformationFieldsInStateMatchFieldsEndpoint(legacy.RootElement, failed.RootElement);
         Assert.Equal("Machine Model", legacy.RootElement.GetProperty("snapshot").GetProperty("system").GetProperty("model").GetString());
         Assert.Equal(2, reader.ReadCount);
         await app.StopAsync();

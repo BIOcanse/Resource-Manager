@@ -43,8 +43,8 @@ public sealed class HostCpuPeriodicSubscriptionTests
         Assert.Equal((1u, 1u, 1u, 500ul), fixture.ReadDemand());
 
         slow.Dispose();
-        // The native planner retains the known item identity after its last demand is removed.
-        Assert.Equal((0u, 0u, 1u, 0ul), fixture.ReadDemand());
+        // With no membership or in-flight plan, the native item slot is reclaimed too.
+        Assert.Equal((0u, 0u, 0u, 0ul), fixture.ReadDemand());
         Assert.Equal(0u, fixture.Owner.Execute(CpuTopologySnapshotProvider.SamplingRoleId, session =>
         {
             var header = new NativeSamplingSubscriptionSnapshotHeader

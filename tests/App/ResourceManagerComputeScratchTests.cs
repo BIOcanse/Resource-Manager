@@ -17,7 +17,12 @@ public sealed class ResourceManagerComputeScratchTests
     public void LayoutUsesElementLimitsAndCheckedAlignedFullExtents(uint p, uint g, uint output, int cores)
     {
         var layout = new ComputeScoringScratchLayout(p, g, output, cores, 0, 1);
-        var body = checked(104UL * p + 16UL * p * (ulong)cores + 100UL * g + 96UL * output);
+        var processBytes = (ulong)Marshal.SizeOf<NativeComputeScoringProcessInput>();
+        var gpuBytes = (ulong)Marshal.SizeOf<NativeComputeScoringGpuInput>();
+        var coreBytes = (ulong)Marshal.SizeOf<NativeComputeScoringCpuCoreInput>();
+        var outputBytes = (ulong)Marshal.SizeOf<NativeComputeScoringOutput>();
+        var body = checked(processBytes * p + 8UL * p + coreBytes * p * (ulong)cores
+            + gpuBytes * g + outputBytes * output + 4UL * Math.Max(1U, g));
         Assert.Equal(checked((body + 7) / 8 * 8), layout.Length);
         Assert.Equal(0UL, layout.CoreInputs % 8);
         Assert.Equal(0UL, layout.Outputs % 8);
@@ -26,8 +31,8 @@ public sealed class ResourceManagerComputeScratchTests
             Assert.True((ulong)layout.CoreInputCapacity * 16 > int.MaxValue);
             Assert.Equal(134217728, layout.CoreInputCapacity); // No allocation or new byte-count cap.
         }
-        Assert.Equal(96, Marshal.SizeOf<NativeComputeScoringProcessInput>());
-        Assert.Equal(96, Marshal.SizeOf<NativeComputeScoringGpuInput>());
+        Assert.Equal(88, Marshal.SizeOf<NativeComputeScoringProcessInput>());
+        Assert.Equal(88, Marshal.SizeOf<NativeComputeScoringGpuInput>());
         Assert.Equal(16, Marshal.SizeOf<NativeComputeScoringCpuCoreInput>());
         Assert.Equal(96, Marshal.SizeOf<NativeComputeScoringOutput>());
     }

@@ -38,7 +38,7 @@ public sealed partial class DeviceInformationEndpointTests
                 if (phase == 1) Assert.Equal(Convert.ToBase64String(unsupported), Hdr(document.RootElement, DisplayEdidRawInformationCollectorTests.Name).GetProperty("value").GetString());
             }
             using var stateDocument = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-            Assert.False(stateDocument.RootElement.TryGetProperty("informationFields", out _));
+            AssertInformationFieldsInStateMatchFieldsEndpoint(stateDocument.RootElement, document.RootElement);
             Assert.Equal(reads, reader.ReadCount);
         }
         await app.StopAsync();
