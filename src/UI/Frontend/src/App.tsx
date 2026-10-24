@@ -367,6 +367,7 @@ export default function App() {
       <ManualSoftwareModal
         open={Boolean(management.manualSoftwareKind())}
         kind={management.manualSoftwareKind() ?? "Other"}
+        sourceSoftware={management.manualSoftwareSource()}
         software={management.software()}
         actionInProgress={management.manualSoftwareActionInProgress()}
         onClose={management.closeManualSoftwareModal}

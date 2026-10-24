@@ -6,6 +6,7 @@ export const managementInventoryKinds = [
   "Adapted",
   "Controlled",
   "Unconfirmed",
+  "Unclassified",
   "Game",
   "HighPerformance",
   "Other"

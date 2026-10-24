@@ -1,5 +1,6 @@
 export const zhSoftwareCopy = {
   softwareKind: {
+    Unclassified: "未归类",
     Adapted: "适配软件",
     Controlled: "受控软件",
     Unconfirmed: "未确认",
@@ -22,6 +23,13 @@ export const zhSoftwareCopy = {
     Support: "支持"
   },
   management: {
+    classifySoftware: "选择分类",
+    unclassifiedReminder: "仅在运行时识别，尚无已知分类。可选择分类，也可稍后处理。",
+    discoveredPackage: "通过运行中的应用包识别",
+    discoveredProduct: "通过程序产品名称识别",
+    discoveredRoot: "通过运行中的安装根目录识别",
+    runtimeDiscovery: "运行时发现",
+
     categoryNav: "组件和软件分类",
     add: "添加",
     refresh: "刷新",

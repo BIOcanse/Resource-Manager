@@ -215,7 +215,8 @@ public sealed class JsonManualSoftwareRegistry(IHostEnvironment environment) : I
             throw new InvalidOperationException("软件名称不能为空。");
         }
 
-        if ((kind == SoftwareKinds.Adapted || kind == SoftwareKinds.Other) && roots.Count == 0)
+        if (roots.Count == 0 && (kind == SoftwareKinds.Adapted
+            || kind == SoftwareKinds.Other && string.IsNullOrWhiteSpace(request.SourceSoftwareId)))
         {
             throw new InvalidOperationException($"手动补录{SoftwareDisplayKinds.Adapted}或{SoftwareDisplayKinds.General}至少需要一个根目录。");
         }

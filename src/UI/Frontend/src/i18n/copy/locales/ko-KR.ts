@@ -367,6 +367,7 @@ const koKrAppCopy: AppCopy = {
     moreActions: "추가 작업"
   },
   softwareKind: {
+    Unclassified: "미분류",
     Adapted: "적용된 소프트웨어",
     Controlled: "관리되는 소프트웨어",
     Unconfirmed: "미확인",
@@ -389,6 +390,13 @@ const koKrAppCopy: AppCopy = {
     Support: "지원"
   },
   management: {
+    classifySoftware: "분류 선택",
+    unclassifiedReminder: "실행 중에 식별되었지만 알려진 분류가 없습니다. 분류를 선택하거나 나중에 처리할 수 있습니다.",
+    discoveredPackage: "실행 중인 앱 패키지로 식별",
+    discoveredProduct: "프로그램 제품 이름으로 식별",
+    discoveredRoot: "실행 중인 설치 루트로 식별",
+    runtimeDiscovery: "실행 중 발견",
+
     categoryNav: "구성 요소 및 소프트웨어 범주",
     add: "추가",
     refresh: "새로 고침",

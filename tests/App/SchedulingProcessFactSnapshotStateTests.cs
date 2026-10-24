@@ -12,6 +12,27 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(2);
 
     [Fact]
+    public void RuntimeSoftwareReadsAttributionWithoutRequiringPerformanceMetrics()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var fact = Fact(42, 100, SchedulingProcessMetricMask.None, 0, 0) with
+        {
+            SoftwareKind = "RuntimeProduct", SoftwareRootPaths = [@"C:\Apps\Runtime"]
+        };
+        var sample = Sample(now, 1, SchedulingProcessMetricMask.None, fact);
+        Assert.Empty(state.ReadLatestSoftware());
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory), sample, now, Schedule(now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessAttribution), sample, now, Schedule(now));
+        var software = Assert.Single(state.ReadLatestSoftware());
+        Assert.Equal(fact.SoftwareName, software.Name);
+        Assert.Equal(fact.SoftwareRootPaths, software.RootPaths);
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory),
+            Sample(now.AddSeconds(1), 2, SchedulingProcessMetricMask.None), now.AddSeconds(1), Schedule(now.AddSeconds(1), 2));
+        Assert.Empty(state.ReadLatestSoftware());
+    }
+
+    [Fact]
     public void SoftwareBasesFollowOnlyTheAttributionPublicationIncludingEmptyReplacement()
     {
         var now = DateTimeOffset.UtcNow;

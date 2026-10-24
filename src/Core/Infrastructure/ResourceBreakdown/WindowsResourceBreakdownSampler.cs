@@ -72,6 +72,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
     IResourceBreakdownPushSource,
     ISchedulingProcessFactSource,
     ISchedulingProcessFactObservationSource,
+    IRuntimeSoftwareObservationSource,
     IHostedService,
     IDisposable
 {
@@ -271,6 +272,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 metricMask),
             refreshInterval);
     }
+
+    public IReadOnlyList<ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution> ReadLatestSoftware()
+        => schedulingSnapshotState.ReadLatestSoftware();
 
     public SchedulingProcessFactSnapshot? ReadLatest(
         SchedulingProcessFactRequest request)

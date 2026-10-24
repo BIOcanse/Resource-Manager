@@ -8,12 +8,14 @@ import {
   DialogRoot
 } from "../../../ui/primitives/Dialog.tsx";
 import { normalizeSoftwareKind, textOrEmpty } from "../../../utils";
+import { isUnclassifiedSoftware } from "../../../presentation/softwareClassification.ts";
 import { StandardSelect } from "../../../components/StandardSelect";
 
 interface ManualSoftwareModalProps {
   open: boolean;
   kind: ManualSoftwareKind;
   software: SoftwareRecord[];
+  sourceSoftware?: SoftwareRecord | null;
   actionInProgress: boolean;
   onClose: () => void;
   onSubmit: (request: ManualSoftwareRequest) => void | Promise<void>;
@@ -25,19 +27,23 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
   const [manualName, setManualName] = createSignal("");
   const [manualRootPaths, setManualRootPaths] = createSignal("");
 
+  const [classificationKind, setClassificationKind] = createSignal<ManualSoftwareKind>("Other");
+  const effectiveKind = () => props.sourceSoftware ? classificationKind() : props.kind;
+  createEffect(() => { if (props.open) setClassificationKind(props.kind); });
+
   const candidates = createMemo(() => props.software.filter((item) => {
     const kind = normalizeSoftwareKind(item);
-    return kind !== props.kind
+    return kind !== effectiveKind()
       && Boolean(textOrEmpty(item.name));
   }));
-  const selectedSoftware = createMemo(() => candidates().find((item) => item.id === selectedSoftwareId()));
+  const selectedSoftware = createMemo(() => props.sourceSoftware ?? candidates().find((item) => item.id === selectedSoftwareId()));
   const rootPathLines = createMemo(() => manualRootPaths()
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean));
-  const usesManualRootEntry = createMemo(() => props.kind === "Other" || props.kind === "Adapted");
+  const usesManualRootEntry = createMemo(() => !props.sourceSoftware && (effectiveKind() === "Other" || effectiveKind() === "Adapted"));
   const manualSubmitName = createMemo(() => {
-    if (props.kind === "Adapted") {
+    if (effectiveKind() === "Adapted") {
       return inferSoftwareNameFromRootPath(rootPathLines()[0]) ?? uiText.manualSoftwareModal.defaultName;
     }
 
@@ -80,7 +86,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
     if (usesManualRootEntry()) {
       void props.onSubmit({
         name: manualSubmitName(),
-        kind: props.kind,
+        kind: effectiveKind(),
         rootPaths: rootPathLines(),
         sourceSoftwareId: null
       });
@@ -94,7 +100,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
 
     void props.onSubmit({
       name: source.name,
-      kind: props.kind,
+      kind: effectiveKind(),
       rootPaths: source.rootPaths ?? [],
       sourceSoftwareId: source.id
     });
@@ -111,40 +117,58 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
     >
       <form class="dialog-form" onSubmit={submit}>
         <DialogHeader
-          title={manualSoftwareKindLabel(props.kind)}
+          title={manualSoftwareKindLabel(effectiveKind())}
           titleId="manualSoftwareModalTitle"
           closeButtonRef={(element) => { closeButton = element; }}
           onDismiss={props.onClose}
         />
         <DialogBody class="manual-software-body">
+            <Show when={props.sourceSoftware}>
+              {(source) => <>
+                <strong>{source().name}</strong>
+                <label class="manual-software-field">
+                  <span>{uiText.management.categoryNav}</span>
+                  <StandardSelect
+                    value={classificationKind()}
+                    ariaLabel={uiText.management.categoryNav}
+                    options={(["Other", "Game", "HighPerformance"] as const).map((kind) => ({
+                      value: kind, label: softwareDisplayKindLabel(kind)
+                    }))}
+                    onChange={(kind) => setClassificationKind(kind as ManualSoftwareKind)}
+                  />
+                </label>
+              </>}
+            </Show>
             <Show
               when={usesManualRootEntry()}
               fallback={
                 <Show
-                  when={candidates().length > 0}
+                  when={props.sourceSoftware || candidates().length > 0}
                   fallback={<div class="management-empty">{uiText.manualSoftwareModal.noCandidates}</div>}
                 >
-                  <label class="manual-software-field">
-                    <span>{uiText.manualSoftwareModal.software}</span>
-                    <StandardSelect
-                      value={selectedSoftwareId()}
-                      ariaLabel={uiText.manualSoftwareModal.software}
-                      searchable
-                      searchPlaceholder={uiText.manualSoftwareModal.searchSoftware}
-                      options={candidates().map((item) => ({
-                        value: item.id,
-                        label: `${item.name} · ${softwareDisplayKindLabel(item.kind, item.displayKind)}`
-                      }))}
-                      onChange={setSelectedSoftwareId}
-                    />
-                  </label>
+                  <Show when={!props.sourceSoftware}>
+                    <label class="manual-software-field">
+                      <span>{uiText.manualSoftwareModal.software}</span>
+                      <StandardSelect
+                        value={selectedSoftwareId()}
+                        ariaLabel={uiText.manualSoftwareModal.software}
+                        searchable
+                        searchPlaceholder={uiText.manualSoftwareModal.searchSoftware}
+                        options={candidates().map((item) => ({
+                          value: item.id,
+                          label: `${item.name} · ${candidateKindLabel(item)}`
+                        }))}
+                        onChange={setSelectedSoftwareId}
+                      />
+                    </label>
+                  </Show>
                   <Show when={selectedSoftware()}>
                     {(item) => <div class="manual-software-candidate-meta">{candidateMeta(item())}</div>}
                   </Show>
                 </Show>
               }
             >
-              <Show when={props.kind === "Other"}>
+              <Show when={effectiveKind() === "Other"}>
                 <label class="manual-software-field">
                   <span>{uiText.manualSoftwareModal.name}</span>
                   <input value={manualName()} onInput={(event) => setManualName(event.currentTarget.value)} />
@@ -196,9 +220,15 @@ function inferSoftwareNameFromRootPath(path: string | undefined) {
 function candidateMeta(item: SoftwareRecord) {
   const roots = item.rootPaths ?? [];
   const parts = [
-    softwareDisplayKindLabel(item.kind, item.displayKind),
+    candidateKindLabel(item),
     roots.length > 0 ? roots[0] : null,
     roots.length > 1 ? uiText.manualSoftwareModal.additionalRoots(roots.length - 1) : null
   ].filter(Boolean);
   return parts.join(" · ");
+}
+
+function candidateKindLabel(item: SoftwareRecord) {
+  return isUnclassifiedSoftware(item)
+    ? uiText.softwareKind.Unclassified
+    : softwareDisplayKindLabel(item.kind, item.displayKind);
 }

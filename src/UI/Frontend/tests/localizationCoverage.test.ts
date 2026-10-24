@@ -1,3 +1,4 @@
+import { runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../src/presentation/softwareClassification.ts";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -84,6 +85,13 @@ try {
     // Bundles are already cached; one microtask settles the production store.
     await Promise.resolve();
     assert.equal(currentLanguage(), language);
+    const unclassified = { kind: "Unclassified" } as import("../src/types.ts").SoftwareIssueTag;
+    assert.equal(softwareIssueLabel(unclassified), app.softwareKind.Unclassified);
+    assert.equal(softwareIssueMessage(unclassified), app.management.unclassifiedReminder);
+    assert.equal(runtimeDiscoveryLabel("RuntimePackage"), app.management.discoveredPackage);
+    assert.equal(runtimeDiscoveryLabel("RuntimeProduct"), app.management.discoveredProduct);
+    assert.equal(runtimeDiscoveryLabel("RuntimeRoot"), app.management.discoveredRoot);
+
     assert.equal(currentSettingsText().language, language);
     assert.deepEqual(flattenCopy(uiText), flattenCopy(app), `${language}: active UI differs from the loaded bundle.`);
     assert.deepEqual(flattenCopy(currentSettingsText()), flattenCopy(settings));

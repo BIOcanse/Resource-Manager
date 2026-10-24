@@ -367,6 +367,7 @@ const frFrAppCopy: AppCopy = {
     moreActions: "Autres actions"
   },
   softwareKind: {
+    Unclassified: "Non classé",
     Adapted: "Compatibles",
     Controlled: "Gérés",
     Unconfirmed: "Non confirmé",
@@ -389,6 +390,13 @@ const frFrAppCopy: AppCopy = {
     Support: "Assistance"
   },
   management: {
+    classifySoftware: "Choisir une catégorie",
+    unclassifiedReminder: "Identifié en cours d’exécution sans catégorie connue. Choisissez une catégorie ou faites-le plus tard.",
+    discoveredPackage: "Identifié par un paquet d’application en cours d’exécution",
+    discoveredProduct: "Identifié par le nom de produit du programme",
+    discoveredRoot: "Identifié par la racine d’installation en cours d’exécution",
+    runtimeDiscovery: "Détecté en cours d’exécution",
+
     categoryNav: "Catégories de composants et de logiciels",
     add: "Ajouter",
     refresh: "Actualiser",

@@ -91,6 +91,7 @@ export function ManagementWorkspace(props: ManagementWorkspaceProps) {
             mutablePersistenceEnabled={props.runtimeCapabilities.mutablePersistenceEnabled()}
             runtimeEffectsEnabled={props.runtimeCapabilities.runtimeEffectsEnabled()}
             onAddManualSoftware={management.openManualSoftwareModal}
+            onClassifySoftware={management.classifySoftware}
             onRefresh={() => void management.refreshState(true)}
             onInstallComponent={(component) => void management.installComponent(component)}
             onVerifyComponent={(component) => void management.verifyComponent(component)}

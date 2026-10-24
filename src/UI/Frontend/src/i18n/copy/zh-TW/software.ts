@@ -1,5 +1,6 @@
 export const zhSoftwareCopy = {
   softwareKind: {
+    Unclassified: "未分類",
     Adapted: "適配軟體",
     Controlled: "受控軟體",
     Unconfirmed: "未確認",
@@ -22,6 +23,13 @@ export const zhSoftwareCopy = {
     Support: "支援"
   },
   management: {
+    classifySoftware: "選擇分類",
+    unclassifiedReminder: "僅在執行時識別，尚無已知分類。可選擇分類，也可稍後處理。",
+    discoveredPackage: "透過執行中的應用程式套件識別",
+    discoveredProduct: "透過程式產品名稱識別",
+    discoveredRoot: "透過執行中的安裝根目錄識別",
+    runtimeDiscovery: "執行時發現",
+
     categoryNav: "元件和軟體分類",
     add: "新增",
     refresh: "重新整理",

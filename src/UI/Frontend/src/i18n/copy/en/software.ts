@@ -25,6 +25,7 @@ export const enSoftwareCopy: Pick<
     moreActions: "More actions"
   },
   softwareKind: {
+    Unclassified: "Unclassified",
     Adapted: "Adapted",
     Controlled: "Controlled",
     Unconfirmed: "Unconfirmed",
@@ -47,6 +48,13 @@ export const enSoftwareCopy: Pick<
     Support: "Support"
   },
   management: {
+    classifySoftware: "Choose category",
+    unclassifiedReminder: "Identified at runtime without a known category. Choose a category or leave it for later.",
+    discoveredPackage: "Identified by a running app package",
+    discoveredProduct: "Identified by the program product name",
+    discoveredRoot: "Identified by the running installation root",
+    runtimeDiscovery: "Runtime discovery",
+
     categoryNav: "Component and software categories",
     add: "Add",
     refresh: "Refresh",

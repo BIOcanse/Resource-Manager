@@ -188,6 +188,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     SoftwareName = software.Name,
                     SoftwareKind = software.Kind,
                     SoftwareDisplayKind = software.DisplayKind,
+                    SoftwareRootPaths = software.RootPaths,
                     BaseScore = baseScorePlan.ResolveBaseScore(
                         software.Id,
                         software.Kind,

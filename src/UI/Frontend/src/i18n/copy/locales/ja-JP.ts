@@ -367,6 +367,7 @@ const jaJpAppCopy: AppCopy = {
     moreActions: "その他の操作"
   },
   softwareKind: {
+    Unclassified: "未分類",
     Adapted: "対応済み",
     Controlled: "管理下",
     Unconfirmed: "未確認",
@@ -389,6 +390,13 @@ const jaJpAppCopy: AppCopy = {
     Support: "サポート"
   },
   management: {
+    classifySoftware: "分類を選択",
+    unclassifiedReminder: "実行時に識別されましたが、分類は不明です。分類を選択するか、後で対応できます。",
+    discoveredPackage: "実行中のアプリパッケージから識別",
+    discoveredProduct: "プログラムの製品名から識別",
+    discoveredRoot: "実行中のインストールルートから識別",
+    runtimeDiscovery: "実行時に検出",
+
     categoryNav: "コンポーネントとソフトウェアの分類",
     add: "追加",
     refresh: "更新",
