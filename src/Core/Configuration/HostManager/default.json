@@ -23,7 +23,7 @@
     "public_service_coordinator_abi_version": 262144,
     "display_coordinator_abi_version": 196608,
     "operation_coordinator_abi_version": 65536,
-    "metric_snapshot_abi_version": 655360,
+    "metric_snapshot_abi_version": 720896,
     "process_policy_executor_abi_version": 131072,
     "pdh_collector_abi_version": {
       "$metric_snapshot_defaults": "pdh.abi_version"

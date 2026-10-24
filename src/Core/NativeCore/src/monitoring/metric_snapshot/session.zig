@@ -32,7 +32,7 @@ pub fn synchronizeCounterDemand(session: *Session, input: *const protocol.Contro
     defer state.unlock(&session.mutex);
     if (!validControl(session, input)) return .abi_mismatch;
     if (session.phase == .empty or session.phase == .completion_open) return .unavailable;
-    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds)) return .stale_frame;
+    if (!session.operationAdvances(input.operation_epoch)) return .stale_frame;
     if (active_metrics.len > session.config.maximum_plan_metric_count) return .invalid_argument;
     var previous: u64 = 0;
     for (active_metrics) |metric| {
@@ -59,7 +59,7 @@ pub fn reset(session: *Session, input: *const protocol.ControlInput) ResultCode 
     defer state.unlock(&session.mutex);
     if (!validControl(session, input)) return .abi_mismatch;
     if (session.phase == .completion_open) return .unavailable;
-    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds)) {
+    if (!session.operationAdvances(input.operation_epoch)) {
         return .stale_frame;
     }
     const next_revision = session.nextRevision() orelse return .unavailable;
@@ -106,7 +106,7 @@ pub fn replaceCatalog(
     defer state.unlock(&session.mutex);
     if (!validCatalogReplace(session, input, sources, rules)) return .abi_mismatch;
     if (session.phase == .completion_open) return .unavailable;
-    if (!session.operationAdvances(input.operation_epoch, input.command_at_milliseconds) or
+    if (!session.operationAdvances(input.operation_epoch) or
         input.catalog_generation <= session.catalog_generation)
     {
         return .stale_frame;
@@ -119,7 +119,7 @@ pub fn replaceCatalog(
         inventory.synchronizeStagingWithActive(session);
         return .invalid_argument;
     }
-    const retained_data = bankHasData(&session.staging);
+    const preserved_data = bankHasData(&session.staging);
     const preserve_gpu = shouldPreserveGpuInventory(session, &session.staging);
     inventory.prepareCatalogReplacement(session, preserve_gpu);
     observation.recomputeBank(&session.staging);
@@ -150,7 +150,7 @@ pub fn replaceCatalog(
     session.semantic_fingerprint = next_semantic;
     session.committed_generation = next_committed;
     session.state_revision = next_revision;
-    session.phase = if (retained_data) .ready else .catalog_ready;
+    session.phase = if (preserved_data) .ready else .catalog_ready;
     return .ok;
 }
 
@@ -271,14 +271,12 @@ pub fn readSnapshot(
 
 pub fn snapshotHeader(session: *const Session) protocol.SnapshotHeader {
     var current: u32 = 0;
-    var retained: u32 = 0;
     var unavailable: u32 = 0;
     var unsupported: u32 = 0;
     var skipped: u32 = 0;
     for (session.active.metrics[0..session.active.metric_count]) |metric| {
         switch (@as(protocol.MetricStatus, @enumFromInt(metric.output.status))) {
             .current => current += 1,
-            .retained => retained += 1,
             .unavailable => unavailable += 1,
             .unsupported => unsupported += 1,
             .skipped => skipped += 1,
@@ -289,7 +287,6 @@ pub fn snapshotHeader(session: *const Session) protocol.SnapshotHeader {
     if (bankHasData(&session.active) or inventory.activeCount(session) != 0) {
         flags |= protocol.SnapshotFlags.committed_data;
     }
-    if (retained != 0 or hasRetainedGpu(session)) flags |= protocol.SnapshotFlags.retained_data;
     if (inventory.activeCount(session) != 0) flags |= protocol.SnapshotFlags.gpu_inventory_present;
     if (session.phase == .completion_open) flags |= protocol.SnapshotFlags.completion_open;
     return .{
@@ -309,7 +306,6 @@ pub fn snapshotHeader(session: *const Session) protocol.SnapshotHeader {
         .rule_count = session.active.rule_count,
         .gpu_adapter_count = inventory.activeCount(session),
         .current_metric_count = current,
-        .retained_metric_count = retained,
         .unavailable_metric_count = unavailable,
         .unsupported_metric_count = unsupported,
         .skipped_metric_count = skipped,
@@ -334,7 +330,6 @@ pub fn catalogFingerprint(
             source.source_handle,
             source.source_role,
             source.priority,
-            source.retention_policy,
             source.capability_mask,
             source.semantic_fingerprint,
         };
@@ -351,7 +346,6 @@ pub fn catalogFingerprint(
             rule.metric_kind,
             rule.scope_kind,
             rule.value_kind,
-            rule.retention_policy,
             rule.source_priority,
             rule.minimum_value_bits,
             rule.maximum_value_bits,
@@ -416,18 +410,7 @@ fn bankHasData(bank: *const catalog.Bank) bool {
         if (source.source_generation != 0) return true;
     }
     for (bank.rules[0..bank.rule_count]) |rule| {
-        if (rule.has_last_good) return true;
-    }
-    return false;
-}
-
-fn hasRetainedGpu(session: *const Session) bool {
-    for (session.gpu_active) |gpu| {
-        if (gpu.active and
-            gpu.output.status == @intFromEnum(protocol.InventoryStatus.retained))
-        {
-            return true;
-        }
+        if (rule.status == .current) return true;
     }
     return false;
 }
@@ -479,7 +462,6 @@ pub fn ruleOutput(rule: catalog.RuleRecord) protocol.RuleStateOutput {
         .status = @intFromEnum(rule.status),
         .value_kind = rule.definition.value_kind,
         .quality = rule.quality,
-        .has_last_good = @intFromBool(rule.has_last_good),
         .sample_duration_milliseconds = rule.sample_duration_milliseconds,
         .definition_fingerprint = rule.definition.semantic_fingerprint,
         .state_fingerprint = 0,

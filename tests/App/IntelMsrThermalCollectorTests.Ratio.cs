@@ -8,13 +8,12 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class IntelMsrThermalCollectorTests
 {
     [Theory]
-    [InlineData(1U, 2U, true)]
-    [InlineData(3U, 2U, false)]
-    [InlineData(1U, 1U, false)]
-    public void CounterRatioRuleRequiresFloatOutputAndUnavailableRetention(uint valueKind, uint retention, bool accepted)
+    [InlineData(1U, true)]
+    [InlineData(3U, false)]
+    public void CounterRatioRuleRequiresFloatOutput(uint valueKind, bool accepted)
     {
         var rule = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish.RuleTemplates.Single(template => template.MetricKind == 14);
-        Assert.Equal(accepted, (rule with { ValueKind = valueKind, RetentionPolicy = retention }).IsPublished);
+        Assert.Equal(accepted, (rule with { ValueKind = valueKind }).IsPublished);
     }
 
     [Fact]
@@ -137,7 +136,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     }
 
     [Fact]
-    public void RestoredCurrentValueDoesNotRestoreCounterBaselineAcrossRestart()
+    public void RestartClearsCurrentRatioAndCounterBaseline()
     {
         var path = Path.Combine(Path.GetTempPath(), $"ratio-recovery-{Guid.NewGuid():N}.bin");
         try
@@ -148,7 +147,7 @@ public sealed partial class IntelMsrThermalCollectorTests
                 Assert.True(old.Workspace.PersistRecoveryCheckpointIfAdvanced(old.NextTime()));
             }
             using var restored = new RatioWorkspace(path, sequence: 100);
-            Assert.Equal(1.5, restored.ReadField().NumericValue);
+            Assert.Null(restored.ReadField().NumericValue);
             Assert.Null(restored.Publish(new(10000, 1000)));
             Assert.Equal(0.5, restored.Publish(new(10050, 1100)));
         }

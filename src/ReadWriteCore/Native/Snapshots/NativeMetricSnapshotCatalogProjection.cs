@@ -324,7 +324,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 SourceHandle = policy.SourceHandle,
                 SourceRole = policy.SourceRole,
                 Priority = policy.Priority,
-                RetentionPolicy = policy.RetentionPolicy,
                 ReservedU32 = 0,
                 CapabilityMask = policy.CapabilityMask,
                 SemanticFingerprint = policy.SemanticFingerprint
@@ -455,7 +454,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 MetricKind = rule.Template.MetricKind,
                 ScopeKind = rule.Template.ScopeKind,
                 ValueKind = rule.Template.ValueKind,
-                RetentionPolicy = rule.Template.RetentionPolicy,
                 SourcePriority = rule.Template.SourcePriority,
                 ReservedU32 = 0,
                 MinimumValueBits = rule.Template.MinimumValueBits,

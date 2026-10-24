@@ -49,25 +49,14 @@ public sealed partial class HostManagerSmartCoordinator
 
         var applied = appliedPlacementCoordinatorPlan
             ?? throw new InvalidOperationException("The applied placement coordinator runtime identity is missing.");
-        if (applied.HotPublish.ConfigurationGeneration == desired.HotPublish.ConfigurationGeneration)
+        if (applied.AbiVersion == desired.AbiVersion
+            && applied.Recreate == desired.Recreate
+            && applied.HotPublish == desired.HotPublish
+            && applied.HostPlan.BuildSha256 == desired.HostPlan.BuildSha256
+            && applied.HostPlan.DeploymentDigests.PlacementCoordinator
+                == desired.HostPlan.DeploymentDigests.PlacementCoordinator)
         {
-            if (applied.AbiVersion != desired.AbiVersion
-                || applied.Recreate != desired.Recreate
-                || applied.HotPublish != desired.HotPublish
-                || applied.HostPlan.BuildSha256 != desired.HostPlan.BuildSha256
-                || applied.HostPlan.DeploymentDigests.PlacementCoordinator
-                    != desired.HostPlan.DeploymentDigests.PlacementCoordinator)
-            {
-                throw new InvalidOperationException(
-                    "The Host Manager placement coordinator drifted without a profile revision change.");
-            }
             return;
-        }
-
-        if (desired.HotPublish.ConfigurationGeneration < applied.HotPublish.ConfigurationGeneration)
-        {
-            throw new InvalidOperationException(
-                $"The Host Manager placement coordinator generation must increase: applied {applied.HotPublish.ConfigurationGeneration}, desired {desired.HotPublish.ConfigurationGeneration}.");
         }
 
         if (applied.Recreate == desired.Recreate)

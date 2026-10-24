@@ -63,8 +63,8 @@ public sealed class MetricWorkspaceLibraryIntegrationTests
 
     private static NativeMetricSnapshotCatalogConfiguration Catalog() => new(
         1, new string('A', 64), 8, 64, 32,
-        [new(NativeMetricSnapshotSources.WindowsMemory, 1, 1, 100, 2, true, 1, 11),
-         new(NativeMetricSnapshotSources.WindowsGpuAdapterOrder, 2, 2, 100, 2, true, 1, 12)],
+        [new(NativeMetricSnapshotSources.WindowsMemory, 1, 1, 100, true, 1, 11),
+         new(NativeMetricSnapshotSources.WindowsGpuAdapterOrder, 2, 2, 100, true, 1, 12)],
         [Rule("memory.total", "memory.total", NativeMetricSnapshotMetricKind.MemoryTotal, NativeMetricSnapshotMetricFlags.TotalValue),
          Rule("memory.used", "memory.usage", NativeMetricSnapshotMetricKind.MemoryUsed, NativeMetricSnapshotMetricFlags.UsedValue)]);
 
@@ -72,7 +72,7 @@ public sealed class MetricWorkspaceLibraryIntegrationTests
         NativeMetricSnapshotMetricKind kind, NativeMetricSnapshotMetricFlags flags) => new(
         id, metric, NativeMetricSnapshotSources.WindowsMemory, 1, 100, 3, (uint)kind,
         (uint)NativeMetricSnapshotScopeKind.Memory, (uint)NativeMetricSnapshotValueKind.Unsigned64,
-        (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable, 1, (uint)(flags | NativeMetricSnapshotMetricFlags.Nonnegative),
+        1, (uint)(flags | NativeMetricSnapshotMetricFlags.Nonnegative),
         0, ulong.MaxValue, 0, 0, 1, 22);
 
     private static NativeMetricSnapshotConfiguration Configuration() => new()

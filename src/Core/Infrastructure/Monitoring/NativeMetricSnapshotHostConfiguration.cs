@@ -18,15 +18,16 @@ internal static class NativeMetricSnapshotHostConfiguration
         => CreateWorkspace(plan, persistencePath, NativeMetricSnapshotScratch.CreateOrdinary);
 
     internal static NativeMetricSnapshotWorkspace CreateWorkspace(CompiledHostManagerMetricSnapshotPlan plan, string persistencePath,
-        Func<ulong, uint, INativeMetricSnapshotScratch> createScratch)
+        Func<ulong, uint, INativeMetricSnapshotScratch> createScratch,
+        Action<string>? warning = null)
     {
         ArgumentNullException.ThrowIfNull(createScratch);
         ArgumentNullException.ThrowIfNull(plan);
         if (!plan.IsPublished) throw new ArgumentException("The metric-snapshot plan must be published.", nameof(plan));
         if (string.IsNullOrWhiteSpace(persistencePath) || !Path.IsPathFullyQualified(persistencePath))
             throw new ArgumentException("The metric-snapshot persistence path must be absolute.", nameof(persistencePath));
-        var store = new NativeMetricSnapshotPersistenceStore(Path.GetFullPath(persistencePath));
-        return new(CreateConfiguration(plan), CreateCatalogConfiguration(plan), new(store.Load, store.Save, store.Discard), createScratch);
+        var store = new NativeMetricSnapshotPersistenceStore(Path.GetFullPath(persistencePath), warning);
+        return new(CreateConfiguration(plan), CreateCatalogConfiguration(plan), new(store.Load, store.Save, store.Discard, warning), createScratch);
     }
 
     internal static NativeMetricSnapshotCatalogConfiguration CreateCatalogConfiguration(CompiledHostManagerMetricSnapshotPlan plan)
@@ -37,9 +38,9 @@ internal static class NativeMetricSnapshotHostConfiguration
             plan.Recreate.Capacity.MaximumGpuAdapterCount, plan.Recreate.Capacity.MaximumRuleCount,
             plan.Recreate.Capacity.MaximumMetricCount,
             plan.HotPublish.SourcePolicies.Select(static row => new NativeMetricSnapshotSourcePolicy(
-                row.SourceId, row.SourceHandle, row.SourceRole, row.Priority, row.RetentionPolicy, row.Required, row.CapabilityMask, row.SemanticFingerprint)).ToImmutableArray(),
+                row.SourceId, row.SourceHandle, row.SourceRole, row.Priority, row.Required, row.CapabilityMask, row.SemanticFingerprint)).ToImmutableArray(),
             plan.HotPublish.RuleTemplates.Select(static row => new NativeMetricSnapshotRuleTemplate(
-                row.TemplateId, row.MetricIdTemplate, row.SourceId, row.SourceHandle, row.SourcePriority, row.ScopeExpansion, row.MetricKind, row.ScopeKind, row.ValueKind, row.RetentionPolicy, row.CapabilityMask, row.MetricFlags, row.MinimumValueBits, row.MaximumValueBits, row.GpuVendorMask, row.ApplicabilityMask, row.MaximumInstanceCount, row.SemanticFingerprint)).ToImmutableArray());
+                row.TemplateId, row.MetricIdTemplate, row.SourceId, row.SourceHandle, row.SourcePriority, row.ScopeExpansion, row.MetricKind, row.ScopeKind, row.ValueKind, row.CapabilityMask, row.MetricFlags, row.MinimumValueBits, row.MaximumValueBits, row.GpuVendorMask, row.ApplicabilityMask, row.MaximumInstanceCount, row.SemanticFingerprint)).ToImmutableArray());
     }
 
     internal static NativeMetricSnapshotCatalogProjection CreateCatalogProjection(

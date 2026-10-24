@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
@@ -8,14 +7,14 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-internal sealed class NativeMetricSnapshotPersistenceStore(string path)
+internal sealed class NativeMetricSnapshotPersistenceStore(string path, Action<string>? warning = null)
 {
     private const ulong Magic = 0x32504E534D4D5248;
-    private const uint EnvelopeVersion = 2;
+    private const uint EnvelopeVersion = 3;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly string path = Path.GetFullPath(path);
 
-    internal NativeMetricSnapshotPersistenceImage? Load(
+    internal NativeMetricSnapshotCatalogPersistenceState? Load(
         ulong expectedConfigurationGeneration,
         string expectedManifestSha256,
         NativeMetricSnapshotCapacity capacity)
@@ -70,8 +69,13 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
         var envelopeVersion = reader.ReadUInt32();
         var abiVersion = reader.ReadUInt32();
         var configurationGeneration = reader.ReadUInt64();
-        if (envelopeVersion != EnvelopeVersion
-            || abiVersion != NativeMetricSnapshotAbi.Version
+        if (envelopeVersion != EnvelopeVersion)
+        {
+            Warn(
+                $"Ignoring metric-snapshot persistence envelope version {envelopeVersion} at '{path}'; expected catalog-only version {EnvelopeVersion}. Sampling values will start empty.");
+            return null;
+        }
+        if (abiVersion != NativeMetricSnapshotAbi.Version
             || configurationGeneration != expectedConfigurationGeneration)
         {
             return null;
@@ -150,53 +154,23 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
             }
         }
 
-        var header = ReadStruct<NativeMetricSnapshotPersistenceHeader>(reader);
-        if (header.CatalogGeneration != catalogGeneration
-            || header.CatalogFingerprint != nativeRowFingerprint)
-        {
-            throw new InvalidDataException(
-                "The metric-snapshot persistence native state and catalog identity disagree.");
-        }
-        if (header.SourceStateCount > capacity.PersistenceSourceCapacity
-            || header.RuleStateCount > capacity.PersistenceRuleCapacity
-            || header.GpuAdapterCount > capacity.PersistenceGpuCapacity)
-        {
-            throw new InvalidDataException(
-                "The metric-snapshot persistence envelope exceeds the compiled capacity.");
-        }
-        var sources =
-            ReadStructArray<NativeMetricSnapshotSourcePersistenceOutput>(
-                reader,
-                header.SourceStateCount);
-        var rules = ReadStructArray<NativeMetricSnapshotRuleStateOutput>(
-            reader,
-            header.RuleStateCount);
-        var gpuInventory =
-            ReadStructArray<NativeMetricSnapshotGpuInventoryOutput>(
-                reader,
-                header.GpuAdapterCount);
         if (stream.Position != body.Length)
         {
             throw new InvalidDataException(
                 "The metric-snapshot persistence envelope contains trailing data.");
         }
-        return new NativeMetricSnapshotPersistenceImage(
-            new NativeMetricSnapshotCatalogPersistenceState(
-                catalogGeneration,
-                nativeRowFingerprint,
-                catalogIdentitySha256,
-                manifestSha256,
-                handleMap,
-                metricIds.ToImmutable()),
-            header,
-            sources,
-            rules,
-            gpuInventory);
+        return new NativeMetricSnapshotCatalogPersistenceState(
+            catalogGeneration,
+            nativeRowFingerprint,
+            catalogIdentitySha256,
+            manifestSha256,
+            handleMap,
+            metricIds.ToImmutable());
     }
 
     internal void Save(
         ulong configurationGeneration,
-        NativeMetricSnapshotPersistenceImage source)
+        NativeMetricSnapshotCatalogPersistenceState source)
     {
         ArgumentNullException.ThrowIfNull(source);
         var machine = DeviceTopologyCacheIdentity.ReadCurrentDescriptor();
@@ -212,19 +186,19 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
             writer.Write(configurationGeneration);
             WriteString(writer, machine.Source);
             WriteString(writer, machine.Sha256);
-            WriteString(writer, source.Catalog.ManifestSha256);
-            WriteString(writer, source.Catalog.CatalogIdentitySha256);
-            writer.Write(source.Catalog.CatalogGeneration);
-            writer.Write(source.Catalog.NativeRowFingerprint);
+            WriteString(writer, source.ManifestSha256);
+            WriteString(writer, source.CatalogIdentitySha256);
+            writer.Write(source.CatalogGeneration);
+            writer.Write(source.NativeRowFingerprint);
             writer.Write(checked(
-                (uint)source.Catalog.HandleMap.Entries.Length));
-            foreach (var entry in source.Catalog.HandleMap.Entries)
+                (uint)source.HandleMap.Entries.Length));
+            foreach (var entry in source.HandleMap.Entries)
             {
                 writer.Write((uint)entry.Kind);
                 writer.Write(entry.Handle);
                 WriteString(writer, entry.ExactKey);
             }
-            var metricIds = source.Catalog.MetricIds
+            var metricIds = source.MetricIds
                 .OrderBy(static pair => pair.Key)
                 .ToArray();
             writer.Write(checked((uint)metricIds.Length));
@@ -233,10 +207,6 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
                 writer.Write(pair.Key);
                 WriteString(writer, pair.Value);
             }
-            WriteStruct(writer, source.Header);
-            WriteStructArray(writer, source.Sources);
-            WriteStructArray(writer, source.Rules);
-            WriteStructArray(writer, source.GpuInventory);
         }
         var body = stream.ToArray();
         var image = new byte[checked(body.Length + SHA256.HashSizeInBytes)];
@@ -282,6 +252,12 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
     internal void Discard()
         => _ = WindowsNativeAtomicFileCommitter.DeleteExact(path);
 
+    private void Warn(string message)
+    {
+        if (warning is not null) warning(message);
+        else Trace.TraceWarning(message);
+    }
+
     private static void WriteString(BinaryWriter writer, string value)
     {
         var bytes = StrictUtf8.GetBytes(value);
@@ -309,43 +285,4 @@ internal sealed class NativeMetricSnapshotPersistenceStore(string path)
         return StrictUtf8.GetString(bytes);
     }
 
-    private static T ReadStruct<T>(BinaryReader reader)
-        where T : unmanaged
-    {
-        var size = checked((uint)Unsafe.SizeOf<T>());
-        var bytes = reader.ReadBytes(checked((int)size));
-        if (bytes.Length != size)
-        {
-            throw new EndOfStreamException();
-        }
-        return MemoryMarshal.Read<T>(bytes);
-    }
-
-    private static T[] ReadStructArray<T>(BinaryReader reader, uint count)
-        where T : unmanaged
-    {
-        var result = new T[checked((int)count)];
-        var byteCount = checked(count * (uint)Unsafe.SizeOf<T>());
-        var bytes = reader.ReadBytes(checked((int)byteCount));
-        if (bytes.Length != byteCount)
-        {
-            throw new EndOfStreamException();
-        }
-        MemoryMarshal.Cast<byte, T>(bytes).CopyTo(result);
-        return result;
-    }
-
-    private static void WriteStruct<T>(BinaryWriter writer, T value)
-        where T : unmanaged
-    {
-        Span<T> source = stackalloc T[1];
-        source[0] = value;
-        writer.Write(MemoryMarshal.AsBytes(source));
-    }
-
-    private static void WriteStructArray<T>(
-        BinaryWriter writer,
-        T[] values)
-        where T : unmanaged
-        => writer.Write(MemoryMarshal.AsBytes(values.AsSpan()));
 }

@@ -318,8 +318,8 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     {
         var defaults = WindowsMetricConfiguration.CreateDefault();
         var catalog = new NativeMetricSnapshotCatalogConfiguration(1, new string('A', 64), 8, 64, 32,
-            [new(NativeMetricSnapshotSources.WindowsMemory, 1, 1, 100, 2, true, 1, 11),
-             new(NativeMetricSnapshotSources.WindowsGpuAdapterOrder, 2, 2, 100, 2, true, 1, 12)],
+            [new(NativeMetricSnapshotSources.WindowsMemory, 1, 1, 100, true, 1, 11),
+             new(NativeMetricSnapshotSources.WindowsGpuAdapterOrder, 2, 2, 100, true, 1, 12)],
             [MemoryRule("memory.total", "memory.total", NativeMetricSnapshotMetricKind.MemoryTotal, NativeMetricSnapshotMetricFlags.TotalValue),
              MemoryRule("memory.used", "memory.usage", NativeMetricSnapshotMetricKind.MemoryUsed, NativeMetricSnapshotMetricFlags.UsedValue)]);
         Assert.True(catalog.IsPublished, "Recorded catalog must include the original mandatory role-2 inventory source.");
@@ -352,7 +352,7 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     private static NativeMetricSnapshotRuleTemplate MemoryRule(string id, string metric, NativeMetricSnapshotMetricKind kind,
         NativeMetricSnapshotMetricFlags flags) => new(id, metric, NativeMetricSnapshotSources.WindowsMemory, 1, 100, 3, (uint)kind,
         (uint)NativeMetricSnapshotScopeKind.Memory, (uint)NativeMetricSnapshotValueKind.Float64,
-        (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable, 1, (uint)(flags | NativeMetricSnapshotMetricFlags.Nonnegative),
+        1, (uint)(flags | NativeMetricSnapshotMetricFlags.Nonnegative),
         0, BitConverter.DoubleToUInt64Bits(double.MaxValue), 0, 0, 1, 22);
     private static void PublishRecordedCatalog(WindowsHardwareMetricOwner owner) => SetOwnerField(owner, "catalogSnapshot", owner.ReadCachedSnapshot());
     private static void SetOwnerField(WindowsHardwareMetricOwner owner, string name, object? value)

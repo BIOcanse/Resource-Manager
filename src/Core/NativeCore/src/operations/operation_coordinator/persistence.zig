@@ -88,29 +88,8 @@ pub fn decodeReplace(
         header.clock_instance_id,
         input.clock_instance_id,
     );
-    // A never-observed empty session has no clock baseline to compare.
-    if (same_clock and header.last_observed_monotonic_milliseconds != 0) {
-        if (input.observed_monotonic_milliseconds <
-            header.last_observed_monotonic_milliseconds)
-        {
-            return .stale_frame;
-        }
-        const monotonic_delta =
-            input.observed_monotonic_milliseconds -
-            header.last_observed_monotonic_milliseconds;
-        if (input.observed_utc_milliseconds >
-            header.last_observed_utc_milliseconds)
-        {
-            const utc_delta: u64 = @intCast(
-                input.observed_utc_milliseconds -
-                    header.last_observed_utc_milliseconds,
-            );
-            if (utc_delta > addSaturating(
-                monotonic_delta,
-                session.config.maximum_future_skew_milliseconds,
-            )) return .stale_frame;
-        }
-    }
+    if (same_clock and input.observed_monotonic_milliseconds <
+        header.last_observed_monotonic_milliseconds) return .stale_frame;
     if ((session.bank.operation_count != 0 or session.submit_sequence != 0) and
         (header.state_revision < session.state_revision or
             header.submit_sequence < session.submit_sequence or

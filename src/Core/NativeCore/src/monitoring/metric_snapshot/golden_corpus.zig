@@ -5,7 +5,7 @@ const wire_contract = @import("wire_contract.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
 test "metric snapshot ABI sizes alignments and offsets are fixed" {
-    try std.testing.expectEqual(@as(u32, 0x000A_0000), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000B_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(usize, 88), @offsetOf(protocol.Capacity, "scratch_byte_count"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(protocol.Capacity, "scratch_alignment"));
     try std.testing.expectEqual(@as(usize, 100), @offsetOf(protocol.Capacity, "reserved_u32"));
@@ -89,7 +89,7 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         @offsetOf(protocol.SnapshotHeader, "source_count"),
     );
     try std.testing.expectEqual(
-        @as(usize, 116),
+        @as(usize, 112),
         @offsetOf(protocol.SnapshotHeader, "flags"),
     );
     try std.testing.expectEqual(
@@ -125,11 +125,7 @@ test "metric snapshot ABI sizes alignments and offsets are fixed" {
         @offsetOf(protocol.SourcePersistenceOutput, "gpu_inventory_count"),
     );
     try std.testing.expectEqual(
-        @as(usize, 172),
-        @offsetOf(protocol.SourcePersistenceOutput, "gpu_retained_count"),
-    );
-    try std.testing.expectEqual(
-        @as(u64, 0x65f57826a9339df5),
+        @as(u64, 0xbabb9b97e9199c19),
         moduleLayoutFingerprint(),
     );
     try std.testing.expectEqual(

@@ -27,7 +27,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             NativeMetricSnapshotCollectionPlan plan,
             NativeMetricSnapshotSourcePlanOutput sourcePlan,
             CancellationToken cancellationToken,
-            NativeMetricSnapshotCatalogTopologySnapshot? topology, Action rejectPublication)
+            NativeMetricSnapshotCatalogTopologySnapshot? topology)
     {
         var sourceId = plan.Catalog.SourceIds[sourcePlan.SourceHandle];
         var identity =
@@ -91,9 +91,9 @@ internal sealed partial class WindowsHardwareMetricCapture
                 NativeMetricSnapshotSources.IntelGcl =>
                     CollectIntelGpu(plan, sourcePlan, identity, capturedAt, cancellationToken),
                 NativeMetricSnapshotSources.WindowsNpuEngine =>
-                    CollectNpuEngine(plan, sourcePlan, identity, capturedAt, topology, cancellationToken, rejectPublication),
+                    CollectNpuEngine(plan, sourcePlan, identity, capturedAt, topology, cancellationToken),
                 NativeMetricSnapshotSources.WindowsNpuMemory =>
-                    CollectNpuMemory(plan, sourcePlan, identity, capturedAt, topology, cancellationToken, rejectPublication),
+                    CollectNpuMemory(plan, sourcePlan, identity, capturedAt, topology, cancellationToken),
                 NativeMetricSnapshotSources.IntelMsr =>
                     CollectIntelMsr(plan, sourcePlan, identity, capturedAt, topology),
                 NativeMetricSnapshotSources.AmdSmu =>
@@ -141,7 +141,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             };
             return completion;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }

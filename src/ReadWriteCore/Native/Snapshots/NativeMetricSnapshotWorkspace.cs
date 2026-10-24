@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using ResourceManager.ReadWrite.Native;
@@ -10,13 +11,12 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
     private readonly object gate = new();
     private readonly NativeMetricSnapshotSession session;
     private readonly NativeMetricSnapshotPersistenceCallbacks? persistence;
-    private NativeMetricSnapshotPersistenceImage? pendingPersistence;
+    private NativeMetricSnapshotCatalogPersistenceState? pendingPersistence;
     private NativeMetricSnapshotCatalogPersistenceState? activeCatalog;
     private NativeMetricSnapshotCatalogProjection? activeProjection;
     private ulong operationEpoch;
     private ulong planEpoch;
     private ulong persistedCatalogGeneration;
-    private uint persistedPhase;
     private bool disposed;
 
     public NativeMetricSnapshotWorkspace(
@@ -44,13 +44,19 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 catalogConfiguration.CatalogManifestSha256, session.Capacity);
             if (pendingPersistence is not null)
             {
-                persistedCatalogGeneration = pendingPersistence.Header.CatalogGeneration;
-                persistedPhase = pendingPersistence.Header.Phase;
+                persistedCatalogGeneration = pendingPersistence.CatalogGeneration;
             }
         }
         catch (Exception exception) when (IsInvalidCacheImage(exception))
         {
-            try { persistence?.Discard(); pendingPersistence = null; }
+            try
+            {
+                var warning = $"Discarding invalid metric-snapshot catalog persistence: {exception.Message} Sampling values will start empty.";
+                if (persistence?.Warning is { } reportWarning) reportWarning(warning);
+                else Trace.TraceWarning(warning);
+                persistence?.Discard();
+                pendingPersistence = null;
+            }
             catch { session.Dispose(); throw; }
         }
         catch { session.Dispose(); throw; }
@@ -83,7 +89,7 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
         lock (gate)
         {
             ThrowIfDisposed();
-            return pendingPersistence?.Catalog.HandleMap
+            return pendingPersistence?.HandleMap
                 ?? NativeMetricSnapshotCatalogHandleMap.Empty;
         }
     }
@@ -146,19 +152,7 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
             RequireOk(
                 session.ReplaceCatalog(in input, sourceRows, ruleRows),
                 "replace catalog");
-            var matchesPending = PendingCatalogMatches(projection);
-            if (matchesPending)
-            {
-                TryImportPendingPersistence(
-                    fingerprint,
-                    sourceRows.Length,
-                    ruleRows.Length,
-                    commandAt);
-            }
-            else
-            {
-                pendingPersistence = null;
-            }
+            pendingPersistence = null;
             activeCatalog = new NativeMetricSnapshotCatalogPersistenceState(
                 catalogGeneration,
                 projection.NativeRowFingerprint,
@@ -525,7 +519,6 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
     }
 
     public ulong PersistedCatalogGeneration { get { lock (gate) { ThrowIfDisposed(); return persistedCatalogGeneration; } } }
-    public uint PersistedPhase { get { lock (gate) { ThrowIfDisposed(); return persistedPhase; } } }
 
     public void Dispose()
     {
@@ -539,70 +532,6 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
 
     private void ThrowIfDisposed()
         => ObjectDisposedException.ThrowIf(disposed, this);
-
-    private void TryImportPendingPersistence(
-        ulong catalogFingerprint,
-        int sourceCount,
-        int ruleCount,
-        DateTimeOffset commandAt)
-    {
-        var pending = pendingPersistence;
-        if (pending is null)
-        {
-            return;
-        }
-        if (pending.Header.CatalogFingerprint != catalogFingerprint
-            || pending.Sources.Length != sourceCount
-            || pending.Rules.Length != ruleCount)
-        {
-            persistence?.Discard();
-            pendingPersistence = null;
-            return;
-        }
-
-        var importedOperationEpoch = Math.Max(
-            operationEpoch,
-            pending.Header.LastOperationEpoch);
-        var importedPlanEpoch = Math.Max(
-            planEpoch,
-            pending.Header.LastPlanEpoch);
-        var input = new NativeMetricSnapshotPersistenceInput
-        {
-            AbiVersion = NativeMetricSnapshotAbi.Version,
-            StructSize = SizeOf<NativeMetricSnapshotPersistenceInput>(),
-            ConfigurationGeneration =
-                Configuration.Generation,
-            CatalogGeneration = pending.Header.CatalogGeneration,
-            OperationEpoch = Next(
-                ref importedOperationEpoch,
-                "operation epoch"),
-            // The checkpoint command is historical; order new work from this import command.
-            CommandAtMilliseconds = Timestamp(commandAt),
-            Flags = 0
-        };
-        var persistenceHeader = pending.Header;
-        var status = session.ImportState(
-            in input,
-            in persistenceHeader,
-            pending.Sources,
-            pending.Rules,
-            pending.GpuInventory);
-        if (status is NativeMetricSnapshotStatus.InvalidArgument
-            or NativeMetricSnapshotStatus.AbiMismatch
-            or NativeMetricSnapshotStatus.StaleFrame)
-        {
-            persistence?.Discard();
-            pendingPersistence = null;
-            return;
-        }
-        RequireOk(status, "import state");
-        operationEpoch = importedOperationEpoch;
-        planEpoch = importedPlanEpoch;
-        persistedCatalogGeneration =
-            pending.Header.CatalogGeneration;
-        persistedPhase = pending.Header.Phase;
-        pendingPersistence = null;
-    }
 
     private NativeMetricSnapshotPersistenceImage ExportAndPersistCore(
         NativeMetricSnapshotSnapshotHeader header,
@@ -641,14 +570,9 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
             gpuInventory);
         persistence?.Save(
             Configuration.Generation,
-            image);
-        operationEpoch = Math.Max(
-            operationEpoch,
-            persistenceHeader.LastOperationEpoch);
-        planEpoch = Math.Max(planEpoch, persistenceHeader.LastPlanEpoch);
+            image.Catalog);
         persistedCatalogGeneration =
-            persistenceHeader.CatalogGeneration;
-        persistedPhase = persistenceHeader.Phase;
+            catalog.CatalogGeneration;
         _ = commandAt;
         return image;
     }
@@ -669,10 +593,10 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
         }
         if (PendingCatalogMatches(projection))
         {
-            return pending.Catalog.CatalogGeneration;
+            return pending.CatalogGeneration;
         }
 
-        var next = checked(pending.Catalog.CatalogGeneration + 1);
+        var next = checked(pending.CatalogGeneration + 1);
         return Math.Max(next, CatalogConfiguration.CatalogGenerationBase);
     }
 
@@ -681,30 +605,25 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
     {
         var pending = pendingPersistence;
         return pending is not null
-            && pending.Catalog.NativeRowFingerprint
+            && pending.NativeRowFingerprint
                 == projection.NativeRowFingerprint
             && string.Equals(
-                pending.Catalog.CatalogIdentitySha256,
+                pending.CatalogIdentitySha256,
                 projection.CatalogIdentitySha256,
                 StringComparison.Ordinal)
             && string.Equals(
-                pending.Catalog.ManifestSha256,
+                pending.ManifestSha256,
                 CatalogConfiguration.CatalogManifestSha256,
                 StringComparison.Ordinal)
-            && pending.Catalog.MetricIds.Count == projection.MetricIds.Count
-            && pending.Catalog.MetricIds.All(pair =>
+            && pending.MetricIds.Count == projection.MetricIds.Count
+            && pending.MetricIds.All(pair =>
                 projection.MetricIds.TryGetValue(
                     pair.Key,
                     out var value)
                 && string.Equals(
                     pair.Value,
                     value,
-                    StringComparison.Ordinal))
-            && pending.GpuInventory.All(adapter =>
-                projection.GpuScopeBindings.TryGetValue(adapter.AdapterHandle, out var binding)
-                && adapter.StableKeyHandle == binding.ScopeHandle
-                && adapter.AdapterLuidLow == binding.AdapterLuid
-                && adapter.AdapterLuidHigh == 0);
+                    StringComparison.Ordinal));
     }
 
     private void ValidateCatalog(
@@ -744,7 +663,6 @@ public sealed class NativeMetricSnapshotWorkspace : IDisposable
                 || actual.SourceHandle != expected.SourceHandle
                 || actual.SourceRole != expected.SourceRole
                 || actual.Priority != expected.Priority
-                || actual.RetentionPolicy != expected.RetentionPolicy
                 || actual.CapabilityMask != expected.CapabilityMask
                 || actual.SemanticFingerprint != expected.SemanticFingerprint)
             {

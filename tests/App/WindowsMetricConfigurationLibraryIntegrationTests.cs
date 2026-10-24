@@ -63,6 +63,8 @@ public sealed class WindowsMetricConfigurationLibraryIntegrationTests
     [InlineData("missing")]
     [InlineData("duplicate-source")]
     [InlineData("duplicate-rule")]
+    [InlineData("source-retention")]
+    [InlineData("rule-retention")]
     [InlineData("duplicate-flag")]
     [InlineData("range")]
     [InlineData("capacity")]
@@ -90,6 +92,8 @@ public sealed class WindowsMetricConfigurationLibraryIntegrationTests
             case "missing": root.Remove("build_capacity"); break;
             case "duplicate-source": hot["source_policies"]!.AsArray().Add(hot["source_policies"]![0]!.DeepClone()); break;
             case "duplicate-rule": hot["rule_templates"]!.AsArray().Add(rule.DeepClone()); break;
+            case "source-retention": hot["source_policies"]![0]!["retention"] = "retain_last_good"; break;
+            case "rule-retention": rule["retention"] = "mark_unavailable"; break;
             case "duplicate-flag": rule["metric_flags"] = new JsonArray("nonnegative", "nonnegative"); break;
             case "range": rule["value_kind"] = "boolean"; rule["minimum_value_bits"] = 0; rule["maximum_value_bits"] = 2; break;
             case "capacity": root["recreate"]!["capacity"]!["maximum_rule_count"] = 1; break;

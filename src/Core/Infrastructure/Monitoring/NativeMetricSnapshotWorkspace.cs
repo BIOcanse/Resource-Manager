@@ -1,4 +1,3 @@
-using ResourceManager.ReadWrite.Native;
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
 // Host checkpoint cadence policy; Execute retains the original workspace gate for the decision/export.
@@ -8,9 +7,7 @@ internal static class NativeMetricSnapshotWorkspaceCheckpointExtensions
         => workspace.Execute(session => {
             var header = workspace.ReadHeader();
             var catalogAdvanced = header.CatalogGeneration != workspace.PersistedCatalogGeneration;
-            var firstReadyFrame = header.Phase == (uint)NativeMetricSnapshotPhase.Ready
-                && workspace.PersistedPhase != (uint)NativeMetricSnapshotPhase.Ready;
-            if (!catalogAdvanced && !firstReadyFrame) return false;
+            if (!catalogAdvanced) return false;
             _ = workspace.ExportAndPersist(commandAt);
             return true;
         });

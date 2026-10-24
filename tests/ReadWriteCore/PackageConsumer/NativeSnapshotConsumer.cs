@@ -14,7 +14,6 @@ internal static class NativeSnapshotConsumer
         {
             StructSize = Size<NativeMetricSnapshotSourcePolicyInput>(), SourceHandle = 1,
             SourceRole = (uint)NativeMetricSnapshotSourceRole.Metrics, Priority = 100,
-            RetentionPolicy = (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable,
             CapabilityMask = 1, SemanticFingerprint = 11
         }];
         NativeMetricSnapshotMetricDefinitionInput[] rules = [new()
@@ -24,7 +23,6 @@ internal static class NativeSnapshotConsumer
             MetricKind = (uint)NativeMetricSnapshotMetricKind.CustomNumeric,
             ScopeKind = (uint)NativeMetricSnapshotScopeKind.Host,
             ValueKind = (uint)NativeMetricSnapshotValueKind.Unsigned64,
-            RetentionPolicy = (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable,
             SourcePriority = 100, MinimumValueBits = 0, MaximumValueBits = ulong.MaxValue, SemanticFingerprint = 22
         }];
         var catalog = new NativeMetricSnapshotCatalogReplaceInput

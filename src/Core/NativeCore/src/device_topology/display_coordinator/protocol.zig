@@ -828,7 +828,7 @@ pub fn validPersistenceHeader(
         header.operation_epoch != input.operation_epoch or
         header.content_generation == 0 or header.state_revision == 0 or
         header.last_refresh_epoch == 0 or header.last_success_utc_ms < 0 or
-        header.last_attempt_utc_ms < header.last_success_utc_ms or
+        header.last_attempt_utc_ms < 0 or
         header.last_monotonic_ms == 0 or
         (state_mask & ~configured_mask) != 0 or
         (header.current_source_mask & header.retained_source_mask) != 0 or

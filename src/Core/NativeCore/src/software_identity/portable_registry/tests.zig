@@ -34,6 +34,44 @@ test "capacity and resident budget are explicit and shape reconfigure is strict"
     try std.testing.expectEqual(ResultCode.ok, session.reconfigure(&hot));
 }
 
+test "command wall clock rollback preserves registry mutations and epoch protection" {
+    var config = explicitConfig();
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    const executable = "c:/portable/tool/a.exe";
+    const root = "c:/portable/tool";
+    const keys = executable ++ root;
+    var observation = observeInput(&config, 1, 1_000, 100, 10, 100, 1_000, 1_001, 101, 201, executable.len, root.len, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.observe(&observation, keys));
+    observation.operation_epoch = 2;
+    observation.command_utc_ms = 900;
+    observation.observed_at_utc_ms = 90;
+    try std.testing.expectEqual(ResultCode.ok, session.observe(&observation, keys));
+    try std.testing.expectEqual(ResultCode.stale_frame, session.observe(&observation, keys));
+    var snapshot = try captureSnapshot(session, &config, 1);
+    try std.testing.expectEqual(@as(i64, 90), snapshot.paths[0].first_observed_utc_ms);
+    try std.testing.expectEqual(@as(i64, 900), snapshot.output.last_command_utc_ms);
+
+    var confirm = confirmRootInput(&config, 3, 10, 201, root.len);
+    confirm.command_utc_ms = 800;
+    var confirmed_count: u32 = 0;
+    try std.testing.expectEqual(ResultCode.ok, session.confirmRoot(&confirm, root, &confirmed_count));
+    try std.testing.expectEqual(@as(u32, 1), confirmed_count);
+    var missing = markMissingInput(&config, 4, 10, 101);
+    missing.command_utc_ms = 700;
+    try std.testing.expectEqual(ResultCode.ok, session.markMissing(&missing));
+    const plan = try capturePlan(session, &config, 1, 4);
+    try std.testing.expectEqual(@as(u32, 1), plan.output.operation_count);
+    try std.testing.expect((plan.operations[0].flags & protocol.PersistenceFlags.delete) != 0);
+
+    var import = importInput(&config, 1, 5, 600, 0, 0);
+    try std.testing.expectEqual(ResultCode.ok, session.importPersisted(&import, &.{}, &.{}));
+    try std.testing.expectEqual(ResultCode.stale_frame, session.importPersisted(&import, &.{}, &.{}));
+    snapshot = try captureSnapshot(session, &config, 1);
+    try std.testing.expectEqual(@as(u32, 0), snapshot.output.path_count);
+    try std.testing.expectEqual(@as(i64, 600), snapshot.output.last_command_utc_ms);
+}
+
 test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     var config = explicitConfig();
     const session = try state.Session.create(&config);

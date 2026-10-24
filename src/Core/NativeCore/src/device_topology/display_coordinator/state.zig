@@ -166,11 +166,7 @@ pub const Session = struct {
         if (!protocol.validRefresh(input, &self.config)) return .abi_mismatch;
         if (self.phase == .collecting) return .invalid_argument;
         if (input.refresh_epoch <= self.last_refresh_epoch) return .stale_frame;
-        if (input.monotonic_ms <= self.last_monotonic_ms or
-            input.captured_utc_ms < self.last_attempt_utc_ms)
-        {
-            return .stale_frame;
-        }
+        if (input.monotonic_ms <= self.last_monotonic_ms) return .stale_frame;
         if (!self.canAdvanceRevision()) return .out_of_memory;
         self.working.reset();
         copyFactsAndTexts(&self.active, &self.working) catch return .out_of_memory;

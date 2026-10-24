@@ -209,8 +209,24 @@ test "persistence roundtrip revalidates raw facts and checksum" {
     try submitEmptyComplete(source, config, 1, 1, .oem_connector_profile);
     try expectCode(.ok, source.finalize(&finalizeInput(config, 1)));
 
+    // A failed refresh after a clock rollback retains the first successful data.
+    var rollback = refreshInput(config, 2);
+    rollback.captured_utc_ms = 500;
+    try expectCode(.ok, source.beginRefresh(&rollback));
+    for ([_]protocol.SourceId{ .display_config, .dxgi, .edid, .setup_api_monitor, .oem_connector_profile }) |provider| {
+        var batch = batchHeader(config, 2, 1, provider, if (provider == .display_config) .unavailable else .retained, 0, 0, 0);
+        batch.captured_utc_ms = rollback.captured_utc_ms;
+        try expectCode(.ok, source.submitSource(&batch, &.{}, &.{}, &.{}));
+    }
+    try expectCode(.unavailable, source.finalize(&finalizeInput(config, 2)));
+    var regressed = refreshInput(config, 3);
+    regressed.monotonic_ms = rollback.monotonic_ms;
+    try expectCode(.stale_frame, source.beginRefresh(&regressed));
+
     var source_snapshot = std.mem.zeroes(protocol.SnapshotOutput);
     try expectCode(.ok, source.snapshot(&source_snapshot));
+    try std.testing.expectEqual(@as(i64, 1_000), source_snapshot.last_success_utc_ms);
+    try std.testing.expectEqual(@as(i64, 500), source_snapshot.last_attempt_utc_ms);
     var header = std.mem.zeroes(protocol.PersistenceHeader);
     const facts = try std.testing.allocator.alloc(
         protocol.DisplayFact,
@@ -258,6 +274,8 @@ test "persistence roundtrip revalidates raw facts and checksum" {
         restored_snapshot.capability_count,
     );
     try std.testing.expectEqual(@as(u32, 0), restored_snapshot.diff_count);
+    try std.testing.expectEqual(source_snapshot.last_success_utc_ms, restored_snapshot.last_success_utc_ms);
+    try std.testing.expectEqual(source_snapshot.last_attempt_utc_ms, restored_snapshot.last_attempt_utc_ms);
 
     const tampered = try state.Session.create(&config);
     defer tampered.destroy();

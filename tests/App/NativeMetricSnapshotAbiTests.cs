@@ -10,9 +10,9 @@ public sealed partial class NativeMetricSnapshotAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x000A_0000U, NativeMetricSnapshotAbi.Version);
-        Assert.Equal(0x0004_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
-        Assert.Equal(0x65F57826A9339DF5UL, NativeMetricSnapshotAbi.LayoutFingerprint);
+        Assert.Equal(0x000B_0000U, NativeMetricSnapshotAbi.Version);
+        Assert.Equal(0x0005_0000U, NativeMetricSnapshotAbi.PersistenceContractVersion);
+        Assert.Equal(0xBABB9B97E9199C19UL, NativeMetricSnapshotAbi.LayoutFingerprint);
         Assert.Equal(
             NativeMetricSnapshotAbi.WireContractFingerprint,
             ComputeWireContractFingerprint());
@@ -47,6 +47,12 @@ public sealed partial class NativeMetricSnapshotAbiTests
         AssertSize<NativeMetricSnapshotSourcePersistenceOutput>(184);
         AssertSize<NativeMetricSnapshotPersistenceInput>(64);
         AssertSize<NativeMetricSnapshotPersistenceHeader>(144);
+        AssertOffset<NativeMetricSnapshotSourcePolicyInput>(nameof(NativeMetricSnapshotSourcePolicyInput.AlignmentReserved), 28);
+        AssertOffset<NativeMetricSnapshotMetricDefinitionInput>(nameof(NativeMetricSnapshotMetricDefinitionInput.AlignmentReserved), 68);
+        AssertOffset<NativeMetricSnapshotSnapshotHeader>(nameof(NativeMetricSnapshotSnapshotHeader.AlignmentReserved), 124);
+        AssertOffset<NativeMetricSnapshotSourceOutput>(nameof(NativeMetricSnapshotSourceOutput.AlignmentReserved), 108);
+        AssertOffset<NativeMetricSnapshotRuleStateOutput>(nameof(NativeMetricSnapshotRuleStateOutput.AlignmentReserved), 76);
+        AssertOffset<NativeMetricSnapshotSourcePersistenceOutput>(nameof(NativeMetricSnapshotSourcePersistenceOutput.AlignmentReserved), 172);
 
         AssertOffset<NativeMetricSnapshotConfiguration>(
             nameof(NativeMetricSnapshotConfiguration.Generation),
@@ -86,7 +92,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
             80);
         AssertOffset<NativeMetricSnapshotSnapshotHeader>(
             nameof(NativeMetricSnapshotSnapshotHeader.Flags),
-            116);
+            112);
         AssertOffset<NativeMetricSnapshotSnapshotHeader>(
             nameof(NativeMetricSnapshotSnapshotHeader.SemanticFingerprint),
             128);
@@ -113,15 +119,12 @@ public sealed partial class NativeMetricSnapshotAbiTests
         AssertOffset<NativeMetricSnapshotSourcePersistenceOutput>(
             nameof(NativeMetricSnapshotSourcePersistenceOutput.GpuInventoryCount),
             168);
-        AssertOffset<NativeMetricSnapshotSourcePersistenceOutput>(
-            nameof(NativeMetricSnapshotSourcePersistenceOutput.GpuRetainedCount),
-            172);
     }
 
     [Fact]
     public void PublishedEnumsAndMasksMatchTheZigContract()
     {
-        Assert.Equal(5U, (uint)NativeMetricSnapshotPhase.FailedRetained);
+        Assert.Equal(4U, (uint)NativeMetricSnapshotPhase.Ready);
         Assert.Equal(2U, (uint)NativeMetricSnapshotSourceRole.GpuInventory);
         Assert.Equal(5U, (uint)NativeMetricSnapshotSourceStatus.Skipped);
         Assert.Equal(3U, (uint)NativeMetricSnapshotZoneMode.Freeze);
@@ -137,7 +140,7 @@ public sealed partial class NativeMetricSnapshotAbiTests
         Assert.Equal(3U, (uint)NativeMetricSnapshotValueKind.Unsigned64);
         Assert.Equal(0x0FU, (uint)NativeMetricSnapshotMetricFlags.Known);
         Assert.Equal(0x1FU, (uint)NativeMetricSnapshotSourceResetReason.Known);
-        Assert.Equal(0x1FU, (uint)NativeMetricSnapshotSnapshotFlags.Known);
+        Assert.Equal(0x1BU, (uint)NativeMetricSnapshotSnapshotFlags.Known);
         Assert.Equal(0x07UL, (ulong)NativeMetricSnapshotObservationValidity.Known);
         Assert.Equal(0x0FUL, (ulong)NativeMetricSnapshotCpuCounterValidity.Required);
         Assert.Equal(0x03U, (uint)NativeMetricSnapshotMetricPlanFlags.Known);
@@ -191,8 +194,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
                 SourceHandle = 1,
                 SourceRole = (uint)NativeMetricSnapshotSourceRole.Metrics,
                 Priority = 100,
-                RetentionPolicy = (uint)
-                    NativeMetricSnapshotRetentionPolicy.RetainLastGood,
                 CapabilityMask = 1,
                 SemanticFingerprint = 11
             }
@@ -212,8 +213,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
                 MetricKind = (uint)NativeMetricSnapshotMetricKind.CpuUsage,
                 ScopeKind = (uint)NativeMetricSnapshotScopeKind.Cpu,
                 ValueKind = (uint)NativeMetricSnapshotValueKind.Float64,
-                RetentionPolicy = (uint)
-                    NativeMetricSnapshotRetentionPolicy.RetainLastGood,
                 SourcePriority = 100,
                 MinimumValueBits = (ulong)BitConverter.DoubleToInt64Bits(0),
                 MaximumValueBits = (ulong)BitConverter.DoubleToInt64Bits(100),
@@ -351,7 +350,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotPhase.CatalogReady,
             (uint)NativeMetricSnapshotPhase.CompletionOpen,
             (uint)NativeMetricSnapshotPhase.Ready,
-            (uint)NativeMetricSnapshotPhase.FailedRetained,
             (uint)NativeMetricSnapshotSourceRole.Metrics,
             (uint)NativeMetricSnapshotSourceRole.GpuInventory,
             (uint)NativeMetricSnapshotSourceStatus.Complete,
@@ -370,16 +368,12 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotObservationStatus.Unsupported,
             (uint)NativeMetricSnapshotObservationStatus.Skipped,
             (uint)NativeMetricSnapshotMetricStatus.Current,
-            (uint)NativeMetricSnapshotMetricStatus.Retained,
             (uint)NativeMetricSnapshotMetricStatus.Unavailable,
             (uint)NativeMetricSnapshotMetricStatus.Unsupported,
             (uint)NativeMetricSnapshotMetricStatus.Skipped,
             (uint)NativeMetricSnapshotInventoryStatus.Current,
-            (uint)NativeMetricSnapshotInventoryStatus.Retained,
             (uint)NativeMetricSnapshotInventoryStatus.Unavailable,
             (uint)NativeMetricSnapshotInventoryStatus.Unsupported,
-            (uint)NativeMetricSnapshotRetentionPolicy.RetainLastGood,
-            (uint)NativeMetricSnapshotRetentionPolicy.MarkUnavailable,
             (uint)NativeMetricSnapshotMetricKind.CpuUsage,
             (uint)NativeMetricSnapshotMetricKind.CpuFrequency,
             (uint)NativeMetricSnapshotMetricKind.CpuSensor,
@@ -426,7 +420,6 @@ public sealed partial class NativeMetricSnapshotAbiTests
             (uint)NativeMetricSnapshotSourceResetReason.Known,
             (uint)NativeMetricSnapshotSnapshotFlags.CatalogLoaded,
             (uint)NativeMetricSnapshotSnapshotFlags.CommittedData,
-            (uint)NativeMetricSnapshotSnapshotFlags.RetainedData,
             (uint)NativeMetricSnapshotSnapshotFlags.GpuInventoryPresent,
             (uint)NativeMetricSnapshotSnapshotFlags.CompletionOpen,
             (uint)NativeMetricSnapshotSnapshotFlags.Known,

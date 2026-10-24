@@ -272,8 +272,6 @@ public static class NativeMetricSnapshotCommittedProjection
         => status switch
         {
             SamplingObservationStatus.Current => null,
-            SamplingObservationStatus.RetainedLastGood =>
-                "hardware-native-retained",
             SamplingObservationStatus.Unavailable =>
                 "hardware-native-unavailable",
             SamplingObservationStatus.NotRequested =>
@@ -637,8 +635,7 @@ public static class NativeMetricSnapshotCommittedProjection
         };
 
     private static bool IsAvailable(NativeMetricSnapshotMetricStatus status)
-        => status is NativeMetricSnapshotMetricStatus.Current
-            or NativeMetricSnapshotMetricStatus.Retained;
+        => status is NativeMetricSnapshotMetricStatus.Current;
 
     private static SamplingObservationStatus Status(
         NativeMetricSnapshotMetricStatus status)
@@ -646,8 +643,6 @@ public static class NativeMetricSnapshotCommittedProjection
         {
             NativeMetricSnapshotMetricStatus.Current =>
                 SamplingObservationStatus.Current,
-            NativeMetricSnapshotMetricStatus.Retained =>
-                SamplingObservationStatus.RetainedLastGood,
             NativeMetricSnapshotMetricStatus.Unsupported =>
                 SamplingObservationStatus.Unsupported,
             NativeMetricSnapshotMetricStatus.Skipped =>
@@ -679,10 +674,6 @@ public static class NativeMetricSnapshotCommittedProjection
         {
             return SamplingObservationStatus.Current;
         }
-        if (IsAvailable(first) && IsAvailable(second))
-        {
-            return SamplingObservationStatus.RetainedLastGood;
-        }
         if (first == NativeMetricSnapshotMetricStatus.Unsupported
             && second == NativeMetricSnapshotMetricStatus.Unsupported)
         {
@@ -701,10 +692,6 @@ public static class NativeMetricSnapshotCommittedProjection
             && third == NativeMetricSnapshotMetricStatus.Current)
         {
             return SamplingObservationStatus.Current;
-        }
-        if (IsAvailable(first) && IsAvailable(second) && IsAvailable(third))
-        {
-            return SamplingObservationStatus.RetainedLastGood;
         }
         if (first == NativeMetricSnapshotMetricStatus.Unsupported
             && second == NativeMetricSnapshotMetricStatus.Unsupported
@@ -733,8 +720,7 @@ public static class NativeMetricSnapshotCommittedProjection
         NativeMetricSnapshotCommittedFrame frame,
         NativeMetricSnapshotMetricStatus status)
     {
-        if (status is NativeMetricSnapshotMetricStatus.Current
-            or NativeMetricSnapshotMetricStatus.Retained)
+        if (status is NativeMetricSnapshotMetricStatus.Current)
         {
             return CpuMetricObservationStatus.Complete;
         }

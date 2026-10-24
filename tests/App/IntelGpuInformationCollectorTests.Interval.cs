@@ -79,12 +79,12 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Theory]
-    [InlineData(16U, 1U, 2U, true)] [InlineData(17U, 1U, 2U, true)]
-    [InlineData(16U, 3U, 2U, false)] [InlineData(17U, 1U, 1U, false)]
-    public void FloatingCounterKindsRequireTypedFloatAndUnavailableRetention(uint kind, uint valueKind, uint retention, bool accepted)
+    [InlineData(16U, 1U, true)] [InlineData(17U, 1U, true)]
+    [InlineData(16U, 3U, false)] [InlineData(17U, 3U, false)]
+    public void FloatingCounterKindsRequireTypedFloat(uint kind, uint valueKind, bool accepted)
     {
         var rule = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot.HotPublish.RuleTemplates.Single(template => template.MetricKind == 14);
-        Assert.Equal(accepted, (rule with { MetricKind = kind, ValueKind = valueKind, RetentionPolicy = retention }).IsPublished);
+        Assert.Equal(accepted, (rule with { MetricKind = kind, ValueKind = valueKind }).IsPublished);
     }
 
     [Theory]
@@ -145,13 +145,13 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public void FloatingPersistenceRestoresDisplayButNeverCounterBaseline()
+    public void RestartClearsFloatingDisplayAndCounterBaseline()
     {
         var path = Path.Combine(Path.GetTempPath(), $"floating-recovery-{Guid.NewGuid():N}.bin");
         try
         {
             using (var old = new FloatingWorkspace(path: path)) { old.Publish(new(0, 0)); Assert.Equal(0.25, old.Publish(new(0.5, 2))); Assert.True(old.Workspace.PersistRecoveryCheckpointIfAdvanced(old.NextTime())); }
-            using var next = new FloatingWorkspace(path: path, sequence: 100); Assert.Equal(0.25, next.Value());
+            using var next = new FloatingWorkspace(path: path, sequence: 100); Assert.Null(next.Value());
             Assert.Null(next.Publish(new(100, 100))); Assert.Equal(0.25, next.Publish(new(100.5, 102)));
         }
         finally { File.Delete(path); }
