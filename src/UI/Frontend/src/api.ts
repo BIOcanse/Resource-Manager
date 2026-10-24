@@ -49,6 +49,7 @@ import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
 import { decodeHostManagerSmartCoordinatorStatus } from
   "./data/optimization/hostManagerSmartStatusSource.ts";
 import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
+import { reportRuleSettingsDecoder } from "./data/appSettings/reportRuleSettingsDecoder.ts";
 import { uiText } from "./text.ts";
 import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
 
@@ -77,6 +78,10 @@ export async function postJson<T>(
     fallbackError,
     ...options
   });
+}
+
+export async function getReportRuleSettings(signal?: AbortSignal) {
+  return reportRuleSettingsDecoder.decode(await getJson<unknown>("/api/settings/report-rules", { signal }));
 }
 
 export async function getMetricCatalog() {

@@ -20,13 +20,15 @@ internal static class HostManagerTestPlanFactory
 
     public static AppSettingsUpdateResult CreateSettingsInput(
         AppPerformanceSettings? performance = null,
-        AppLocalPublicServiceSettings? publicService = null)
+        AppLocalPublicServiceSettings? publicService = null,
+        AppReportSettings? reports = null)
     {
         var defaults = AppSettingsDefaults.Create();
         var settings = defaults with
         {
             Performance = performance ?? defaults.Performance,
-            PublicService = publicService ?? defaults.PublicService
+            PublicService = publicService ?? defaults.PublicService,
+            Reports = reports ?? defaults.Reports
         };
         var digest = Convert.ToHexString(SHA256.HashData(
             JsonSerializer.SerializeToUtf8Bytes(settings)));
@@ -62,7 +64,8 @@ internal static class HostManagerTestPlanFactory
         AppLocalPublicServiceSettings? publicService = null,
         Action<JsonObject>? editFreedomPoints = null,
         CpuTopologySnapshot? cpuTopology = null,
-        CompiledCpuScoringPlan? cpuScoring = null)
+        CompiledCpuScoringPlan? cpuScoring = null,
+        AppReportSettings? reports = null)
     {
         using var stream = typeof(StrictHostManagerProfileLoader).Assembly
             .GetManifestResourceStream("ResourceManager.Configuration.HostManager.default.json")
@@ -82,7 +85,7 @@ internal static class HostManagerTestPlanFactory
         return new HostManagerPlanCompiler()
             .Compile(
                 loaded,
-                CreateSettingsInput(performance, publicService),
+                CreateSettingsInput(performance, publicService, reports),
                 planEpoch,
                 cpuTopology ?? CreateCpuTopology(1),
                 cpuScoring ?? CreateCpuScoring(cpuTopology ?? CreateCpuTopology(1)),

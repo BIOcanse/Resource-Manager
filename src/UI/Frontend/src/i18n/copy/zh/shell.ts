@@ -22,6 +22,54 @@ export const zhShellCopy = {
     diskUsage: "磁盘占用",
     control: "控制面"
   },
+  reportRules: {
+    "title": "报告判定",
+    "note": "修改一条规则后，该规则的计数和已激活报告会清除，并按新值重新判断；信任记录保留。",
+    "strayProcessTitle": "疑似游离程序",
+    "backgroundMemoryTitle": "后台内存占用较高",
+    "loading": "正在读取判定规则…",
+    "loadFailed": "无法读取判定规则。",
+    "retry": "重新读取",
+    "defaultValue": "默认",
+    "reset": "恢复默认",
+    "executableNamesHelp": "每行一个可执行文件名，不带扩展名（写 node，不写 node.exe）；空名单将不生成报告。",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU 温度",
+      "cpu_throttle_usage": "CPU 使用率",
+      "cpu_throttle_frequency": "CPU 频率比例",
+      "interrupt_longest_event": "最长中断时间",
+      "interrupt_cpu_share": "中断 CPU 占用",
+      "background_memory_share": "后台内存占比",
+      "background_memory_bytes": "后台内存大小",
+      "stray_process_memory": "进程内存大小",
+      "stray_process_idle": "进程空闲时长"
+    },
+    "fields": {
+      "activationThreshold": "激活线",
+      "clearThreshold": "解除线",
+      "requiredConsecutiveHits": "连续命中次数",
+      "requiredConsecutiveMisses": "连续未命中次数",
+      "zeroActivityThreshold": "视为无活动的上限",
+      "executableNames": "运行型工具名单"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "分钟",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "次"
+    },
+    "reasons": {
+      "unknown-rule": "规则不存在。",
+      "duplicate-rule": "规则重复。",
+      "not-editable": "此字段不可编辑。",
+      "out-of-range": "数值超出允许范围。",
+      "clear-on-wrong-side": "解除线必须在激活线的安全一侧。",
+      "invalid-executable-names": "工具名单无效：最多 256 项，每项 1–260 字符，不能含 /、\\、:，且不能重复。"
+    }
+  },
   control: {
     reassertionInterval: "重新应用间隔（秒）",
     stateUnavailable: "尚未读到权威控制设置，暂时不能应用。",

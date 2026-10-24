@@ -625,6 +625,7 @@ public sealed class AppSettingsMigratorTests
           },
           "update": { "autoUpdateEnabled": false },
           "control": { "enabled": true, "reassertionIntervalSeconds": 120 },
+          "reports": { "ruleOverrides": [] },
           "debug": {
             "debugModeEnabled": false,
             "loopbackAuthenticationDisabled": false,

@@ -68,6 +68,12 @@ internal sealed class HostManagerReportCoordinatorRecreateProfile
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 internal sealed class HostManagerReportCoordinatorRuleProfile
 {
+    // Stable key for user overrides in application settings. It names the rule and is not
+    // part of the rule generation, so naming a rule never resets its state.
+    [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+
     [JsonPropertyName("executable_names")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? ExecutableNames { get; init; }

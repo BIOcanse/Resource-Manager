@@ -513,6 +513,7 @@
       },
       "rules": [
         {
+          "name": "cpu_throttle_temperature",
           "fact_kind": 1,
           "rule_handle": 1031,
           "source_handle": 9,
@@ -538,6 +539,7 @@
           "predicate_count": 3
         },
         {
+          "name": "cpu_throttle_usage",
           "fact_kind": 2,
           "rule_handle": 1032,
           "source_handle": 9,
@@ -563,6 +565,7 @@
           "predicate_count": 3
         },
         {
+          "name": "cpu_throttle_frequency",
           "fact_kind": 3,
           "rule_handle": 1033,
           "source_handle": 9,
@@ -588,6 +591,7 @@
           "predicate_count": 3
         },
         {
+          "name": "interrupt_longest_event",
           "fact_kind": 4,
           "rule_handle": 1034,
           "source_handle": 12,
@@ -613,6 +617,7 @@
           "predicate_count": 1
         },
         {
+          "name": "interrupt_cpu_share",
           "fact_kind": 6,
           "rule_handle": 1036,
           "source_handle": 12,
@@ -638,6 +643,7 @@
           "predicate_count": 1
         },
         {
+          "name": "background_memory_share",
           "fact_kind": 7,
           "rule_handle": 1037,
           "source_handle": 14,
@@ -663,6 +669,7 @@
           "predicate_count": 1
         },
         {
+          "name": "background_memory_bytes",
           "fact_kind": 8,
           "rule_handle": 1038,
           "source_handle": 14,
@@ -688,6 +695,7 @@
           "predicate_count": 1
         },
         {
+          "name": "stray_process_memory",
           "fact_kind": 9,
           "rule_handle": 1039,
           "source_handle": 15,
@@ -713,6 +721,7 @@
           "predicate_count": 2
         },
         {
+          "name": "stray_process_idle",
           "fact_kind": 10,
           "rule_handle": 1040,
           "source_handle": 15,

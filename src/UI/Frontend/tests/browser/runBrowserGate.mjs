@@ -1,3 +1,4 @@
+import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
 import { spawn } from "node:child_process";
@@ -48,6 +49,7 @@ import localizationJourney from "./localizationJourney.js";
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
   ["frontend-audit", frontendAuditJourney],
+  ["report-rule-settings", reportRuleSettingsJourney],
   ["localization", localizationJourney],
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],

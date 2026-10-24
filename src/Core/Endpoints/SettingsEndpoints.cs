@@ -25,6 +25,7 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Infrastructure.Optimization.Reports;
 using ResourceManager.App.Infrastructure.ResourceTable;
 
 namespace ResourceManager.App.Endpoints;
@@ -39,6 +40,27 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             return Results.Ok(await settingsStore.LoadReadOnlyAsync(cancellationToken));
         }).AllowAnonymous();
+
+        // What the 「报告判定」 settings section may edit, from the current runtime plan.
+        app.MapGet("/api/settings/report-rules", (IRuntimePlanProvider plans) =>
+            Results.Ok(new
+            {
+                Rules = plans.Current.HostManager.ReportCoordinator.RuleSettings.Select(static rule => new
+                {
+                    rule.Name,
+                    ReportType = HostManagerReportPresentation.ReportType(rule.FactKind),
+                    Comparison = rule.Comparison == 1 ? "atOrAbove" : "atOrBelow",
+                    rule.DisplayUnit,
+                    rule.Scale,
+                    rule.Step,
+                    rule.ThresholdMinimum,
+                    rule.ThresholdMaximum,
+                    rule.CountMaximum,
+                    rule.ZeroActivityMaximum,
+                    rule.EditableFields,
+                    rule.Defaults
+                })
+            })).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPut("/api/settings/app", async (

@@ -180,7 +180,7 @@ internal static class HostManagerReportPresentation
 
     private static bool IsStray(HostManagerReportFactKind kind) => HostManagerStrayProcessReportFactProjector.Supports(kind);
 
-    private static string ReportType(HostManagerReportFactKind kind)
+    internal static string ReportType(HostManagerReportFactKind kind)
         => IsStray(kind) ? OptimizationReportTypes.SuspectedStrayProcess : IsSoftwareMemory(kind)
             ? OptimizationReportTypes.BackgroundHighUsage
             : kind is HostManagerReportFactKind.CpuTemperatureCelsius

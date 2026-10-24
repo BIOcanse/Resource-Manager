@@ -187,9 +187,24 @@ public sealed record AppSettings(
     AppLocalPublicServiceSettings PublicService,
     AppAiModelServiceSettings AiModelService,
     AppUpdateSettings? Update = null,
-    AppHardwareControlSettings? Control = null);
+    AppHardwareControlSettings? Control = null,
+    AppReportSettings? Reports = null);
 
 public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120);
+
+// 用户对报告规则判定值的修改，按规则的稳定名字（default.json 的 name）对应。
+// 字段为 null 表示沿用默认值；数值按规则自身的单位（°C、%、ms、字节）。
+// 合并与校验由运行计划编译器负责，见 docs/optimization_reports.md。
+public sealed record AppReportSettings(IReadOnlyList<AppReportRuleOverride> RuleOverrides);
+
+public sealed record AppReportRuleOverride(
+    string Rule,
+    double? ActivationThreshold = null,
+    double? ClearThreshold = null,
+    uint? RequiredConsecutiveHits = null,
+    uint? RequiredConsecutiveMisses = null,
+    double? ZeroActivityThreshold = null,
+    IReadOnlyList<string>? ExecutableNames = null);
 
 public sealed record AppUpdateSettings(bool AutoUpdateEnabled);
 

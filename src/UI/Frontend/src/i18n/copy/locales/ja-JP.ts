@@ -29,6 +29,54 @@ const jaJpAppCopy: AppCopy = {
     diskUsage: "ディスク使用状況",
     control: "制御"
   },
+  reportRules: {
+    "title": "レポート判定",
+    "note": "ルールを変更すると、そのルールのカウントと有効なレポートを消去し、新しい値で判定し直します。信頼済みの登録は保持されます。",
+    "strayProcessTitle": "孤立した疑いのあるプロセス",
+    "backgroundMemoryTitle": "バックグラウンドのメモリ使用量が多い",
+    "loading": "判定ルールを読み込み中…",
+    "loadFailed": "判定ルールを読み込めませんでした。",
+    "retry": "再読み込み",
+    "defaultValue": "既定値",
+    "reset": "既定値に戻す",
+    "executableNamesHelp": "実行ファイル名を拡張子なしで1行に1つ入力します（node.exe ではなく node）。空のリストではレポートは生成されません。",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU 温度",
+      "cpu_throttle_usage": "CPU 使用率",
+      "cpu_throttle_frequency": "CPU 周波数比",
+      "interrupt_longest_event": "最長割り込み時間",
+      "interrupt_cpu_share": "割り込みの CPU 使用率",
+      "background_memory_share": "バックグラウンドメモリ比率",
+      "background_memory_bytes": "バックグラウンドメモリ容量",
+      "stray_process_memory": "プロセスメモリ容量",
+      "stray_process_idle": "プロセスのアイドル時間"
+    },
+    "fields": {
+      "activationThreshold": "有効化しきい値",
+      "clearThreshold": "解除しきい値",
+      "requiredConsecutiveHits": "連続検出回数",
+      "requiredConsecutiveMisses": "連続未検出回数",
+      "zeroActivityThreshold": "活動なしとみなす上限",
+      "executableNames": "実行ツール一覧"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "分",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "回"
+    },
+    "reasons": {
+      "unknown-rule": "不明なルールです。",
+      "duplicate-rule": "ルールが重複しています。",
+      "not-editable": "この項目は編集できません。",
+      "out-of-range": "値が許容範囲外です。",
+      "clear-on-wrong-side": "解除しきい値は有効化しきい値の安全側に設定してください。",
+      "invalid-executable-names": "ツール一覧が無効です。最大256件、各1～260文字で、/、\\、: および大文字小文字を区別しない重複は使用できません。"
+    }
+  },
   control: {
     reassertionInterval: "再適用の間隔（秒）",
     stateUnavailable: "確定済みの制御設定を読み取れないため、適用を停止しています。",

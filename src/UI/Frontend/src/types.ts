@@ -212,6 +212,7 @@ export interface DashboardSettingsResult {
 }
 
 export interface AppSettings {
+  reports?: AppReportSettings;
   version?: string;
   control?: { reassertionIntervalSeconds: number };
   performance?: AppPerformanceSettings;
@@ -222,6 +223,33 @@ export interface AppSettings {
   aiModelService?: AppAiModelServiceSettings;
   update?: AppUpdateSettings;
 }
+
+export interface ReportRuleValues {
+  activationThreshold: number | null;
+  clearThreshold: number | null;
+  requiredConsecutiveHits: number | null;
+  requiredConsecutiveMisses: number | null;
+  zeroActivityThreshold: number | null;
+  executableNames: string[] | null;
+}
+export type ReportRuleField = keyof ReportRuleValues;
+export interface ReportRuleOverride extends ReportRuleValues { rule: string; }
+export interface AppReportSettings { ruleOverrides: ReportRuleOverride[]; }
+export interface ReportRuleSetting {
+  name: string;
+  reportType: string;
+  comparison: "atOrAbove" | "atOrBelow";
+  displayUnit: "celsius" | "percent" | "milliseconds" | "minutes" | "mebibytes" | "gibibytes";
+  scale: number;
+  step: number;
+  thresholdMinimum: number;
+  thresholdMaximum: number;
+  countMaximum: number;
+  zeroActivityMaximum: number | null;
+  editableFields: ReportRuleField[];
+  defaults: ReportRuleValues;
+}
+export interface ReportRuleSettingsResponse { rules: ReportRuleSetting[]; }
 
 export interface AppUpdateSettings {
   autoUpdateEnabled: boolean;

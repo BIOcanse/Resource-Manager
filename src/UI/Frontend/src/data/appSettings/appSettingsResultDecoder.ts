@@ -16,6 +16,8 @@ import {
   ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
+import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
+
 export type AppSettingsApplicationDisposition = NonNullable<
   AppSettingsResult["runtimeApplicationDisposition"]
 >;
@@ -64,6 +66,10 @@ export const appSettingsResultDecoder =
         if (interval < 1 || interval > 86400) {
           throw new ResponseDecodeError("$.settings.control.reassertionIntervalSeconds", "Expected 1–86400 seconds");
         }
+      }
+
+      if (settingsRecord.reports !== undefined) {
+        decodeReportSettings(settingsRecord.reports, "$.settings.reports");
       }
 
       const result: AppSettingsResult = {

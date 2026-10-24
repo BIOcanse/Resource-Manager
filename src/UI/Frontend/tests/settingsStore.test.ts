@@ -1,3 +1,5 @@
+import { updateReportRuleField } from "../src/features/settings/reportRuleSettingsModel.ts";
+import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import assert from "node:assert/strict";
 import { createComputed, createRoot } from "solid-js";
 import type { CommittedAppSettingsResult } from "../src/data/appSettings/appSettingsResultDecoder.ts";
@@ -308,9 +310,9 @@ await new Promise<void>((resolve, reject) => {
       store.updateTheme("dark");
       const duplicate = store.saveDraft();
       assert.equal(pending.length, 1, "A saving request must not be duplicated");
-      const committed = result("s2", "normal", "system");
+      const committed = { ...result("s2", "normal", "system"),
+        runtimeApplicationDisposition: "committedWithDeliveryFailures" as const };
       committed.settings.systemIntegration!.autoStartEnabled = true;
-      committed.runtimeApplicationDisposition = "committedWithDeliveryFailures";
       pending.shift()!(committed);
       await saved;
       await duplicate;
@@ -440,3 +442,56 @@ function snapshot(
     capturedAt: null
   };
 }
+
+// Report overrides replace the array, retain unrelated fields and rules, and keep rejected drafts.
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      let rejected = true;
+      const patches: Array<{ changes: { reports: AppSettings["reports"] } }> = [];
+      const store = createSettingsStore({ source, requestClient: {
+        request: async <T>(descriptor: { request?: { body?: unknown } }) => {
+          const patch = JSON.parse(String(descriptor.request?.body));
+          patches.push(patch);
+          if (rejected) throw new RequestProblem("rejected", {
+            kind: "http", retryable: false, status: 409,
+            payload: { runtimeApplicationDisposition: "rejectedBeforeCommit",
+              runtimeFailureCode: "report-rule-invalid:cpu_throttle_temperature:activationThreshold:out-of-range" },
+            attempt: { id: "1", sequence: 1, key: "app.settings.patch", decoderId: "app.settings.result.v1",
+              method: "PATCH", backendEpoch: null, startedAt: 0, finishedAt: 1, durationMs: 1 }
+          });
+          return { settings: applySettingsPatch(store.settings(), patch.changes), revision: "r2",
+            runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
+        }
+      } as never });
+      source.publishReady(result("r1", "normal", "system"));
+      assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "activationThreshold", 92));
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "stray_process_idle", "executableNames", []));
+      await store.saveDraft();
+      assert.equal(store.saveState(), "error");
+      assert.equal(store.runtimeFailureCode(), "report-rule-invalid:cpu_throttle_temperature:activationThreshold:out-of-range");
+      assert.equal(store.draftSettings().reports!.ruleOverrides[0].activationThreshold, 92);
+      assert.deepEqual(store.settings().reports!.ruleOverrides, []);
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "clearThreshold", 84));
+      assert.equal(store.runtimeFailureCode(), null, "An edit clears the previous rejection");
+      await store.saveDraft();
+      assert.notEqual(store.runtimeFailureCode(), null);
+      rejected = false;
+      const saving = store.saveDraft();
+      assert.equal(store.runtimeFailureCode(), null, "A save clears the previous rejection");
+      await saving;
+      assert.equal(patches.at(-1)!.changes.reports!.ruleOverrides.length, 2);
+      assert.equal(store.isDirty(), false);
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "activationThreshold", null));
+      assert.equal(store.draftSettings().reports!.ruleOverrides[0].clearThreshold, 84);
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "clearThreshold", null));
+      assert.deepEqual(store.draftSettings().reports!.ruleOverrides.map(entry => entry.rule), ["stray_process_idle"]);
+      assert.deepEqual(store.draftSettings().reports!.ruleOverrides[0].executableNames, []);
+      store.resetDraftToDefaults();
+      assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});

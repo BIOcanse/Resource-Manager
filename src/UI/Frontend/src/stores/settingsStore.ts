@@ -63,6 +63,8 @@ import { normalizeEditableHotkeys } from "../features/settings/editableHotkeys.t
 import { normalizeOptimizationModeValue } from "../features/settings/optimizationMode.ts";
 import { applySettingsPatch, createSettingsPatch } from "../features/settings/settingsPatch.ts";
 import { uiText } from "../text.ts";
+import { normalizeReportSettings } from "../features/settings/reportRuleSettingsModel.ts";
+import { RequestProblem } from "../frontendRuntime/request/RequestProblem.ts";
 
 const prebootAppearanceStorageKey = "resource-manager:appearance";
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
@@ -90,6 +92,7 @@ export interface SettingsStore {
   loadState: Accessor<"loading" | "refreshing" | "ready" | "stale" | "error">;
   saveState: Accessor<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">;
   runtimeCapabilityConstrainedPaths: Accessor<readonly string[]>;
+  runtimeFailureCode: Accessor<string | null>;
   activeSection: Accessor<SettingsSection>;
   setActiveSection: Setter<SettingsSection>;
   refresh: () => Promise<void>;
@@ -97,6 +100,7 @@ export interface SettingsStore {
   reapply: () => Promise<void>;
   discardDraftChanges: () => void;
   resetDraftToDefaults: () => void;
+  updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updateSmartMonitoringMode: (mode: AppAdaptiveBooleanMode) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
@@ -145,6 +149,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   const [loadState, setLoadState] = createSignal<"loading" | "refreshing" | "ready" | "stale" | "error">("loading");
   const [saveState, setSaveState] = createSignal<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">("idle");
   const [runtimeCapabilityConstrainedPaths, setRuntimeCapabilityConstrainedPaths] = createSignal<readonly string[]>([]);
+  const [runtimeFailureCode, setRuntimeFailureCode] = createSignal<string | null>(null);
   const [activeSection, setActiveSection] = createSignal<SettingsSection>("performance");
   const isDirty = createMemo(() => revision() !== null
     && !areSettingsEqual(settings(), draftSettings()));
@@ -168,6 +173,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       if (snapshot.status === "ready" && snapshot.data) {
         setSaveState("idle");
         setRuntimeCapabilityConstrainedPaths([]);
+        setRuntimeFailureCode(null);
       }
     } finally {
       nextProjectionMode = null;
@@ -182,6 +188,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setDraftSettings(next);
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
+    setRuntimeFailureCode(null);
   }
 
   async function saveDraft() {
@@ -189,6 +196,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     if (loadState() !== "ready" || !expectedRevision || saveState() === "conflict" || saveState() === "saving") {
       return;
     }
+    setRuntimeFailureCode(null);
     const submittedDraft = draftSettings();
     const next = alignRuntimeOwnedSettings(
       normalizeAppSettings(submittedDraft),
@@ -209,6 +217,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         changes);
       const outcome = classifySettingsApplicationOutcome(result.runtimeApplicationDisposition);
       if (outcome === "rejected") {
+        setRuntimeFailureCode(result.runtimeFailureCode ?? null);
         throw new Error(uiText.misc.settingsNotCommitted);
       }
       const newerEdits = createSettingsPatch(
@@ -233,6 +242,11 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         acceptCommitted(error.result, "preserve-draft");
         setSaveState("conflict");
         return;
+      }
+      if (error instanceof RequestProblem && error.status === 409) {
+        const payload = error.payload as { runtimeApplicationDisposition?: unknown; runtimeFailureCode?: unknown } | null;
+        if (payload?.runtimeApplicationDisposition === "rejectedBeforeCommit"
+          && typeof payload.runtimeFailureCode === "string") setRuntimeFailureCode(payload.runtimeFailureCode);
       }
       setSaveState("error");
     }
@@ -330,12 +344,14 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setDraftSettings(defaultAppSettings());
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
+    setRuntimeFailureCode(null);
   }
 
   function discardDraftChanges() {
     setDraftSettings(normalizeAppSettings(settings()));
     setSaveState((state) => state === "saving" ? state : "idle");
     setRuntimeCapabilityConstrainedPaths([]);
+    setRuntimeFailureCode(null);
   }
 
   function updatePerformance(updater: (performance: AppPerformanceSettings) => AppPerformanceSettings) {
@@ -385,6 +401,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     loadState,
     saveState,
     runtimeCapabilityConstrainedPaths,
+    runtimeFailureCode,
     activeSection,
     setActiveSection,
     refresh,
@@ -392,6 +409,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     reapply,
     discardDraftChanges,
     resetDraftToDefaults,
+    updateReports: (reports) => updateDraft(current => ({ ...current, reports })),
     updateControl: (control) => updateDraft(current => ({ ...current, control })),
     updateSmartMonitoringMode: (mode) => updatePerformance((performance) => ({
       ...performance,
@@ -599,6 +617,7 @@ export function defaultAppSettings(): AppSettings {
   return {
     version: "1.0.28",
     control: { reassertionIntervalSeconds: 120 },
+    reports: { ruleOverrides: [] },
     performance: {
       optimizationMode: "normal",
       preciseGpuPlacementEnabled: false,
@@ -658,6 +677,7 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
+    reports: normalizeReportSettings(settings?.reports),
     // 只列出当前模型里的字段：旧文件里已删除的键（旧布尔副本、隐藏时刷新、三项无读取方的刷新频率等）在这里自然丢弃。
     performance: {
       optimizationMode: normalizeOptimizationMode(settings?.performance?.optimizationMode),
