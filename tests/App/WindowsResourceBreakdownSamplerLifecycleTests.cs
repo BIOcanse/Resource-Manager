@@ -141,6 +141,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(Environment.ProcessId, process.ProcessId);
         Assert.Equal(Environment.ProcessPath, process.ExecutablePath);
         Assert.True(process.ProcessStartKey > 0);
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        Assert.Equal(identity.User!.Value, Assert.Single(catalogProvider.RequestedWindowsSids));
         Assert.Equal(catalogProvider.CaptureCount, catalogProvider.ReturnedLeases);
     }
 
@@ -934,11 +936,14 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 
         internal int CaptureCount => Volatile.Read(ref captureCount);
         internal int ReturnedLeases => Volatile.Read(ref returnedLeases);
+        internal List<string?> RequestedWindowsSids { get; } = [];
 
         public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
+            string? windowsSid,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            RequestedWindowsSids.Add(windowsSid);
             Interlocked.Increment(ref captureCount);
             return Task.FromResult(new RuntimeProcessAttributionCatalogLease(catalog,
                 () => Interlocked.Increment(ref returnedLeases)));
@@ -964,6 +969,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         internal int CaptureCount => Volatile.Read(ref captureCount);
 
         public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
+            string? windowsSid,
             CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref captureCount);

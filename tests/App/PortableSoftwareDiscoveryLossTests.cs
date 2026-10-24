@@ -171,7 +171,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
         internal int ActiveReaders;
         internal int ReturnedLeases;
         public long SoftwareSnapshotGeneration => 0;
-        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(CancellationToken cancellationToken)
+        public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref ActiveReaders);

@@ -42,20 +42,24 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         => resolver.Resolve(process);
 
     public RuntimeProcessAttributionBatch MatchBatch(IReadOnlyList<RuntimeProcessIdentity> processes)
+        => MatchBatch(processes, _ => this);
+
+    internal static RuntimeProcessAttributionBatch MatchBatch(IReadOnlyList<RuntimeProcessIdentity> processes,
+        Func<RuntimeProcessIdentity, RuntimeProcessAttributionPipeline> selectPipeline)
     {
         var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
         var sources = new Dictionary<int, uint>();
         var byId = processes.ToDictionary(process => process.ProcessId);
         foreach (var process in processes)
         {
-            resolved[process.ProcessId] = resolver.Resolve(process, out var source);
+            resolved[process.ProcessId] = selectPipeline(process).resolver.Resolve(process, out var source);
             sources[process.ProcessId] = source;
         }
         var owners = new Dictionary<int, int>();
         foreach (var process in processes.OrderBy(process => process.StartKey))
         {
             if (sources[process.ProcessId] is NativeRuntimeAttributionSources.Adapted
-                or NativeRuntimeAttributionSources.Controlled or NativeRuntimeAttributionSources.ResourceManagerSelf
+                or NativeRuntimeAttributionSources.Controlled
                 or NativeRuntimeAttributionSources.Service) continue;
             var current = process;
             var visited = new HashSet<int> { current.ProcessId };
@@ -66,13 +70,15 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             {
                 current = parent;
                 if (IsHelper(parent) && sources[parentId] is not (NativeRuntimeAttributionSources.Adapted
-                    or NativeRuntimeAttributionSources.Controlled or NativeRuntimeAttributionSources.ResourceManagerSelf
+                    or NativeRuntimeAttributionSources.Controlled
                     or NativeRuntimeAttributionSources.Service)) continue;
                 if (WebViewHostName(process.CommandLine) is { } hostName
                     && !Path.GetFileName(parent.ExecutablePath ?? parent.Name)
                         .Equals(hostName, StringComparison.OrdinalIgnoreCase)) break;
                 var owner = resolved[parentId];
                 if (owner.Kind == SoftwareKinds.Unattributed) break;
+                if (sources[process.ProcessId] == NativeRuntimeAttributionSources.ResourceManagerSelf
+                    && owner.Id != RuntimeAttributionIds.ResourceManagerSelf) break;
                 resolved[process.ProcessId] = owner;
                 owners[process.ProcessId] = parentId;
                 break;

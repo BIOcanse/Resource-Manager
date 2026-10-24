@@ -837,12 +837,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ProcessAttributionSnapshot? processAttribution = null;
         if (cleanMetricIds.Any(IsSupportedBarMetric) || RequiresProcessAttribution(request))
         {
-            using var attributionCatalog =
-                await processAttributionCatalogProvider.AcquireCatalogAsync(
-                    cancellationToken);
-            processAttribution = CreateProcessAttributionSnapshot(
-                processSamples,
-                attributionCatalog.Catalog);
+            processAttribution = await CreateProcessAttributionSnapshotAsync(processSamples, cancellationToken);
         }
         var hardwareRequest = CreateHardwareRequest(
             cleanMetricIds,

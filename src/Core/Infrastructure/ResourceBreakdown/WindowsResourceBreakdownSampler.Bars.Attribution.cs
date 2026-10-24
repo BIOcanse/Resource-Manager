@@ -10,16 +10,18 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class WindowsResourceBreakdownSampler
 {
-    private ProcessAttributionSnapshot CreateProcessAttributionSnapshot(
+    private async Task<ProcessAttributionSnapshot> CreateProcessAttributionSnapshotAsync(
         IReadOnlyList<ProcessResourceSample> processSamples,
-        RuntimeProcessAttributionCatalog catalog)
+        CancellationToken cancellationToken)
     {
         var processById = processSamples.ToDictionary(static process => process.ProcessId);
         var baseScorePlan = runtimePlanProvider.Current.BaseScore;
-        var batch = catalog.Pipeline.MatchBatch(processSamples.Select(CreateRuntimeIdentity).ToArray());
+        var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
+            processSamples.Select(CreateRuntimeIdentity).ToArray(), baseScorePlan, cancellationToken);
+        var batch = capture.Batch;
         return new ProcessAttributionSnapshot(
             processSamples, processById, batch.SoftwareByProcessId,
-            baseScorePlan, catalog.GetSoftwareBaseScores(baseScorePlan), batch.HelperOwnerByProcessId);
+            baseScorePlan, capture.SoftwareBaseScores, batch.HelperOwnerByProcessId);
     }
 
     private RuntimeProcessIdentity CreateRuntimeIdentity(ProcessResourceSample process)
@@ -36,7 +38,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             process.ApplicationUserModelId,
             process.WindowApplicationUserModelId,
             process.WindowTitle,
-            process.StartKey);
+            process.StartKey,
+            UserSid: process.BasicMetrics.UserSid);
         if (process.StartKey is not > 0) return identity;
         var key = new ProcessInstanceKey(process.ProcessId, process.StartKey.Value);
         if (processAttributionCache.TryGet(key, out var cached) && cached is not null)

@@ -14,6 +14,141 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class RuntimeProcessAttributionCatalogProviderTests
 {
+    private const string UserOne = "S-1-5-21-101-102-103-1001";
+    private const string UserTwo = "S-1-5-21-101-102-103-1002";
+
+    [Fact]
+    public async Task OwnerCatalogMatchesTheListIdentityClassificationAndScoreOverrideForTwoUsers()
+    {
+        var registry = new OwnerSoftwareRegistryView();
+        using var provider = CreateProvider(registry);
+        var tracking = new TrackingCatalogProvider(provider);
+        var plan = new CompiledBaseScorePlan(new Dictionary<string, double>
+            { ["installed:user-one"] = 83, ["installed:user-two"] = 47 }, new Dictionary<string, double>());
+        RuntimeProcessIdentity[] processes = [
+            new(51001, null, "app", @"D:\Apps\SharedProduct\app.exe", false, StartKey: 10, UserSid: UserOne),
+            new(51002, null, "app", @"D:\Apps\SharedProduct\app.exe", false, StartKey: 20, UserSid: UserTwo),
+            new(51003, null, "app", @"D:\Apps\SharedProduct\app.exe", false, StartKey: 30, UserSid: UserOne)];
+        var result = await RuntimeProcessAttributionCapture.CaptureAsync(tracking, processes, plan, default);
+        Assert.Equal(new[] { UserOne, UserTwo }, tracking.AcquiredScopes);
+        Assert.Equal(2, tracking.ReturnedLeases);
+        Assert.Equal(2, registry.ReadScopes.Count);
+        Assert.Equal(new[] { UserOne, UserTwo }, registry.ReadScopes);
+        var one = Assert.Single(await registry.GetSoftwareAsync(UserOne, default));
+        var two = Assert.Single(await registry.GetSoftwareAsync(UserTwo, default));
+        Assert.Equal(one.Id, result.Batch.SoftwareByProcessId[51001].Id);
+        Assert.Equal(one.Kind, result.Batch.SoftwareByProcessId[51003].Kind);
+        Assert.Equal(two.Id, result.Batch.SoftwareByProcessId[51002].Id);
+        Assert.Equal(two.Kind, result.Batch.SoftwareByProcessId[51002].Kind);
+        Assert.Equal(83, plan.ResolveBaseScore(result.Batch.SoftwareByProcessId[51001].Id, one.Kind, null));
+        Assert.Equal(47, plan.ResolveBaseScore(result.Batch.SoftwareByProcessId[51002].Id, two.Kind, null));
+        Assert.Contains(result.SoftwareBaseScores, score => score.SoftwareId == one.Id && score.BaseScore == 83);
+        Assert.Contains(result.SoftwareBaseScores, score => score.SoftwareId == two.Id && score.BaseScore == 47);
+    }
+
+    [Theory]
+    [InlineData("S-1-5-18")]
+    [InlineData("S-1-5-19")]
+    [InlineData("S-1-5-20")]
+    [InlineData("S-1-5-80-1-2-3-4-5")]
+    [InlineData(null)]
+    public async Task NonUserAndUnreadableOwnersUseOnlyTheMachineView(string? sid)
+    {
+        var registry = new OwnerSoftwareRegistryView();
+        using var provider = CreateProvider(registry);
+        using var userCatalog = await provider.AcquireCatalogAsync(UserOne, default);
+        registry.ReadScopes.Clear();
+        using var output = new StringWriter();
+        using var listener = new System.Diagnostics.TextWriterTraceListener(output);
+        System.Diagnostics.Trace.Listeners.Add(listener);
+        try
+        {
+            var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
+            var capture = await RuntimeProcessAttributionCapture.CaptureAsync(provider,
+                [new(51999, null, "app", @"D:\Apps\SharedProduct\app.exe", false, StartKey: 10, UserSid: sid)], plan, default);
+            Assert.Equal("installed:machine", capture.Batch.SoftwareByProcessId[51999].Id);
+            Assert.Equal(RuntimeProcessAttributionCapture.MachineScope, Assert.Single(registry.ReadScopes));
+            listener.Flush();
+            if (sid is null)
+            {
+                Assert.Contains("owner unavailable for PID 51999, creation 10", output.ToString());
+                Assert.Contains("machine-wide", output.ToString());
+            }
+            else Assert.DoesNotContain("owner unavailable for PID 51999", output.ToString());
+        }
+        finally { System.Diagnostics.Trace.Listeners.Remove(listener); }
+    }
+
+    [Fact]
+    public async Task FailedSecondOwnerAcquisitionReturnsTheFirstOwnersLease()
+    {
+        using var provider = CreateProvider(new OwnerSoftwareRegistryView());
+        var tracking = new TrackingCatalogProvider(provider) { FailScope = UserTwo };
+        var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RuntimeProcessAttributionCapture.CaptureAsync(tracking,
+            [new(54000, null, "app", null, false, StartKey: 10, UserSid: UserOne),
+             new(54001, null, "app", null, false, StartKey: 20, UserSid: UserTwo)], plan, default));
+        Assert.Equal(new[] { UserOne, UserTwo }, tracking.AcquiredScopes);
+        Assert.Equal(1, tracking.ReturnedLeases);
+    }
+
+    private sealed class TrackingCatalogProvider(IRuntimeProcessAttributionCatalogProvider inner)
+        : IRuntimeProcessAttributionCatalogProvider
+    {
+        internal List<string?> AcquiredScopes { get; } = [];
+        internal string? FailScope { get; init; }
+        internal int ReturnedLeases;
+        public long SoftwareSnapshotGeneration => inner.SoftwareSnapshotGeneration;
+        public Task InvalidateSoftwareSnapshotAsync() => inner.InvalidateSoftwareSnapshotAsync();
+        public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
+        {
+            AcquiredScopes.Add(windowsSid);
+            if (windowsSid == FailScope) throw new InvalidOperationException("owner catalog unavailable");
+            var lease = await inner.AcquireCatalogAsync(windowsSid, cancellationToken);
+            return new(lease.Catalog, () => { lease.Dispose(); ReturnedLeases++; });
+        }
+    }
+
+    [Fact]
+    public async Task InvalidationRefreshesEveryScopeAndRetiredReadersStayValid()
+    {
+        var registry = new OwnerSoftwareRegistryView();
+        using var provider = CreateProvider(registry);
+        using var one = await provider.AcquireCatalogAsync(UserOne, default);
+        using var two = await provider.AcquireCatalogAsync(UserTwo, default);
+        registry.Suffix = ":updated";
+        await provider.InvalidateSoftwareSnapshotAsync();
+        using var nextOne = await provider.AcquireCatalogAsync(UserOne, default);
+        using var nextTwo = await provider.AcquireCatalogAsync(UserTwo, default);
+        var process = CreateProcess(@"D:\Apps\SharedProduct\app.exe");
+        Assert.Equal("installed:user-one", one.Catalog.Pipeline.Match(process).Id);
+        Assert.Equal("installed:user-two", two.Catalog.Pipeline.Match(process).Id);
+        Assert.Equal("installed:user-one:updated", nextOne.Catalog.Pipeline.Match(process).Id);
+        Assert.Equal("installed:user-two:updated", nextTwo.Catalog.Pipeline.Match(process).Id);
+        provider.Dispose();
+        Assert.Equal("installed:user-two", two.Catalog.Pipeline.Match(process).Id);
+    }
+
+    private sealed class OwnerSoftwareRegistryView : ISoftwareRegistryView
+    {
+        internal List<string?> ReadScopes { get; } = [];
+        internal string Suffix { get; set; } = "";
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
+            => throw new InvalidOperationException("An owner scope is required.");
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(string? windowsSid, CancellationToken cancellationToken,
+            IReadOnlyList<RuntimeSoftwareAttribution>? runtimeSoftware = null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ReadScopes.Add(windowsSid);
+            var name = windowsSid == UserOne ? "user-one" : windowsSid == UserTwo ? "user-two" : "machine";
+            return Task.FromResult<IReadOnlyList<SoftwareRecord>>([CreateSoftware("installed:" + name + Suffix,
+                "Same Product", @"D:\Apps\SharedProduct") with
+                { Kind = windowsSid == UserOne ? SoftwareKinds.HighPerformance : SoftwareKinds.Other, HasExplicitKind = true }]);
+        }
+        public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+    }
+
     [Fact]
     public async Task ExplicitCategoryChangeInvalidatesTheAttributionCatalog()
     {
@@ -296,7 +431,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         Assert.Equal(2, next.Catalog.Generation);
     }
 
-    private static RuntimeProcessAttributionCatalogProvider CreateProvider(
+    internal static RuntimeProcessAttributionCatalogProvider CreateProvider(
         ISoftwareRegistryView softwareRegistry,
         IAdapterSoftwareRegistry? adapterRegistry = null,
         IWindowsGameListSource? windowsGameListSource = null)

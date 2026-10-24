@@ -5,12 +5,93 @@ using ResourceManager.App.Domain.Controlled;
 using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.SoftwareIdentity;
+using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Infrastructure.ResourceBreakdown;
+using ResourceManager.Shared.Runtime;
 
 namespace Resource_Manager_APP.Tests;
 
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class RuntimeProcessAttributionPipelineTests
 {
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public void RuntimeHelpersFollowTheirHostIncludingNativeUiAndIgnoreTheirOwnWindows(bool self, bool focused)
+    {
+        using var pipeline = CreatePipeline([CreateSoftware("installed:host", "Host", [@"D:\Apps\Host"])]);
+        var hostName = self ? "ResourceManager.NativeUi" : "host";
+        RuntimeProcessIdentity[] processes = [
+            new(52000, null, hostName, $@"D:\Apps\Host\{hostName}.exe", self, StartKey: 10),
+            new(52001, 52000, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", self, StartKey: 20,
+                CommandLine: $"webview --webview-exe-name={hostName}.exe"),
+            new(52002, 52001, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", self, StartKey: 30,
+                CommandLine: $"webview --type=renderer --webview-exe-name={hostName}.exe"),
+            new(52003, 52001, "msedgewebview2", @"C:\Runtime\msedgewebview2.exe", self, StartKey: 40,
+                CommandLine: $"webview --type=gpu-process --webview-exe-name={hostName}.exe")];
+        var batch = pipeline.MatchBatch(processes);
+        Assert.All(processes.Skip(1), process => Assert.Equal(52000, batch.HelperOwnerByProcessId[process.ProcessId]));
+        Assert.All(batch.SoftwareByProcessId.Values, value => Assert.Equal(
+            self ? RuntimeAttributionIds.ResourceManagerSelf : "installed:host", value.Id));
+        var expected = processes.Select(process => new ProcessInstanceKey(process.ProcessId, process.StartKey!.Value)).ToArray();
+        var desktop = CreateDesktop(expected, focused ? 52000 : 52002);
+        var capture = WindowsProcessRuntimeStateSnapshot.Capture(expected, desktop, batch.HelperOwnerByProcessId);
+        var host = capture.Processes[expected[0]];
+        Assert.Equal(focused ? HostManagerRuntimeStates.ForegroundFocused : HostManagerRuntimeStates.ForegroundUnfocused, host.RuntimeState);
+        Assert.All(expected.Skip(1), helper => Assert.Equal(host, capture.Processes[helper]));
+    }
+
+    [Fact]
+    public void UnavailableHostRemovesOnlyItsHelpersAndUnavailableHelperCannotAcquireHostEvidence()
+    {
+        ProcessInstanceKey[] expected = [new(52100, 10), new(52101, 20), new(52102, 30), new(52103, 40), new(52104, 50)];
+        var desktop = CreateDesktop(expected, 52103, process => process.ProcessId is 52100 or 52104 ? null : 1);
+        var capture = WindowsProcessRuntimeStateSnapshot.Capture(expected, desktop,
+            new Dictionary<int, int> { [52101] = 52100, [52102] = 52100, [52104] = 52103 });
+        Assert.Equal(SamplingObservationStatus.Current, capture.Status);
+        Assert.Equal(expected[3], Assert.Single(capture.Processes).Key);
+        Assert.True(capture.Processes[expected[3]].ForegroundFocused);
+    }
+
+    [Fact]
+    public void ReusedParentPidDoesNotSupplyHelperState()
+    {
+        using var pipeline = CreatePipeline([CreateSoftware("installed:host", "Host", [@"D:\Apps\Host"])]);
+        RuntimeProcessIdentity[] processes = [
+            new(52200, null, "host", @"D:\Apps\Host\host.exe", false, StartKey: 30),
+            new(52201, 52200, "chromium", @"C:\Runtime\chromium.exe", false, StartKey: 20, CommandLine: "chromium --type=renderer")];
+        var batch = pipeline.MatchBatch(processes);
+        Assert.Empty(batch.HelperOwnerByProcessId);
+        ProcessInstanceKey[] expected = [new(52200, 30), new(52201, 20)];
+        var desktop = CreateDesktop([expected[0]], 52200);
+        var capture = WindowsProcessRuntimeStateSnapshot.Capture(expected, desktop, batch.HelperOwnerByProcessId);
+        Assert.True(capture.Processes[expected[0]].ForegroundFocused);
+        Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, capture.Processes[expected[1]].RuntimeState);
+    }
+
+    [Fact]
+    public void StaleHostWindowInstanceDoesNotSupplyHelperState()
+    {
+        ProcessInstanceKey[] expected = [new(52300, 10), new(52301, 20), new(52302, 30)];
+        var desktop = CreateDesktop([new(52300, 9), expected[1], expected[2]], 52302);
+        var capture = WindowsProcessRuntimeStateSnapshot.Capture(expected, desktop,
+            new Dictionary<int, int> { [52301] = 52300 });
+        Assert.Equal(expected[2], Assert.Single(capture.Processes).Key);
+    }
+
+    private static InteractiveDesktopObservationStore CreateDesktop(ProcessInstanceKey[] windows, int foreground,
+        Func<ProcessInstanceKey, int?>? readSession = null)
+    {
+        var desktop = new InteractiveDesktopObservationStore(TimeProvider.System, _ => true, readSession ?? (_ => 1));
+        var rows = windows.Select(process => new DesktopProcessWindowObservation(process.ProcessId, process.StartKey, true, false, false)).ToArray();
+        Assert.True(desktop.Publish(new(999, 1, 1, DateTimeOffset.UtcNow.UtcTicks, true, true,
+            rows.Single(row => row.ProcessId == foreground), rows)));
+        return desktop;
+    }
+
     [Fact]
     public void GameCategoryWinsOverHelperCatalogCategoryRegardlessOfEnumerationOrder()
     {

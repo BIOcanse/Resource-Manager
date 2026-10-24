@@ -1380,6 +1380,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         public long SoftwareSnapshotGeneration => 0;
 
         public Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(
+            string? windowsSid,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

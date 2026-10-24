@@ -78,12 +78,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         ProcessAttributionSnapshot attribution;
         try
         {
-            using var attributionCatalog =
-                await processAttributionCatalogProvider.AcquireCatalogAsync(
-                    cancellationToken);
-            attribution = CreateProcessAttributionSnapshot(
-                batch.Samples,
-                attributionCatalog.Catalog);
+            attribution = await CreateProcessAttributionSnapshotAsync(batch.Samples, cancellationToken);
         }
         catch
         {
@@ -134,7 +129,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             gpuRead = GpuAllocationSchedulingProjection.Apply(gpuRead, allocationReading, processInstances);
         var runtimeStateRead = request.RequestedMetricMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState)
-            ? WindowsProcessRuntimeStateSnapshot.Capture(processInstances, interactiveDesktops)
+            ? WindowsProcessRuntimeStateSnapshot.Capture(processInstances, interactiveDesktops,
+                attribution?.HelperOwnerByProcessId)
             : WindowsProcessRuntimeStateSnapshot.NotRequested;
         var baseScorePlan = attribution?.BaseScorePlan ?? runtimePlanProvider.Current.BaseScore;
         var facts = new List<SchedulingProcessFact>(batch.Samples.Count);

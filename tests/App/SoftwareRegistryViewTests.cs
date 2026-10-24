@@ -18,6 +18,30 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SoftwareRegistryViewTests
 {
     [Fact]
+    public async Task UserInstalledListClassificationAndScoreOverrideReachTheOwnersProcess()
+    {
+        const string sid = "S-1-5-21-1-2-3-1001";
+        const string id = "windows-installed:users-s-1-5-21-1-2-3-1001-editor";
+        const string root = @"C:\Users\Owner\AppData\Local\Editor";
+        var now = DateTimeOffset.UtcNow;
+        var view = CreateRuntimeReminderView(
+            [new("manual:old", "Editor", SoftwareKinds.HighPerformance, "high_performance", "manual", [], [root], "", id, now, now)],
+            [new(id, "Editor", null, null, root, [root], null, $@"Users\{sid}\Uninstall\Editor")]);
+        var listed = Assert.Single(await view.GetSoftwareAsync(sid, default), record => record.Id == id);
+        using var provider = RuntimeProcessAttributionCatalogProviderTests.CreateProvider(view);
+        var plan = new ResourceManager.App.Domain.RuntimeSpecialization.CompiledBaseScorePlan(
+            new Dictionary<string, double> { [id] = 87 }, new Dictionary<string, double>());
+        var capture = await ResourceManager.App.Application.ProcessAttribution.RuntimeProcessAttributionCapture.CaptureAsync(provider,
+            [new(53000, null, "editor", root + @"\editor.exe", false, StartKey: 10, UserSid: sid)], plan, default);
+        var attributed = capture.Batch.SoftwareByProcessId[53000];
+        Assert.Equal(id, listed.Id);
+        Assert.Equal(listed.Id, attributed.Id);
+        Assert.Equal(listed.Kind, attributed.Kind);
+        Assert.Equal(SoftwareKinds.HighPerformance, attributed.Kind);
+        Assert.Equal(87, plan.ResolveBaseScore(attributed.Id, attributed.Kind, null));
+    }
+
+    [Fact]
     public async Task ClassifyingLauncherDoesNotReplaceItsInstalledChildGame()
     {
         var now = DateTimeOffset.UtcNow;
