@@ -77,6 +77,8 @@ export interface ManagementStore {
   refreshInProgress: Accessor<boolean>;
   actionLabels: Accessor<Record<string, string>>;
   manualSoftwareKind: Accessor<ManualSoftwareKind | null>;
+  manualSoftwareSource: Accessor<SoftwareRecord | null>;
+  classifySoftware: (software: SoftwareRecord) => void;
   manualSoftwareActionInProgress: Accessor<boolean>;
   openManualSoftwareModal: (kind: ManagementKind) => void;
   closeManualSoftwareModal: () => void;
@@ -120,6 +122,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     createSignal<Record<string, string>>({});
   const [operationProjection, setOperationProjection] =
     createSignal<OperationRegistrySnapshot>(options.operations.snapshot);
+  const [manualSoftwareSource, setManualSoftwareSource] = createSignal<SoftwareRecord | null>(null);
   const [manualSoftwareKind, setManualSoftwareKind] = createSignal<ManualSoftwareKind | null>(null);
   const [manualSoftwareActionInProgress, setManualSoftwareActionInProgress] = createSignal(false);
   const operationsObservation = createMemo<ObservationState>(() =>
@@ -149,10 +152,17 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
       return;
     }
 
+    setManualSoftwareSource(null);
     setManualSoftwareKind(kind);
     if (software().length === 0) {
       void refreshSoftware();
     }
+  }
+
+  function classifySoftware(software: SoftwareRecord) {
+    if (!options.mutablePersistenceEnabled()) return;
+    setManualSoftwareSource(software);
+    setManualSoftwareKind("Other");
   }
 
   function closeManualSoftwareModal() {
@@ -523,6 +533,8 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     refreshInProgress,
     actionLabels,
     manualSoftwareKind,
+    manualSoftwareSource,
+    classifySoftware,
     manualSoftwareActionInProgress,
     openManualSoftwareModal,
     closeManualSoftwareModal,

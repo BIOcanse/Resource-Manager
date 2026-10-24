@@ -30,6 +30,7 @@ import {
   ObservationStateNotice
 } from "../../../components/ObservationStateNotice";
 import { SoftwareIssueTagStrip } from "../../../components/SoftwareIssuePresentation";
+import { isUnclassifiedSoftware, runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../../../presentation/softwareClassification.ts";
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 
 // 分类名按当前语言求值，不能在模块顶层固化。
@@ -57,6 +58,7 @@ interface ManagementPageProps {
   mutablePersistenceEnabled: boolean;
   runtimeEffectsEnabled: boolean;
   onAddManualSoftware: (kind: ManagementKind) => void;
+  onClassifySoftware: (software: SoftwareRecord) => void;
   onRefresh: () => void;
   onInstallComponent: (component: ManagedComponent) => void;
   onVerifyComponent: (component: ManagedComponent) => void;
@@ -211,6 +213,8 @@ export function ManagementPage(props: ManagementPageProps) {
                       actionLabels={props.actionLabels}
                       runtimeEffectsEnabled={props.runtimeEffectsEnabled}
                       onUninstall={props.onUninstallSoftware}
+                      onClassify={props.onClassifySoftware}
+                      mutablePersistenceEnabled={props.mutablePersistenceEnabled}
                       onOpenDetail={(software) => props.onOpenDetail("software", software)}
                       onContextMenu={(event, software) => props.onSoftwareContextMenu(event, softwareContextTargetFromSoftware(software))}
                     />}
@@ -302,6 +306,8 @@ function ComponentCard(props: {
 
 function SoftwareCard(props: {
   software: SoftwareRecord;
+  mutablePersistenceEnabled: boolean;
+  onClassify: (software: SoftwareRecord) => void;
   actionLabels: Record<string, string>;
   runtimeEffectsEnabled: boolean;
   onUninstall: (software: SoftwareRecord, actionKey?: string) => void;
@@ -313,10 +319,10 @@ function SoftwareCard(props: {
   const activeLabel = () => props.actionLabels[key()];
   const canUninstall = () => Boolean(props.software.operations?.canUninstall) && !activeLabel();
   // 右侧状态标签的文字；能卸载时由"卸载"按钮表达，没有标签。
-  const statusLabel = () => activeLabel() || (canUninstall() ? "" : uiText.management.installed);
+  const statusLabel = () => activeLabel() || (isUnclassifiedSoftware(props.software) ? uiText.softwareKind.Unclassified : canUninstall() ? "" : uiText.management.installed);
   // 这张卡要不要说话：状态已经由右侧表达，只复述状态的消息一律不显示。
   const cardPurpose = () => {
-    if (isSettledDependencyMessage(props.software.messageCode)) {
+    if (isUnclassifiedSoftware(props.software) || isSettledDependencyMessage(props.software.messageCode)) {
       return "";
     }
     const purpose = props.software.messageCode
@@ -349,6 +355,13 @@ function SoftwareCard(props: {
           </Show>
         </div>
         <SoftwareIssueTagStrip issues={props.software.issues} />
+        <Show when={isUnclassifiedSoftware(props.software)}>
+          <div class="management-card-purpose">{uiText.management.unclassifiedReminder}</div>
+          <div class="management-card-purpose">{runtimeDiscoveryLabel(props.software.kind)}</div>
+          <For each={props.software.rootPaths ?? []}>
+            {(root) => <div class="management-card-purpose">{root}</div>}
+          </For>
+        </Show>
         {/*
           这一行**只在有话要说时才出现**。状态由右边的标签或按钮表达，
           再用一句话复述"已安装在哪个目录"、"可以从官方下载"只是重复。
@@ -358,6 +371,11 @@ function SoftwareCard(props: {
         </Show>
       </div>
       <div class="software-actions">
+        <Show when={props.mutablePersistenceEnabled && isUnclassifiedSoftware(props.software)}>
+          <button class="management-action-button" type="button" onClick={() => props.onClassify(props.software)}>
+            {uiText.management.classifySoftware}
+          </button>
+        </Show>
         <Show
           when={canUninstall()}
           fallback={<ManagementStatusTag label={statusLabel()} pending={Boolean(activeLabel())} />}
@@ -490,6 +508,10 @@ function getManagementItems(kind: ManagementKind, components: ManagedComponent[]
     return getManagementRoleItems(kind, components, software);
   }
 
+  if (kind === "Unclassified") {
+    return software.filter(isUnclassifiedSoftware).map((item) => ({ type: "software", value: item }));
+  }
+
   if (kind === "Unconfirmed") {
     return software
       .filter(isUnconfirmedSoftware)
@@ -497,7 +519,7 @@ function getManagementItems(kind: ManagementKind, components: ManagedComponent[]
   }
 
   return software
-    .filter((item) => !isUnconfirmedSoftware(item) && normalizeSoftwareKind(item) === kind)
+    .filter((item) => !isUnconfirmedSoftware(item) && !isUnclassifiedSoftware(item) && normalizeSoftwareKind(item) === kind)
     .map((item) => ({ type: "software", value: item }));
 }
 
@@ -586,8 +608,8 @@ function matchesSoftwareSearch(software: SoftwareRecord, query: string) {
     softwareSummary(software),
     ...(software.issues ?? []).flatMap((issue) => [
       issue.kind,
-      issue.label,
-      issue.message,
+      softwareIssueLabel(issue),
+      softwareIssueMessage(issue),
       issue.source,
       ...(issue.references ?? []).flatMap((reference) => [reference.label, reference.url])
     ]),

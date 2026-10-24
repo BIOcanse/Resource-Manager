@@ -367,6 +367,7 @@ const esEsAppCopy: AppCopy = {
     moreActions: "Más acciones"
   },
   softwareKind: {
+    Unclassified: "Sin clasificar",
     Adapted: "Compatible",
     Controlled: "Gestionado",
     Unconfirmed: "Sin confirmar",
@@ -389,6 +390,13 @@ const esEsAppCopy: AppCopy = {
     Support: "Soporte"
   },
   management: {
+    classifySoftware: "Elegir categoría",
+    unclassifiedReminder: "Identificado en ejecución sin una categoría conocida. Elige una categoría o déjalo para más tarde.",
+    discoveredPackage: "Identificado por un paquete de aplicación en ejecución",
+    discoveredProduct: "Identificado por el nombre de producto del programa",
+    discoveredRoot: "Identificado por la raíz de instalación en ejecución",
+    runtimeDiscovery: "Descubierto en ejecución",
+
     categoryNav: "Categorías de componentes y software",
     add: "Añadir",
     refresh: "Actualizar",

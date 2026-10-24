@@ -12,6 +12,17 @@ public sealed class JsonManualSoftwareRegistryTests : IDisposable
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-manual-software-{Guid.NewGuid():N}");
     private string StoragePath => Path.Combine(testRoot, "Config", "manual-software.json");
 
+    [Fact]
+    public async Task RuntimeSourceCanBeClassifiedAsGeneralWithoutAKnownRoot()
+    {
+        var registry = new JsonManualSoftwareRegistry(new TestHostEnvironment(testRoot));
+        var record = await registry.AddOrUpdateAsync(new("Runtime App", SoftwareKinds.Other, [], "runtime:app"), default);
+        Assert.Equal("runtime:app", record.SourceSoftwareId);
+        Assert.Equal(SoftwareKinds.Other, Assert.Single(await registry.GetAllAsync(default)).Kind);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => registry.AddOrUpdateAsync(
+            new("No source", SoftwareKinds.Other, [], null), default));
+    }
+
     [Theory]
     [InlineData("{")]
     [InlineData("null")]

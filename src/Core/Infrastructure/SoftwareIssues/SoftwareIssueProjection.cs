@@ -35,9 +35,13 @@ public sealed class SoftwareIssueProjection(
         return software
             .Select(record => record with
             {
-                Issues = bySoftware.TryGetValue(record.Id, out var issues)
-                    ? issues
-                    : []
+                Issues = (bySoftware.GetValueOrDefault(record.Id) ?? [])
+                    .Concat(record.Kind is SoftwareKinds.RuntimePackage or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot
+                        ? [new SoftwareIssueTag("classification:unclassified", SoftwareIssueKinds.Unclassified,
+                            SoftwareIssueSeverities.Info, SoftwareIssueSources.RuntimeAttribution,
+                            string.Empty, string.Empty, false, [], [])]
+                        : Array.Empty<SoftwareIssueTag>())
+                    .ToArray()
             })
             .ToArray();
     }

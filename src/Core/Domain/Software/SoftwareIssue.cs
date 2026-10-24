@@ -2,6 +2,7 @@ namespace ResourceManager.App.Domain.Software;
 
 public static class SoftwareIssueKinds
 {
+    public const string Unclassified = "Unclassified";
     public const string KnownSecurityVulnerability = "KnownSecurityVulnerability";
     public const string DependencyIssue = "DependencyIssue";
     public const string CompatibilityIssue = "CompatibilityIssue";
@@ -11,7 +12,7 @@ public static class SoftwareIssueKinds
     public const string LongSystemInterrupts = "LongSystemInterrupts";
 
     public static bool IsKnown(string value)
-        => value is KnownSecurityVulnerability
+        => value is Unclassified or KnownSecurityVulnerability
             or DependencyIssue
             or CompatibilityIssue
             or KnownMalware
@@ -27,6 +28,7 @@ public static class SoftwareIssueKinds
 
 public static class SoftwareIssueSources
 {
+    public const string RuntimeAttribution = "RuntimeAttribution";
     public const string StaticCatalog = "StaticCatalog";
     public const string DynamicReport = "DynamicReport";
 }

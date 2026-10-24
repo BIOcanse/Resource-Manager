@@ -367,6 +367,7 @@ const ruRuAppCopy: AppCopy = {
     moreActions: "Другие действия"
   },
   softwareKind: {
+    Unclassified: "Без категории",
     Adapted: "Совместимые",
     Controlled: "Управляемые",
     Unconfirmed: "Не проверено",
@@ -389,6 +390,13 @@ const ruRuAppCopy: AppCopy = {
     Support: "Поддержка"
   },
   management: {
+    classifySoftware: "Выбрать категорию",
+    unclassifiedReminder: "Обнаружено во время работы без известной категории. Выберите категорию или сделайте это позже.",
+    discoveredPackage: "Определено по пакету работающего приложения",
+    discoveredProduct: "Определено по названию продукта программы",
+    discoveredRoot: "Определено по корневой папке работающей установки",
+    runtimeDiscovery: "Обнаружено во время работы",
+
     categoryNav: "Категории компонентов и программ",
     add: "Добавить",
     refresh: "Обновить",

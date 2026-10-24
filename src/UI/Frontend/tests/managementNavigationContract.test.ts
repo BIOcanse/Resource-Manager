@@ -13,6 +13,7 @@ assert.deepEqual(managementInventoryKinds, [
   "Adapted",
   "Controlled",
   "Unconfirmed",
+  "Unclassified",
   "Game",
   "HighPerformance",
   "Other"

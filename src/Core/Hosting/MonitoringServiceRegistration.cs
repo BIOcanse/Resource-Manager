@@ -289,6 +289,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IResourceBreakdownPushSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ISchedulingProcessFactSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ISchedulingProcessFactObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
+        services.AddSingleton<ResourceManager.App.Application.ProcessAttribution.IRuntimeSoftwareObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>();
         services.AddSingleton<IResourceTableProjector, ResourceTableProjector>();
         return services;

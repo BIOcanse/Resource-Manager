@@ -382,6 +382,27 @@ internal sealed class SchedulingProcessFactSnapshotState
         return clone;
     }
 
+    public IReadOnlyList<ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution> ReadLatestSoftware()
+    {
+        lock (gate)
+        {
+            if (inventory is null || attribution is null
+                || !IsFoundationCurrent(inventory) || !IsFoundationCurrent(attribution))
+                return [];
+
+            return attribution.Processes
+                .Where(pair => inventory.Processes.ContainsKey(pair.Key))
+                .Select(static pair => pair.Value)
+                .GroupBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
+                .Select(static group => new ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution(
+                    group.Key, group.First().SoftwareName, group.First().SoftwareKind,
+                    group.First().SoftwareDisplayKind,
+                    group.SelectMany(static process => process.SoftwareRootPaths)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()))
+                .ToArray();
+        }
+    }
+
     public SchedulingProcessFactSnapshot? ReadLatest(
         SchedulingProcessFactRequest request,
         DateTimeOffset now)
@@ -560,6 +581,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareName = attributionProcess.SoftwareName,
             SoftwareKind = attributionProcess.SoftwareKind,
             SoftwareDisplayKind = attributionProcess.SoftwareDisplayKind,
+            SoftwareRootPaths = attributionProcess.SoftwareRootPaths,
             BaseScore = attributionProcess.BaseScore
         };
 
@@ -650,6 +672,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareName = string.Empty,
             SoftwareKind = string.Empty,
             SoftwareDisplayKind = string.Empty,
+            SoftwareRootPaths = [],
             BaseScore = 0,
             ValidMetricMask = SchedulingProcessMetricMask.None,
             CpuUsagePercent = 0,

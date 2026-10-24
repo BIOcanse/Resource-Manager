@@ -367,6 +367,7 @@ const deDeAppCopy: AppCopy = {
     moreActions: "Weitere Aktionen"
   },
   softwareKind: {
+    Unclassified: "Nicht kategorisiert",
     Adapted: "Unterstützt",
     Controlled: "Verwaltet",
     Unconfirmed: "Unbestätigt",
@@ -389,6 +390,13 @@ const deDeAppCopy: AppCopy = {
     Support: "Support"
   },
   management: {
+    classifySoftware: "Kategorie wählen",
+    unclassifiedReminder: "Zur Laufzeit ohne bekannte Kategorie erkannt. Wählen Sie eine Kategorie oder erledigen Sie dies später.",
+    discoveredPackage: "Über ein laufendes App-Paket erkannt",
+    discoveredProduct: "Über den Produktnamen des Programms erkannt",
+    discoveredRoot: "Über das Installationsstammverzeichnis erkannt",
+    runtimeDiscovery: "Zur Laufzeit erkannt",
+
     categoryNav: "Kategorien für Komponenten und Software",
     add: "Hinzufügen",
     refresh: "Aktualisieren",

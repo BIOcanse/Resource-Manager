@@ -32,6 +32,30 @@ public sealed class SoftwareIssueProjectionTests
         Assert.Empty(projected[1].Issues!);
     }
 
+    [Theory]
+    [InlineData(SoftwareKinds.RuntimeProduct, true)]
+    [InlineData(SoftwareKinds.RuntimePackage, true)]
+    [InlineData(SoftwareKinds.RuntimeRoot, true)]
+    [InlineData(SoftwareKinds.Other, false)]
+    [InlineData(SoftwareKinds.Game, false)]
+    [InlineData(SoftwareKinds.Adapted, false)]
+    [InlineData(SoftwareKinds.HighPerformance, false)]
+    public async Task OnlyRuntimeFallbackCategoriesReceiveInformationalReminder(string kind, bool unclassified)
+    {
+        var record = Software("software") with { Kind = kind };
+        var result = Assert.Single(await new SoftwareIssueProjection([]).ProjectAsync([record], default));
+        Assert.Equal(unclassified, result.Issues!.Any(issue => issue.Kind == SoftwareIssueKinds.Unclassified));
+        if (unclassified)
+        {
+            var issue = Assert.Single(result.Issues!);
+            Assert.Equal(SoftwareIssueSeverities.Info, issue.Severity);
+            Assert.Equal(SoftwareIssueSources.RuntimeAttribution, issue.Source);
+            Assert.Empty(issue.Label);
+            Assert.Empty(issue.Message);
+        }
+        Assert.Equal(record.Kind, result.Kind);
+    }
+
     private static SoftwareRecord Software(string id)
         => new(
             id,

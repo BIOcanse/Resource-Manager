@@ -1,3 +1,4 @@
+import { softwareIssueLabel, softwareIssueMessage } from "../presentation/softwareClassification.ts";
 import { uiText } from "../text.ts";
 import { For, Show } from "solid-js";
 import { AlertTriangle } from "lucide-solid";
@@ -13,9 +14,9 @@ export function SoftwareIssueTagStrip(props: {
           {(issue) => (
             <span
               class={`software-issue-tag ${issueToneClass(issue.severity)}`}
-              title={issue.message}
+              title={softwareIssueMessage(issue)}
             >
-              {issue.label}
+              {softwareIssueLabel(issue)}
             </span>
           )}
         </For>
@@ -37,15 +38,15 @@ export function SoftwareIssueDetailSection(props: {
               <article class="software-issue-detail-item">
                 <div class="software-issue-detail-heading">
                   <span class={`software-issue-tag ${issueToneClass(issue.severity)}`}>
-                    {issue.label}
+                    {softwareIssueLabel(issue)}
                   </span>
                   <span class="software-issue-source">
-                    {issue.dynamic ? uiText.management.issueCurrentReport : uiText.management.issueKnownCatalog}
+                    {issue.source === "RuntimeAttribution" ? uiText.management.runtimeDiscovery : issue.dynamic ? uiText.management.issueCurrentReport : uiText.management.issueKnownCatalog}
                   </span>
                 </div>
-                <p>{issue.message}</p>
+                <p>{softwareIssueMessage(issue)}</p>
                 <Show when={(issue.references?.length ?? 0) > 0}>
-                  <div class="software-issue-references" aria-label={uiText.management.issueReferences(issue.label)}>
+                  <div class="software-issue-references" aria-label={uiText.management.issueReferences(softwareIssueLabel(issue))}>
                     <For each={issue.references ?? []}>
                       {(reference) => (
                         <a href={reference.url} target="_blank" rel="noreferrer">

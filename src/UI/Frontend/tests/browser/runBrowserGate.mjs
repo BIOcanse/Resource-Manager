@@ -1,3 +1,4 @@
+import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
@@ -60,6 +61,7 @@ const allJourneys = [
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
   ["software-issues", softwareIssueJourney],
+  ["software-unclassified", softwareUnclassifiedJourney],
   ["device-topology-source", deviceTopologySourceJourney],
   ["disk-usage-feedback-refresh", diskUsageFeedbackRefreshJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],

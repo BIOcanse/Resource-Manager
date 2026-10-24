@@ -154,6 +154,8 @@ public sealed record SchedulingProcessFact(
     ulong SourceGeneration,
     IReadOnlyList<SchedulingProcessGpuFact> Gpus)
 {
+    public IReadOnlyList<string> SoftwareRootPaths { get; init; } = [];
+
     public string RuntimeState { get; init; } =
         HostManagerRuntimeStates.BackgroundProcess;
 

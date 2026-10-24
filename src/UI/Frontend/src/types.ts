@@ -28,7 +28,7 @@ export interface BackendStartupCapabilities {
   sharedResourceOwnership: boolean;
 }
 export type ManagementRole = "Dependency" | "Support";
-export type ManagementKind = ManagementRole | "Adapted" | "Controlled" | "Unconfirmed" | "Game" | "HighPerformance" | "Other";
+export type ManagementKind = ManagementRole | "Adapted" | "Controlled" | "Unconfirmed" | "Unclassified" | "Game" | "HighPerformance" | "Other";
 export type ManualSoftwareKind = "Adapted" | "Game" | "HighPerformance" | "Other";
 export type ResourceScaleMode = "capacity" | "active";
 export type ResourceTableViewMode = "software" | "process" | "performance";
