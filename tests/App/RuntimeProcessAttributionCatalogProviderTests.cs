@@ -123,33 +123,33 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
 
             var first = await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(1, packageResolver.Calls);
+            Assert.Equal(1, bundle.Observations);
             var firstAttribution = first.Batch.SoftwareByProcessId[process.ProcessId];
             var unchanged = await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(1, packageResolver.Calls);
+            Assert.Equal(1, bundle.Observations);
             Assert.Equal(firstAttribution, unchanged.Batch.SoftwareByProcessId[process.ProcessId]);
 
-            var beforeScopeSwitch = packageResolver.Calls;
+            var beforeScopeSwitch = bundle.Observations;
             await CaptureCached(provider, [process with { UserSid = UserTwo }], plan, cache);
-            Assert.Equal(beforeScopeSwitch + 1, packageResolver.Calls);
+            Assert.Equal(beforeScopeSwitch + 1, bundle.Observations);
             await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(beforeScopeSwitch + 2, packageResolver.Calls);
+            Assert.Equal(beforeScopeSwitch + 2, bundle.Observations);
 
             processes = [process, process with { ProcessId = 55002, StartKey = 20 }];
-            var beforeNewInstance = packageResolver.Calls;
+            var beforeNewInstance = bundle.Observations;
             await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(beforeNewInstance + 1, packageResolver.Calls);
+            Assert.Equal(beforeNewInstance + 1, bundle.Observations);
 
             async Task AssertCatalogChangeReResolvesEachLiveInstance()
             {
                 var previousGeneration = cache.GenerationFor(new ProcessInstanceKey(process.ProcessId, process.StartKey!.Value));
-                var beforeRefresh = packageResolver.Calls;
+                var beforeRefresh = bundle.Observations;
                 var refreshed = await CaptureCached(provider, processes, plan, cache);
-                Assert.Equal(beforeRefresh + processes.Length, packageResolver.Calls);
+                Assert.Equal(beforeRefresh + processes.Length, bundle.Observations);
                 Assert.Equal(previousGeneration + 1,
                     cache.GenerationFor(new ProcessInstanceKey(process.ProcessId, process.StartKey!.Value)));
                 var unchangedAfterRefresh = await CaptureCached(provider, processes, plan, cache);
-                Assert.Equal(beforeRefresh + processes.Length, packageResolver.Calls);
+                Assert.Equal(beforeRefresh + processes.Length, bundle.Observations);
                 Assert.Equal(refreshed.Batch.SoftwareByProcessId, unchangedAfterRefresh.Batch.SoftwareByProcessId);
             }
 
@@ -190,23 +190,24 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
 
             packageResolver.FailProcessId = 55003;
             processes = [.. processes, process with { ProcessId = 55003, StartKey = 30 }];
-            var failedBefore = packageResolver.Calls;
+            var failedBefore = packageResolver.CallsFor(55003);
             var failed = await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(failedBefore + 1, packageResolver.Calls);
+            Assert.Equal(failedBefore + 1, packageResolver.CallsFor(55003));
             Assert.Equal("IOException", failed.Batch.Failures[55003]);
             var failedAgain = await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(failedBefore + 2, packageResolver.Calls);
+            Assert.Equal(failedBefore + 2, packageResolver.CallsFor(55003));
             Assert.Equal("IOException", failedAgain.Batch.Failures[55003]);
 
             packageResolver.FailProcessId = null;
             var missingBirth = process with { ProcessId = 55004, StartKey = null };
             processes = [.. processes, missingBirth];
-            var missingBirthBefore = packageResolver.Calls;
+            var missingBirthBefore = packageResolver.CallsFor(55004);
             await CaptureCached(provider, processes, plan, cache);
-            // The previous failed instance is retried once and now succeeds; the missing-birth process also resolves.
-            Assert.Equal(missingBirthBefore + 2, packageResolver.Calls);
+            // Count the missing-birth instance separately from other live input probes.
+            Assert.Equal(missingBirthBefore + 1, packageResolver.CallsFor(55004));
+            Assert.Equal(failedBefore + 3, packageResolver.CallsFor(55003)); // The failed instance recovers once.
             await CaptureCached(provider, processes, plan, cache);
-            Assert.Equal(missingBirthBefore + 3, packageResolver.Calls);
+            Assert.Equal(missingBirthBefore + 2, packageResolver.CallsFor(55004));
 
             cache.Prune(processes.Where(static item => item.StartKey is > 0)
                 .Select(static item => new ProcessInstanceKey(item.ProcessId, item.StartKey!.Value))
@@ -222,9 +223,9 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             Assert.False(cache.Contains(new ProcessInstanceKey(55003, 30)));
 
             var reusedPid = process with { StartKey = 11 };
-            var beforePidReuse = packageResolver.Calls;
+            var beforePidReuse = bundle.Observations;
             await CaptureCached(provider, [reusedPid], plan, cache);
-            Assert.Equal(beforePidReuse + 1, packageResolver.Calls);
+            Assert.Equal(beforePidReuse + 1, bundle.Observations);
             var oldInstance = new ProcessInstanceKey(process.ProcessId, process.StartKey!.Value);
             var newInstance = new ProcessInstanceKey(reusedPid.ProcessId, reusedPid.StartKey!.Value);
             Assert.True(cache.Contains(oldInstance));
@@ -240,10 +241,11 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
     {
         const string parentPath = @"D:\Apps\Parent\parent.exe";
         var packageResolver = new CountingPackageIdentityResolver();
+        var bundle = new MutableSoftwareIdentityCatalog();
         using var provider = CreateProvider(
             new MutableSoftwareRegistryView([CreateSoftware("software:parent", "Parent", @"D:\Apps\Parent")]),
             windowsGameListSource: new FakeWindowsGameListSource { Paths = [parentPath] },
-            packageIdentityResolver: packageResolver);
+            packageIdentityResolver: packageResolver, softwareIdentityCatalog: bundle);
         var cache = new DirectAttributionCache();
         var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
         var parent = new RuntimeProcessIdentity(56001, null, "parent", parentPath, false,
@@ -256,10 +258,10 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         Assert.Equal("software:parent", inherited.Id);
         Assert.Equal(SoftwareKinds.Game, inherited.Kind);
         Assert.Equal(parent.ProcessId, withParent.Batch.HelperOwnerByProcessId[helper.ProcessId]);
-        var callsAfterInitialCapture = packageResolver.Calls;
+        var callsAfterInitialCapture = bundle.Observations;
 
         var withoutParent = await CaptureCached(provider, [helper], plan, cache);
-        Assert.Equal(callsAfterInitialCapture, packageResolver.Calls);
+        Assert.Equal(callsAfterInitialCapture, bundle.Observations);
         Assert.Equal(RuntimeAttributionIds.Unattributed,
             withoutParent.Batch.SoftwareByProcessId[helper.ProcessId].Id);
         Assert.Equal(SoftwareKinds.Unattributed,
@@ -287,45 +289,73 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
                         $"signal:{identity}", identity, SoftwareKinds.Other, "other", []));
             }
         };
+        var bundle = new MutableSoftwareIdentityCatalog();
         using var provider = CreateProvider(
-            new MutableSoftwareRegistryView([]), packageIdentityResolver: packageResolver);
+            new MutableSoftwareRegistryView([]), packageIdentityResolver: packageResolver, softwareIdentityCatalog: bundle);
         var cache = new DirectAttributionCache();
         var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
         var trayIdentity = new RuntimeProcessIdentity(56003, null, "app", @"D:\Apps\Identity\app.exe", false,
             ApplicationUserModelId: "app:tray", StartKey: 70, UserSid: UserOne);
 
         var tray = await CaptureCached(provider, [trayIdentity], plan, cache);
-        Assert.Equal(1, packageResolver.Calls);
+        Assert.Equal(1, bundle.Observations);
         Assert.Equal("signal:application:app:tray", tray.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
         var unchangedTray = await CaptureCached(provider, [trayIdentity], plan, cache);
-        Assert.Equal(1, packageResolver.Calls);
+        Assert.Equal(1, bundle.Observations);
         Assert.Equal(tray.Batch.SoftwareByProcessId, unchangedTray.Batch.SoftwareByProcessId);
 
         var enrichedAppId = trayIdentity with { ApplicationUserModelId = "app:full-table" };
         var updatedAppId = await CaptureCached(provider, [enrichedAppId], plan, cache);
-        Assert.Equal(2, packageResolver.Calls);
+        Assert.Equal(2, bundle.Observations);
         Assert.Equal("signal:application:app:full-table",
             updatedAppId.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
 
         var withWindowAppId = enrichedAppId with { WindowApplicationUserModelId = "window:full-table" };
         var updatedWindowAppId = await CaptureCached(provider, [withWindowAppId], plan, cache);
-        Assert.Equal(3, packageResolver.Calls);
+        Assert.Equal(3, bundle.Observations);
         Assert.Equal("signal:window-app:window:full-table",
             updatedWindowAppId.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
 
         var fullTable = withWindowAppId with { WindowTitle = "Visible title" };
         var withTitle = await CaptureCached(provider, [fullTable], plan, cache);
-        Assert.Equal(4, packageResolver.Calls);
+        Assert.Equal(4, bundle.Observations);
         Assert.Equal("signal:title:Visible title",
             withTitle.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
         await CaptureCached(provider, [fullTable], plan, cache);
-        Assert.Equal(4, packageResolver.Calls);
+        Assert.Equal(4, bundle.Observations);
 
         var changedTitle = fullTable with { WindowTitle = "Updated title" };
         var updatedTitle = await CaptureCached(provider, [changedTitle], plan, cache);
-        Assert.Equal(5, packageResolver.Calls);
+        Assert.Equal(5, bundle.Observations);
         Assert.Equal("signal:title:Updated title",
             updatedTitle.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
+    }
+
+    [Fact]
+    public async Task RecreatedScopeWithIdenticalVersionStillUsesItsNewCatalogSnapshot()
+    {
+        var bundle = new MutableSoftwareIdentityCatalog();
+        var registry = new MutableSoftwareRegistryView([]);
+        var cache = new DirectAttributionCache();
+        var process = new RuntimeProcessIdentity(55101, null, "child", @"D:\Tools\Child\child.exe", false,
+            StartKey: 100, UserSid: UserOne);
+        var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
+        using var firstProvider = CreateProvider(registry, softwareIdentityCatalog: bundle);
+        using var first = await firstProvider.AcquireCatalogAsync(UserOne, default);
+        await CaptureCached(firstProvider, [process], plan, cache);
+        Assert.Equal(1, bundle.Observations);
+
+        // Scope retirement/recreation can restart Generation at 1 with identical
+        // version text, but direct PID/birth bindings are captured anew.
+        using var recreatedProvider = CreateProvider(registry, softwareIdentityCatalog: bundle);
+        using var recreated = await recreatedProvider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(first.Catalog.Generation, recreated.Catalog.Generation);
+        Assert.Equal(first.Catalog.Version, recreated.Catalog.Version);
+        Assert.NotSame(first.Catalog, recreated.Catalog);
+        await CaptureCached(recreatedProvider, [process], plan, cache);
+        Assert.Equal(2, bundle.Observations);
+        await CaptureCached(recreatedProvider, [process], plan, cache);
+        Assert.Equal(2, bundle.Observations);
     }
 
     [Fact]
@@ -723,7 +753,10 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         IRuntimePackageIdentityResolver? packageIdentityResolver = null,
         IControlledSoftwareRegistry? controlledRegistry = null,
         ISoftwareIdentityCatalog? softwareIdentityCatalog = null,
-        HostManagerSoftwareIdentityOwner? softwareIdentityOwner = null)
+        HostManagerSoftwareIdentityOwner? softwareIdentityOwner = null,
+        IRuntimeServiceIdentityResolver? serviceIdentityResolver = null,
+        IRuntimeRootIdentityResolver? rootIdentityResolver = null,
+        IRuntimeSystemProcessClassifier? systemClassifier = null)
     {
         var resolvers = new NullResolvers();
         return new RuntimeProcessAttributionCatalogProvider(
@@ -731,9 +764,9 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             adapterRegistry ?? new EmptyAdapterSoftwareRegistry(),
             controlledRegistry ?? new EmptyControlledSoftwareRegistry(),
             packageIdentityResolver ?? resolvers,
-            resolvers,
-            resolvers,
-            resolvers,
+            serviceIdentityResolver ?? resolvers,
+            rootIdentityResolver ?? resolvers,
+            systemClassifier ?? resolvers,
             softwareIdentityCatalog ?? SoftwareIdentityCatalogTestData.Empty,
             softwareIdentityOwner ?? SoftwareIdentityCatalogTestData.Owner,
             windowsGameListSource ?? new FakeWindowsGameListSource());
@@ -745,6 +778,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         private readonly SoftwareIdentityCatalogCompiler inner = SoftwareIdentityCatalogTestData.Empty;
 
         public string Version { get; set; } = "1.0.0";
+        internal int Observations { get; private set; }
         public IReadOnlyList<SoftwareIdentityCatalogEntry> Entries => inner.Entries;
         public SoftwareIdentityCatalogEntry? MatchInstalledSoftware(InstalledSoftwareEntry software)
             => inner.MatchInstalledSoftware(software);
@@ -754,7 +788,10 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             => inner.MatchPortableProcess(process);
         NativeCatalogProcessObservation INativeSoftwareIdentityProcessObserver.ObserveProcess(
             RuntimeProcessIdentity process)
-            => ((INativeSoftwareIdentityProcessObserver)inner).ObserveProcess(process);
+        {
+            Observations++;
+            return ((INativeSoftwareIdentityProcessObserver)inner).ObserveProcess(process);
+        }
     }
 
     private sealed class DirectAttributionCache
@@ -789,14 +826,17 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
     private sealed class CountingPackageIdentityResolver : IRuntimePackageIdentityResolver
     {
         private int calls;
+        private readonly Dictionary<int, int> callsByPid = [];
 
         internal int Calls => Volatile.Read(ref calls);
+        internal int CallsFor(int pid) => callsByPid.GetValueOrDefault(pid);
         internal int? FailProcessId { get; set; }
         internal Func<RuntimeProcessIdentity, RuntimeAttributionObservation>? ObserveResult { get; set; }
 
         public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
         {
             Interlocked.Increment(ref calls);
+            callsByPid[process.ProcessId] = CallsFor(process.ProcessId) + 1;
             if (process.ProcessId == FailProcessId) throw new IOException("test package observation failure");
             return ObserveResult?.Invoke(process) ?? RuntimeAttributionObservation.NoMatch;
         }

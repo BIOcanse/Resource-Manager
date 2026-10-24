@@ -60,18 +60,21 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         foreach (var process in processes)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (cachedDirectMatches?.TryGetValue(process.ProcessId, out var cachedMatch) == true)
-            {
-                if (directMatches is not null) directMatches[process.ProcessId] = cachedMatch;
-                resolved[process.ProcessId] = cachedMatch.Attribution;
-                sources[process.ProcessId] = cachedMatch.Source;
-                continue;
-            }
             try
             {
-                var attribution = selectPipeline(process).resolver.Resolve(process, out var source);
-                var directMatch = new RuntimeProcessAttributionDirectMatch(attribution, source);
-                if (directMatches is not null) directMatches[process.ProcessId] = directMatch;
+                var resolver = selectPipeline(process).resolver;
+                if (cachedDirectMatches?.TryGetValue(process.ProcessId, out var cachedMatch) == true
+                    && resolver.AreExternalInputsCurrent(process, cachedMatch.ExternalInputs))
+                {
+                    if (directMatches is not null) directMatches[process.ProcessId] = cachedMatch;
+                    resolved[process.ProcessId] = cachedMatch.Attribution;
+                    sources[process.ProcessId] = cachedMatch.Source;
+                    continue;
+                }
+                var attribution = resolver.Resolve(process, out var source, out var externalInputs);
+                var directMatch = new RuntimeProcessAttributionDirectMatch(attribution, source, externalInputs);
+                if (directMatches is not null && NativeRuntimeProcessAttributionResolver.HasStablePathInput(process))
+                    directMatches[process.ProcessId] = directMatch;
                 resolved[process.ProcessId] = attribution;
                 sources[process.ProcessId] = source;
             }
@@ -170,4 +173,21 @@ public sealed record RuntimeProcessAttributionBatch(
 
 internal readonly record struct RuntimeProcessAttributionDirectMatch(
     RuntimeSoftwareAttribution Attribution,
-    uint Source);
+    uint Source,
+    RuntimeProcessAttributionExternalInputs? ExternalInputs = null);
+
+// These are the observations actually consumed by one resolution, never a
+// stamp sampled later when storing its result.
+internal sealed class RuntimeProcessAttributionExternalInputs(
+    RuntimeAttributionObservation package,
+    RuntimeAttributionObservation service,
+    RuntimeAttributionObservation root,
+    RuntimeAttributionObservation system,
+    RuntimeAttributionObservation? productRoot = null)
+{
+    internal RuntimeAttributionObservation Package { get; } = package;
+    internal RuntimeAttributionObservation Service { get; } = service;
+    internal RuntimeAttributionObservation Root { get; } = root;
+    internal RuntimeAttributionObservation System { get; } = system;
+    internal RuntimeAttributionObservation? ProductRoot { get; } = productRoot;
+}
