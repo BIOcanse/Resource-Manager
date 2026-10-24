@@ -215,13 +215,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var unavailable = fixture.Coordinator.SchedulingAuthority;
             Assert.Equal(HostManagerSchedulingAuthorityAvailability.Unavailable,
                 unavailable.Availability);
-            Assert.Equal("scheduling-runtime-state-incomplete", unavailable.UnavailableReason);
-            Assert.Equal(0UL, unavailable.RoundNumber);
+            Assert.Equal("compute-sample-incomplete", unavailable.UnavailableReason);
+            Assert.Equal(1UL, unavailable.RoundNumber);
             Assert.Null(unavailable.Compute);
             Assert.Null(unavailable.MemoryModes);
             Assert.Same(workspaceBefore, fixture.Workspace);
             Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
-            Assert.Equal(0UL, fixture.Workspace.Snapshot.CycleSequence);
+            Assert.True(fixture.Workspace.Snapshot.CycleSequence > 0);
             Assert.Empty(nativeInputs.Rows);
             Assert.Equal(rollbackIncarnationBefore,
                 fixture.StateStore.Current.NativeHostSessionIncarnation);
@@ -244,7 +244,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         // The provider census remains complete above. Host scheduling deliberately
         // admits only records whose runtime-state observation is current.
-        var schedulableProcesses = processFacts.Processes
+        var schedulableProcesses = processFacts.ProjectValidFacts(fixture.MetricSampler.Snapshot.GpuInventory).Processes
             .Where(static fact => fact.ValidMetricMask.HasFlag(
                 SchedulingProcessMetricMask.RuntimeState))
             .ToArray();
@@ -420,7 +420,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             static row => row.ProcessId == 4_243);
         var record = Assert.Single(fixture.DebugLogWriter.Records);
         var counts = Assert.IsType<Dictionary<string, object?>>(record.Properties["counts"]);
-        Assert.Equal(1, Assert.IsType<int>(counts["sampleProcesses"]));
+        Assert.Equal(2, Assert.IsType<int>(counts["sampleProcesses"])); // Identity remains observable even without runtime state.
+        var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.Contains(diagnostics.FactExclusions, exclusion => exclusion.ProcessId == 4_243
+            && exclusion.Fact == "RuntimeState");
         var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
         Assert.Equal(2U, Assert.IsType<uint>(details["nativeInputCount"]));
         Assert.Equal(0U, native.ActionCount);

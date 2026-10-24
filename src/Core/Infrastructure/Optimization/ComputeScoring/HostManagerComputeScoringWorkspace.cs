@@ -80,37 +80,55 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         CpuCoreResidencySnapshot? cpuResidency,
         HostManagerWelfareCapacityInput? welfareCapacity = null,
         bool scoreCpu = true,
-        bool scoreGpu = true)
+        bool scoreGpu = true,
+        ICollection<SchedulingFactExclusion>? exclusions = null)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(gpuInventory);
         ArgumentNullException.ThrowIfNull(runtimeFacts);
         ArgumentOutOfRangeException.ThrowIfZero(roundNumber);
-        if (!processFacts.IsInventoryCurrentComplete())
+        if (!processFacts.IsInventoryCurrent())
         {
             return null;
         }
-        if (runtimeFacts.Count != processFacts.Processes.Count)
+        processFacts = processFacts.ProjectValidFacts(gpuInventory);
+        foreach (var exclusion in processFacts.FactExclusions)
         {
-            throw new InvalidDataException(
-                "The compute scoring runtime-state set does not match the process snapshot union.");
+            if (exclusions is not null && !exclusions.Contains(exclusion)) exclusions.Add(exclusion);
         }
-
+        var selected = new List<SchedulingProcessFact>();
+        foreach (var process in processFacts.Processes)
+        {
+            if (!double.IsFinite(process.BaseScore) || process.BaseScore < 0
+                || string.IsNullOrWhiteSpace(process.SoftwareId) || string.IsNullOrWhiteSpace(process.ProcessName)) continue;
+            if (runtimeFacts.ContainsKey(new(process.ProcessId, process.ProcessStartKey)))
+            {
+                selected.Add(process);
+            }
+            else
+            {
+                exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
+                    HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
+                    "runtime-state", "compute-runtime-state-missing"));
+            }
+        }
+        processFacts = Narrow(processFacts, selected);
+        runtimeFacts = ProjectRuntimeFacts(processFacts, runtimeFacts);
         var eligibleProcessCount = checked((uint)runtimeFacts.Values.Count(static runtime =>
             runtime.RuntimeState != NativeComputeScoringRuntimeState.NotRunning));
         var welfare = welfareCapacity
             ?? HostManagerWelfareCapacityInput.Unavailable(eligibleProcessCount);
-        if (!welfare.IsValid || welfare.EligibleProcessCount != eligibleProcessCount)
+        if (!welfare.IsValid)
         {
-            throw new InvalidDataException(
-                "The welfare-capacity input does not match the current runtime process union.");
+            throw new InvalidDataException("The welfare-capacity input is invalid.");
         }
+        welfare = welfare with { EligibleProcessCount = eligibleProcessCount };
 
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
         var result = ScoreCore(view, roundNumber, processFacts, gpuInventory,
-            runtimeFacts, cpuResidency, welfare, scoreCpu, scoreGpu);
+            runtimeFacts, cpuResidency, welfare, scoreCpu, scoreGpu, exclusions);
         lease.Complete();
         return result;
     }
@@ -124,9 +142,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         CpuCoreResidencySnapshot? cpuResidency,
         HostManagerWelfareCapacityInput welfare,
         bool scoreCpu = true,
-        bool scoreGpu = true)
+        bool scoreGpu = true,
+        ICollection<SchedulingFactExclusion>? exclusions = null)
     {
-        var cpuProjection = scoreCpu ? ProjectCpuDomain(scratchView, processFacts, cpuResidency) : null;
+        var cpuProjection = scoreCpu ? ProjectCpuDomain(scratchView, processFacts, cpuResidency, exclusions) : null;
         var cpuFacts = cpuProjection?.Facts;
         var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
         if (cpuFacts is null && gpuFacts is null)
@@ -199,7 +218,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(runtimeFacts);
         ArgumentOutOfRangeException.ThrowIfZero(roundNumber);
 
-        if (!processFacts.IsInventoryCurrentComplete())
+        if (!processFacts.IsInventoryCurrent())
         {
             return null;
         }
@@ -399,30 +418,38 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     }
 
     /// <summary>
-    /// CPU occupancy comes from the first usable source: per-physical-core residency weighted
-    /// by core capacity, else each process's CPU usage (share of the whole machine, equal core
-    /// weights) when residency is missing or matches no process. The chosen source travels
-    /// with the result.
+    /// A trusted closed residency window includes zero CPU use for covered processes absent from its sparse rows.
+    /// Invalid or uncovered process rows are omitted; an untrusted dataset uses explicit process CPU usage.
+    /// The chosen source travels with the result.
     /// </summary>
     private (SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source)? ProjectCpuDomain(
         ComputeScratchView scratchView,
-        SchedulingProcessFactSnapshot source, CpuCoreResidencySnapshot? current)
+        SchedulingProcessFactSnapshot source, CpuCoreResidencySnapshot? current,
+        ICollection<SchedulingFactExclusion>? exclusions)
     {
         var cpuCoreInputs = scratchView.Column<NativeComputeScoringCpuCoreInput>(layout.CoreInputs, layout.CoreInputCapacity);
         var weightedCpuUse = scratchView.Column<double>(layout.WeightedCpuUse, layout.ProcessCapacity);
-        if (current is null || !CpuScoring.CoreWeights.IsAvailable)
+        if (!IsTrustedCpuResidency(current) || !CpuScoring.CoreWeights.IsAvailable)
         {
             return ProjectProcessCpuUsage(source, weightedCpuUse);
         }
 
+        var residency = current!;
+        var measuredThroughStartKey = checked((ulong)residency.MeasuredThrough.ToFileTime());
         var observed = new Dictionary<HostManagerComputeProcessIdentity, CpuProcessCoreResidency>();
-        foreach (var process in current.Processes)
+        var ambiguous = new HashSet<HostManagerComputeProcessIdentity>();
+        var invalidIdentityProcessIds = new HashSet<int>();
+        foreach (var process in residency.Processes)
         {
             if (process.ProcessId > 0 && ulong.TryParse(process.ProcessStartKey, NumberStyles.None,
                     CultureInfo.InvariantCulture, out var startKey) && startKey != 0)
             {
-                if (!observed.TryAdd(new(process.ProcessId, startKey), process))
-                    throw new InvalidDataException("CPU core observations contain a duplicate process identity.");
+                var identity = new HostManagerComputeProcessIdentity(process.ProcessId, startKey);
+                if (!observed.TryAdd(identity, process)) ambiguous.Add(identity);
+            }
+            else if (process.ProcessId > 0)
+            {
+                invalidIdentityProcessIds.Add(process.ProcessId);
             }
         }
 
@@ -430,31 +457,60 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         var cursor = 0;
         foreach (var process in source.Processes)
         {
-            if (!observed.TryGetValue(new(process.ProcessId, process.ProcessStartKey), out var observation)
-                || observation.PhysicalCores.Count == 0
-                || observation.PhysicalCores.Any(core => !cpuCoreIndexes.ContainsKey(core.PhysicalCoreId)))
-                continue;
-            if (selected.Count == layout.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
-            foreach (var core in observation.PhysicalCores.OrderBy(core => cpuCoreIndexes[core.PhysicalCoreId]))
+            var identity = new HostManagerComputeProcessIdentity(process.ProcessId, process.ProcessStartKey);
+            if (process.ProcessStartKey > measuredThroughStartKey)
             {
-                if (cursor == cpuCoreInputs.Length) throw new InvalidDataException("CPU physical-core capacity was exceeded.");
-                cpuCoreInputs[cursor++] = new NativeComputeScoringCpuCoreInput
+                Exclude(process, "cpu-residency-not-covered");
+                continue;
+            }
+            observed.TryGetValue(identity, out var observation);
+            if (invalidIdentityProcessIds.Contains(process.ProcessId) || ambiguous.Contains(identity)
+                || observation is not null && (observation.PhysicalCores.Count == 0
+                    || observation.PhysicalCores.Any(core => string.IsNullOrWhiteSpace(core.PhysicalCoreId)
+                        || !cpuCoreIndexes.ContainsKey(core.PhysicalCoreId)
+                        || !double.IsFinite(core.UsagePercent) || core.UsagePercent is < 0 or > 100)
+                    || observation.PhysicalCores.Select(core => core.PhysicalCoreId)
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Count() != observation.PhysicalCores.Count))
+            {
+                Exclude(process, "cpu-residency-invalid");
+                continue;
+            }
+            if (selected.Count == layout.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
+            if (observation is not null)
+            {
+                foreach (var core in observation.PhysicalCores.OrderBy(core => cpuCoreIndexes[core.PhysicalCoreId]))
                 {
-                    ProcessIndex = checked((uint)selected.Count),
-                    CoreIndex = cpuCoreIndexes[core.PhysicalCoreId],
-                    UsagePercent = core.UsagePercent
-                };
+                    if (cursor == cpuCoreInputs.Length) throw new InvalidDataException("CPU physical-core capacity was exceeded.");
+                    cpuCoreInputs[cursor++] = new NativeComputeScoringCpuCoreInput
+                    {
+                        ProcessIndex = checked((uint)selected.Count),
+                        CoreIndex = cpuCoreIndexes[core.PhysicalCoreId],
+                        UsagePercent = core.UsagePercent
+                    };
+                }
             }
             selected.Add(process);
         }
-        if (selected.Count == 0) return ProjectProcessCpuUsage(source, weightedCpuUse);
+        if (selected.Count == 0) return null;
         var status = cpuSession.CalculateWeightedCpuUse(cpuCoreInputs.Slice(0, cursor),
             weightedCpuUse.Slice(0, selected.Count));
         if (status != NativeComputeScoringStatus.Ok)
             throw new InvalidDataException($"CPU physical-core projection failed with {status}.");
 
         return (Narrow(source, selected), HostManagerCpuOccupancySource.CoreResidency);
+
+        void Exclude(SchedulingProcessFact process, string reason)
+            => exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
+                HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
+                "cpu-core-residency", reason));
     }
+
+    private static bool IsTrustedCpuResidency(CpuCoreResidencySnapshot? snapshot)
+        => snapshot is not null && snapshot.SessionGeneration > 0 && snapshot.Window > TimeSpan.Zero
+            && snapshot.MeasuredFrom >= DateTimeOffset.FromFileTime(0)
+            && snapshot.MeasuredThrough > snapshot.MeasuredFrom
+            && snapshot.MeasuredThrough - snapshot.MeasuredFrom == snapshot.Window
+            && snapshot.CapturedAt >= snapshot.MeasuredThrough;
 
     private (SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source)? ProjectProcessCpuUsage(
         SchedulingProcessFactSnapshot source,
@@ -481,8 +537,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         => source with
         {
             Processes = selected.ToArray(),
-            EmittedCount = checked((uint)selected.Count),
-            SkippedCount = checked(source.SkippedCount + (uint)(source.Processes.Count - selected.Count))
+            EmittedCount = checked((uint)selected.Count)
         };
 
     private static SchedulingProcessFactSnapshot? ProjectGpuDomain(
@@ -517,17 +572,8 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                         .ToArray()
             })
             .ToArray();
-        var emitted = checked((uint)processes.Length);
-        var accounted = checked((ulong)source.ExcludedCount + emitted);
-        if (accounted > source.EnumeratedCount)
+        return Narrow(source, processes.ToList()) with
         {
-            throw new InvalidDataException(
-                "The process-domain projection exceeds the source inventory accounting.");
-        }
-        return source with
-        {
-            EmittedCount = emitted,
-            SkippedCount = checked((uint)(source.EnumeratedCount - accounted)),
             RequestedMetricMask = metric,
             CurrentMetricMask = metric,
             Processes = processes,
@@ -673,7 +719,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 + snapshot.SoftwareCpuOutputCount
                 + snapshot.SoftwareGpuOutputCount
                 + snapshot.SoftwareMemoryOutputCount
-            || snapshot.InvalidFactCount != 0
             || snapshot.OutputCount > envelope.OutputCapacity
             || snapshot.CpuFreeRatio != envelope.CpuFreeRatio
             || snapshot.GpuFreeRatio != envelope.GpuFreeRatio

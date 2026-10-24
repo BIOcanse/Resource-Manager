@@ -2,6 +2,7 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -29,7 +30,7 @@ public sealed partial class HostManagerSmartCoordinator
             var workspace = computeScoringWorkspace
                 ?? throw new InvalidOperationException(
                     "The compute scoring authority workspace was not created.");
-            var runtimeFacts = CreateComputeRuntimeFacts(sample.Targets);
+            var runtimeFacts = CreateComputeRuntimeFacts(sample.Targets, cycleFactExclusions);
             var welfareCapacity = CreateWelfareCapacityInput(
                 sample.Hardware,
                 runtimeFacts);
@@ -41,7 +42,8 @@ public sealed partial class HostManagerSmartCoordinator
                 sample.CpuResidency,
                 welfareCapacity,
                 scoreCpu: mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled,
-                scoreGpu: mode.GpuSchedulingEnabled);
+                scoreGpu: mode.GpuSchedulingEnabled,
+                exclusions: cycleFactExclusions);
         }
         catch (Exception exception)
         {
@@ -347,46 +349,58 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private static IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact>
-        CreateComputeRuntimeFacts(IReadOnlyList<HostManagerTargetInfo> targets)
+        CreateComputeRuntimeFacts(
+            IReadOnlyList<HostManagerTargetInfo> targets,
+            ICollection<SchedulingFactExclusion>? exclusions = null)
     {
         var result = new Dictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact>(targets.Count);
+        var observedIdentities = new HashSet<HostManagerComputeProcessIdentity>();
         foreach (var target in targets)
         {
             if (target.ProcessIds.Count != 1)
             {
-                throw new InvalidDataException(
-                    $"Compute scoring target {target.TargetId} does not represent exactly one process instance.");
+                Exclude(null, null, target.TargetId, "target-process-count-not-one");
+                continue;
             }
             var processId = target.ProcessIds[0];
-            if (!target.ProcessStartKeys.TryGetValue(processId, out var processStartKey)
+            if (processId <= 0
+                || !target.ProcessStartKeys.TryGetValue(processId, out var processStartKey)
                 || processStartKey == 0)
             {
-                throw new InvalidDataException(
-                    $"Compute scoring target {target.TargetId} has no exact process start identity.");
+                Exclude(processId, null, target.TargetId, "target-process-identity-missing");
+                continue;
             }
 
-            var expectedTargetId = HostManagerTargetIdentity.CreateProcessTargetId(
-                processId,
-                processStartKey);
+            var expectedTargetId = HostManagerTargetIdentity.CreateProcessTargetId(processId, processStartKey);
             if (!string.Equals(expectedTargetId, target.TargetId, StringComparison.Ordinal))
             {
-                throw new InvalidDataException(
-                    $"Compute scoring target {target.TargetId} does not match {processId}/{processStartKey}.");
+                Exclude(processId, processStartKey, target.TargetId, "target-process-identity-mismatch");
+                continue;
             }
 
             var identity = new HostManagerComputeProcessIdentity(processId, processStartKey);
-            if (!result.TryAdd(
-                identity,
-                new HostManagerComputeRuntimeFact(
-                    EncodeComputeRuntimeState(target.RuntimeState),
-                    NeutralComputePolicyMultiplier,
-                    NeutralComputePolicyMultiplier)))
+            if (!observedIdentities.Add(identity))
             {
-                throw new InvalidDataException(
-                    $"Compute scoring received duplicate process identity {processId}/{processStartKey}.");
+                result.Remove(identity);
+                Exclude(processId, processStartKey, target.TargetId, "duplicate-target-process-identity");
+                continue;
             }
+            if (target.RuntimeState is not (HostManagerRuntimeStates.ForegroundFocused or HostManagerRuntimeStates.ForegroundUnfocused
+                or HostManagerRuntimeStates.BackgroundWindow or HostManagerRuntimeStates.TrayOnly
+                or HostManagerRuntimeStates.BackgroundProcess or HostManagerRuntimeStates.NotRunning))
+            {
+                Exclude(processId, processStartKey, target.TargetId, "target-runtime-state-invalid");
+                continue;
+            }
+            result.Add(identity, new HostManagerComputeRuntimeFact(
+                EncodeComputeRuntimeState(target.RuntimeState),
+                NeutralComputePolicyMultiplier,
+                NeutralComputePolicyMultiplier));
         }
         return result;
+
+        void Exclude(int? processId, ulong? startKey, string targetId, string reason)
+            => exclusions?.Add(new SchedulingFactExclusion(processId, startKey, targetId, "runtime-state", reason));
     }
 
     internal static HostManagerWelfareCapacityInput CreateWelfareCapacityInput(

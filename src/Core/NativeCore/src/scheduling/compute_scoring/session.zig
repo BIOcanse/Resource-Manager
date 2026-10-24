@@ -113,49 +113,128 @@ pub fn score(
         !scratch.disjoint(scratch_pointer.?, scratch_length, @as(?*const protocol.GenerationEnvelope, envelope), 1, protocol.GenerationEnvelope) or
         !scratch.disjoint(scratch_pointer.?, scratch_length, @as(?*protocol.Snapshot, snapshot), 1, protocol.Snapshot)) return .invalid_argument;
 
-    var local_eligible_process_count: u32 = 0;
+    // Keep identity ordering over every submitted row until ambiguity is removed.
+    // An invalid duplicate must not make its otherwise valid twin authoritative.
+    var invalid_fact_count: u32 = 0;
     for (process_rows, 0..) |row, index| {
-        const status = validateProcess(session, &row, cpu_complete, gpu_complete);
-        if (status != .ok) return status;
-        if (row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running))
-            local_eligible_process_count += 1;
-        const score_value = if (cpu_complete) process_scores.cpu(
-            &session.config,
-            &row,
-            0,
-        ) catch
-            return .invalid_facts else 0;
-        work.processes[index] = .{ .row = row, .cpu_score = score_value };
+        if (row.struct_size != @sizeOf(protocol.ProcessInput)) return .abi_mismatch;
+        work.processes[index] = .{ .row = row, .cpu_score = 0 };
         work.process_identity_order[index] = @intCast(index);
-        work.process_aggregate_order[index] = @intCast(index);
     }
     std.sort.heap(u32, work.process_identity_order[0..process_count], &work, processIdentityBefore);
-    std.sort.heap(u32, work.process_aggregate_order[0..process_count], &work, processAggregateBefore);
-    if (hasDuplicateProcessIdentity(&work, process_count)) return .conflicting_facts;
+    var accepted_process_count: usize = 0;
+    var cursor: usize = 0;
+    while (cursor < process_count) {
+        const start = cursor;
+        const first = work.processes[work.process_identity_order[start]].row;
+        cursor += 1;
+        while (cursor < process_count) : (cursor += 1) {
+            const next = work.processes[work.process_identity_order[cursor]].row;
+            if (first.process_id != next.process_id or first.process_start_key != next.process_start_key) break;
+        }
+        if (cursor - start != 1) {
+            invalid_fact_count += @intCast(cursor - start);
+            continue;
+        }
+        const slot = work.process_identity_order[start];
+        const process = &work.processes[slot];
+        if (validateProcess(session, &process.row, false, false) != .ok) {
+            invalid_fact_count += 1;
+            continue;
+        }
+        if (cpu_complete) {
+            if (validateProcess(session, &process.row, true, false) == .ok) {
+                process.cpu_score = process_scores.cpu(&session.config, &process.row, 0) catch blk: {
+                    invalid_fact_count += 1;
+                    process.row.flags &= ~protocol.ProcessFlags.cpu_metrics_complete;
+                    break :blk 0;
+                };
+            } else {
+                process.row.flags &= ~protocol.ProcessFlags.cpu_metrics_complete;
+                invalid_fact_count += 1;
+            }
+        }
+        work.process_identity_order[accepted_process_count] = slot;
+        work.process_aggregate_order[accepted_process_count] = slot;
+        accepted_process_count += 1;
+    }
+    var local_eligible_process_count: u32 = 0;
+    for (work.process_identity_order[0..accepted_process_count]) |slot| {
+        if (work.processes[slot].row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running))
+            local_eligible_process_count += 1;
+    }
     if (local_eligible_process_count > welfare.eligible_process_count) return .invalid_facts;
+    std.sort.heap(u32, work.process_aggregate_order[0..accepted_process_count], &work, processAggregateBefore);
 
     for (gpu_rows, 0..) |row, index| {
-        const process_index = findProcess(&work, process_count, row.process_id, row.process_start_key) orelse
-            return .conflicting_facts;
-        const process = &work.processes[process_index].row;
-        const status = validateGpu(process, &row, gpu_complete);
-        if (status != .ok) return status;
-        const score_value = if (gpu_complete) process_scores.gpu(
-            &session.config,
-            process,
-            &row,
-            welfare.share,
-        ) catch
-            return .invalid_facts else 0;
-        work.gpus[index] = .{ .row = row, .gpu_score = score_value };
+        if (row.struct_size != @sizeOf(protocol.GpuInput)) return .abi_mismatch;
+        work.gpus[index] = .{ .row = row, .gpu_score = 0 };
         work.gpu_identity_order[index] = @intCast(index);
-        work.gpu_aggregate_order[index] = @intCast(index);
     }
     std.sort.heap(u32, work.gpu_identity_order[0..gpu_count], &work, gpuIdentityBefore);
-    std.sort.heap(u32, work.gpu_aggregate_order[0..gpu_count], &work, gpuAggregateBefore);
-    if (hasDuplicateGpuIdentity(&work, gpu_count)) return .conflicting_facts;
-    if (gpu_complete and !validateSparseGpuRows(&work, envelope, process_count, gpu_count))
-        return .conflicting_facts;
+    var accepted_gpu_count: usize = 0;
+    cursor = 0;
+    while (cursor < gpu_count) {
+        const start = cursor;
+        const first = work.gpus[work.gpu_identity_order[start]].row;
+        cursor += 1;
+        while (cursor < gpu_count) : (cursor += 1) {
+            const next = work.gpus[work.gpu_identity_order[cursor]].row;
+            if (first.process_id != next.process_id or first.process_start_key != next.process_start_key or
+                first.adapter_key != next.adapter_key) break;
+        }
+        if (cursor - start != 1) {
+            invalid_fact_count += @intCast(cursor - start);
+            continue;
+        }
+        const slot = work.gpu_identity_order[start];
+        const gpu = &work.gpus[slot];
+        const process_index = findProcess(&work, accepted_process_count, first.process_id, first.process_start_key) orelse {
+            invalid_fact_count += 1;
+            continue;
+        };
+        const process = &work.processes[process_index].row;
+        if ((process.flags & protocol.ProcessFlags.gpu_metrics_complete) == 0 or
+            validateGpu(process, &gpu.row, gpu_complete) != .ok or envelope.gpu_adapter_count == 0)
+        {
+            invalid_fact_count += 1;
+            continue;
+        }
+        gpu.gpu_score = process_scores.gpu(&session.config, process, &gpu.row, welfare.share) catch {
+            invalid_fact_count += 1;
+            continue;
+        };
+        work.gpu_identity_order[accepted_gpu_count] = slot;
+        work.gpu_aggregate_order[accepted_gpu_count] = slot;
+        accepted_gpu_count += 1;
+    }
+    // Adapter-count accounting belongs to each process, not the whole GPU domain.
+    var accounted_gpu_count: usize = 0;
+    cursor = 0;
+    while (cursor < accepted_gpu_count) {
+        const start = cursor;
+        const first = work.gpus[work.gpu_identity_order[start]].row;
+        cursor += 1;
+        while (cursor < accepted_gpu_count) : (cursor += 1) {
+            const next = work.gpus[work.gpu_identity_order[cursor]].row;
+            if (first.process_id != next.process_id or first.process_start_key != next.process_start_key) break;
+        }
+        if (cursor - start > envelope.gpu_adapter_count) {
+            invalid_fact_count += @intCast(cursor - start);
+            continue;
+        }
+        for (start..cursor) |index| {
+            const slot = work.gpu_identity_order[index];
+            work.gpu_identity_order[accounted_gpu_count] = slot;
+            work.gpu_aggregate_order[accounted_gpu_count] = slot;
+            accounted_gpu_count += 1;
+        }
+    }
+    accepted_gpu_count = accounted_gpu_count;
+    std.sort.heap(u32, work.gpu_aggregate_order[0..accepted_gpu_count], &work, gpuAggregateBefore);
+    var accepted = envelope.*;
+    accepted.process_count = @intCast(accepted_process_count);
+    accepted.gpu_row_count = @intCast(accepted_gpu_count);
 
     const outputs = output_pointer.?[0..@intCast(envelope.output_capacity)];
     @memset(outputs, std.mem.zeroes(protocol.ScoreOutput));
@@ -166,17 +245,16 @@ pub fn score(
     var software_gpu_count: u32 = 0;
     var software_memory_count: u32 = 0;
     if (cpu_complete) {
-        if (!emitProcessCpu(&work, envelope, outputs, &output_count, &process_cpu_count, welfare.cpu_bonus) or
-            !emitSoftwareCpu(&work, envelope, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus, .software_cpu))
+        if (!emitProcessCpu(&work, &accepted, outputs, &output_count, &process_cpu_count, welfare.cpu_bonus) or
+            !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_cpu_count, welfare.cpu_bonus, .software_cpu))
             return .buffer_too_small;
     }
     if (gpu_complete) {
-        if (!emitProcessGpu(&work, envelope, outputs, &output_count, &process_gpu_count) or
-            !emitSoftwareGpu(&work, envelope, outputs, &output_count, &software_gpu_count))
+        if (!emitProcessGpu(&work, &accepted, outputs, &output_count, &process_gpu_count) or
+            !emitSoftwareGpu(&work, &accepted, outputs, &output_count, &software_gpu_count))
             return .buffer_too_small;
     }
-    if (cpu_complete and !emitSoftwareCpu(&work, envelope, outputs, &output_count,
-        &software_memory_count, welfare.memory_bonus, .software_memory))
+    if (cpu_complete and !emitSoftwareCpu(&work, &accepted, outputs, &output_count, &software_memory_count, welfare.memory_bonus, .software_memory))
         return .buffer_too_small;
 
     snapshot.* = .{
@@ -192,7 +270,7 @@ pub fn score(
         .software_cpu_output_count = software_cpu_count,
         .software_gpu_output_count = software_gpu_count,
         .output_count = @intCast(output_count),
-        .invalid_fact_count = 0,
+        .invalid_fact_count = invalid_fact_count,
         .cpu_free_ratio = welfare.cpu_free_ratio,
         .gpu_free_ratio = welfare.gpu_free_ratio,
         .vram_free_ratio = welfare.vram_free_ratio,
@@ -237,6 +315,7 @@ fn validateProcess(
         (row.valid_mask & ~protocol.ProcessValidity.known) != 0 or row.target_key == 0 or
         row.software_key == 0 or row.process_id == 0 or row.process_start_key == 0 or
         row.reserved != 0 or
+        row.runtime_state == @intFromEnum(protocol.RuntimeState.unknown) or
         row.runtime_state >= protocol.runtime_state_count or
         !protocol.finiteNonNegative(row.base_importance) or
         row.base_importance > session.config.maximum_base_importance) return .invalid_facts;
@@ -273,57 +352,6 @@ fn validateGpu(
     return .ok;
 }
 
-fn hasDuplicateProcessIdentity(workspace: *const scratch.View, count: usize) bool {
-    var index: usize = 1;
-    while (index < count) : (index += 1) {
-        const left = workspace.processes[workspace.process_identity_order[index - 1]].row;
-        const right = workspace.processes[workspace.process_identity_order[index]].row;
-        if (left.process_id == right.process_id and left.process_start_key == right.process_start_key)
-            return true;
-    }
-    return false;
-}
-
-fn hasDuplicateGpuIdentity(workspace: *const scratch.View, count: usize) bool {
-    var index: usize = 1;
-    while (index < count) : (index += 1) {
-        const left = workspace.gpus[workspace.gpu_identity_order[index - 1]].row;
-        const right = workspace.gpus[workspace.gpu_identity_order[index]].row;
-        if (left.process_id == right.process_id and left.process_start_key == right.process_start_key and
-            left.adapter_key == right.adapter_key) return true;
-    }
-    return false;
-}
-
-fn validateSparseGpuRows(
-    workspace: *const scratch.View,
-    envelope: *const protocol.GenerationEnvelope,
-    process_count: usize,
-    gpu_count: usize,
-) bool {
-    const maximum = std.math.mul(usize, process_count, @as(usize, @intCast(envelope.gpu_adapter_count))) catch
-        return false;
-    if (gpu_count > maximum) return false;
-    if (process_count == 0) return gpu_count == 0;
-    if (envelope.gpu_adapter_count == 0 or gpu_count < process_count) return false;
-    var gpu_cursor: usize = 0;
-    for (workspace.process_identity_order[0..process_count]) |process_index| {
-        const process = workspace.processes[process_index].row;
-        var adapter_count: u32 = 0;
-        var previous_adapter_key: u64 = 0;
-        while (gpu_cursor < gpu_count) {
-            const gpu = workspace.gpus[workspace.gpu_identity_order[gpu_cursor]].row;
-            if (gpu.process_id != process.process_id or gpu.process_start_key != process.process_start_key) break;
-            if (gpu.adapter_key <= previous_adapter_key) return false;
-            previous_adapter_key = gpu.adapter_key;
-            adapter_count += 1;
-            gpu_cursor += 1;
-        }
-        if (adapter_count == 0 or adapter_count > envelope.gpu_adapter_count) return false;
-    }
-    return gpu_cursor == gpu_count;
-}
-
 fn findProcess(workspace: *const scratch.View, count: usize, process_id: u32, start_key: u64) ?usize {
     var low: usize = 0;
     var high = count;
@@ -356,6 +384,7 @@ fn emitProcessCpu(
     for (workspace.process_identity_order[0..@intCast(envelope.process_count)]) |slot| {
         if (cursor.* >= outputs.len) return false;
         const work = workspace.processes[slot];
+        if ((work.row.flags & protocol.ProcessFlags.cpu_metrics_complete) == 0) continue;
         const score_value = process_scores.addWelfare(work.cpu_score, work.row.runtime_state, welfare_bonus) catch return false;
         outputs[cursor.*] = processOutput(envelope, &work.row, 0, score_value, .process_cpu);
         cursor.* += 1;
@@ -411,10 +440,12 @@ fn emitSoftwareCpu(
         var running = false;
         while (index < order.len and workspace.processes[order[index]].row.software_key == software_key) : (index += 1) {
             const work = workspace.processes[order[index]];
+            if ((work.row.flags & protocol.ProcessFlags.cpu_metrics_complete) == 0) continue;
             if (!sum.add(work.cpu_score)) return false;
             running = running or work.row.runtime_state != @intFromEnum(protocol.RuntimeState.not_running);
             members += 1;
         }
+        if (members == 0) continue;
         if (running and !sum.add(welfare_bonus)) return false;
         if (cursor.* >= outputs.len) return false;
         outputs[cursor.*] = softwareOutput(

@@ -34,7 +34,7 @@ public sealed record SchedulingProcessGpuFact(
     public bool HasMetric(SchedulingProcessMetricMask metric)
         => ValidMetricMask.HasFlag(metric)
             || metric == SchedulingProcessMetricMask.GpuDedicatedMemory
-                && ResidentMemoryBytes is not null;
+                && (PrivateMemoryBytes is not null || SharedMemoryBytes is not null);
 }
 
 public sealed record SchedulingProcessDatasetObservation(
@@ -144,7 +144,7 @@ public sealed record SchedulingProcessFact(
     public string? SoftwareCategorySource { get; init; }
 
     public string RuntimeState { get; init; } =
-        HostManagerRuntimeStates.BackgroundProcess;
+        HostManagerRuntimeStates.Unknown;
 
     public bool ForegroundFocused { get; init; }
 
@@ -163,7 +163,10 @@ public sealed record SchedulingProcessFactRequest(
 
 public readonly record struct SoftwareBaseScore(string SoftwareId, double BaseScore);
 
-public sealed record SchedulingProcessFactSnapshot(
+public sealed record SchedulingFactExclusion(
+    int? ProcessId, ulong? ProcessStartKey, string? TargetId, string Fact, string Reason);
+
+public sealed partial record SchedulingProcessFactSnapshot(
     SamplingObservationStatus InventoryStatus,
     ulong Generation,
     long ObservedAtUtcTicks,
@@ -180,6 +183,14 @@ public sealed record SchedulingProcessFactSnapshot(
     ulong GpuTopologyFingerprint = 0,
     uint ExcludedCount = 0)
 {
+    public IReadOnlyList<SchedulingFactExclusion> FactExclusions { get; init; } = [];
+    public bool HasUnidentifiedProcesses { get; init; }
+
+    // Current rows can be consumed without claiming that absence proves exit.
+    public bool IsInventoryCurrent()
+        => InventoryStatus == SamplingObservationStatus.Current
+            && Generation > 0 && ObservedAtUtcTicks > 0;
+
     public bool HasSeparateFoundationPayloads { get; init; }
 
     public IReadOnlyList<SchedulingProcessFact> InventoryProcesses { get; init; } = [];
@@ -293,13 +304,18 @@ public sealed record SchedulingProcessFactSnapshot(
         return true;
     }
 
+    public IReadOnlyList<SchedulingProcessFact> CurrentInventoryProcesses
+        => HasSeparateFoundationPayloads ? InventoryProcesses : Processes;
+
     public bool IsInventoryCurrentComplete()
     {
-        if (InventoryStatus != SamplingObservationStatus.Current
+        if (HasUnidentifiedProcesses
+            || InventoryStatus != SamplingObservationStatus.Current
             || Generation == 0
             || ObservedAtUtcTicks <= 0
             || OverflowCount != 0
             || EmittedCount != Processes.Count
+            || (ulong)EnumeratedCount != (ulong)CurrentInventoryProcesses.Count + ExcludedCount
             || (ulong)EnumeratedCount !=
                 (ulong)EmittedCount + ExcludedCount + SkippedCount)
         {
@@ -307,14 +323,10 @@ public sealed record SchedulingProcessFactSnapshot(
         }
 
         var identities = new HashSet<(int ProcessId, ulong ProcessStartKey)>();
-        foreach (var process in Processes)
+        foreach (var process in CurrentInventoryProcesses)
         {
             if (process.ProcessId <= 0
                 || process.ProcessStartKey == 0
-                || string.IsNullOrWhiteSpace(process.ProcessName)
-                || string.IsNullOrWhiteSpace(process.SoftwareId)
-                || !double.IsFinite(process.BaseScore)
-                || process.BaseScore < 0
                 || !identities.Add((process.ProcessId, process.ProcessStartKey)))
             {
                 return false;
@@ -331,105 +343,31 @@ public sealed record SchedulingProcessFactSnapshot(
         => IsScalarMetricCurrentComplete(SchedulingProcessMetricMask.MemoryUsage);
 
     public bool IsRuntimeStateCurrentComplete()
-    {
-        if (!IsInventoryCurrentComplete()
-            || !RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState)
-            || !CurrentMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState)
-            || !TryGetCurrentDataset(
-                SchedulingProcessMetricMask.RuntimeState,
-                out _))
-        {
-            return false;
-        }
-
-        return Processes
-            .Where(static process => process.ValidMetricMask.HasFlag(
-                SchedulingProcessMetricMask.RuntimeState))
-            .All(IsRuntimeStateValid);
-    }
+        => IsScalarMetricCurrentComplete(SchedulingProcessMetricMask.RuntimeState);
 
     public bool IsGpuUsageCurrentComplete(SchedulingGpuInventorySnapshot inventory)
         => IsGpuMetricCurrentComplete(
             inventory,
-            SchedulingProcessMetricMask.GpuUsage,
-            static _ => true);
+            SchedulingProcessMetricMask.GpuUsage);
 
     public bool IsGpuDedicatedMemoryCurrentComplete(SchedulingGpuInventorySnapshot inventory)
         => IsGpuMetricCurrentComplete(
             inventory,
-            SchedulingProcessMetricMask.GpuDedicatedMemory,
-            static adapter => adapter.CapabilityMask.HasFlag(SchedulingGpuCapabilityMask.DedicatedMemory)
-                && adapter.CapacityStatus == SamplingObservationStatus.Current);
+            SchedulingProcessMetricMask.GpuDedicatedMemory);
 
     private bool IsScalarMetricCurrentComplete(SchedulingProcessMetricMask metric)
-    {
-        if (!IsInventoryCurrentComplete()
-            || !RequestedMetricMask.HasFlag(metric)
-            || !CurrentMetricMask.HasFlag(metric)
-            || !TryGetCurrentDataset(metric, out _))
-        {
-            return false;
-        }
-
-        return Processes
-            .Where(process => process.ValidMetricMask.HasFlag(metric))
-            .All(process => metric == SchedulingProcessMetricMask.CpuUsage
-                ? IsPercentValid(process.CpuUsagePercent, process.ValidMetricMask, metric)
-                : IsMemoryValid(process.MemoryUsedBytes, process.ValidMetricMask));
-    }
+        => IsInventoryCurrent()
+            && RequestedMetricMask.HasFlag(metric)
+            && CurrentMetricMask.HasFlag(metric)
+            && TryGetCurrentDataset(metric, out _);
 
     private bool IsGpuMetricCurrentComplete(
         SchedulingGpuInventorySnapshot inventory,
-        SchedulingProcessMetricMask metric,
-        Func<SchedulingGpuAdapterObservation, bool> isRequiredAdapter)
-    {
-        ArgumentNullException.ThrowIfNull(inventory);
-        if (!IsInventoryCurrentComplete()
-            || !inventory.IsCurrentComplete()
-            || !RequestedMetricMask.HasFlag(metric)
-            || !CurrentMetricMask.HasFlag(metric)
-            || !TryGetCurrentDataset(metric, out var dataset)
-            || dataset.TopologyFingerprint == 0
-            || dataset.TopologyFingerprint != inventory.TopologyFingerprint)
-        {
-            return false;
-        }
-
-        var adapters = inventory.Adapters.Where(isRequiredAdapter).ToArray();
-
-        foreach (var process in Processes.Where(process =>
-                     process.ValidMetricMask.HasFlag(metric)))
-        {
-            if (!AreGpuFactsValid(process))
-            {
-                return false;
-            }
-
-            var found = false;
-            foreach (var gpu in process.Gpus.Where(gpu =>
-                         gpu.HasMetric(metric)))
-            {
-                found = true;
-                var eligibleAdapters = metric == SchedulingProcessMetricMask.GpuDedicatedMemory
-                    && !gpu.ValidMetricMask.HasFlag(metric)
-                        ? inventory.Adapters
-                        : adapters;
-                if (!eligibleAdapters.Any(adapter =>
-                        adapter.AdapterKey == gpu.AdapterKey
-                        && adapter.Index == gpu.GpuIndex))
-                {
-                    return false;
-                }
-            }
-
-            if (!found)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+        SchedulingProcessMetricMask metric)
+        => IsScalarMetricCurrentComplete(metric)
+            && inventory.IsCurrentComplete()
+            && TryGetCurrentDataset(metric, out var dataset)
+            && dataset.TopologyFingerprint == inventory.TopologyFingerprint;
 
     private bool AreGpuFactsValid(SchedulingProcessFact process)
     {
@@ -554,7 +492,7 @@ public sealed record SchedulingProcessFactSnapshot(
             || double.IsFinite(value) && value >= 0 && value <= 100;
     }
 
-    private static bool IsRuntimeStateValid(SchedulingProcessFact process)
+    internal static bool IsRuntimeStateValid(SchedulingProcessFact process)
     {
         if (process.RuntimeState is not (
                 HostManagerRuntimeStates.ForegroundFocused

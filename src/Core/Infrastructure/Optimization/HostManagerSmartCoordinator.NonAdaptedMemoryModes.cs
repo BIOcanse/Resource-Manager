@@ -28,16 +28,14 @@ public sealed partial class HostManagerSmartCoordinator
         {
             if (target.ProcessIds.Count != 1)
             {
-                throw new InvalidDataException(
-                    $"Memory-mode target {target.TargetId} does not represent exactly one process instance.");
+                continue; // The runtime-fact boundary already diagnosed this excluded target.
             }
 
             var processId = target.ProcessIds[0];
             if (!target.ProcessStartKeys.TryGetValue(processId, out var processStartKey)
                 || processStartKey == 0)
             {
-                throw new InvalidDataException(
-                    $"Memory-mode target {target.TargetId} has no exact process start identity.");
+                continue;
             }
             if (!members.Contains(new HostManagerComputeProcessIdentity(processId, processStartKey)))
             {

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using System.Reflection;
 using System.Text.Json;
 using ResourceManager.App.Application.GpuPlacement;
@@ -65,6 +66,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     public async Task PlacementUsesResidentBytesWithoutDedicatedCapacity(
         double? privateBytes, double? sharedBytes, double? expectedBytes)
     {
+        var hardware = CreateHardwareSnapshot(gpuInventoryCurrent: true);
+        hardware = hardware with
+        {
+            GpuInventory = hardware.GpuInventory with
+            {
+                ObservedCount = 1, TopologyFingerprint = 77,
+                Adapters = [new SchedulingGpuAdapterObservation(0, 69842,
+                    SchedulingGpuCapabilityMask.Usage, SchedulingGpuMetricMask.Usage,
+                    SamplingObservationStatus.Current, SamplingObservationStatus.Unavailable,
+                    0, 0, 0, 1, hardware.CapturedAt.UtcTicks)]
+            }
+        };
         var facts = CreateCompleteProcessFacts(42412, 133900000000000001,
             "software:gpu-app", baseScore: 35, cpuUsagePercent: 0, memoryUsagePercent: 0);
         facts = facts with
@@ -82,9 +95,16 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     { PrivateMemoryBytes = privateBytes, SharedMemoryBytes = sharedBytes }]
             }]
         };
+        var observations = facts.DatasetObservations.ToDictionary();
+        foreach (var metric in new[] { SchedulingProcessMetricMask.GpuUsage, SchedulingProcessMetricMask.GpuDedicatedMemory })
+            observations[metric] = SchedulingProcessDatasetObservation.CreateCurrent(metric, 1,
+                facts.ObservedAtUtcTicks, facts.Generation, facts.ObservedAtUtcTicks,
+                topologyGeneration: hardware.GpuInventory.Generation,
+                topologyFingerprint: hardware.GpuInventory.TopologyFingerprint);
+        facts = facts with { DatasetObservations = observations };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             processFactsSnapshot: facts);
-        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(gpuInventoryCurrent: true));
+        fixture.MetricSampler.SetSnapshot(hardware);
         var capture = (Task)typeof(HostManagerSmartCoordinator)
             .GetMethod("CaptureHostManagerSampleAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(fixture.Coordinator, [fixture.RuntimePlan, CancellationToken.None])!;

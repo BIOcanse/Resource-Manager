@@ -69,13 +69,13 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
             || authority.PlanBinding != currentPlanBinding
             || memoryModes.ConfigurationGeneration
                 != currentPlanBinding.MemoryModeConfigurationGeneration
-            || !processFacts.IsInventoryCurrentComplete()
+            || !processFacts.IsInventoryCurrent()
             || !policyEvidence.IsBoundTo(
                 currentPlanBinding,
                 memoryModes.UnrestrictedAllowed))
         {
             throw new InvalidDataException(
-                "The non-adapted memory-mode execution projection is not bound to the current scheduling, process, and Host-plan generation.");
+                "The non-adapted memory-mode execution projection is not bound to the current scheduling, process facts, and Host plan.");
         }
 
         var facts = processFacts.Processes.ToDictionary(
@@ -167,7 +167,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
             throw new InvalidDataException(
                 "Owned process-memory recovery is not bound to the current Host plan publication.");
         }
-        if (!processFacts.IsInventoryCurrentComplete())
+        if (!processFacts.IsInventoryCurrent())
         {
             return null;
         }
@@ -187,7 +187,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(ownershipIndex);
         if (batch.RoundNumber == 0
-            || !processFacts.IsInventoryCurrentComplete())
+            || !processFacts.IsInventoryCurrent())
         {
             throw new InvalidDataException(
                 "Owner-driven memory restores require one complete admitted process inventory generation.");
@@ -201,8 +201,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
             var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                 checked((uint)fact.ProcessId),
                 fact.ProcessStartKey);
-            if (!liveFacts.TryAdd(incarnation, fact)
-                || NativeStableIdentity.CreateCaseInsensitiveKey(fact.SoftwareId) == 0)
+            if (!liveFacts.TryAdd(incarnation, fact))
             {
                 throw new InvalidDataException(
                     "Projection-gap memory restores received an invalid current process identity.");
@@ -246,10 +245,12 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
 
             var ownership = pair.Value;
             var hasLiveFact = liveFacts.TryGetValue(incarnation, out var fact);
-            var softwareKey = hasLiveFact
+            if (!hasLiveFact && !processFacts.IsInventoryCurrentComplete()) continue;
+            var hasAttribution = hasLiveFact && !string.IsNullOrWhiteSpace(fact!.SoftwareId);
+            var softwareKey = hasAttribution
                 ? NativeStableIdentity.CreateCaseInsensitiveKey(fact!.SoftwareId)
                 : pair.Key.SoftwareKey;
-            var softwareId = hasLiveFact ? fact!.SoftwareId : null;
+            var softwareId = hasAttribution ? fact!.SoftwareId : null;
             var restoreDirective = new HostManagerNonAdaptedMemoryProcessDirective(
                 batch.RoundNumber,
                 softwareKey,

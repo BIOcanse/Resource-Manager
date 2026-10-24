@@ -203,6 +203,10 @@ pub const GpuState = struct {
 };
 
 pub const StagedProcess = struct {
+    identity_conflict: bool = false,
+    cpu_score_invalid: bool = false,
+    software_cpu_score_invalid: bool = false,
+    invalid_mask: u64 = 0,
     occupied: bool,
     target_key: u64,
     software_key: u64,
@@ -231,6 +235,8 @@ pub const StagedProcess = struct {
 };
 
 pub const StagedSoftware = struct {
+    cpu_score_invalid: bool = false,
+    invalid_mask: u64 = 0,
     occupied: bool,
     software_key: u64,
     source_index: u32,
@@ -261,6 +267,8 @@ pub const StagedSoftware = struct {
 };
 
 pub const StagedGpu = struct {
+    score_invalid: bool = false,
+    software_score_invalid: bool = false,
     occupied: bool,
     process_slot: u32,
     target_key: u64,
@@ -278,6 +286,7 @@ pub const StagedGpu = struct {
 };
 
 pub const StagedSoftwareGpu = struct {
+    score_invalid: bool = false,
     occupied: bool,
     software_slot: u32,
     device_index: u32,
@@ -328,6 +337,8 @@ pub const Session = struct {
     wake_after_ms: u32,
     last_reason_mask: u64,
     invalid_fact_count: u32,
+    staged_invalid_fact_count: u32 = 0,
+    staged_inventory_complete: bool = true,
     inflight_count: u32,
     first_cycle_completed: bool,
     requires_authoritative_resync: bool,
@@ -558,6 +569,8 @@ pub const Session = struct {
     }
 
     pub fn clearStage(self: *Session) void {
+        self.staged_invalid_fact_count = 0;
+        self.staged_inventory_complete = true;
         @memset(self.staged_processes, std.mem.zeroes(StagedProcess));
         @memset(self.staged_softwares, std.mem.zeroes(StagedSoftware));
         @memset(self.staged_gpus, std.mem.zeroes(StagedGpu));
@@ -593,8 +606,13 @@ pub const Session = struct {
         return findGpuIn(self.gpu_index, self.gpus, target_key, process_id, start_key, device_index);
     }
 
+    pub fn findStagedIdentity(self: *const Session, process_id: u32, start_key: u64) ?u32 {
+        return findStagedProcessIn(self.staged_process_index, self.staged_processes, 0, process_id, start_key);
+    }
+
     pub fn findStagedProcess(self: *const Session, target_key: u64, process_id: u32, start_key: u64) ?u32 {
-        return findStagedProcessIn(self.staged_process_index, self.staged_processes, target_key, process_id, start_key);
+        const slot = self.findStagedIdentity(process_id, start_key) orelse return null;
+        return if (self.staged_processes[slot].target_key == target_key) slot else null;
     }
 
     pub fn findStagedSoftware(self: *const Session, software_key: u64) ?u32 {
@@ -921,14 +939,15 @@ fn findProcessIn(index: []const u32, values: []const ProcessState, target_key: u
 }
 
 fn findStagedProcessIn(index: []const u32, values: []const StagedProcess, target_key: u64, process_id: u32, start_key: u64) ?u32 {
-    var cursor = indexStart(processHash(target_key, process_id, start_key), index);
+    _ = target_key;
+    var cursor = indexStart(processHash(0, process_id, start_key), index);
     var probes: usize = 0;
     while (probes < index.len) : (probes += 1) {
         const encoded = index[cursor];
         if (encoded == 0) return null;
         const slot = encoded - 1;
         const item = values[slot];
-        if (item.occupied and item.target_key == target_key and item.process_id == process_id and item.process_start_key == start_key) return slot;
+        if (item.occupied and item.process_id == process_id and item.process_start_key == start_key) return slot;
         cursor = (cursor + 1) & (index.len - 1);
     }
     return null;
@@ -941,7 +960,7 @@ fn insertProcessIndexInto(index: []u32, values: []const ProcessState, slot: u32)
 
 fn insertStagedProcessIndex(index: []u32, values: []const StagedProcess, slot: u32) void {
     const item = values[slot];
-    insertEncoded(index, processHash(item.target_key, item.process_id, item.process_start_key), slot + 1);
+    insertEncoded(index, processHash(0, item.process_id, item.process_start_key), slot + 1);
 }
 
 fn findSoftwareIn(index: []const u32, values: []const SoftwareState, key: u64) ?u32 {

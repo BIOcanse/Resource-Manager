@@ -56,8 +56,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             flags |= NativeSmartCoordinatorCycleFlags.FullProcessSnapshot;
         }
-        var canPublishAuthoritativeFacts = projection.FullProcessSnapshot
-            && projection.AllAppliedOwnershipRecordsRepresented
+        var canPublishAuthoritativeFacts = projection.AllAppliedOwnershipRecordsRepresented
             && nativeActionTransactions.JournalState ==
                 HostManagerTransactionJournalRuntimeState.ReadyForExecution;
         if (authoritativeAppliedFactsRequired

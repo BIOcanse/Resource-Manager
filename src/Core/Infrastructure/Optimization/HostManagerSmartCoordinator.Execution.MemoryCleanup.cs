@@ -315,20 +315,28 @@ public sealed partial class HostManagerSmartCoordinator
             var identity = CreateProcessIdentity(baseline);
             if (!baselineScores.TryGetValue(identity, out var baselineScore))
             {
-                return MemoryCleanupFinalAdmissionResult.Incomplete(
-                    HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete);
+                currentCandidates.Add(baseline with { CanApply = false });
+                knownFilteredCount++;
+                cycleFactExclusions.Add(new SchedulingFactExclusion(identity.ProcessId, identity.ProcessStartKey,
+                    baseline.TargetId, "cpu-score", "cleanup-baseline-score-missing"));
+                continue;
             }
             if (!currentProcesses.TryGetValue(identity, out var current))
             {
                 knownFilteredCount++;
+                cycleFactExclusions.Add(new SchedulingFactExclusion(identity.ProcessId, identity.ProcessStartKey,
+                    baseline.TargetId, "memory-cleanup", "cleanup-current-process-facts-missing"));
                 continue;
             }
 
             var softwareKey = NativeStableIdentity.CreateCaseInsensitiveKey(current.SoftwareId);
             if (!maximumBaseScores.TryGetValue(softwareKey, out var maximumBaseScore))
             {
-                return MemoryCleanupFinalAdmissionResult.Incomplete(
-                    HostManagerMemoryCleanupRoundDisposition.FinalAdmissionCandidateProjectionIncomplete);
+                currentCandidates.Add(baseline with { CanApply = false });
+                knownFilteredCount++;
+                cycleFactExclusions.Add(new SchedulingFactExclusion(current.ProcessId, current.ProcessStartKey,
+                    baseline.TargetId, "base-score", "cleanup-software-maximum-base-score-missing"));
+                continue;
             }
             var protectionLevel = protectionLevels.GetValueOrDefault(
                 baseline.TargetId,
@@ -402,7 +410,7 @@ public sealed partial class HostManagerSmartCoordinator
         maximumBaseScores = new Dictionary<ulong, double>();
         var requiredMask = SchedulingProcessMetricMask.MemoryUsage
             | SchedulingProcessMetricMask.RuntimeState;
-        if (!current.IsInventoryCurrentComplete()
+        if (!current.IsInventoryCurrent()
             || !current.IsMemoryCurrentComplete()
             || totalMemoryBytes == 0
             || !current.IsRuntimeStateCurrentComplete()
@@ -425,22 +433,27 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return false;
         }
+        var ambiguousAttribution = attributionProcesses.GroupBy(process => (process.ProcessId, process.ProcessStartKey))
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet();
         foreach (var process in attributionProcesses)
         {
             var softwareKey = NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
             if (process.ProcessId <= 0
                 || process.ProcessStartKey == 0
+                || ambiguousAttribution.Contains((process.ProcessId, process.ProcessStartKey))
                 || string.IsNullOrWhiteSpace(process.ProcessName)
                 || softwareKey == 0
                 || !double.IsFinite(process.BaseScore)
                 || process.BaseScore < 0)
             {
-                return false;
+                continue;
             }
             maxima[softwareKey] = maxima.TryGetValue(softwareKey, out var currentMaximum)
                 ? Math.Max(currentMaximum, process.BaseScore)
                 : process.BaseScore;
         }
+        var ambiguousProcesses = current.Processes.GroupBy(process => (process.ProcessId, process.ProcessStartKey))
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToHashSet();
         foreach (var process in current.Processes)
         {
             var identity = new HostManagerComputeProcessIdentity(
@@ -449,23 +462,24 @@ public sealed partial class HostManagerSmartCoordinator
             var softwareKey = NativeStableIdentity.CreateCaseInsensitiveKey(process.SoftwareId);
             if (process.ProcessId <= 0
                 || process.ProcessStartKey == 0
+                || ambiguousProcesses.Contains((process.ProcessId, process.ProcessStartKey))
                 || string.IsNullOrWhiteSpace(process.ProcessName)
                 || softwareKey == 0
                 || !double.IsFinite(process.BaseScore)
                 || process.BaseScore < 0)
             {
-                return false;
+                continue;
             }
             var hasFinalAdmissionFacts = process.ValidMetricMask.HasFlag(
                     SchedulingProcessMetricMask.MemoryUsage)
                 && process.ValidMetricMask.HasFlag(
                     SchedulingProcessMetricMask.RuntimeState);
-            if (hasFinalAdmissionFacts && (!double.IsFinite(process.MemoryUsedBytes)
-                || process.MemoryUsedBytes < 0
-                || !indexed.TryAdd(identity, process)))
+            if (!hasFinalAdmissionFacts || !double.IsFinite(process.MemoryUsedBytes)
+                || process.MemoryUsedBytes < 0 || !SchedulingProcessFactSnapshot.IsRuntimeStateValid(process))
             {
-                return false;
+                continue;
             }
+            indexed.Add(identity, process);
         }
 
         processes = indexed;

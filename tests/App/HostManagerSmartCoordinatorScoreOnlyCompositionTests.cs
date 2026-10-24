@@ -288,7 +288,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public async Task MixedCpuAvailability_PublishesReadyMemoryAuthorityForScoredProcessesOnly()
+    public async Task CoveredIdleProcessWithoutScalarCpuRemainsInReadyMemoryAuthority()
     {
         const int scoredProcessId = 4_242;
         const int unscoredProcessId = 4_243;
@@ -334,11 +334,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.NotNull(authority.MemoryModes);
         var projection = Assert.IsType<HostManagerNonAdaptedMemoryModeProjectionSnapshot>(
             fixture.Coordinator.NonAdaptedMemoryModeProjection);
-        var directive = Assert.Single(projection.Processes);
-        Assert.Equal(scoredProcessId, directive.ProcessId);
-        Assert.DoesNotContain(
-            projection.Processes,
-            candidate => candidate.ProcessId == unscoredProcessId);
+        Assert.Equal(2, projection.Processes.Length);
+        Assert.Contains(projection.Processes, candidate => candidate.ProcessId == scoredProcessId);
+        Assert.Contains(projection.Processes, candidate => candidate.ProcessId == unscoredProcessId
+            && candidate.Action == HostManagerNonAdaptedMemoryProcessAction.Optimize);
+        Assert.Equal(authority.Compute!.Welfare.CpuBonus, Assert.Single(authority.Compute.Cpu!.Scores,
+            score => score.Kind == NativeComputeScoringOutputKind.ProcessCpu
+                && score.ProcessId == unscoredProcessId).Score);
     }
 
     [Fact]
@@ -1371,7 +1373,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData("skipped")]
     [InlineData("overflow")]
-    public async Task AutomaticMemoryCleanupFinalAdmission_RejectsOverflowAndKeepsAccountedSkippedInventory(
+    public async Task AutomaticMemoryCleanupFinalAdmission_PartialInventoryKeepsPresentCandidates(
         string incompleteKind)
     {
         const int processId = 24_229;
@@ -1413,15 +1415,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await fixture.PrimeMemoryCleanupAdmissionAsync();
         _ = await fixture.RunRealtimeCycleAsync();
 
-        if (incompleteKind == "overflow")
-        {
-            AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
-        }
-        else
-        {
-            Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
-            Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
-        }
+        Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
+        Assert.NotNull(fixture.Coordinator.SchedulingAuthority.Compute?.Cpu);
     }
 
     [Fact]
@@ -7566,7 +7562,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             0,
             0,
             1,
-            []);
+            []) { RuntimeState = HostManagerRuntimeStates.BackgroundProcess };
         var observedAt = DateTimeOffset.UtcNow.UtcTicks;
         const SchedulingProcessMetricMask metrics =
             SchedulingProcessMetricMask.RuntimeState;
@@ -7633,7 +7629,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 input.CpuUsagePercent,
                 input.MemoryUsagePercent,
                 SourceGeneration: 1,
-                Gpus: []))
+                Gpus: []) { RuntimeState = HostManagerRuntimeStates.BackgroundProcess })
             .ToArray();
         var observedAt = DateTimeOffset.UtcNow.UtcTicks;
         return new SchedulingProcessFactSnapshot(

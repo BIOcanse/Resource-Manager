@@ -10,6 +10,7 @@ using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Diagnostics;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Hosting;
@@ -657,7 +658,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     50,
                     50,
                     generation,
-                    []);
+                    []) { RuntimeState = HostManagerRuntimeStates.BackgroundProcess };
             }
             var processSnapshot = new SchedulingProcessFactSnapshot(
                 SamplingObservationStatus.Current,

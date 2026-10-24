@@ -107,18 +107,24 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             scoreOnlyEnabled: false, policyExecutionEnabled: true, automaticMemoryCleanupEnabled: true,
             processRecoveryRead: processId =>
             {
-                Assert.Equal(pid, processId);
+                Assert.InRange(processId, pid, pid + 1);
+                var processStart = checked(start + (ulong)(processId - pid));
                 return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Found(
-                    new ProcessInstanceRecoverySnapshot(pid, DateTimeOffset.FromFileTime(checked((long)start))));
+                    new ProcessInstanceRecoverySnapshot(processId, DateTimeOffset.FromFileTime(checked((long)processStart))));
             });
 
         await fixture.PrimeMemoryCleanupAdmissionAsync();
         _ = await fixture.RunRealtimeCycleAsync();
 
         Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
-        var candidate = Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
-        Assert.Equal(pid, candidate.ProcessId);
-        Assert.Equal(6.75 + 50, candidate.CpuScore, 10);
+        var candidates = fixture.MemoryCleanupPlanner.LastRequest!.Candidates;
+        Assert.Equal(2, candidates.Count);
+        var active = Assert.Single(candidates, candidate => candidate.ProcessId == pid);
+        var idle = Assert.Single(candidates, candidate => candidate.ProcessId == pid + 1);
+        Assert.Equal(6.75 + 50, active.CpuScore, 10);
+        Assert.Equal(50, idle.CpuScore, 10);
+        var cpu = Assert.IsType<HostManagerComputeScoreDomainSnapshot>(fixture.Coordinator.SchedulingAuthority.Compute!.Cpu);
+        Assert.Equal(2U, Assert.Single(cpu.Scores, row => row.Kind == NativeComputeScoringOutputKind.SoftwareCpu).MemberCount);
         Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
     }
 

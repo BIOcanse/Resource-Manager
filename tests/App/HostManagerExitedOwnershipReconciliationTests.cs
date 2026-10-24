@@ -60,7 +60,7 @@ public sealed class HostManagerExitedOwnershipReconciliationTests
     }
 
     [Fact]
-    public void SkippedInventoryRowStillSelectsMissingOwnershipForLiveConfirmation()
+    public void SkippedInventoryRowCannotProveAbsence()
     {
         var snapshot = CreateProcessSnapshot(includeProcess: false) with
         {
@@ -68,8 +68,8 @@ public sealed class HostManagerExitedOwnershipReconciliationTests
             EnumeratedCount = 1
         };
 
-        Assert.True(snapshot.IsInventoryCurrentComplete());
-        Assert.Single(HostManagerSmartCoordinator.SelectMissingProcessOwnership(
+        Assert.False(snapshot.IsInventoryCurrentComplete());
+        Assert.Empty(HostManagerSmartCoordinator.SelectMissingProcessOwnership(
             snapshot,
             CreateOwnershipSnapshot(CreateProcessRecord())));
     }
@@ -87,6 +87,21 @@ public sealed class HostManagerExitedOwnershipReconciliationTests
         Assert.Single(HostManagerSmartCoordinator.SelectMissingProcessOwnership(
             excluded,
             CreateOwnershipSnapshot(CreateProcessRecord())));
+    }
+
+    [Fact]
+    public void CompleteIdentityInventoryKeepsOwnershipWhenAttributionIsMissing()
+    {
+        var live = CreateProcessSnapshot(includeProcess: true);
+        var missingAttribution = live with
+        {
+            Processes = [], EmittedCount = 0, SkippedCount = 1,
+            HasSeparateFoundationPayloads = true,
+            InventoryProcesses = live.Processes.Select(p => p with { SoftwareId = string.Empty }).ToArray()
+        };
+        Assert.True(missingAttribution.IsInventoryCurrentComplete());
+        Assert.Empty(HostManagerSmartCoordinator.SelectMissingProcessOwnership(
+            missingAttribution, CreateOwnershipSnapshot(CreateProcessRecord())));
     }
 
     [Fact]
@@ -128,10 +143,10 @@ public sealed class HostManagerExitedOwnershipReconciliationTests
             EnumeratedCount = 2,
             SkippedCount = 1
         };
-        Assert.True(snapshotWithSkippedPeer.IsInventoryCurrentComplete());
-        Assert.Equal(2, HostManagerSmartCoordinator.SelectMissingProcessOwnership(
+        Assert.False(snapshotWithSkippedPeer.IsInventoryCurrentComplete());
+        Assert.Empty(HostManagerSmartCoordinator.SelectMissingProcessOwnership(
             snapshotWithSkippedPeer,
-            CreateOwnershipSnapshot(oldProcess, oldMemory)).Count);
+            CreateOwnershipSnapshot(oldProcess, oldMemory)));
     }
 
     [Fact]

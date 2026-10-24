@@ -622,8 +622,10 @@ public sealed class SchedulingObservationContractTests
             ]
         };
 
-        Assert.False(indexDrift.IsGpuUsageCurrentComplete(CreateGpuInventory()));
-        Assert.False(keyDrift.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.True(indexDrift.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.Empty(indexDrift.ProjectValidFacts(CreateGpuInventory()).Processes[0].Gpus);
+        Assert.True(keyDrift.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.Empty(keyDrift.ProjectValidFacts(CreateGpuInventory()).Processes[0].Gpus);
     }
 
     [Fact]
@@ -646,7 +648,8 @@ public sealed class SchedulingObservationContractTests
             ]
         };
 
-        Assert.False(withUnknownAdapter.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.True(withUnknownAdapter.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.Single(withUnknownAdapter.ProjectValidFacts(CreateGpuInventory()).Processes[0].Gpus);
     }
 
     [Fact]
@@ -704,6 +707,25 @@ public sealed class SchedulingObservationContractTests
             EmittedCount = 2,
             Processes = [current.Processes[0], current.Processes[0]]
         }).IsCurrentComplete());
+    }
+
+    [Fact]
+    public void DuplicateIdentityInSeparateInventoryExcludesOnlyItsJoinedFacts()
+    {
+        var source = CreateProcessFacts();
+        var first = source.Processes[0];
+        var other = first with { ProcessId = first.ProcessId + 1, ProcessStartKey = first.ProcessStartKey + 1 };
+        source = source with
+        {
+            HasSeparateFoundationPayloads = true,
+            InventoryProcesses = [first, first, other],
+            Processes = [first, other], EnumeratedCount = 3, EmittedCount = 2, SkippedCount = 1
+        };
+        var projected = source.ProjectValidFacts(CreateGpuInventory());
+        Assert.Equal(other.ProcessId, Assert.Single(projected.Processes).ProcessId);
+        Assert.True(projected.IsCpuCurrentComplete());
+        Assert.False(projected.IsInventoryCurrentComplete());
+        Assert.Contains(projected.FactExclusions, e => e.ProcessId == first.ProcessId && e.Fact == "identity");
     }
 
     private static NativeMetricSnapshotMetricOutput CurrentMetric(

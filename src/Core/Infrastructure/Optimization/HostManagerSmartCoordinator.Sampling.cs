@@ -12,6 +12,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private readonly List<SchedulingFactExclusion> cycleFactExclusions = [];
     private ulong roundNumber;
     private CapturedSourceIdentities? previousRoundSources;
 
@@ -24,6 +25,7 @@ public sealed partial class HostManagerSmartCoordinator
         CompiledRuntimePlan runtimePlan,
         CancellationToken cancellationToken)
     {
+        cycleFactExclusions.Clear();
         ArgumentNullException.ThrowIfNull(runtimePlan);
         var mode = runtimePlan.OptimizationMode;
         var hardware = metricSnapshotSource.ReadLatest(
@@ -58,11 +60,6 @@ public sealed partial class HostManagerSmartCoordinator
             return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
                 "scheduling-process-snapshot-unavailable"));
         }
-        if (!processFacts.IsRuntimeStateCurrentComplete())
-        {
-            return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
-                "scheduling-runtime-state-incomplete"));
-        }
         var residency = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled
             ? cpuCoreResidencyReader.Read()
             : null;
@@ -77,7 +74,8 @@ public sealed partial class HostManagerSmartCoordinator
                 .OrderBy(static identity => identity.DatasetId, StringComparer.Ordinal)
                 .ToArray(),
             residency is null ? null : (residency.SessionGeneration, residency.CapturedAt));
-        processFacts = ProjectSchedulableProcessFacts(processFacts);
+        processFacts = processFacts.ProjectValidFacts(hardware.GpuInventory);
+        cycleFactExclusions.AddRange(processFacts.FactExclusions);
         var targetInfos = BuildTargetInfos(processFacts, runtimePlan).ToArray();
         AcceptCapturedSources(identities);
         return Task.FromResult(HostManagerSampleCaptureResult.Available(
@@ -171,7 +169,10 @@ public sealed partial class HostManagerSmartCoordinator
         var byTarget = new Dictionary<string, MutableHostManagerTargetInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var process in snapshot.Processes)
         {
-            if (process.ProcessId <= 0 || string.IsNullOrWhiteSpace(process.SoftwareId))
+            if (!process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState)
+                || process.ProcessId <= 0 || string.IsNullOrWhiteSpace(process.SoftwareId)
+                || string.IsNullOrWhiteSpace(process.ProcessName)
+                || !double.IsFinite(process.BaseScore) || process.BaseScore < 0)
             {
                 continue;
             }
@@ -215,27 +216,6 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         return byTarget.Values.Select(static target => target.ToImmutable());
-    }
-
-    private static SchedulingProcessFactSnapshot ProjectSchedulableProcessFacts(
-        SchedulingProcessFactSnapshot source)
-    {
-        var processes = source.Processes
-            .Where(static process => process.ValidMetricMask.HasFlag(
-                SchedulingProcessMetricMask.RuntimeState))
-            .ToArray();
-        var removed = checked(source.Processes.Count - processes.Length);
-        if (removed == 0)
-        {
-            return source;
-        }
-
-        return source with
-        {
-            EmittedCount = checked((uint)processes.Length),
-            SkippedCount = checked(source.SkippedCount + (uint)removed),
-            Processes = processes
-        };
     }
 
     private static HostManagerIdleCapacitySnapshot CreateIdleCapacity(HardwareMetricSnapshot hardware)
