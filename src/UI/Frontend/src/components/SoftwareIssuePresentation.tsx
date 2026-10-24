@@ -1,4 +1,4 @@
-import { softwareIssueLabel, softwareIssueMessage } from "../presentation/softwareClassification.ts";
+import { softwareIssueLabel, softwareIssueMessage, softwareIssueReferenceLabel } from "../presentation/softwareClassification.ts";
 import { uiText } from "../text.ts";
 import { For, Show } from "solid-js";
 import { AlertTriangle } from "lucide-solid";
@@ -50,7 +50,7 @@ export function SoftwareIssueDetailSection(props: {
                     <For each={issue.references ?? []}>
                       {(reference) => (
                         <a href={reference.url} target="_blank" rel="noreferrer">
-                          {reference.label}
+                          {softwareIssueReferenceLabel(reference)}
                         </a>
                       )}
                     </For>

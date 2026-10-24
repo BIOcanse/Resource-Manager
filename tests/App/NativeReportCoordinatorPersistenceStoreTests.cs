@@ -253,6 +253,22 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
             row => row.IdentityHandle is 13 or 14 or 15);
     }
 
+    [Fact]
+    public async Task MinimalIdentitySurvivesRestartOnlyWhileNativeRowsReferenceIt()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var target = new HostManagerReportTargetDescriptor(123, "runtime:editor", "Editor", "other", "other", ["old.exe"], [42]);
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with { TargetHandle = 123 };
+        await store.PersistAsync(new[] { row }, CancellationToken.None, new Dictionary<ulong, HostManagerReportTargetDescriptor> { [123] = target });
+        var restored = Assert.Single(await new NativeReportCoordinatorPersistenceStore(database).LoadTargetsAsync(CancellationToken.None));
+        Assert.Equal(target.SoftwareId, restored.SoftwareId);
+        Assert.Equal(target.SoftwareName, restored.SoftwareName);
+        Assert.Empty(restored.ProcessIds);
+        await store.PersistAsync(new[] { row with { MutationVersion = 2, Flags = (uint)NativeReportPersistenceFlags.Delete } }, CancellationToken.None);
+        Assert.Empty(await store.LoadTargetsAsync(CancellationToken.None));
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

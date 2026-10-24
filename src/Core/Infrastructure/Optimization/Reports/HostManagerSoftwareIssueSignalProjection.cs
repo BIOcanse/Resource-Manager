@@ -29,7 +29,7 @@ internal static class HostManagerSoftwareIssueSignalProjection
             var output = outputs[index];
             var rule = plan.Recreate.Rules.Single(candidate =>
                 candidate.RuleHandle == output.RuleHandle);
-            var signal = ProjectReport(report, rule.FactKind, interrupts);
+            var signal = ProjectReport(report, rule.FactKind, interrupts, rule.ActivationThreshold);
             if (signal is not null)
             {
                 signals.Add(signal);
@@ -42,8 +42,10 @@ internal static class HostManagerSoftwareIssueSignalProjection
     internal static OptimizationSoftwareIssueSignal? ProjectReport(
         OptimizationReportItem report,
         HostManagerReportFactKind factKind,
-        SystemInterruptSnapshot interrupts)
+        SystemInterruptSnapshot interrupts,
+        double activationThreshold)
     {
+        if (report.State == OptimizationReportStates.TrustedSuppressed) return null;
         if (report.Target.TargetType == OptimizationReportTargetTypes.Software
             && !string.IsNullOrWhiteSpace(report.Target.SoftwareId)
             && report.Evidence.ResourceKind == OptimizationResourceKinds.Memory)
@@ -52,10 +54,13 @@ internal static class HostManagerSoftwareIssueSignalProjection
                 report.Id,
                 SoftwareIssueKinds.AbnormalMemoryUsage,
                 report.Severity,
-                "内存占用异常",
-                report.Message,
+                string.Empty,
+                string.Empty,
                 report.Target.SoftwareId,
-                null);
+                null)
+            {
+                Evidence = [new SoftwareIssueEvidence("Memory", report.Evidence.CurrentValue, report.Evidence.ValueUnit)]
+            };
         }
 
         if (report.Type != OptimizationReportTypes.SystemInterruptPressure
@@ -65,7 +70,7 @@ internal static class HostManagerSoftwareIssueSignalProjection
             return null;
         }
 
-        var driver = SelectMaximumContributor(interrupts.Drivers, factKind);
+        var driver = SelectMaximumContributor(interrupts.Drivers, factKind, activationThreshold);
         return driver is null || string.IsNullOrWhiteSpace(driver.ModulePath)
             ? null
             : CreateInterruptSignal(report, factKind, driver);
@@ -73,14 +78,15 @@ internal static class HostManagerSoftwareIssueSignalProjection
 
     private static SystemInterruptDriverSnapshot? SelectMaximumContributor(
         IReadOnlyList<SystemInterruptDriverSnapshot> drivers,
-        HostManagerReportFactKind kind)
+        HostManagerReportFactKind kind, double activationThreshold)
         => drivers
             .Select(driver => new
             {
                 Driver = driver,
                 Value = MetricValue(driver, kind)
             })
-            .Where(static candidate => candidate.Value > 0
+            .Where(candidate => double.IsFinite(candidate.Value)
+                && candidate.Value >= activationThreshold
                 && !string.IsNullOrWhiteSpace(candidate.Driver.ModulePath))
             .OrderByDescending(static candidate => candidate.Value)
             .ThenBy(static candidate => candidate.Driver.ModulePath, StringComparer.OrdinalIgnoreCase)
@@ -106,34 +112,14 @@ internal static class HostManagerSoftwareIssueSignalProjection
         HostManagerReportFactKind kind,
         SystemInterruptDriverSnapshot driver)
     {
-        var (issueKind, label, evidence) = kind switch
+        var issueKind = kind == HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds
+            ? SoftwareIssueKinds.LongSystemInterrupts : SoftwareIssueKinds.ExcessiveSystemInterrupts;
+        var unit = kind == HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds
+            ? "ms" : kind == HostManagerReportFactKind.InterruptCpuCapacityPercent ? "%" : "count";
+        return new OptimizationSoftwareIssueSignal(report.Id, issueKind, report.Severity,
+            string.Empty, string.Empty, null, driver.ModulePath)
         {
-            HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds
-                => (
-                    SoftwareIssueKinds.LongSystemInterrupts,
-                    "造成长系统中断",
-                    $"最大单次中断 {driver.MaximumSingleDurationMilliseconds:0.###} ms"),
-            HostManagerReportFactKind.InterruptEventsAtOrAboveOneMillisecond
-                => (
-                    SoftwareIssueKinds.ExcessiveSystemInterrupts,
-                    "造成过多系统中断",
-                    $"不短于 1 ms 的中断 {driver.EventsAtOrAboveOneMillisecond} 次"),
-            HostManagerReportFactKind.InterruptCpuCapacityPercent
-                => (
-                    SoftwareIssueKinds.ExcessiveSystemInterrupts,
-                    "造成过多系统中断",
-                    $"中断占用 CPU 总容量 {driver.CpuCapacityPercent:0.####}%"),
-            _ => throw new InvalidDataException(
-                $"Fact kind '{kind}' is not an interrupt issue fact.")
+            Evidence = [new SoftwareIssueEvidence(kind.ToString(), MetricValue(driver, kind), unit, driver.ModuleName)]
         };
-
-        return new OptimizationSoftwareIssueSignal(
-            report.Id,
-            issueKind,
-            report.Severity,
-            label,
-            $"{driver.ModuleName} 是同一采样窗口中的主要归因驱动（{evidence}）。",
-            null,
-            driver.ModulePath);
     }
 }

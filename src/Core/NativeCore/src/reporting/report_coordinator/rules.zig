@@ -252,6 +252,20 @@ pub fn observe(
             rollbackObserve(session, &checkpoint);
             return result;
         }
+    } else {
+        for (session.observations, 0..) |*observation, index| {
+            if (!observation.occupied or observation.delete_pending or
+                observation.source_handle != input.source_handle or
+                observation.coverage_scope_handle != input.coverage_scope_handle) continue;
+            session.snapshotObservation(@intCast(index));
+            observation.consecutive_hits = 0;
+            observation.consecutive_misses = 0;
+            observation.active_sample_count = 0;
+            observation.mutation_version = session.allocateMutation() orelse {
+                rollbackObserve(session, &checkpoint);
+                return .out_of_memory;
+            };
+        }
     }
 
     session.commitFactTransaction();
@@ -440,6 +454,16 @@ fn observeComplete(
             if (window_result != .ok) return window_result;
         }
 
+        const stale_after = if (rule.stale_after_milliseconds != 0)
+            rule.stale_after_milliseconds
+        else
+            session.config.default_stale_after_milliseconds;
+        if (observation.last_observed_at_utc_ms != 0 and elapsedAtLeast(effective_now_utc_ms, observation.last_observed_at_utc_ms, stale_after)) {
+            observation.active = false;
+            observation.consecutive_hits = 0;
+            observation.consecutive_misses = 0;
+            observation.active_sample_count = 0;
+        }
         observation.evidence_payload_handle = fact.evidence_payload_handle;
         observation.last_observed_at_utc_ms = input.observed_at_utc_milliseconds;
         observation.seen_operation_epoch = input.operation_epoch;
@@ -595,13 +619,15 @@ fn updateStaleObservations(session: *state.Session, now_utc_ms: i64) ResultCode 
             rule.retention_milliseconds
         else
             session.config.default_retention_milliseconds;
-        if (observation.active and elapsedAtLeast(
+        if ((observation.active or observation.consecutive_hits != 0 or
+            observation.consecutive_misses != 0) and elapsedAtLeast(
             now_utc_ms,
             observation.last_observed_at_utc_ms,
             stale_after,
         )) {
             session.snapshotObservation(@intCast(observation_index));
             observation.active = false;
+            observation.consecutive_misses = 0;
             observation.consecutive_hits = 0;
             observation.active_sample_count = 0;
             observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;

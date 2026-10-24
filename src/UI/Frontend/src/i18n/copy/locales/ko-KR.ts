@@ -390,6 +390,19 @@ const koKrAppCopy: AppCopy = {
     Support: "지원"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "비정상 메모리 사용량",
+      LongSystemInterrupts: "긴 시스템 인터럽트",
+      ExcessiveSystemInterrupts: "높은 시스템 인터럽트 사용량",
+      KnownSecurityVulnerability: "알려진 보안 취약점",
+      DependencyIssue: "종속성 문제",
+      CompatibilityIssue: "호환성 문제",
+      KnownMalware: "알려진 악성 소프트웨어",
+      memoryAdvice: "이 백그라운드 앱이 필요한지 확인하고 더 이상 사용하지 않으면 종료하세요.",
+      interruptAdvice: "관련 드라이버의 업데이트를 확인하세요. 드라이버 파일을 직접 삭제하지 마세요.",
+      winringMessage: "설치된 WinRing0x64.sys 1.2.0.5가 공개된 취약점 기록과 일치합니다. 이 드라이버가 포함된 이전 소프트웨어를 업데이트하거나 제거하세요. 악성 소프트웨어로 판정한 것은 아닙니다.",
+      driverReference: "Microsoft 취약한 드라이버 차단 규칙",
+    },
     categorySource: "분류 출처",
     windowsGameList: "Windows 게임 목록(GameConfigStore)",
     classifySoftware: "분류 선택",

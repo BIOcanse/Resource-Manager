@@ -48,6 +48,19 @@ export const enSoftwareCopy: Pick<
     Support: "Support"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "Abnormal memory usage",
+      LongSystemInterrupts: "Long system interrupts",
+      ExcessiveSystemInterrupts: "High system interrupt usage",
+      KnownSecurityVulnerability: "Known security vulnerability",
+      DependencyIssue: "Dependency issue",
+      CompatibilityIssue: "Compatibility issue",
+      KnownMalware: "Known malware",
+      memoryAdvice: "Check whether this background app is still needed; close it when no longer in use.",
+      interruptAdvice: "Check for updates to the related driver; do not delete driver files directly.",
+      winringMessage: "The installed WinRing0x64.sys 1.2.0.5 matches published vulnerability records. Update or uninstall the old software version containing it; this does not classify the software as malware.",
+      driverReference: "Microsoft vulnerable driver block rules",
+    },
     categorySource: "Category source",
     windowsGameList: "Windows game list (GameConfigStore)",
     classifySoftware: "Choose category",

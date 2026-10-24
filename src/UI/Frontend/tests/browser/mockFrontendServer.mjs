@@ -173,7 +173,7 @@ const mockSoftware = {
   operations: { canUninstall: false },
   issues: [
     {
-      id: "fixture-known-vulnerability",
+      id: "app-notebook-fan-control-winring0x64-known-vulnerabilities",
       kind: "KnownSecurityVulnerability",
       severity: "Warning",
       source: "StaticCatalog",
@@ -194,7 +194,8 @@ const mockSoftware = {
       message: "当前报告判定该非游戏软件的内存占用异常。",
       dynamic: true,
       references: [],
-      reportIds: ["hm-report-memory"]
+      evidence: [{ metricKind: "Memory", value: 4294967296, valueUnit: "B" }],
+        reportIds: ["hm-report-memory"]
     },
     {
       id: "dynamic:LongSystemInterrupts:frontend-harness.software",
@@ -205,7 +206,8 @@ const mockSoftware = {
       message: "example.sys 是同一采样窗口中的主要归因驱动。",
       dynamic: true,
       references: [],
-      reportIds: ["hm-report-interrupt"]
+      evidence: [{ metricKind: "InterruptMaximumSingleDurationMilliseconds", value: 12, valueUnit: "ms", moduleName: "example.sys" }],
+        reportIds: ["hm-report-interrupt"]
     }
   ]
 };

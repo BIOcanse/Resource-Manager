@@ -167,6 +167,28 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   assert(await faultNotice.count() === 0,
     "The fault-closed notice must disappear once the backend clears the fault");
   await postScenario({ pausedSubscriptionPaths: [], smartStatus: {} });
+  // A persisted trust must remain visible and removable after its report clears.
+  let trusted = true;
+  let deleteCount = 0;
+  const overview = await (await fetch(`${baseUrl}/api/optimization/reports`)).json();
+  const identity = { id: "hm-trust-editor", targetType: "Software", targetKey: "software:editor",
+    displayName: "Editor", reportType: "background-memory", resourceKind: "Memory",
+    trustedAt: overview.capturedAt, trustedReason: "", createdFromReportId: "former-report",
+    lastVerifiedAt: overview.capturedAt, state: "Active" };
+  const fulfillOverview = route => route.fulfill({ json: { ...overview, reports: [],
+    trustedTargets: trusted ? [identity] : [], status: { ...overview.status, trustedCount: trusted ? 1 : 0 } } });
+  await page.route("**/api/optimization/reports", fulfillOverview);
+  await page.route("**/api/optimization/reports/refresh", fulfillOverview);
+  await page.route("**/api/optimization/trust/hm-trust-editor", async route => {
+    assert(route.request().method() === "DELETE", "Trust removal must use DELETE");
+    deleteCount++; trusted = false; await route.fulfill({ status: 204 });
+  });
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.getByRole("radio", { name: /已信任.*1/ }).click();
+  await page.locator(".optimization-trusted-targets").getByText("Editor", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "移出信任", exact: true }).click();
+  await page.locator(".optimization-trusted-targets").getByText("Editor", { exact: true }).waitFor({ state: "detached" });
+  assert(deleteCount === 1, "Inactive trust was not removed exactly once");
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 
   return {

@@ -69,6 +69,7 @@ public sealed partial class SqlitePersistenceTests
                         [new ResourceProcessSegment(fact.ProcessId, fact.ProcessName, fact.ExecutablePath,
                             4_000, 40, 100)])])])
             {
+                Datasets = [new ResourceBreakdownDatasetSamplingState(ResourceManager.App.Domain.Monitoring.SamplingDatasetIds.ProcessMemoryUsage, ResourceBreakdownSamplingStatuses.Ready, 1, 1, now, now, now, null, null, null)],
                 Sampling = new ResourceBreakdownSamplingState(ResourceBreakdownSamplingStatuses.Ready,
                     1, now, now, null, null)
             };
@@ -76,7 +77,7 @@ public sealed partial class SqlitePersistenceTests
             var rules = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator.Recreate.Rules
                 .Where(rule => HostManagerSoftwareMemoryReportFactProjector.Supports(rule.FactKind)).ToArray();
             Assert.NotEmpty(rules);
-            var report = HostManagerSoftwareMemoryReportFactProjector.Project(1, 2, rules, snapshot, targets);
+            var report = HostManagerSoftwareMemoryReportFactProjector.Project(1, 2, rules, snapshot, targets, new HashSet<string> { fact.SoftwareId });
             Assert.Equal(NativeReportSourceStatus.Complete, report.Status);
             Assert.Empty(report.Facts);
             Assert.Empty(targets);

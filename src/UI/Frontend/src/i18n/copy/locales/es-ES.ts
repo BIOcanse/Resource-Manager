@@ -390,6 +390,19 @@ const esEsAppCopy: AppCopy = {
     Support: "Soporte"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "Uso anormal de memoria",
+      LongSystemInterrupts: "Interrupciones del sistema largas",
+      ExcessiveSystemInterrupts: "Uso elevado de interrupciones del sistema",
+      KnownSecurityVulnerability: "Vulnerabilidad de seguridad conocida",
+      DependencyIssue: "Problema de dependencia",
+      CompatibilityIssue: "Problema de compatibilidad",
+      KnownMalware: "Software malicioso conocido",
+      memoryAdvice: "Compruebe si necesita esta aplicación en segundo plano y ciérrela cuando deje de usarla.",
+      interruptAdvice: "Busque actualizaciones del controlador relacionado; no elimine sus archivos directamente.",
+      winringMessage: "El archivo instalado WinRing0x64.sys 1.2.0.5 coincide con vulnerabilidades publicadas. Actualice o desinstale la versión antigua del software que lo incluye; esto no clasifica el software como malicioso.",
+      driverReference: "Reglas de Microsoft para bloquear controladores vulnerables",
+    },
     categorySource: "Origen de la categoría",
     windowsGameList: "Lista de juegos de Windows (GameConfigStore)",
     classifySoftware: "Elegir categoría",

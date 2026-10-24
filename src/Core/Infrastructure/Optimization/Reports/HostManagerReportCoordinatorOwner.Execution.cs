@@ -28,6 +28,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
 
         if (pendingWorkspaceClose is not null)
             throw new InvalidOperationException("The previous report workspace still has a close obligation.");
+        await RestoreRegisteredTargetsAsync(cancellationToken);
         var initial = workspace is null;
         var recreate = !initial
             && (appliedPlan!.Build != desired.Build
@@ -295,7 +296,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
                     "Report persistence did not stabilize after two successful full batches.");
 
             // Independent persistence values, not a Memory/Span borrowed from the region.
-            await persistenceStore.PersistAsync(planned.Operations, cancellationToken);
+            await persistenceStore.PersistAsync(planned.Operations, cancellationToken, targetCatalog);
             state.ApplyCommitted(planned.Operations);
             ApplyPersistenceFeedback(target, lease, plan, planned.Operations, commandUtc);
             target.PendingPlan = null;
@@ -733,6 +734,7 @@ internal sealed class CoordinatorState
     {
         var key = (observation.SourceHandle, observation.CoverageScopeHandle);
         return !sourceFrames.TryGetValue(key, out var committed)
+            || committed.Status != observation.Status
             || committed.ProviderGeneration != observation.ProviderGeneration
             || committed.ObservedAtUtcMilliseconds
                 != observation.ObservedAt.ToUnixTimeMilliseconds();

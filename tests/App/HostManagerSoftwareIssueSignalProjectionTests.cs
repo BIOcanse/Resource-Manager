@@ -30,7 +30,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         var signal = HostManagerSoftwareIssueSignalProjection.ProjectReport(
             report,
             HostManagerReportFactKind.CpuUsagePercent,
-            SystemInterruptSnapshot.Unavailable("test", "test"));
+            SystemInterruptSnapshot.Unavailable("test", "test"), 10);
 
         Assert.NotNull(signal);
         Assert.Equal(SoftwareIssueKinds.AbnormalMemoryUsage, signal.Kind);
@@ -78,12 +78,12 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         var signal = HostManagerSoftwareIssueSignalProjection.ProjectReport(
             report,
             HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds,
-            snapshot);
+            snapshot, 10);
 
         Assert.NotNull(signal);
         Assert.Equal(SoftwareIssueKinds.LongSystemInterrupts, signal.Kind);
         Assert.Equal(@"C:\Drivers\large.sys", signal.ArtifactPath);
-        Assert.Contains("large.sys", signal.Message, StringComparison.Ordinal);
+        Assert.Equal("large.sys", Assert.Single(signal.Evidence).ModuleName);
     }
 
     [Fact]
@@ -118,9 +118,30 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         var signal = HostManagerSoftwareIssueSignalProjection.ProjectReport(
             report,
             HostManagerReportFactKind.InterruptEventsAtOrAboveOneMillisecond,
-            snapshot);
+            snapshot, 10);
 
         Assert.Null(signal);
+    }
+
+    [Fact]
+    public void TrustedReportNeverProducesAnIssueAndNormalDriverCannotInheritGlobalAnomaly()
+    {
+        var target = new OptimizationReportTarget(OptimizationReportTargetTypes.Software,
+            "software:fixture", "Fixture", "fixture", "Fixture", SoftwareKinds.Other, "other", [], [], null);
+        var memory = Report("memory", OptimizationReportTypes.BackgroundHighUsage, OptimizationResourceKinds.Memory, target);
+        Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(memory with { State = OptimizationReportStates.TrustedSuppressed },
+            HostManagerReportFactKind.SoftwareMemoryBytes, SystemInterruptSnapshot.Unavailable("test", "test"), 4_000));
+        var report = Report("interrupt", OptimizationReportTypes.SystemInterruptPressure, OptimizationResourceKinds.SystemInterrupt,
+            target with { TargetType = OptimizationReportTargetTypes.System, SoftwareId = null });
+        var snapshot = Interrupts([
+            new SystemInterruptDriverSnapshot("unknown.sys", null, 1, 12, 12, 1, 0.1),
+            new SystemInterruptDriverSnapshot("normal.sys", @"C:\Drivers\normal.sys", 1, 0.2, 0, 0, 0.01)]);
+        Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(report,
+            HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds, snapshot, 10));
+        // First safe window: native hysteresis may keep the global report active,
+        // but a normal current driver must not acquire the former driver's label.
+        Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(report,
+            HostManagerReportFactKind.InterruptCpuCapacityPercent, snapshot, 5));
     }
 
     private static OptimizationReportItem Report(

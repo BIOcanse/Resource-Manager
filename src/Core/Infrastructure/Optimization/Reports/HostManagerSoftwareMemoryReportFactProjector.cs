@@ -1,5 +1,8 @@
 using ResourceManager.Adapter;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Software;
@@ -18,18 +21,23 @@ internal static class HostManagerSoftwareMemoryReportFactProjector
         ulong coverageScopeHandle,
         IReadOnlyList<CompiledHostManagerReportCoordinatorRulePlan> rules,
         ResourceBreakdownSnapshot snapshot,
-        IDictionary<ulong, HostManagerReportTargetDescriptor> targets)
+        IDictionary<ulong, HostManagerReportTargetDescriptor> targets,
+        IReadOnlySet<string>? backgroundSoftwareIds = null,
+        IReadOnlySet<string>? protectedSoftwareIds = null)
     {
-        var observedAt = snapshot.Sampling.LastSuccessAt ?? snapshot.CapturedAt;
-        var providerGeneration = snapshot.Sampling.StateRevision > 0
-            ? snapshot.Sampling.StateRevision
-            : Math.Max(1, observedAt.ToUnixTimeMilliseconds());
+        var dataset = snapshot.Datasets.SingleOrDefault(item =>
+            item.DatasetId == SamplingDatasetIds.ProcessMemoryUsage);
+        var observedAt = dataset?.LastSuccessAt ?? snapshot.CapturedAt;
+        var providerGeneration = checked((long)(dataset?.Generation ?? 0));
         var memory = snapshot.Bars.FirstOrDefault(static bar =>
             bar.MetricId.Equals(
                 ResourceBreakdownMetricIds.MemoryUsage,
                 StringComparison.OrdinalIgnoreCase));
-        if (memory is null
-            || snapshot.Sampling.Status != ResourceBreakdownSamplingStatuses.Ready
+        if (backgroundSoftwareIds is null
+            || dataset is null
+            || dataset.Status != ResourceBreakdownSamplingStatuses.Ready
+            || dataset.Generation == 0
+            || memory is null
             || memory.ObservationStatus != SamplingObservationStatus.Current
             || memory.AttributionStatus != SamplingObservationStatus.Current)
         {
@@ -37,8 +45,8 @@ internal static class HostManagerSoftwareMemoryReportFactProjector
                 sourceHandle,
                 coverageScopeHandle,
                 providerGeneration,
-                snapshot.Sampling.LastAttemptAt ?? snapshot.CapturedAt,
-                snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Warming
+                dataset?.LastAttemptAt ?? snapshot.CapturedAt,
+                dataset?.Status == ResourceBreakdownSamplingStatuses.Warming
                     ? NativeReportSourceStatus.Skipped
                     : NativeReportSourceStatus.Unavailable,
                 0,
@@ -47,7 +55,10 @@ internal static class HostManagerSoftwareMemoryReportFactProjector
 
         var facts = new List<HostManagerReportFactValue>();
         foreach (var software in memory.Software
-            .Where(IsEligibleSoftware)
+            .Where(software => IsEligibleSoftware(software)
+                && backgroundSoftwareIds?.Contains(software.SoftwareId) == true
+                && protectedSoftwareIds?.Contains(software.SoftwareId) != true
+                && software.SoftwareId != RuntimeAttributionIds.ResourceManagerSelf)
             .OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase))
         {
             var targetHandle = AdapterResourceKey.FromString(

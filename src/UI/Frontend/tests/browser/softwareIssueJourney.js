@@ -1,3 +1,6 @@
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 export default async function softwareIssueJourney(page, baseUrl) {
   const failures = [];
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
@@ -35,12 +38,12 @@ export default async function softwareIssueJourney(page, baseUrl) {
   await card.waitFor({ state: "visible", timeout: 5000 });
   const tags = card.locator(".software-issue-tag");
   assert(await tags.count() === 3, "Software card did not render all static and dynamic issue tags");
-  for (const label of ["存在已公开安全漏洞", "内存占用异常", "造成长系统中断"]) {
+  for (const label of ["存在已公开安全漏洞", "内存占用异常", "长系统中断"]) {
     await card.getByText(label, { exact: true }).waitFor({ state: "visible", timeout: 3000 });
   }
 
   const search = page.getByRole("searchbox", { name: /一般应用搜索/ });
-  await search.fill("造成长系统中断");
+  await search.fill("长系统中断");
   await card.waitFor({ state: "visible", timeout: 3000 });
   assert(await page.locator(".software-item").count() === 1,
     "Issue label search did not retain only the matching software card");
@@ -91,6 +94,29 @@ export default async function softwareIssueJourney(page, baseUrl) {
       && snapshot.criticalMatchesTokens
       && snapshot.infoMatchesTokens,
     `Issue tags did not use theme tokens in ${snapshot.theme}: ${JSON.stringify(snapshot)}`);
+  }
+  let previous = "zh-CN";
+  for (const option of languageOptions.filter(option => option.id !== "system")) {
+    const oldApp = await loadAppCopy(previous);
+    const oldSettings = await loadSettingsText(previous);
+    await page.getByRole("navigation").getByRole("button", { name: oldApp.page.settings, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.sections.appearance, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.appearance.languageSelectLabel, exact: true }).click();
+    await page.getByRole("option", { name: `${option.nativeLabel} · ${option.label}`, exact: true }).click();
+    if (option.id !== previous) await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
+    await page.waitForFunction(language => document.documentElement.lang === language, option.id);
+    const app = await loadAppCopy(option.id);
+    await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
+    await page.getByRole("navigation", { name: app.management.categoryNav }).getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
+    const localizedCard = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
+    await localizedCard.getByText(app.management.issueText.AbnormalMemoryUsage, { exact: true }).waitFor();
+    await localizedCard.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
+    const detail = page.getByRole("dialog", { name: "示例软件", exact: true });
+    await detail.getByText(app.management.issueText.winringMessage, { exact: true }).waitFor();
+    assert((await detail.textContent()).includes("example.sys: 12 ms"), `${option.id}: driver evidence missing`);
+    assert((await detail.textContent()).includes(app.management.issueText.memoryAdvice), `${option.id}: localized memory advice missing`);
+    await detail.locator("button.icon-button").first().click();
+    previous = option.id;
   }
   assert(failures.length === 0, `Browser failures: ${JSON.stringify(failures)}`);
 

@@ -1,7 +1,7 @@
 import type { OptimizationReportItem } from "../../types";
-import { userFacingDateTime, userFacingOptionalValue } from "../../presentation/userFacingText";
-import type { UserDetailSection } from "../../presentation/userDetails";
-import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails";
+import { userFacingDateTime, userFacingOptionalValue } from "../../presentation/userFacingText.ts";
+import type { UserDetailSection } from "../../presentation/userDetails.ts";
+import { compactUserDetailSections, userDetailItem, userDetailSection } from "../../presentation/userDetails.ts";
 import { uiText } from "../../text.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 
@@ -12,7 +12,8 @@ export interface OptimizationReportPresentation {
 }
 
 export function presentOptimizationReport(report: OptimizationReportItem): OptimizationReportPresentation {
-  const name = userFacingOptionalValue(report.target.displayName, uiText.optimizationReport.currentTarget);
+  const name = userFacingOptionalValue(report.target.displayName, report.target.targetType === "System"
+    ? uiText.optimizationReport.resource.systemInterrupt : uiText.optimizationReport.currentTarget);
   const resource = resourceLabel(report.evidence.resourceKind);
   return {
     title: reportTitle(report.type, name, resource),
@@ -68,7 +69,7 @@ function reportSummary(report: OptimizationReportItem, name: string, resource: s
     case "RollingNetworkActivity": return uiText.optimizationReport.summary.rollingNetworkActivity;
     case "PowerProfileNotPerformanceFocused": return uiText.optimizationReport.summary.powerProfileNotPerformanceFocused;
     case "CpuSustainedThermalThrottling": return uiText.optimizationReport.summary.cpuSustainedThermalThrottling;
-    case "SystemInterruptPressure": return uiText.optimizationReport.summary.systemInterruptPressure;
+    case "SystemInterruptPressure": return `${uiText.optimizationReport.summary.systemInterruptPressure} ${uiText.optimizationReport.detail.current}: ${current}. ${uiText.management.issueText.interruptAdvice}`;
     default: return uiText.optimizationReport.summary.generic(resource, current, average);
   }
 }

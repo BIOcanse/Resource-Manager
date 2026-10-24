@@ -10,9 +10,12 @@ internal interface INativeReportCoordinatorPersistenceStore
     Task<NativeReportPersistenceOperation[]> LoadAsync(
         CancellationToken cancellationToken);
 
+    Task<HostManagerReportTargetDescriptor[]> LoadTargetsAsync(CancellationToken cancellationToken);
+
     Task PersistAsync(
         ReadOnlyMemory<NativeReportPersistenceOperation> operations,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null);
 }
 
 internal sealed class NativeReportCoordinatorPersistenceStore(
@@ -69,7 +72,8 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
 
     public async Task PersistAsync(
         ReadOnlyMemory<NativeReportPersistenceOperation> operations,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null)
     {
         ValidatePlan(operations.Span);
 
@@ -90,7 +94,74 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
                 await UpsertAsync(connection, transaction, row, cancellationToken);
             }
         }
+        await PersistTargetsAsync(connection, transaction, targets, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<HostManagerReportTargetDescriptor[]> LoadTargetsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await database.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT target_handle, software_id, software_name, software_kind, display_kind FROM host_manager_report_target_identities;";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var targets = new List<HostManagerReportTargetDescriptor>();
+        while (await reader.ReadAsync(cancellationToken))
+            targets.Add(new HostManagerReportTargetDescriptor(unchecked((ulong)reader.GetInt64(0)),
+                reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), [], []));
+        return targets.ToArray();
+    }
+
+    private static async Task PersistTargetsAsync(SqliteConnection connection, SqliteTransaction transaction,
+        IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets, CancellationToken cancellationToken)
+    {
+        // Native rows own retention; this table only describes their live targets.
+        var retained = new HashSet<ulong>();
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT row_payload FROM host_manager_report_coordinator_rows;";
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var row = MemoryMarshal.Read<NativeReportPersistenceOperation>(reader.GetFieldValue<byte[]>(0));
+                if (row.TargetHandle != 0) retained.Add(row.TargetHandle);
+            }
+        }
+        foreach (var target in targets?.Values ?? [])
+        {
+            if (!retained.Contains(target.TargetHandle)) continue;
+            await using var write = connection.CreateCommand();
+            write.Transaction = transaction;
+            write.CommandText = """
+                INSERT INTO host_manager_report_target_identities VALUES ($handle, $id, $name, $kind, $display)
+                ON CONFLICT(target_handle) DO UPDATE SET software_id=excluded.software_id,
+                    software_name=excluded.software_name, software_kind=excluded.software_kind,
+                    display_kind=excluded.display_kind;
+                """;
+            write.Parameters.AddWithValue("$handle", unchecked((long)target.TargetHandle));
+            write.Parameters.AddWithValue("$id", target.SoftwareId);
+            write.Parameters.AddWithValue("$name", target.SoftwareName);
+            write.Parameters.AddWithValue("$kind", target.SoftwareKind);
+            write.Parameters.AddWithValue("$display", target.DisplayKind);
+            await write.ExecuteNonQueryAsync(cancellationToken);
+        }
+        var obsolete = new List<long>();
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT target_handle FROM host_manager_report_target_identities;";
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                if (!retained.Contains(unchecked((ulong)reader.GetInt64(0)))) obsolete.Add(reader.GetInt64(0));
+        }
+        foreach (var handle in obsolete)
+        {
+            await using var delete = connection.CreateCommand();
+            delete.Transaction = transaction;
+            delete.CommandText = "DELETE FROM host_manager_report_target_identities WHERE target_handle=$handle;";
+            delete.Parameters.AddWithValue("$handle", handle);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
     }
 
     private static void ValidatePlan(

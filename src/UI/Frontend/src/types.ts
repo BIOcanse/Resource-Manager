@@ -648,7 +648,15 @@ export interface SoftwareIssueReference {
   url: string;
 }
 
+export interface SoftwareIssueEvidence {
+  metricKind: string;
+  value: number;
+  valueUnit: string;
+  moduleName?: string | null;
+}
+
 export interface SoftwareIssueTag {
+  evidence?: SoftwareIssueEvidence[];
   id: string;
   kind: string;
   severity: "Info" | "Warning" | "Critical" | string;

@@ -390,6 +390,19 @@ const deDeAppCopy: AppCopy = {
     Support: "Support"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "Ungewöhnliche Speichernutzung",
+      LongSystemInterrupts: "Lange Systeminterrupts",
+      ExcessiveSystemInterrupts: "Hohe Auslastung durch Systeminterrupts",
+      KnownSecurityVulnerability: "Bekannte Sicherheitslücke",
+      DependencyIssue: "Abhängigkeitsproblem",
+      CompatibilityIssue: "Kompatibilitätsproblem",
+      KnownMalware: "Bekannte Schadsoftware",
+      memoryAdvice: "Prüfen Sie, ob diese Hintergrundanwendung noch benötigt wird, und schließen Sie sie gegebenenfalls.",
+      interruptAdvice: "Suchen Sie nach Updates für den betreffenden Treiber; löschen Sie Treiberdateien nicht direkt.",
+      winringMessage: "Die installierte Datei WinRing0x64.sys 1.2.0.5 entspricht veröffentlichten Sicherheitslücken. Aktualisieren oder deinstallieren Sie die alte Softwareversion, die diesen Treiber enthält. Dies stuft die Software nicht als Schadsoftware ein.",
+      driverReference: "Microsoft-Sperrregeln für anfällige Treiber",
+    },
     categorySource: "Quelle der Kategorie",
     windowsGameList: "Windows-Spieleliste (GameConfigStore)",
     classifySoftware: "Kategorie wählen",

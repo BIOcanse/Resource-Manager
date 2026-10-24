@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Software;
@@ -11,7 +12,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerReportFactProjectorTests
 {
     [Fact]
-    public void CompleteCpuAndInterruptSnapshotsProjectSixExactFacts()
+    public void CompleteCpuAndInterruptSnapshotsProjectOnlyConfiguredFacts()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;
         var capturedAt = DateTimeOffset.UtcNow;
@@ -41,14 +42,8 @@ public sealed class HostManagerReportFactProjectorTests
         Assert.Equal(NativeReportSourceStatus.Complete, interrupts.Status);
         Assert.Equal(9, interrupts.ProviderGeneration);
         Assert.Equal(60_000, interrupts.SampleDurationMilliseconds);
-        Assert.Equal(3, interrupts.Facts.Count);
-        Assert.Equal(
-            3UL,
-            interrupts.Facts.Single(fact =>
-                fact.Rule.FactKind
-                    == HostManagerReportFactKind
-                        .InterruptEventsAtOrAboveOneMillisecond)
-                .EventCount);
+        Assert.Equal(2, interrupts.Facts.Count);
+
     }
 
     [Fact]
@@ -125,7 +120,7 @@ public sealed class HostManagerReportFactProjectorTests
 
         var interrupts = Assert.Single(sources, source => source.ProviderGeneration == 12);
         Assert.Equal(NativeReportSourceStatus.Complete, interrupts.Status);
-        Assert.Equal(3, interrupts.Facts.Count);
+        Assert.Equal(2, interrupts.Facts.Count);
     }
 
     [Fact]
@@ -186,6 +181,7 @@ public sealed class HostManagerReportFactProjectorTests
                     ])
             ])
         {
+            Datasets = [new ResourceBreakdownDatasetSamplingState(SamplingDatasetIds.ProcessMemoryUsage, ResourceBreakdownSamplingStatuses.Ready, 31, 31, capturedAt, capturedAt, capturedAt, null, null, null)],
             Sampling = new ResourceBreakdownSamplingState(
                 ResourceBreakdownSamplingStatuses.Ready,
                 31,
@@ -199,7 +195,7 @@ public sealed class HostManagerReportFactProjectorTests
             plan,
             hardware: null,
             CreateInterrupts(capturedAt, available: false, sourceGeneration: 0),
-            resources);
+            resources, new HashSet<string> { "software:editor", "software:game" });
 
         var softwareSource = Assert.Single(
             batch.Sources,
@@ -232,6 +228,70 @@ public sealed class HostManagerReportFactProjectorTests
             static candidate => candidate.SoftwareId == "software:game");
     }
 
+    [Fact]
+    public void RealComposedCpuSnapshotUsesCurrentDatasetsDespiteUnavailableLegacyProvider()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var publisher = new ResourceManager.App.Infrastructure.Monitoring.LastSuccessfulHardwareMetricSnapshot();
+        var request = MetricSampleRequest.ForIds(["cpu.usage", "cpu.temperature", "cpu.frequencyPercent"]);
+        var result = publisher.Publish(CreateHardware(now, CpuMetricObservationStatus.Complete, 7), request);
+        Assert.Equal(3, result.CommittedDatasetCount);
+        var composed = Assert.IsType<HardwareMetricSnapshot>(publisher.Read(now));
+        Assert.Equal("Unavailable", composed.Cpu.Sensors.ProviderState.State);
+        var facts = HostManagerReportFactProjector.Project(HostManagerTestPlanFactory.CreatePlan().ReportCoordinator,
+            composed, CreateInterrupts(now, false, 0));
+        Assert.Equal(3, Assert.Single(facts, source => source.ProviderGeneration == 7).Facts.Count);
+    }
+
+    [Theory]
+    [InlineData("cpu.temperature")]
+    [InlineData("cpu.frequencyPercent")]
+    [InlineData("cpu.usage")]
+    public void MissingRequiredCpuPublicationCannotInventThermalEvidence(string metricId)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var hardware = CreateHardware(now, CpuMetricObservationStatus.Complete, 7);
+        hardware = hardware with { Datasets = hardware.Datasets.Where(item => item.Key != MetricDatasetIds.ForSystemMetric(metricId))
+            .ToDictionary(item => item.Key, item => item.Value) };
+        var sources = HostManagerReportFactProjector.Project(HostManagerTestPlanFactory.CreatePlan().ReportCoordinator,
+            hardware, CreateInterrupts(now, false, 0));
+        Assert.Empty(Assert.Single(sources, source => source.ProviderGeneration == 7).Facts);
+    }
+
+    [Fact]
+    public void MemoryPublicationIdentityAndCandidateExclusionsAreIndependentOfWholeTableRevision()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var entries = new[] {
+            CreateSoftware("background", "Background", SoftwareKinds.Other, 20, 101),
+            CreateSoftware("foreground", "Foreground", SoftwareKinds.Other, 20, 102),
+            CreateSoftware("protected", "Protected", SoftwareKinds.Other, 20, 103),
+            CreateSoftware("game", "Game", SoftwareKinds.Game, 20, 104),
+            CreateSoftware("resource-manager:self", "Self", SoftwareKinds.Adapted, 20, 105) };
+        var resources = new ResourceBreakdownSnapshot(now, [new ResourceBreakdownBar(
+            ResourceBreakdownMetricIds.MemoryUsage, "", "B", ResourceBreakdownScaleModes.Capacity, 100, 100, 100, entries)])
+        {
+            Datasets = [new ResourceBreakdownDatasetSamplingState(SamplingDatasetIds.ProcessMemoryUsage,
+                ResourceBreakdownSamplingStatuses.Ready, 77, 100, now, now, now, null, null, null)]
+        };
+        var rules = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator.Recreate.Rules
+            .Where(rule => HostManagerSoftwareMemoryReportFactProjector.Supports(rule.FactKind)).ToArray();
+        var backgrounds = new HashSet<string> { "background", "protected", "game", "resource-manager:self" };
+        var targets = new Dictionary<ulong, HostManagerReportTargetDescriptor>();
+        var first = HostManagerSoftwareMemoryReportFactProjector.Project(14, 14, rules, resources, targets,
+            backgrounds, new HashSet<string> { "protected" });
+        Assert.Equal("background", Assert.Single(targets).Value.SoftwareId);
+        Assert.Equal(77, first.ProviderGeneration);
+        var second = HostManagerSoftwareMemoryReportFactProjector.Project(14, 14, rules,
+            resources with { CapturedAt = now.AddSeconds(1), Sampling = resources.Sampling with { StateRevision = 999, Status = ResourceBreakdownSamplingStatuses.Failed } },
+            targets, backgrounds, new HashSet<string> { "protected" });
+        Assert.Equal(first.ProviderGeneration, second.ProviderGeneration);
+        Assert.Equal(first.ObservedAt, second.ObservedAt);
+        var missingRuntime = HostManagerSoftwareMemoryReportFactProjector.Project(14, 14, rules, resources, targets);
+        Assert.Equal(NativeReportSourceStatus.Unavailable, missingRuntime.Status);
+        Assert.Empty(missingRuntime.Facts);
+    }
+
     private static HardwareMetricSnapshot CreateHardware(
         DateTimeOffset capturedAt,
         CpuMetricObservationStatus status,
@@ -254,7 +314,7 @@ public sealed class HostManagerReportFactProjectorTests
                 FrequencyPercent: 60,
                 FrequencySource: "Windows effective frequency",
                 new CpuSensorMetrics(
-                    new HardwareSensorProviderState("test", "Active", null),
+                    new HardwareSensorProviderState("test", "Unavailable", null),
                     PackagePowerWatts: 80,
                     CoreVoltageVolts: 1,
                     PackageCurrentAmps: 70,
@@ -271,7 +331,11 @@ public sealed class HostManagerReportFactProjectorTests
                 0,
                 0,
                 []),
-            new Dictionary<string, MetricValue>());
+            new Dictionary<string, MetricValue>())
+        {
+            Datasets = new[] { MetricDatasetIds.SystemCpuUsage, MetricDatasetIds.ForSystemMetric("cpu.temperature"), MetricDatasetIds.ForSystemMetric("cpu.frequencyPercent") }
+                .ToDictionary(id => id, id => new HardwareMetricDatasetObservation(id, SamplingObservationStatus.Current, sourceGeneration, capturedAt.UtcTicks, 1, 1, 1, sourceGeneration))
+        };
     }
 
     private static SystemInterruptSnapshot CreateInterrupts(

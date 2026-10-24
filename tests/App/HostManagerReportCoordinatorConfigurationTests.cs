@@ -24,7 +24,8 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(21632, plan.Recreate.Capacity.MaximumBucketCount);
         Assert.Equal(32768, plan.Recreate.Capacity.MaximumPersistenceOperationCount);
         Assert.Equal(65536, plan.Recreate.Capacity.PlannedPersistenceIndexCapacity);
-        Assert.Equal(8, plan.Recreate.Rules.Length);
+        Assert.Equal(7, plan.Recreate.Rules.Length);
+        Assert.DoesNotContain(plan.Recreate.Rules, rule => rule.RuleHandle == 1035);
         Assert.All(plan.Recreate.Rules, rule => Assert.NotEqual(0UL, rule.RuleGeneration));
         Assert.Equal(
             plan.Recreate.Rules.Length,

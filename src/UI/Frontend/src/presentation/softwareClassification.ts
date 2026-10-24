@@ -1,4 +1,5 @@
 import type { SoftwareIssueTag, SoftwareRecord } from "../types.ts";
+import { formatBytes } from "./byteUnits.ts";
 import { uiText } from "../text.ts";
 
 export function isUnclassifiedSoftware(software: SoftwareRecord) {
@@ -6,11 +7,39 @@ export function isUnclassifiedSoftware(software: SoftwareRecord) {
 }
 
 export function softwareIssueLabel(issue: SoftwareIssueTag) {
-  return issue.kind === "Unclassified" ? uiText.softwareKind.Unclassified : issue.label;
+  if (issue.kind === "Unclassified") return uiText.softwareKind.Unclassified;
+  const text = uiText.management.issueText;
+  switch (issue.kind) {
+    case "AbnormalMemoryUsage": return text.AbnormalMemoryUsage;
+    case "LongSystemInterrupts": return text.LongSystemInterrupts;
+    case "ExcessiveSystemInterrupts": return text.ExcessiveSystemInterrupts;
+    case "KnownSecurityVulnerability": return text.KnownSecurityVulnerability;
+    case "DependencyIssue": return text.DependencyIssue;
+    case "CompatibilityIssue": return text.CompatibilityIssue;
+    case "KnownMalware": return text.KnownMalware;
+    default: return uiText.management.issueHeading;
+  }
 }
 
 export function softwareIssueMessage(issue: SoftwareIssueTag) {
-  return issue.kind === "Unclassified" ? uiText.management.unclassifiedReminder : issue.message;
+  if (issue.kind === "Unclassified") return uiText.management.unclassifiedReminder;
+  const text = uiText.management.issueText;
+  if (issue.id === "app-notebook-fan-control-winring0x64-known-vulnerabilities") return text.winringMessage;
+  const evidence = (issue.evidence ?? []).filter(item => Number.isFinite(item.value)).map(item => {
+    const value = item.valueUnit === "B" ? formatBytes(item.value, "memory")
+      : item.valueUnit === "count" ? uiText.optimizationReport.detail.occurrenceTimes(item.value)
+      : `${Number(item.value.toFixed(3))} ${item.valueUnit}`;
+    return `${item.moduleName ? `${item.moduleName}: ` : ""}${value}`;
+  }).join(" · ");
+  const advice = issue.kind === "AbnormalMemoryUsage" ? text.memoryAdvice
+    : issue.kind === "LongSystemInterrupts" || issue.kind === "ExcessiveSystemInterrupts" ? text.interruptAdvice : "";
+  return [evidence, advice].filter(Boolean).join(". ");
+}
+
+export function softwareIssueReferenceLabel(reference: { label: string; url: string }) {
+  if (/^CVE-\d{4}-\d+$/.test(reference.label)) return reference.label;
+  return reference.url.includes("microsoft-recommended-driver-block-rules")
+    ? uiText.management.issueText.driverReference : uiText.management.issueKnownCatalog;
 }
 
 export function runtimeDiscoveryLabel(kind: string) {

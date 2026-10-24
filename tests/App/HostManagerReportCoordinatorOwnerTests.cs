@@ -3,6 +3,8 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.Software;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.SystemHealth;
@@ -48,7 +50,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             new NativeReportCoordinatorPersistenceStore(CreateDatabase()), metrics, resources, interrupts,
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await owner.StartAsync(timeout.Token);
         try
@@ -94,7 +96,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             new NativeReportCoordinatorPersistenceStore(CreateDatabase()), metrics, resources, interrupts,
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         var aggregate = await Assert.ThrowsAsync<AggregateException>(() => owner.StartAsync(timeout.Token));
@@ -132,7 +134,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             interrupts,
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var startupTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         await owner.StartAsync(startupTimeout.Token);
@@ -145,7 +147,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 (uint)NativeReportPersistenceKind.Metadata,
                 metadata.OperationKind);
             Assert.True(metadata.MutationVersion > 0);
-            Assert.Equal(8, owner.GetStatus().ConfiguredRuleCount);
+            Assert.Equal(7, owner.GetStatus().ConfiguredRuleCount);
             Assert.Equal(1, metrics.ActiveSubscriptions);
             Assert.Equal(1, resources.ActiveSubscriptions);
             Assert.Equal(1, interrupts.ActiveSubscriptions);
@@ -193,7 +195,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             new CachedResourceSource(),
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var startup = owner.StartAsync(timeout.Token);
 
@@ -245,7 +247,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             new CachedResourceSource(),
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -351,7 +353,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             new UnavailableInterruptSource(),
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         var firstObservedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
 
@@ -528,7 +530,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             persistence, new CachedMetricSource(), resources, new UnavailableInterruptSource(),
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var start = DateTimeOffset.UtcNow.AddSeconds(-20);
         await owner.StartAsync(timeout.Token);
@@ -614,7 +616,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             resources,
             interrupts,
             new EmptyProtectionService(),
-            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var start = DateTimeOffset.UtcNow.AddSeconds(-20);
         var sample = 0;
@@ -693,7 +695,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         using var owner = new HostManagerReportCoordinatorOwner(
             provider, new HostManagerReportCoordinatorRuntime(deployment), new HostManagerRuntimeIdentity(),
             persistence, new CachedMetricSource(), pausedSource, new UnavailableInterruptSource(),
-            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create);
+            new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var observedAt = DateTimeOffset.UtcNow.AddSeconds(-20);
         Task<OptimizationReportOverview>? older = null;
@@ -762,6 +764,95 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         return new ResourceManagerDatabase(new TestHostEnvironment(contentRoot));
     }
 
+    [Fact]
+    public async Task InterruptCountAloneDoesNotLatchAndBothImpactBranchesClearOnSafeWindows()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
+        var interrupts = new CachedInterruptSource();
+        using var owner = new HostManagerReportCoordinatorOwner(provider, new HostManagerReportCoordinatorRuntime(deployment),
+            new HostManagerRuntimeIdentity(), new NativeReportCoordinatorPersistenceStore(CreateDatabase()), new CachedMetricSource(),
+            new CachedResourceSource(), interrupts, new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance,
+            OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware());
+        await owner.StartAsync(CancellationToken.None);
+        await owner.StopAsync(CancellationToken.None);
+        var observedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
+        var generation = 0L;
+        async Task<OptimizationReportOverview> Observe(double maximum, double capacity)
+        {
+            interrupts.Snapshot = SystemInterruptSnapshot.Unavailable("test", "test") with
+            {
+                Available = true, SourceGeneration = ++generation, CapturedAt = observedAt,
+                Window = TimeSpan.FromSeconds(60), LogicalProcessorCount = 16,
+                MaximumSingleDurationMilliseconds = maximum, EventsAtOrAboveOneMillisecond = 55,
+                CpuCapacityPercent = capacity, ProviderState = new SystemInterruptProviderState("test", "Running", "")
+            };
+            observedAt = observedAt.AddSeconds(10);
+            return await owner.RefreshReportsAsync(CancellationToken.None);
+        }
+        Assert.Empty((await Observe(1.2, 0.1)).Reports);
+        Assert.Equal(OptimizationReportTypes.SystemInterruptPressure, Assert.Single((await Observe(12, 0.1)).Reports).Type);
+        Assert.Single((await Observe(0.2, 0.1)).Reports);
+        Assert.Empty((await Observe(0.2, 0.1)).Reports);
+        Assert.Single((await Observe(0.2, 5)).Reports);
+        Assert.Single((await Observe(0.2, 0.1)).Reports);
+        Assert.Empty((await Observe(0.2, 0.1)).Reports);
+    }
+
+    [Fact]
+    public async Task TrustAndReportRestoreSoftwareIdentityWithoutRunningSoftwareOrRegistryEntry()
+    {
+        var persistence = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
+        var resources = new CachedResourceSource();
+        using (var owner = ScratchOwner(persistence, OperationScratchFixture.Create, resources, out _))
+        {
+            await owner.StartAsync(CancellationToken.None);
+            await owner.StopAsync(CancellationToken.None);
+            var now = DateTimeOffset.UtcNow.AddSeconds(-30);
+            for (var index = 0; index < 3; index++)
+            {
+                resources.Publish(CreateSoftwareMemorySnapshot(index + 1, now.AddSeconds(index * 10), 18));
+                await owner.RefreshReportsAsync(CancellationToken.None);
+            }
+            var report = Assert.Single((await owner.GetReportsAsync(CancellationToken.None)).Reports);
+            await owner.TrustReportAsync(report.Id, CancellationToken.None);
+            Assert.Empty(owner.ReadSoftwareIssueSnapshot().Signals);
+        }
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
+        using var restarted = new HostManagerReportCoordinatorOwner(provider, new HostManagerReportCoordinatorRuntime(deployment),
+            new HostManagerRuntimeIdentity(), persistence, new CachedMetricSource(), new CachedResourceSource(),
+            new UnavailableInterruptSource(), new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance,
+            OperationScratchFixture.Create, new BackgroundProcessSource(), new RegisteredSoftware(include: false));
+        await restarted.StartAsync(CancellationToken.None);
+        await restarted.StopAsync(CancellationToken.None);
+        var restored = await restarted.GetReportsAsync(CancellationToken.None);
+        var trust = Assert.Single(restored.TrustedTargets);
+        Assert.Equal("Editor", trust.DisplayName);
+        Assert.Equal("software:software:editor", trust.TargetKey);
+        var active = Assert.Single(restored.Reports);
+        Assert.Equal("software:editor", active.Target.SoftwareId);
+        Assert.Equal("Editor", active.Target.SoftwareName);
+        Assert.Empty(active.Target.ProcessIds);
+    }
+
+    [Fact]
+    public void RuntimeStateMustProveAllProcessesAreInBackground()
+    {
+        var snapshot = new BackgroundProcessSource().ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.RuntimeState,
+            new SchedulingGpuInventorySnapshot(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
+        Assert.Contains("software:editor", HostManagerReportCoordinatorOwner.BackgroundSoftwareIds(snapshot)!);
+        foreach (var state in new[] { HostManagerRuntimeStates.ForegroundFocused, HostManagerRuntimeStates.ForegroundUnfocused,
+            HostManagerRuntimeStates.BackgroundWindow, HostManagerRuntimeStates.Unknown })
+        {
+            var foreground = snapshot.Processes[0] with { RuntimeState = state };
+            Assert.Empty(HostManagerReportCoordinatorOwner.BackgroundSoftwareIds(snapshot with { Processes = [snapshot.Processes[0], foreground] })!);
+        }
+        Assert.Null(HostManagerReportCoordinatorOwner.BackgroundSoftwareIds(snapshot with { DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>() }));
+    }
+
     private static ResourceBreakdownSnapshot CreateSoftwareMemorySnapshot(
         long generation,
         DateTimeOffset capturedAt,
@@ -800,6 +891,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                     ])
             ])
         {
+            Datasets = [new ResourceBreakdownDatasetSamplingState(SamplingDatasetIds.ProcessMemoryUsage,
+                ResourceBreakdownSamplingStatuses.Ready, checked((ulong)generation), generation, capturedAt, capturedAt, capturedAt, null, null, null)],
             Sampling = new ResourceBreakdownSamplingState(
                 ResourceBreakdownSamplingStatuses.Ready,
                 generation,
@@ -821,17 +914,21 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
 
         internal Task PersistEntered => persistEntered.Task;
 
+        public Task<HostManagerReportTargetDescriptor[]> LoadTargetsAsync(CancellationToken cancellationToken)
+            => inner.LoadTargetsAsync(cancellationToken);
+
         public Task<NativeReportPersistenceOperation[]> LoadAsync(
             CancellationToken cancellationToken)
             => inner.LoadAsync(cancellationToken);
 
         public async Task PersistAsync(
             ReadOnlyMemory<NativeReportPersistenceOperation> operations,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null)
         {
             persistEntered.TrySetResult();
             await release.Task.WaitAsync(cancellationToken);
-            await inner.PersistAsync(operations, cancellationToken);
+            await inner.PersistAsync(operations, cancellationToken, targets);
         }
 
         internal void Release() => release.TrySetResult();
@@ -841,14 +938,47 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         INativeReportCoordinatorPersistenceStore inner)
         : INativeReportCoordinatorPersistenceStore
     {
+        public Task<HostManagerReportTargetDescriptor[]> LoadTargetsAsync(CancellationToken cancellationToken)
+            => inner.LoadTargetsAsync(cancellationToken);
+
         public Task<NativeReportPersistenceOperation[]> LoadAsync(
             CancellationToken cancellationToken)
             => inner.LoadAsync(cancellationToken);
 
         public Task PersistAsync(
             ReadOnlyMemory<NativeReportPersistenceOperation> operations,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null)
             => throw new InvalidOperationException("injected-persist-failure");
+    }
+
+    private sealed class BackgroundProcessSource : ISchedulingProcessFactObservationSource
+    {
+        public IDisposable AcquireSubscription(string id, SchedulingProcessMetricMask mask, TimeSpan interval)
+            => new CallbackLease(() => { });
+        public SchedulingProcessFactSnapshot ReadLatest(SchedulingProcessFactRequest request)
+        {
+            var ticks = DateTimeOffset.UtcNow.UtcTicks;
+            return new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, ticks,
+                1, 1, 0, 0, SchedulingProcessMetricMask.RuntimeState, SchedulingProcessMetricMask.RuntimeState,
+                [new SchedulingProcessFact(101, 1, "Editor.exe", @"C:\Tools\Editor.exe", "software:editor", "Editor",
+                    SoftwareKinds.Other, SoftwareKinds.Other, 35, SchedulingProcessMetricMask.RuntimeState, 0, 0, 1, [])])
+            {
+                DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
+                {
+                    [SchedulingProcessMetricMask.RuntimeState] = SchedulingProcessDatasetObservation.CreateCurrent(
+                        SchedulingProcessMetricMask.RuntimeState, 1, ticks, 1, ticks)
+                }
+            };
+        }
+    }
+
+    private sealed class RegisteredSoftware(bool include = true) : ISoftwareRegistryView
+    {
+        public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<SoftwareRecord>>(include ? [new SoftwareRecord("software:editor", "Editor", SoftwareKinds.Other,
+                SoftwareKinds.Other, "Installed", [], [], "", new SoftwareOperationCapabilities(false, "", "", ""), null)] : []);
+        public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken) => GetSoftwareAsync(cancellationToken);
     }
 
     private sealed class CachedMetricSource : IMetricSnapshotObservationSource
@@ -945,6 +1075,13 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             }
             return snapshot;
         }
+    }
+
+    private sealed class CachedInterruptSource : ISystemInterruptSnapshotSource
+    {
+        internal SystemInterruptSnapshot Snapshot = SystemInterruptSnapshot.Unavailable("Warming", "test");
+        public IDisposable AcquireSubscription(string id, TimeSpan interval) => new CallbackLease(() => { });
+        public SystemInterruptSnapshot Read() => Snapshot;
     }
 
     private sealed class UnavailableInterruptSource : ISystemInterruptSnapshotSource

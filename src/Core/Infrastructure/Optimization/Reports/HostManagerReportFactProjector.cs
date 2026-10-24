@@ -29,7 +29,9 @@ internal static class HostManagerReportFactProjector
         CompiledHostManagerReportCoordinatorPlan plan,
         HardwareMetricSnapshot? hardware,
         SystemInterruptSnapshot interrupts,
-        ResourceBreakdownSnapshot resources)
+        ResourceBreakdownSnapshot resources,
+        IReadOnlySet<string>? backgroundSoftwareIds = null,
+        IReadOnlySet<string>? protectedSoftwareIds = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(interrupts);
@@ -39,7 +41,7 @@ internal static class HostManagerReportFactProjector
             hardware,
             interrupts,
             resources,
-            includeSoftware: true);
+            includeSoftware: true, backgroundSoftwareIds, protectedSoftwareIds);
     }
 
     private static HostManagerReportObservationBatch ProjectCore(
@@ -47,7 +49,9 @@ internal static class HostManagerReportFactProjector
         HardwareMetricSnapshot? hardware,
         SystemInterruptSnapshot interrupts,
         ResourceBreakdownSnapshot? resources,
-        bool includeSoftware)
+        bool includeSoftware,
+        IReadOnlySet<string>? backgroundSoftwareIds = null,
+        IReadOnlySet<string>? protectedSoftwareIds = null)
     {
         var targets = new Dictionary<ulong, HostManagerReportTargetDescriptor>();
         var sources = plan.Recreate.Rules
@@ -63,7 +67,7 @@ internal static class HostManagerReportFactProjector
                 hardware,
                 interrupts,
                 resources,
-                targets))
+                targets, backgroundSoftwareIds, protectedSoftwareIds))
             .Where(static source => source is not null)
             .Select(static source => source!)
             .ToArray();
@@ -77,7 +81,9 @@ internal static class HostManagerReportFactProjector
         HardwareMetricSnapshot? hardware,
         SystemInterruptSnapshot interrupts,
         ResourceBreakdownSnapshot? resources,
-        IDictionary<ulong, HostManagerReportTargetDescriptor> targets)
+        IDictionary<ulong, HostManagerReportTargetDescriptor> targets,
+        IReadOnlySet<string>? backgroundSoftwareIds,
+        IReadOnlySet<string>? protectedSoftwareIds)
     {
         if (rules.All(static rule =>
             HostManagerCpuReportFactProjector.Supports(rule.FactKind)))
@@ -109,7 +115,7 @@ internal static class HostManagerReportFactProjector
                     coverageScopeHandle,
                     rules,
                     resources,
-                    targets);
+                    targets, backgroundSoftwareIds, protectedSoftwareIds);
         }
         throw new InvalidOperationException(
             "A report source mixes unsupported Host Manager fact domains.");

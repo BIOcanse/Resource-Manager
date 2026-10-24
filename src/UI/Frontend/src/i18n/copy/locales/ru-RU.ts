@@ -390,6 +390,19 @@ const ruRuAppCopy: AppCopy = {
     Support: "Поддержка"
   },
   management: {
+    issueText: {
+      AbnormalMemoryUsage: "Аномальное использование памяти",
+      LongSystemInterrupts: "Длительные системные прерывания",
+      ExcessiveSystemInterrupts: "Высокая нагрузка системных прерываний",
+      KnownSecurityVulnerability: "Известная уязвимость безопасности",
+      DependencyIssue: "Проблема зависимости",
+      CompatibilityIssue: "Проблема совместимости",
+      KnownMalware: "Известное вредоносное ПО",
+      memoryAdvice: "Проверьте, нужно ли это фоновое приложение, и закройте его, если оно больше не используется.",
+      interruptAdvice: "Проверьте обновления соответствующего драйвера; не удаляйте файлы драйвера вручную.",
+      winringMessage: "Установленный WinRing0x64.sys 1.2.0.5 соответствует опубликованным сведениям об уязвимостях. Обновите или удалите старую версию программы с этим драйвером; это не означает, что программа признана вредоносной.",
+      driverReference: "Правила Microsoft для блокировки уязвимых драйверов",
+    },
     categorySource: "Источник категории",
     windowsGameList: "Список игр Windows (GameConfigStore)",
     classifySoftware: "Выбрать категорию",

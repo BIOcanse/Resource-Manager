@@ -108,7 +108,7 @@ test "hot reconfigure preserves session incarnation and revision never wraps" {
     try std.testing.expectEqual(std.math.maxInt(u64), session.state_revision);
 }
 
-test "complete snapshots own hit and miss state while unavailable preserves it" {
+test "unavailable breaks pending hits without asserting a safe measurement" {
     var fixture = try Fixture.create();
     defer fixture.destroy();
 
@@ -127,28 +127,31 @@ test "complete snapshots own hit and miss state while unavailable preserves it" 
 
     try fixture.observeUnavailable(4, 4, 2, 110);
     try std.testing.expect(!fixture.session.observations[observation_index].active);
-    try std.testing.expectEqual(
-        @as(u64, 1),
-        fixture.session.observations[observation_index].active_sample_count,
-    );
-
+    try std.testing.expectEqual(@as(u32, 0), fixture.session.observations[observation_index].consecutive_hits);
     try fixture.observeComplete(5, 5, 3, 120, &.{fact(2, 70)});
-    try std.testing.expect(fixture.session.observations[observation_index].active);
-    const report_index = fixture.session.findReport(target_handle, family_handle).?;
-    const stable_report_handle = fixture.session.reports[report_index].report_handle;
-
-    try fixture.observeComplete(6, 6, 4, 130, &.{});
-    try std.testing.expect(fixture.session.observations[observation_index].active);
-    try std.testing.expectEqual(
-        @as(u32, 1),
-        fixture.session.observations[observation_index].consecutive_misses,
-    );
-    try fixture.observeComplete(7, 7, 5, 140, &.{});
     try std.testing.expect(!fixture.session.observations[observation_index].active);
-    try std.testing.expectEqual(
-        stable_report_handle,
-        fixture.session.reports[report_index].report_handle,
-    );
+    try fixture.observeComplete(6, 6, 4, 130, &.{fact(3, 70)});
+    try std.testing.expect(fixture.session.observations[observation_index].active);
+    try fixture.observeComplete(7, 7, 5, 140, &.{});
+    try fixture.observeUnavailable(8, 8, 6, 150);
+    try std.testing.expect(fixture.session.observations[observation_index].active);
+    try std.testing.expectEqual(@as(u32, 0), fixture.session.observations[observation_index].consecutive_misses);
+    try fixture.observeComplete(9, 9, 7, 160, &.{});
+    try std.testing.expect(fixture.session.observations[observation_index].active);
+    try fixture.observeComplete(10, 10, 8, 170, &.{});
+    try std.testing.expect(!fixture.session.observations[observation_index].active);
+}
+
+test "stale gap breaks pending hits even when no unavailable frame arrives" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{fact(1, 60)});
+    const index = fixture.session.findObservation(source_handle, coverage_scope_handle, rule_handle, target_handle).?;
+    try fixture.observeComplete(4, 4, 2, 10_101, &.{fact(2, 60)});
+    try std.testing.expect(!fixture.session.observations[index].active);
+    try std.testing.expectEqual(@as(u32, 1), fixture.session.observations[index].consecutive_hits);
+    try fixture.observeComplete(5, 5, 3, 10_102, &.{fact(3, 60)});
+    try std.testing.expect(fixture.session.observations[index].active);
 }
 
 test "complete absence remains importable before and after report activation" {
@@ -194,7 +197,7 @@ test "complete absence remains importable before and after report activation" {
             snapshot += 1;
             utc += 10;
         }
-        try std.testing.expectEqual(@as(u32, 7), fixture.session.observations[index].consecutive_misses);
+        try std.testing.expectEqual(@as(u32, 0), fixture.session.observations[index].consecutive_misses);
         try std.testing.expect(!fixture.session.observations[index].active);
         try std.testing.expectEqual(sample_count, fixture.session.observations[index].sample_count);
 
@@ -216,7 +219,7 @@ test "complete absence remains importable before and after report activation" {
         for (rows) |row| {
             if (row.operation_kind != @intFromEnum(protocol.PersistenceKind.observation)) continue;
             observation_rows += 1;
-            try std.testing.expectEqual(@as(u32, 7), row.consecutive_misses);
+            try std.testing.expectEqual(@as(u32, 0), row.consecutive_misses);
         }
         try std.testing.expectEqual(@as(usize, 1), observation_rows);
 
@@ -233,7 +236,7 @@ test "complete absence remains importable before and after report activation" {
             rule_handle,
             target_handle,
         ).?;
-        try std.testing.expectEqual(@as(u32, 7), restored.observations[restored_index].consecutive_misses);
+        try std.testing.expectEqual(@as(u32, 0), restored.observations[restored_index].consecutive_misses);
         try std.testing.expect(!restored.observations[restored_index].active);
         try std.testing.expectEqual(sample_count, restored.observations[restored_index].sample_count);
 
