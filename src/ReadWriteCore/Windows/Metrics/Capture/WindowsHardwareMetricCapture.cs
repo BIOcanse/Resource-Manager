@@ -375,7 +375,9 @@ internal sealed partial class WindowsHardwareMetricCapture
             {
                 LastAttemptAtUtcTicks = observedAt.UtcTicks,
                 LastSuccessAtUtcTicks = current ? observedAt.UtcTicks : 0,
-                FailureCode = current ? null : "metric-catalog-enumeration-unavailable"
+                FailureCode = current ? null : id == MetricDatasetIds.SystemMetricCatalog
+                    ? topology?.GpuFailureCode ?? "metric-catalog-enumeration-unavailable"
+                    : "metric-catalog-enumeration-unavailable"
             };
         }
     }

@@ -45,9 +45,10 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
             IntelCpuPackageStatus = intel.PackageStatus, IntelCpuLogicalProcessorStatus = intel.LogicalProcessorStatus,
             IntelCpuDieStatus = intel.DieStatus, IntelPlatformStatus = intel.PlatformStatus, IntelCpuIdentities = intel.Identities };
         return WindowsNpuEngineTopology.AddDirectory(result, effectiveNpuEngineMaximumInstanceCount, resources.OpenNpuEngineDirectory, prior?.NpuEngineDirectory);
-    }    private NativeMetricSnapshotCatalogTopologySnapshot CaptureDeviceTopology(uint effectiveIntelFanMaximumInstanceCount, NativeMetricSnapshotCatalogProjection? prior)
+    }
+
+    private static (IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> Rows, string? FailureCode) CaptureGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
     {
-        var inventory = resources.ReadGpuInventory();
         if (inventory.Status != SamplingObservationStatus.Current
             || inventory.Generation == 0
             || inventory.ObservedAtUtcTicks <= 0
@@ -55,7 +56,7 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
             || inventory.SkippedCount != 0
             || inventory.OverflowCount != 0)
         {
-            return Unavailable(inventory.Generation);
+            return ([], "gpu-inventory-unavailable");
         }
 
         var rows = new List<NativeMetricSnapshotGpuCatalogIdentity>(
@@ -68,18 +69,18 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
                     != SamplingObservationStatus.Current
                 || adapter.PhysicalIdentities.Count == 0)
             {
-                return Unavailable(inventory.Generation);
+                return ([], "gpu-identity-unavailable");
             }
             var luid = WindowsGpuAdapterIdentity.Pack(adapter.Luid);
             if (luid == 0)
             {
-                return Unavailable(inventory.Generation);
+                return ([], "gpu-identity-unavailable");
             }
 
             var exactKey = CreateExactGpuKey(adapter);
             if (string.IsNullOrEmpty(exactKey))
             {
-                return Unavailable(inventory.Generation);
+                return ([], "gpu-identity-unavailable");
             }
             rows.Add(new NativeMetricSnapshotGpuCatalogIdentity(
                 adapter.Index,
@@ -108,13 +109,25 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
                 .Distinct()
                 .Count() != rows.Count)
         {
-            return Unavailable(inventory.Generation);
+            return ([], "gpu-identity-ambiguous");
         }
 
-        var storage = resources.ReadStorageIdentities(inventory.Generation);
+        return (rows, null);
+    }
+
+    private NativeMetricSnapshotCatalogTopologySnapshot CaptureDeviceTopology(uint effectiveIntelFanMaximumInstanceCount, NativeMetricSnapshotCatalogProjection? prior)
+    {
+        WindowsGpuAdapterInventoryRead inventory;
+        try { inventory = resources.ReadGpuInventory(); }
+        catch (Exception) { inventory = new(SamplingObservationStatus.Unavailable, 0, 0, 0, 0, 0, 0, []); }
+        var gpu = CaptureGpuIdentities(inventory);
+        // Ordinal catalog metadata must be nonzero even when the independent GPU inventory has no generation.
+        var generation = Math.Max(1UL, inventory.Generation);
+
+        var storage = resources.ReadStorageIdentities(generation);
         NativeMetricSnapshotOrdinalTopologyRead fans;
         var fanConfigurationKnown = true;
-        try { fans = resources.ReadFanIdentities(inventory.Generation); }
+        try { fans = resources.ReadFanIdentities(generation); }
         catch (Exception) { fans = new(NativeMetricSnapshotCatalogTopologyStatus.Unavailable, []); fanConfigurationKnown = false; }
         IReadOnlyList<NvidiaNvmlFanIdentity>? nvmlFans;
         try
@@ -130,21 +143,22 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
         var nextFanIndex = fanRows.Count == 0 ? 0 : checked(fanRows.Max(static fan => fan.DisplayIndex) + 1);
         if (nvmlFans is not null)
             foreach (var fan in nvmlFans.OrderBy(static fan => fan.ExactIdentityKey, StringComparer.Ordinal))
-                fanRows.Add(new(nextFanIndex++, fan.ExactIdentityKey, inventory.Generation)
+                fanRows.Add(new(nextFanIndex++, fan.ExactIdentityKey, generation)
                 {
                     NvmlFan = fan,
                     Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, nextFanIndex - 1)
                 });
         var batteries = resources.ReadBatteryIdentities();
         var topology = new NativeMetricSnapshotCatalogTopologySnapshot(
-            inventory.Generation,
-            NativeMetricSnapshotCatalogTopologyStatus.Complete,
-            rows,
+            generation,
+            gpu.FailureCode is null ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
+            gpu.Rows,
             storage.Status,
             storage.Identities,
             fans.Status,
             fanRows)
         {
+            GpuFailureCode = gpu.FailureCode,
             NvmlFanStatus = nvmlFans is null ? NativeMetricSnapshotCatalogTopologyStatus.Unavailable
                 : NativeMetricSnapshotCatalogTopologyStatus.Complete,
             NotebookOemFanStatus = fanConfigurationKnown ? NativeMetricSnapshotCatalogTopologyStatus.Complete
@@ -215,16 +229,6 @@ public sealed class WindowsHardwareMetricTopologySource(WindowsMetricTopologyRes
             _ => 8
         };
 
-    private static NativeMetricSnapshotCatalogTopologySnapshot Unavailable(
-        ulong generation)
-        => new(
-            generation,
-            NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-            [],
-            NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-            [],
-            NativeMetricSnapshotCatalogTopologyStatus.Unavailable,
-            []);
 }
 
 

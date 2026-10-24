@@ -16,6 +16,7 @@ public sealed record NativeMetricSnapshotCatalogTopologySnapshot(
     NativeMetricSnapshotCatalogTopologyStatus FanStatus,
     IReadOnlyList<NativeMetricSnapshotOrdinalCatalogIdentity> SystemFans)
 {
+    public string? GpuFailureCode { get; init; }
     public NativeMetricSnapshotCatalogTopologyStatus AmdCcdStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;
     public IReadOnlyList<AmdCcdCatalogIdentity> AmdCcdIdentities { get; init; } = [];
     public NativeMetricSnapshotCatalogTopologyStatus NpuEngineStatus { get; init; } = NativeMetricSnapshotCatalogTopologyStatus.Unavailable;

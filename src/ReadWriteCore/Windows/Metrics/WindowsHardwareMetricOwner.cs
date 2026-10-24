@@ -254,7 +254,6 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
         var observed = topologySource.Capture(WindowsNpuMemoryTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), WindowsIntelFanTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), workspace?.ReadCatalog(), WindowsNpuEngineTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates), WindowsAmdCcdTopology.EffectiveMaximumInstanceCount(configuration.CatalogConfiguration.RuleTemplates));
         try
         {
-            WindowsMetricCatalogTopologyPublication.RequireGpuTopology(observed);
             if (workspace is { } active)
             {
                 var prior = active.ReadCatalog();

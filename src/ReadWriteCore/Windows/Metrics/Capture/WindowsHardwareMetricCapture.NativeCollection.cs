@@ -35,6 +35,9 @@ internal sealed partial class WindowsHardwareMetricCapture
         var capturedAt = DateTimeOffset.UtcNow;
         try
         {
+            if (topology?.GpuStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
+                && sourceId == NativeMetricSnapshotSources.WindowsGpuAdapterOrder)
+                return Unavailable(sourcePlan.SourceHandle, identity, capturedAt);
             var completion = sourceId switch
             {
                 NativeMetricSnapshotSources.WindowsCpu =>
@@ -139,6 +142,24 @@ internal sealed partial class WindowsHardwareMetricCapture
                 _ => throw new InvalidOperationException(
                     $"Unknown native metric source '{sourceId}'.")
             };
+            if (topology?.GpuStatus == NativeMetricSnapshotCatalogTopologyStatus.Unavailable
+                && completion.Status == NativeMetricSnapshotSourceStatus.Complete)
+            {
+                // A shared source can also contain healthy CPU/fan values. Empty only GPU observations.
+                var gpuMetrics = MetricsForSource(plan, sourcePlan.SourceHandle)
+                    .Where(metric => plan.Catalog.RuleBindings[metric.RuleHandle].Field?.Resource == MetricResource.Gpu)
+                    .ToArray();
+                if (gpuMetrics.Length != 0)
+                    completion = completion with
+                    {
+                        Observations = completion.Observations
+                            .Where(observation => plan.Catalog.RuleBindings[observation.RuleHandle].Field?.Resource != MetricResource.Gpu)
+                            .Concat(gpuMetrics.Select(metric => NativeMetricSnapshotObservationProjection.CreateObservation(
+                                metric, plan.Catalog.RuleBindings[metric.RuleHandle], identity, capturedAt, null)))
+                            .ToImmutableArray(),
+                        PdhGpuEngineUsage = null
+                    };
+            }
             return completion;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
