@@ -11,6 +11,9 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     cpu_capacity_shares: []f64,
+    // The coordinator's round number for the last accepted score. Source datasets keep their own
+    // numbering; only this one round number decides whether an envelope is a new round.
+    last_scheduling_generation: u64,
 
     pub fn create(config: *const protocol.Config, raw_cpu_weights: []const f64) !*Session {
         if (!protocol.validateConfig(config)) return error.InvalidConfiguration;
@@ -23,6 +26,7 @@ pub const Session = struct {
             .allocator = allocator,
             .config = config.*,
             .cpu_capacity_shares = shares,
+            .last_scheduling_generation = 0,
         };
         return self;
     }
@@ -49,6 +53,7 @@ pub const Session = struct {
         self.allocator.free(self.cpu_capacity_shares);
         self.cpu_capacity_shares = shares;
         self.config = config.*;
+        self.last_scheduling_generation = 0;
         return .ok;
     }
 
@@ -107,6 +112,7 @@ pub fn score(
     lock(&session.mutex);
     defer session.mutex.unlock();
     if (!validateEnvelope(session, envelope)) return .abi_mismatch;
+    if (envelope.scheduling_generation <= session.last_scheduling_generation) return .stale_generation;
     if (envelope.process_count > session.config.maximum_process_count or
         envelope.gpu_row_count > session.config.maximum_gpu_row_count or
         envelope.output_capacity > session.config.maximum_output_count) return .capacity_exceeded;
@@ -260,6 +266,7 @@ pub fn score(
         .reserved0 = 0,
         .reserved = 0,
     };
+    session.last_scheduling_generation = envelope.scheduling_generation;
     return .ok;
 }
 
