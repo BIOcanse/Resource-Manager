@@ -2,17 +2,17 @@ import { createEffect, createMemo, createSignal, onCleanup, onMount } from "soli
 import type { Accessor } from "solid-js";
 import type { LocalSystemStatus } from "../data/localSystem/localSystemStatusApi";
 import type { ResourceManagerSelfSchedulingSnapshot } from "../data/selfScheduling/resourceManagerSelfSchedulingApi";
-import { frontendWorkIds, type FrontendWorkId } from "../frontendWork/frontendWorkIds";
+import { frontendWorkIds, type FrontendWorkId } from "../frontendWork/frontendWorkIds.ts";
 import type { FrontendWorkController } from "../frontendWork/useFrontendWorkController";
 import type { PushValueSource } from "../frontendRuntime/push/PushValueSourceFamily";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import {
   browserRuntimeManagementSubpageId,
   type ManagementSubpageId
-} from "../features/management/managementNavigation";
-import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan";
+} from "../features/management/managementNavigation.ts";
+import { resolveSelfCpuRuntimePlan } from "./selfScheduling/resolveSelfCpuRuntimePlan.ts";
 import type { FrontendRefreshIntervals, PageId } from "../types";
-import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils";
+import { beginShellWindowResize, endShellWindowResize, subscribeShellHostMessages } from "../utils.ts";
 import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry";
 
 type RefreshAction = () => void | Promise<unknown>;
@@ -47,6 +47,10 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
     createSignal<LocalSystemStatus | null>(null);
   const frontendVisible = options.frontendWork.frontendVisible;
   const performanceSettingsAvailable = createMemo(() => options.refreshIntervals() !== null);
+  // Settings publications also change for language and other unrelated edits.
+  // Only a different cadence may replace this observation's subscription.
+  const selfSchedulingIntervalMs = createMemo(
+    () => options.refreshIntervals()?.foreground.monitor ?? null);
   const foregroundInteractive = createMemo(() => frontendVisible() && frontendFocused());
   const cpuRuntimePlan = createMemo(() => resolveSelfCpuRuntimePlan(
     options.refreshIntervals(),
@@ -91,7 +95,7 @@ export function usePageRefreshScheduler(options: PageRefreshSchedulerOptions) {
   createEffect(() => {
     // The scheduling observation cannot derive its own demand from its value:
     // releasing that value to change cadence would change the selected profile.
-    const intervalMs = options.refreshIntervals()?.foreground.monitor;
+    const intervalMs = selfSchedulingIntervalMs();
     if (!frontendVisible() || intervalMs == null) {
       return;
     }

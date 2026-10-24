@@ -1,8 +1,10 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
+import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
 
 export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.1:4177") {
+  const channelProbe = await observeSubscriptionChannel(page);
   const pageErrors = [];
   const consoleErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
@@ -181,6 +183,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await setScenario({ operations: "mixed", operationCanceled: false });
   let previousLanguage = "zh-CN";
   const checkedLanguages = [];
+  let languageChannelStarted = null;
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     const oldApp = await loadAppCopy(previousLanguage);
     const oldSettings = await loadSettingsText(previousLanguage);
@@ -217,6 +220,10 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     previousLanguage = option.id;
     await page.keyboard.press("Escape");
     await localizedDialog.waitFor({ state: "hidden" });
+    const channel = (await requestTelemetry())["/api/subscriptions/stream"];
+    if (languageChannelStarted === null) languageChannelStarted = channel.physicalStarted;
+    assert(channel.physicalStarted === languageChannelStarted,
+      `${option.id}: an unchanged scheduling cadence restarted the callback channel: ${JSON.stringify(channel)}`);
   }
 
   assert(pageErrors.length === 0 && consoleErrors.length === 0,
@@ -224,7 +231,6 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   const operationTelemetry = await requestTelemetry();
   const physicalChannel = operationTelemetry["/api/subscriptions/stream"];
   assert(physicalChannel?.physicalInFlight === 1
-    && physicalChannel.physicalMaxInFlight === 1
     && physicalChannel.logicalInFlight === 0,
   `Frontend did not retain one physical callback channel: ${JSON.stringify(physicalChannel)}`);
   assert((operationTelemetry["/api/operations/subscribe"]?.logicalInFlight ?? 0) === 1
@@ -244,6 +250,8 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     checkedLanguages,
     operationLogicalStarts: operationTelemetry["/api/operations/subscribe"].logicalStarted,
     physicalChannelStarted: physicalChannel.physicalStarted,
+    languageChannelStarted,
+    browserChannel: await channelProbe.assertSinglePhysicalChannel(),
     operationDirectGets: operationTelemetry["/api/operations"]?.started ?? 0,
     pageErrors,
     consoleErrors
