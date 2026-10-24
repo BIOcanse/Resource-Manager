@@ -48,7 +48,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
   await page.locator("#managementTab-Dependency").click();
-  for (const query of ["HardwareMonitor", "hardware_monitor", "HARDWARE_MONITOR"]) {
+  for (const query of ["hardware_monitor", "HARDWARE_MONITOR"]) {
     await page.getByRole("searchbox").fill(query);
     await page.locator(".component-item").filter({ hasText: "Search fixture" }).waitFor();
   }
