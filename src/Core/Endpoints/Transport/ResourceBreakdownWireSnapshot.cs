@@ -196,7 +196,7 @@ public sealed class ResourceBreakdownWireSnapshotJsonConverter
         writer.WriteEndArray();
     }
 
-    private static void WriteProcessRows(
+    internal static void WriteProcessRows(
         Utf8JsonWriter writer,
         IReadOnlyList<ResourceProcessSegment> processes,
         bool includeProcesses)

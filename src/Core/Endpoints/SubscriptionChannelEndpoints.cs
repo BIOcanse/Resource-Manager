@@ -426,16 +426,42 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var metricIds = scope == ResourceMonitorScope.Table
             ? []
             : ParseResourceMetricIds(subscription.Query, monitoringPlan);
-        var requestedSampleMetricIds = ParseResourceSampleMetricIds(
-            subscription.Query);
         var scaleModes = ParseResourceScaleModes(
-            subscription.Query,
-            monitoringPlan);
-        var tableRequest = ParseResourceTableRequest(
             subscription.Query,
             monitoringPlan);
         var processDetailSoftwareIds =
             ParseResourceBreakdownProcessDetailSoftwareIds(subscription.Query);
+        var source = services.GetRequiredService<IResourceBreakdownPushSource>();
+        if (scope == ResourceMonitorScope.Details)
+        {
+            var detailsRequest = new ResourceBreakdownSampleRequest(
+                metricIds,
+                scaleModes,
+                ProcessSampleDetailLevel.ResourceTableBasic);
+            return subscription.Compile(async (writer, cancellationToken) =>
+            {
+                await foreach (var sampledBreakdown in source.SubscribeAsync(
+                    $"frontend-channel:{subscription.Id}",
+                    detailsRequest,
+                    interval,
+                    cancellationToken))
+                {
+                    await writer.WriteAsync(
+                        subscription.Id,
+                        ResourceProcessDetailsWireSnapshot.Create(
+                            sampledBreakdown,
+                            metricIds,
+                            processDetailSoftwareIds),
+                        cancellationToken);
+                }
+            });
+        }
+
+        var requestedSampleMetricIds = ParseResourceSampleMetricIds(
+            subscription.Query);
+        var tableRequest = ParseResourceTableRequest(
+            subscription.Query,
+            monitoringPlan);
         var sampleMetricIds = AddTableRequiredMetricIds(
             requestedSampleMetricIds.Count > 0
                 ? requestedSampleMetricIds
@@ -445,8 +471,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             sampleMetricIds,
             scaleModes,
             ResolveProcessSampleDetailLevel(subscription.Query, tableRequest));
-        var source = services.GetRequiredService<IResourceBreakdownPushSource>();
-        var tableProjector = services.GetRequiredService<IResourceTableProjector>();
+        var tableProjector = scope == ResourceMonitorScope.Bars
+            ? null
+            : services.GetRequiredService<IResourceTableProjector>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             await foreach (var sampledBreakdown in source.SubscribeAsync(
@@ -455,18 +482,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 interval,
                 cancellationToken))
             {
-                var table = tableProjector.Project(sampledBreakdown, tableRequest);
                 var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                     sampledBreakdown,
                     metricIds,
                     processDetailSoftwareIds);
+                var table = scope == ResourceMonitorScope.Bars
+                    ? ResourceTableWireSnapshot.Empty
+                    : ResourceTableWireSnapshot.Create(tableProjector!
+                        .Project(sampledBreakdown, tableRequest));
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(
                         ResourceMonitorWireSnapshot.CurrentVersion,
                         MaxTimestamp(breakdownWire.CapturedAt, table.CapturedAt),
                         breakdownWire,
-                        ResourceTableWireSnapshot.Create(table)),
+                        table),
                     cancellationToken);
             }
         });

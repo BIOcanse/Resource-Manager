@@ -94,6 +94,24 @@ public sealed class ManagementInventoryRevisionOwnerTests
     }
 
     [Fact]
+    public async Task ObserveSoftwareInventoryContentChangedAdvancesAndPublishesSoftwareRevision()
+    {
+        var owner = new ManagementInventoryRevisionOwner();
+        await using var enumerator = owner.SubscribeAsync(CancellationToken.None).GetAsyncEnumerator();
+
+        Assert.True(await enumerator.MoveNextAsync());
+        Assert.Equal("0", enumerator.Current.SoftwareRevision);
+
+        var pending = enumerator.MoveNextAsync().AsTask();
+        owner.ObserveSoftwareInventoryContentChanged();
+
+        Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("1", enumerator.Current.SoftwareRevision);
+        Assert.Equal("0", enumerator.Current.ComponentRevision);
+        Assert.Equal("0", enumerator.Current.BrowserRuntimeRevision);
+    }
+
+    [Fact]
     public void ObserveBrowserRuntimeSnapshot_IgnoresCaptureTimeAndAdvancesOnContentChange()
     {
         var owner = new ManagementInventoryRevisionOwner();

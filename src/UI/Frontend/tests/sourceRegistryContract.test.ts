@@ -27,7 +27,8 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 15);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 16);
+assert.match(sources, /key:\s*"resource-monitor\.process-details"/);
 assert.match(sources, /managementInventoryRevision:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"management\.inventory-revision"/);
 assert.match(pushValueSources, /this\.channel\.subscribe\(/);

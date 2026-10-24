@@ -476,6 +476,14 @@ export interface ResourceBreakdownSnapshot {
   bars?: ResourceBreakdownBar[];
 }
 
+export interface ResourceProcessDetailsSnapshot {
+  capturedAt?: string;
+  metrics: {
+    metricId: string;
+    software: { softwareId: string; processes: ResourceProcessSegment[] }[];
+  }[];
+}
+
 export interface ResourceTableColumn {
   /** 列标识；表头措辞由 resourceTableColumnLabel 按当前语言给出。 */
   id: string;

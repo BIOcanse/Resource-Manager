@@ -2,6 +2,7 @@ import type {
   ResourceBreakdownBar,
   ResourceBreakdownSnapshot,
   ResourceMonitorSnapshot,
+  ResourceProcessDetailsSnapshot,
   ResourceProcessSegment,
   ResourceScaleMode,
   ResourceSoftwareSegment,
@@ -207,6 +208,32 @@ function decodeSoftware(
     sharedValue: optionalNullableFiniteNumber(row[6], `${path}[6]`),
     processes: requireArray(row[5], `${path}[5]`)
       .map((process, index) => decodeProcess(process, `${path}[5][${index}]`))
+  };
+}
+
+export function decodeResourceProcessDetailsWireSnapshot(value: unknown): ResourceProcessDetailsSnapshot {
+  const snapshot = requireRecord(value);
+  if (requireSafeInteger(snapshot.version, "$.version") !== 1) {
+    throw new ResponseDecodeError("$.version", "resource process details wire version 1");
+  }
+  return {
+    capturedAt: requireNullable(snapshot.capturedAt, "$.capturedAt", requireTimestamp) ?? undefined,
+    metrics: requireArray(snapshot.metrics, "$.metrics").map((value, index) => {
+      const path = `$.metrics[${index}]`;
+      const metric = requireRecord(value, path);
+      return {
+        metricId: requireNonEmptyString(metric.metricId, `${path}.metricId`),
+        software: requireArray(metric.software, `${path}.software`).map((value, index) => {
+          const softwarePath = `${path}.software[${index}]`;
+          const software = requireRecord(value, softwarePath);
+          return {
+            softwareId: requireNonEmptyString(software.softwareId, `${softwarePath}.softwareId`),
+            processes: requireArray(software.processes, `${softwarePath}.processes`)
+              .map((value, index) => decodeProcess(value, `${softwarePath}.processes[${index}]`))
+          };
+        })
+      };
+    })
   };
 }
 

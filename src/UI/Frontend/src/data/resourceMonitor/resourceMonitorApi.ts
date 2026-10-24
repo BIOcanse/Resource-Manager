@@ -1,12 +1,14 @@
 import {
   decodeResourceBreakdownWireSnapshot,
-  decodeResourceMonitorWireSnapshot
+  decodeResourceMonitorWireSnapshot,
+  decodeResourceProcessDetailsWireSnapshot
 } from "../../api/resourceBreakdownWire.ts";
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import { defineResponseDecoder } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
   ResourceBreakdownSnapshot,
   ResourceMonitorSnapshot,
+  ResourceProcessDetailsSnapshot,
   ResourceScaleMode,
   ResourceTableViewMode
 } from "../../types.ts";
@@ -40,6 +42,22 @@ export const resourceBreakdownDecoder = defineResponseDecoder<ResourceBreakdownS
 export const resourceMonitorDecoder = defineResponseDecoder<ResourceMonitorSnapshot>(
   "resource-monitor.snapshot.v3",
   decodeResourceMonitorWireSnapshot);
+
+export const resourceProcessDetailsDecoder = defineResponseDecoder<ResourceProcessDetailsSnapshot>(
+  "resource-monitor.process-details.v1",
+  decodeResourceProcessDetailsWireSnapshot);
+
+export function buildResourceProcessDetailsSubscriptionUrl(
+  query: ResourceBreakdownQuery,
+  intervalMs: number
+): string {
+  const params = new URLSearchParams();
+  params.set("scope", "details");
+  appendBars(params, query.bars);
+  appendValues(params, "processDetails", query.processDetailSoftwareIds);
+  params.set("intervalMs", String(Math.max(1, Math.round(intervalMs))));
+  return appendQuery("/api/resource-monitor/subscribe", params);
+}
 
 export function getResourceBreakdownState(
   requestClient: ResourceMonitorRequestClient,
@@ -123,6 +141,22 @@ function buildResourceMonitorParams(query: ResourceMonitorQuery): URLSearchParam
 export function normalizeResourceMonitorQuery(
   query: ResourceMonitorQuery
 ): ResourceMonitorQuery {
+  const breakdown = normalizeResourceBreakdownQuery(query);
+  return Object.freeze({
+    bars: breakdown.bars,
+    scope: query.scope === "bars" || query.scope === "table"
+      ? query.scope
+      : "combined",
+    sampleMetricIds: normalizeSet(query.sampleMetricIds),
+    visibleColumnIds: normalizeOrderedSet(query.visibleColumnIds),
+    sortColumnId: query.sortColumnId.trim(),
+    sortDirection: query.sortDirection === "asc" ? "asc" : "desc",
+    processDetailSoftwareIds: breakdown.processDetailSoftwareIds,
+    tableMode: query.tableMode
+  });
+}
+
+export function normalizeResourceBreakdownQuery(query: ResourceBreakdownQuery): ResourceBreakdownQuery {
   const bars = query.bars === null
     ? null
     : Object.freeze(
@@ -136,16 +170,8 @@ export function normalizeResourceMonitorQuery(
         .sort((left, right) => left.metricId.localeCompare(right.metricId)));
   return Object.freeze({
     bars,
-    scope: query.scope === "bars" || query.scope === "table"
-      ? query.scope
-      : "combined",
-    sampleMetricIds: normalizeSet(query.sampleMetricIds),
-    visibleColumnIds: normalizeOrderedSet(query.visibleColumnIds),
-    sortColumnId: query.sortColumnId.trim(),
-    sortDirection: query.sortDirection === "asc" ? "asc" : "desc",
     processDetailSoftwareIds:
-      normalizeSet(query.processDetailSoftwareIds) ?? [],
-    tableMode: query.tableMode
+      normalizeSet(query.processDetailSoftwareIds) ?? []
   });
 }
 

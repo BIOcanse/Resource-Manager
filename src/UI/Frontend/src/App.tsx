@@ -123,6 +123,7 @@ export default function App() {
     metricFieldCatalogSource: frontendRuntime.sources.metricFieldCatalog,
     metricFieldsSource: frontendRuntime.sources.metricFields,
     resourceMonitorSource: frontendRuntime.sources.resourceMonitor,
+    resourceProcessDetailsSource: frontendRuntime.sources.resourceProcessDetails,
     metricSnapshotActive: () =>
       frontendWork.isNeeded(frontendWorkIds.monitorMetrics),
     resourceBarsActive: () =>

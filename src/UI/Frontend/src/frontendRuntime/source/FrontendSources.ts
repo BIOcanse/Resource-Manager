@@ -33,11 +33,15 @@ import {
 } from "../../data/appSettings/appSettingsApi.ts";
 import {
   buildResourceMonitorSubscriptionUrl,
+  buildResourceProcessDetailsSubscriptionUrl,
+  normalizeResourceBreakdownQuery,
   normalizeResourceMonitorQuery,
   resourceMonitorDecoder,
+  resourceProcessDetailsDecoder,
+  type ResourceBreakdownQuery,
   type ResourceMonitorQuery
 } from "../../data/resourceMonitor/resourceMonitorApi.ts";
-import type { ResourceMonitorSnapshot } from "../../types.ts";
+import type { ResourceMonitorSnapshot, ResourceProcessDetailsSnapshot } from "../../types.ts";
 import type {
   DashboardSettingsResult,
   GpuSpecializedTelemetrySnapshot,
@@ -143,6 +147,7 @@ import {
 } from "./SourceRegistry.ts";
 
 export interface FrontendSources {
+  readonly resourceProcessDetails: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   readonly appSettings: SourceHandle<CommittedAppSettingsResult>;
   readonly runtimeCapabilities: SourceHandle<BackendStartupCapabilities>;
   readonly selfScheduling: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
@@ -340,6 +345,13 @@ export function createFrontendSources(
       buildUrl: buildMetricFieldSubscriptionUrl,
       canonicalizeQuery: (query) => canonicalizeSourceQuery(normalizeMetricFieldQuery(query)).key,
       decoder: metricFieldDevicesDecoder
+    }),
+    resourceProcessDetails: new BackendPushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>({
+      key: "resource-monitor.process-details",
+      channel: subscriptionChannel,
+      buildUrl: (query, intervalMs) => buildResourceProcessDetailsSubscriptionUrl(normalizeResourceBreakdownQuery(query), intervalMs),
+      canonicalizeQuery: (query) => canonicalizeSourceQuery(normalizeResourceBreakdownQuery(query)).key,
+      decoder: resourceProcessDetailsDecoder
     }),
     resourceMonitor: new BackendPushValueSourceFamily<
       ResourceMonitorQuery,

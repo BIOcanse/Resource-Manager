@@ -116,6 +116,69 @@ public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
         Assert.Empty(inventory.ReadInformation().Devices);
     }
 
+    [Fact]
+    public async Task SoftwareContentChangeCallbackUsesCommittedFingerprintPerSid()
+    {
+        const string firstSid = "S-1-5-21-1-2-3-1001";
+        const string secondSid = "S-1-5-21-4-5-6-1002";
+        var captures = new Queue<IReadOnlyList<InstalledSoftwareEntry>>();
+        captures.Enqueue([Software("first", "First User App")]);
+        captures.Enqueue([Software("second", "Second User App")]);
+        captures.Enqueue([Software("first", "First User App")]);
+        captures.Enqueue([Software("second", "Second User App")]);
+        captures.Enqueue([Software("first", "First User App Updated")]);
+        captures.Enqueue([Software("first", "First User App Updated")]);
+        captures.Enqueue([Software("second", "Second User App Updated")]);
+        captures.Enqueue([Software("second", "Second User App Updated")]);
+        var changeCount = 0;
+        var inventory = new WindowsInstalledSoftwareInventory(
+            _ => captures.Dequeue(),
+            onSoftwareContentChanged: () => changeCount++);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(firstSid, CancellationToken.None);
+        _ = await inventory.RefreshInstalledSoftwareAsync(secondSid, CancellationToken.None);
+        _ = await inventory.RefreshInstalledSoftwareAsync(firstSid, CancellationToken.None);
+        _ = await inventory.RefreshInstalledSoftwareAsync(secondSid, CancellationToken.None);
+
+        Assert.Equal(0, changeCount);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(firstSid, CancellationToken.None);
+        Assert.Equal(1, changeCount);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(firstSid, CancellationToken.None);
+        Assert.Equal(1, changeCount);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(secondSid, CancellationToken.None);
+        Assert.Equal(2, changeCount);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(secondSid, CancellationToken.None);
+        Assert.Equal(2, changeCount);
+    }
+
+    [Fact]
+    public async Task SoftwareContentChangeCallbackRunsOnlyAfterAcceptedCaptureCommit()
+    {
+        var reads = 0;
+        var changeCount = 0;
+        var inventory = new WindowsInstalledSoftwareInventory(
+            _ => [Software("entry", reads++ == 0 ? "Original" : "Updated")],
+            onSoftwareContentChanged: () => changeCount++);
+
+        _ = await inventory.RefreshInstalledSoftwareAsync(CancellationToken.None);
+        _ = await inventory.CaptureInformationAsync(CancellationToken.None, static _ => false);
+
+        Assert.Equal("Original", Assert.Single(await inventory.GetInstalledSoftwareAsync(CancellationToken.None)).Name);
+        Assert.Equal(0, changeCount);
+
+        var accepted = await inventory.RefreshInstalledSoftwareAsync(CancellationToken.None);
+
+        Assert.Equal("Updated", Assert.Single(accepted).Name);
+        Assert.Equal(1, changeCount);
+    }
+
+    private static InstalledSoftwareEntry Software(string id, string name)
+        => new(id, name, "1.0", "Vendor", null, [], null, $"registry:{id}");
+
     public void Dispose()
     {
         if (Directory.Exists(testRoot))

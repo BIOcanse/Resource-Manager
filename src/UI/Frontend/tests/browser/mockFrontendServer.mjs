@@ -51,6 +51,7 @@ const defaultScenario = {
   cpuGrade: "normal",
   resourceBreakdownGeneration: 0,
   resourceSegmentCount: 1,
+  resourceDetailsDelayMs: 0,
   resourceCpuValue: null,
   resourceTableVariant: "normal",
   resourceTableRowCount: null,
@@ -706,6 +707,7 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/resource-monitor/snapshot") {
     const capturedAt = resourceSlotCapturedAt;
+    if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt));
     const breakdown = resourceBreakdown(
       capturedAt,
       new Set(url.searchParams.getAll("processDetails")));
@@ -1568,6 +1570,18 @@ function fixtureCpuResidency(capturedAt = now()) {
   };
 }
 
+function resourceProcessDetails(url, capturedAt) {
+  const requested = new Set(url.searchParams.getAll("processDetails").flatMap(value => value.split(",")));
+  const ids = new Set(url.searchParams.getAll("ids").flatMap(value => value.split(",")));
+  const breakdown = resourceBreakdown(capturedAt, requested);
+  const metrics = breakdown.bars.filter(bar => !url.searchParams.has("ids") || ids.has(bar.metricId))
+    .map(bar => ({ metricId: bar.metricId, software: bar.software
+      .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0]))
+      .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
+    .filter(metric => metric.software.length > 0);
+  return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
+}
+
 function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Set()) {
   const generation = Math.max(
     0,
@@ -1992,8 +2006,11 @@ async function subscriptionChannelStream(request, response) {
       requestUrl: subscription.requestUrl,
       intervalMs: pushInterval(subscription.requestUrl),
       createPayload: subscription.createPayload,
+      detailsReadyAt: Date.now() + (subscription.requestUrl.pathname === "/api/resource-monitor/subscribe"
+        && subscription.requestUrl.searchParams.get("scope") === "details" ? scenario.resourceDetailsDelayMs : 0),
       publish(publishedAt) {
         if (response.destroyed || response.writableEnded
+          || Date.now() < this.detailsReadyAt
           || scenario.pausedSubscriptionPaths.includes(subscription.requestUrl.pathname)) {
           return;
         }
@@ -2114,6 +2131,7 @@ function subscriptionPayloadFactory(url) {
         adapters: []
       });
     case "/api/resource-monitor/subscribe": {
+      if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt);
       const processDetails = new Set(url.searchParams.getAll("processDetails"));
       const processMode = url.searchParams.get("mode") === "process";
       return (publishedAt) => {

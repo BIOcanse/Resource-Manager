@@ -240,6 +240,70 @@ public sealed class ResourceMonitorProjectionTests
     }
 
     [Fact]
+    public void ProcessDetailsWireSnapshot_OnlyEmitsRequestedSoftwareForCurrentMetrics()
+    {
+        var source = Snapshot() with
+        {
+            Datasets =
+            [
+                CurrentDataset(
+                    ResourceBreakdownMetricIds.MemoryUsage,
+                    DateTimeOffset.UnixEpoch),
+                new ResourceBreakdownDatasetSamplingState(
+                    SamplingDatasetIds.ForProcessMetric(ResourceBreakdownMetricIds.CpuUsage),
+                    ResourceBreakdownSamplingStatuses.Ready,
+                    1,
+                    1,
+                    null,
+                    DateTimeOffset.UnixEpoch,
+                    null,
+                    null,
+                    null,
+                    null)
+            ]
+        };
+        var json = JsonSerializer.Serialize(
+            ResourceProcessDetailsWireSnapshot.Create(
+                source,
+                [ResourceBreakdownMetricIds.MemoryUsage, ResourceBreakdownMetricIds.CpuUsage],
+                new HashSet<string>(["software:b"], StringComparer.OrdinalIgnoreCase)),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.Equal(
+            ["version", "capturedAt", "metrics"],
+            root.EnumerateObject().Select(static property => property.Name).ToArray());
+        Assert.Equal(ResourceProcessDetailsWireSnapshot.CurrentVersion, root.GetProperty("version").GetInt32());
+        Assert.Equal(DateTimeOffset.UnixEpoch, root.GetProperty("capturedAt").GetDateTimeOffset());
+        var metric = Assert.Single(root.GetProperty("metrics").EnumerateArray());
+        Assert.Equal(ResourceBreakdownMetricIds.MemoryUsage, metric.GetProperty("metricId").GetString());
+        var software = Assert.Single(metric.GetProperty("software").EnumerateArray());
+        Assert.Equal("software:b", software.GetProperty("softwareId").GetString());
+        var process = Assert.Single(software.GetProperty("processes").EnumerateArray());
+        Assert.Equal(11, process.GetArrayLength());
+        Assert.Equal("worker-b.exe", process[1].GetString());
+        Assert.DoesNotContain("worker-a.exe", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("bars", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("softwareCatalog", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProcessDetailsWireSnapshot_EmptySoftwareRequestHasNoRowsOrCaptureTime()
+    {
+        var json = JsonSerializer.Serialize(
+            ResourceProcessDetailsWireSnapshot.Create(
+                Snapshot(),
+                [ResourceBreakdownMetricIds.MemoryUsage],
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase)),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("capturedAt").ValueKind);
+        Assert.Empty(document.RootElement.GetProperty("metrics").EnumerateArray());
+    }
+
+    [Fact]
     public void WireSnapshot_UsesOneIdentityCatalogAndPositionalValueRows()
     {
         var json = JsonSerializer.Serialize(

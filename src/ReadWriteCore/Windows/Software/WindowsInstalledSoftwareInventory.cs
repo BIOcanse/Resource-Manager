@@ -1,6 +1,8 @@
 using Microsoft.Win32;
 using ResourceManager.ReadWrite;
 using ResourceManager.App.Infrastructure.Monitoring;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -14,25 +16,30 @@ namespace ResourceManager.App.Infrastructure.Software;
 public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInventory
 {
     private const string UninstallSubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+    private const string DefaultSoftwareScope = "<default>";
     private static readonly string? WindowsRoot = NormalizePath(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private sealed record InventoryCapture(string? UserSid, IReadOnlyList<InstalledSoftwareEntry> Entries, DeviceInformationSnapshot Fields);
     private InventoryCapture? current;
+    private readonly Dictionary<string, string> committedSoftwareFingerprints = new(StringComparer.OrdinalIgnoreCase);
     private readonly CurrentValuePublicationSignal publications = new();
     private readonly Func<CancellationToken, IReadOnlyList<InstalledSoftwareEntry>> read;
     private readonly bool hasInjectedReader;
     private readonly TimeProvider clock;
+    private readonly Action? onSoftwareContentChanged;
     private readonly InformationReadWriteBackend backend;
     private readonly SamplingPublicationSignal collectionPublications = new();
 
     /// <summary>Reads machine-wide entries and the explicitly selected user's uninstall entries.
-    /// Construction performs no scan. The optional capture uses the same publication owner.</summary>
+    /// Construction performs no scan. The optional callback runs after an accepted content change.</summary>
     public WindowsInstalledSoftwareInventory(Func<CancellationToken, IReadOnlyList<InstalledSoftwareEntry>>? read = null,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null,
+        Action? onSoftwareContentChanged = null)
     {
         this.read = read ?? (token => ScanInstalledSoftware(token, null));
         hasInjectedReader = read is not null;
         this.clock = clock ?? TimeProvider.System;
+        this.onSoftwareContentChanged = onSoftwareContentChanged;
         backend = new(ReadInformation, token => CaptureInformationAsync(token), static _ => new(true, null, []));
     }
 
@@ -121,48 +128,107 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
         }
 
         await refreshGate.WaitAsync(cancellationToken);
+        var contentChanged = false;
+        IReadOnlyList<InstalledSoftwareEntry> result;
         try
         {
             previous = Volatile.Read(ref current);
             if (!forceRefresh && previous is not null && previous.UserSid == userSid)
             {
-                return previous.Entries;
+                result = previous.Entries;
             }
+            else
+            {
+                InventoryCapture next;
+                var capturedSoftwareContent = true;
+                try
+                {
+                    var refreshed = hasInjectedReader
+                        ? read(cancellationToken)
+                        : ScanInstalledSoftware(cancellationToken, userSid);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    next = new(userSid, refreshed, SoftwareInformationFieldProjection.Create(refreshed, clock.GetUtcNow()));
+                }
+                catch (Exception error) when (clearFieldsOnFailure && (error is IOException or UnauthorizedAccessException))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var sameScope = previous?.UserSid == userSid;
+                    next = new(userSid, sameScope ? previous!.Entries : [],
+                        SoftwareInformationFieldProjection.Clear(sameScope ? previous!.Fields : DeviceInformationSnapshot.Empty));
+                    capturedSoftwareContent = false;
+                }
 
-            InventoryCapture next;
-            try
-            {
-                var refreshed = hasInjectedReader
-                    ? read(cancellationToken)
-                    : ScanInstalledSoftware(cancellationToken, userSid);
-                cancellationToken.ThrowIfCancellationRequested();
-                next = new(userSid, refreshed, SoftwareInformationFieldProjection.Create(refreshed, clock.GetUtcNow()));
+                var fingerprint = capturedSoftwareContent ? FingerprintSoftwareContent(next.Entries) : null;
+                void Commit()
+                {
+                    Volatile.Write(ref current, next);
+                    if (fingerprint is not null)
+                    {
+                        var scope = userSid ?? DefaultSoftwareScope;
+                        if (committedSoftwareFingerprints.TryGetValue(scope, out var previousFingerprint))
+                        {
+                            if (!string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+                            {
+                                committedSoftwareFingerprints[scope] = fingerprint;
+                                contentChanged = true;
+                            }
+                        }
+                        else
+                        {
+                            committedSoftwareFingerprints.Add(scope, fingerprint);
+                        }
+                    }
+                    publications.Publish();
+                    collectionPublications.Publish(["information.software"]);
+                }
+
+                if (tryPublish is null)
+                {
+                    Commit();
+                    result = next.Entries;
+                }
+                else if (!tryPublish(Commit))
+                {
+                    var visible = Volatile.Read(ref current);
+                    result = visible is not null && visible.UserSid == userSid ? visible.Entries : [];
+                }
+                else
+                {
+                    result = next.Entries;
+                }
             }
-            catch (Exception error) when (clearFieldsOnFailure && (error is IOException or UnauthorizedAccessException))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var sameScope = previous?.UserSid == userSid;
-                next = new(userSid, sameScope ? previous!.Entries : [],
-                    SoftwareInformationFieldProjection.Clear(sameScope ? previous!.Fields : DeviceInformationSnapshot.Empty));
-            }
-            void Commit()
-            {
-                Volatile.Write(ref current, next);
-                publications.Publish();
-                collectionPublications.Publish(["information.software"]);
-            }
-            if (tryPublish is null) Commit();
-            else if (!tryPublish(Commit))
-            {
-                var visible = Volatile.Read(ref current);
-                return visible is not null && visible.UserSid == userSid ? visible.Entries : [];
-            }
-            return next.Entries;
         }
         finally
         {
             refreshGate.Release();
         }
+
+        if (contentChanged)
+        {
+            onSoftwareContentChanged?.Invoke();
+        }
+        return result;
+    }
+
+    private static string FingerprintSoftwareContent(IReadOnlyList<InstalledSoftwareEntry> entries)
+    {
+        var content = entries
+            .OrderBy(static entry => entry.Id, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => entry.RegistryPath, StringComparer.OrdinalIgnoreCase)
+            .Select(static entry => new
+            {
+                entry.Id,
+                entry.Name,
+                entry.Version,
+                entry.Publisher,
+                entry.InstallLocation,
+                RootPaths = entry.RootPaths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+                entry.UninstallString,
+                entry.RegistryPath,
+                entry.ReportedSizeBytes
+            })
+            .ToArray();
+        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(content)));
     }
 
     private static IReadOnlyList<InstalledSoftwareEntry> ScanInstalledSoftware(
