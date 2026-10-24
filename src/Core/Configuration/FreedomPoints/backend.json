@@ -200,12 +200,12 @@
               {
                 "index": 0,
                 "id": "software_welfare",
-                "description": "The sole native scorer adds one catalog-base-mean welfare bonus per software. CPU and memory use max(0, 1 - utilization / utilization_baseline_percent) independently, without recipient counts, state modifiers or CPU capacity compensation. GPU welfare retains its prior formula until its separate policy decision.",
+                "description": "The sole native scorer uses its own base_score (0 to maximum base importance, default 100). CPU and memory each add base_score times their direct free-capacity ratio once per software, without recipient counts, state modifiers or CPU capacity compensation. GPU share retains base_score times the product of four free ratios divided by eligible process count.",
                 "value_type": "object",
                 "update_class": "rebuild_backend",
                 "status": "active",
                 "value_source": "registry",
-                "value": { "kind": "software_base_mean_utilization_bonus", "utilization_baseline_percent": 70 },
+                "value": { "kind": "free_capacity_welfare_bonus", "base_score": 100 },
                 "consumers": ["HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish"]
               }
             ]

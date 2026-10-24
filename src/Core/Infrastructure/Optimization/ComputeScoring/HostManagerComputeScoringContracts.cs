@@ -38,7 +38,7 @@ internal readonly record struct HostManagerWelfareScoreSnapshot(
     double MemoryFreeRatio,
     double Multiplier,
     double SystemPressure,
-    double SoftwareBaseMean,
+    double WelfareBaseScore,
     double Budget,
     double Share,
     uint EligibleProcessCount)

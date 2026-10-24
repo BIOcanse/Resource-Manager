@@ -64,9 +64,9 @@ public sealed partial class LoopbackApiAccessTests
             var welfare = Assert.Single(tree.EnumeratePoints(), point =>
                 point.Address == BackendFreedomPointPaths.SoftwareWelfare);
             Assert.Equal("active", welfare.Status);
-            Assert.Equal("software_base_mean_utilization_bonus",
+            Assert.Equal("free_capacity_welfare_bonus",
                 welfare.Value!.Value.GetProperty("kind").GetString());
-            Assert.Equal(70, welfare.Value.Value.GetProperty("utilization_baseline_percent").GetDouble());
+            Assert.Equal(100, welfare.Value.Value.GetProperty("base_score").GetDouble());
             var pending = Assert.Single(tree.EnumeratePoints(), point => point.Id == "score_algorithm");
             Assert.Equal("pending", pending.Status);
             Assert.NotEmpty(pending.PendingReason!);
@@ -79,7 +79,7 @@ public sealed partial class LoopbackApiAccessTests
             root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + 1;
             root["hot_publish"]!["smart_coordinator"]!["required_consecutive_decisions"] = 4;
         }, editFreedomPoints: root => FreedomPointTestFactory.Point(root,
-            BackendFreedomPointPaths.SoftwareWelfare)["value"]!["utilization_baseline_percent"] = 35);
+            BackendFreedomPointPaths.SoftwareWelfare)["value"]!["base_score"] = 35);
         fixture.Runtime.Publish(fixture.Runtime.Current with { HostManager = changed });
         var updated = (await fixture.Client.GetFromJsonAsync<CompiledFreedomPointTree>(
             "/api/debug/freedom-points"))!;
@@ -87,7 +87,7 @@ public sealed partial class LoopbackApiAccessTests
             point => point.Id == "required_consecutive_decisions").Value!.Value.GetInt32());
         Assert.Equal(35, Assert.Single(updated.EnumeratePoints(),
             point => point.Address == BackendFreedomPointPaths.SoftwareWelfare)
-            .Value!.Value.GetProperty("utilization_baseline_percent").GetDouble());
+            .Value!.Value.GetProperty("base_score").GetDouble());
         Assert.Same(changed, fixture.Runtime.Current.HostManager);
         Assert.Equal(11, fixture.HttpRequests);
         Assert.Equal(0, fixture.Sampler.Captures);

@@ -14,6 +14,7 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Diagnostics;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -53,6 +54,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var clockTrace = new Scale256ClockTrace(source, "controlled");
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
+            // This corpus measures raw-score execution; welfare is tested by the capacity cases.
+            editFreedomPoints: root => FreedomPointTestFactory.Point(root,
+                BackendFreedomPointPaths.SoftwareWelfare)["value"]!["base_score"] = 0,
             performanceLogEnabled: true,
             smartCoordinatorMaximumProcesses: Scale256HostedProcessCount,
             metricSamplerOverride: source,

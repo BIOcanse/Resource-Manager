@@ -3,6 +3,37 @@ const protocol = @import("protocol.zig");
 const session_module = @import("session.zig");
 const process_scores = @import("process_scores.zig");
 
+test "welfare follows direct free capacity continuously through saturation" {
+    var config = testConfig();
+    config.welfare_base_score = 100;
+    var envelope = testEnvelope(1, 2, 0, 0, protocol.EnvelopeFlags.cpu_snapshot_complete);
+    envelope.gpu_free_ratio = 1;
+    envelope.vram_free_ratio = 1;
+    var previous: f64 = 101;
+    for (0..1001) |step| {
+        const usage = @as(f64, @floatFromInt(step)) / 1000;
+        envelope.cpu_free_ratio = 1 - usage;
+        envelope.memory_free_ratio = 1 - usage;
+        const welfare = try process_scores.calculateWelfare(&config, &envelope);
+        try std.testing.expectApproxEqAbs(100 * (1 - usage), welfare.cpu_bonus, 1e-12);
+        try std.testing.expectApproxEqAbs(welfare.cpu_bonus, welfare.memory_bonus, 1e-12);
+        try std.testing.expect(welfare.cpu_bonus < previous);
+        if (step > 0) try std.testing.expectApproxEqAbs(@as(f64, 0.1), previous - welfare.cpu_bonus, 1e-12);
+        previous = welfare.cpu_bonus;
+    }
+    for ([_]f64{ 0, 100 }) |valid| {
+        config.welfare_base_score = valid;
+        try std.testing.expect(protocol.validateConfig(&config));
+    }
+    for ([_]f64{ -1, 101, std.math.nan(f64), std.math.inf(f64) }) |bad| {
+        config.welfare_base_score = bad;
+        try std.testing.expect(!protocol.validateConfig(&config));
+    }
+    config.welfare_base_score = 60;
+    config.maximum_base_importance = 50;
+    try std.testing.expect(!protocol.validateConfig(&config));
+}
+
 test "each software receives one full welfare independent of software and member counts" {
     var config = testConfig();
     const session = try session_module.Session.create(&config, &.{1});
@@ -36,30 +67,6 @@ test "each software receives one full welfare independent of software and member
     }
 }
 
-test "software mean is arithmetic without a fixed welfare base or runtime weighting" {
-    try std.testing.expectEqual(@as(f64, 60), try process_scores.softwareBaseMean(&.{ 80, 40 }, 100));
-    try std.testing.expectEqual(@as(f64, 0), try process_scores.softwareBaseMean(&.{}, 100));
-    try std.testing.expectEqual(@as(f64, 40), try process_scores.softwareBaseMean(&.{ 80, 40, 0 }, 100));
-    for ([_]f64{ -1, 101, std.math.nan(f64), std.math.inf(f64) }) |bad| {
-        try std.testing.expectError(error.InvalidScoreInput, process_scores.softwareBaseMean(&.{ 60, bad }, 100));
-    }
-}
-
-test "welfare utilization cutoff maps 70 and 35 without a negative bonus" {
-    const usages = [_]f64{ 0, 17.5, 35, 52.5, 70, 85, 100 };
-    const ratios = [_]f64{ 1, 0.75, 0.5, 0.25, 0, 0, 0 };
-    for (usages, ratios) |usage, ratio| {
-        try std.testing.expectApproxEqAbs(ratio, try process_scores.welfareRatio(1 - usage / 100, 70), 1e-12);
-    }
-    try std.testing.expectApproxEqAbs(@as(f64, 0.65), try process_scores.welfareRatio(0.65, 100), 1e-12);
-    for ([_]f64{ 0, -1, 101, 140, std.math.nan(f64), std.math.inf(f64) }) |bad| {
-        var config = testConfig();
-        config.welfare_utilization_baseline_percent = bad;
-        try std.testing.expect(!protocol.validateConfig(&config));
-        try std.testing.expectError(error.InvalidScoreInput, process_scores.welfareRatio(0, bad));
-    }
-}
-
 test "software memory score uses CPU raw sum and only memory welfare" {
     var config = testConfig();
     config.cpu_baseline_ratio = 0.5;
@@ -85,7 +92,7 @@ test "software memory score uses CPU raw sum and only memory welfare" {
             if (row.kind == @intFromEnum(protocol.OutputKind.software_memory))
                 try std.testing.expectApproxEqAbs(@as(f64, 120), row.score, 1e-10);
             if (row.kind == @intFromEnum(protocol.OutputKind.software_cpu))
-                try std.testing.expectApproxEqAbs(if (generation == 1) @as(f64, 90) else 60, row.score, 1e-10);
+                try std.testing.expectApproxEqAbs(if (generation == 1) @as(f64, 99) else 60, row.score, 1e-10);
         }
     }
 }
@@ -100,7 +107,6 @@ test "virtual software shares its remaining capacity score without recipient sta
     envelope.gpu_free_ratio = 1;
     envelope.vram_free_ratio = 1;
     envelope.memory_free_ratio = 1;
-    envelope.software_base_mean = try process_scores.softwareBaseMean(&.{ 80, 40 }, 100);
     const welfare = try process_scores.calculateWelfare(&config, &envelope);
     try std.testing.expectEqual(@as(f64, 30), welfare.budget);
     try std.testing.expectEqual(@as(f64, 15), welfare.share);
@@ -112,10 +118,10 @@ test "virtual software shares its remaining capacity score without recipient sta
 
     envelope.welfare_eligible_process_count = 0;
     try std.testing.expectEqual(@as(f64, 0), (try process_scores.calculateWelfare(&config, &envelope)).share);
-    envelope.software_base_mean = 0;
+    config.welfare_base_score = 0;
     try std.testing.expectEqual(@as(f64, 0), (try process_scores.calculateWelfare(&config, &envelope)).budget);
-    envelope.software_base_mean = 101;
-    try std.testing.expectError(error.InvalidScoreInput, process_scores.calculateWelfare(&config, &envelope));
+    config.welfare_base_score = 101;
+    try std.testing.expect(!protocol.validateConfig(&config));
 }
 
 test "CPU configuration requires an explicit baseline ratio and current scoring ABI" {
@@ -124,7 +130,7 @@ test "CPU configuration requires an explicit baseline ratio and current scoring 
     try std.testing.expect(!protocol.validateConfig(&config));
     config.cpu_baseline_ratio = 0.5;
     try std.testing.expect(protocol.validateConfig(&config));
-    config.abi_version = 0x0002_0001;
+    config.abi_version = 0x0006_0000;
     try std.testing.expect(!protocol.validateConfig(&config));
 }
 
@@ -551,7 +557,7 @@ fn testConfig() protocol.Config {
         .maximum_output_count = 112,
         .cpu_core_count = 1,
         .cpu_baseline_ratio = 1,
-        .welfare_utilization_baseline_percent = 70,
+        .welfare_base_score = 60,
         .cpu_state_multipliers = .{ 1, 1, 1, 1, 1, 1, 0 },
         .gpu_state_multipliers = .{ 1, 1, 1, 1, 1, 1, 0 },
         .maximum_base_importance = 100,
@@ -587,7 +593,6 @@ fn testEnvelope(
         .memory_free_ratio = 0,
         .welfare_eligible_process_count = @intCast(process_count),
         .reserved1 = 0,
-        .software_base_mean = 60,
     };
 }
 
@@ -663,7 +668,7 @@ test "scratch capacity is actual typed extent with unchanged ABI offsets" {
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
     const actual = session.capacity();
-    try std.testing.expectEqual(@as(u32, 0x00060000), actual.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x00070000), actual.abi_version);
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.Capacity, "scratch_byte_count"));
     try std.testing.expectEqual(@as(usize, 48), @offsetOf(protocol.Capacity, "scratch_alignment"));

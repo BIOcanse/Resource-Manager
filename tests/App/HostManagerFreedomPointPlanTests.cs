@@ -59,9 +59,9 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal("software_welfare", welfare.Id);
         Assert.Equal("active", welfare.Status);
         Assert.Equal("rebuild_backend", welfare.UpdateClass);
-        Assert.Equal("software_base_mean_utilization_bonus", welfare.Value!.Value.GetProperty("kind").GetString());
-        Assert.Equal(70, welfare.Value.Value.GetProperty("utilization_baseline_percent").GetDouble());
-        Assert.Equal(70, plan.SmartCoordinator.HotPublish.WelfareUtilizationBaselinePercent);
+        Assert.Equal("free_capacity_welfare_bonus", welfare.Value!.Value.GetProperty("kind").GetString());
+        Assert.Equal(100, welfare.Value.Value.GetProperty("base_score").GetDouble());
+        Assert.Equal(100, plan.SmartCoordinator.HotPublish.WelfareBaseScore);
         Assert.Equal(
             "HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish",
             Assert.Single(welfare.Consumers));
@@ -87,7 +87,7 @@ public sealed class HostManagerFreedomPointPlanTests
     [Theory]
     [InlineData("fixed_welfare_base")]
     [InlineData("running_process_mean")]
-    [InlineData("software_base_mean_idle_share")]
+    [InlineData("unknown_idle_share")]
     public void WelfareFreedomPointMustDescribeTheImplementedSoftwareFormula(string kind)
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(
@@ -104,30 +104,37 @@ public sealed class HostManagerFreedomPointPlanTests
     }
 
     [Theory]
+    [InlineData(0)]
     [InlineData(35)]
-    [InlineData(70)]
     [InlineData(100)]
-    public void WelfareCutoffIsCompiledFromItsFreedomPoint(double cutoff)
+    public void WelfareBaseIsCompiledFromItsFreedomPoint(double welfareBase)
     {
         var plan = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.SoftwareWelfare)
-                ["value"]!["utilization_baseline_percent"] = cutoff);
-        Assert.Equal(cutoff, plan.SmartCoordinator.HotPublish.WelfareUtilizationBaselinePercent);
+                ["value"]!["base_score"] = welfareBase);
+        Assert.Equal(welfareBase, plan.SmartCoordinator.HotPublish.WelfareBaseScore);
         var configuration = ResourceManager.App.Infrastructure.Optimization
             .HostManagerComputeScoringConfigurationFactory.Create(plan.SmartCoordinator, plan.CpuScoring!);
-        Assert.Equal(cutoff, configuration.WelfareUtilizationBaselinePercent);
+        Assert.Equal(welfareBase, configuration.WelfareBaseScore);
     }
 
     [Theory]
-    [InlineData(0)]
     [InlineData(-1)]
     [InlineData(101)]
     [InlineData(140)]
-    public void WelfareCutoffRejectsValuesOutsideTheUtilizationDomain(double cutoff)
+    public void WelfareBaseRejectsValuesOutsideTheImportanceDomain(double welfareBase)
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.SoftwareWelfare)
-                ["value"]!["utilization_baseline_percent"] = cutoff));
+                ["value"]!["base_score"] = welfareBase));
+    }
+
+    [Fact]
+    public void WelfareBaseMustBeExplicitEvenThoughZeroIsValid()
+    {
+        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.SoftwareWelfare)
+                ["value"]!.AsObject().Remove("base_score")));
     }
 
     [Fact]

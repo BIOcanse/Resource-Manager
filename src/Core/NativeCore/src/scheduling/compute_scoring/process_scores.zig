@@ -3,17 +3,6 @@ const protocol = @import("protocol.zig");
 
 pub const ScoreError = error{InvalidScoreInput};
 
-pub fn softwareBaseMean(values: []const f64, maximum: f64) ScoreError!f64 {
-    if (values.len == 0) return 0;
-    var mean: f64 = 0;
-    for (values, 0..) |value, index| {
-        if (!protocol.finiteNonNegative(value) or value > maximum)
-            return error.InvalidScoreInput;
-        mean += (value - mean) / @as(f64, @floatFromInt(index + 1));
-    }
-    return normalizeZero(mean);
-}
-
 pub const Welfare = struct {
     cpu_free_ratio: f64,
     gpu_free_ratio: f64,
@@ -37,15 +26,13 @@ pub fn calculateWelfare(
     if (!protocol.validRatio(envelope.cpu_free_ratio) or
         !protocol.validRatio(envelope.gpu_free_ratio) or
         !protocol.validRatio(envelope.vram_free_ratio) or
-        !protocol.validRatio(envelope.memory_free_ratio) or
-        !protocol.finiteNonNegative(envelope.software_base_mean) or
-        envelope.software_base_mean > config.maximum_base_importance) return error.InvalidScoreInput;
+        !protocol.validRatio(envelope.memory_free_ratio)) return error.InvalidScoreInput;
     const multiplier = envelope.cpu_free_ratio * envelope.gpu_free_ratio *
         envelope.vram_free_ratio * envelope.memory_free_ratio;
     const system_pressure = 1 - multiplier;
-    const cpu_multiplier = try welfareRatio(envelope.cpu_free_ratio, config.welfare_utilization_baseline_percent);
-    const memory_multiplier = try welfareRatio(envelope.memory_free_ratio, config.welfare_utilization_baseline_percent);
-    const budget = envelope.software_base_mean * multiplier;
+    const cpu_multiplier = envelope.cpu_free_ratio;
+    const memory_multiplier = envelope.memory_free_ratio;
+    const budget = config.welfare_base_score * multiplier;
     const share = if (envelope.welfare_eligible_process_count > 0)
         budget / @as(f64, @floatFromInt(envelope.welfare_eligible_process_count))
     else
@@ -65,17 +52,9 @@ pub fn calculateWelfare(
         .eligible_process_count = envelope.welfare_eligible_process_count,
         .cpu_multiplier = cpu_multiplier,
         .memory_multiplier = memory_multiplier,
-        .cpu_bonus = normalizeZero(envelope.software_base_mean * cpu_multiplier),
-        .memory_bonus = normalizeZero(envelope.software_base_mean * memory_multiplier),
+        .cpu_bonus = normalizeZero(config.welfare_base_score * cpu_multiplier),
+        .memory_bonus = normalizeZero(config.welfare_base_score * memory_multiplier),
     };
-}
-
-pub fn welfareRatio(free_ratio: f64, baseline_percent: f64) ScoreError!f64 {
-    if (!protocol.validRatio(free_ratio) or !protocol.finitePositive(baseline_percent) or baseline_percent > 100)
-        return error.InvalidScoreInput;
-    const usage_percent = (1 - free_ratio) * 100;
-    if (usage_percent >= baseline_percent) return 0;
-    return normalizeZero(1 - usage_percent / baseline_percent);
 }
 
 pub fn cpu(

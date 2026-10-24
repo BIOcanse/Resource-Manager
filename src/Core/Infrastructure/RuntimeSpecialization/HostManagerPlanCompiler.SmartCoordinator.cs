@@ -68,11 +68,12 @@ public sealed partial class HostManagerPlanCompiler
         var welfare = freedom.Consume<SoftwareWelfareDeclaration>(
             BackendFreedomPointPaths.SoftwareWelfare,
             consumer);
-        if (welfare.Kind != "software_base_mean_utilization_bonus")
+        if (welfare.Kind != "free_capacity_welfare_bonus")
             throw new InvalidDataException("The software welfare formula is not implemented by this backend.");
-        if (!double.IsFinite(welfare.UtilizationBaselinePercent)
-            || welfare.UtilizationBaselinePercent is <= 0 or > 100)
-            throw new InvalidDataException("The software welfare utilization_baseline_percent must be finite and in (0, 100].");
+        if (!double.IsFinite(welfare.BaseScore)
+            || welfare.BaseScore < 0
+            || welfare.BaseScore > Optimization.HostManagerComputeScoringConfigurationFactory.MaximumBaseImportance)
+            throw new InvalidDataException("The software welfare base_score must be finite and in [0, maximum base importance].");
         ValidatePositive(source.NormalIntervalMilliseconds, "hot_publish.smart_coordinator.normal_interval_ms");
         ValidatePositive(source.EventIntervalMilliseconds, "hot_publish.smart_coordinator.event_interval_ms");
         ValidatePositive(source.EventBoostMilliseconds, "hot_publish.smart_coordinator.event_boost_ms");
@@ -120,7 +121,7 @@ public sealed partial class HostManagerPlanCompiler
             failureRetry,
             source.ReservationTimeoutMilliseconds,
             source.MaximumActionsPerRealtimeTick,
-            welfare.UtilizationBaselinePercent,
+            welfare.BaseScore,
             stateMultipliers,
             baseScoreTiers,
             process.A1MinimumCpuScore,
@@ -140,7 +141,7 @@ public sealed partial class HostManagerPlanCompiler
 
     private sealed record SoftwareWelfareDeclaration(
         [property: JsonPropertyName("kind")] string Kind,
-        [property: JsonPropertyName("utilization_baseline_percent")] double UtilizationBaselinePercent);
+        [property: JsonRequired, JsonPropertyName("base_score")] double BaseScore);
 
     private static CompiledHostManagerMemoryModePolicyPlan
         CompileMemoryModePolicy(

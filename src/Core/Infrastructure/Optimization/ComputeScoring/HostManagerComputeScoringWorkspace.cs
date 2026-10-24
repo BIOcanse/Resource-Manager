@@ -18,8 +18,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private readonly FrozenDictionary<string, uint> cpuCoreIndexes;
     private readonly ComputeScoringScratchLayout layout;
     private readonly IComputeScratch scratch;
-    private ImmutableArray<SoftwareBaseScore> softwareBaseScores = [];
-    private double softwareBaseMean;
+    private readonly double welfareBaseScore;
     private bool disposed;
 
     internal HostManagerComputeScoringWorkspace(
@@ -29,6 +28,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     {
         ArgumentNullException.ThrowIfNull(createScratch);
         CpuScoring = cpuScoring;
+        welfareBaseScore = configuration.WelfareBaseScore;
         var weights = cpuScoring.CoreWeights.Cores.Select(static core => core.ReferenceWeight).ToArray();
         cpuCoreIndexes = cpuScoring.CoreWeights.Cores.Select((core, index) => (core.PhysicalCoreId, Index: checked((uint)index)))
             .ToFrozenDictionary(static core => core.PhysicalCoreId, static core => core.Index, StringComparer.OrdinalIgnoreCase);
@@ -105,17 +105,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         {
             throw new InvalidDataException(
                 "The welfare-capacity input does not match the current runtime process union.");
-        }
-
-        var replacement = processFacts.SoftwareBaseScores;
-        if (softwareBaseScores != replacement)
-        {
-            if (!softwareBaseScores.AsSpan().SequenceEqual(replacement.AsSpan()))
-            {
-                softwareBaseMean = cpuSession.CalculateSoftwareBaseMean(
-                    replacement.Select(static item => item.BaseScore).ToArray());
-            }
-            softwareBaseScores = replacement;
         }
 
         using var lease = scratch.Acquire();
@@ -380,8 +369,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             GpuFreeRatio = welfare.GpuFreeRatio,
             VramFreeRatio = welfare.VramFreeRatio,
             MemoryFreeRatio = welfare.MemoryFreeRatio,
-            WelfareEligibleProcessCount = welfare.EligibleProcessCount,
-            SoftwareBaseMean = softwareBaseMean
+            WelfareEligibleProcessCount = welfare.EligibleProcessCount
         };
         var nativeSnapshot = default(NativeComputeScoringSnapshot);
         var status = session.Score(
@@ -663,7 +651,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private static bool IsValidPolicyMultiplier(double value)
         => double.IsFinite(value) && value >= 0;
 
-    private static void ValidateNativeSnapshot(
+    private void ValidateNativeSnapshot(
         NativeComputeScoringSnapshot snapshot,
         NativeComputeScoringGenerationEnvelope envelope,
         bool cpuComplete,
@@ -691,7 +679,6 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             || snapshot.GpuFreeRatio != envelope.GpuFreeRatio
             || snapshot.VramFreeRatio != envelope.VramFreeRatio
             || snapshot.MemoryFreeRatio != envelope.MemoryFreeRatio
-            || snapshot.SoftwareBaseMean != envelope.SoftwareBaseMean
             || snapshot.WelfareEligibleProcessCount
                 != envelope.WelfareEligibleProcessCount
             || snapshot.Reserved0 != 0
@@ -706,10 +693,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             || !IsRatio(snapshot.MemoryWelfareMultiplier)
             || !double.IsFinite(snapshot.CpuWelfareBonus)
             || snapshot.CpuWelfareBonus < 0
-            || snapshot.CpuWelfareBonus > snapshot.SoftwareBaseMean
+            || snapshot.CpuWelfareBonus > welfareBaseScore
             || !double.IsFinite(snapshot.MemoryWelfareBonus)
             || snapshot.MemoryWelfareBonus < 0
-            || snapshot.MemoryWelfareBonus > snapshot.SoftwareBaseMean
+            || snapshot.MemoryWelfareBonus > welfareBaseScore
             || !IsRatio(snapshot.WelfareMultiplier)
             || !IsRatio(snapshot.SystemPressure)
             || !double.IsFinite(snapshot.WelfareBudget)
@@ -810,7 +797,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 snapshot.MemoryFreeRatio,
                 snapshot.WelfareMultiplier,
                 snapshot.SystemPressure,
-                snapshot.SoftwareBaseMean,
+                welfareBaseScore,
                 snapshot.WelfareBudget,
                 snapshot.WelfareShare,
                 snapshot.WelfareEligibleProcessCount)

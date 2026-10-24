@@ -149,7 +149,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
         Assert.Equal(1.875D, first!.Welfare.Share);
         Assert.Equal(3.75D, second!.Welfare.Share);
-        var cpuBonus = 60D * (1 - 50D / 70);
+        var cpuBonus = 60D * 0.5;
         Assert.Equal(cpuBonus, first.Welfare.CpuBonus, precision: 10);
         Assert.Equal(first.Welfare.CpuBonus, second.Welfare.CpuBonus);
         Assert.Equal(50 + cpuBonus, Assert.Single(first.Cpu!.Scores.Where(static score =>
@@ -161,7 +161,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void Score_RecomputesChangedSoftwareBaseMean()
+    public void Score_CatalogChangesDoNotChangeWelfare()
     {
         var configuration = CreateConfiguration();
         var cpuScoring = HostManagerTestPlanFactory.CreateCpuScoring(
@@ -186,7 +186,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             CreateRuntimeFacts(), CreateCpuResidency(), capacity);
 
         Assert.Equal(1.875D, first!.Welfare.Share);
-        Assert.Equal(0.9375D, second!.Welfare.Share);
+        Assert.Equal(first.Welfare, second!.Welfare);
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void SoftwareMeanSurvivesProcessCountStateAndLoadChangesButTracksCatalogEdits()
+    public void WelfareBaseIsIndependentOfCatalogProcessCountStateAndLoad()
     {
         var configuration = CreateConfiguration();
         using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
@@ -229,10 +229,10 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         };
         var capacity = new HostManagerWelfareCapacityInput(0.5, 1, 1, 1, 2);
         var first = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency(), capacity)!;
-        Assert.Equal(60, first.Welfare.SoftwareBaseMean);
+        Assert.Equal(60, first.Welfare.WelfareBaseScore);
         Assert.Equal(30, first.Welfare.Budget);
         Assert.Equal(15, first.Welfare.Share);
-        Assert.Equal(60D * (1 - 50D / 70), first.Welfare.CpuBonus, precision: 10);
+        Assert.Equal(60D * 0.5, first.Welfare.CpuBonus, precision: 10);
         Assert.Equal(60, first.Welfare.MemoryBonus);
 
         var one = facts with { EnumeratedCount = 1, EmittedCount = 1, Processes = [facts.Processes[0]] };
@@ -240,7 +240,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             .ToDictionary();
         var singleCapacity = capacity with { EligibleProcessCount = 1 };
         var second = workspace.Score(2, one, inventory, runtime, CreateCpuResidency(), singleCapacity)!;
-        Assert.Equal(first.Welfare.SoftwareBaseMean, second.Welfare.SoftwareBaseMean);
+        Assert.Equal(first.Welfare.WelfareBaseScore, second.Welfare.WelfareBaseScore);
         Assert.Equal(30, second.Welfare.Share);
         Assert.Equal(first.Welfare.Share * 2, second.Welfare.Share);
         Assert.Equal(first.Welfare.CpuBonus, second.Welfare.CpuBonus);
@@ -257,20 +257,20 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.NotEqual(second.Cpu!.Scores[0].Score, third.Cpu!.Scores[0].Score);
 
         ulong generation = 4;
-        foreach (var (catalog, mean) in new (SoftwareBaseScore[], double)[]
+        foreach (var catalog in new SoftwareBaseScore[][]
         {
-            ([new("software", 20), new("not-running-software", 40)], 30),
-            ([new("not-running-software", 40)], 40),
-            ([], 0),
-            ([new("software", 80), new("not-running-software", 40)], 60)
+            [new("software", 20), new("not-running-software", 40)],
+            [new("not-running-software", 40)],
+            [],
+            [new("software", 80), new("not-running-software", 40)]
         })
         {
             var changed = workspace.Score(generation++, one with { SoftwareBaseScores = [.. catalog] },
                 inventory, runtime, CreateCpuResidency(), singleCapacity)!;
-            Assert.Equal(mean, changed.Welfare.SoftwareBaseMean);
-            Assert.Equal(mean * 0.5, changed.Welfare.Share);
-            Assert.Equal(mean * (1 - 50D / 70), changed.Welfare.CpuBonus, precision: 10);
-            Assert.Equal(mean, changed.Welfare.MemoryBonus);
+            Assert.Equal(60, changed.Welfare.WelfareBaseScore);
+            Assert.Equal(60 * 0.5, changed.Welfare.Share);
+            Assert.Equal(60 * 0.5, changed.Welfare.CpuBonus, precision: 10);
+            Assert.Equal(60, changed.Welfare.MemoryBonus);
         }
     }
 
@@ -454,7 +454,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             1,
             cpuBaselineRatio,
             cpuCoreCount,
-            welfareUtilizationBaselinePercent: 70);
+            welfareBaseScore: 60);
     }
 
     private static IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact>

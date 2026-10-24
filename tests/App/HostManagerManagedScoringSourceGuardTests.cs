@@ -39,7 +39,7 @@ public sealed class HostManagerManagedScoringSourceGuardTests
             processScores,
             StringComparison.Ordinal);
         Assert.Contains(
-            "const budget = envelope.software_base_mean * multiplier;",
+            "const budget = config.welfare_base_score * multiplier;",
             processScores,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -57,7 +57,7 @@ public sealed class HostManagerManagedScoringSourceGuardTests
         var formulaOwnerCount = Directory
             .EnumerateFiles(nativeSourceRoot, "*.zig", SearchOption.AllDirectories)
             .Count(path => File.ReadAllText(path).Contains(
-                "const budget = envelope.software_base_mean * multiplier;",
+                "const budget = config.welfare_base_score * multiplier;",
                 StringComparison.Ordinal));
         Assert.Equal(1, formulaOwnerCount);
         Assert.DoesNotContain(
@@ -65,7 +65,7 @@ public sealed class HostManagerManagedScoringSourceGuardTests
             managedWorkspace,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "var budget = softwareBaseMean * multiplier",
+            "var budget = welfareBaseScore * multiplier",
             managedWorkspace,
             StringComparison.Ordinal);
     }
