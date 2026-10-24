@@ -143,11 +143,13 @@ public sealed class HostManagerProcessPolicyTransaction
         {
             return ApplyResult(payload, HostManagerProcessPolicyApplyStatus.ProcessExited, 0, 0);
         }
-        if (before.Status == CurrentPolicyStatus.Unavailable)
+        if (before.Status == CurrentPolicyStatus.Unavailable
+            || before.UnavailableFields != HostManagerProcessPolicyTransactionFields.None)
         {
             return ApplyResult(payload, HostManagerProcessPolicyApplyStatus.Unavailable, 0, 0);
         }
-        if (before.Status is CurrentPolicyStatus.IdentityChanged or CurrentPolicyStatus.Foreign)
+        if (before.Status == CurrentPolicyStatus.IdentityChanged
+            || before.ForeignFields != HostManagerProcessPolicyTransactionFields.None)
         {
             return ApplyResult(payload, HostManagerProcessPolicyApplyStatus.OwnershipLost, 0, 0);
         }
@@ -198,7 +200,8 @@ public sealed class HostManagerProcessPolicyTransaction
                 fieldsToApply,
                 verification.SucceededFields);
         }
-        if (after.Status == CurrentPolicyStatus.Unavailable)
+        if (after.Status == CurrentPolicyStatus.Unavailable
+            || after.UnavailableFields != HostManagerProcessPolicyTransactionFields.None)
         {
             return ApplyResult(
                 payload,
@@ -206,7 +209,8 @@ public sealed class HostManagerProcessPolicyTransaction
                 fieldsToApply,
                 verification.SucceededFields);
         }
-        if (after.Status is CurrentPolicyStatus.IdentityChanged or CurrentPolicyStatus.Foreign)
+        if (after.Status == CurrentPolicyStatus.IdentityChanged
+            || after.ForeignFields != HostManagerProcessPolicyTransactionFields.None)
         {
             return ApplyResult(
                 payload,
@@ -302,7 +306,11 @@ public sealed class HostManagerProcessPolicyTransaction
                 HostManagerProcessPolicyInspectionStatus.Unavailable,
             CurrentPolicyStatus.IdentityChanged =>
                 HostManagerProcessPolicyInspectionStatus.IdentityChanged,
-            CurrentPolicyStatus.Foreign =>
+            CurrentPolicyStatus.Available
+                when current.UnavailableFields != HostManagerProcessPolicyTransactionFields.None =>
+                HostManagerProcessPolicyInspectionStatus.Unavailable,
+            CurrentPolicyStatus.Available
+                when current.ForeignFields != HostManagerProcessPolicyTransactionFields.None =>
                 HostManagerProcessPolicyInspectionStatus.Foreign,
             CurrentPolicyStatus.Available
                 when current.TargetFields == payload.Fields =>
@@ -410,15 +418,15 @@ public sealed class HostManagerProcessPolicyTransaction
                 HostManagerProcessPolicyInspectionStatus.Unavailable,
             CurrentPolicyStatus.IdentityChanged =>
                 HostManagerProcessPolicyInspectionStatus.IdentityChanged,
-            CurrentPolicyStatus.Foreign =>
-                HostManagerProcessPolicyInspectionStatus.Foreign,
             CurrentPolicyStatus.Available
                 when current.BaselineFields == payload.Fields =>
                 HostManagerProcessPolicyInspectionStatus.Baseline,
             CurrentPolicyStatus.Available
-                when current.TargetFields != HostManagerProcessPolicyTransactionFields.None
-                    && (current.BaselineFields | current.TargetFields) == payload.Fields =>
+                when current.RestorableFields != HostManagerProcessPolicyTransactionFields.None =>
                 HostManagerProcessPolicyInspectionStatus.Owned,
+            CurrentPolicyStatus.Available
+                when current.UnavailableFields != HostManagerProcessPolicyTransactionFields.None =>
+                HostManagerProcessPolicyInspectionStatus.Unavailable,
             _ => HostManagerProcessPolicyInspectionStatus.Foreign
         };
         return new(status, payload.ProcessId, payload.ProcessStartKey);
@@ -485,7 +493,7 @@ public sealed class HostManagerProcessPolicyTransaction
         {
             return RestoreResult(payload, HostManagerProcessPolicyRestoreStatus.Unavailable, 0, 0);
         }
-        if (before.Status is CurrentPolicyStatus.IdentityChanged or CurrentPolicyStatus.Foreign)
+        if (before.Status == CurrentPolicyStatus.IdentityChanged)
         {
             return RestoreResult(payload, HostManagerProcessPolicyRestoreStatus.OwnershipLost, 0, 0);
         }
@@ -494,7 +502,18 @@ public sealed class HostManagerProcessPolicyTransaction
             return RestoreResult(payload, HostManagerProcessPolicyRestoreStatus.AlreadyRestored, 0, 0);
         }
 
-        var fieldsToRestore = payload.Fields & ~before.BaselineFields;
+        // An external or unreadable field does not remove ownership of other fields.
+        var fieldsToRestore = before.RestorableFields;
+        if (fieldsToRestore == HostManagerProcessPolicyTransactionFields.None)
+        {
+            return RestoreResult(
+                payload,
+                before.UnavailableFields != HostManagerProcessPolicyTransactionFields.None
+                    ? HostManagerProcessPolicyRestoreStatus.Unavailable
+                    : HostManagerProcessPolicyRestoreStatus.OwnershipLost,
+                0,
+                0);
+        }
         HostManagerProcessPolicyBatchVerification verification;
         try
         {
@@ -519,15 +538,6 @@ public sealed class HostManagerProcessPolicyTransaction
                 0);
         }
 
-        if (verification.ConflictFields != HostManagerProcessPolicyTransactionFields.None)
-        {
-            return RestoreResult(
-                payload,
-                HostManagerProcessPolicyRestoreStatus.OwnershipLost,
-                fieldsToRestore,
-                verification.SucceededFields);
-        }
-
         var after = EvaluateCurrent(payload, activeTargets);
         if (after.Status == CurrentPolicyStatus.ProcessExited)
         {
@@ -537,7 +547,8 @@ public sealed class HostManagerProcessPolicyTransaction
                 fieldsToRestore,
                 verification.SucceededFields);
         }
-        if (after.Status == CurrentPolicyStatus.Unavailable)
+        if (after.Status == CurrentPolicyStatus.Unavailable
+            || after.UnavailableFields != HostManagerProcessPolicyTransactionFields.None)
         {
             return RestoreResult(
                 payload,
@@ -545,7 +556,7 @@ public sealed class HostManagerProcessPolicyTransaction
                 fieldsToRestore,
                 verification.SucceededFields);
         }
-        if (after.Status is CurrentPolicyStatus.IdentityChanged or CurrentPolicyStatus.Foreign)
+        if (after.Status == CurrentPolicyStatus.IdentityChanged)
         {
             return RestoreResult(
                 payload,
@@ -553,19 +564,26 @@ public sealed class HostManagerProcessPolicyTransaction
                 fieldsToRestore,
                 verification.SucceededFields);
         }
-        if (verification.AllSucceeded(fieldsToRestore)
-            && after.BaselineFields == payload.Fields)
+        // Do not settle the receipt while any known owned field still needs restoration.
+        if (verification.ShapeValid
+            && (after.BaselineFields | after.ForeignFields) == payload.Fields
+            && (verification.AllSucceeded(fieldsToRestore)
+                || verification.ConflictFields != HostManagerProcessPolicyTransactionFields.None))
         {
             return RestoreResult(
                 payload,
-                HostManagerProcessPolicyRestoreStatus.Restored,
+                after.ForeignFields != HostManagerProcessPolicyTransactionFields.None
+                    || verification.ConflictFields != HostManagerProcessPolicyTransactionFields.None
+                    ? HostManagerProcessPolicyRestoreStatus.OwnershipLost
+                    : HostManagerProcessPolicyRestoreStatus.Restored,
                 fieldsToRestore,
                 verification.SucceededFields);
         }
         if (verification.ShapeValid
             && verification.SucceededFields == HostManagerProcessPolicyTransactionFields.None
             && after.BaselineFields == before.BaselineFields
-            && after.TargetFields == before.TargetFields)
+            && after.TargetFields == before.TargetFields
+            && after.ForeignFields == before.ForeignFields)
         {
             return RestoreResult(
                 payload,
@@ -715,6 +733,8 @@ public sealed class HostManagerProcessPolicyTransaction
 
         var baselineFields = HostManagerProcessPolicyTransactionFields.None;
         var targetFields = HostManagerProcessPolicyTransactionFields.None;
+        var foreignFields = HostManagerProcessPolicyTransactionFields.None;
+        var unavailableFields = HostManagerProcessPolicyTransactionFields.None;
         foreach (var field in OrderedFields)
         {
             if (!payload.Fields.HasFlag(field))
@@ -728,7 +748,8 @@ public sealed class HostManagerProcessPolicyTransaction
                 var baselineMatch = MatchField(snapshot, payload, default, field);
                 if (baselineMatch == CurrentFieldMatch.Unavailable)
                 {
-                    return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.Unavailable);
+                    unavailableFields |= field;
+                    continue;
                 }
                 matchesBaseline = baselineMatch is CurrentFieldMatch.Baseline or
                     CurrentFieldMatch.Both;
@@ -740,8 +761,8 @@ public sealed class HostManagerProcessPolicyTransaction
                     var match = MatchField(snapshot, payload, target, field);
                     if (match == CurrentFieldMatch.Unavailable)
                     {
-                        return CurrentPolicyEvaluation.WithStatus(
-                            CurrentPolicyStatus.Unavailable);
+                        unavailableFields |= field;
+                        break;
                     }
                     matchesBaseline |= match is CurrentFieldMatch.Baseline or
                         CurrentFieldMatch.Both;
@@ -749,9 +770,13 @@ public sealed class HostManagerProcessPolicyTransaction
                         CurrentFieldMatch.Both;
                 }
             }
+            if ((unavailableFields & field) != 0)
+            {
+                continue;
+            }
             if (!matchesBaseline && !matchesKnownTarget)
             {
-                return CurrentPolicyEvaluation.WithStatus(CurrentPolicyStatus.Foreign);
+                foreignFields |= field;
             }
             if (matchesBaseline)
             {
@@ -767,6 +792,8 @@ public sealed class HostManagerProcessPolicyTransaction
             CurrentPolicyStatus.Available,
             baselineFields,
             targetFields,
+            foreignFields,
+            unavailableFields,
             snapshot.MemoryPriority);
     }
 
@@ -1059,7 +1086,6 @@ public sealed class HostManagerProcessPolicyTransaction
         Available = 1,
         Unavailable = 2,
         IdentityChanged = 3,
-        Foreign = 4,
         ProcessExited = 5
     }
 
@@ -1082,9 +1108,14 @@ public sealed class HostManagerProcessPolicyTransaction
         CurrentPolicyStatus Status,
         HostManagerProcessPolicyTransactionFields BaselineFields,
         HostManagerProcessPolicyTransactionFields TargetFields,
+        HostManagerProcessPolicyTransactionFields ForeignFields,
+        HostManagerProcessPolicyTransactionFields UnavailableFields,
         uint? ObservedMemoryPriority)
     {
+        internal HostManagerProcessPolicyTransactionFields RestorableFields =>
+            TargetFields & ~BaselineFields;
+
         internal static CurrentPolicyEvaluation WithStatus(CurrentPolicyStatus status) =>
-            new(status, 0, 0, null);
+            new(status, 0, 0, 0, 0, null);
     }
 }

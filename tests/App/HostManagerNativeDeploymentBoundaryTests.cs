@@ -86,6 +86,45 @@ public sealed class HostManagerNativeDeploymentBoundaryTests
         AssertHealthy(fixture.Deployment.Snapshot.MemoryCleanup);
     }
 
+    [Theory]
+    [InlineData(0U, 0)]
+    [InlineData(1U, 1)]
+    [InlineData(3U, 2)]
+    public void MemoryCleanup_AdmittedDecisionMaximumBoundsSelectionAcrossAllCandidates(
+        uint maximumDecisionCount,
+        int expectedCount)
+    {
+        var fixture = CreateFixture();
+        using var planner = new NativeAutomaticMemoryCleanupPlanner(
+            new HostManagerMemoryCleanupRuntime(fixture.Provider, fixture.Deployment));
+        var candidates = Enumerable.Range(0, 2)
+            .Select(static index => new AutomaticMemoryCleanupCandidate(
+                $"process:bounded:{index}",
+                $"Bounded {index}",
+                ProcessId: 31_000 + index,
+                ProcessStartedAt: DateTimeOffset.FromFileTime(133_700_000_000_000_000L + index),
+                RuntimeState: HostManagerRuntimeStates.BackgroundProcess,
+                BaseScore: 35,
+                CpuScore: 20 - index * 10,
+                MemoryUsedPercent: 10,
+                CanApply: true))
+            .ToArray();
+        var request = new AutomaticMemoryCleanupPlanRequest(
+            AutomaticMemoryCleanupRequestKind.Normal, 0.15, 0.15, 1, candidates)
+        {
+            MaximumDecisionCount = maximumDecisionCount
+        };
+
+        var result = planner.Plan(request);
+
+        Assert.Equal(expectedCount, result.Decisions.Count);
+        Assert.Equal(new[] { 1, 0 }.Take(expectedCount),
+            result.Decisions.Select(static decision => decision.SourceInputIndex));
+        planner.Complete(result.Decisions.Select(static decision =>
+            new AutomaticMemoryCleanupFeedback(decision.Reservation, true, true)).ToArray());
+        AssertHealthy(fixture.Deployment.Snapshot.MemoryCleanup);
+    }
+
     [Fact]
     public void MemoryCleanup_UnknownNativeModeFailsClosed()
     {

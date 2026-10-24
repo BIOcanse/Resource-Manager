@@ -361,6 +361,7 @@ fn newStagedSoftware(software_key: u64, source_index: u32) state.StagedSoftware 
         .valid_mask = protocol.InputValidity.software_identity,
         .input_flags = 0,
         .software_kind = @intFromEnum(protocol.SoftwareKind.unknown),
+        .protection_level = 0,
         .runtime_state = @intFromEnum(protocol.RuntimeState.unknown),
         .cpu_capability_mask = 0,
         .gpu_capability_mask = 0,
@@ -490,6 +491,10 @@ fn mergeProcessIntoSoftware(session: *state.Session, slot: u32, process: *const 
     if ((process.valid_mask & protocol.InputValidity.base_score) != 0) {
         if ((software.valid_mask & protocol.InputValidity.base_score) == 0) software.base_score = process.base_score else software.base_score = @max(software.base_score, process.base_score);
         software.valid_mask |= protocol.InputValidity.base_score;
+    }
+    if ((process.valid_mask & protocol.InputValidity.protection) != 0) {
+        software.protection_level = @max(software.protection_level, process.protection_level);
+        software.valid_mask |= protocol.InputValidity.protection;
     }
 
     var result = mergeU8Fact(&software.valid_mask, protocol.InputValidity.software_kind, &software.software_kind, process.software_kind, process.valid_mask);

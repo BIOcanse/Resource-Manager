@@ -58,11 +58,12 @@ public sealed class NativeAutomaticMemoryCleanupPlanner(
                     checked((uint)request.Candidates.Count),
                     out var requiredOutputCapacity),
                 "required-output-capacity");
+            // Output capacity bounds native selection before candidates are ranked.
+            requiredOutputCapacity = Math.Min(requiredOutputCapacity, request.MaximumDecisionCount);
             if (requiredOutputCapacity == 0)
             {
                 return new([], StateRevision: 0, configurationGeneration);
             }
-
             var maximumOutputCount = checked((int)requiredOutputCapacity);
             var inputBuffer = ArrayPool<NativeMemoryCleanupCandidateInput>.Shared.Rent(request.Candidates.Count);
             var outputBuffer = ArrayPool<NativeMemoryCleanupDecisionOutput>.Shared.Rent(maximumOutputCount);

@@ -34,7 +34,10 @@ public sealed record AutomaticMemoryCleanupPlanRequest(
     double OrdinaryMemoryFreeRatio,
     double PhysicalMemoryFreeRatio,
     double VirtualMemoryFreeRatio,
-    IReadOnlyList<AutomaticMemoryCleanupCandidate> Candidates);
+    IReadOnlyList<AutomaticMemoryCleanupCandidate> Candidates)
+{
+    public uint MaximumDecisionCount { get; init; } = uint.MaxValue;
+}
 
 public readonly record struct AutomaticMemoryCleanupReservation(
     uint StateSlot,

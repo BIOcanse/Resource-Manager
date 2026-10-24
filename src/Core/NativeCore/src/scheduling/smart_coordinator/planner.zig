@@ -324,6 +324,7 @@ fn copySoftwareFacts(
     target.valid_mask = staged.valid_mask;
     target.input_flags = staged.input_flags;
     target.software_kind = staged.software_kind;
+    target.protection_level = staged.protection_level;
     target.runtime_state = staged.runtime_state;
     target.cpu_capability_mask = staged.cpu_capability_mask;
     target.gpu_capability_mask = staged.gpu_capability_mask;
@@ -642,7 +643,7 @@ fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) 
             );
             software.adapter_cpu_score = cpu.score;
             software.adapter_cpu_score_valid = true;
-            software.cpu_candidate_grade = cpu.grade;
+            software.cpu_candidate_grade = clampAdapterByProtection(software, cpu.grade);
             software.cpu_candidate_valid = true;
             if (cpu.clamped) software.reason_mask |= protocol.Reason.capability_clamped;
         }
@@ -671,7 +672,7 @@ fn evaluateSoftware(session: *state.Session, input: *const protocol.CycleInput) 
             );
             software.adapter_gpu_score = gpu.score;
             software.adapter_gpu_score_valid = true;
-            software.gpu_candidate_grade = gpu.grade;
+            software.gpu_candidate_grade = clampAdapterByProtection(software, gpu.grade);
             software.gpu_candidate_valid = true;
             if (gpu.clamped) software.reason_mask |= protocol.Reason.capability_clamped;
         }
@@ -1270,6 +1271,16 @@ const AdapterDecision = struct {
     clamped: bool,
 };
 
+fn clampAdapterByProtection(software: *state.SoftwareState, grade: u8) u8 {
+    if ((software.valid_mask & protocol.InputValidity.protection) != 0 and
+        software.protection_level >= 2 and grade < @intFromEnum(protocol.AdapterGrade.normal))
+    {
+        software.reason_mask |= protocol.Reason.protection_level2_blocks_optimization;
+        return @intFromEnum(protocol.AdapterGrade.normal);
+    }
+    return grade;
+}
+
 fn adapterDecision(
     config: *const protocol.Config,
     policy: *const protocol.AdapterPolicyConfig,
@@ -1439,7 +1450,7 @@ fn softwareSnapshotRow(software: state.SoftwareState) protocol.SnapshotRow {
         .row_kind = @intFromEnum(protocol.SnapshotRowKind.software),
         .software_kind = software.software_kind,
         .runtime_state = software.runtime_state,
-        .protection_level = 0,
+        .protection_level = software.protection_level,
         .desired_process_grade = protocol.ProcessGrade.normal,
         .applied_process_grade = protocol.ProcessGrade.normal,
         .pending_process_grade = protocol.ProcessGrade.normal,

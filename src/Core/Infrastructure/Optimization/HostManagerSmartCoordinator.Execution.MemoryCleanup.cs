@@ -694,6 +694,18 @@ public sealed partial class HostManagerSmartCoordinator
             }
         }
 
+        var maximumDecisionCount = Math.Min(
+            request.MaximumDecisionCount,
+            permit.NewPointOfNoReturnRemaining);
+        if (maximumDecisionCount == 0)
+        {
+            return HostManagerMemoryCleanupExecutionResult.Incomplete(
+                HostManagerMemoryCleanupRoundDisposition.DeferredByCycleBudget,
+                originalCandidateCount,
+                blockedCandidateCount);
+        }
+        request = request with { MaximumDecisionCount = maximumDecisionCount };
+
         AutomaticMemoryCleanupPlanResult plan;
         try
         {

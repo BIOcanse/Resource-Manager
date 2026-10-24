@@ -290,6 +290,7 @@ public sealed partial class HostManagerSmartCoordinator
                 desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
         }
         await using var executionAdmissionOwner = executionAdmission;
+        var normalRestorationComplete = true;
         if (!scoreOnlyEnabled
             && string.Equals(
                 modePlan.Mode,
@@ -304,17 +305,22 @@ public sealed partial class HostManagerSmartCoordinator
                 maximumActionsThisCycle,
                 cancellationToken,
                 placementStateAvailable,
-                gpuControlAvailable))
+                gpuControlAvailable,
+                runPublicResourceLifecycle: () => RunNormalModePublicResourceLifecycle(
+                    effectAdmission, desired, normalCapacitySample)))
         {
+            normalRestorationComplete = false;
             cycleDiagnostics?.Defer("normal-mode-ownership-restoration-incomplete");
-            return new(TimeSpan.FromMilliseconds(
-                desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds));
         }
         if (!modePlan.SchedulingEnabled)
         {
-            RunNormalModePublicResourceLifecycle(effectAdmission, desired, normalCapacitySample);
-            cycleDiagnostics?.Complete();
-            return new(runtimePlan.HostManager.SchedulerSamplingInterval, effectAdmission);
+            if (scoreOnlyEnabled)
+                RunNormalModePublicResourceLifecycle(effectAdmission, desired, normalCapacitySample);
+            if (normalRestorationComplete) cycleDiagnostics?.Complete();
+            return new(normalRestorationComplete
+                ? runtimePlan.HostManager.SchedulerSamplingInterval
+                : TimeSpan.FromMilliseconds(desired.SmartCoordinator.HotPublish.ReservationTimeoutMilliseconds),
+                effectAdmission);
         }
         var schedulingPlanBinding = HostManagerSchedulingPlanBinding.Create(desired);
         var sampleCapture = await CaptureHostManagerSampleAsync(
@@ -1017,6 +1023,7 @@ public sealed partial class HostManagerSmartCoordinator
             | NativeSmartCoordinatorInputValidity.SurfaceFacts
             | NativeSmartCoordinatorInputValidity.BaseScore
             | NativeSmartCoordinatorInputValidity.Eligibility
+            | NativeSmartCoordinatorInputValidity.Protection
             | NativeSmartCoordinatorInputValidity.CpuCapabilities
             | NativeSmartCoordinatorInputValidity.GpuCapabilities
             | NativeSmartCoordinatorInputValidity.AppliedCpuGrade
@@ -1115,7 +1122,8 @@ public sealed partial class HostManagerSmartCoordinator
                     || (row.Flags & ~softwareFlags) != 0
                     || row.ProcessPendingCount != 0
                     || row.GameStartedAtMilliseconds != 0
-                    || row.ProtectionLevel != 0
+                    || (!row.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Protection)
+                        && row.ProtectionLevel != 0)
                     || row.CpuOccupancyPercent != 0
                     || row.DesiredProcessGrade != NativeSmartCoordinatorProcessGrade.Normal
                     || row.AppliedProcessGrade != NativeSmartCoordinatorProcessGrade.Normal

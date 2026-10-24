@@ -636,7 +636,7 @@ public sealed class HostManagerProcessPolicyTransactionTests
     }
 
     [Fact]
-    public void ApplyAndRestore_RejectForeignFieldValuesWithoutWriting()
+    public void ApplyRejectsForeignFieldsAndRestoreSkipsOnlyTheForeignField()
     {
         var applyWriter = new RecordingPolicyWriter(CreateSnapshot());
         var applyTransaction = new HostManagerProcessPolicyTransaction(applyWriter);
@@ -665,7 +665,249 @@ public sealed class HostManagerProcessPolicyTransactionTests
             HostManagerProcessGrades.Level2);
 
         Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost, restore.Status);
-        Assert.Empty(restoreWriter.Requests);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.CpuPolicy, restore.RequestedFields);
+        Assert.Equal(restore.RequestedFields, restore.RestoredFields);
+        var request = Assert.Single(restoreWriter.Requests);
+        Assert.Null(request.MemoryPriority);
+        Assert.Equal(CreateSnapshot().PriorityClass, restoreWriter.Current!.PriorityClass);
+        Assert.Equal(CreateSnapshot().PowerThrottlingControlMask,
+            restoreWriter.Current.PowerThrottlingControlMask);
+        Assert.Equal(CreateSnapshot().PowerThrottlingStateMask,
+            restoreWriter.Current.PowerThrottlingStateMask);
+        Assert.Equal(4U, restoreWriter.Current.MemoryPriority);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void CpuRestore_PreservesForeignFieldAndRestoresIndependentOwnedField(
+        bool foreignPriority,
+        bool recovery)
+    {
+        var original = CreateSnapshot(priorityClass: ProcessPriorityClass.Normal);
+        var writer = new RecordingPolicyWriter(original);
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var capture = transaction.Capture(42, HostManagerProcessPolicyTransactionFields.CpuPolicy);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied,
+            transaction.Apply(capture.Payload, HostManagerProcessGrades.Level3).Status);
+        writer.Requests.Clear();
+        var externallyChanged = writer.Current! with
+        {
+            PriorityClass = foreignPriority
+                ? ProcessPriorityClass.AboveNormal.ToString()
+                : writer.Current.PriorityClass,
+            PowerThrottlingControlMask = foreignPriority ? writer.Current.PowerThrottlingControlMask : 0x40U,
+            PowerThrottlingStateMask = foreignPriority ? writer.Current.PowerThrottlingStateMask : 0x80U,
+            MemoryPriority = null
+        };
+        writer.Current = externallyChanged;
+
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        Assert.Empty(writer.Requests);
+        var restored = recovery
+            ? transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal)
+            : transaction.Restore(capture.Payload, HostManagerProcessGrades.Level3);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost, restored.Status);
+        Assert.Equal(foreignPriority
+                ? HostManagerProcessPolicyTransactionFields.PowerThrottling
+                : HostManagerProcessPolicyTransactionFields.PriorityClass,
+            restored.RequestedFields);
+        Assert.Equal(restored.RequestedFields, restored.RestoredFields);
+        var request = Assert.Single(writer.Requests);
+        Assert.Null(request.MemoryPriority);
+        Assert.Null(writer.Current!.MemoryPriority);
+        if (foreignPriority)
+        {
+            Assert.Null(request.PriorityClass);
+            Assert.Equal(externallyChanged.PriorityClass, writer.Current.PriorityClass);
+            Assert.Equal(original.PowerThrottlingControlMask, writer.Current.PowerThrottlingControlMask);
+            Assert.Equal(original.PowerThrottlingStateMask, writer.Current.PowerThrottlingStateMask);
+        }
+        else
+        {
+            Assert.Null(request.PowerControlMask);
+            Assert.Null(request.PowerStateMask);
+            Assert.Equal(original.PriorityClass, writer.Current.PriorityClass);
+            Assert.Equal(externallyChanged.PowerThrottlingControlMask, writer.Current.PowerThrottlingControlMask);
+            Assert.Equal(externallyChanged.PowerThrottlingStateMask, writer.Current.PowerThrottlingStateMask);
+        }
+        writer.Requests.Clear();
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Foreign,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost,
+            transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        Assert.Empty(writer.Requests);
+    }
+
+    [Fact]
+    public void CpuRestore_ForeignPriorityDoesNotRetireFailedOwnedPowerRestoration()
+    {
+        var failRestore = false;
+        var original = CreateSnapshot(priorityClass: ProcessPriorityClass.Normal);
+        var writer = new RecordingPolicyWriter(original)
+        {
+            ResultFactory = request => CreateFieldResults(request, succeeded: !failRestore)
+        };
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var capture = transaction.Capture(42, HostManagerProcessPolicyTransactionFields.CpuPolicy);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied,
+            transaction.Apply(capture.Payload, HostManagerProcessGrades.Level3).Status);
+        writer.Current = writer.Current! with { PriorityClass = ProcessPriorityClass.AboveNormal.ToString() };
+        writer.Requests.Clear();
+        failRestore = true;
+
+        var failed = transaction.RestoreForRecovery(capture.Payload,
+            HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.Failed, failed.Status);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.PowerThrottling, failed.RequestedFields);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.None, failed.RestoredFields);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        failRestore = false;
+        var retried = transaction.RestoreForRecovery(capture.Payload,
+            HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost, retried.Status);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.PowerThrottling, retried.RestoredFields);
+        Assert.Equal(ProcessPriorityClass.AboveNormal.ToString(), writer.Current!.PriorityClass);
+        Assert.Equal(original.PowerThrottlingControlMask, writer.Current.PowerThrottlingControlMask);
+        Assert.Equal(original.PowerThrottlingStateMask, writer.Current.PowerThrottlingStateMask);
+        Assert.Equal(2, writer.Requests.Count);
+        Assert.All(writer.Requests, request => Assert.Null(request.PriorityClass));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void CpuRestore_UnavailableFieldDoesNotBlockIndependentOwnedFieldOrLoseRecovery(
+        bool unavailablePriority,
+        bool recovery)
+    {
+        var original = CreateSnapshot(priorityClass: ProcessPriorityClass.Normal);
+        var writer = new RecordingPolicyWriter(original);
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var capture = transaction.Capture(42, HostManagerProcessPolicyTransactionFields.CpuPolicy);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied,
+            transaction.Apply(capture.Payload, HostManagerProcessGrades.Level3).Status);
+        var applied = writer.Current!;
+        writer.Requests.Clear();
+        writer.Current = applied with
+        {
+            PriorityClass = unavailablePriority ? "unavailable" : applied.PriorityClass,
+            PowerThrottlingControlMask = unavailablePriority ? applied.PowerThrottlingControlMask : null,
+            PowerThrottlingStateMask = unavailablePriority ? applied.PowerThrottlingStateMask : null
+        };
+
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        var restored = recovery
+            ? transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal)
+            : transaction.Restore(capture.Payload, HostManagerProcessGrades.Level3);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.StateUncertain, restored.Status);
+        Assert.Equal(unavailablePriority
+                ? HostManagerProcessPolicyTransactionFields.PowerThrottling
+                : HostManagerProcessPolicyTransactionFields.PriorityClass,
+            restored.RequestedFields);
+        Assert.Equal(restored.RequestedFields, restored.RestoredFields);
+        var request = Assert.Single(writer.Requests);
+        Assert.Null(request.MemoryPriority);
+        if (unavailablePriority)
+        {
+            Assert.Null(request.PriorityClass);
+            Assert.Equal("unavailable", writer.Current!.PriorityClass);
+            Assert.Equal(original.PowerThrottlingControlMask, writer.Current.PowerThrottlingControlMask);
+            Assert.Equal(original.PowerThrottlingStateMask, writer.Current.PowerThrottlingStateMask);
+        }
+        else
+        {
+            Assert.Null(request.PowerControlMask);
+            Assert.Null(request.PowerStateMask);
+            Assert.Equal(original.PriorityClass, writer.Current!.PriorityClass);
+            Assert.Null(writer.Current.PowerThrottlingControlMask);
+            Assert.Null(writer.Current.PowerThrottlingStateMask);
+        }
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Unavailable,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        writer.Requests.Clear();
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.Unavailable,
+            transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        Assert.Empty(writer.Requests);
+
+        writer.Current = writer.Current! with
+        {
+            PriorityClass = unavailablePriority ? applied.PriorityClass : writer.Current.PriorityClass,
+            PowerThrottlingControlMask = unavailablePriority
+                ? writer.Current.PowerThrottlingControlMask : applied.PowerThrottlingControlMask,
+            PowerThrottlingStateMask = unavailablePriority
+                ? writer.Current.PowerThrottlingStateMask : applied.PowerThrottlingStateMask
+        };
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.Restored,
+            transaction.RestoreForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level3, HostManagerProcessGrades.Normal).Status);
+        Assert.Single(writer.Requests);
+        Assert.Equal(original, writer.Current);
+    }
+
+    [Fact]
+    public void RecoveryRestore_FieldConflictDoesNotSettleOtherFailedOwnedFields()
+    {
+        var conflictDuringRestore = false;
+        var writer = new RecordingPolicyWriter(CreateSnapshot())
+        {
+            ResultFactory = request => conflictDuringRestore
+                ? CreateFieldResults(request, succeeded: false).Select(field =>
+                    field.Field == ProcessResourcePolicyBatchFields.MemoryPriority
+                        ? new ProcessResourcePolicyBatchFieldResult(field.Field,
+                            ProcessResourcePolicyBatchFieldStatus.Conflict, "external change")
+                        : field).ToArray()
+                : CreateFieldResults(request, succeeded: true)
+        };
+        var transaction = new HostManagerProcessPolicyTransaction(writer);
+        var capture = transaction.Capture(42);
+        Assert.Equal(HostManagerProcessPolicyApplyStatus.Applied,
+            transaction.Apply(capture.Payload, HostManagerProcessGrades.Level2).Status);
+        writer.Requests.Clear();
+        conflictDuringRestore = true;
+        writer.BeforeBatch = _ => writer.Current = writer.Current! with { MemoryPriority = 4 };
+
+        var conflicted = transaction.RestoreForRecovery(capture.Payload,
+            HostManagerProcessGrades.Level2, HostManagerProcessGrades.Normal);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.StateUncertain, conflicted.Status);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.All, conflicted.RequestedFields);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.None, conflicted.RestoredFields);
+        Assert.Equal(HostManagerProcessPolicyInspectionStatus.Owned,
+            transaction.InspectForRecovery(capture.Payload,
+                HostManagerProcessGrades.Level2, HostManagerProcessGrades.Normal).Status);
+        writer.Requests.Clear();
+        conflictDuringRestore = false;
+        var retried = transaction.RestoreForRecovery(capture.Payload,
+            HostManagerProcessGrades.Level2, HostManagerProcessGrades.Normal);
+
+        Assert.Equal(HostManagerProcessPolicyRestoreStatus.OwnershipLost, retried.Status);
+        Assert.Equal(HostManagerProcessPolicyTransactionFields.CpuPolicy, retried.RestoredFields);
+        Assert.Null(Assert.Single(writer.Requests).MemoryPriority);
+        Assert.Equal(4U, writer.Current!.MemoryPriority);
+        Assert.Equal(CreateSnapshot().PriorityClass, writer.Current.PriorityClass);
+        Assert.Equal(CreateSnapshot().PowerThrottlingControlMask, writer.Current.PowerThrottlingControlMask);
+        Assert.Equal(CreateSnapshot().PowerThrottlingStateMask, writer.Current.PowerThrottlingStateMask);
     }
 
     [Fact]
