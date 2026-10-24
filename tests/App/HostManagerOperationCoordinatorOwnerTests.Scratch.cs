@@ -74,7 +74,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         Assert.Null(OwnerField<object>(fixture.Owner, "pendingWorkspaceClose"));
         Assert.Equal(2, resources.Count);
         Assert.Throws<ObjectDisposedException>(() => resources[1].Acquire());
-        Assert.Equal(resources[0].Length, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(resources[0].InLedger ? resources[0].Length : 0UL, ledger.ReadTable().RegisteredBytes);
         Assert.Same(published.Operations, fixture.Owner.GetPublishedState().Operations);
         Assert.Equal(published.ConfigurationGeneration, fixture.Owner.GetPublishedState().ConfigurationGeneration);
         Assert.NotNull(fixture.Owner.LastPlanApplicationError);
@@ -97,6 +97,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         try
         {
             var old = OwnerField<object>(fixture.Owner, "workspace");
+            File.WriteAllBytes(fixture.EnvelopePath, [0xA5]); // Fail after candidate construction, even when its region is compact.
             await InvokeOwnerTask(fixture.Owner, "ApplyPlanAsync", NextScratchPlan(fixture), false, CancellationToken.None);
             var pending = OwnerField<NativeOperationCoordinatorWorkspace>(fixture.Owner, "pendingWorkspaceClose");
             Assert.NotNull(pending);
@@ -244,7 +245,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             await stopping.Task.WaitAsync(TestBound);
             Assert.False(disposing.IsCompleted);
             Assert.NotNull(OwnerField<object>(owner, "workspace"));
-            Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
+            Assert.Contains(ledger.ReadWorkspaceCapacities(), row => row.WorkArea == "operation-output");
             using (var stillOpen = self.CreateScratch(128)) { }
             release.TrySetResult();
             await disposing.WaitAsync(TestBound);

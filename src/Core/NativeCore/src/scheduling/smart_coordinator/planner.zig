@@ -11,7 +11,6 @@ pub fn advance(
     actions: []protocol.Action,
     snapshot: *protocol.Snapshot,
 ) protocol.Status {
-    if (actions.len < session.config.max_actions) return .buffer_too_small;
     if ((input.flags & protocol.CycleFlags.authoritative_applied_facts) != 0 and session.inflightCount() != 0) {
         return .unavailable;
     }
@@ -67,6 +66,21 @@ pub fn advance(
     session.bumpRevision();
     snapshot.state_revision = session.state_revision;
     return .ok;
+}
+
+pub fn requiredActionCapacity(session: *const state.Session) usize {
+    // Bound the complete candidate batch before reconcile mutates authoritative state.
+    var process_count: usize = 0;
+    var software_count: usize = 0;
+    for (session.processes) |process| if (process.occupied) { process_count += 1; };
+    for (session.softwares) |software| if (software.occupied) { software_count += 1; };
+    for (session.staged_processes[0..session.staged_process_count]) |process| {
+        if (session.findProcess(process.target_key, process.process_id, process.process_start_key) == null) process_count += 1;
+    }
+    for (session.staged_softwares[0..session.staged_software_count]) |software| {
+        if (session.findSoftware(software.software_key) == null) software_count += 1;
+    }
+    return @min(process_count, session.processes.len) + @min(software_count, session.softwares.len);
 }
 
 pub fn fillSnapshot(

@@ -192,7 +192,8 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return placements;
         }
-        using var operation = workspace.BeginOperation();
+        using var operation = workspace.BeginOperation(0,
+            checked((uint)selectedPlacements.Sum(static placement => placement.Records.Count)));
         HostManagerPlacementProjection projection;
         {
             using var view = workspace.CreateScratchView();

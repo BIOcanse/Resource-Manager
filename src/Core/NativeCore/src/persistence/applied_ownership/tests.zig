@@ -672,3 +672,27 @@ fn expectOpenStatus(
     try std.testing.expectEqual(expected, session_module.openExisting(config, image, &opened));
     try std.testing.expect(opened == null);
 }
+
+test "empty snapshot query reports actual rows before exact record and image buffers" {
+    var config = corpus.createConfig(8192, 8192);
+    const session = try state.Session.create(&config);
+    defer session.destroy();
+    var header = std.mem.zeroes(protocol.SnapshotHeader);
+    var empty: [0]protocol.Record = .{};
+    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(session, &header, &empty));
+    try std.testing.expectEqual(@as(u32, 0), header.entry_count);
+    var input = corpus.processPromote(1, 1, 100);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.promote(session, &input));
+    header = std.mem.zeroes(protocol.SnapshotHeader);
+    try std.testing.expectEqual(protocol.Status.buffer_too_small, session_module.snapshot(session, &header, &empty));
+    try std.testing.expectEqual(@as(u32, 1), header.entry_count);
+    try std.testing.expectEqual(@as(u32, 8192), header.record_capacity);
+    try std.testing.expectEqual(@as(u64, 2), header.ledger_revision);
+    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)};
+    header = std.mem.zeroes(protocol.SnapshotHeader);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(session, &header, &records));
+    var image: [@sizeOf(protocol.ImageHeader) + @sizeOf(protocol.Record)]u8 = undefined;
+    var written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(session, &image, &written));
+    try std.testing.expectEqual(@as(u64, image.len), written);
+}

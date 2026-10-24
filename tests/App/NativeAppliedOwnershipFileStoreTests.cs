@@ -78,11 +78,8 @@ public sealed class NativeAppliedOwnershipFileStoreTests
         var image = Enumerable.Range(0, 224).Select(static value => (byte)(value * 7)).ToArray();
         var session = new FakeSession(image);
         var store = new NativeAppliedOwnershipFileStore(path);
-        using var workspace = new NativeAppliedOwnershipWorkspace(session.Capacity, NativeAppliedOwnershipTestStorage.Create);
-        using var operation = workspace.Acquire();
-
-        await store.PersistAsync(session, operation.Image, CancellationToken.None);
-        operation.Complete();
+        var encodeBuffer = new byte[image.Length];
+        await store.PersistAsync(session, encodeBuffer, CancellationToken.None);
 
         Assert.Equal(image, await File.ReadAllBytesAsync(path));
         Assert.Empty(Directory.GetFiles(directory.Path, "*.tmp"));

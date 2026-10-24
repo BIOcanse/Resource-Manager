@@ -48,7 +48,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             new Dictionary<ulong, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIncarnation, NativeAppliedOwnershipProcessAnchor>());
         object projection;
-        using (fixture.Workspace.BeginOperation())
+        using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
@@ -121,7 +121,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var probe = new NativeSmartInputCaptureProbe();
         fixture.Coordinator.TransitionProbe = probe;
         object projection;
-        using (fixture.Workspace.BeginOperation())
+        using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
@@ -198,7 +198,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             new Dictionary<NativeAppliedOwnershipProcessIdentity, NativeAppliedOwnershipRecord>(),
             new Dictionary<ulong, NativeAppliedOwnershipRecord>(),
             new Dictionary<NativeAppliedOwnershipProcessIncarnation, NativeAppliedOwnershipProcessAnchor>());
-        using (fixture.Workspace.BeginOperation())
+        using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
@@ -221,5 +221,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
         Assert.Contains(exclusions, exclusion => exclusion.Fact == (gpuDomain ? "gpu-score" : "cpu-score")
             && exclusion.Reason.StartsWith("canonical-software-membership-incomplete", StringComparison.Ordinal));
+    }
+
+    private static NativeSmartCoordinatorWorkspace.Operation BeginNativeFactProjection(
+        ScoreOnlyCoordinatorFixture fixture, object sample, object ownership)
+    {
+        var rows = (uint)typeof(HostManagerSmartCoordinator)
+            .GetMethod("CountNativeFactRows", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [sample, ownership])!;
+        fixture.Workspace.EnsureRows(Math.Min(rows, fixture.Workspace.Capacity.InputRowCapacity));
+        return fixture.Workspace.BeginOperation();
     }
 }

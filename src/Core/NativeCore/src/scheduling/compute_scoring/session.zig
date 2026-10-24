@@ -105,8 +105,8 @@ pub fn score(
     const welfare = process_scores.calculateWelfare(&session.config, envelope) catch
         return .invalid_facts;
 
-    if (scratch_length < scratch.Layout.init(&session.config).byte_count) return .buffer_too_small;
-    const work = scratch.View.init(&session.config, scratch_pointer, scratch_length) orelse return .invalid_argument;
+    if (scratch_length < scratch.Layout.initRows(envelope.process_count, envelope.gpu_row_count).byte_count) return .buffer_too_small;
+    const work = scratch.View.init(envelope.process_count, envelope.gpu_row_count, scratch_pointer, scratch_length) orelse return .invalid_argument;
     if (!scratch.disjoint(scratch_pointer.?, scratch_length, process_pointer, envelope.process_count, protocol.ProcessInput) or
         !scratch.disjoint(scratch_pointer.?, scratch_length, gpu_pointer, envelope.gpu_row_count, protocol.GpuInput) or
         !scratch.disjoint(scratch_pointer.?, scratch_length, output_pointer, envelope.output_capacity, protocol.ScoreOutput) or

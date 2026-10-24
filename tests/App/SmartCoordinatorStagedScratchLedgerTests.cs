@@ -9,12 +9,43 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper output)
 {
     [Fact]
+    public void SmallFactsUseSmallScratchAndGrowthClosesThePreviousIdentity()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var configuration = Configuration();
+        var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, bytes =>
+        {
+            var resource = owner.CreateScratch(bytes);
+            resources.Add(resource);
+            return resource;
+        });
+        workspace.EnsureRows(2);
+        var small = resources[^1];
+        var smallLayout = workspace.ScratchLayout;
+        using var query = new NativeSmartCoordinatorSession(in configuration);
+        var maximum = query.ScratchRequirements;
+        Assert.True(smallLayout.NativeScratchByteCount < maximum.ByteCount);
+        Assert.Equal(2, smallLayout.InputCapacity);
+        Assert.Equal(4, smallLayout.ActionCapacity);
+        workspace.EnsureRows(16);
+        var larger = resources[^1];
+        Assert.NotEqual(small.Uid, larger.Uid);
+        Assert.True(larger.Length > small.Length);
+        Assert.Throws<ObjectDisposedException>(() => small.Acquire());
+        var count = resources.Count;
+        workspace.EnsureRows(2);
+        Assert.Equal(count, resources.Count);
+        Assert.Same(larger, resources[^1]);
+    }
+
+    [Fact]
     public async Task NativeStagingUsesTheExistingLazyIdentityAcrossAwaitIdleReclaimAndRefill()
     {
         using var owner = new ResourceManagerLedgerOwner();
         var configuration = Configuration();
         using var query = new NativeSmartCoordinatorSession(in configuration);
-        var requirements = query.ScratchRequirements;
+        var requirements = query.ScratchRequirementsForRows(16);
         var expectedNative = checked((ulong)requirements.ProcessSize * requirements.ProcessCount
             + (ulong)requirements.SoftwareSize * requirements.SoftwareCount
             + (ulong)(requirements.GpuSize + requirements.SoftwareGpuSize) * requirements.GpuCount
@@ -24,6 +55,7 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
         ResourceManagerLedgerOwner.ComputeScratch? resource = null;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
             bytes => resource = owner.CreateScratch(bytes));
+        workspace.EnsureRows(16);
         var layout = workspace.ScratchLayout;
         output.WriteLine(JsonSerializer.Serialize(new
         {
@@ -38,8 +70,8 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
         Assert.NotNull(resource);
         var uid = resource.Uid;
         Assert.Equal(requirements.ByteCount, layout.NativeScratchByteCount);
-        var managed = checked(104UL * workspace.Capacity.InputRowCapacity
-            + 136UL * workspace.Capacity.ActionCapacity + 96UL * workspace.Capacity.FeedbackCapacity);
+        var managed = checked(104UL * (ulong)layout.InputCapacity
+            + 136UL * (ulong)layout.ActionCapacity + 96UL * (ulong)layout.FeedbackCapacity);
         Assert.Equal(managed, layout.NativeScratch);
         Assert.Equal(checked((managed + requirements.Alignment - 1 + requirements.ByteCount + 7) / 8 * 8), resource.Length);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
@@ -98,6 +130,7 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
         ResourceManagerLedgerOwner.ComputeScratch? resource = null;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
             bytes => resource = owner.CreateScratch(bytes));
+        workspace.EnsureRows(16);
         using (var operation = workspace.BeginOperation())
         {
             _ = Plan(workspace, configuration.Generation, 1);
@@ -170,7 +203,7 @@ public sealed class SmartCoordinatorStagedScratchLedgerTests(ITestOutputHelper o
         metric.ScoreMemberCount = 1;
         view.Inputs[0] = process;
         view.Inputs[1] = metric;
-        var cycle = Cycle(generation, workspace.Capacity.ActionCapacity, sequence);
+        var cycle = Cycle(generation, checked((uint)workspace.ScratchLayout.ActionCapacity), sequence);
         cycle.InputCount = 2;
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.Plan(in cycle));
         return view.Actions[..checked((int)workspace.PlannedActionCount)].ToArray();

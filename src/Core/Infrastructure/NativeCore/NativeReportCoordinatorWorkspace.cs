@@ -7,7 +7,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal sealed class NativeReportCoordinatorWorkspace : IDisposable
 {
-    private readonly IComputeScratch scratch;
+    private readonly RowSizedComputeScratch scratch;
     private bool retiring;
     private bool disposed;
 
@@ -36,31 +36,41 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
             sessionInstanceLow,
             sessionInstanceHigh);
         Session = new NativeReportCoordinatorSession(in configuration);
-        IComputeScratch? created = null;
         try
         {
-            Layout = new NativeReportScratchLayout(Session.Capacity.ReportOutputCapacity,
-                Session.Capacity.PersistenceOperationCapacity);
+            Layout = new NativeReportScratchLayout(0, 0);
             Rules = CreateRules(plan);
-            created = createScratch(Layout.Length)
-                ?? throw new InvalidOperationException("The report scratch factory returned no resource.");
-            if (created.Length != Layout.Length)
-                throw new InvalidOperationException("The report scratch factory returned the wrong layout length.");
-            scratch = created;
+            scratch = new RowSizedComputeScratch(createScratch, "report-coordinator");
         }
-        catch (Exception failure)
+        catch
         {
-            try { created?.Dispose(); }
-            catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
-            finally { Session.Dispose(); }
+            Session.Dispose();
             throw;
         }
     }
 
     public NativeReportCoordinatorSession Session { get; }
     public NativeReportRuleInput[] Rules { get; }
-    internal NativeReportScratchLayout Layout { get; }
+    internal NativeReportScratchLayout Layout { get; private set; }
     internal PendingReportPlan? PendingPlan { get; set; }
+
+    internal void EnsureScratch(uint reportCount, uint persistenceCount)
+    {
+        ObjectDisposedException.ThrowIf(disposed || retiring, this);
+        if (Layout.Length != 0
+            && scratch.Length == Layout.Length
+            && reportCount <= checked((uint)Layout.ReportCapacity)
+            && persistenceCount <= checked((uint)Layout.PersistenceCapacity)) return;
+        if (reportCount > Session.Capacity.ReportOutputCapacity
+            || persistenceCount > Session.Capacity.PersistenceOperationCapacity)
+            throw new InvalidOperationException("Report rows exceed the native session capacity.");
+        // Plan's ABI requires nonempty buffers, even when a column has no rows.
+        var layout = new NativeReportScratchLayout(
+            Math.Max(1U, Math.Max(checked((uint)Layout.ReportCapacity), reportCount)),
+            Math.Max(1U, Math.Max(checked((uint)Layout.PersistenceCapacity), persistenceCount)));
+        scratch.Ensure(layout.Length, $"reports={layout.ReportCapacity}, persistence={layout.PersistenceCapacity}");
+        Layout = layout;
+    }
 
     internal ComputeScratchLease AcquireScratch()
     {

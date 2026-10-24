@@ -832,6 +832,59 @@ test "persistence feedback batch validates completely before mutation" {
     );
 }
 
+test "plan sizing previews maintenance without committing and supports exact full batch replay" {
+    var fixture = try Fixture.create();
+    defer fixture.destroy();
+    try fixture.observeComplete(3, 3, 1, 100, &.{ factForTarget(1, 41, 60), factForTarget(1, 42, 70) });
+    try fixture.observeComplete(4, 4, 2, 110, &.{ factForTarget(2, 41, 60), factForTarget(2, 42, 70) });
+    const before_reports = fixture.session.reports[0..4].*;
+    const before_observations = fixture.session.observations[0..4].*;
+    const before_mutation = fixture.session.next_mutation_version;
+    const before_report = fixture.session.next_report_handle;
+    const before_slot = fixture.session.next_report_slot;
+    const before_revision = fixture.session.state_revision;
+    const before_metadata_mutation = fixture.session.metadata_mutation_version;
+
+    // Expiry changes the output shape, but querying it must not expire history.
+    var expired = planInput(5, 5, 1, 20_000, 4, 32);
+    var report_count: u32 = 99;
+    var operation_count: u32 = 99;
+    try expectCode(.ok, session_module.queryPlanSize(fixture.session, &expired, &report_count, &operation_count));
+    try std.testing.expectEqual(@as(u32, 0), report_count);
+    try std.testing.expectEqualDeep(before_reports, fixture.session.reports[0..4].*);
+    try std.testing.expectEqualDeep(before_observations, fixture.session.observations[0..4].*);
+    try std.testing.expectEqual(before_mutation, fixture.session.next_mutation_version);
+    try std.testing.expectEqual(before_report, fixture.session.next_report_handle);
+    try std.testing.expectEqual(before_slot, fixture.session.next_report_slot);
+    try std.testing.expectEqual(before_revision, fixture.session.state_revision);
+    try std.testing.expectEqual(before_metadata_mutation, fixture.session.metadata_mutation_version);
+    try std.testing.expectEqual(@as(u64, 0), fixture.session.last_plan_epoch);
+
+    var input = planInput(5, 5, 1, 120, 4, 32);
+    try expectCode(.ok, session_module.queryPlanSize(fixture.session, &input, &report_count, &operation_count));
+    try std.testing.expectEqual(@as(u32, 2), report_count);
+    try std.testing.expect(operation_count > 1 and operation_count < 32);
+    var reports: [4]protocol.ReportOutput = undefined;
+    var operations: [32]protocol.PersistenceOperation = undefined;
+    var output: protocol.PlanOutput = undefined;
+    input.report_limit = report_count;
+    input.persistence_limit = 1;
+    try expectCode(.buffer_too_small, session_module.plan(fixture.session, &input, &reports, report_count, &operations, 1, &output));
+    try std.testing.expectEqual(@as(u64, 0), fixture.session.last_plan_epoch);
+    input.persistence_limit = operation_count;
+    try expectCode(.ok, session_module.plan(fixture.session, &input, &reports, report_count, &operations, operation_count, &output));
+    try std.testing.expectEqual(report_count, output.report_count);
+    try std.testing.expectEqual(operation_count, output.persistence_operation_count);
+    try std.testing.expectEqual(@as(u64, 0), output.flags &
+        (protocol.PlanFlags.has_more_reports | protocol.PlanFlags.has_more_persistence));
+    var replay_reports: u32 = 0;
+    var replay_operations: u32 = 0;
+    try expectCode(.ok, session_module.queryPlanSize(fixture.session, &input, &replay_reports, &replay_operations));
+    try std.testing.expectEqual(report_count, replay_reports);
+    try std.testing.expectEqual(operation_count, replay_operations);
+    try expectCode(.ok, session_module.plan(fixture.session, &input, &reports, replay_reports, &operations, replay_operations, &output));
+}
+
 test "persistence plan refuses to truncate an atomic dirty batch" {
     var fixture = try Fixture.create();
     defer fixture.destroy();
@@ -1324,6 +1377,16 @@ test "rolling report deactivates when every contributing bucket expires" {
     );
 
     var expired = planInput(7, 7, 2, 7_001, reports.len, operations.len);
+    const before_observations = session.observations[0..4].*;
+    const before_buckets = session.buckets[0..20].*;
+    const before_rolling = session.rolling_values[0..4].*;
+    var report_count: u32 = 99;
+    var operation_count: u32 = 99;
+    try expectCode(.ok, session_module.queryPlanSize(session, &expired, &report_count, &operation_count));
+    try std.testing.expectEqual(@as(u32, 0), report_count);
+    try std.testing.expectEqualDeep(before_observations, session.observations[0..4].*);
+    try std.testing.expectEqualDeep(before_buckets, session.buckets[0..20].*);
+    try std.testing.expectEqualDeep(before_rolling, session.rolling_values[0..4].*);
     try expectCode(.ok, session_module.plan(
         session,
         &expired,
@@ -1334,6 +1397,7 @@ test "rolling report deactivates when every contributing bucket expires" {
         &output,
     ));
     try std.testing.expectEqual(@as(u32, 0), output.report_count);
+    try std.testing.expectEqual(operation_count, output.persistence_operation_count);
     const observation_index = session.findObservation(
         source_handle,
         coverage_scope_handle,

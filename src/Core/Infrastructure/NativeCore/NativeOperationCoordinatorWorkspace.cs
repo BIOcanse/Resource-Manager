@@ -16,8 +16,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     private CompiledHostManagerOperationCoordinatorPlan plan;
     private readonly NativeOperationHandle128 sessionInstanceId;
     private readonly NativeOperationHandle128 clockInstanceId;
-    private readonly NativeOperationScratchLayout layout;
-    private readonly IComputeScratch scratch;
+    private NativeOperationScratchLayout layout;
+    private readonly RowSizedComputeScratch scratch;
     private bool retiring;
     private ulong nextSubmitEpoch;
     private ulong nextRequestEpoch;
@@ -50,23 +50,17 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         this.plan = plan;
         this.sessionInstanceId = sessionInstanceId;
         this.clockInstanceId = clockInstanceId;
-        var capacity = plan.Recreate.Capacity;
-        layout = new(capacity.MaximumReadCount, capacity.MaximumActionCount,
-            capacity.MaximumOperationCount);
+        layout = new(1, 1, 1);
         var configuration = CreateConfiguration(plan, sessionInstanceId, clockInstanceId);
         session = new NativeOperationCoordinatorSession(in configuration);
-        IComputeScratch? created = null;
+        scratch = new(createScratch, "operation-output");
         try
         {
-            created = createScratch(layout.Length)
-                ?? throw new InvalidOperationException("The operation scratch factory returned no resource.");
-            if (created.Length != layout.Length)
-                throw new InvalidOperationException("The operation scratch factory returned the wrong layout length.");
-            scratch = created;
+            scratch.Ensure(layout.Length, "read=1, actions=1, persistence=1");
         }
         catch (Exception error)
         {
-            try { created?.Dispose(); }
+            try { scratch.Dispose(); }
             catch (Exception cleanup) { throw new AggregateException(error, cleanup); }
             finally { session.Dispose(); }
             throw;
@@ -78,6 +72,19 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     internal NativeOperationHandle128 ClockInstanceId => clockInstanceId;
 
     internal ulong ConfigurationGeneration => plan.HotPublish.ConfigurationGeneration;
+
+    private void EnsureRows(uint read = 0, uint actions = 0, uint persistence = 0)
+    {
+        var maximum = plan.Recreate.Capacity;
+        if (read > maximum.MaximumReadCount || actions > maximum.MaximumActionCount || persistence > maximum.MaximumOperationCount)
+            throw new InvalidOperationException("Operation output rows exceed configured upper bounds.");
+        if (scratch.Length == layout.Length && read <= layout.OperationCapacity && actions <= layout.ActionCapacity && persistence <= layout.PersistenceCapacity)
+            return;
+        var next = new NativeOperationScratchLayout(Math.Max((uint)layout.OperationCapacity, read),
+            Math.Max((uint)layout.ActionCapacity, actions), Math.Max((uint)layout.PersistenceCapacity, persistence));
+        scratch.Ensure(next.Length, $"read={next.OperationCapacity}, actions={next.ActionCapacity}, persistence={next.PersistenceCapacity}");
+        layout = next;
+    }
 
     internal NativeOperationSubmitOutput SubmitLocked(ref NativeOperationSubmitInput input)
     {
@@ -132,6 +139,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         ulong observedMonotonicMilliseconds)
     {
         ThrowIfDisposed();
+        var rows = SnapshotLocked();
+        EnsureRows(actions: Math.Min(plan.Recreate.Capacity.MaximumActionCount, rows.ActiveOperationCount));
         using var lease = scratch.Acquire(); // Before Plan can change native state.
         using var view = new ComputeScratchView(lease);
         var actionBuffer = view.Column<NativeOperationActionOutput>(layout.Actions, layout.ActionCapacity);
@@ -225,6 +234,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     internal NativeOperationCanonicalImage ExportCanonicalNativeImageLocked()
     {
         ThrowIfDisposed();
+        EnsureRows(persistence: SnapshotLocked().OperationCount);
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
         var persistenceBuffer = view.Column<NativeOperationOutput>(layout.Persistence, layout.PersistenceCapacity);
@@ -291,6 +301,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         {
             return [];
         }
+        EnsureRows(read: snapshot.OperationCount);
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
         var operationBuffer = view.Column<NativeOperationOutput>(layout.Operations, layout.OperationCapacity);
@@ -313,8 +324,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || output.StructSize != SizeOf<NativeOperationSnapshotOutput>()
             || output.ConfigurationGeneration != ConfigurationGeneration
             || output.StateRevision == 0
-            || output.OperationCount > layout.OperationCapacity
-            || output.ActionCount > layout.ActionCapacity
+            || output.OperationCount > plan.Recreate.Capacity.MaximumOperationCount
+            || output.ActionCount > plan.Recreate.Capacity.MaximumActionCount
             || output.ActiveOperationCount > output.OperationCount
             || output.RunningOperationCount > output.ActiveOperationCount
             || output.TerminalOperationCount > output.OperationCount
@@ -462,7 +473,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || header.OperationEpoch == 0
             || header.StateRevision == 0
             || header.OperationCount != records.Count
-            || header.OperationCount > layout.PersistenceCapacity
+            || header.OperationCount > plan.Recreate.Capacity.MaximumOperationCount
             || header.RecordSize != SizeOf<NativeOperationOutput>()
             || header.NextActionId == 0
             || header.Flags != 0

@@ -13,20 +13,21 @@ public sealed class ResourceManagerComputeScratchTests
     [Theory]
     [InlineData(1u, 1u, 5u, 0)]
     [InlineData(4096u, 32768u, 77824u, 64)]
-    [InlineData(32768u, 262144u, 622592u, 4096)]
-    public void LayoutUsesElementLimitsAndCheckedAlignedFullExtents(uint p, uint g, uint output, int cores)
+    [InlineData(32768u, 262144u, 622592u, 134217728)]
+    public void LayoutUsesActualRowsAndCheckedAlignedFullExtents(uint p, uint g, uint output, int coreRows)
     {
-        var layout = new ComputeScoringScratchLayout(p, g, output, cores, 0, 1);
+        var adapters = checked((int)Math.Min(2U, g));
+        var layout = new ComputeScoringScratchLayout(p, g, output, coreRows, 0, 1, adapters);
         var processBytes = (ulong)Marshal.SizeOf<NativeComputeScoringProcessInput>();
         var gpuBytes = (ulong)Marshal.SizeOf<NativeComputeScoringGpuInput>();
         var coreBytes = (ulong)Marshal.SizeOf<NativeComputeScoringCpuCoreInput>();
         var outputBytes = (ulong)Marshal.SizeOf<NativeComputeScoringOutput>();
-        var body = checked(processBytes * p + 8UL * p + coreBytes * p * (ulong)cores
-            + gpuBytes * g + outputBytes * output + 4UL * Math.Max(1U, g));
+        var body = checked(processBytes * p + 8UL * p + coreBytes * (ulong)coreRows
+            + gpuBytes * g + outputBytes * output + 4UL * (ulong)adapters);
         Assert.Equal(checked((body + 7) / 8 * 8), layout.Length);
         Assert.Equal(0UL, layout.CoreInputs % 8);
         Assert.Equal(0UL, layout.Outputs % 8);
-        if (cores == 4096)
+        if (coreRows == 134217728)
         {
             Assert.True((ulong)layout.CoreInputCapacity * 16 > int.MaxValue);
             Assert.Equal(134217728, layout.CoreInputCapacity); // No allocation or new byte-count cap.
@@ -38,14 +39,18 @@ public sealed class ResourceManagerComputeScratchTests
     }
 
     [Fact]
-    public void LayoutRejectsOnlyTheOriginalElementOverflow()
-        => Assert.Throws<OverflowException>(() => new ComputeScoringScratchLayout(32768, 1, 98306, 65536, 0, 1));
+    public void LayoutRejectsOverflowingElementCounts()
+    {
+        Assert.Throws<OverflowException>(() => new ComputeScoringScratchLayout(uint.MaxValue, 1, 1, 0, 0, 1));
+        Assert.Throws<OverflowException>(() => new ComputeScoringScratchLayout(1, uint.MaxValue, 1, 0, 0, 1));
+        Assert.Throws<OverflowException>(() => new ComputeScoringScratchLayout(1, 1, uint.MaxValue, 0, 0, 1));
+    }
 
     [Fact]
     public void RealPinReadsAndWritesAllColumnsAndRejectsTheirFullOutOfBoundsExtent()
     {
         using var owner = new ResourceManagerLedgerOwner();
-        var layout = new ComputeScoringScratchLayout(8, 16, 56, 1, 0, 1);
+        var layout = new ComputeScoringScratchLayout(8, 16, 56, 8, 0, 1, 16);
         using var resource = owner.CreateScratch(layout.Length);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         using (var lease = resource.Acquire())
@@ -213,7 +218,7 @@ public sealed class ResourceManagerComputeScratchTests
                         smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 61 });
                         Assert.Equal(61UL, smart.GetFeedback(0).ActionId);
                         var smartLayout = smart.ScratchLayout;
-                        registered += smartLayout.Length;
+                        Assert.True(smartLayout.Length < owner.NativePageSize);
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.All(readers, reader => Assert.Equal(81, reader.Tree.Count));
                         var ownershipCapacity = new NativeAppliedOwnershipCapacity
@@ -228,7 +233,8 @@ public sealed class ResourceManagerComputeScratchTests
                         currentOwnershipUse.Image.Span[0] = 11;
                         candidateOwnershipUse.Image.Span[0] = 22;
                         currentOwnershipUse.Complete(); candidateOwnershipUse.Complete();
-                        registered += currentOwnership.Length + candidateOwnership.Length;
+                        Assert.Equal(128UL, currentOwnership.Length);
+                        Assert.Equal(128UL, candidateOwnership.Length); // Header-only scratch stays below a page.
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.Equal(11, currentOwnershipUse.Image.Span[0]);
                         Assert.Equal(22, candidateOwnershipUse.Image.Span[0]);
@@ -246,7 +252,8 @@ public sealed class ResourceManagerComputeScratchTests
                         currentJournalUse.Image.Span[0] = 31;
                         candidateJournalUse.Image.Span[0] = 41;
                         currentJournalUse.Complete(); candidateJournalUse.Complete();
-                        registered += currentJournal.Length + candidateJournal.Length;
+                        Assert.Equal(128UL, currentJournal.Length);
+                        Assert.Equal(128UL, candidateJournal.Length); // Header-only scratch stays below a page.
                         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
                         Assert.Equal(31, currentJournalUse.Image.Span[0]);
                         Assert.Equal(41, candidateJournalUse.Image.Span[0]);
@@ -276,9 +283,9 @@ public sealed class ResourceManagerComputeScratchTests
                             pdh.Supply(8192);
                             registered += pdhIdentity!.Length;
                             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-                            // The 28 real workspaces above, then current plus pending query pools (2 * 64),
+                            // The 23 registered workspaces above (four persistence headers and Smart are compact), then query pools (2 * 64),
                             // model (2), portable registry (2), display normalization (2), and placement (2).
-                            for (var index = 0; index < 136; index++)
+                            for (var index = 0; index < 141; index++)
                             {
                                 var resource = owner.CreateScratch(8192);
                                 additionalResources.Add(resource);
@@ -319,8 +326,8 @@ public sealed class ResourceManagerComputeScratchTests
     [Fact]
     public void NativeExtentKeepsFullUlongBytesAndAlignmentSlackWithoutAllocation()
     {
-        var managed = new ComputeScoringScratchLayout(8, 16, 56, 1, 0, 1);
-        var native = new ComputeScoringScratchLayout(8, 16, 56, 1, (ulong)int.MaxValue + 100, 64);
+        var managed = new ComputeScoringScratchLayout(8, 16, 56, 8, 0, 1, 2);
+        var native = new ComputeScoringScratchLayout(8, 16, 56, 8, (ulong)int.MaxValue + 100, 64, 2);
         Assert.Equal(managed.NativeScratch, native.NativeScratch);
         Assert.Equal((ulong)int.MaxValue + 100, native.NativeScratchByteCount);
         Assert.Equal(64U, native.NativeScratchAlignment);

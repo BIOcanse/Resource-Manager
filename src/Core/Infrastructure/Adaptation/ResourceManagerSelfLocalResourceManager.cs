@@ -33,7 +33,10 @@ public sealed record ResourceManagerSelfLocalResourceTickResult(
     ulong? NativeUiWorkingSetBytes,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> TrimResults,
     IReadOnlyList<ResourceManagerSelfWorkingSetTrimResult> RecheckedTrimObservations,
-    int PendingTrimObservationCount);
+    int PendingTrimObservationCount)
+{
+    public IReadOnlyList<ResourceManagerWorkspaceCapacity> Workspaces { get; init; } = [];
+}
 
 public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
 {
@@ -80,6 +83,8 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
 
     internal IComputeScratch CreateScratch(ulong length)
         => ledger.CreateScratch(length);
+
+    public IReadOnlyList<ResourceManagerWorkspaceCapacity> WorkspaceCapacities => ledger.ReadWorkspaceCapacities();
 
     public bool IsBackgroundWorkerRunning => false;
 
@@ -158,7 +163,7 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable
             }
             return new(tick, ledger.ReadTable(), observeWorkingSets ? SumWorkingSetBytes(backend) : null,
                 observeWorkingSets ? SumWorkingSetBytes(nativeUi) : null,
-                trims, rechecked, pendingTrimObservations.Count);
+                trims, rechecked, pendingTrimObservations.Count) { Workspaces = ledger.ReadWorkspaceCapacities() };
         }
         finally { tickGate.Release(); }
     }

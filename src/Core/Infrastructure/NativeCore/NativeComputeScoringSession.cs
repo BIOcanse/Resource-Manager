@@ -58,6 +58,11 @@ internal sealed partial class NativeComputeScoringSession : IDisposable
 
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
+    // Native work stores each submitted row, its score and two ordering indexes.
+    internal static ulong ScratchByteCount(uint processes, uint gpus)
+        => checked((SizeOf<NativeComputeScoringProcessInput>() + 16UL) * processes
+            + (SizeOf<NativeComputeScoringGpuInput>() + 16UL) * gpus);
+
     public unsafe NativeComputeScoringStatus CalculateWeightedCpuUse(
         ReadOnlySpan<NativeComputeScoringCpuCoreInput> rows, Span<double> output)
     {

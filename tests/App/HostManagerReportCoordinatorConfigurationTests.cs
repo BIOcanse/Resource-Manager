@@ -124,15 +124,12 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(
             (uint)plan.Recreate.Capacity.MaximumPersistenceOperationCount,
             capacity.PersistenceOperationCapacity);
-        Assert.Equal(
-            plan.Recreate.Capacity.MaximumReportOutputCount,
-            workspace.Layout.ReportCapacity);
-        Assert.Equal(
-            plan.Recreate.Capacity.MaximumPersistenceOperationCount,
-            workspace.Layout.PersistenceCapacity);
-        Assert.Equal(
-            plan.Recreate.Capacity.MaximumPersistenceOperationCount,
-            workspace.Layout.PersistenceCapacity);
+        Assert.Equal(0, workspace.Layout.ReportCapacity);
+        Assert.Equal(0, workspace.Layout.PersistenceCapacity);
+        workspace.EnsureScratch(2, 3);
+        Assert.Equal(2, workspace.Layout.ReportCapacity);
+        Assert.Equal(3, workspace.Layout.PersistenceCapacity);
+        Assert.Equal(1680UL, workspace.Layout.Length);
     }
 
     [Fact]

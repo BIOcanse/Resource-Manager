@@ -42,7 +42,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         try
         {
             ledger.SetMode(LedgerTableMode.Optimize);
-            Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
+            Assert.Equal(ReportLedgerBytes(owner, ledger), ledger.ReadTable().RegisteredBytes);
             Assert.Equal(0UL, ledger.Tick().Released); // Includes read after await, not only P/Invoke.
             var queued = owner.RefreshReportsAsync(CancellationToken.None);
             var closing = owner.DisposeAsync().AsTask();
@@ -83,12 +83,12 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal(before.Select(row => (row.OperationKind, row.IdentityHandle, row.MutationVersion)),
             after.Select(row => (row.OperationKind, row.IdentityHandle, row.MutationVersion)));
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released); // No use leaked by exception.
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released); // No use leaked by exception.
         var recovered = await owner.RefreshReportsAsync(CancellationToken.None);
         Assert.NotNull(recovered.Status.LastEvaluationAt);
         Assert.Equal("completed", recovered.Status.EvaluationState);
         Assert.Null(recovered.Status.EvaluationFailureReason);
-        Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(ReportLedgerBytes(owner, ledger), ledger.ReadTable().RegisteredBytes);
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => direct);
         Assert.Equal(status, owner.GetStatus());
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
         persistence.Release.TrySetResult();
         await owner.RefreshReportsAsync(CancellationToken.None);
     }
@@ -133,7 +133,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var saved = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
         var before = Assert.Single(saved.NativeReportById.Values);
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
         var workspace = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!;
         using (var lease = workspace.AcquireScratch())
         {
@@ -273,6 +273,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         // Stop can cancel the first hosted cycle mid-persist; settle it so the injected failure reaches the candidate.
         await owner.RefreshReportsAsync(CancellationToken.None);
         var old = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace");
+        var oldHandle = Assert.Single(handles.Where(static handle => !handle.Closed));
+        var handleCount = handles.Count;
         var status = owner.GetStatus();
         persistence.FailNext = true;
         provider.Publish(CompiledRuntimePlan.Default with { Version = 2, HostManager = NextReportScratchPlan(1) });
@@ -281,9 +283,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal("failed", owner.GetStatus().EvaluationState);
         Assert.Equal(status.ActiveReportCount, owner.GetStatus().ActiveReportCount);
         Assert.Equal(status.ConfiguredRuleCount, owner.GetStatus().ConfiguredRuleCount);
-        Assert.Equal(2, handles.Count);
-        Assert.False(handles[0].Closed);
-        Assert.True(handles[1].Closed);
+        Assert.Equal(handleCount + 1, handles.Count);
+        Assert.False(oldHandle.Closed);
+        Assert.True(handles[^1].Closed);
         Assert.Null(ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "pendingWorkspaceClose"));
     }
 
@@ -321,7 +323,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var owner = provider.GetRequiredService<HostManagerReportCoordinatorOwner>();
         var ledger = provider.GetRequiredService<ResourceManagerLedgerOwner>();
         await owner.StartAsync(CancellationToken.None);
-        Assert.NotEqual(0UL, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(ReportLedgerBytes(owner, ledger), ledger.ReadTable().RegisteredBytes);
         await provider.DisposeAsync(); // IAsyncDisposable drains the actual running BackgroundService.
         Assert.True(ReportOwnerField<bool>(owner, "disposed"));
         Assert.Throws<ObjectDisposedException>(() => ledger.ReadTable());
@@ -370,7 +372,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.NotSame(before, after);
         Assert.Equal(5UL, Assert.Single(after.NativeReportById.Values).SampleCount);
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
     }
 
     [Fact]
@@ -404,7 +406,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.True(await owner.RemoveTrustedTargetAsync(trusted.Id, CancellationToken.None));
         Assert.Empty(await owner.GetTrustedTargetsAsync(CancellationToken.None));
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
     }
 
     [Fact]
@@ -472,7 +474,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Contains(committed,
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation && row.SampleCount == 4UL);
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
         await owner.RefreshReportsAsync(CancellationToken.None);
         var current = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
         Assert.NotSame(before, current);
@@ -481,7 +483,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             .OrderBy(row => row.OperationKind).ThenBy(row => row.IdentityHandle).ToArray();
         Assert.Equal(System.Runtime.InteropServices.MemoryMarshal.AsBytes(committed.AsSpan()).ToArray(),
             System.Runtime.InteropServices.MemoryMarshal.AsBytes(recovered.AsSpan()).ToArray());
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
     }
 
     [Fact]
@@ -522,7 +524,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var workspace = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!;
         Assert.NotNull(workspace.PendingPlan);
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
 
         var recovered = await owner.RefreshReportsAsync(CancellationToken.None);
         Assert.Null(workspace.PendingPlan);
@@ -544,7 +546,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Report)
             .Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed);
         Assert.Null(workspace.PendingPlan);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
     }
 
     private HostManagerReportCoordinatorOwner ScratchOwner(INativeReportCoordinatorPersistenceStore persistence,
@@ -562,6 +564,12 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
     private static CompiledHostManagerPlan NextReportScratchPlan(int delta)
         => HostManagerTestPlanFactory.CreatePlan(root =>
             root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + delta);
+
+    private static ulong ReportLedgerBytes(HostManagerReportCoordinatorOwner owner, ResourceManagerLedgerOwner ledger)
+    {
+        var length = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!.Layout.Length;
+        return length >= ledger.NativePageSize ? length : 0;
+    }
 
     private static T? ReportOwnerField<T>(HostManagerReportCoordinatorOwner owner, string name)
         => (T?)typeof(HostManagerReportCoordinatorOwner).GetField(name,

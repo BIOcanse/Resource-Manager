@@ -440,6 +440,10 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyDictionary<string, object?> guards,
         IReadOnlyDictionary<string, object?>? details = null)
     {
+        var workspaceDetails = details is null
+            ? new Dictionary<string, object?>()
+            : new Dictionary<string, object?>(details);
+        workspaceDetails["ownedWorkspaceCapacities"] = selfLocalResourceManagerOwner.WorkspaceCapacities;
         var record = profiler.CreateRecord(
             now,
             runtimePlan.Version,
@@ -450,7 +454,7 @@ public sealed partial class HostManagerSmartCoordinator
             message,
             counts,
             guards,
-            details);
+            workspaceDetails);
         var completedAtQpcTicks = (long)record.Properties["cycleCompletedAtQpcTicks"]!;
         var producerInstanceId = (string)record.Properties["producerInstanceId"]!;
         var diagnosticCycleSequence = (long)record.Properties["cycleSequence"]!;

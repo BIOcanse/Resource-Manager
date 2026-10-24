@@ -5,10 +5,11 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal sealed class NativeTransactionJournalWorkspace : IDisposable
 {
-    private readonly IComputeScratch scratch;
-    private readonly int recordCount;
-    private readonly ulong imageOffset;
-    private readonly int imageLength;
+    private readonly RowSizedComputeScratch scratch;
+    private readonly uint maximumRecords;
+    private int recordCount;
+    private ulong imageOffset;
+    private int imageLength;
     private Operation? active;
     private bool endUsePending;
     private bool retiring;
@@ -27,20 +28,43 @@ internal sealed class NativeTransactionJournalWorkspace : IDisposable
                 "Transaction journal workspace capacity is invalid.");
         }
 
-        recordCount = checked((int)capacity.RecordCapacity);
-        imageLength = checked((int)capacity.MaximumImageLength);
-        imageOffset = checked((ulong)recordCount * (ulong)Unsafe.SizeOf<NativeTransactionJournalRecord>());
-        Length = checked(imageOffset + (ulong)imageLength);
-        scratch = createScratch(Length)
-            ?? throw new InvalidOperationException("The journal scratch factory returned no resource.");
-        if (scratch.Length != Length)
-        {
-            scratch.Dispose();
-            throw new InvalidOperationException("The journal scratch layout length is incorrect.");
-        }
+        maximumRecords = capacity.RecordCapacity;
+        scratch = new RowSizedComputeScratch(createScratch, "journal");
+        EnsureRows(0);
     }
 
-    internal ulong Length { get; }
+    internal ulong Length => scratch.Length;
+
+    internal static int ImageLengthForRows(uint rows)
+        => checked((int)((ulong)NativeTransactionJournalAbi.ImageHeaderSize +
+            (ulong)rows * NativeTransactionJournalSession.SizeOf<NativeTransactionJournalRecord>()));
+
+    internal void Ensure(NativeTransactionJournalSession session, uint maximumAdditions = 0)
+    {
+        ObjectDisposedException.ThrowIf(disposed || retiring, this);
+        if (active is not null)
+            throw new InvalidOperationException("The previous journal scratch use has not ended.");
+        var header = new NativeTransactionJournalSnapshotHeader { AbiVersion = NativeTransactionJournalAbi.Version, StructSize = NativeTransactionJournalSession.SizeOf<NativeTransactionJournalSnapshotHeader>() };
+        var status = session.GetSnapshot(ref header, Span<NativeTransactionJournalRecord>.Empty);
+        if ((status != NativeTransactionJournalStatus.Ok &&
+             status != NativeTransactionJournalStatus.BufferTooSmall) || header.EntryCount > maximumRecords)
+            throw new InvalidOperationException($"Native journal count query failed with {status}.");
+        var rows = checked((uint)Math.Min((ulong)maximumRecords,
+            (ulong)header.EntryCount + maximumAdditions));
+        EnsureRows(rows);
+    }
+
+    private void EnsureRows(uint rows)
+    {
+        if (rows <= recordCount && scratch.Length != 0) return;
+        var nextImageOffset = checked((ulong)rows * (ulong)Unsafe.SizeOf<NativeTransactionJournalRecord>());
+        var nextImageLength = ImageLengthForRows(rows);
+        var length = checked(nextImageOffset + (ulong)nextImageLength);
+        scratch.Ensure(length, $"{rows} records");
+        recordCount = checked((int)rows);
+        imageOffset = nextImageOffset;
+        imageLength = nextImageLength;
+    }
 
     internal Operation Acquire()
     {

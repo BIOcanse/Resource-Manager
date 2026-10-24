@@ -16,7 +16,7 @@ pub fn stage(
     if (input.cycle_sequence <= session.last_cycle_sequence) return .stale_generation;
     if (session.first_cycle_completed and input.observed_at_ms < session.last_observed_at_ms) return .stale_generation;
     if (input.input_count > session.config.max_input_rows or row_capacity < input.input_count) return .buffer_too_small;
-    if (input.action_capacity < session.config.max_actions) return .buffer_too_small;
+    if (input.action_capacity == 0 or input.action_capacity > session.config.max_actions) return .invalid_argument;
     if (input.maximum_actions_this_cycle > session.config.max_actions) return .invalid_argument;
     if (!session.first_cycle_completed and (input.flags & protocol.CycleFlags.authoritative_applied_facts) == 0) {
         return .invalid_argument;

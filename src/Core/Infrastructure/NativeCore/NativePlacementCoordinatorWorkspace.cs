@@ -6,8 +6,9 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal sealed class NativePlacementCoordinatorWorkspace : IDisposable
 {
-    private readonly IComputeScratch scratch;
-    private readonly NativePlacementScratchLayout layout;
+    private readonly RowSizedComputeScratch scratch;
+    private NativePlacementScratchLayout layout;
+    private readonly NativePlacementCoordinatorConfiguration configuration;
     private ComputeScratchLease? activeLease;
     private bool endUsePending;
     private bool retiring;
@@ -26,14 +27,10 @@ internal sealed class NativePlacementCoordinatorWorkspace : IDisposable
             throw new InvalidOperationException("Placement coordinator workspace capacity mismatch.");
         }
 
-        layout = new(configuration.MaximumDesiredCount, configuration.MaximumAppliedCount, capacity.ActionCapacity);
-        scratch = createScratch(layout.Length)
-            ?? throw new InvalidOperationException("The placement scratch factory returned no resource.");
-        if (scratch.Length != layout.Length)
-        {
-            scratch.Dispose();
-            throw new InvalidOperationException("Placement coordinator scratch length mismatch.");
-        }
+        this.configuration = configuration;
+        layout = new(1, 1, 1);
+        scratch = new(createScratch, "placement");
+        scratch.Ensure(layout.Length, "desired=1, applied=1, actions=1");
     }
 
     internal int ActionCapacity => layout.ActionCapacity;
@@ -45,7 +42,23 @@ internal sealed class NativePlacementCoordinatorWorkspace : IDisposable
             throw new InvalidOperationException("The previous placement scratch use has not ended.");
     }
 
-    internal Operation BeginOperation() => new(this);
+    internal Operation BeginOperation(uint desiredCount = 1, uint appliedCount = 0)
+    {
+        RequireNoOutstandingOperation();
+        if (desiredCount > configuration.MaximumDesiredCount || appliedCount > configuration.MaximumAppliedCount)
+            throw new InvalidOperationException("Placement row count exceeds the configured upper bound.");
+        // Each identity can issue at most one action; existing unseen identities
+        // cannot issue an action. The sum bounds the desired/applied union.
+        var actions = Math.Max(1U, Math.Min(configuration.MaximumActionCount, checked(desiredCount + appliedCount)));
+        if (scratch.Length != layout.Length || desiredCount > layout.DesiredCapacity || appliedCount > layout.AppliedCapacity || actions > layout.ActionCapacity)
+        {
+            var next = new NativePlacementScratchLayout(Math.Max((uint)layout.DesiredCapacity, desiredCount),
+                Math.Max((uint)layout.AppliedCapacity, appliedCount), Math.Max((uint)layout.ActionCapacity, actions));
+            scratch.Ensure(next.Length, $"desired={next.DesiredCapacity}, applied={next.AppliedCapacity}, actions={next.ActionCapacity}");
+            layout = next;
+        }
+        return new(this);
+    }
 
     internal NativePlacementScratchView CreateScratchView()
     {

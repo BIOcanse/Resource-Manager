@@ -62,6 +62,17 @@ pub fn commandTrust(
     return trust.command(session, input);
 }
 
+pub fn queryPlanSize(
+    session: *Session,
+    input: *const protocol.PlanInput,
+    report_count: *u32,
+    operation_count: *u32,
+) ResultCode {
+    state.lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    return planner.queryPlanSize(session, input, report_count, operation_count);
+}
+
 pub fn plan(
     session: *Session,
     input: *const protocol.PlanInput,

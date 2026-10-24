@@ -1067,3 +1067,28 @@ fn rewriteChecksum(image: []u8) void {
     );
     codec.writeU64(image, codec.checksum_offset, crc);
 }
+
+test "empty snapshot query reports actual rows and phase counts for exact buffers" {
+    var config = corpus.createConfig(8192);
+    const journal = try state.Session.create(&config);
+    defer journal.destroy();
+    var header = corpus.emptySnapshot();
+    var empty: [0]protocol.Record = .{};
+    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &header, &empty));
+    try std.testing.expectEqual(@as(u32, 0), header.entry_count);
+    var input = corpus.processPrepare(7, 1, 1, 100, .none_required);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.prepare(journal, &input));
+    header = corpus.emptySnapshot();
+    try std.testing.expectEqual(protocol.Status.buffer_too_small, session_module.snapshot(journal, &header, &empty));
+    try std.testing.expectEqual(@as(u32, 1), header.entry_count);
+    try std.testing.expectEqual(@as(u32, 8192), header.capacity);
+    try std.testing.expectEqual(@as(u32, 1), header.prepared_count);
+    try std.testing.expectEqual(@as(u64, 2), header.journal_revision);
+    var records = [_]protocol.Record{std.mem.zeroes(protocol.Record)};
+    header = corpus.emptySnapshot();
+    try std.testing.expectEqual(protocol.Status.ok, session_module.snapshot(journal, &header, &records));
+    var image: [@sizeOf(protocol.ImageHeader) + @sizeOf(protocol.Record)]u8 = undefined;
+    var written: u64 = 0;
+    try std.testing.expectEqual(protocol.Status.ok, session_module.encode(journal, &image, &written));
+    try std.testing.expectEqual(@as(u64, image.len), written);
+}

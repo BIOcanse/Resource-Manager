@@ -101,7 +101,7 @@ public sealed class MetricScratchLedgerLifecycleTests
         smart.SetFeedback(0, new NativeSmartCoordinatorFeedback { ActionId = 67 });
         Assert.Equal(67UL, smart.GetFeedback(0).ActionId);
         var smartLayout = smart.ScratchLayout;
-        registered += smartLayout.Length;
+        Assert.True(smartLayout.Length < owner.NativePageSize); // One feedback row uses compact storage.
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         var ownershipCapacity = new NativeAppliedOwnershipCapacity
         {
@@ -115,7 +115,8 @@ public sealed class MetricScratchLedgerLifecycleTests
         currentOwnershipUse.Image.Span[0] = 17;
         candidateOwnershipUse.Image.Span[0] = 23;
         currentOwnershipUse.Complete(); candidateOwnershipUse.Complete();
-        registered += currentOwnership.Length + candidateOwnership.Length;
+        Assert.Equal(128UL, currentOwnership.Length);
+        Assert.Equal(128UL, candidateOwnership.Length); // Header-only scratch stays below a page.
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         Assert.Equal(17, currentOwnershipUse.Image.Span[0]);
         Assert.Equal(23, candidateOwnershipUse.Image.Span[0]);
@@ -133,7 +134,8 @@ public sealed class MetricScratchLedgerLifecycleTests
         currentJournalUse.Image.Span[0] = 31;
         candidateJournalUse.Image.Span[0] = 41;
         currentJournalUse.Complete(); candidateJournalUse.Complete();
-        registered += currentJournal.Length + candidateJournal.Length;
+        Assert.Equal(128UL, currentJournal.Length);
+        Assert.Equal(128UL, candidateJournal.Length); // Header-only scratch stays below a page.
         Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
         Assert.Equal(31, currentJournalUse.Image.Span[0]);
         Assert.Equal(41, candidateJournalUse.Image.Span[0]);
@@ -163,11 +165,11 @@ public sealed class MetricScratchLedgerLifecycleTests
             pdh.Supply(8192);
             registered += pdhIdentity!.Length;
             Assert.Equal(registered, owner.ReadTable().RegisteredBytes);
-            // Preserve the original 28 real workspace uses, and occupy current
+            // Preserve the 23 registered workspace uses (Smart and four persistence headers are compact), and occupy current
             // plus pending query pools (2 * 64), model workspaces (2),
             // portable registry output workspaces (2), display normalization workspaces (2),
             // and current plus pending placement workspaces (2).
-            for (var index = 0; index < 136; index++)
+            for (var index = 0; index < 141; index++)
             {
                 var resource = owner.CreateScratch(8192);
                 additionalResources.Add(resource);

@@ -36,14 +36,25 @@ pub const Layout = struct {
     requirements: Requirements,
 
     pub fn init(config: *const protocol.Config) Layout {
-        const pi: u64 = @intCast(state.hashIndexCapacity(config.max_processes) catch unreachable);
-        const si: u64 = @intCast(state.hashIndexCapacity(config.max_software_groups) catch unreachable);
-        const gi: u64 = @intCast(state.hashIndexCapacity(config.max_gpu_states) catch unreachable);
+        return initCounts(config.max_processes, config.max_software_groups, config.max_gpu_states);
+    }
+
+    pub fn initForRows(config: *const protocol.Config, rows: u32) Layout {
+        const processes_count = @min(config.max_processes, @max(1, rows));
+        const software_count = @min(config.max_software_groups, @max(1, rows));
+        const gpu_count = @min(config.max_gpu_states, @max(1, rows));
+        return initCounts(processes_count, software_count, gpu_count);
+    }
+
+    fn initCounts(processes_count: u32, software_count: u32, gpu_count: u32) Layout {
+        const pi: u64 = @intCast(state.hashIndexCapacity(processes_count) catch unreachable);
+        const si: u64 = @intCast(state.hashIndexCapacity(software_count) catch unreachable);
+        const gi: u64 = @intCast(state.hashIndexCapacity(gpu_count) catch unreachable);
         var end: u64 = 0;
-        const processes = column(&end, state.StagedProcess, config.max_processes);
-        const softwares = column(&end, state.StagedSoftware, config.max_software_groups);
-        const gpus = column(&end, state.StagedGpu, config.max_gpu_states);
-        const software_gpus = column(&end, state.StagedSoftwareGpu, config.max_gpu_states);
+        const processes = column(&end, state.StagedProcess, processes_count);
+        const softwares = column(&end, state.StagedSoftware, software_count);
+        const gpus = column(&end, state.StagedGpu, gpu_count);
+        const software_gpus = column(&end, state.StagedSoftwareGpu, gpu_count);
         const process_index = column(&end, u32, pi);
         const software_index = column(&end, u32, si);
         const gpu_index = column(&end, u32, gi);
@@ -57,9 +68,9 @@ pub const Layout = struct {
             .software_size = @sizeOf(state.StagedSoftware),
             .gpu_size = @sizeOf(state.StagedGpu),
             .software_gpu_size = @sizeOf(state.StagedSoftwareGpu),
-            .process_count = config.max_processes,
-            .software_count = config.max_software_groups,
-            .gpu_count = config.max_gpu_states,
+            .process_count = processes_count,
+            .software_count = software_count,
+            .gpu_count = gpu_count,
             .process_index_count = pi,
             .software_index_count = si,
             .gpu_index_count = gi,

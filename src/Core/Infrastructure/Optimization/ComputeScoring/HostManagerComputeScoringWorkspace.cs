@@ -16,8 +16,9 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private readonly NativeComputeScoringSession cpuSession;
     private readonly NativeComputeScoringSession gpuSession;
     private readonly FrozenDictionary<string, uint> cpuCoreIndexes;
-    private readonly ComputeScoringScratchLayout layout;
-    private readonly IComputeScratch scratch;
+    private readonly NativeComputeScoringCapacity capacity;
+    private ComputeScoringScratchLayout layout = null!;
+    private readonly RowSizedComputeScratch scratch;
     private readonly double welfareBaseScore;
     private bool disposed;
 
@@ -44,20 +45,12 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         }
         try
         {
-            var capacity = cpuSession.Capacity;
+            capacity = cpuSession.Capacity;
             var gpuCapacity = gpuSession.Capacity;
             if (capacity.ScratchByteCount != gpuCapacity.ScratchByteCount ||
                 capacity.ScratchAlignment != gpuCapacity.ScratchAlignment)
                 throw new InvalidOperationException("CPU and GPU scoring sessions require different scratch layouts.");
-            layout = new(capacity.ProcessCapacity, capacity.GpuCapacity, capacity.OutputCapacity, weights.Length,
-                capacity.ScratchByteCount, capacity.ScratchAlignment);
-            scratch = createScratch(layout.Length)
-                ?? throw new InvalidOperationException("The compute scratch factory returned no resource.");
-            if (scratch.Length != layout.Length)
-            {
-                scratch.Dispose();
-                throw new InvalidOperationException("The compute scratch factory returned the wrong layout length.");
-            }
+            scratch = new(createScratch, "compute-scoring");
         }
         catch
         {
@@ -125,10 +118,15 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         }
         welfare = welfare with { EligibleProcessCount = eligibleProcessCount };
 
+        var cpuProjection = scoreCpu ? PrepareCpuDomain(processFacts, cpuResidency, exclusions) : null;
+        var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
+        if (cpuProjection is null && gpuFacts is null) return null;
+        EnsureLayout(cpuProjection, gpuFacts, gpuInventory);
         using var lease = scratch.Acquire();
         using var view = new ComputeScratchView(lease);
-        var result = ScoreCore(view, roundNumber, processFacts, gpuInventory,
-            runtimeFacts, cpuResidency, welfare, scoreCpu, scoreGpu, exclusions);
+        if (cpuProjection is not null) FillCpuDomain(view, cpuProjection);
+        var result = ScoreCore(view, roundNumber, cpuProjection, gpuFacts, gpuInventory,
+            runtimeFacts, welfare);
         lease.Complete();
         return result;
     }
@@ -136,18 +134,13 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
     private HostManagerComputeScoringCycleResult? ScoreCore(
         ComputeScratchView scratchView,
         ulong roundNumber,
-        SchedulingProcessFactSnapshot processFacts,
+        CpuProjection? cpuProjection,
+        SchedulingProcessFactSnapshot? gpuFacts,
         SchedulingGpuInventorySnapshot gpuInventory,
         IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> runtimeFacts,
-        CpuCoreResidencySnapshot? cpuResidency,
-        HostManagerWelfareCapacityInput welfare,
-        bool scoreCpu = true,
-        bool scoreGpu = true,
-        ICollection<SchedulingFactExclusion>? exclusions = null)
+        HostManagerWelfareCapacityInput welfare)
     {
-        var cpuProjection = scoreCpu ? ProjectCpuDomain(scratchView, processFacts, cpuResidency, exclusions) : null;
         var cpuFacts = cpuProjection?.Facts;
-        var gpuFacts = scoreGpu ? ProjectGpuDomain(processFacts, gpuInventory) : null;
         if (cpuFacts is null && gpuFacts is null)
         {
             return null;
@@ -417,21 +410,76 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             gpuComplete);
     }
 
+    private void EnsureLayout(CpuProjection? cpu, SchedulingProcessFactSnapshot? gpu,
+        SchedulingGpuInventorySnapshot inventory)
+    {
+        var processes = Math.Max(cpu?.Facts.Processes.Count ?? 0, gpu?.Processes.Count ?? 0);
+        var gpuRows = gpu?.Processes.Sum(static process => process.Gpus.Count) ?? 0;
+        var outputs = Math.Max(1, Math.Max(checked(3 * (cpu?.Facts.Processes.Count ?? 0)), checked(2 * gpuRows)));
+        if ((uint)processes > capacity.ProcessCapacity || (uint)gpuRows > capacity.GpuCapacity
+            || (uint)outputs > capacity.OutputCapacity)
+            throw new InvalidDataException("The compute scoring configured capacity was exceeded.");
+        var cores = cpu?.CoreInputCount ?? 0;
+        var adapters = gpu is null ? 0 : inventory.Adapters.Count;
+        if (layout is not null && scratch.Length == layout.Length && processes <= layout.ProcessCapacity && gpuRows <= layout.GpuCapacity
+            && outputs <= layout.OutputCapacity && cores <= layout.CoreInputCapacity && adapters <= layout.AdapterCapacity)
+            return;
+        processes = Math.Max(processes, layout?.ProcessCapacity ?? 0);
+        gpuRows = Math.Max(gpuRows, layout?.GpuCapacity ?? 0);
+        outputs = Math.Max(outputs, layout?.OutputCapacity ?? 0);
+        cores = Math.Max(cores, layout?.CoreInputCapacity ?? 0);
+        adapters = Math.Max(adapters, layout?.AdapterCapacity ?? 0);
+        var next = new ComputeScoringScratchLayout(checked((uint)processes), checked((uint)gpuRows),
+            checked((uint)outputs), cores,
+            NativeComputeScoringSession.ScratchByteCount(checked((uint)processes), checked((uint)gpuRows)),
+            capacity.ScratchAlignment, adapters);
+        scratch.Ensure(next.Length, $"processes={processes},gpu-rows={gpuRows},outputs={outputs},core-rows={cores},adapters={adapters}");
+        layout = next;
+    }
+
+    private sealed record CpuProjection(SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source,
+        IReadOnlyDictionary<HostManagerComputeProcessIdentity, CpuProcessCoreResidency>? Observed, int CoreInputCount);
+
+    private void FillCpuDomain(ComputeScratchView scratchView, CpuProjection projection)
+    {
+        var weightedCpuUse = scratchView.Column<double>(layout.WeightedCpuUse, layout.ProcessCapacity);
+        if (projection.Source == HostManagerCpuOccupancySource.ProcessCpuUsage)
+        {
+            for (var index = 0; index < projection.Facts.Processes.Count; index++)
+                weightedCpuUse[index] = projection.Facts.Processes[index].CpuUsagePercent;
+            return;
+        }
+        var inputs = scratchView.Column<NativeComputeScoringCpuCoreInput>(layout.CoreInputs, layout.CoreInputCapacity);
+        var cursor = 0;
+        for (var index = 0; index < projection.Facts.Processes.Count; index++)
+        {
+            var process = projection.Facts.Processes[index];
+            if (!projection.Observed!.TryGetValue(new(process.ProcessId, process.ProcessStartKey), out var observation)) continue;
+            foreach (var core in observation.PhysicalCores.OrderBy(core => cpuCoreIndexes[core.PhysicalCoreId]))
+                inputs[cursor++] = new NativeComputeScoringCpuCoreInput
+                {
+                    ProcessIndex = checked((uint)index), CoreIndex = cpuCoreIndexes[core.PhysicalCoreId],
+                    UsagePercent = core.UsagePercent
+                };
+        }
+        var status = cpuSession.CalculateWeightedCpuUse(inputs.Slice(0, cursor),
+            weightedCpuUse.Slice(0, projection.Facts.Processes.Count));
+        if (status != NativeComputeScoringStatus.Ok)
+            throw new InvalidDataException($"CPU physical-core projection failed with {status}.");
+    }
+
     /// <summary>
     /// A trusted closed residency window includes zero CPU use for covered processes absent from its sparse rows.
     /// Invalid or uncovered process rows are omitted; an untrusted dataset uses explicit process CPU usage.
     /// The chosen source travels with the result.
     /// </summary>
-    private (SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source)? ProjectCpuDomain(
-        ComputeScratchView scratchView,
+    private CpuProjection? PrepareCpuDomain(
         SchedulingProcessFactSnapshot source, CpuCoreResidencySnapshot? current,
         ICollection<SchedulingFactExclusion>? exclusions)
     {
-        var cpuCoreInputs = scratchView.Column<NativeComputeScoringCpuCoreInput>(layout.CoreInputs, layout.CoreInputCapacity);
-        var weightedCpuUse = scratchView.Column<double>(layout.WeightedCpuUse, layout.ProcessCapacity);
         if (!IsTrustedCpuResidency(current) || !CpuScoring.CoreWeights.IsAvailable)
         {
-            return ProjectProcessCpuUsage(source, weightedCpuUse);
+            return PrepareProcessCpuUsage(source);
         }
 
         var residency = current!;
@@ -475,29 +523,12 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                 Exclude(process, "cpu-residency-invalid");
                 continue;
             }
-            if (selected.Count == layout.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
-            if (observation is not null)
-            {
-                foreach (var core in observation.PhysicalCores.OrderBy(core => cpuCoreIndexes[core.PhysicalCoreId]))
-                {
-                    if (cursor == cpuCoreInputs.Length) throw new InvalidDataException("CPU physical-core capacity was exceeded.");
-                    cpuCoreInputs[cursor++] = new NativeComputeScoringCpuCoreInput
-                    {
-                        ProcessIndex = checked((uint)selected.Count),
-                        CoreIndex = cpuCoreIndexes[core.PhysicalCoreId],
-                        UsagePercent = core.UsagePercent
-                    };
-                }
-            }
+            if ((uint)selected.Count == capacity.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
+            cursor = checked(cursor + (observation?.PhysicalCores.Count ?? 0));
             selected.Add(process);
         }
         if (selected.Count == 0) return null;
-        var status = cpuSession.CalculateWeightedCpuUse(cpuCoreInputs.Slice(0, cursor),
-            weightedCpuUse.Slice(0, selected.Count));
-        if (status != NativeComputeScoringStatus.Ok)
-            throw new InvalidDataException($"CPU physical-core projection failed with {status}.");
-
-        return (Narrow(source, selected), HostManagerCpuOccupancySource.CoreResidency);
+        return new(Narrow(source, selected), HostManagerCpuOccupancySource.CoreResidency, observed, cursor);
 
         void Exclude(SchedulingProcessFact process, string reason)
             => exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
@@ -512,9 +543,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             && snapshot.MeasuredThrough - snapshot.MeasuredFrom == snapshot.Window
             && snapshot.CapturedAt >= snapshot.MeasuredThrough;
 
-    private (SchedulingProcessFactSnapshot Facts, HostManagerCpuOccupancySource Source)? ProjectProcessCpuUsage(
-        SchedulingProcessFactSnapshot source,
-        Span<double> cpuUse)
+    private CpuProjection? PrepareProcessCpuUsage(SchedulingProcessFactSnapshot source)
     {
         if (!source.IsCpuCurrentComplete()) return null;
 
@@ -522,13 +551,12 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         foreach (var process in source.Processes)
         {
             if (!process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.CpuUsage)) continue;
-            if (selected.Count == layout.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
-            cpuUse[selected.Count] = process.CpuUsagePercent;
+            if ((uint)selected.Count == capacity.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
             selected.Add(process);
         }
         if (selected.Count == 0) return null;
 
-        return (Narrow(source, selected), HostManagerCpuOccupancySource.ProcessCpuUsage);
+        return new(Narrow(source, selected), HostManagerCpuOccupancySource.ProcessCpuUsage, null, 0);
     }
 
     private static SchedulingProcessFactSnapshot Narrow(

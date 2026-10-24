@@ -187,7 +187,10 @@ pub fn snapshot(
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
     if (!emptyStruct(protocol.SnapshotHeader, header)) return .abi_mismatch;
-    if (records.len < session.active.count) return .buffer_too_small;
+    if (records.len < session.active.count) {
+        header.* = snapshotHeader(session);
+        return .buffer_too_small;
+    }
     for (records[0..session.active.count]) |*record| {
         if (!emptyStruct(protocol.Record, record)) return .abi_mismatch;
     }
@@ -195,8 +198,13 @@ pub fn snapshot(
     for (sorted, 0..) |record_index, output_index| {
         records[output_index] = session.active.records[record_index];
     }
+    header.* = snapshotHeader(session);
+    return .ok;
+}
+
+fn snapshotHeader(session: *Session) protocol.SnapshotHeader {
     const capacity = session.capacity();
-    header.* = .{
+    return .{
         .abi_version = protocol.abi_version,
         .struct_size = @sizeOf(protocol.SnapshotHeader),
         .ledger_revision = session.ledger_revision,
@@ -210,7 +218,6 @@ pub fn snapshot(
         .resident_bytes = capacity.resident_bytes,
         .reserved = .{ 0, 0, 0, 0 },
     };
-    return .ok;
 }
 
 pub fn encode(session: *Session, output: []u8, written: *u64) protocol.Status {

@@ -76,7 +76,7 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
                 if (requiresInitialPersistence)
                 {
                     // This image has one startup consumer and no reusable identity.
-                    var initialImage = new byte[checked((int)session.Capacity.MaximumImageLength)];
+                    var initialImage = new byte[NativeTransactionJournalWorkspace.ImageLengthForRows(0)];
                     await fileStore.PersistAsync(session, initialImage, CancellationToken.None);
                 }
                 return new NativeTransactionJournalOwner(fileStore, pathLease, session, createScratch);
@@ -101,7 +101,7 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
             input,
             static (NativeTransactionJournalSession journal, in NativeTransactionJournalPrepareInput value) =>
                 journal.Prepare(in value),
-            cancellationToken);
+            cancellationToken, maximumAdditions: 1);
 
     public async Task<NativeTransactionJournalStatus> PrepareBatchAsync(
         NativeTransactionJournalPrepareBatchInput batch,
@@ -112,6 +112,7 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            workspace.Ensure(session, checked((uint)inputs.Length));
             using var operation = workspace.Acquire();
             var status = session.PrepareBatch(in batch, inputs.Span);
             if (status == NativeTransactionJournalStatus.Ok)
@@ -187,6 +188,7 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            workspace.Ensure(session);
             using var operation = workspace.Acquire();
             var snapshot = operation.ReadSnapshot(session);
             operation.Complete();
@@ -236,13 +238,15 @@ internal sealed class NativeTransactionJournalOwner : IAsyncDisposable
     private async Task<NativeTransactionJournalStatus> MutateAndPersistAsync<TInput>(
         TInput input,
         JournalMutation<TInput> mutation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        uint maximumAdditions = 0)
         where TInput : unmanaged
     {
         await gate.WaitAsync(cancellationToken);
         try
         {
             EnsureReady();
+            workspace.Ensure(session, maximumAdditions);
             using var operation = workspace.Acquire();
             var status = mutation(session, in input);
             if (status != NativeTransactionJournalStatus.Ok)

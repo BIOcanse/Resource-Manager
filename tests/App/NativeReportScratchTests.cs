@@ -8,6 +8,45 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeReportScratchTests
 {
+    [Fact]
+    public void ActualRowsUseSmallScratchAndGrowEachDimensionWithoutKeepingTheOldHandle()
+    {
+        using var ledger = new ResourceManagerLedgerOwner();
+        var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var workspace = new NativeReportCoordinatorWorkspace(
+            HostManagerTestPlanFactory.CreatePlan().ReportCoordinator, 101, 102,
+            length => { var resource = ledger.CreateScratch(length); resources.Add(resource); return resource; });
+        Assert.Empty(resources);
+        workspace.EnsureScratch(1, 2);
+        Assert.Equal(1056UL, workspace.Layout.Length);
+        using (var lease = workspace.AcquireScratch())
+        {
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            lease.Complete();
+        }
+        var first = Assert.Single(resources);
+        workspace.EnsureScratch(20, 2);
+        Assert.Throws<ObjectDisposedException>(() => first.Acquire());
+        var second = resources[1];
+        Assert.NotEqual(first.Uid, second.Uid);
+        workspace.EnsureScratch(1, 40);
+        Assert.Throws<ObjectDisposedException>(() => second.Acquire());
+        Assert.Equal(20, workspace.Layout.ReportCapacity);
+        Assert.Equal(40, workspace.Layout.PersistenceCapacity);
+        Assert.Equal(21120UL, workspace.Layout.Length);
+        var current = resources[2];
+        workspace.EnsureScratch(2, 3);
+        Assert.Equal(3, resources.Count);
+        using (var lease = workspace.AcquireScratch()) { lease.Complete(); }
+        ledger.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(1UL, ledger.Tick().Released);
+        using (var lease = workspace.AcquireScratch())
+        {
+            Assert.Equal(current.Uid, resources[2].Uid);
+            lease.Complete();
+        }
+    }
+
     [Theory]
     [InlineData(1024u, 32768u, 14352384UL)]
     [InlineData(4096u, 196608u, 85721088UL)]
@@ -22,6 +61,35 @@ public sealed class NativeReportScratchTests
         Assert.Equal(192UL * reports + 352UL * persistence, layout.Feedback);
         Assert.Equal(bytes, layout.Length);
         Assert.Equal(0UL, layout.Feedback % 8);
+    }
+
+    [Fact]
+    public void FailedGrowthCanRebindThePreviousHighWaterForSmallerDemand()
+    {
+        using var ledger = new ResourceManagerLedgerOwner();
+        var resources = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        var failNext = false;
+        using var workspace = new NativeReportCoordinatorWorkspace(
+            HostManagerTestPlanFactory.CreatePlan().ReportCoordinator, 101, 102,
+            length =>
+            {
+                if (failNext) { failNext = false; throw new IOException("recorded report scratch growth failure"); }
+                var resource = ledger.CreateScratch(length);
+                resources.Add(resource);
+                return resource;
+            });
+        workspace.EnsureScratch(1, 10);
+        var oldLayout = workspace.Layout;
+        var first = Assert.Single(resources);
+        failNext = true;
+        Assert.Throws<IOException>(() => workspace.EnsureScratch(20, 40));
+        Assert.True(first.Closed);
+        Assert.Same(oldLayout, workspace.Layout);
+        workspace.EnsureScratch(1, 1);
+        Assert.Equal(2, resources.Count);
+        Assert.Equal(oldLayout.Length, resources[1].Length);
+        using var lease = workspace.AcquireScratch();
+        lease.Complete();
     }
 
     [Fact]
@@ -167,5 +235,10 @@ public sealed class NativeReportScratchTests
     }
 
     private static NativeReportCoordinatorWorkspace Create(Func<ulong, IComputeScratch> factory)
-        => new(HostManagerTestPlanFactory.CreatePlan().ReportCoordinator, 101, 102, factory);
+    {
+        var workspace = new NativeReportCoordinatorWorkspace(
+            HostManagerTestPlanFactory.CreatePlan().ReportCoordinator, 101, 102, factory);
+        try { workspace.EnsureScratch(16, 32); return workspace; }
+        catch { workspace.Dispose(); throw; }
+    }
 }

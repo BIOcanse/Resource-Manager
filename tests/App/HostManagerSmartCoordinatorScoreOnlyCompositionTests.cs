@@ -5250,7 +5250,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     [Fact]
-    public void PlacementRestoreValidationKeepsFullAbiActionCapacity()
+    public void PlacementRestoreValidationUsesBoundActionCapacityBelowConfiguredCeiling()
     {
         var hostPlan = HostManagerTestPlanFactory.CreatePlan();
         var plan = new PlacementCoordinatorRuntimePlan(
@@ -5285,7 +5285,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             in configuration,
             in capacity, owner.CreateScratch);
         const ulong observedAt = 100;
-        var abiActionCapacity = capacity.ActionCapacity;
+        var abiActionCapacity = checked((uint)workspace.ActionCapacity);
         var cycle = new NativePlacementCoordinatorCycleInput
         {
             AbiVersion = NativePlacementCoordinatorAbi.Version,

@@ -15,14 +15,18 @@ pub const Layout = struct {
     byte_count: u64,
 
     pub fn init(config: *const protocol.Config) Layout {
+        return initRows(config.maximum_process_count, config.maximum_gpu_row_count);
+    }
+
+    pub fn initRows(process_count: u32, gpu_count: u32) Layout {
         // Counts are u32, so six columns of these fixed small types fit u64.
         var end: u64 = 0;
-        const processes = column(&end, ProcessWork, config.maximum_process_count);
-        const gpus = column(&end, GpuWork, config.maximum_gpu_row_count);
-        const process_identity_order = column(&end, u32, config.maximum_process_count);
-        const process_aggregate_order = column(&end, u32, config.maximum_process_count);
-        const gpu_identity_order = column(&end, u32, config.maximum_gpu_row_count);
-        const gpu_aggregate_order = column(&end, u32, config.maximum_gpu_row_count);
+        const processes = column(&end, ProcessWork, process_count);
+        const gpus = column(&end, GpuWork, gpu_count);
+        const process_identity_order = column(&end, u32, process_count);
+        const process_aggregate_order = column(&end, u32, process_count);
+        const gpu_identity_order = column(&end, u32, gpu_count);
+        const gpu_aggregate_order = column(&end, u32, gpu_count);
         return .{ .processes = processes, .gpus = gpus,
             .process_identity_order = process_identity_order, .process_aggregate_order = process_aggregate_order,
             .gpu_identity_order = gpu_identity_order, .gpu_aggregate_order = gpu_aggregate_order,
@@ -50,18 +54,18 @@ pub const View = struct {
     gpu_identity_order: []u32,
     gpu_aggregate_order: []u32,
 
-    pub fn init(config: *const protocol.Config, pointer: ?*anyopaque, length: u64) ?View {
-        const layout = Layout.init(config);
+    pub fn init(process_count: u32, gpu_count: u32, pointer: ?*anyopaque, length: u64) ?View {
+        const layout = Layout.initRows(process_count, gpu_count);
         const address = @intFromPtr(pointer orelse return null);
         if (address % alignment != 0 or length < layout.byte_count or length > std.math.maxInt(usize)) return null;
         _ = std.math.add(usize, address, @intCast(length)) catch return null;
         return .{
-            .processes = slice(ProcessWork, address, layout.processes, config.maximum_process_count),
-            .gpus = slice(GpuWork, address, layout.gpus, config.maximum_gpu_row_count),
-            .process_identity_order = slice(u32, address, layout.process_identity_order, config.maximum_process_count),
-            .process_aggregate_order = slice(u32, address, layout.process_aggregate_order, config.maximum_process_count),
-            .gpu_identity_order = slice(u32, address, layout.gpu_identity_order, config.maximum_gpu_row_count),
-            .gpu_aggregate_order = slice(u32, address, layout.gpu_aggregate_order, config.maximum_gpu_row_count),
+            .processes = slice(ProcessWork, address, layout.processes, process_count),
+            .gpus = slice(GpuWork, address, layout.gpus, gpu_count),
+            .process_identity_order = slice(u32, address, layout.process_identity_order, process_count),
+            .process_aggregate_order = slice(u32, address, layout.process_aggregate_order, process_count),
+            .gpu_identity_order = slice(u32, address, layout.gpu_identity_order, gpu_count),
+            .gpu_aggregate_order = slice(u32, address, layout.gpu_aggregate_order, gpu_count),
         };
     }
 };

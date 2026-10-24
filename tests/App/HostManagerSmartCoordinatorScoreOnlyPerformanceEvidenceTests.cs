@@ -78,8 +78,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var nativeSessionBefore = ReadRequiredPrivateReference(
             nativeWorkspaceBefore,
             "session");
-        var nativeScratchBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch>(
+        var nativeScratchOwnerBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.RowSizedComputeScratch>(
             ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
+        var nativeScratchBefore = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch>(
+            ReadRequiredPrivateReference(nativeScratchOwnerBefore, "scratch"));
         var nativeScratchUidBefore = nativeScratchBefore.Uid;
         var nativeLayoutBefore = Assert.IsType<NativeSmartScratchLayout>(
             ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
@@ -115,7 +117,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             placementWorkspaceBefore,
             ReadPrivateField<object>(fixture.Coordinator, "placementCoordinatorWorkspace"));
         Assert.Same(nativeSessionBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "session"));
-        Assert.Same(nativeScratchBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
+        Assert.Same(nativeScratchOwnerBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "scratch"));
+        Assert.Same(nativeScratchBefore, ReadRequiredPrivateReference(nativeScratchOwnerBefore, "scratch"));
         Assert.Equal(nativeScratchUidBefore, nativeScratchBefore.Uid);
         Assert.Same(nativeLayoutBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "layout"));
         Assert.Same(nativeSnapshotRowsBefore, ReadRequiredPrivateReference(nativeWorkspaceBefore, "snapshotRows"));

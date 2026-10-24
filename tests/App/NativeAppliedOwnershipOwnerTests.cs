@@ -246,7 +246,7 @@ public sealed class NativeAppliedOwnershipOwnerTests
     }
 
     [Fact]
-    public async Task RealNativeSnapshotUsesOneStableRegionAndRefillsAfterIdleRelease()
+    public async Task EmptyNativeSnapshotUsesCompactStorageAndItsExactImage()
     {
         using var directory = new TemporaryDirectory();
         using var ledger = new ResourceManagerLedgerOwner();
@@ -265,17 +265,18 @@ public sealed class NativeAppliedOwnershipOwnerTests
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Startup's one-use image is ordinary.
         var first = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Empty(first.Records);
-        Assert.Equal(resource!.Length, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(128UL, resource!.Length);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         var uid = resource.Uid;
         ulong allocation;
         using (var lease = resource.Acquire()) allocation = lease.AllocationNumber;
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(1UL, ledger.Tick().Released);
+        Assert.Equal(0UL, ledger.Tick().Released);
         var second = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Equal(first.Header.LedgerInstanceLow, second.Header.LedgerInstanceLow);
         Assert.Equal(first.Header.LedgerRevision, second.Header.LedgerRevision);
         Assert.Equal(uid, resource.Uid);
-        using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
+        using (var lease = resource.Acquire()) Assert.Equal(allocation, lease.AllocationNumber);
         Assert.Empty(first.Records);
 
         var encodedPath = Path.Combine(directory.Path, "native-encode", "ownership.bin");
@@ -292,8 +293,62 @@ public sealed class NativeAppliedOwnershipOwnerTests
         }
         var actualFile = await File.ReadAllBytesAsync(encodedPath);
         using var regionReader = encodedResource!.Acquire();
-        var imageOffset = checked((ulong)encoder.Capacity.RecordCapacity * NativeAppliedOwnershipAbi.RecordSize);
+        var imageOffset = 0UL;
         Assert.Equal(actualFile, regionReader.GetMemoryChunk(imageOffset, actualFile.Length).ToArray());
+    }
+
+    [Theory]
+    [InlineData(16U)]
+    [InlineData(8192U)]
+    public void ActualRowsSizeTheSnapshotAndImageAndGrowthClosesTheOldUid(uint capacity)
+    {
+        using var ledger = new ResourceManagerLedgerOwner();
+        using var session = new FakeSession(CreateImage(0x51))
+        {
+            Capacity = new NativeAppliedOwnershipCapacity
+            {
+                RecordCapacity = capacity, PrimaryIndexCapacity = capacity, PayloadIndexCapacity = capacity,
+                RecordSize = NativeAppliedOwnershipAbi.RecordSize, MaximumImageBytes = 16 * 1024 * 1024,
+                ResidentBytes = 16 * 1024 * 1024
+            },
+            SnapshotRecords = [new NativeAppliedOwnershipRecord { RecordRevision = 71 }]
+        };
+        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
+        using var workspace = new NativeAppliedOwnershipWorkspace(session.Capacity,
+            bytes => resource = ledger.CreateScratch(bytes));
+        var emptyRegion = resource!;
+        workspace.Ensure(session);
+        Assert.Equal(768UL, workspace.Length); // One snapshot record and its encoded image.
+        Assert.NotEqual(emptyRegion.Uid, resource!.Uid);
+        Assert.Throws<ObjectDisposedException>(() => emptyRegion.Acquire());
+        session.SnapshotRecords = Enumerable.Range(71, 7)
+            .Select(revision => new NativeAppliedOwnershipRecord { RecordRevision = (ulong)revision }).ToArray();
+        workspace.Ensure(session);
+        Assert.Equal(4608UL, resource.Length);
+        var uid = resource.Uid;
+        NativeAppliedOwnershipSnapshot first;
+        using (var operation = workspace.Acquire())
+        {
+            first = operation.ReadSnapshot(session);
+            Assert.Equal(7, first.Records.Count);
+            Assert.Equal(71UL, first.Records[0].RecordRevision);
+            operation.Complete();
+        }
+        ulong allocation;
+        using (var lease = resource.Acquire()) allocation = lease.AllocationNumber;
+        ledger.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(1UL, ledger.Tick().Released);
+        session.SnapshotRecords[0].RecordRevision = 73;
+        workspace.Ensure(session);
+        using (var operation = workspace.Acquire())
+        {
+            Assert.Equal(73UL, operation.ReadSnapshot(session).Records[0].RecordRevision);
+            Assert.Equal(7, first.Records.Count);
+            Assert.Equal(71UL, first.Records[0].RecordRevision);
+            operation.Complete();
+        }
+        Assert.Equal(uid, resource.Uid);
+        using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
     }
 
     [Fact]
@@ -671,7 +726,6 @@ public sealed class NativeAppliedOwnershipOwnerTests
             {
                 return NativeAppliedOwnershipStatus.AbiMismatch;
             }
-            SnapshotRecords.CopyTo(records);
             header.LedgerRevision = 1;
             header.LedgerInstanceLow = 1;
             header.EntryCount = checked((uint)SnapshotRecords.Length);
@@ -680,6 +734,8 @@ public sealed class NativeAppliedOwnershipOwnerTests
             header.PayloadIndexCapacity = Capacity.PayloadIndexCapacity;
             header.MaximumImageBytes = Capacity.MaximumImageBytes;
             header.ResidentBytes = Capacity.ResidentBytes;
+            if (records.Length < SnapshotRecords.Length) return NativeAppliedOwnershipStatus.BufferTooSmall;
+            SnapshotRecords.CopyTo(records);
             return NativeAppliedOwnershipStatus.Ok;
         }
 

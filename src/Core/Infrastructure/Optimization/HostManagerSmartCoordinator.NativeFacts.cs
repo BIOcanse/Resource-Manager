@@ -42,6 +42,32 @@ public sealed partial class HostManagerSmartCoordinator
         return levels;
     }
 
+    private static uint CountNativeFactRows(HostManagerSample sample, NativeAppliedOwnershipFactIndex ownership)
+    {
+        // Ownership records may need a standalone restore row. Counting all current
+        // records also covers ones represented by a target without a second index.
+        ulong rows = checked((ulong)ownership.ProcessRecords.Count + (ulong)ownership.AdapterRecords.Count);
+        for (var targetIndex = 0; targetIndex < sample.Targets.Count; targetIndex++)
+        {
+            var target = sample.Targets[targetIndex];
+            if (target.ProcessIds.Count != 1) continue;
+            var processId = target.ProcessIds[0];
+            if (processId <= 0 || !target.ProcessStartKeys.TryGetValue(processId, out var startKey) || startKey == 0) continue;
+            // Identity plus a CPU metric/score row. Either raw CPU or canonical
+            // CPU scoring can supply that row; the projection applies exclusions.
+            rows = checked(rows + 2);
+            for (var gpuIndex = 0; gpuIndex < target.Gpus.Count; gpuIndex++)
+            {
+                var gpu = target.Gpus[gpuIndex];
+                if (gpu.HasUsageMetric && IsPercent(gpu.GpuUsagePercent) &&
+                    TryResolveCurrentGpuIndex(sample, gpu, SchedulingProcessMetricMask.GpuUsage, out _)) rows++;
+                if (gpu.HasVramMetric && IsPercent(gpu.VramUsedPercent) &&
+                    TryResolveCurrentGpuIndex(sample, gpu, SchedulingProcessMetricMask.GpuDedicatedMemory, out _)) rows++;
+            }
+        }
+        return checked((uint)rows);
+    }
+
     private NativeFactProjectionResult ProjectNativeFacts(
         NativeSmartCoordinatorWorkspace workspace,
         HostManagerSample sample,
@@ -395,10 +421,10 @@ public sealed partial class HostManagerSmartCoordinator
 
         void Append(Span<NativeSmartCoordinatorInputRow> outputRows, NativeSmartCoordinatorInputRow row)
         {
-            if ((uint)cursor >= workspace.Capacity.InputRowCapacity)
+            if (cursor >= outputRows.Length)
             {
                 throw new InvalidDataException(
-                    $"The Host Manager smart coordinator input capacity {workspace.Capacity.InputRowCapacity} is smaller than the projected fact count.");
+                    $"The Host Manager smart coordinator input capacity {outputRows.Length} is smaller than the projected fact count.");
             }
 
             outputRows[cursor++] = row;
@@ -1324,8 +1350,9 @@ public sealed partial class HostManagerSmartCoordinator
             return false;
         }
 
-        foreach (var adapter in inventory.Adapters)
+        for (var adapterIndex = 0; adapterIndex < inventory.Adapters.Count; adapterIndex++)
         {
+            var adapter = inventory.Adapters[adapterIndex];
             if (adapter.AdapterKey != fact.AdapterKey)
             {
                 continue;

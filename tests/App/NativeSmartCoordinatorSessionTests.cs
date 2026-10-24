@@ -277,10 +277,11 @@ public sealed class NativeSmartCoordinatorSessionTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         Assert.Equal(configuration.MaximumInputRows, (uint)buffers.Inputs.Length);
-        Assert.Equal(configuration.MaximumReservations, (uint)buffers.Feedback.Length);
+        Assert.Equal(Math.Min(configuration.MaximumReservations, configuration.MaximumActions), (uint)buffers.Feedback.Length);
 
         var input = CreateEmptyCycleInput(
             configuration.Generation,
@@ -308,6 +309,7 @@ public sealed class NativeSmartCoordinatorSessionTests
     {
         var configuration = CreateConfiguration();
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         var input = CreateEmptyCycleInput(
@@ -365,6 +367,7 @@ public sealed class NativeSmartCoordinatorSessionTests
     {
         var configuration = CreateProcessPolicyConfiguration();
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
@@ -441,6 +444,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.CpuAdapter.OptimizeMinimumScore = 25;
         configuration.GpuAdapter = configuration.CpuAdapter;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
@@ -509,6 +513,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         configuration.CpuAdapter.OptimizeMinimumScore = 25;
         configuration.GpuAdapter = configuration.CpuAdapter;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         ulong deferredSoftware = 0;
@@ -586,6 +591,7 @@ public sealed class NativeSmartCoordinatorSessionTests
     {
         var configuration = CreateProcessPolicyConfiguration();
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(Math.Min(8U, workspace.Capacity.InputRowCapacity));
         using var operation = workspace.BeginOperation();
         using var buffers = workspace.CreateScratchView();
         var process = CreateProcessFact();
@@ -797,6 +803,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, owner.CreateScratch);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         var process = CreateProcessFact();
+        workspace.EnsureRows(64);
         using (var operation = workspace.BeginOperation())
         {
             using var buffers = workspace.CreateScratchView();
@@ -890,6 +897,7 @@ public sealed class NativeSmartCoordinatorSessionTests
         ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner.ComputeScratch? resource = null;
         using var workspace = new NativeSmartCoordinatorWorkspace(in configuration,
             length => resource = owner.CreateScratch(length));
+        workspace.EnsureRows(64);
         var uid = resource!.Uid;
         ulong first;
         using (var operation = workspace.BeginOperation())

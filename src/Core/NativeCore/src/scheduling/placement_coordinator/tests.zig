@@ -4,6 +4,42 @@ const session_module = @import("session.zig");
 const corpus = @import("golden_corpus.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
+test "placement short bound rejects before any authoritative slot changes" {
+    var config = corpus.config(7);
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)};
+    var desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301), corpus.desired(102, 202, 302)};
+    var cycle = corpus.cycle(7, 1, 1000, 2, 0);
+    cycle.action_capacity = 1;
+    const revision = session.state_revision;
+    const next_action = session.next_action_id;
+    try std.testing.expectEqual(ResultCode.buffer_too_small, session_module.plan(session, &cycle, &desired, 2, null, 0, &actions, 1));
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(next_action, session.next_action_id);
+    try std.testing.expectEqual(@as(u64, 0), session.last_cycle_epoch);
+    for (session.slots) |slot| try std.testing.expect(!slot.active);
+}
+
+test "placement coordinator binds actual action rows below configured ceiling" {
+    var config = corpus.config(7);
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    var actions = [_]protocol.ActionOutput{std.mem.zeroes(protocol.ActionOutput)};
+    var desired = [_]protocol.DesiredInput{corpus.desired(101, 201, 301)};
+    var cycle = corpus.cycle(7, 1, 1000, 1, 0);
+    cycle.action_capacity = 1;
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, &desired, 1, null, 0, &actions, 1));
+    try std.testing.expectEqual(@as(u32, 1), cycle.action_count);
+    var feedback = [_]protocol.FeedbackInput{corpus.feedback(actions[0], .applied, 1010)};
+    try std.testing.expectEqual(ResultCode.ok, session_module.applyFeedback(session, &feedback, 1));
+    var applied = [_]protocol.AppliedInput{corpus.applied(101, 201, 301, 111, 301)};
+    cycle = corpus.cycle(7, 2, 1100, 0, 1);
+    cycle.action_capacity = 1;
+    try std.testing.expectEqual(ResultCode.ok, session_module.plan(session, &cycle, null, 0, &applied, 1, &actions, 1));
+    try std.testing.expectEqual(@intFromEnum(protocol.ActionDisposition.restore), actions[0].disposition);
+}
+
 test "placement coordinator accepts distinct shim and ideal processor kinds and rejects the next unknown kind" {
     var desired = corpus.desired(101, 201, 301);
     desired.resource_kind = @intFromEnum(protocol.ResourceKind.gpu);

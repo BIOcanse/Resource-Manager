@@ -38,7 +38,8 @@ public sealed partial class NativeComputeScoringSessionTests
         var before = scratch.CopyBytes();
         var pointer = kind switch { "null" => IntPtr.Zero, "misaligned" => IntPtr.Add(scratch.Pointer, 1),
             "overflow" => new IntPtr(-8), _ => scratch.Pointer };
-        var length = kind switch { "short" => scratch.Length - 1, "length-overflow" => ulong.MaxValue, _ => scratch.Length };
+        var length = kind switch { "short" => NativeComputeScoringSession.ScratchByteCount(1, 0) - 1,
+            "length-overflow" => ulong.MaxValue, _ => scratch.Length };
         var process = CreateProcess(1, 10, 100, 1, 50);
         var outputs = new NativeComputeScoringOutput[4];
         outputs[0].Score = 987;
@@ -52,6 +53,29 @@ public sealed partial class NativeComputeScoringSessionTests
             session.Score(in envelope, [process], [], outputs, scratch.Pointer, scratch.Length, ref snapshot));
         Assert.Equal(1UL, snapshot.RoundNumber);
         Assert.Equal(50D, outputs[0].Score);
+    }
+
+    [Fact]
+    public void ExactSubmittedRowsScoreWithLessScratchThanConfiguredMaximum()
+    {
+        var configuration = CreateConfiguration();
+        using var session = new NativeComputeScoringSession(in configuration, [1]);
+        var capacity = session.Capacity;
+        var compact = capacity;
+        compact.ScratchByteCount = NativeComputeScoringSession.ScratchByteCount(1, 1);
+        Assert.True(compact.ScratchByteCount < capacity.ScratchByteCount);
+        using var scratch = new NativeComputeScoringScratchFixture(compact);
+        var process = CreateProcess(1, 10, 100, 1, 50);
+        var gpu = CreateGpu(process, 11, 1, 25);
+        var outputs = new NativeComputeScoringOutput[5];
+        var envelope = CreateEnvelope(1, 1, 1, 1, outputs.Length,
+            NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete | NativeComputeScoringEnvelopeFlags.GpuSnapshotComplete);
+        var snapshot = default(NativeComputeScoringSnapshot);
+        Assert.Equal(NativeComputeScoringStatus.Ok,
+            session.Score(in envelope, [process], [gpu], outputs, scratch.Pointer, scratch.Length, ref snapshot));
+        Assert.Equal(5U, snapshot.OutputCount);
+        Assert.Equal(50D, outputs[0].Score);
+        Assert.Equal(25D, outputs[2].Score);
     }
 
     [Fact]

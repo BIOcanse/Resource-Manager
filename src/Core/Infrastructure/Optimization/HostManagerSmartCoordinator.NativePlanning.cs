@@ -26,6 +26,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         var workspace = nativeWorkspace
             ?? throw new InvalidOperationException("The native workspace is unavailable.");
+        workspace.EnsureRows(Math.Min(workspace.Capacity.InputRowCapacity, CountNativeFactRows(sample, ownership)));
         using var operation = workspace.BeginOperation();
         var modePlan = desired.RuntimePlan.OptimizationMode;
         var scoreOnlyEnabled = effectAdmission.IsScoreOnly;
@@ -89,7 +90,7 @@ public sealed partial class HostManagerSmartCoordinator
             ValidMask = validMask,
             Flags = flags,
             InputCount = projection.InputCount,
-            ActionCapacity = workspace.Capacity.ActionCapacity,
+            ActionCapacity = checked((uint)workspace.ScratchLayout.ActionCapacity),
             RoundNumber = sample.RoundNumber,
             MaximumActionsThisCycle = nativeMaximumActionsThisCycle
         };

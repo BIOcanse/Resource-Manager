@@ -13,14 +13,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var ledger = Assert.IsType<ResourceManager.App.Infrastructure.Adaptation.ResourceManagerLedgerOwner>(
             fixture.OwnedComputeLedger);
         var journalScratch = JournalWorkspaceScratch(fixture);
-        Assert.True(journalScratch.Length >= 4096);
-        Assert.Equal(journalScratch.Length, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(128UL, journalScratch.Length);
+        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var first = Assert.IsType<ResourceManager.App.Infrastructure.Optimization.HostManagerComputeScoringCycleResult>(
             fixture.Coordinator.SchedulingAuthority.Compute);
         var saved = first.Cpu!.Scores.Select(value => value.Score).ToArray();
         var registered = ledger.ReadTable().RegisteredBytes;
-        Assert.True(registered > 4096);
+
         var smartScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
             ReadPrivateReference(fixture.Workspace, "scratch"));
         var scoringScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
@@ -29,15 +29,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ReadPrivateReference(fixture.NativeTransactions.AppliedOwnership, "owner"));
         var ownershipScratch = Assert.IsAssignableFrom<ResourceManager.App.Infrastructure.Adaptation.IComputeScratch>(
             ReadPrivateReference(ReadPrivateReference(ownership, "workspace")!, "scratch"));
-        var ownershipBytes = checked((ulong)ownership.Capacity.RecordCapacity *
-            ResourceManager.App.Infrastructure.NativeCore.NativeAppliedOwnershipAbi.RecordSize + ownership.Capacity.MaximumImageBytes);
-        Assert.Equal(ownershipBytes, ownershipScratch.Length);
-        Assert.Equal(scoringScratch.Length + smartScratch.Length + ownershipBytes + journalScratch.Length, registered);
+        ulong Registered(ResourceManager.App.Infrastructure.Adaptation.IComputeScratch area)
+            => area.Length >= ledger.NativePageSize ? area.Length : 0;
+        Assert.True(ownershipScratch.Length < ownership.Capacity.MaximumImageBytes);
+        Assert.Equal(Registered(scoringScratch) + Registered(smartScratch) + Registered(ownershipScratch) + Registered(journalScratch), registered);
         ledger.SetMode(LedgerTableMode.Optimize);
-        Assert.Equal(4UL, ledger.Tick().Released); // Scoring, Smart, ownership and journal are separate real resources.
+        Assert.Equal((ulong)new[] { scoringScratch, smartScratch, ownershipScratch, journalScratch }.Count(area => Registered(area) != 0), ledger.Tick().Released);
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-        Assert.Equal(registered - journalScratch.Length, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(registered - Registered(journalScratch), ledger.ReadTable().RegisteredBytes);
         // Scoring does not use the journal. Its workspace returns only on a real journal read.
         await fixture.ReadJournalSnapshotAsync();
         Assert.Equal(registered, ledger.ReadTable().RegisteredBytes);

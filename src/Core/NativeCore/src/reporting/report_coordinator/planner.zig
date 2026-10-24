@@ -6,6 +6,53 @@ const window = @import("window.zig");
 const persistence = @import("persistence.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
+// Preview the same maintenance used by Plan without advancing semantic state.
+// The caller owns serialization between this query and Plan.
+pub fn queryPlanSize(
+    session: *state.Session,
+    input: *const protocol.PlanInput,
+    report_count: *u32,
+    operation_count: *u32,
+) ResultCode {
+    report_count.* = 0;
+    operation_count.* = 0;
+    if (!session.rules_ready or !session.import_ready) return .unavailable;
+    if (!protocol.validPlan(input, &session.config)) return .abi_mismatch;
+    if (session.planned_persistence_count != 0) {
+        if (!matchesPending(session, input)) return .stale_frame;
+        report_count.* = session.planned_output.report_count;
+        operation_count.* = session.planned_persistence_count;
+        return .ok;
+    }
+    if (input.plan_epoch <= session.last_plan_epoch or
+        !session.operationAdvances(input.operation_epoch, input.command_monotonic_milliseconds))
+        return .stale_frame;
+
+    const saved_mutation = session.next_mutation_version;
+    const saved_report = session.next_report_handle;
+    const saved_report_slot = session.next_report_slot;
+    const saved_metadata_mutation = session.metadata_mutation_version;
+    const saved_metadata_logical_utc = session.metadata_logical_utc_ms;
+    session.beginFactTransaction();
+    defer {
+        session.rollbackFactTransaction();
+        restoreAggregateAfterRollback(session);
+        session.next_mutation_version = saved_mutation;
+        session.next_report_handle = saved_report;
+        session.next_report_slot = saved_report_slot;
+        session.metadata_mutation_version = saved_metadata_mutation;
+        session.metadata_logical_utc_ms = saved_metadata_logical_utc;
+    }
+    const logical_now = @max(session.logical_utc_ms, input.command_utc_milliseconds);
+    const maintenance = rules.maintain(session, logical_now);
+    if (maintenance != .ok) return maintenance;
+    const reports = collectReportOrder(session);
+    const dirty = persistence.collectDirty(session, logical_now) catch return .out_of_memory;
+    report_count.* = @intCast(reports);
+    operation_count.* = @intCast(dirty.len);
+    return .ok;
+}
+
 pub fn plan(
     session: *state.Session,
     input: *const protocol.PlanInput,
@@ -178,13 +225,7 @@ fn replayPending(
     output: *protocol.PlanOutput,
 ) ResultCode {
     const planned = session.planned_output;
-    if (input.plan_epoch != session.last_plan_epoch or
-        input.operation_epoch != session.last_operation_epoch or
-        input.command_monotonic_milliseconds != session.last_command_monotonic_milliseconds or
-        input.command_utc_milliseconds != session.last_command_utc_ms)
-    {
-        return .stale_frame;
-    }
+    if (!matchesPending(session, input)) return .stale_frame;
     if (reports.len < planned.report_count or
         operations.len < session.planned_persistence_count)
     {
@@ -228,6 +269,13 @@ fn collectReportOrder(session: *state.Session) usize {
     }
     std.sort.heap(u32, session.report_order[0..count], session, reportBefore);
     return count;
+}
+
+fn matchesPending(session: *const state.Session, input: *const protocol.PlanInput) bool {
+    return input.plan_epoch == session.last_plan_epoch and
+        input.operation_epoch == session.last_operation_epoch and
+        input.command_monotonic_milliseconds == session.last_command_monotonic_milliseconds and
+        input.command_utc_milliseconds == session.last_command_utc_ms;
 }
 
 fn reportBefore(session: *state.Session, left_index: u32, right_index: u32) bool {

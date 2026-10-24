@@ -4,6 +4,7 @@ using ResourceManager.App.Infrastructure.DiskUsage;
 using ResourceManager.Ledger;
 using ResourceManager.Ledger.Generated;
 using ResourceManager.Ledger.Identity;
+using Microsoft.Extensions.Logging;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
@@ -22,9 +23,23 @@ public sealed partial class ResourceManagerLedgerOwner : IDiskUsageTreePayloadAl
     private readonly LedgerWorkspace destroyWorkspace;
     private LedgerSubscription<LedgerUid128>? subscription;
     private bool disposed;
+    private readonly ILogger<ResourceManagerLedgerOwner>? workspaceLogger;
 
     public ResourceManagerLedgerOwner()
         : this(Path.Combine(AppContext.BaseDirectory, "ResourceManager.Ledger.Native.dll")) { }
+
+    public ResourceManagerLedgerOwner(ILogger<ResourceManagerLedgerOwner> logger) : this()
+        => workspaceLogger = logger;
+
+    public IReadOnlyList<ResourceManagerWorkspaceCapacity> ReadWorkspaceCapacities()
+    {
+        lock (operationGate)
+        {
+            ThrowIfDisposed();
+            return computeScratch.Select(static scratch => new ResourceManagerWorkspaceCapacity(
+                scratch.Uid.ToString()!, scratch.WorkArea, scratch.Rows, scratch.Length, scratch.InLedger)).ToArray();
+        }
+    }
 
     public ResourceManagerLedgerOwner(string nativeLibraryPath)
     {

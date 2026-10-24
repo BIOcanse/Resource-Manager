@@ -72,6 +72,17 @@ pub export fn rm_smart_coordinator_query_scratch_layout(
     return code(coordinator.queryScratchLayout(session, requirements orelse return code(.invalid_argument)));
 }
 
+pub export fn rm_smart_coordinator_query_scratch_layout_for_rows(
+    handle: ?*anyopaque,
+    rows: u32,
+    requirements: ?*@import("scratch.zig").Requirements,
+    output_size: u32,
+) callconv(.c) i32 {
+    if (output_size != @sizeOf(@import("scratch.zig").Requirements)) return code(.abi_mismatch);
+    const session: *coordinator.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(coordinator.queryScratchLayoutForRows(session, rows, requirements orelse return code(.invalid_argument)));
+}
+
 pub export fn rm_smart_coordinator_plan_with_scratch(
     handle: ?*anyopaque,
     input: ?*const protocol.CycleInput,

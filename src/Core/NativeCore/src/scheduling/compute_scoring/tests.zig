@@ -718,6 +718,7 @@ test "scratch capacity is actual typed extent with unchanged ABI offsets" {
 }
 
 test "bad scratch rejects before writes" {
+    const scratch = @import("scratch.zig");
     var config = testConfig();
     const session = try session_module.Session.create(&config, &.{1});
     defer session.destroy();
@@ -735,7 +736,7 @@ test "bad scratch rejects before writes" {
     envelope.output_capacity = outputs.len;
     const bad = [_]struct { pointer: ?*anyopaque, length: u64, status: protocol.Status }{
         .{ .pointer = null, .length = capacity.scratch_byte_count, .status = .invalid_argument },
-        .{ .pointer = @ptrCast(bytes.ptr), .length = capacity.scratch_byte_count - 1, .status = .buffer_too_small },
+        .{ .pointer = @ptrCast(bytes.ptr), .length = scratch.Layout.initRows(1, 0).byte_count - 1, .status = .buffer_too_small },
         .{ .pointer = @ptrCast(bytes.ptr + 1), .length = capacity.scratch_byte_count, .status = .invalid_argument },
         .{ .pointer = @ptrCast(bytes.ptr), .length = std.math.maxInt(u64), .status = .invalid_argument },
         .{ .pointer = @ptrFromInt(std.math.maxInt(usize) - 7), .length = capacity.scratch_byte_count, .status = .invalid_argument },
@@ -748,6 +749,29 @@ test "bad scratch rejects before writes" {
     }
     try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope, &processes, 1, null, 0, &outputs, outputs.len, @ptrCast(bytes.ptr), capacity.scratch_byte_count, &snapshot));
     try std.testing.expectEqual(@as(f64, 50), outputs[0].score);
+}
+
+test "scratch binds only submitted rows and leaves the tail untouched" {
+    const scratch = @import("scratch.zig");
+    var config = testConfig();
+    const session = try session_module.Session.create(&config, &.{1});
+    defer session.destroy();
+    const length = scratch.Layout.initRows(1, 1).byte_count;
+    try std.testing.expect(length < session.capacity().scratch_byte_count);
+    const words = try std.testing.allocator.alloc(u64, @intCast(length / 8 + 1));
+    defer std.testing.allocator.free(words);
+    const bytes = std.mem.sliceAsBytes(words);
+    @memset(bytes, 0xa5);
+    var processes = [_]protocol.ProcessInput{processRow(1, 10, 100, 1, 100, 1, 50)};
+    var gpus = [_]protocol.GpuInput{gpuRow(processes[0], 11, 0, 25)};
+    var outputs: [5]protocol.ScoreOutput = undefined;
+    var envelope = testEnvelope(1, 1, 1, 1, protocol.EnvelopeFlags.cpu_snapshot_complete | protocol.EnvelopeFlags.gpu_snapshot_complete);
+    envelope.output_capacity = outputs.len;
+    var snapshot = std.mem.zeroes(protocol.Snapshot);
+    try std.testing.expectEqual(protocol.Status.ok, session_module.score(session, &envelope,
+        &processes, 1, &gpus, 1, &outputs, outputs.len, @ptrCast(bytes.ptr), length, &snapshot));
+    try std.testing.expectEqual(@as(u32, 5), snapshot.output_count);
+    for (bytes[@intCast(length)..]) |byte| try std.testing.expectEqual(@as(u8, 0xa5), byte);
 }
 
 test "scratch cannot alias actual input output or envelope" {

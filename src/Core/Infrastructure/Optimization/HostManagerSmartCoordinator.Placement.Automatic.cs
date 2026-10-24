@@ -169,7 +169,8 @@ public sealed partial class HostManagerSmartCoordinator
             return true;
         }
 
-        using var operation = workspace.BeginOperation();
+        using var operation = workspace.BeginOperation(checked((uint)bounded.Desired.Count),
+            checked((uint)bounded.Applied.Sum(static placement => placement.Records.Count)));
         HostManagerPlacementDesiredProjection desiredProjection;
         HostManagerPlacementProjection appliedProjection;
         {

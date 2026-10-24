@@ -38,6 +38,14 @@ pub fn queryScratchLayout(session: *Session, requirements: *scratch.Requirements
     return .ok;
 }
 
+pub fn queryScratchLayoutForRows(session: *Session, rows: u32, requirements: *scratch.Requirements) protocol.Status {
+    lock(&session.mutex);
+    defer session.mutex.unlock();
+    if (rows > session.config.max_input_rows) return .capacity_exceeded;
+    requirements.* = scratch.Layout.initForRows(&session.config, rows).requirements;
+    return .ok;
+}
+
 pub fn reconfigure(session: *Session, config: *const protocol.Config) protocol.Status {
     lock(&session.mutex);
     defer session.mutex.unlock();
@@ -71,15 +79,17 @@ pub fn plan(
         !disjoint(pointer, scratch_length, actions_pointer, action_capacity, protocol.Action) or
         !disjoint(pointer, scratch_length, @as(?[*]const protocol.CycleInput, @ptrCast(input)), 1, protocol.CycleInput) or
         !disjoint(pointer, scratch_length, @as(?[*]protocol.Snapshot, @ptrCast(snapshot)), 1, protocol.Snapshot)) return .invalid_argument;
-    if (!scratch.Layout.init(&session.config).bind(session, pointer, scratch_length)) return .invalid_argument;
+    if (input.input_count > session.config.max_input_rows) return .capacity_exceeded;
+    if (!scratch.Layout.initForRows(&session.config, input.input_count).bind(session, pointer, scratch_length)) return .invalid_argument;
     defer scratch.unbind(session);
 
-    if (action_capacity < session.config.max_actions or input.action_capacity != action_capacity) {
+    if (input.action_capacity != action_capacity) {
         return .buffer_too_small;
     }
     const actions = (actions_pointer orelse return .invalid_argument)[0..@intCast(action_capacity)];
     const stage_status = ingest.stage(session, input, input_rows, input_row_capacity);
     if (stage_status != .ok) return stage_status;
+    if (action_capacity < planner.requiredActionCapacity(session)) return .buffer_too_small;
     const expiry_status = feedback.expireReservations(session, input.observed_at_ms);
     if (expiry_status != .ok) return expiry_status;
     if (session.requires_authoritative_resync and

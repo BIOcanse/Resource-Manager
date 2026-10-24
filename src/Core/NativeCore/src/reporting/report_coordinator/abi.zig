@@ -112,6 +112,23 @@ pub export fn rm_report_coordinator_command_trust(
     ));
 }
 
+pub export fn rm_report_coordinator_query_plan_size(
+    handle: ?*anyopaque,
+    input: ?*const protocol.PlanInput,
+    report_count: ?*u32,
+    operation_count: ?*u32,
+) callconv(.c) i32 {
+    const session: *session_module.Session = @ptrCast(@alignCast(
+        handle orelse return code(.invalid_argument),
+    ));
+    return code(session_module.queryPlanSize(
+        session,
+        input orelse return code(.invalid_argument),
+        report_count orelse return code(.invalid_argument),
+        operation_count orelse return code(.invalid_argument),
+    ));
+}
+
 pub export fn rm_report_coordinator_plan(
     handle: ?*anyopaque,
     input: ?*const protocol.PlanInput,

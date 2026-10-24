@@ -9,6 +9,26 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeOperationScratchTests
 {
+    [Fact]
+    public void FreshSmallWorkspaceImportsEveryCanonicalRecordBeforeGrowingItsOutput()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        using var previous = Create(owner.CreateScratch);
+        for (ulong id = 1; id <= 12; id++) Submit(previous, id);
+        var image = previous.ExportCanonicalNativeImageLocked();
+        var regions = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var candidate = new NativeOperationCoordinatorWorkspace(Plan(), previous.SessionInstanceId,
+            previous.ClockInstanceId, bytes => { var region = owner.CreateScratch(bytes); regions.Add(region); return region; });
+        Assert.Equal(912UL, Assert.Single(regions).Length);
+        candidate.ImportCanonicalNativeImageLocked(image, Now(), Tick());
+        Assert.Equal(12U, candidate.SnapshotLocked().OperationCount);
+        var exported = candidate.ExportCanonicalNativeImageLocked();
+        Assert.Equal(image.Records.Select(row => row.OperationId), exported.Records.Select(row => row.OperationId));
+        Assert.True(regions[0].Closed);
+        Assert.Equal(2, regions.Count);
+        Assert.Equal(400UL + 112 + 400 * 12, regions[1].Length);
+    }
+
     [Theory]
     [InlineData(1u, 1u, 1u, 912UL)]
     [InlineData(8192u, 1024u, 8192u, 6668288UL)]
@@ -100,9 +120,11 @@ public sealed class NativeOperationScratchTests
         using var workspace = Create(length => scratch = owner.CreateScratch(length));
         var recorded = Assert.IsType<ResourceManagerLedgerOwner.ComputeScratch>(scratch);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
-        Submit(workspace);
+        for (var row = 1; row <= 12; row++) Submit(workspace, (ulong)row);
         _ = workspace.PlanAndReadActionsLocked(Now(), Tick());
         var first = workspace.ExportCanonicalNativeImageLocked();
+        _ = workspace.ReadCommittedProjectionLocked(); // Establish both output column high waters before observing this UID.
+        recorded = Assert.IsType<ResourceManagerLedgerOwner.ComputeScratch>(scratch);
         Assert.NotEqual(0UL, first.Header.LastSubmitEpoch);
         Assert.NotEqual(0UL, first.Header.LastPlanEpoch);
         var saved = MemoryMarshal.AsBytes(first.Records.AsSpan()).ToArray();
@@ -151,7 +173,7 @@ public sealed class NativeOperationScratchTests
         var capacity = plan.Recreate.Capacity;
         var layout = new NativeOperationScratchLayout(capacity.MaximumReadCount,
             capacity.MaximumActionCount, capacity.MaximumOperationCount);
-        Assert.Equal(scoringLayout.Length + 2 * layout.Length, owner.ReadTable().RegisteredBytes);
+        Assert.Equal(scoringLayout.Length, owner.ReadTable().RegisteredBytes); // One operation stays compact in both workspaces.
         Assert.Equal(image.Records[0].OperationId, Assert.Single(committed.Records).OperationId);
     }
 
@@ -181,7 +203,7 @@ public sealed class NativeOperationScratchTests
                 Assert.Equal(NativeOperationCoordinatorStatus.Ok, retained.Snapshot(out var stillLive));
                 Assert.NotEqual(0UL, stillLive.StateRevision);
                 Assert.Equal(LedgerStatus.InUse, owner.TryClose());
-                Assert.NotEqual(0UL, owner.ReadTable().RegisteredBytes);
+                Assert.Single(owner.ReadWorkspaceCapacities());
             }
             finally { lease.Dispose(); }
             workspace.Dispose();
@@ -216,9 +238,8 @@ public sealed class NativeOperationScratchTests
                 lease = wrong.Acquire();
                 return wrong;
             }));
-            Assert.IsType<InvalidOperationException>(failure.InnerExceptions[0]);
-            Assert.Equal(LedgerStatus.InUse,
-                Assert.IsType<LedgerException>(failure.InnerExceptions[1]).Status);
+            Assert.Contains(failure.Flatten().InnerExceptions, error => error.GetType() == typeof(InvalidOperationException));
+            Assert.Contains(failure.Flatten().InnerExceptions, error => error is LedgerException { Status: LedgerStatus.InUse });
             Assert.Equal(LedgerStatus.InUse, owner.TryClose());
             Assert.NotNull(lease);
             lease!.Dispose();
@@ -244,13 +265,13 @@ public sealed class NativeOperationScratchTests
         => new(Plan(), new(1, 2), new(3, 4), factory);
     private static long Now() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private static ulong Tick() => NativeOperationCoordinatorWorkspace.MonotonicMilliseconds();
-    private static void Submit(NativeOperationCoordinatorWorkspace workspace)
+    private static void Submit(NativeOperationCoordinatorWorkspace workspace, ulong id = 11)
     {
         var now = Now();
         var tick = Tick();
         var input = new NativeOperationSubmitInput
         {
-            OperationId = new(11, 12), KindHandle = new(21, 22), RequestHandle = new(31, 32),
+            OperationId = new(id, 12), KindHandle = new(21, 22), RequestHandle = new(31, 32),
             MaximumAttempts = 1, RetryDelayMilliseconds = 1,
             ExecutionTimeoutMilliseconds = 30000, CancelGraceMilliseconds = 5000,
             TerminalRetentionMilliseconds = 60000,

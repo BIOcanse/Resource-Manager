@@ -21,15 +21,16 @@ internal sealed class ComputeScoringScratchLayout
     internal uint NativeScratchAlignment { get; }
     internal ulong Length { get; }
 
-    internal ComputeScoringScratchLayout(uint processes, uint gpus, uint outputs, int cores,
-        ulong nativeScratchByteCount, uint nativeScratchAlignment)
+    internal ComputeScoringScratchLayout(uint processes, uint gpus, uint outputs, int coreInputs,
+        ulong nativeScratchByteCount, uint nativeScratchAlignment, int adapters = 0)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(cores);
+        ArgumentOutOfRangeException.ThrowIfNegative(coreInputs);
+        ArgumentOutOfRangeException.ThrowIfNegative(adapters);
         ProcessCapacity = checked((int)processes);
         GpuCapacity = checked((int)gpus);
         OutputCapacity = checked((int)outputs);
-        CoreInputCapacity = checked(ProcessCapacity * cores);
-        AdapterCapacity = Math.Max(1, GpuCapacity);
+        CoreInputCapacity = coreInputs;
+        AdapterCapacity = adapters;
         ulong end = 0;
         ulong Column(int width, int count)
         {

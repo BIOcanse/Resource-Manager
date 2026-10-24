@@ -137,6 +137,18 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         }
     }
 
+    public NativeReportCoordinatorStatus QueryPlanSize(
+        in NativeReportPlanInput input,
+        out uint reportCount,
+        out uint persistenceCount)
+    {
+        lock (sync)
+        {
+            return (NativeReportCoordinatorStatus)NativeMethods.QueryPlanSize(
+                RequireHandle(), in input, out reportCount, out persistenceCount);
+        }
+    }
+
     public unsafe NativeReportCoordinatorStatus Plan(
         in NativeReportPlanInput input,
         Span<NativeReportOutput> reports,
@@ -315,6 +327,14 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         internal static partial int CommandTrust(
             IntPtr handle,
             in NativeReportTrustCommandInput input);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_query_plan_size")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int QueryPlanSize(
+            IntPtr handle,
+            in NativeReportPlanInput input,
+            out uint reportCount,
+            out uint persistenceCount);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_plan")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

@@ -6,13 +6,13 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
 {
     private readonly NativeSmartCoordinatorSession session;
-    private readonly IComputeScratch scratch;
-    private readonly NativeSmartScratchLayout layout;
+    private readonly RowSizedComputeScratch scratch;
+    private NativeSmartScratchLayout layout;
     private ComputeScratchLease? activeLease;
     private bool endUsePending;
     private bool retiring;
     private bool disposed;
-    private readonly NativeSmartCoordinatorSnapshotRow[] snapshotRows;
+    private NativeSmartCoordinatorSnapshotRow[] snapshotRows = [];
     private NativeSmartCoordinatorSnapshot snapshot;
 
     public NativeSmartCoordinatorWorkspace(
@@ -22,22 +22,17 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
         ArgumentNullException.ThrowIfNull(createScratch);
         session = new NativeSmartCoordinatorSession(in configuration);
         Capacity = session.Capacity;
-        IComputeScratch? created = null;
+        scratch = new RowSizedComputeScratch(createScratch, "smart-coordinator");
         try
         {
-            var nativeScratch = session.ScratchRequirements;
-            layout = new(Capacity.InputRowCapacity, Capacity.ActionCapacity, Capacity.FeedbackCapacity,
+            var nativeScratch = session.ScratchRequirementsForRows(1);
+            layout = new(1, 1, 1,
                 nativeScratch.ByteCount, nativeScratch.Alignment);
-            snapshotRows = new NativeSmartCoordinatorSnapshotRow[Capacity.SnapshotRowCapacity];
-            created = createScratch(layout.Length)
-                ?? throw new InvalidOperationException("The smart scratch factory returned no resource.");
-            if (created.Length != layout.Length)
-                throw new InvalidOperationException("The smart scratch factory returned the wrong layout length.");
-            scratch = created;
+            scratch.Ensure(layout.Length, "inputs=1, actions=1, feedback=1");
         }
         catch (Exception failure)
         {
-            try { created?.Dispose(); }
+            try { scratch.Dispose(); }
             catch (Exception cleanup) { throw new AggregateException(failure, cleanup); }
             finally { session.Dispose(); }
             throw;
@@ -49,6 +44,25 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
     public NativeSmartCoordinatorSnapshot Snapshot => snapshot;
 
     internal NativeSmartScratchLayout ScratchLayout => layout;
+
+    internal void EnsureRows(uint inputRows)
+    {
+        RequireNoOutstandingOperation();
+        if (inputRows > Capacity.InputRowCapacity)
+            throw new InvalidDataException("The smart coordinator fact count exceeds its configured input limit.");
+        var inputs = Math.Max((uint)layout.InputCapacity, Math.Max(1U, inputRows));
+        // Every retained or newly observed process/software can produce one candidate,
+        // even when this cycle permits fewer actual policy changes.
+        var actions = Math.Max((uint)layout.ActionCapacity, checked((uint)Math.Min(Capacity.ActionCapacity,
+            (ulong)snapshot.SnapshotRowCount + 2UL * inputRows)));
+        var feedback = Math.Max((uint)layout.FeedbackCapacity, Math.Min(Capacity.FeedbackCapacity, actions));
+        if (inputs == layout.InputCapacity && actions == layout.ActionCapacity && feedback == layout.FeedbackCapacity &&
+            scratch.Length == layout.Length) return;
+        var nativeScratch = session.ScratchRequirementsForRows(inputs);
+        var next = new NativeSmartScratchLayout(inputs, actions, feedback, nativeScratch.ByteCount, nativeScratch.Alignment);
+        scratch.Ensure(next.Length, $"inputs={inputs}, actions={actions}, feedback={feedback}");
+        layout = next;
+    }
 
     internal void RequireNoOutstandingOperation()
     {
@@ -150,7 +164,7 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
     public NativeSmartCoordinatorStatus Plan(in NativeSmartCoordinatorCycleInput input)
     {
         using var view = CreateScratchView();
-        if (input.InputCount > Capacity.InputRowCapacity)
+        if (input.InputCount > layout.InputCapacity || input.ActionCapacity > layout.ActionCapacity)
         {
             snapshot = default;
             return NativeSmartCoordinatorStatus.BufferTooSmall;
@@ -169,7 +183,7 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
     public NativeSmartCoordinatorStatus ApplyFeedback(uint feedbackCount)
     {
         using var view = CreateScratchView();
-        if (feedbackCount > Capacity.FeedbackCapacity)
+        if (feedbackCount > layout.FeedbackCapacity)
         {
             snapshot = default;
             return NativeSmartCoordinatorStatus.BufferTooSmall;
@@ -184,8 +198,24 @@ internal sealed class NativeSmartCoordinatorWorkspace : IDisposable
     public NativeSmartCoordinatorStatus RefreshSnapshot()
     {
         RequireSession();
+        EnsureSnapshotRows(snapshot.SnapshotRowCount);
         snapshot = default;
-        return session.GetSnapshot(ref snapshot, snapshotRows);
+        var status = session.GetSnapshot(ref snapshot, snapshotRows);
+        if (status == NativeSmartCoordinatorStatus.BufferTooSmall && snapshot.SnapshotRowCount <= Capacity.SnapshotRowCapacity)
+        {
+            EnsureSnapshotRows(snapshot.SnapshotRowCount);
+            status = session.GetSnapshot(ref snapshot, snapshotRows);
+        }
+        return status;
+    }
+
+    private void EnsureSnapshotRows(uint rows)
+    {
+        if (rows <= snapshotRows.Length) return;
+        var previous = snapshotRows.Length;
+        snapshotRows = new NativeSmartCoordinatorSnapshotRow[rows];
+        System.Diagnostics.Trace.TraceInformation(
+            "Workspace smart-coordinator snapshot grew rows {0} -> {1}: actual output exceeded high water.", previous, rows);
     }
 
     public NativeSmartCoordinatorStatus Reconfigure(

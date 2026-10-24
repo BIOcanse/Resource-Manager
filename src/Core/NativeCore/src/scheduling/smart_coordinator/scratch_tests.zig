@@ -30,7 +30,7 @@ test "smart staged scratch rejects invalid extents before mutation and unbinds p
     const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const r = scratch.Layout.init(&config).requirements;
+    const r = scratch.Layout.initForRows(&config, 0).requirements;
     const bytes = try std.heap.page_allocator.alloc(u8, @intCast(r.byte_count + r.alignment));
     defer std.heap.page_allocator.free(bytes);
     var actions: [corpus.default_action_capacity]protocol.Action = undefined;
@@ -51,7 +51,7 @@ test "smart staged scratch refills all rows and preserves reservations feedback 
     const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy | protocol.FeatureFlags.adapter_gpu);
     const session = try coordinator.create(&config);
     defer coordinator.destroy(session);
-    const layout = scratch.Layout.init(&config);
+    const layout = scratch.Layout.initForRows(&config, 4);
     const r = layout.requirements;
     const bytes = try std.heap.page_allocator.alloc(u8, @intCast(r.byte_count));
     defer std.heap.page_allocator.free(bytes);
@@ -87,6 +87,47 @@ test "smart staged scratch refills all rows and preserves reservations feedback 
     try expectUnbound(session);
     // Successful feedback retains owned effects, so Reset must still refuse.
     try std.testing.expectEqual(protocol.Status.unavailable, coordinator.reset(session));
+}
+
+test "smart row sized staging accepts actual candidate capacity and rejects undersized actions before mutation" {
+    const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    const session = try coordinator.create(&config);
+    defer coordinator.destroy(session);
+    var requirements: scratch.Requirements = undefined;
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.queryScratchLayoutForRows(session, 2, &requirements));
+    try std.testing.expectEqual(@as(u32, 2), requirements.process_count);
+    try std.testing.expectEqual(@as(u32, 2), requirements.software_count);
+    try std.testing.expect(requirements.byte_count < scratch.Layout.init(&config).requirements.byte_count);
+    const bytes = try std.heap.page_allocator.alloc(u8, @intCast(requirements.byte_count));
+    defer std.heap.page_allocator.free(bytes);
+    const base = corpus.processFact(0, 101, 1001, 11, 111, 20, .general_application, 0, protocol.ProcessGrade.normal, .normal, .normal, 0);
+    const rows = [_]protocol.InputRow{ base, corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0) };
+    var actions: [2]protocol.Action = undefined;
+    var snapshot: protocol.Snapshot = undefined;
+    var input = corpus.cycle(&config, 1, 1000, rows.len, true);
+    input.action_capacity = 1;
+    const revision = session.state_revision;
+    try std.testing.expectEqual(protocol.Status.buffer_too_small, coordinator.plan(session, &input, &rows, rows.len, &actions, 1, bytes.ptr, requirements.byte_count, &snapshot));
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(u32, 0), session.last_cycle_sequence);
+    input.action_capacity = actions.len;
+    try std.testing.expectEqual(protocol.Status.ok, coordinator.plan(session, &input, &rows, rows.len, &actions, actions.len, bytes.ptr, requirements.byte_count, &snapshot));
+    try std.testing.expectEqual(@as(u32, 2), snapshot.action_count);
+    var sequence: u64 = 2;
+    while (sequence <= 3) : (sequence += 1) {
+        input = corpus.cycle(&config, sequence, @intCast(sequence * 1000), rows.len, false);
+        input.action_capacity = actions.len;
+        try std.testing.expectEqual(protocol.Status.ok, coordinator.plan(session, &input, &rows, rows.len, &actions, actions.len, bytes.ptr, requirements.byte_count, &snapshot));
+    }
+    try std.testing.expect(snapshot.inflight_count > 0);
+    const inflight = session.inflight_count;
+    const reserved_revision = session.state_revision;
+    input = corpus.cycle(&config, 4, 100_000, rows.len, false);
+    input.action_capacity = 1;
+    try std.testing.expectEqual(protocol.Status.buffer_too_small, coordinator.plan(session, &input, &rows, rows.len, &actions, 1, bytes.ptr, requirements.byte_count, &snapshot));
+    try std.testing.expectEqual(reserved_revision, session.state_revision);
+    try std.testing.expectEqual(inflight, session.inflight_count);
+    try expectUnbound(session);
 }
 
 fn expectUnbound(session: *state.Session) !void {

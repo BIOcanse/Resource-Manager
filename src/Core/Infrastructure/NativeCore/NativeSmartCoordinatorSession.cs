@@ -79,6 +79,23 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
 
     public static uint GetAbiVersion() => NativeMethods.GetAbiVersion();
 
+    internal NativeSmartCoordinatorScratchRequirements ScratchRequirementsForRows(uint rows)
+    {
+        lock (sync)
+        {
+            var status = (NativeSmartCoordinatorStatus)NativeMethods.QueryScratchLayoutForRows(RequireHandle(), rows,
+                out var result, SizeOf<NativeSmartCoordinatorScratchRequirements>());
+            if (status != NativeSmartCoordinatorStatus.Ok || result.AbiVersion != NativeSmartCoordinatorAbi.Version ||
+                result.StructSize != SizeOf<NativeSmartCoordinatorScratchRequirements>() || result.ByteCount == 0 ||
+                result.Alignment == 0 || (result.Alignment & (result.Alignment - 1)) != 0 ||
+                result.ProcessCount != Math.Min(capacity.ProcessCapacity, Math.Max(1U, rows)) ||
+                result.SoftwareCount != Math.Min(capacity.SoftwareCapacity, Math.Max(1U, rows)) ||
+                result.GpuCount != Math.Min(capacity.GpuStateCapacity, Math.Max(1U, rows)))
+                throw new InvalidOperationException("Native smart row-sized scratch layout contract mismatch.");
+            return result;
+        }
+    }
+
     public static NativeSmartCoordinatorStatus CapacityForConfiguration(
         in NativeSmartCoordinatorConfiguration configuration,
         out NativeSmartCoordinatorCapacity capacity)
@@ -299,6 +316,11 @@ internal sealed partial class NativeSmartCoordinatorSession : IDisposable
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_query_scratch_layout")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
         internal static partial int QueryScratchLayout(IntPtr handle,
+            out NativeSmartCoordinatorScratchRequirements requirements, uint outputSize);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_query_scratch_layout_for_rows")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int QueryScratchLayoutForRows(IntPtr handle, uint rows,
             out NativeSmartCoordinatorScratchRequirements requirements, uint outputSize);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_smart_coordinator_reconfigure")]

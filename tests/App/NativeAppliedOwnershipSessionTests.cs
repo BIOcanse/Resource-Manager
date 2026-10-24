@@ -46,7 +46,7 @@ public sealed class NativeAppliedOwnershipSessionTests
     }
 
     [Fact]
-    public void WorkspaceUsesOneRegionForConfiguredRecordsAndImage()
+    public void EmptyWorkspaceUsesOnlyTheImageHeader()
     {
         var capacity = new NativeAppliedOwnershipCapacity
         {
@@ -62,8 +62,8 @@ public sealed class NativeAppliedOwnershipSessionTests
         using var workspace = new NativeAppliedOwnershipWorkspace(in capacity, NativeAppliedOwnershipTestStorage.Create);
         using var operation = workspace.Acquire();
 
-        Assert.Equal(7UL * NativeAppliedOwnershipAbi.RecordSize + 4096UL, workspace.Length);
-        Assert.Equal(4096, operation.Image.Length);
+        Assert.Equal(NativeAppliedOwnershipAbi.ImageHeaderSize, workspace.Length);
+        Assert.Equal((int)NativeAppliedOwnershipAbi.ImageHeaderSize, operation.Image.Length);
         operation.Complete();
     }
 

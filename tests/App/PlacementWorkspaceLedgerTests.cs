@@ -8,6 +8,50 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PlacementWorkspaceLedgerTests
 {
     [Fact]
+    public void ActualRowsGrowOneRegionAndReclaimRefillsTheSameUid()
+    {
+        using var owner = new ResourceManagerLedgerOwner();
+        var configuration = CreateConfiguration();
+        using var session = new NativePlacementCoordinatorSession(in configuration);
+        var regions = new List<ResourceManagerLedgerOwner.ComputeScratch>();
+        using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity,
+            bytes => { var region = owner.CreateScratch(bytes); regions.Add(region); return region; });
+        Assert.Equal(320UL, Assert.Single(regions).Length);
+        using (var operation = workspace.BeginOperation(32, 0))
+        {
+            using (var view = workspace.CreateScratchView())
+            {
+                for (var index = 0; index < 32; index++)
+                    view.Desired[index] = new()
+                    {
+                        StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementDesiredInput>(),
+                        TargetKey = (ulong)index + 101, RecordKey = (ulong)index + 201, DesiredDigest = 301,
+                        ResourceKind = (uint)NativePlacementResourceKind.Cpu,
+                        PlacementKind = (uint)NativePlacementKind.CpuSets,
+                        ValidMask = (ulong)NativePlacementDesiredValidity.Required
+                    };
+            }
+            var cycle = CreateCycle(configuration, 1, 32, 0);
+            Assert.Equal(NativePlacementCoordinatorStatus.Ok, workspace.Plan(session, ref cycle));
+            Assert.Equal(32U, cycle.ActionCount);
+            operation.Complete();
+        }
+        Assert.True(regions[0].Closed);
+        Assert.Equal(72UL * 32 + 88 + 160UL * 32, regions[1].Length);
+        Assert.Equal(regions[1].Length, owner.ReadTable().RegisteredBytes);
+        var uid = regions[1].Uid;
+        owner.SetMode(LedgerTableMode.Optimize);
+        Assert.Equal(1UL, owner.Tick().Released);
+        using (var operation = workspace.BeginOperation(32, 0)) operation.Complete();
+        Assert.Equal(uid, regions[1].Uid);
+        Assert.Equal(2, regions.Count);
+        using (var operation = workspace.BeginOperation(64, 0)) operation.Complete();
+        Assert.True(regions[1].Closed);
+        Assert.Equal(3, regions.Count);
+        Assert.Single(owner.ReadWorkspaceCapacities());
+    }
+
+    [Fact]
     public async Task ProjectionPlanAndFeedbackShareOneLazyIdentityAcrossAwaitAndIdleRefill()
     {
         using var owner = new ResourceManagerLedgerOwner();
@@ -17,10 +61,10 @@ public sealed class PlacementWorkspaceLedgerTests
         using var workspace = new NativePlacementCoordinatorWorkspace(in configuration, session.Capacity,
             bytes => resource = owner.CreateScratch(bytes));
         Assert.NotNull(resource);
-        var expected = checked(8192UL * ((ulong)Unsafe.SizeOf<NativePlacementDesiredInput>()
+        var expected = checked(1UL * ((ulong)Unsafe.SizeOf<NativePlacementDesiredInput>()
             + (ulong)Unsafe.SizeOf<NativePlacementAppliedInput>() + (ulong)Unsafe.SizeOf<NativePlacementAction>()
             + (ulong)Unsafe.SizeOf<NativePlacementFeedback>()));
-        Assert.Equal(2_621_440UL, expected);
+        Assert.Equal(320UL, expected);
         Assert.Equal(expected, resource.Length);
         var uid = resource.Uid;
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
@@ -34,7 +78,7 @@ public sealed class PlacementWorkspaceLedgerTests
             Assert.Equal(1U, cycle.ActionCount);
             copiedAction = workspace.GetAction(0);
             Assert.Equal(NativePlacementActionDisposition.Apply, (NativePlacementActionDisposition)copiedAction.Disposition);
-            Assert.Equal(expected, owner.ReadTable().RegisteredBytes);
+            Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // One real row is compact.
             Assert.Equal(0UL, owner.Tick().Released);
             await Task.Yield();
             Assert.Equal(0UL, owner.Tick().Released);
@@ -44,7 +88,7 @@ public sealed class PlacementWorkspaceLedgerTests
         }
         ulong firstAllocation;
         using (var use = resource.Acquire()) firstAllocation = use.AllocationNumber;
-        Assert.Equal(1UL, owner.Tick().Released);
+        Assert.Equal(0UL, owner.Tick().Released);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         AssertNativeAppliedState(session, copiedAction);
 
@@ -64,7 +108,7 @@ public sealed class PlacementWorkspaceLedgerTests
             operation.Complete();
         }
         Assert.Equal(NativePlacementActionDisposition.Apply, (NativePlacementActionDisposition)copiedAction.Disposition);
-        using (var use = resource.Acquire()) Assert.NotEqual(firstAllocation, use.AllocationNumber);
+        using (var use = resource.Acquire()) Assert.Equal(firstAllocation, use.AllocationNumber);
         workspace.Dispose();
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
     }
@@ -200,7 +244,7 @@ public sealed class PlacementWorkspaceLedgerTests
             StructSize = NativePlacementCoordinatorSession.SizeOf<NativePlacementCoordinatorCycleInput>(),
             ConfigurationGeneration = configuration.Generation, CycleEpoch = epoch,
             ObservedAtMilliseconds = 1000 + (epoch - 1) * 100, DesiredCount = desired, AppliedCount = applied,
-            ActionCapacity = configuration.MaximumActionCount, ValidMask = (ulong)NativePlacementCycleValidity.Required
+            ActionCapacity = Math.Max(1U, Math.Min(configuration.MaximumActionCount, checked(desired + applied))), ValidMask = (ulong)NativePlacementCycleValidity.Required
         };
 
     private static NativePlacementCoordinatorConfiguration CreateConfiguration()

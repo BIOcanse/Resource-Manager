@@ -1,5 +1,6 @@
 using ResourceManager.Ledger;
 using ResourceManager.Ledger.Identity;
+using Microsoft.Extensions.Logging;
 
 namespace ResourceManager.App.Infrastructure.Adaptation;
 
@@ -114,6 +115,22 @@ public sealed partial class ResourceManagerLedgerOwner
         internal int Active;
         internal bool Retiring;
         internal bool Closed;
+        internal string WorkArea = "compute-scratch";
+        internal string Rows = "unspecified";
+        internal void DescribeGrowth(string area, string oldRows, string rows, ulong oldBytes)
+        {
+            lock (owner.operationGate)
+            {
+                WorkArea = area;
+                Rows = rows;
+                if (owner.workspaceLogger is { } logger)
+                    logger.LogInformation("Workspace {WorkArea} grew rows {OldRows} -> {NewRows}, bytes {OldBytes} -> {NewBytes}: actual row demand exceeded high water.",
+                        area, oldRows, rows, oldBytes, Length);
+                else
+                    System.Diagnostics.Trace.TraceInformation("Workspace {0} grew rows {1} -> {2}, bytes {3} -> {4}: actual row demand exceeded high water.",
+                        area, oldRows, rows, oldBytes, Length);
+            }
+        }
         public ComputeScratchLease Acquire() => owner.AcquireScratch(this);
         public void Dispose()
         {

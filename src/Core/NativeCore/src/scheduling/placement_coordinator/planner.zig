@@ -25,10 +25,12 @@ pub fn plan(
     if (addTime(cycle.observed_at_milliseconds, session.config.action_timeout_milliseconds) == null or
         addTime(cycle.observed_at_milliseconds, session.config.retry_delay_milliseconds) == null)
         return .invalid_argument;
+    const input_rows = std.math.add(u32, cycle.desired_count, cycle.applied_count) catch return .invalid_argument;
+    const required_actions = @min(session.config.maximum_action_count, input_rows);
     if (desired_capacity < cycle.desired_count or
         applied_capacity < cycle.applied_count or
         action_capacity < cycle.action_capacity or
-        cycle.action_capacity != session.config.maximum_action_count)
+        cycle.action_capacity < required_actions)
     {
         return .buffer_too_small;
     }

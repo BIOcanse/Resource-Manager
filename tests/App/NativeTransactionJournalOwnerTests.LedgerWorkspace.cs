@@ -10,10 +10,10 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class NativeTransactionJournalOwnerTests
 {
     [Theory]
-    [InlineData(16U, 9600UL)]
-    [InlineData(8192U, 4849792UL)]
-    [InlineData(65536U, 38797440UL)]
-    public void ActualNativeCapacityDefinesTheSingleReusableRegion(uint records, ulong expectedBytes)
+    [InlineData(16U)]
+    [InlineData(8192U)]
+    [InlineData(65536U)]
+    public void ActualNativeCountDefinesTheSingleReusableRegion(uint records)
     {
         var (create, _) = CreateV5Configurations(records, 268435456, 11, 17);
         using var session = new NativeTransactionJournalSession(in create);
@@ -21,9 +21,20 @@ public sealed partial class NativeTransactionJournalOwnerTests
         ResourceManagerLedgerOwner.ComputeScratch? resource = null;
         using var workspace = new NativeTransactionJournalWorkspace(session.Capacity,
             bytes => resource = ledger.CreateScratch(bytes));
-        Assert.Equal(expectedBytes, workspace.Length);
-        Assert.Equal(expectedBytes, resource!.Length);
+        Assert.Equal(128UL, workspace.Length);
+        var emptyRegion = resource!;
+        Assert.Equal(128UL, emptyRegion.Length);
+        var input = CreatePrepare(CreateIdentity(71), 1, 1000);
+        Assert.Equal(NativeTransactionJournalStatus.Ok, session.Prepare(in input));
+        workspace.Ensure(session);
+        Assert.Equal(720UL, workspace.Length);
+        Assert.Equal(720UL, resource!.Length);
+        Assert.NotEqual(emptyRegion.Uid, resource.Uid);
+        Assert.Throws<ObjectDisposedException>(() => emptyRegion.Acquire());
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        using var operation = workspace.Acquire();
+        Assert.Equal(71UL, Assert.Single(operation.ReadSnapshot(session).Records).Identity.ActionId);
+        operation.Complete();
     }
 
     [Fact]
@@ -37,20 +48,34 @@ public sealed partial class NativeTransactionJournalOwnerTests
         await using var owner = await NativeTransactionJournalOwner.OpenOrCreateAsync(
             new(path), create, open, bytes => resource = ledger.CreateScratch(bytes), CancellationToken.None);
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes); // Startup's single-use image is ordinary.
-        var uid = resource!.Uid;
+        var emptyRegion = resource!;
         var empty = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Empty(empty.Records);
         var input = CreatePrepare(CreateIdentity(71), empty.Header.JournalRevision, 1000);
         Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(input, CancellationToken.None));
+        Assert.Equal(720UL, resource!.Length);
+        Assert.NotEqual(emptyRegion.Uid, resource.Uid);
+        Assert.Throws<ObjectDisposedException>(() => emptyRegion.Acquire());
         var saved = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Single(saved.Records);
         Assert.Equal(71UL, saved.Records[0].Identity.ActionId);
+        for (ulong action = 72; action <= 77; action++)
+        {
+            var snapshot = await owner.ReadSnapshotAsync(CancellationToken.None);
+            var addition = CreatePrepare(CreateIdentity(action), snapshot.Header.JournalRevision, 1000 + action);
+            addition.Identity.TargetId += action;
+            addition.Identity.ProcessId += checked((uint)action);
+            addition.Identity.ProcessStartKey += action;
+            Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(addition, CancellationToken.None));
+        }
+        Assert.Equal(4272UL, resource.Length);
+        var uid = resource.Uid;
         var image = await File.ReadAllBytesAsync(path);
         ulong allocation;
         using (var use = resource.Acquire())
         {
             allocation = use.AllocationNumber;
-            var offset = (ulong)owner.Capacity.RecordCapacity * NativeTransactionJournalSession.SizeOf<NativeTransactionJournalRecord>();
+            var offset = 7UL * NativeTransactionJournalSession.SizeOf<NativeTransactionJournalRecord>();
             Assert.Equal(image, use.GetMemoryChunk(offset, image.Length).ToArray());
             var independent = new byte[image.Length];
             Assert.Equal(NativeTransactionJournalStatus.Ok, JournalSession(owner).Encode(independent, out var written));
@@ -62,14 +87,15 @@ public sealed partial class NativeTransactionJournalOwnerTests
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         var restored = await owner.ReadSnapshotAsync(CancellationToken.None);
         Assert.Equal(uid, resource.Uid);
-        Assert.Equal(71UL, Assert.Single(restored.Records).Identity.ActionId);
+        Assert.Equal(7, restored.Records.Count);
+        Assert.Equal(71UL, restored.Records[0].Identity.ActionId);
         using (var next = resource.Acquire()) Assert.NotEqual(allocation, next.AllocationNumber);
-        var second = CreatePrepare(CreateIdentity(73), restored.Header.JournalRevision, 1001);
+        var second = CreatePrepare(CreateIdentity(83), restored.Header.JournalRevision, 1200);
         second.Identity.ProcessId++;
         second.Identity.TargetId++;
         Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(second, CancellationToken.None));
         Assert.Equal(71UL, Assert.Single(saved.Records).Identity.ActionId); // The result is an independent copy.
-        Assert.Equal(2, (await owner.ReadSnapshotAsync(CancellationToken.None)).Records.Count);
+        Assert.Equal(8, (await owner.ReadSnapshotAsync(CancellationToken.None)).Records.Count);
     }
 
     [Fact]
@@ -91,6 +117,36 @@ public sealed partial class NativeTransactionJournalOwnerTests
         resource!.Refuse = false;
         Assert.Empty((await owner.ReadSnapshotAsync(CancellationToken.None)).Records);
         Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(input, CancellationToken.None));
+        Assert.Equal(71UL, Assert.Single((await owner.ReadSnapshotAsync(CancellationToken.None)).Records).Identity.ActionId);
+    }
+
+    [Fact]
+    public async Task GrowthWaitsForTheOldRegionToCloseBeforeMutationOrNewIdentity()
+    {
+        using var directory = new JournalLedgerDirectory();
+        using var ledger = new ResourceManagerLedgerOwner();
+        var path = Path.Combine(directory.Path, "journal.bin");
+        var (create, open) = CreateV5Configurations(8192, ResidentBudget, 11, 17);
+        ResourceManagerLedgerOwner.ComputeScratch? resource = null;
+        var creates = 0;
+        await using var owner = await NativeTransactionJournalOwner.OpenOrCreateAsync(new(path), create, open,
+            bytes => { creates++; return resource = ledger.CreateScratch(bytes); }, CancellationToken.None);
+        var original = await File.ReadAllBytesAsync(path);
+        var old = resource!;
+        var input = CreatePrepare(CreateIdentity(71), 1, 1000);
+        using (var held = old.Acquire())
+        {
+            var failure = await Assert.ThrowsAsync<LedgerException>(() => owner.PrepareAsync(input, CancellationToken.None));
+            Assert.Equal(LedgerStatus.InUse, failure.Status);
+            Assert.Equal(1, creates);
+            Assert.Equal(NativeTransactionJournalOwnerState.Ready, owner.State);
+            Assert.Equal(original, await File.ReadAllBytesAsync(path));
+            Assert.Equal(NativeTransactionJournalStatus.NoData, (await owner.GetAsync(input.Identity, CancellationToken.None)).Status);
+        }
+        Assert.Equal(NativeTransactionJournalStatus.Ok, await owner.PrepareAsync(input, CancellationToken.None));
+        Assert.Equal(2, creates);
+        Assert.NotEqual(old.Uid, resource!.Uid);
+        Assert.Throws<ObjectDisposedException>(() => old.Acquire());
         Assert.Equal(71UL, Assert.Single((await owner.ReadSnapshotAsync(CancellationToken.None)).Records).Identity.ActionId);
     }
 

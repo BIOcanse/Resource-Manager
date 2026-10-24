@@ -533,12 +533,7 @@ pub fn snapshot(
     {
         return .abi_mismatch;
     }
-    if (output.len < session.count) return .buffer_too_small;
-    @memset(output, std.mem.zeroes(protocol.Record));
-    const indices = session.prepareSortIndices();
-    for (indices, 0..) |record_index, output_index| {
-        const record = session.records[record_index];
-        output[output_index] = record;
+    for (session.records[0..session.count]) |record| {
         switch (@as(protocol.Phase, @enumFromInt(record.phase))) {
             .prepared => header.prepared_count += 1,
             .previous_effect_restored => header.previous_effect_restored_count += 1,
@@ -556,6 +551,12 @@ pub fn snapshot(
     header.journal_instance_high = session.config.journal_instance_high;
     header.entry_count = session.count;
     header.capacity = session.config.record_capacity;
+    if (output.len < session.count) return .buffer_too_small;
+    @memset(output, std.mem.zeroes(protocol.Record));
+    const indices = session.prepareSortIndices();
+    for (indices, 0..) |record_index, output_index| {
+        output[output_index] = session.records[record_index];
+    }
     return .ok;
 }
 

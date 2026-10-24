@@ -81,7 +81,7 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
                 if (requiresInitialPersistence)
                 {
                     // This startup image is used only once; it has no reusable resource identity.
-                    var initialImage = new byte[checked((int)session.Capacity.MaximumImageBytes)];
+                    var initialImage = new byte[NativeAppliedOwnershipWorkspace.ImageLengthForRows(0)];
                     await fileStore.PersistAsync(session, initialImage, CancellationToken.None);
                 }
                 return new NativeAppliedOwnershipOwner(fileStore, pathLease, session, createScratch);
@@ -106,7 +106,7 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
             input,
             static (INativeAppliedOwnershipSession ledger, in NativeAppliedOwnershipPromoteInput value) =>
                 ledger.Promote(in value),
-            cancellationToken);
+            cancellationToken, maximumAdditions: 1);
 
     public Task<NativeAppliedOwnershipStatus> TransitionAsync(
         NativeAppliedOwnershipTransitionInput input,
@@ -173,6 +173,7 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
         try
         {
             EnsureReady();
+            workspace.Ensure(session);
             using var operation = workspace.Acquire();
             var snapshot = operation.ReadSnapshot(session);
             operation.Complete();
@@ -222,13 +223,15 @@ internal sealed class NativeAppliedOwnershipOwner : IAsyncDisposable
     private async Task<NativeAppliedOwnershipStatus> MutateAndPersistAsync<TInput>(
         TInput input,
         OwnershipMutation<TInput> mutation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        uint maximumAdditions = 0)
         where TInput : unmanaged
     {
         await gate.WaitAsync(cancellationToken);
         try
         {
             EnsureReady();
+            workspace.Ensure(session, maximumAdditions);
             using var operation = workspace.Acquire();
             var status = mutation(session, in input);
             if (status != NativeAppliedOwnershipStatus.Ok)

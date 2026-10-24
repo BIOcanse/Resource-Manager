@@ -6,6 +6,27 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerComputeScoringWorkspaceTests
 {
+    private static ResourceManager.App.Domain.ResourceBreakdown.SchedulingProcessFactSnapshot CreateLedgerSizedFacts(
+        ResourceManager.App.Domain.Metrics.SchedulingGpuInventorySnapshot inventory)
+    {
+        var source = CreateFacts(inventory, 10);
+        return source with
+        {
+            Processes = Enumerable.Range(0, 8).Select(index => source.Processes[0] with
+            {
+                ProcessId = 10 + index * 10,
+                ProcessStartKey = FirstStartKey + checked((ulong)index * 10_000_000)
+            }).ToArray(),
+            EnumeratedCount = 8, EmittedCount = 8
+        };
+    }
+
+    private static IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeRuntimeFact> LedgerRuntimeFacts(
+        ResourceManager.App.Domain.ResourceBreakdown.SchedulingProcessFactSnapshot facts)
+        => facts.Processes.ToDictionary(static process => new HostManagerComputeProcessIdentity(process.ProcessId, process.ProcessStartKey),
+            static _ => new HostManagerComputeRuntimeFact(
+                ResourceManager.App.Infrastructure.NativeCore.NativeComputeScoringRuntimeState.BackgroundProcess, 1, 1));
+
     // Explicit algorithm fixture only. Production always receives the original owner's factory.
     private static IComputeScratch CreateScratchFixture(ulong length) => new PoisonedScratch(length);
 
@@ -56,8 +77,9 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
             length => resource = owner.CreateScratch(length));
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes); // Constructor is lazy.
         var inventory = CreateInventory();
-        var facts = CreateFacts(inventory, 10);
-        var first = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
+        var facts = CreateLedgerSizedFacts(inventory);
+        var runtime = LedgerRuntimeFacts(facts);
+        var first = workspace.Score(1, facts, inventory, runtime, null);
         var saved = first!.Cpu!.Scores.ToArray();
         Assert.NotNull(resource);
         var uid = resource.Uid;
@@ -69,7 +91,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(1UL, owner.Tick().Released);
         Assert.Equal(0UL, owner.ReadTable().RegisteredBytes);
         Assert.Equal<ResourceManager.App.Infrastructure.Optimization.HostManagerComputeScore>(saved, first.Cpu.Scores);
-        var second = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), CreateCpuResidency());
+        var second = workspace.Score(1, facts, inventory, runtime, null);
         Assert.Equal(1UL, second!.RoundNumber);
         Assert.Equal(uid, resource.Uid);
         using (var lease = resource.Acquire()) Assert.NotEqual(allocation, lease.AllocationNumber);
@@ -140,14 +162,50 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
     }
 
     [Fact]
-    public void WrongFactoryLayoutIsRetiredDuringConstructorFailure()
+    public void WrongFactoryLayoutIsRetiredDuringFirstScoreFailure()
     {
         PoisonedScratch? wrong = null;
         var configuration = CreateConfiguration();
-        Assert.Throws<InvalidOperationException>(() => new HostManagerComputeScoringWorkspace(in configuration,
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
             HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)),
-            length => wrong = new PoisonedScratch(length + 8)));
+            length => wrong = new PoisonedScratch(length + 8));
+        Assert.Null(wrong);
+        var inventory = CreateInventory();
+        Assert.Throws<InvalidOperationException>(() => workspace.Score(1, CreateFacts(inventory, 10), inventory,
+            CreateRuntimeFacts(), CreateCpuResidency()));
         Assert.True(wrong!.Disposed);
         Assert.Equal(0, wrong.Acquires);
+    }
+
+    [Fact]
+    public void SmallEnvelopeGrowsOneSlotOnlyAfterThePreviousScratchIsClosed()
+    {
+        var resources = new List<PoisonedScratch>();
+        var configuration = CreateConfiguration();
+        using var workspace = new HostManagerComputeScoringWorkspace(in configuration,
+            HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)), length =>
+            {
+                Assert.All(resources, static previous => Assert.True(previous.Disposed));
+                var resource = new PoisonedScratch(length);
+                resources.Add(resource);
+                return resource;
+            });
+        Assert.Empty(resources);
+        var inventory = CreateInventory();
+        var full = CreateFacts(inventory, 10);
+        var small = full with { Processes = [full.Processes[0]], EnumeratedCount = 1, EmittedCount = 1 };
+        var runtime = CreateRuntimeFacts().Where(pair => pair.Key.ProcessId == 10).ToDictionary();
+        var first = workspace.Score(1, small, inventory, runtime, CreateCpuResidency());
+        Assert.NotNull(first?.Cpu);
+        var original = Assert.Single(resources);
+        Assert.True(original.Length < 4096);
+        workspace.Score(2, full, inventory, CreateRuntimeFacts(), CreateCpuResidency());
+        Assert.Equal(2, resources.Count);
+        Assert.True(resources[1].Length > original.Length);
+        Assert.True(original.Disposed);
+        workspace.Score(3, small, inventory, runtime, CreateCpuResidency());
+        Assert.Equal(2, resources.Count);
+        Assert.Equal(1, original.Acquires);
+        Assert.Equal(2, resources[1].Acquires);
     }
 }
