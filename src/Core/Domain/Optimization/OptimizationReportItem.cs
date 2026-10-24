@@ -3,47 +3,47 @@ namespace ResourceManager.App.Domain.Optimization;
 public static class OptimizationReportTypes
 {
     public const string SuspectedStrayProcess = "suspected_stray_process";
-    public const string GameBackgroundResourceUsage = "GameBackgroundResourceUsage";
-    public const string BackgroundHighUsage = "BackgroundHighUsage";
-    public const string BackgroundPersistentMicroUsage = "BackgroundPersistentMicroUsage";
-    public const string VramResidency = "VramResidency";
-    public const string DiskPressure = "DiskPressure";
-    public const string RollingDiskTraffic = "RollingDiskTraffic";
-    public const string RollingDiskWrite = "RollingDiskWrite";
-    public const string RollingNetworkTraffic = "RollingNetworkTraffic";
-    public const string RollingNetworkActivity = "RollingNetworkActivity";
-    public const string SoftwareFootprint = "SoftwareFootprint";
-    public const string PowerProfileNotPerformanceFocused = "PowerProfileNotPerformanceFocused";
-    public const string ExternalDisplayLinkCapabilityGap = "ExternalDisplayLinkCapabilityGap";
-    public const string DeviceDriverProblem = "DeviceDriverProblem";
-    public const string ExternalDiskDuplicateSecurityScan = "ExternalDiskDuplicateSecurityScan";
-    public const string ExternalDiskIdleTimeoutTooShort = "ExternalDiskIdleTimeoutTooShort";
-    public const string PhysicalDiskLatencyHigh = "PhysicalDiskLatencyHigh";
-    public const string PhysicalDiskHealthWarning = "PhysicalDiskHealthWarning";
-    public const string ExternalDiskLinkCapabilityGap = "ExternalDiskLinkCapabilityGap";
-    public const string VolumeFragmentationHigh = "VolumeFragmentationHigh";
-    public const string CpuSustainedThermalThrottling = "CpuSustainedThermalThrottling";
-    public const string SystemInterruptPressure = "SystemInterruptPressure";
+    public const string GameBackgroundResourceUsage = "game_background_resource_usage";
+    public const string BackgroundHighUsage = "background_high_usage";
+    public const string BackgroundPersistentMicroUsage = "background_persistent_micro_usage";
+    public const string VramResidency = "vram_residency";
+    public const string DiskPressure = "disk_pressure";
+    public const string RollingDiskTraffic = "rolling_disk_traffic";
+    public const string RollingDiskWrite = "rolling_disk_write";
+    public const string RollingNetworkTraffic = "rolling_network_traffic";
+    public const string RollingNetworkActivity = "rolling_network_activity";
+    public const string SoftwareFootprint = "software_footprint";
+    public const string PowerProfileNotPerformanceFocused = "power_profile_not_performance_focused";
+    public const string ExternalDisplayLinkCapabilityGap = "external_display_link_capability_gap";
+    public const string DeviceDriverProblem = "device_driver_problem";
+    public const string ExternalDiskDuplicateSecurityScan = "external_disk_duplicate_security_scan";
+    public const string ExternalDiskIdleTimeoutTooShort = "external_disk_idle_timeout_too_short";
+    public const string PhysicalDiskLatencyHigh = "physical_disk_latency_high";
+    public const string PhysicalDiskHealthWarning = "physical_disk_health_warning";
+    public const string ExternalDiskLinkCapabilityGap = "external_disk_link_capability_gap";
+    public const string VolumeFragmentationHigh = "volume_fragmentation_high";
+    public const string CpuSustainedThermalThrottling = "cpu_sustained_thermal_throttling";
+    public const string SystemInterruptPressure = "system_interrupt_pressure";
 }
 
 public static class OptimizationReportStates
 {
-    public const string Active = "Active";
-    public const string TrustedSuppressed = "TrustedSuppressed";
+    public const string Active = "active";
+    public const string TrustedSuppressed = "trusted_suppressed";
 }
 
 public static class OptimizationSeverity
 {
-    public const string Info = "Info";
-    public const string Warning = "Warning";
-    public const string Critical = "Critical";
+    public const string Info = "info";
+    public const string Warning = "warning";
+    public const string Critical = "critical";
 }
 
 public static class OptimizationConfidence
 {
-    public const string Low = "Low";
-    public const string Medium = "Medium";
-    public const string High = "High";
+    public const string Low = "low";
+    public const string Medium = "medium";
+    public const string High = "high";
 }
 
 public sealed record OptimizationReportOverview(

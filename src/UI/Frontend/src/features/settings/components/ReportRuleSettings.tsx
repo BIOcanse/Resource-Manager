@@ -37,9 +37,9 @@ export function ReportRuleSettings(props: {
   const title = (type: string) => {
     const titles = uiText.optimizationReport.title;
     switch (type) {
-      case "CpuSustainedThermalThrottling": return titles.cpuSustainedThermalThrottling;
-      case "SystemInterruptPressure": return titles.systemInterruptPressure;
-      case "BackgroundHighUsage": return text().backgroundMemoryTitle;
+      case "cpu_sustained_thermal_throttling": return titles.cpuSustainedThermalThrottling;
+      case "system_interrupt_pressure": return titles.systemInterruptPressure;
+      case "background_high_usage": return text().backgroundMemoryTitle;
       case "suspected_stray_process": return text().strayProcessTitle;
       default: return titles.generic(type);
     }

@@ -1,5 +1,6 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -37,7 +38,7 @@ public sealed class PhysicalDiskIoWindowTests
         var snapshot = reader.Read();
 
         Assert.Empty(snapshot.Processes);
-        Assert.Equal("Warming", snapshot.ProviderState.State);
+        Assert.Equal(PhysicalDiskIoProviderStates.Warming, snapshot.ProviderState.State);
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public sealed class PhysicalDiskIoWindowTests
         var snapshot = reader.Read();
 
         Assert.Empty(snapshot.Processes);
-        Assert.Equal("Unavailable", snapshot.ProviderState.State);
+        Assert.Equal(PhysicalDiskIoProviderStates.Unavailable, snapshot.ProviderState.State);
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public sealed class PhysicalDiskIoWindowTests
         reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
 
         var snapshot = reader.Read();
-        Assert.Equal("Warming", snapshot.ProviderState.State);
+        Assert.Equal(PhysicalDiskIoProviderStates.Warming, snapshot.ProviderState.State);
         Assert.Empty(snapshot.Processes); // Replacement collection needs its own complete two-second window.
         reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
     }
@@ -171,7 +172,7 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker { EventsLost = 1 };
         using var reader = NewReader(broker);
         var first = reader.Read();
-        Assert.Equal("Warming", first.ProviderState.State); Assert.Empty(first.Processes);
+        Assert.Equal(PhysicalDiskIoProviderStates.Warming, first.ProviderState.State); Assert.Empty(first.Processes);
         var future = Environment.TickCount64 + 2100;
         reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, future, null, 100);
         var recovered = reader.ReadWindow(future);

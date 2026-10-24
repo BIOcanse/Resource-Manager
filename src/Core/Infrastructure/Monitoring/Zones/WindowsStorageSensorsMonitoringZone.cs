@@ -58,7 +58,7 @@ public sealed partial class WindowsStorageSensorsMonitoringZone
         => WindowsHardwareMetricResources.ProjectStorageSensors(snapshot);
     internal StorageSensorSnapshot ReadSensors() => CanRead ? ReadStorageSensors() : StorageSensorsFrozen();
     private static StorageSensorSnapshot StorageSensorsFrozen()
-        => new(new("Windows Storage Reliability Counter", "Frozen", "Windows Storage 传感监控源当前处于功能区冻结。"), []);
+        => new(new("Windows Storage Reliability Counter", HardwareSensorProviderStates.Frozen, "Windows Storage 传感监控源当前处于功能区冻结。"), []);
     internal StorageSensorSnapshot ReadStorageSensors() => Adapt(owner.ReadStorageSensors());
     internal static Dictionary<MetricFieldCode, ulong> ReadReliabilityValues(IReadOnlyDictionary<string, object?>? row)
         => WindowsStorageOwner.ReadReliabilityValues(row);

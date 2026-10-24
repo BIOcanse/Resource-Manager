@@ -11,12 +11,16 @@ public static class AttributionProviderObservationStatus
             return SamplingObservationStatus.Unavailable;
         }
 
-        return state.Trim().ToUpperInvariant() switch
+        return state.Trim() switch
         {
-            "ACTIVE" or "RUNNING" or "DEGRADED" => SamplingObservationStatus.Current,
-            "STARTING" or "IDLE" or "WARMING" => SamplingObservationStatus.Warming,
-            "NOTREQUESTED" => SamplingObservationStatus.NotRequested,
-            "UNSUPPORTED" => SamplingObservationStatus.Unsupported,
+            NetworkAttributionProviderStates.Active
+                or NetworkAttributionProviderStates.Running
+                or NetworkAttributionProviderStates.Degraded => SamplingObservationStatus.Current,
+            NetworkAttributionProviderStates.Starting
+                or NetworkAttributionProviderStates.Idle
+                or NetworkAttributionProviderStates.Warming => SamplingObservationStatus.Warming,
+            NetworkAttributionProviderStates.NotRequested => SamplingObservationStatus.NotRequested,
+            NetworkAttributionProviderStates.Unsupported => SamplingObservationStatus.Unsupported,
             _ => SamplingObservationStatus.Unavailable
         };
     }

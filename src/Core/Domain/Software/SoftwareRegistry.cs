@@ -23,7 +23,8 @@ public static class SoftwareKinds
             or RuntimeProduct or RuntimeRoot or Unattributed;
 
     // Compatibility read for pre-lowercase persisted registries only. Delete when all
-    // supported stored SQLite/manual-software registries have been rewritten or retired.
+    // supported SQLite/manual-software registries, report target rows and protection JSON
+    // have been rewritten or retired.
     public static string ReadStored(string? value)
     {
         var token = value?.Replace("_", string.Empty, StringComparison.Ordinal);
@@ -44,8 +45,8 @@ public static class SoftwareKinds
 
 public static class SoftwareManagementRoles
 {
-    public const string Dependency = "Dependency";
-    public const string Support = "Support";
+    public const string Dependency = "dependency";
+    public const string Support = "support";
 
     public static bool IsKnown(string value)
     {

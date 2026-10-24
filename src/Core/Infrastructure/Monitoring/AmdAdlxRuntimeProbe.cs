@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ResourceManager.App.Domain.Components;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -18,7 +19,9 @@ internal static class AmdAdlxRuntimeProbe
                 var hasInitializeExport =
                     NativeLibrary.TryGetExport(handle, "ADLXInitialize", out _)
                     || NativeLibrary.TryGetExport(handle, "ADLXInitializeWithCallerAdl", out _);
-                var state = hasInitializeExport ? "RuntimeAvailable" : "InstalledUnverified";
+                var state = hasInitializeExport
+                    ? ComponentProviderStates.RuntimeAvailable
+                    : ComponentProviderStates.InstalledUnverified;
                 var message = hasInitializeExport
                     ? "AMD ADLX 运行库可加载，初始化导出存在；Provider 桥接和实时读数验证尚未完成。"
                     : "AMD ADLX DLL 可加载，但未找到预期初始化导出；需要后续桥接验证。";
@@ -34,7 +37,7 @@ internal static class AmdAdlxRuntimeProbe
         return new AmdAdlxRuntimeStatus(
             false,
             false,
-            "Missing",
+            ComponentProviderStates.Missing,
             "未能加载 AMD ADLX 运行库；如果已安装 AMD 驱动，后续 Provider 仍需显式验证。",
             null);
     }

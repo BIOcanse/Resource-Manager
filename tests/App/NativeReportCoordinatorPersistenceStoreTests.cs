@@ -286,6 +286,88 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
         Assert.Equal(target.ProcessNames, restored.ProcessNames);
     }
 
+    [Fact]
+    public async Task LoadTargetsCanonicalizesLegacyStoredSoftwareKinds()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var target = new HostManagerReportTargetDescriptor(
+            123,
+            "runtime:editor",
+            "Editor",
+            "other",
+            "other",
+            [],
+            []);
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with
+        {
+            TargetHandle = target.TargetHandle
+        };
+        await store.PersistAsync(
+            new[] { row },
+            CancellationToken.None,
+            new Dictionary<ulong, HostManagerReportTargetDescriptor>
+            {
+                [target.TargetHandle] = target
+            });
+        await SetStoredTargetKindsAsync(database, "HighPerformance", "HighPerformance");
+
+        var restored = Assert.Single(await store.LoadTargetsAsync(CancellationToken.None));
+
+        Assert.Equal("high_performance", restored.SoftwareKind);
+        Assert.Equal("high_performance", restored.DisplayKind);
+    }
+
+    [Theory]
+    [InlineData("unknown_software_kind", "other")]
+    [InlineData("other", "unknown_display_kind")]
+    public async Task LoadTargetsRejectsUnknownStoredKinds(
+        string softwareKind,
+        string displayKind)
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var target = new HostManagerReportTargetDescriptor(
+            123,
+            "runtime:editor",
+            "Editor",
+            "other",
+            "other",
+            [],
+            []);
+        var row = CreateRow(NativeReportPersistenceKind.Trust, 12, 1, 22) with
+        {
+            TargetHandle = target.TargetHandle
+        };
+        await store.PersistAsync(
+            new[] { row },
+            CancellationToken.None,
+            new Dictionary<ulong, HostManagerReportTargetDescriptor>
+            {
+                [target.TargetHandle] = target
+            });
+        await SetStoredTargetKindsAsync(database, softwareKind, displayKind);
+
+        await Assert.ThrowsAsync<InvalidDataException>(
+            () => store.LoadTargetsAsync(CancellationToken.None));
+    }
+
+    private static async Task SetStoredTargetKindsAsync(
+        ResourceManagerDatabase database,
+        string softwareKind,
+        string displayKind)
+    {
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            UPDATE host_manager_report_target_identities
+            SET software_kind = $softwareKind, display_kind = $displayKind;
+            """;
+        command.Parameters.AddWithValue("$softwareKind", softwareKind);
+        command.Parameters.AddWithValue("$displayKind", displayKind);
+        await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

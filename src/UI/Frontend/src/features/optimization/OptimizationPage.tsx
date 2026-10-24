@@ -263,7 +263,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                 return (
                   <article
                     {...frontendVisibilitySurface(`visible.${demandId}.surface`, [demandId])}
-                    class={`optimization-report severity-${report.severity.toLowerCase()}`}
+                    class={`optimization-report severity-${report.severity}`}
                   >
                     <FrontendVisibilityDemandBinding
                       demandId={demandId}
@@ -277,10 +277,10 @@ export function OptimizationPage(props: OptimizationPageProps) {
                       <Show when={isTrustedReport(report)}>
                         <span class="optimization-report-state">{uiText.optimization.trusted}</span>
                       </Show>
-                      <Show when={report.target.targetType === "Software" && Boolean(report.target.softwareId)}>
+                      <Show when={report.target.targetType === "software" && Boolean(report.target.softwareId)}>
                         <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewSoftware}</button>
                       </Show>
-                      <Show when={["Device", "Display", "PhysicalDisk"].includes(report.target.targetType)}>
+                      <Show when={["device", "display", "physical_disk"].includes(report.target.targetType)}>
                         <button class="secondary" type="button" onClick={() => props.onInspect(report)}>{uiText.optimization.viewDevice}</button>
                       </Show>
                       <button class="secondary details-button" type="button" onClick={() => setDetailReport(report)}>
@@ -334,7 +334,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
 }
 
 function isTrustedReport(report: OptimizationReportItem) {
-  return report.state === "TrustedSuppressed";
+  return report.state === "trusted_suppressed";
 }
 
 function findTrustedTarget(
@@ -344,24 +344,24 @@ function findTrustedTarget(
   return targets.find((target) =>
     target.targetType === report.target.targetType
     && target.targetKey === report.target.targetKey
-    && (report.target.targetType === "Software"
-      || report.target.targetType === "Drive"
+    && (report.target.targetType === "software"
+      || report.target.targetType === "drive"
       || target.reportType === advisoryTrustScope(report.type)));
 }
 
 function advisoryTrustScope(reportType: string) {
   switch (reportType) {
-    case "PowerProfileNotPerformanceFocused": return "power-profile";
-    case "ExternalDisplayLinkCapabilityGap": return "display-link";
-    case "DeviceDriverProblem": return "device-driver";
-    case "ExternalDiskDuplicateSecurityScan": return "disk-security-scan";
-    case "ExternalDiskIdleTimeoutTooShort": return "disk-power";
-    case "PhysicalDiskLatencyHigh": return "disk-latency";
-    case "PhysicalDiskHealthWarning": return "disk-health";
-    case "ExternalDiskLinkCapabilityGap": return "disk-link";
-    case "VolumeFragmentationHigh": return "disk-fragmentation";
-    case "CpuSustainedThermalThrottling": return "cpu-thermal";
-    case "SystemInterruptPressure": return "system-interrupt";
+    case "power_profile_not_performance_focused": return "power-profile";
+    case "external_display_link_capability_gap": return "display-link";
+    case "device_driver_problem": return "device-driver";
+    case "external_disk_duplicate_security_scan": return "disk-security-scan";
+    case "external_disk_idle_timeout_too_short": return "disk-power";
+    case "physical_disk_latency_high": return "disk-latency";
+    case "physical_disk_health_warning": return "disk-health";
+    case "external_disk_link_capability_gap": return "disk-link";
+    case "volume_fragmentation_high": return "disk-fragmentation";
+    case "cpu_sustained_thermal_throttling": return "cpu-thermal";
+    case "system_interrupt_pressure": return "system-interrupt";
     default: return reportType;
   }
 }

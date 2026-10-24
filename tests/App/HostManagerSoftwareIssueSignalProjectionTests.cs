@@ -36,6 +36,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         Assert.Equal(SoftwareIssueKinds.AbnormalMemoryUsage, signal.Kind);
         Assert.Equal("software-fixture", signal.SoftwareId);
         Assert.Null(signal.ArtifactPath);
+        Assert.Equal("memory", Assert.Single(signal.Evidence).MetricKind);
     }
 
     [Fact]
@@ -84,6 +85,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         Assert.Equal(SoftwareIssueKinds.LongSystemInterrupts, signal.Kind);
         Assert.Equal(@"C:\Drivers\large.sys", signal.ArtifactPath);
         Assert.Equal("large.sys", Assert.Single(signal.Evidence).ModuleName);
+        Assert.Equal("interrupt_maximum_single_duration_milliseconds", Assert.Single(signal.Evidence).MetricKind);
     }
 
     [Fact]
@@ -194,6 +196,6 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
             drivers,
             new SystemInterruptProviderState(
                 "test",
-                "Running",
+                SystemInterruptProviderStates.Running,
                 "test"));
 }

@@ -158,7 +158,7 @@ public sealed class OverlayLaunchWiringTests
     {
         var decision = new GpuStartupPlacementDecision(
             gpu || overlay ? GpuStartupPlacementDecisionKinds.Inject : GpuStartupPlacementDecisionKinds.PassThrough,
-            "ready", "configured", @"C:\Apps\game.exe", "software", "process", gpu ? "GPU0" : null,
+            "ready", "configured", @"C:\Apps\game.exe", "software", "process", gpu ? "gpu0" : null,
             null, gpu ? @"C:\Package\UserData\GpuPlacement\gpu-policy.txt" : null,
             null, null, gpu ? [GpuPlacementProviderIds.D3dDeviceCreateShim] : [], overlay);
 

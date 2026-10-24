@@ -26,7 +26,7 @@ var processorCount = Environment.ProcessorCount;
 
         if (result != 0 || info.Length == 0)
         {
-            return new CpuFrequency(0, 0, 0, "Unavailable");
+            return new CpuFrequency(0, 0, 0, CpuFrequencySourceStates.Unavailable);
         }
 
         var powerCurrent = (int)Math.Round(info.Average(static item => item.CurrentMhz));

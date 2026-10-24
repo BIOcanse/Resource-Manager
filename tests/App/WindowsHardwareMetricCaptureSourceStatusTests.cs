@@ -100,7 +100,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             smuPlan,
             new(smuPlan.SourceHandle, 1, 1),
             at.AddMilliseconds(1),
-            AmdMetrics("Active"),
+            AmdMetrics(HardwareSensorProviderStates.Active),
             integratedGpuIndex: 0,
             gpuInventoryIsCurrent: true);
         Assert.Equal(NativeMetricSnapshotSourceStatus.Complete, transientMissingSensor.Status);
@@ -113,7 +113,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             smuPlan,
             new(smuPlan.SourceHandle, 1, 1),
             at.AddMilliseconds(1),
-            AmdMetrics("Unavailable"),
+            AmdMetrics(HardwareSensorProviderStates.Unavailable),
             integratedGpuIndex: 0,
             gpuInventoryIsCurrent: true);
         Assert.Equal(NativeMetricSnapshotSourceStatus.Unavailable, unavailable.Status);
@@ -247,7 +247,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             runtimeFacts.BeginObservation(firstSource.SourceHandle),
             unsupportedAt,
             new(new HardwareSensorProviderState(
-                "recorded OEM fan", "UnsupportedFirmware", "recorded"), null, null, []));
+                "recorded OEM fan", HardwareSensorProviderStates.UnsupportedFirmware, "recorded"), null, null, []));
         Assert.Equal(
             NativeMetricSnapshotSourceStatus.Unsupported,
             unsupportedCompletion.Status);
@@ -332,7 +332,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
                     facts.BeginObservation(sourcePlan.SourceHandle),
                     unsupportedAt,
                     new(new HardwareSensorProviderState(
-                        "recorded OEM fan", "UnsupportedFirmware", "recorded"), null, null, []));
+                        "recorded OEM fan", HardwareSensorProviderStates.UnsupportedFirmware, "recorded"), null, null, []));
                 _ = original.CompleteSource(plan, completion, unsupportedAt);
                 facts.RecordCompletion(
                     sourcePlan.SourceHandle, completion.Status, unsupportedAt);
@@ -388,7 +388,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             var freshUnsupportedAt = restoredAt.AddMilliseconds(4);
             var unsupported = WindowsHardwareMetricCapture.CreateNotebookFanCompletion(
                 freshPlan, freshSource, restoredFacts.BeginObservation(freshSource.SourceHandle), freshUnsupportedAt,
-                new(new HardwareSensorProviderState("recorded OEM fan", "UnsupportedFirmware", "recorded"), null, null, []));
+                new(new HardwareSensorProviderState("recorded OEM fan", HardwareSensorProviderStates.UnsupportedFirmware, "recorded"), null, null, []));
             restarted.CompleteSource(freshPlan, unsupported, freshUnsupportedAt);
             restoredFacts.RecordCompletion(freshSource.SourceHandle, unsupported.Status, freshUnsupportedAt);
             var fallbackModes = restoredFacts.CaptureModesForRequest(

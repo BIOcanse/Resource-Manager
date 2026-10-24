@@ -101,7 +101,7 @@ public sealed partial class WindowsStorageOwner
             return new StorageOwnerSensorSnapshot(
                 new HardwareSensorProviderState(
                     "Windows Storage Reliability Counter",
-                    "Unavailable",
+                    HardwareSensorProviderStates.Unavailable,
                     physicalDisks.Error),
                 []);
         }
@@ -128,7 +128,7 @@ public sealed partial class WindowsStorageOwner
             return new StorageOwnerSensorSnapshot(
                 new HardwareSensorProviderState(
                     "Windows Storage Reliability Counter",
-                    "Unavailable",
+                    HardwareSensorProviderStates.Unavailable,
                     message(StorageOwnerMessage.NoPhysicalDisks)),
                 []) { Identities = identities };
         }
@@ -142,7 +142,7 @@ public sealed partial class WindowsStorageOwner
             return new StorageOwnerSensorSnapshot(
                 new HardwareSensorProviderState(
                     "Windows Storage Reliability Counter",
-                    "Unavailable",
+                    HardwareSensorProviderStates.Unavailable,
                     counters.Error),
                 disks.Select(disk => CreateDiskSensor(disk, null, message(StorageOwnerMessage.CounterUnavailable))).ToArray())
             { Identities = identities };
@@ -163,8 +163,8 @@ public sealed partial class WindowsStorageOwner
 
         var state = sensors.Any(static sensor => sensor.TemperatureCelsius is not null
             || sensor.IntegerValues.Count > 0 || sensor.Values.Count > 0)
-            ? new HardwareSensorProviderState("Windows Storage Reliability Counter", "Active", message(StorageOwnerMessage.Active))
-            : new HardwareSensorProviderState("Windows Storage Reliability Counter", "Unavailable", message(StorageOwnerMessage.NoValues));
+            ? new HardwareSensorProviderState("Windows Storage Reliability Counter", HardwareSensorProviderStates.Active, message(StorageOwnerMessage.Active))
+            : new HardwareSensorProviderState("Windows Storage Reliability Counter", HardwareSensorProviderStates.Unavailable, message(StorageOwnerMessage.NoValues));
 
         return new StorageOwnerSensorSnapshot(state, sensors) { Identities = identities };
     }

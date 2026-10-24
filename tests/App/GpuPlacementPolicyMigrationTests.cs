@@ -200,6 +200,84 @@ public sealed class GpuPlacementPolicyMigrationTests
         }
     }
 
+    [Fact]
+    public async Task CurrentVersionMapsAndRewritesPreviouslyStoredWireSpellings()
+    {
+        using var root = new OwnedRoot();
+        var legacyValues = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software") with
+        {
+            StartupTargetGpu = "HighPerformanceGpu",
+            PreferredRuntimeSwitchMethod = "FutureFrameTakeover",
+            CpuMaximumOccupancyMode = "SingleCcd"
+        };
+        var document = new GpuPlacementPolicyDocument(
+            GpuPlacementPolicyDocumentVersions.Current,
+            [legacyValues],
+            [],
+            DateTimeOffset.UnixEpoch);
+        root.WritePolicyFile(System.Text.Json.JsonSerializer.SerializeToNode(
+            document,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!.AsObject());
+
+        var loaded = Assert.Single((await root.CreateStore(new RecordingLogger()).GetAsync(CancellationToken.None)).SoftwarePolicies);
+
+        Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, loaded.StartupTargetGpu);
+        Assert.Equal(GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover, loaded.PreferredRuntimeSwitchMethod);
+        Assert.Equal(CpuMaximumOccupancyModes.SingleCcd, loaded.CpuMaximumOccupancyMode);
+        var rewritten = root.ReadPolicyNode()["softwarePolicies"]![0]!.AsObject();
+        Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, rewritten["startupTargetGpu"]!.GetValue<string>());
+        Assert.Equal(GpuPlacementRuntimeSwitchMethods.FutureFrameTakeover, rewritten["preferredRuntimeSwitchMethod"]!.GetValue<string>());
+        Assert.Equal(CpuMaximumOccupancyModes.SingleCcd, rewritten["cpuMaximumOccupancyMode"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("startupTargetGpu")]
+    [InlineData("preferredRuntimeSwitchMethod")]
+    [InlineData("cpuMaximumOccupancyMode")]
+    public async Task CurrentVersionRejectsUnknownStoredWireValuesWithoutRewriting(string field)
+    {
+        using var root = new OwnedRoot();
+        var policy = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software");
+        var document = System.Text.Json.JsonSerializer.SerializeToNode(
+            new GpuPlacementPolicyDocument(
+                GpuPlacementPolicyDocumentVersions.Current,
+                [policy],
+                [],
+                DateTimeOffset.UnixEpoch),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!.AsObject();
+        document["softwarePolicies"]![0]![field] = "future_wire_value";
+        root.WritePolicyFile(document);
+        var original = root.ReadPolicyFile();
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            root.CreateStore(new RecordingLogger()).GetAsync(CancellationToken.None));
+
+        Assert.Equal(original, root.ReadPolicyFile());
+    }
+
+    [Fact]
+    public async Task SaveRejectsLegacyOrUnknownWireValuesInsteadOfFallingBack()
+    {
+        using var root = new OwnedRoot();
+        var store = root.CreateStore(new RecordingLogger());
+        var current = GpuPlacementPolicyDefaults.CreateSoftwarePolicy("software", "Software");
+        var invalidRequests = new[]
+        {
+            current with { StartupTargetGpu = "HighPerformanceGpu" },
+            current with { PreferredRuntimeSwitchMethod = "FutureFrameTakeover" },
+            current with { CpuMaximumOccupancyMode = "SingleCcd" },
+            current with { StartupTargetGpu = "future_gpu_target" }
+        };
+
+        foreach (var request in invalidRequests)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.SaveSoftwarePolicyAsync(request, CancellationToken.None));
+        }
+
+        Assert.False(File.Exists(root.PolicyPath));
+    }
+
     private static void AssertMigratedFile(string text, bool expectedGpuExcluded)
     {
         var file = JsonNode.Parse(text)!.AsObject();

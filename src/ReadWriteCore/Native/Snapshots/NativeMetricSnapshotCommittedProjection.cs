@@ -575,11 +575,11 @@ public static class NativeMetricSnapshotCommittedProjection
         return reading.Output.SourceHandle == 0
             ? new HardwareSensorProviderState(
                 "Host Manager metric snapshot",
-                "Unavailable",
+                HardwareSensorProviderStates.Unavailable,
                 null)
             : new HardwareSensorProviderState(
                 SourceId(frame, reading.Output.SourceHandle),
-                reading.Status.ToString(),
+                HardwareSensorProviderStates.Current,
                 null);
     }
 
@@ -593,7 +593,7 @@ public static class NativeMetricSnapshotCommittedProjection
             && pair.Value.IsAvailable);
         return new HardwareSensorProviderState(
             "Host Manager metric snapshot",
-            available ? "Active" : "Unavailable",
+            available ? HardwareSensorProviderStates.Active : HardwareSensorProviderStates.Unavailable,
             null);
     }
 

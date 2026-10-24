@@ -257,8 +257,8 @@ export function CpuTopologyDiagram(props: {
                 )}
               </For>
             </div>
-            <div class="cpu-topology-diagram" classList={{ "ring-layout": model().visualLayoutKind === "RingBus" }}>
-              <Show when={model().visualLayoutKind === "RingBus"} fallback={
+            <div class="cpu-topology-diagram" classList={{ "ring-layout": model().visualLayoutKind === "ring_bus" }}>
+              <Show when={model().visualLayoutKind === "ring_bus"} fallback={
                 <For each={model().ccds}>
                   {(ccd) => (
                     <article class="cpu-ccd" classList={{ selected: isSelected(selected(), "ccd", ccd.id) }}>

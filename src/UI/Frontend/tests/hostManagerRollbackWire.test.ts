@@ -17,7 +17,7 @@ const decoded = decodeHostManagerRollbackState({
       updatedAt: "2026-07-24T12:01:00Z",
       records: [
         {
-          kind: "GpuPreference",
+          kind: "gpu_preference",
           recordId: "record",
           metadata: { result: "ok" }
         }

@@ -151,7 +151,7 @@ public sealed class DeviceFieldDashboardBindingTests
                 25,
                 "test",
                 new CpuSensorMetrics(
-                    new HardwareSensorProviderState("test", "Active", null),
+                    new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, null),
                     null,
                     null,
                     null,
@@ -185,7 +185,7 @@ public sealed class DeviceFieldDashboardBindingTests
             0,
             0,
             new GpuSensorMetrics(
-                new HardwareSensorProviderState("test", "Active", null),
+                new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, null),
                 null,
                 null,
                 null,

@@ -20,7 +20,7 @@ public sealed class TcpEStatsLifecycleTests
             () => [Connection, Endpoint.Udp("udp", 456, false, true, 5000)]);
         var snapshot = reader.Read(Request);
         Assert.Contains(snapshot.Processes.Values, row => row.IsEstimated && row.TotalBytesPerSecond > 0);
-        Assert.Equal("Degraded", snapshot.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Degraded, snapshot.ProviderState.State);
     }
 
     private static readonly NetworkAttributionReadRequest Request = new(1000, 1000, new Dictionary<int, string> { [123] = "fixture" });
@@ -66,7 +66,7 @@ public sealed class TcpEStatsLifecycleTests
         using var reader = Create(source, zones, () => [Connection]);
         reader.Read(Request);
         zones.Enabled = false;
-        Assert.Equal("Frozen", reader.Read(Request).ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Frozen, reader.Read(Request).ProviderState.State);
         Assert.Equal(new[] { true, false }, source.Writes);
         zones.Enabled = true;
         source.Incoming = 5000;
@@ -121,7 +121,7 @@ public sealed class TcpEStatsLifecycleTests
         {
             Snapshot = new(DateTimeOffset.UtcNow,
                 new Dictionary<int, NetworkProcessAttribution> { [123] = new(123, 1.5, 3.5, 0, 0, false) },
-                new("etw-network-tcpip", "Running", "fixture")) { ObservedTraffic = window }
+                new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = window }
         };
         var zones = new Zones { EtwEnabled = true };
         using var reader = new IpHelperNetworkAttributionReader(new Proxy(), zones, etw,
@@ -138,7 +138,7 @@ public sealed class TcpEStatsLifecycleTests
         Assert.Equal("3", merged.ObservedTraffic!.Processes[0].ReceiveBytes);
         Assert.Equal("7", merged.ObservedTraffic.Processes[0].SendBytes);
         etw.Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-            new("etw-network-tcpip", "Warming", "fixture"));
+            new("etw-network-tcpip", NetworkAttributionProviderStates.Warming, "fixture"));
         Assert.Null(reader.Read(selectedRequest).ObservedTraffic);
         zones.EtwEnabled = false;
         Assert.Null(reader.Read(selectedRequest).ObservedTraffic);
@@ -160,7 +160,7 @@ public sealed class TcpEStatsLifecycleTests
     public void ObservedOnlyModeUsesEtwWithoutIpHelperEndpointsOrEstats()
     {
         var etw = new EtwReader { Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-            new("etw-network-tcpip", "Running", "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
+            new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
         var zones = new Zones { EtwEnabled = true, IpHelperEnabled = false };
         var stats = new Stats();
         using var reader = new IpHelperNetworkAttributionReader(new Proxy(), zones, etw, stats,
@@ -180,7 +180,7 @@ public sealed class TcpEStatsLifecycleTests
     public void MixedModeKeepsEtwFieldsWhenIpHelperIsFrozenOrFails(bool failure)
     {
         var etw = new EtwReader { Snapshot = new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-            new("etw-network-tcpip", "Running", "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
+            new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture")) { ObservedTraffic = new(DateTimeOffset.UtcNow, 2000, []) } };
         using var reader = new IpHelperNetworkAttributionReader(new Proxy(),
             new Zones { EtwEnabled = true, IpHelperEnabled = failure }, etw, new Stats(),
             () => throw new InvalidOperationException("private endpoint failure"));
@@ -190,7 +190,7 @@ public sealed class TcpEStatsLifecycleTests
         Assert.Same(etw.Snapshot.ObservedTraffic, result.ObservedTraffic);
         Assert.Equal(new[] { true }, etw.Requests);
         Assert.Empty(result.RawProcessValues);
-        Assert.Equal(failure ? "Unavailable" : "Frozen", result.ProviderState.State);
+        Assert.Equal(failure ? NetworkAttributionProviderStates.Unavailable : NetworkAttributionProviderStates.Frozen, result.ProviderState.State);
         Assert.DoesNotContain("private endpoint failure", result.ProviderState.Message);
     }
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Infrastructure.DeviceTopology;
@@ -308,7 +309,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
 
         Assert.Null(snapshot.ObservedTraffic);
         Assert.Empty(snapshot.RawProcessValues);
-        Assert.Equal("Frozen", snapshot.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Frozen, snapshot.ProviderState.State);
         Assert.Equal(0, broker.SubscribeCount);
     }
 
@@ -331,7 +332,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         Assert.Null(snapshot.ObservedTraffic);
         Assert.Empty(snapshot.RawProcessValues);
         Assert.Equal(1, lease.Disposals);
-        Assert.Equal("Frozen", snapshot.ProviderState.State);
+        Assert.Equal(NetworkAttributionProviderStates.Frozen, snapshot.ProviderState.State);
     }
 
     [Fact]

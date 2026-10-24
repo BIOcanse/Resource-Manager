@@ -37,7 +37,7 @@ public sealed record OptimizationObservationRecord(
     string? ForegroundExecutablePath = null,
     string? ForegroundSoftwareId = null,
     string? ForegroundSoftwareName = null,
-    string ContextConfidence = "Low",
+    string ContextConfidence = OptimizationConfidence.Low,
     IReadOnlyList<string>? ContextEvidence = null,
     IReadOnlyList<OptimizationObservationWindowBucket>? WindowBuckets = null,
     string? AdvisoryFamily = null,

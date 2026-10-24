@@ -482,18 +482,18 @@ const jaJpAppCopy: AppCopy = {
     Empty: "空き"
   },
   managementRole: {
-    Dependency: "依存関係",
-    Support: "サポート"
+    dependency: "依存関係",
+    support: "サポート"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "メモリ使用量の異常",
-      LongSystemInterrupts: "長時間のシステム割り込み",
-      ExcessiveSystemInterrupts: "システム割り込みの高負荷",
-      KnownSecurityVulnerability: "既知のセキュリティ脆弱性",
-      DependencyIssue: "依存関係の問題",
-      CompatibilityIssue: "互換性の問題",
-      KnownMalware: "既知のマルウェア",
+      abnormal_memory_usage: "メモリ使用量の異常",
+      long_system_interrupts: "長時間のシステム割り込み",
+      excessive_system_interrupts: "システム割り込みの高負荷",
+      known_security_vulnerability: "既知のセキュリティ脆弱性",
+      dependency_issue: "依存関係の問題",
+      compatibility_issue: "互換性の問題",
+      known_malware: "既知のマルウェア",
       memoryAdvice: "このバックグラウンドアプリが必要か確認し、使用しない場合は終了してください。",
       interruptAdvice: "関連ドライバーの更新を確認してください。ドライバーファイルを直接削除しないでください。",
       winringMessage: "インストール済みの WinRing0x64.sys 1.2.0.5 は公開済みの脆弱性情報と一致します。このドライバーを含む古いソフトウェアを更新またはアンインストールしてください。マルウェアと判定したものではありません。",

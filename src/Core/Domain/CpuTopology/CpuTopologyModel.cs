@@ -4,21 +4,21 @@ namespace ResourceManager.App.Domain.CpuTopology;
 
 public static class CpuTopologySelectionKinds
 {
-    public const string LogicalProcessor = "LogicalProcessor";
-    public const string PhysicalCore = "PhysicalCore";
-    public const string Ccd = "Ccd";
+    public const string LogicalProcessor = "logical_processor";
+    public const string PhysicalCore = "physical_core";
+    public const string Ccd = "ccd";
 }
 
 public static class CpuTopologyAffinityTargetKinds
 {
-    public const string LogicalProcessorMask = "LogicalProcessorMask";
+    public const string LogicalProcessorMask = "logical_processor_mask";
 }
 
 public static class CpuTopologyVisualLayoutKinds
 {
-    public const string RingBus = "RingBus";
-    public const string CcdGrid = "CcdGrid";
-    public const string Grid = "Grid";
+    public const string RingBus = "ring_bus";
+    public const string CcdGrid = "ccd_grid";
+    public const string Grid = "grid";
 }
 
 public sealed record CpuTopologyVisualLayout(

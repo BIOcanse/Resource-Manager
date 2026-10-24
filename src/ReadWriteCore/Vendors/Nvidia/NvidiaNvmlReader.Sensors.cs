@@ -9,7 +9,10 @@ public sealed partial class NvidiaNvmlReader
         if (!request.IncludesAnySensor)
         {
             return new GpuSensorMetrics(
-                new HardwareSensorProviderState("NVIDIA NVML", "NotRequested", describeProviderMessage?.Invoke("NVIDIA NVML", "NotRequested")),
+                new HardwareSensorProviderState(
+                    "NVIDIA NVML",
+                    HardwareSensorProviderStates.NotRequested,
+                    describeProviderMessage?.Invoke("NVIDIA NVML", HardwareSensorProviderStates.NotRequested)),
                 null,
                 null,
                 null,
@@ -30,7 +33,7 @@ public sealed partial class NvidiaNvmlReader
             || powerLimit is not null
             || temperature is not null
             || fanSpeed is not null;
-        var state = hasAnyValue ? "Partial" : "Unavailable";
+        var state = hasAnyValue ? HardwareSensorProviderStates.Partial : HardwareSensorProviderStates.Unavailable;
         var message = describeProviderMessage?.Invoke("NVIDIA NVML", state);
 
         return new GpuSensorMetrics(

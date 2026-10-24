@@ -74,7 +74,7 @@ public sealed partial class NvidiaNvapiReader
         var fanRpm = request.IncludeFanRpm ? ReadFanRpm(gpuHandle) : null;
         var voltage = request.IncludeVoltage ? ReadCoreVoltageVolts(gpuHandle) : null;
         var hasAnyValue = fanRpm is not null || voltage is not null;
-        var state = hasAnyValue ? "Partial" : "Unavailable";
+        var state = hasAnyValue ? HardwareSensorProviderStates.Partial : HardwareSensorProviderStates.Unavailable;
         var message = describeProviderMessage?.Invoke("NVIDIA NVAPI", state);
 
         return new GpuSensorMetrics(

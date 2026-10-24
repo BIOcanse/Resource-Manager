@@ -178,7 +178,7 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
             ReadCpuFrequency = () => throw new InvalidOperationException(),
             ReadGpuUsage = _ => new(new Dictionary<int, double> { [0] = Value }, NativePdhProviderAvailability.Available, DateTimeOffset.UtcNow),
             ReadNvmlAsync = (_, _, _) => Task.FromResult<IReadOnlyList<GpuMetrics>>([new(0, "recorded GPU", Value,
-                0, 0, 0, 0, 0, 0, 0, new(new("recorded", "Active", null), null, null, null, null, null, null, null, null, null, null))]),
+                0, 0, 0, 0, 0, 0, 0, new(new("recorded", HardwareSensorProviderStates.Active, null), null, null, null, null, null, null, null, null, null, null))]),
             ReadNvmlFanIdentities = _ => [],
             OpenIgclFanDirectory = (_, _, _) => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
             ReadNvapiAsync = (_, _, _) => throw new InvalidOperationException(), ReadAdlxAsync = (_, _, _) => throw new InvalidOperationException(),
@@ -188,9 +188,9 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
             ReadBattery = (_, _) => [new(battery.ExactIdentityKey, new Dictionary<MetricFieldCode, double> { [MetricFieldCode.BatteryChargePercent] = Value }, null, false)],
             ReadNetworkIdentities = () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []), ReadNetworkInterfaces = (_, _) => throw new InvalidOperationException(),
             ReadSystemIo = _ => throw new InvalidOperationException(), ReadStorageIdentities = Storage, ReadFanIdentities = Fans,
-            ReadStorageSensors = () => new(new("recorded", "Active", null), [new(0, "disk", Value, "recorded") { IdentityKey = DiskIdentity }]),
+            ReadStorageSensors = () => new(new("recorded", HardwareSensorProviderStates.Active, null), [new(0, "disk", Value, "recorded") { IdentityKey = DiskIdentity }]),
             ReadNvmeSensors = _ => throw new InvalidOperationException(), ReadAtaSensors = _ => throw new InvalidOperationException(),
-            ReadHardwareMonitor = () => new(new("recorded", "Active", null), null, null, null, null, null, null, null,
+            ReadHardwareMonitor = () => new(new("recorded", HardwareSensorProviderStates.Active, null), null, null, null, null, null, null, null,
                 [new(0, "fan", Value, null, "recorded") { IdentityKey = "fan-recorded" }], []) { CatalogComplete = true },
             ReadNotebookFans = () => throw new InvalidOperationException(), SynchronizeNotebookDemand = _ => { }
         };

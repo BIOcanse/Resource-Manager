@@ -132,7 +132,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   }, { defer: true }));
 
   async function inspectOptimizationTarget(report: OptimizationReportItem) {
-    if (report.target.targetType !== "Software") {
+    if (report.target.targetType !== "software") {
       requestDeviceTopologySelection(report.target.targetKey);
       setActivePage("details");
       return;

@@ -18,7 +18,7 @@ import {
   managementInventoryKinds,
   type ManagementSubpageId
 } from "../managementNavigation";
-import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../../../types";
+import type { ManagedComponent, ManagementKind, ManagementRole, OperationSnapshot, SoftwareRecord } from "../../../types";
 import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../../../text.ts";
 import { isComponentInstalled, normalizeName, normalizeSoftwareKind } from "../../../utils";
 import {
@@ -540,8 +540,9 @@ function getManagementRoleItems(
   components: ManagedComponent[],
   software: SoftwareRecord[]
 ): ManagementItem[] {
+  const wireRole: ManagementRole = role === "Dependency" ? "dependency" : "support";
   const roleComponents = components
-    .filter((component) => component.definition?.managementRole === role);
+    .filter((component) => component.definition?.managementRole === wireRole);
   const componentItems = roleComponents
     .filter((component) => component.definition?.id !== sharedBrowserRuntimeComponentId)
     .map((component) => ({ type: "component" as const, value: component }));
@@ -551,7 +552,7 @@ function getManagementRoleItems(
     .map((component) => normalizeName(component.definition?.name))
     .filter(Boolean));
   const extraSoftwareItems = software
-    .filter((item) => !isUnconfirmedSoftware(item) && item.managementRole === role)
+    .filter((item) => !isUnconfirmedSoftware(item) && item.managementRole === wireRole)
     .filter((item) => !componentNameSet.has(normalizeName(item.name)))
     .map((item) => ({ type: "software" as const, value: item }));
   return [...componentItems, ...extraSoftwareItems];
@@ -654,12 +655,12 @@ export function managementActionKeyFromOperation(operation: OperationSnapshot) {
 }
 
 export function findDependencySoftwareForComponent(component: ManagedComponent, software: SoftwareRecord[]) {
-  if (component.definition?.managementRole !== "Dependency") {
+  if (component.definition?.managementRole !== "dependency") {
     return undefined;
   }
   const componentName = normalizeName(component.definition?.name);
   const componentId = normalizeName(component.definition?.id);
   return software.find((item) =>
-    item.managementRole === "Dependency"
+    item.managementRole === "dependency"
     && (normalizeName(item.name) === componentName || normalizeName(item.id).includes(componentId)));
 }

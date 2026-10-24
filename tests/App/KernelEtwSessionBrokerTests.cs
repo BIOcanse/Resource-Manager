@@ -180,7 +180,7 @@ public sealed class KernelEtwSessionBrokerTests
         using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
 
         var denied = disk.Read();
-        Assert.Equal("Unavailable", denied.ProviderState.State);
+        Assert.Equal(ResourceManager.App.Application.ResourceBreakdown.PhysicalDiskIoProviderStates.Unavailable, denied.ProviderState.State);
         Assert.Contains("fixture disk control denied", denied.ProviderState.Message);
         Assert.False(disk.IsRunning);
         runtime.EmitContextSwitch();
@@ -190,7 +190,7 @@ public sealed class KernelEtwSessionBrokerTests
         runtime.UpdateFailure = null;
         broker.Owner.Reconcile();
         Assert.True(disk.IsRunning);
-        Assert.NotEqual("Unavailable", disk.Read().ProviderState.State);
+        Assert.NotEqual(ResourceManager.App.Application.ResourceBreakdown.PhysicalDiskIoProviderStates.Unavailable, disk.Read().ProviderState.State);
         Assert.Single(factory.Calls);
     }
 

@@ -15,6 +15,7 @@ export default async function localizationJourney(page, baseUrl) {
     const expectedFailure = failProtectionSave && message.location().url.includes("/api/optimization/protection/software/");
     if (message.type() === "error" && !expectedFailure) failures.push(message.text());
   });
+  await page.route("**/api/settings/report-rules", route => route.fulfill({ json: { rules: [] } }));
   const scenario = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ runtimeEffectOwners: true, gpuPlacementEnabled: true })
@@ -26,19 +27,43 @@ export default async function localizationJourney(page, baseUrl) {
   const fieldCardChecks = [];
   let verificationFails = false;
   let verificationRequests = 0;
+  const pendingVerificationReleases = [];
+  const verificationStartWaiters = [];
   await page.route("**/api/components", route => route.fulfill({ json: [{
-    definition: { id: "fan-control-core", name: "FanControlCore", managementRole: "Dependency", capabilities: [] },
+    definition: { id: "fan-control-core", name: "FanControlCore", managementRole: "dependency", capabilities: [] },
     installed: false, canInstall: true, canVerify: true, providers: [], message: { domain: 1, code: 9, args: [] }
   }] }));
   await page.route("**/api/components/fan-control-core/verify", async route => {
     if (route.request().method() !== "POST") throw new Error("Verification must use the existing POST endpoint");
     verificationRequests++;
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => {
+      const release = () => resolve();
+      const waiter = verificationStartWaiters.shift();
+      if (waiter) waiter(release);
+      else pendingVerificationReleases.push(release);
+    });
     await route.fulfill({ json: {
-      state: verificationFails ? "runtimeFilesUnavailable" : "Installed",
+      state: verificationFails ? "runtimeFilesUnavailable" : "installed",
       message: { domain: 1, code: verificationFails ? 24 : 13, args: [] }
     } });
   });
+  async function verifyWhileResponsePending(button, assertionMessage, expectedMessage) {
+    const responseRelease = new Promise(resolve => {
+      const release = pendingVerificationReleases.shift();
+      if (release) resolve(release);
+      else verificationStartWaiters.push(resolve);
+    });
+    let release;
+    try {
+      await button.click();
+      release = await responseRelease;
+      if (!await button.isDisabled()) throw new Error(assertionMessage);
+    } finally {
+      if (release) release();
+      else void responseRelease.then(resolve => resolve());
+    }
+    await page.getByText(expectedMessage, { exact: true }).waitFor();
+  }
   let protectedSoftware = null;
   let failProtectionSave = false;
   await page.route("**/api/optimization/protection", route => route.fulfill({ json: protectedSoftware ? [{
@@ -146,18 +171,15 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByRole("radio", { name: app.control.ownership.firmware, exact: true }).click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
-    await page.getByRole("button", { name: `${app.managementRole.Dependency} 1`, exact: true }).click();
+    await page.getByRole("button", { name: `${app.managementRole.dependency} 1`, exact: true }).click();
     const verify = page.getByRole("button", { name: app.management.verify, exact: true });
     const beforeRequests = verificationRequests;
     verificationFails = false;
-    await verify.click();
-    if (!await verify.isDisabled()) throw new Error(`${option.id}: verification allows duplicate clicks while pending`);
-    await page.getByText(app.backendMessage.dependency.componentFilesUnverified, { exact: true }).waitFor();
+    await verifyWhileResponsePending(verify, `${option.id}: verification allows duplicate clicks while pending`, app.backendMessage.dependency.componentFilesUnverified);
     await verify.waitFor({ state: "visible" });
     await page.waitForFunction(() => !document.querySelector('.component-actions button:disabled'));
     verificationFails = true;
-    await verify.click();
-    await page.getByText(app.backendMessage.dependency.runtimeFilesUnavailable, { exact: true }).waitFor();
+    await verifyWhileResponsePending(verify, `${option.id}: failed verification allows duplicate clicks while pending`, app.backendMessage.dependency.runtimeFilesUnavailable);
     if (verificationRequests !== beforeRequests + 2) throw new Error(`${option.id}: wrong verification request count`);
     await page.getByRole("navigation", { name: app.management.categoryNav })
       .getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();

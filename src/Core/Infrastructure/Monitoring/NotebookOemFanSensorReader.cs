@@ -1,5 +1,6 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Components;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -76,7 +77,7 @@ internal sealed class NotebookOemFanSensorReader : IDisposable
         return new NotebookOemFanSensorSnapshot(
             new HardwareSensorProviderState(
                 ComponentName,
-                "Frozen",
+                HardwareSensorProviderStates.Frozen,
                 "Notebook OEM Fan 监控源当前处于功能区冻结。"),
             null,
             null,
@@ -91,7 +92,7 @@ internal sealed class NotebookOemFanSensorReader : IDisposable
             return new HardwareSensorDependencyRuntimeStatus(
                 false,
                 false,
-                "Installed",
+                ComponentProviderStates.Installed,
                 $"内置组件已随 Resource Manager 安装。启动固件计划未匹配已接入的笔记本 OEM 风扇子 Provider；当前固件：{effectivePlan.Identity.Describe()}。",
                 null);
         }
@@ -110,7 +111,7 @@ internal sealed class NotebookOemFanSensorReader : IDisposable
         return new HardwareSensorDependencyRuntimeStatus(
             false,
             false,
-            "Installed",
+            ComponentProviderStates.Installed,
             "内置组件已随 Resource Manager 安装。当前未检测到已接入厂商的可用只读风扇运行库；已接入 Mechrevo/Tongfang UWACPI，后续扩展 Lenovo/ASUS/MSI/Dell/HP/Acer 等路线。",
             null);
     }
@@ -120,7 +121,7 @@ internal sealed class NotebookOemFanSensorReader : IDisposable
         return new NotebookOemFanSensorSnapshot(
             new HardwareSensorProviderState(
                 ComponentName,
-                "UnsupportedFirmware",
+                HardwareSensorProviderStates.UnsupportedFirmware,
                 $"启动固件计划未匹配已接入的笔记本 OEM 风扇子 Provider；当前固件：{firmwareProviderPlan.Identity.Describe()}。"),
             null,
             null,

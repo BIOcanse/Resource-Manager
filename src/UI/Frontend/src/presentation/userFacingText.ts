@@ -16,9 +16,16 @@ type UserStateKey = keyof typeof uiText.status.state;
 const commonStateKeys: Record<string, UserStateKey> = {
   active: "available",
   installed: "installed",
-  installedunverified: "installedUnverified",
-  readytoinstall: "readyToInstall",
-  runtimeavailable: "available",
+  installed_unverified: "installedUnverified",
+  ready_to_install: "readyToInstall",
+  manual_download_required: "manualDownload",
+  provider_missing: "unavailable",
+  driver_missing: "missing",
+  runtime_available: "available",
+  runtime_active: "available",
+  readyToInstall: "readyToInstall",
+  manualDownloadRequired: "manualDownload",
+  runtimeAvailable: "available",
   running: "running",
   stopped: "stopped",
   starting: "starting",
@@ -98,7 +105,7 @@ export function userFacingState(value: unknown, fallback = uiText.status.unknown
     return fallback;
   }
 
-  const key = commonStateKeys[text.toLocaleLowerCase()];
+  const key = commonStateKeys[text];
   return key ? uiText.status.state[key] : fallback;
 }
 

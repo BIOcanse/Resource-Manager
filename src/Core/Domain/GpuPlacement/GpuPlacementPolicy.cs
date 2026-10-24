@@ -40,10 +40,14 @@ public static class GpuPlacementProviderIds
 
 public static class GpuPlacementTargets
 {
-    public const string SystemDefaultGpu = "SystemDefaultGpu";
-    public const string AutoIdleGpu = "AutoIdleGpu";
-    public const string IntegratedGpu = "IntegratedGpu";
-    public const string HighPerformanceGpu = "HighPerformanceGpu";
+    public const string SystemDefaultGpu = "system_default_gpu";
+    public const string AutoIdleGpu = "auto_idle_gpu";
+    public const string IntegratedGpu = "integrated_gpu";
+    public const string HighPerformanceGpu = "high_performance_gpu";
+
+    public static bool IsKnown(string? value)
+        => value is SystemDefaultGpu or AutoIdleGpu or IntegratedGpu or HighPerformanceGpu
+            || IsCanonicalGpuIndexTarget(value);
 
     public static string Normalize(string? value, string fallback = SystemDefaultGpu)
     {
@@ -53,29 +57,29 @@ public static class GpuPlacementTargets
             return fallback;
         }
 
-        if (clean.Equals(SystemDefaultGpu, StringComparison.OrdinalIgnoreCase))
+        return IsKnown(clean) ? clean : fallback;
+    }
+
+    // Compatibility read for previously persisted policy and launch-report targets only.
+    // Remove after supported policy files and launch reports have been rewritten or retired.
+    public static string ReadStored(string? value)
+    {
+        var token = value?.Replace("_", string.Empty, StringComparison.Ordinal);
+        foreach (var target in new[] { SystemDefaultGpu, AutoIdleGpu, IntegratedGpu, HighPerformanceGpu })
         {
-            return SystemDefaultGpu;
+            if (string.Equals(token, target.Replace("_", string.Empty, StringComparison.Ordinal),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return target;
+            }
         }
 
-        if (clean.Equals(AutoIdleGpu, StringComparison.OrdinalIgnoreCase))
+        if (IsExactGpuIndexTarget(token))
         {
-            return AutoIdleGpu;
+            return token!.ToLowerInvariant();
         }
 
-        if (clean.Equals(IntegratedGpu, StringComparison.OrdinalIgnoreCase))
-        {
-            return IntegratedGpu;
-        }
-
-        if (clean.Equals(HighPerformanceGpu, StringComparison.OrdinalIgnoreCase))
-        {
-            return HighPerformanceGpu;
-        }
-
-        return IsExactGpuIndexTarget(clean)
-            ? clean.ToUpperInvariant()
-            : fallback;
+        throw new InvalidDataException($"Unsupported stored GPU placement target '{value}'.");
     }
 
     public static string NormalizeSystemTarget(string? value, string fallback = SystemDefaultGpu)
@@ -99,12 +103,24 @@ public static class GpuPlacementTargets
 
         return int.TryParse(clean[3..], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _);
     }
+
+    private static bool IsCanonicalGpuIndexTarget(string? value)
+    {
+        var clean = value?.Trim();
+        return !string.IsNullOrWhiteSpace(clean)
+            && clean.StartsWith("gpu", StringComparison.Ordinal)
+            && int.TryParse(clean[3..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out _);
+    }
 }
 
 public static class GpuPlacementRuntimeSwitchMethods
 {
-    public const string FutureFrameTakeover = "FutureFrameTakeover";
-    public const string WindowRerender = "WindowRerender";
+    public const string FutureFrameTakeover = "future_frame_takeover";
+    public const string WindowRerender = "window_rerender";
+
+    public static bool IsKnown(string? value)
+        => value is FutureFrameTakeover or WindowRerender;
 
     public static string Normalize(string? value, string fallback = FutureFrameTakeover)
     {
@@ -115,12 +131,34 @@ public static class GpuPlacementRuntimeSwitchMethods
             _ => fallback
         };
     }
+
+    // Compatibility read for previously persisted policy values only. Remove after supported
+    // policy files have been rewritten or retired.
+    public static string ReadStored(string? value)
+    {
+        var token = value?.Replace("_", string.Empty, StringComparison.Ordinal);
+        if (string.Equals(token, FutureFrameTakeover.Replace("_", string.Empty, StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return FutureFrameTakeover;
+        }
+        if (string.Equals(token, WindowRerender.Replace("_", string.Empty, StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return WindowRerender;
+        }
+
+        throw new InvalidDataException($"Unsupported stored GPU runtime switch method '{value}'.");
+    }
 }
 
 public static class CpuMaximumOccupancyModes
 {
-    public const string SingleCcd = "SingleCcd";
-    public const string AllCores = "AllCores";
+    public const string SingleCcd = "single_ccd";
+    public const string AllCores = "all_cores";
+
+    public static bool IsKnown(string? value)
+        => value is SingleCcd or AllCores;
 
     public static string Normalize(string? value, string fallback = AllCores)
     {
@@ -130,6 +168,25 @@ public static class CpuMaximumOccupancyModes
             AllCores => AllCores,
             _ => fallback
         };
+    }
+
+    // Compatibility read for previously persisted policy values only. Remove after supported
+    // policy files have been rewritten or retired.
+    public static string ReadStored(string? value)
+    {
+        var token = value?.Replace("_", string.Empty, StringComparison.Ordinal);
+        if (string.Equals(token, SingleCcd.Replace("_", string.Empty, StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return SingleCcd;
+        }
+        if (string.Equals(token, AllCores.Replace("_", string.Empty, StringComparison.Ordinal),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return AllCores;
+        }
+
+        throw new InvalidDataException($"Unsupported stored CPU maximum occupancy mode '{value}'.");
     }
 }
 

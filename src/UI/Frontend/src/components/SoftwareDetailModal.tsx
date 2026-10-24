@@ -18,6 +18,7 @@ import {
 } from "../ui/primitives/Tabs.tsx";
 import { StandardSelect } from "./StandardSelect";
 import { SoftwareProtectionControl } from "./SoftwareProtectionControl";
+import { cpuMaximumOccupancyOptions, runtimeSwitchMethodOptions } from "./softwarePlacementOptions";
 import type {
   CpuCcdModel,
   CpuTopologySnapshot,
@@ -83,23 +84,6 @@ function detailTabLabels(): Record<DetailTabId, string> {
     overlay: uiText.performanceOverlay.tab,
   };
 }
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function runtimeSwitchMethodOptions() {
-  return [
-    ["FutureFrameTakeover", uiText.softwareDetail.option.futureFrameTakeover],
-    ["WindowRerender", uiText.softwareDetail.option.windowRerender]
-  ] as const;
-}
-
-// 文案按当前语言求值，不能在模块顶层固化。
-function cpuMaximumOccupancyOptions() {
-  return [
-    ["SingleCcd", uiText.softwareDetail.option.singleCcd],
-    ["AllCores", uiText.softwareDetail.option.allCores]
-  ] as const;
-}
-
 
 function normalizeSoftwarePolicyForProvider(
   _preciseGpuPlacementEnabled: boolean,

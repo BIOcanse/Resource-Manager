@@ -36,14 +36,14 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         ObjectDisposedException.ThrowIf(disposed, this);
         if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
             return new(DateTimeOffset.UtcNow, new Dictionary<int, PhysicalDiskProcessAttribution>(),
-                new("etw-fileio-disk", "Frozen", "ETW DiskIO 物理磁盘归因当前处于功能区冻结。"));
+                new("etw-fileio-disk", PhysicalDiskIoProviderStates.Frozen, "ETW DiskIO 物理磁盘归因当前处于功能区冻结。"));
         lastRequestAt = DateTimeOffset.UtcNow;
         return capture.Read(includeObservedTraffic);
     }
     public IReadOnlyList<ResourceTableProviderState> GetStates(IReadOnlyList<ResourceTableColumn> columns)
     {
         if (!columns.Any(static column => column.Id.Equals(ResourceTableColumnIds.Disk, StringComparison.OrdinalIgnoreCase))
-            || capture.State is "Running" or "Idle") return [];
+            || capture.State is PhysicalDiskIoProviderStates.Running or PhysicalDiskIoProviderStates.Idle) return [];
         return [new("etw-fileio-disk", capture.State, capture.Message)];
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

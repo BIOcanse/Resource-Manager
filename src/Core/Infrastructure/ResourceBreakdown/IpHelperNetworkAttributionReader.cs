@@ -24,7 +24,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
     private Dictionary<string, TcpByteCounter> previousTcpBytes = new(StringComparer.OrdinalIgnoreCase);
     private NetworkAttributionProviderState lastProviderState = new(
         "ip-helper-network",
-        "Starting",
+        NetworkAttributionProviderStates.Starting,
         "IP Helper 网络归因尚未采样。");
 
     public NetworkAttributionSnapshot Read(NetworkAttributionReadRequest request)
@@ -39,7 +39,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
             catch (Exception error) when (error is not ObjectDisposedException)
             {
                 System.Diagnostics.Trace.TraceError("IP Helper network attribution failed: {0}", error);
-                lastProviderState = new("ip-helper-network", "Unavailable", "IP Helper 网络归因不可用。");
+                lastProviderState = new("ip-helper-network", NetworkAttributionProviderStates.Unavailable, "IP Helper 网络归因不可用。");
                 return new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(), lastProviderState)
                     { ObservedTraffic = etw.ObservedTraffic };
             }
@@ -51,7 +51,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
         => sourceZones.CanRead(MonitoringSourceZoneIds.EtwNetworkTcpIp)
             ? etwNetworkAttributionReader.Read(includeObservedTraffic: true)
             : new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-                new("etw-network-tcpip", "Frozen", "ETW 网络事件归因当前处于功能区冻结。"));
+                new("etw-network-tcpip", NetworkAttributionProviderStates.Frozen, "ETW 网络事件归因当前处于功能区冻结。"));
 
     private NetworkAttributionSnapshot ReadLegacy(NetworkAttributionReadRequest request, NetworkAttributionSnapshot? observedEtw)
     {
@@ -61,7 +61,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
             lock (gate) { ObjectDisposedException.ThrowIf(disposed, this); ReleaseTcpStats(); previousTcpBytes.Clear(); }
             lastProviderState = new NetworkAttributionProviderState(
                 "ip-helper-network",
-                "Frozen",
+                NetworkAttributionProviderStates.Frozen,
                 "IP Helper 网络归因监控源当前处于功能区冻结。");
             return new NetworkAttributionSnapshot(
                 DateTimeOffset.UtcNow,
@@ -183,7 +183,7 @@ public sealed partial class IpHelperNetworkAttributionReader(
         }
 
         var state = lastProviderState;
-        return state.State.Equals("Active", StringComparison.OrdinalIgnoreCase)
+        return state.State == NetworkAttributionProviderStates.Active
             ? []
             :
             [

@@ -175,7 +175,7 @@ public sealed partial class WindowsHardwareMetricResources
             ReadAtaSensors = request => ProjectStorageSensors(storage.ReadAtaSensorsCore(request)),
             ReadHardwareMonitor = () => hardwareMonitor.Read(options.WmiQueryTimeout),
             ReadNotebookFans = () => options.EnableMechrevo ? WindowsNotebookFanProjection.Create(mechrevo.Read())
-                : new(new("Notebook OEM Fan Provider", "UnsupportedFirmware", "OEM firmware policy was not enabled."), null, null, []),
+                : new(new("Notebook OEM Fan Provider", HardwareSensorProviderStates.UnsupportedFirmware, "OEM firmware policy was not enabled."), null, null, []),
             SynchronizeNotebookDemand = demanded => { if (!demanded) mechrevo.ReleaseSession(); }
         };
         // One actual helper is shared by CPU/APU resources and disposed after them.

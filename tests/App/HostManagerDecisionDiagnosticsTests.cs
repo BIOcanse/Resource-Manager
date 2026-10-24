@@ -73,8 +73,8 @@ public sealed class HostManagerDecisionDiagnosticsTests
         Assert.Equal("9007199254740995", actual.ProcessStartKey);
         Assert.Equal("9007199254740996", actual.LastSeenCycle);
         Assert.Equal(40544U, actual.ProcessId);
-        Assert.Equal("Game", actual.SoftwareKind);
-        Assert.Equal("ForegroundFocused", actual.RuntimeState);
+        Assert.Equal("game", actual.SoftwareKind);
+        Assert.Equal("foreground_focused", actual.RuntimeState);
         Assert.Equal(64, actual.CpuScore);
         Assert.Equal(80, actual.CpuOccupancyPercent);
         Assert.Equal("A1", actual.DesiredProcessGrade);
@@ -92,5 +92,23 @@ public sealed class HostManagerDecisionDiagnosticsTests
 
         Assert.Throws<InvalidDataException>(() =>
             HostManagerSmartCoordinator.ProjectNativeDiagnostics(snapshot, []));
+    }
+
+    [Theory]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.Unknown, "unknown")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.ForegroundFocused, "foreground_focused")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.ForegroundUnfocused, "foreground_unfocused")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.BackgroundWindow, "background_window")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.TrayOnly, "tray_only")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.BackgroundProcess, "background_process")]
+    [InlineData((int)NativeSmartCoordinatorRuntimeState.NotRunning, "not_running")]
+    public void NativeDiagnosticsUseCanonicalRuntimeStateTokens(
+        int state, string expected)
+    {
+        var projected = HostManagerSmartCoordinator.ProjectNativeDiagnostics(
+            new NativeSmartCoordinatorSnapshot { SnapshotRowCount = 1 },
+            [new NativeSmartCoordinatorSnapshotRow { RuntimeState = (NativeSmartCoordinatorRuntimeState)state }]);
+
+        Assert.Equal(expected, Assert.Single(projected.Rows).RuntimeState);
     }
 }

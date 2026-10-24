@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Windows.Platform;
@@ -48,7 +49,7 @@ public sealed class HardwareMonitorWmiReaderLibraryIntegrationTests
         var timeout = TimeSpan.FromMilliseconds(137);
         var first = reader.Read(timeout);
         Assert.Equal("LibreHardwareMonitor WMI", first.ProviderState.Provider);
-        Assert.Equal("Unavailable", first.ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Unavailable, first.ProviderState.State);
         Assert.Null(first.ProviderState.Message);
         Assert.Equal(2, calls.Count);
         Assert.All(calls, item => { Assert.Equal(@"root\LibreHardwareMonitor", item.Path); Assert.Equal(timeout, item.Timeout); });

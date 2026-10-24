@@ -19,18 +19,18 @@ export const zhSoftwareCopy = {
     Empty: "空余"
   },
   managementRole: {
-    Dependency: "依赖",
-    Support: "支持"
+    dependency: "依赖",
+    support: "支持"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "内存占用异常",
-      LongSystemInterrupts: "长系统中断",
-      ExcessiveSystemInterrupts: "系统中断占用高",
-      KnownSecurityVulnerability: "存在已公开安全漏洞",
-      DependencyIssue: "依赖问题",
-      CompatibilityIssue: "兼容性问题",
-      KnownMalware: "已知恶意软件",
+      abnormal_memory_usage: "内存占用异常",
+      long_system_interrupts: "长系统中断",
+      excessive_system_interrupts: "系统中断占用高",
+      known_security_vulnerability: "存在已公开安全漏洞",
+      dependency_issue: "依赖问题",
+      compatibility_issue: "兼容性问题",
+      known_malware: "已知恶意软件",
       memoryAdvice: "检查后台软件是否仍需要运行；不再使用时可关闭。",
       interruptAdvice: "检查相关驱动是否有更新；不要直接删除驱动文件。",
       winringMessage: "随软件安装的 WinRing0x64.sys 1.2.0.5 与已公开漏洞记录匹配。建议更新或卸载包含该驱动的旧版本；这不代表软件被判定为恶意软件。",

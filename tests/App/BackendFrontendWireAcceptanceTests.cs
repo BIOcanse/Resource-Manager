@@ -70,7 +70,7 @@ public sealed class BackendFrontendWireAcceptanceTests
                 new CpuSensorMetrics(
                     new HardwareSensorProviderState(
                         "fixture",
-                        "Unavailable",
+                        HardwareSensorProviderStates.Unavailable,
                         null),
                     null,
                     null,

@@ -39,7 +39,7 @@ internal sealed partial class WindowsPlatformSensorReader(
     {
         var state = new HardwareSensorProviderState(
             "Windows platform sensors",
-            "NotRequested",
+            HardwareSensorProviderStates.NotRequested,
             "当前快照未请求内存温度、主板传感、磁盘温度或系统风扇。");
         return new WindowsPlatformSensorSnapshot(state, state, state, state, null, null, null, null, null, null, null, [], [], []);
     }

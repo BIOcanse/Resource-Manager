@@ -14,7 +14,7 @@ export default async function smartDetailsPlacementFactsJourney(page, baseUrl) {
         displayName: "Harness App",
         softwareId: "frontend-harness.software",
         resourceKind: "cpu",
-        records: [{ kind: "CpuAffinity", recordId: "placement-fixture" }],
+        records: [{ kind: "cpu_affinity", recordId: "placement-fixture" }],
         appliedAt: updatedAt,
         updatedAt
       }]

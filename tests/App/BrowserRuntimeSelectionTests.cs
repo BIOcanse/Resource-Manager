@@ -24,9 +24,9 @@ public sealed class BrowserRuntimeSelectionTests
     {
         var result = BrowserRuntimeSelection.Select(
         [
-            Candidate("managed", BrowserRuntimeKinds.WebView2Runtime, "200.0.0.0", "Managed"),
-            Candidate("user", BrowserRuntimeKinds.WebView2Runtime, "190.0.0.0", "SystemUser"),
-            Candidate("machine", BrowserRuntimeKinds.WebView2Runtime, "100.0.0.0", "SystemMachine")
+            Candidate("managed", BrowserRuntimeKinds.WebView2Runtime, "200.0.0.0", BrowserRuntimeSources.Managed),
+            Candidate("user", BrowserRuntimeKinds.WebView2Runtime, "190.0.0.0", BrowserRuntimeSources.SystemUser),
+            Candidate("machine", BrowserRuntimeKinds.WebView2Runtime, "100.0.0.0", BrowserRuntimeSources.SystemMachine)
         ]);
 
         Assert.Equal("machine", result.SharedRuntime?.Id);
@@ -39,9 +39,9 @@ public sealed class BrowserRuntimeSelectionTests
     {
         var result = BrowserRuntimeSelection.Select(
         [
-            Candidate("chrome", BrowserRuntimeKinds.ChromiumBrowser, "120.0.0.0", "KnownInstall", "Google Chrome"),
-            Candidate("vivaldi", BrowserRuntimeKinds.ChromiumBrowser, "130.0.0.0", "KnownInstall", "Vivaldi"),
-            Candidate("edge", BrowserRuntimeKinds.ChromiumBrowser, "125.0.0.0", "KnownInstall", "Microsoft Edge")
+            Candidate("chrome", BrowserRuntimeKinds.ChromiumBrowser, "120.0.0.0", BrowserRuntimeSources.KnownInstall, "Google Chrome"),
+            Candidate("vivaldi", BrowserRuntimeKinds.ChromiumBrowser, "130.0.0.0", BrowserRuntimeSources.KnownInstall, "Vivaldi"),
+            Candidate("edge", BrowserRuntimeKinds.ChromiumBrowser, "125.0.0.0", BrowserRuntimeSources.KnownInstall, "Microsoft Edge")
         ]);
 
         Assert.Equal("vivaldi", result.BrowserFallback?.Id);
@@ -54,8 +54,8 @@ public sealed class BrowserRuntimeSelectionTests
     {
         var result = BrowserRuntimeSelection.Select(
         [
-            Candidate("runtime", BrowserRuntimeKinds.WebView2Runtime, "125.0.0.0", "SystemMachine"),
-            Candidate("browser", BrowserRuntimeKinds.ChromiumBrowser, "130.0.0.0", "BrowserRegistration")
+            Candidate("runtime", BrowserRuntimeKinds.WebView2Runtime, "125.0.0.0", BrowserRuntimeSources.SystemMachine),
+            Candidate("browser", BrowserRuntimeKinds.ChromiumBrowser, "130.0.0.0", BrowserRuntimeSources.BrowserRegistration)
         ]);
 
         Assert.Equal(["runtime", "browser"],
@@ -69,8 +69,8 @@ public sealed class BrowserRuntimeSelectionTests
     {
         var result = BrowserRuntimeSelection.Select(
         [
-            Candidate("firefox", BrowserRuntimeKinds.GeckoBrowser, "999.0", "BrowserRegistration"),
-            Candidate("360", BrowserRuntimeKinds.ChromiumBrowser, "132.0", "BrowserRegistration", "360 安全浏览器")
+            Candidate("firefox", BrowserRuntimeKinds.GeckoBrowser, "999.0", BrowserRuntimeSources.BrowserRegistration),
+            Candidate("360", BrowserRuntimeKinds.ChromiumBrowser, "132.0", BrowserRuntimeSources.BrowserRegistration, "360 安全浏览器")
         ]);
 
         Assert.Equal("360", result.BrowserFallback?.Id);
@@ -81,8 +81,8 @@ public sealed class BrowserRuntimeSelectionTests
     {
         var result = BrowserRuntimeSelection.Select(
         [
-            Candidate("firefox", BrowserRuntimeKinds.GeckoBrowser, "141.0", "BrowserRegistration"),
-            Candidate("waterfox", BrowserRuntimeKinds.GeckoBrowser, "140.0", "KnownInstall")
+            Candidate("firefox", BrowserRuntimeKinds.GeckoBrowser, "141.0", BrowserRuntimeSources.BrowserRegistration),
+            Candidate("waterfox", BrowserRuntimeKinds.GeckoBrowser, "140.0", BrowserRuntimeSources.KnownInstall)
         ]);
 
         Assert.Equal("firefox", result.BrowserFallback?.Id);

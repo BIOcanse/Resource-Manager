@@ -44,8 +44,7 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
         }
 
         var currentState = owner.State;
-        if (currentState.Equals("Running", StringComparison.OrdinalIgnoreCase)
-            || currentState.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+        if (currentState is NetworkAttributionProviderStates.Running or NetworkAttributionProviderStates.Idle)
         {
             return [];
         }

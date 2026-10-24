@@ -2,18 +2,18 @@ import type { ReportRuleSetting } from "../../src/types.ts";
 import { emptyReportRuleValues } from "../../src/features/settings/reportRuleSettingsModel.ts";
 
 export const reportRules: ReportRuleSetting[] = [
-  { name: "cpu_throttle_temperature", reportType: "CpuSustainedThermalThrottling", comparison: "atOrAbove",
+  { name: "cpu_throttle_temperature", reportType: "cpu_sustained_thermal_throttling", comparison: "atOrAbove",
     displayUnit: "celsius", scale: 1, step: 1, thresholdMinimum: 40, thresholdMaximum: 110,
     countMaximum: 1000, zeroActivityMaximum: null,
     editableFields: ["activationThreshold", "clearThreshold", "requiredConsecutiveHits", "requiredConsecutiveMisses"],
     defaults: { ...emptyReportRuleValues, activationThreshold: 90, clearThreshold: 85,
       requiredConsecutiveHits: 6, requiredConsecutiveMisses: 3 } },
-  { name: "cpu_throttle_frequency", reportType: "CpuSustainedThermalThrottling", comparison: "atOrBelow",
+  { name: "cpu_throttle_frequency", reportType: "cpu_sustained_thermal_throttling", comparison: "atOrBelow",
     displayUnit: "percent", scale: 1, step: 1, thresholdMinimum: 1, thresholdMaximum: 200,
     countMaximum: 1000, zeroActivityMaximum: null,
     editableFields: ["activationThreshold", "clearThreshold"],
     defaults: { ...emptyReportRuleValues, activationThreshold: 85, clearThreshold: 90 } },
-  { name: "background_memory_bytes", reportType: "BackgroundHighUsage", comparison: "atOrAbove",
+  { name: "background_memory_bytes", reportType: "background_high_usage", comparison: "atOrAbove",
     displayUnit: "gibibytes", scale: 1073741824, step: 0.25, thresholdMinimum: 268435456, thresholdMaximum: 1099511627776,
     countMaximum: 1000, zeroActivityMaximum: null, editableFields: ["activationThreshold", "clearThreshold"],
     defaults: { ...emptyReportRuleValues, activationThreshold: 4294967296, clearThreshold: 3221225472 } },

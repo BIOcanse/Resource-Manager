@@ -59,7 +59,7 @@ internal static class HostManagerSoftwareIssueSignalProjection
                 report.Target.SoftwareId,
                 null)
             {
-                Evidence = [new SoftwareIssueEvidence("Memory", report.Evidence.CurrentValue, report.Evidence.ValueUnit)]
+                Evidence = [new SoftwareIssueEvidence(SoftwareIssueMetricKinds.Memory, report.Evidence.CurrentValue, report.Evidence.ValueUnit)]
             };
         }
 
@@ -119,7 +119,13 @@ internal static class HostManagerSoftwareIssueSignalProjection
         return new OptimizationSoftwareIssueSignal(report.Id, issueKind, report.Severity,
             string.Empty, string.Empty, null, driver.ModulePath)
         {
-            Evidence = [new SoftwareIssueEvidence(kind.ToString(), MetricValue(driver, kind), unit, driver.ModuleName)]
+            Evidence = [new SoftwareIssueEvidence(kind switch
+            {
+                HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds => SoftwareIssueMetricKinds.InterruptMaximumSingleDurationMilliseconds,
+                HostManagerReportFactKind.InterruptEventsAtOrAboveOneMillisecond => SoftwareIssueMetricKinds.InterruptEventsAtOrAboveOneMillisecond,
+                HostManagerReportFactKind.InterruptCpuCapacityPercent => SoftwareIssueMetricKinds.InterruptCpuCapacityPercent,
+                _ => throw new InvalidDataException($"Unsupported software issue metric kind '{kind}'.")
+            }, MetricValue(driver, kind), unit, driver.ModuleName)]
         };
     }
 }

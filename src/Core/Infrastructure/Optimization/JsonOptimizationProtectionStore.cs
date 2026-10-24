@@ -1,7 +1,9 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.Persistence;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
@@ -34,9 +36,17 @@ public sealed class JsonOptimizationProtectionStore(IHostEnvironment environment
                     stream,
                     JsonOptions,
                     cancellationToken);
-                return Normalize(targets
+                var storedTargets = targets
                     ?? throw new InvalidDataException(
-                        "The optimization protection document is null."));
+                        "The optimization protection document is null.");
+                return Normalize(storedTargets.Select(static item => item with
+                {
+                    TargetType = StoredOptimizationWireValues.ReadReportTargetType(item.TargetType),
+                    SoftwareKind = item.SoftwareKind is null
+                        ? null
+                        : SoftwareKinds.ReadStored(item.SoftwareKind),
+                    State = StoredOptimizationWireValues.ReadProtectionState(item.State)
+                }));
             }
             catch (FileNotFoundException)
             {

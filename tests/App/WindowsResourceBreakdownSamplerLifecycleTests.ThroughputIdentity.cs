@@ -40,7 +40,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             {
                 [process.Id] = new(process.Id, 1000, 0, 1, 0)
                     { ProcessStartKey = (ulong)process.StartTime.ToFileTimeUtc() + (staleDisk ? 1UL : 0) }
-            }, new("etw-fileio-disk", "Running", "fixture"));
+            }, new("etw-fileio-disk", PhysicalDiskIoProviderStates.Running, "fixture"));
         }
         NetworkAttributionSnapshot INetworkAttributionReader.Read(NetworkAttributionReadRequest request)
         {
@@ -49,7 +49,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             {
                 [process.Id] = new(process.Id, 2000, 0, 0, 0, false)
                     { ProcessStartKey = (ulong)process.StartTime.ToFileTimeUtc() + (staleNetwork ? 1UL : 0) }
-            }, new("etw-network-tcpip", "Running", "fixture"));
+            }, new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture"));
         }
     }
 }

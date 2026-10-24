@@ -5,6 +5,12 @@ using ResourceManager.ReadWrite.Windows.Devices.Models;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
+public static class CpuFrequencySourceStates
+{
+    public const string Frozen = "frozen";
+    public const string Unavailable = "unavailable";
+}
+
 public sealed record StorageSensorSnapshot(HardwareSensorProviderState ProviderState, IReadOnlyList<DiskTemperatureSensor> Disks)
 {
     public IReadOnlyList<NativeMetricSnapshotOrdinalCatalogIdentity>? Identities { get; init; }

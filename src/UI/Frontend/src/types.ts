@@ -27,8 +27,8 @@ export interface BackendStartupCapabilities {
   optimizationRuntime: boolean;
   sharedResourceOwnership: boolean;
 }
-export type ManagementRole = "Dependency" | "Support";
-export type ManagementKind = ManagementRole | "adapted" | "controlled" | "Unconfirmed" | "Unclassified" | "game" | "high_performance" | "other";
+export type ManagementRole = "dependency" | "support";
+export type ManagementKind = "Dependency" | "Support" | "adapted" | "controlled" | "Unconfirmed" | "Unclassified" | "game" | "high_performance" | "other";
 export type ManualSoftwareKind = "adapted" | "game" | "high_performance" | "other";
 export type ResourceScaleMode = "capacity" | "active";
 export type ResourceTableViewMode = "software" | "process" | "performance";
@@ -705,8 +705,8 @@ export interface SoftwareIssueTag {
   evidence?: SoftwareIssueEvidence[];
   id: string;
   kind: string;
-  severity: "Info" | "Warning" | "Critical" | string;
-  source: "StaticCatalog" | "DynamicReport" | string;
+  severity: "info" | "warning" | "critical" | string;
+  source: "runtime_attribution" | "static_catalog" | "dynamic_report" | string;
   label: string;
   message: string;
   dynamic: boolean;
@@ -714,9 +714,9 @@ export interface SoftwareIssueTag {
   reportIds: string[];
 }
 
-export type GpuPlacementTarget = "SystemDefaultGpu" | "AutoIdleGpu" | "IntegratedGpu" | "HighPerformanceGpu" | string;
-export type GpuPlacementRuntimeSwitchMethod = "FutureFrameTakeover" | "WindowRerender";
-export type CpuMaximumOccupancyMode = "SingleCcd" | "AllCores";
+export type GpuPlacementTarget = "system_default_gpu" | "auto_idle_gpu" | "integrated_gpu" | "high_performance_gpu" | string;
+export type GpuPlacementRuntimeSwitchMethod = "future_frame_takeover" | "window_rerender";
+export type CpuMaximumOccupancyMode = "single_ccd" | "all_cores";
 
 export interface GpuPlacementSoftwarePolicy {
   softwareId: string;
@@ -1275,7 +1275,7 @@ export interface CpuTopologySnapshot {
   topologySource: string;
   usageSource: string;
   affinityTargetKind: string;
-  visualLayoutKind: "RingBus" | "CcdGrid" | "Grid" | string;
+  visualLayoutKind: "ring_bus" | "ccd_grid" | "grid" | string;
   visualLayoutSource: string;
   physicalCoreCount: number;
   logicalProcessorCount: number;
@@ -1631,7 +1631,7 @@ export interface OptimizationReportAction {
 }
 
 export interface OptimizationActivityContext {
-  contextKind: "Unknown" | "Normal" | "Game" | "HighPerformance" | string;
+  contextKind: "unknown" | "normal" | "game" | "high_performance" | string;
   foregroundProcessId?: number | null;
   foregroundProcessName?: string | null;
   foregroundExecutablePath?: string | null;
@@ -1645,8 +1645,8 @@ export interface OptimizationReportItem {
   id: string;
   type: string;
   state: string;
-  severity: "Info" | "Warning" | "Critical" | string;
-  confidence: string;
+  severity: "info" | "warning" | "critical" | string;
+  confidence: "low" | "medium" | "high" | string;
   createdAt?: string;
   updatedAt?: string;
   firstObservedAt?: string;

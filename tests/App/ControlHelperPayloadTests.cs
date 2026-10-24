@@ -8,6 +8,7 @@ using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Software;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Infrastructure.Dependencies;
@@ -173,7 +174,8 @@ public sealed partial class ControlHelperPayloadTests
     }
     private sealed class ProviderProbe : IProviderRuntimeProbe
     {
-        public ComponentProviderRuntimeProbeResult Probe(string id) => new(false, false, "Missing", "fake unavailable", null);
+        public ComponentProviderRuntimeProbeResult Probe(string id)
+            => new(false, false, ComponentProviderStates.Missing, "fake unavailable", null);
     }
     private sealed class Sampler : IMetricSampler
     {

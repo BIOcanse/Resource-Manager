@@ -42,11 +42,11 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private long nextLeaseId;
     private long sessionStartedTick = long.MinValue;
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
-    private volatile string state = "Idle";
+    private volatile string state = SystemInterruptProviderStates.Idle;
     private volatile string message = "ETW 系统中断监控按报告需求启动。";
     private SystemInterruptSnapshot latestSnapshot =
         SystemInterruptSnapshot.Unavailable(
-            "Idle",
+            SystemInterruptProviderStates.Idle,
             "ETW 系统中断监控按报告需求启动。");
 
     private static NativeItemSamplingSubscriptionTracker<InterruptSampleRequest> CreateSubscriptions(
@@ -113,7 +113,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
         {
             StopSession(
                 "ETW 系统中断监控已按功能区冻结停止。",
-                "Frozen");
+                SystemInterruptProviderStates.Frozen);
         }
         else
         {
@@ -235,7 +235,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             }
             catch (Exception ex)
             {
-                state = "Unavailable";
+                state = SystemInterruptProviderStates.Unavailable;
                 message = $"ETW 系统中断监控启动失败：{ex.Message}";
                 PublishUnavailable(state, message);
                 logger.LogWarning(ex, "Failed to start ETW system interrupt source.");
@@ -258,7 +258,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             sessionStartedTick = readTickMilliseconds();
             observedBrokerLoss = 0;
             Volatile.Write(ref sessionGeneration, context.Generation);
-            state = "Running";
+            state = SystemInterruptProviderStates.Running;
             message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
             PublishCurrentWindow(readUtcNow());
         }
@@ -299,7 +299,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
             lock (eventGate)
             {
                 if (snapshot.Generation != Volatile.Read(ref sessionGeneration)) return;
-                state = "Running";
+                state = SystemInterruptProviderStates.Running;
                 message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
                 if (snapshot.EventsLost == observedBrokerLoss) return;
                 // A missed unload invalidates address ownership as well as totals.
@@ -312,7 +312,17 @@ public sealed class EtwSystemInterruptSnapshotSource(
             return;
         }
 
-        state = snapshot.State;
+        state = snapshot.State switch
+        {
+            "Running" => SystemInterruptProviderStates.Running,
+            "Idle" => SystemInterruptProviderStates.Idle,
+            "Starting" => SystemInterruptProviderStates.Starting,
+            "Stopped" => SystemInterruptProviderStates.Stopped,
+            "StopFailed" => SystemInterruptProviderStates.StopFailed,
+            "Available" => SystemInterruptProviderStates.Available,
+            "Unavailable" => SystemInterruptProviderStates.Unavailable,
+            _ => throw new InvalidDataException($"Unknown kernel ETW state '{snapshot.State}'.")
+        };
         message = snapshot.Message;
         PublishUnavailable(state, message);
     }
@@ -421,7 +431,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
         }
     }
 
-    private void StopSession(string idleMessage, string idleState = "Idle", bool publishStoppedValue = true)
+    private void StopSession(string idleMessage, string idleState = SystemInterruptProviderStates.Idle, bool publishStoppedValue = true)
     {
         IKernelEtwSubscription? subscriptionToRelease;
         SystemInterruptWindowAggregator aggregatorToReset;

@@ -348,7 +348,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
                 100,
                 "test",
                 new CpuSensorMetrics(
-                    new HardwareSensorProviderState("test", "Unavailable", null),
+                    new HardwareSensorProviderState("test", HardwareSensorProviderStates.Unavailable, null),
                     null,
                     null,
                     null,

@@ -107,7 +107,7 @@ public sealed class HardwareControlBehaviorTests
         await plane.SetObjectSettingsAsync("device", [new("edited", Number: 42)], default);
         catalog.PublishCatalogProbe(new HardwareMetricSnapshot(DateTimeOffset.UtcNow,
             new CpuMetrics("CPU", 25, true, CpuMetricObservationStatus.Complete, 1, 1, 3000, 5000, 60, "fixture",
-                new CpuSensorMetrics(new HardwareSensorProviderState("fixture", "Unavailable", null), null, null, null, null)),
+                new CpuSensorMetrics(new HardwareSensorProviderState("fixture", HardwareSensorProviderStates.Unavailable, null), null, null, null, null)),
             new MemoryMetrics(8, 32, 25, true, "fixture"), new VirtualMemoryMetrics(0, 0, 0, "fixture", false),
             [], null!, new Dictionary<string, MetricValue>()) { CatalogGeneration = 1 });
         await startup;

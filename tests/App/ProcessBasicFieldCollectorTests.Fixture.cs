@@ -17,7 +17,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
     internal static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
     internal static readonly ulong Birth = ulong.Parse(NetworkTests.Birth, CultureInfo.InvariantCulture);
     internal static ResourceBreakdownSampleRequest Request(params string[] names) => new(names.Length == 0 ? Names : names, new Dictionary<string, string>(), ProcessSampleDetailLevel.SmartSchedulingLite);
-    internal static NetworkAttributionSnapshot Network(DateTimeOffset captured) => new(captured, new Dictionary<int, NetworkProcessAttribution>(), new("etw-network-tcpip", "Running", "fixture"))
+    internal static NetworkAttributionSnapshot Network(DateTimeOffset captured) => new(captured, new Dictionary<int, NetworkProcessAttribution>(), new("etw-network-tcpip", NetworkAttributionProviderStates.Running, "fixture"))
     { ObservedTraffic = new(captured, 2000, [new(Environment.ProcessId, Birth.ToString(CultureInfo.InvariantCulture), "9007199254740993", "7", 0, 0)]) };
     internal static NetworkTests.Fixture Fixture(Api api, NetworkTests.NetworkReader? network = null, Func<Process[]>? inventory = null, TimeProvider? clock = null)
         => new(network ?? new NetworkTests.NetworkReader(_ => throw new InvalidOperationException("unexpected network source")), inventory, new WindowsProcessBasicMetricReader(api, clock));

@@ -1,4 +1,6 @@
 using System.Text;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text.Json;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -9,6 +11,80 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerRollbackStateAuthorityTests
 {
     private static readonly TimeSpan CheckpointInterval = TimeSpan.FromMinutes(1);
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
+    [Theory]
+    [InlineData("AdapterPolicy", HostManagerAppliedRecordKinds.AdapterPolicy)]
+    [InlineData("GpuPreference", HostManagerAppliedRecordKinds.GpuPreference)]
+    [InlineData("GpuShimPolicy", HostManagerAppliedRecordKinds.GpuShimPolicy)]
+    [InlineData("GpuRuntimeRebuildTrigger", HostManagerAppliedRecordKinds.GpuRuntimeRebuildTrigger)]
+    [InlineData("GpuRemoteCall", HostManagerAppliedRecordKinds.GpuRemoteCall)]
+    [InlineData("CpuAffinity", HostManagerAppliedRecordKinds.CpuAffinity)]
+    [InlineData("CpuThreadCpuSets", HostManagerAppliedRecordKinds.CpuThreadCpuSets)]
+    [InlineData("CpuThreadIdealProcessor", HostManagerAppliedRecordKinds.CpuThreadIdealProcessor)]
+    [InlineData("ProcessPriority", HostManagerAppliedRecordKinds.ProcessPriority)]
+    [InlineData("ProcessMemoryPriority", HostManagerAppliedRecordKinds.ProcessMemoryPriority)]
+    [InlineData("A1", HostManagerAppliedRecordKinds.A1)]
+    [InlineData("Level1", HostManagerAppliedRecordKinds.Level1)]
+    [InlineData("Level2", HostManagerAppliedRecordKinds.Level2)]
+    [InlineData("Level3", HostManagerAppliedRecordKinds.Level3)]
+    [InlineData("Level4", HostManagerAppliedRecordKinds.Level4)]
+    [InlineData("CPU_AFFINITY", HostManagerAppliedRecordKinds.CpuAffinity)]
+    public void StoredRecordKindReaderMapsPreviousSpellings(string stored, string expected)
+        => Assert.Equal(expected, HostManagerAppliedRecordKinds.ReadStored(stored));
+
+    [Fact]
+    public void StoredRecordKindReaderRejectsUnknownValues()
+        => Assert.Throws<InvalidDataException>(() => HostManagerAppliedRecordKinds.ReadStored("future_kind"));
+
+    [Fact]
+    public void RollbackNormalizationDoesNotMapStoredKindsOutsideReadPath()
+    {
+        var document = HostManagerRollbackStateDocument.Empty with
+        {
+            AppliedPlacements =
+            [
+                new HostManagerAppliedPlacementReceipt(
+                    "target",
+                    "Target",
+                    "software",
+                    "gpu",
+                    [new HostManagerAppliedRecord("CpuAffinity", "record")],
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch)
+            ]
+        };
+
+        var normalized = JsonHostManagerRollbackStateStore.NormalizeDocument(document);
+        var stored = JsonHostManagerRollbackStateStore.ReadStoredDocument(document);
+
+        Assert.Equal("CpuAffinity", Assert.Single(Assert.Single(normalized.AppliedPlacements).Records).Kind);
+        Assert.Equal(HostManagerAppliedRecordKinds.CpuAffinity,
+            Assert.Single(Assert.Single(stored.AppliedPlacements).Records).Kind);
+    }
+
+    [Theory]
+    [InlineData("CpuAffinity")]
+    [InlineData("CPU_AFFINITY")]
+    [InlineData("cpu_affinity")]
+    public void EnvelopeDecodeMapsStoredRecordKindsAfterVerifyingOriginalPayload(string storedKind)
+    {
+        var image = CreateEnvelopeWithRecordKind(storedKind);
+
+        var decoded = HostManagerRollbackStateEnvelopeCodec.Decode(image);
+
+        var record = Assert.Single(Assert.Single(decoded.State.AppliedPlacements).Records);
+        Assert.Equal(HostManagerAppliedRecordKinds.CpuAffinity, record.Kind);
+        Assert.Equal(image, decoded.CanonicalImage);
+    }
+
+    [Fact]
+    public void EnvelopeDecodeRejectsUnknownStoredRecordKind()
+    {
+        var image = CreateEnvelopeWithRecordKind("future_kind");
+
+        Assert.Throws<InvalidDataException>(() => HostManagerRollbackStateEnvelopeCodec.Decode(image));
+    }
 
     [Fact]
     public async Task OwnerLeaseRejectsConcurrentAuthorityAndCanBeReacquired()
@@ -534,6 +610,49 @@ public sealed class HostManagerRollbackStateAuthorityTests
         characters[checksumOffset] = characters[checksumOffset] == '0' ? '1' : '0';
         return Encoding.UTF8.GetBytes(characters);
     }
+
+    private static byte[] CreateEnvelopeWithRecordKind(string kind)
+    {
+        const ulong revision = 1;
+        var state = HostManagerRollbackStateDocument.Empty with
+        {
+            AppliedPlacements =
+            [
+                new HostManagerAppliedPlacementReceipt(
+                    "target",
+                    "Target",
+                    "software",
+                    "gpu",
+                    [new HostManagerAppliedRecord(kind, "record")],
+                    DateTimeOffset.UnixEpoch,
+                    DateTimeOffset.UnixEpoch)
+            ]
+        };
+        var stateImage = JsonSerializer.SerializeToUtf8Bytes(state, WebJson);
+        Span<byte> header = stackalloc byte[sizeof(uint) + sizeof(ulong) + sizeof(int)];
+        BinaryPrimitives.WriteUInt32LittleEndian(header, HostManagerRollbackStateEnvelopeCodec.SchemaVersion);
+        BinaryPrimitives.WriteUInt64LittleEndian(header[sizeof(uint)..], revision);
+        BinaryPrimitives.WriteInt32LittleEndian(header[(sizeof(uint) + sizeof(ulong))..], stateImage.Length);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(header);
+        hash.AppendData(stateImage);
+        var envelope = new TestEnvelope(
+            HostManagerRollbackStateEnvelopeCodec.Magic,
+            HostManagerRollbackStateEnvelopeCodec.SchemaVersion,
+            revision,
+            stateImage.Length,
+            state,
+            Convert.ToHexString(hash.GetHashAndReset()));
+        return JsonSerializer.SerializeToUtf8Bytes(envelope, WebJson);
+    }
+
+    private sealed record TestEnvelope(
+        string Magic,
+        uint SchemaVersion,
+        ulong Revision,
+        int PayloadLength,
+        HostManagerRollbackStateDocument State,
+        string ChecksumSha256);
 
     private static byte[] CorruptPayloadLength(byte[] image)
     {

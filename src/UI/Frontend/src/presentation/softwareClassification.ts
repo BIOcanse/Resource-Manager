@@ -3,26 +3,26 @@ import { formatBytes } from "./byteUnits.ts";
 import { uiText } from "../text.ts";
 
 export function isUnclassifiedSoftware(software: SoftwareRecord) {
-  return software.issues?.some((issue) => issue.kind === "Unclassified") === true;
+  return software.issues?.some((issue) => issue.kind === "unclassified") === true;
 }
 
 export function softwareIssueLabel(issue: SoftwareIssueTag) {
-  if (issue.kind === "Unclassified") return uiText.softwareKind.Unclassified;
+  if (issue.kind === "unclassified") return uiText.softwareKind.Unclassified;
   const text = uiText.management.issueText;
   switch (issue.kind) {
-    case "AbnormalMemoryUsage": return text.AbnormalMemoryUsage;
-    case "LongSystemInterrupts": return text.LongSystemInterrupts;
-    case "ExcessiveSystemInterrupts": return text.ExcessiveSystemInterrupts;
-    case "KnownSecurityVulnerability": return text.KnownSecurityVulnerability;
-    case "DependencyIssue": return text.DependencyIssue;
-    case "CompatibilityIssue": return text.CompatibilityIssue;
-    case "KnownMalware": return text.KnownMalware;
+    case "abnormal_memory_usage": return text.abnormal_memory_usage;
+    case "long_system_interrupts": return text.long_system_interrupts;
+    case "excessive_system_interrupts": return text.excessive_system_interrupts;
+    case "known_security_vulnerability": return text.known_security_vulnerability;
+    case "dependency_issue": return text.dependency_issue;
+    case "compatibility_issue": return text.compatibility_issue;
+    case "known_malware": return text.known_malware;
     default: return uiText.management.issueHeading;
   }
 }
 
 export function softwareIssueMessage(issue: SoftwareIssueTag) {
-  if (issue.kind === "Unclassified") return uiText.management.unclassifiedReminder;
+  if (issue.kind === "unclassified") return uiText.management.unclassifiedReminder;
   const text = uiText.management.issueText;
   if (issue.id === "app-notebook-fan-control-winring0x64-known-vulnerabilities") return text.winringMessage;
   const evidence = (issue.evidence ?? []).filter(item => Number.isFinite(item.value)).map(item => {
@@ -31,8 +31,8 @@ export function softwareIssueMessage(issue: SoftwareIssueTag) {
       : `${Number(item.value.toFixed(3))} ${item.valueUnit}`;
     return `${item.moduleName ? `${item.moduleName}: ` : ""}${value}`;
   }).join(" · ");
-  const advice = issue.kind === "AbnormalMemoryUsage" ? text.memoryAdvice
-    : issue.kind === "LongSystemInterrupts" || issue.kind === "ExcessiveSystemInterrupts" ? text.interruptAdvice : "";
+  const advice = issue.kind === "abnormal_memory_usage" ? text.memoryAdvice
+    : issue.kind === "long_system_interrupts" || issue.kind === "excessive_system_interrupts" ? text.interruptAdvice : "";
   return [evidence, advice].filter(Boolean).join(". ");
 }
 

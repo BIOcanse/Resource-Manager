@@ -187,10 +187,10 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   let trusted = true;
   let deleteCount = 0;
   const overview = await (await fetch(`${baseUrl}/api/optimization/reports`)).json();
-  const identity = { id: "hm-trust-editor", targetType: "Software", targetKey: "software:editor",
-    displayName: "Editor", reportType: "background-memory", resourceKind: "Memory",
+  const identity = { id: "hm-trust-editor", targetType: "software", targetKey: "software:editor",
+    displayName: "Editor", reportType: "background_high_usage", resourceKind: "memory",
     trustedAt: overview.capturedAt, trustedReason: "", createdFromReportId: "former-report",
-    lastVerifiedAt: overview.capturedAt, state: "Active" };
+    lastVerifiedAt: overview.capturedAt, state: "active" };
   const fulfillOverview = route => route.fulfill({ json: { ...overview, reports: [],
     trustedTargets: trusted ? [identity] : [], status: { ...overview.status, trustedCount: trusted ? 1 : 0 } } });
   await page.route("**/api/optimization/reports", fulfillOverview);
@@ -211,18 +211,18 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   const strayTarget = { targetType: "process_instance", targetKey: "process:424242:134000000000000000", displayName: "pwsh",
     softwareId: "tool", softwareName: "PowerShell", softwareKind: "other", displayKind: "other", processNames: ["pwsh"], processIds: [424242], driveLetter: null };
   const strayTrust = { ...identity, id: "hm-trust-stray", ...strayTarget, reportType: "suspected_stray_process", createdFromReportId: "stray-report" };
-  const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "Active", severity: "Info", confidence: "High",
+  const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "active", severity: "info", confidence: "high",
     createdAt: overview.capturedAt, updatedAt: overview.capturedAt, firstObservedAt: overview.capturedAt, lastObservedAt: overview.capturedAt,
     title: "BACKEND_PROSE", message: "BACKEND_PROSE", target: strayTarget, suggestedActions: [],
-    context: { contextKind: "Normal", foregroundProcessId: null, foregroundProcessName: null, foregroundExecutablePath: null,
-      foregroundSoftwareId: null, foregroundSoftwareName: null, confidence: "High", evidence: [] },
-    evidence: { resourceKind: "Memory", averageValue: 52428800, peakValue: 52428800, currentValue: 52428800, valueUnit: "B",
+    context: { contextKind: "normal", foregroundProcessId: null, foregroundProcessName: null, foregroundExecutablePath: null,
+      foregroundSoftwareId: null, foregroundSoftwareName: null, confidence: "high", evidence: [] },
+    evidence: { resourceKind: "memory", averageValue: 52428800, peakValue: 52428800, currentValue: 52428800, valueUnit: "B",
       activeSampleCount: 1, sampleCount: 2, durationSeconds: 0, details: [],
       process: { processId: 424242, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
         idleDurationSeconds: 900, commandLine: 'pwsh -File "stray-check.ps1"' } } };
   let strayEvaluationFailed = false;
   const fulfillStray = route => route.fulfill({ json: { ...overview,
-    reports: [{ ...strayReport, state: strayTrusted ? "TrustedSuppressed" : "Active" }], trustedTargets: strayTrusted ? [strayTrust] : [],
+    reports: [{ ...strayReport, state: strayTrusted ? "trusted_suppressed" : "active" }], trustedTargets: strayTrusted ? [strayTrust] : [],
     status: { ...overview.status, activeReportCount: 1, trustedCount: strayTrusted ? 1 : 0,
       evaluationState: strayEvaluationFailed ? "failed" : "completed",
       evaluationFailureReason: strayEvaluationFailed ? "IOException: fixture failure" : null } } });

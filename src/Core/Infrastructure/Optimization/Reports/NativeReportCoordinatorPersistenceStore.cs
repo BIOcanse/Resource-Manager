@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
+using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Persistence;
 
@@ -110,7 +111,8 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
             var process = reader.IsDBNull(5) ? null : System.Text.Json.JsonSerializer.Deserialize<ResourceManager.App.Domain.Optimization.OptimizationProcessEvidence>(reader.GetString(5))
                 ?? throw new InvalidDataException("Persisted process report evidence is null.");
             targets.Add(new HostManagerReportTargetDescriptor(unchecked((ulong)reader.GetInt64(0)),
-                reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                reader.GetString(1), reader.GetString(2), SoftwareKinds.ReadStored(reader.GetString(3)),
+                StoredOptimizationWireValues.ReadSoftwareDisplayKind(reader.GetString(4)),
                 process is null ? [] : [process.Name], process is null ? [] : [process.ProcessId], process));
         }
         return targets.ToArray();

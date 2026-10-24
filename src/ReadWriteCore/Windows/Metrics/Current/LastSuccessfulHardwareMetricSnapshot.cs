@@ -489,7 +489,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 new CpuSensorMetrics(
                     new HardwareSensorProviderState(
                         providerName,
-                        "Unavailable",
+                        HardwareSensorProviderStates.Unavailable,
                         failureCode),
                     null,
                     null,
@@ -698,7 +698,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         var sensors = new CpuSensorMetrics(
             new HardwareSensorProviderState(
                 providerName,
-                "Unavailable",
+                HardwareSensorProviderStates.Unavailable,
                 null),
             CpuSensor(datasets, "cpu.packagePower", static value => value.PackagePowerWatts),
             CpuSensor(datasets, "cpu.coreVoltage", static value => value.CoreVoltageVolts),
@@ -806,7 +806,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         => new(
             new HardwareSensorProviderState(
                 providerName,
-                "Unavailable",
+                HardwareSensorProviderStates.Unavailable,
                 null),
             GpuSensor(datasets, index, "power", static value => value.PowerWatts),
             GpuSensor(datasets, index, "powerLimit", static value => value.PowerLimitWatts),

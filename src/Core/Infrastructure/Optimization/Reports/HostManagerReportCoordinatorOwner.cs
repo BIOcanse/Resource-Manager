@@ -543,7 +543,7 @@ internal sealed record HostManagerReportReadModel(
             10),
         [],
         SystemInterruptSnapshot.Unavailable(
-            "NotStarted",
+            SystemInterruptProviderStates.NotStarted,
             "System interrupt sampling has not published a snapshot."),
         ImmutableDictionary<string, OptimizationReportItem>.Empty
             .WithComparers(StringComparer.OrdinalIgnoreCase),

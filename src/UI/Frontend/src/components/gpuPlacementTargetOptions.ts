@@ -11,9 +11,9 @@ export function canConfigureRuntimePlacement(state: string | null | undefined): 
 // 文案按当前语言求值，不能在模块顶层固化。
 function ordinarySystemTargetGpuOptions(): readonly GpuPolicySelectOption[] {
   return [
-    ["SystemDefaultGpu", uiText.gpuTarget.systemDefault],
-    ["HighPerformanceGpu", uiText.gpuTarget.highPerformance],
-    ["IntegratedGpu", uiText.gpuTarget.integrated]
+    ["system_default_gpu", uiText.gpuTarget.systemDefault],
+    ["high_performance_gpu", uiText.gpuTarget.highPerformance],
+    ["integrated_gpu", uiText.gpuTarget.integrated]
   ] as const;
 }
 
@@ -45,23 +45,23 @@ export function startupTargetGpuOptionsForSoftwarePolicy(
 }
 
 export function isOrdinarySystemGpuTarget(target: string) {
-  return target === "SystemDefaultGpu" || target === "IntegratedGpu" || target === "HighPerformanceGpu";
+  return target === "system_default_gpu" || target === "integrated_gpu" || target === "high_performance_gpu";
 }
 
 export function isUnavailableStartupGpuTarget(target: string | undefined | null) {
-  return target === "AutoIdleGpu";
+  return target === "auto_idle_gpu";
 }
 
 export function toOrdinarySystemGpuTarget(target: string | undefined | null) {
-  return target === "IntegratedGpu" || target === "HighPerformanceGpu"
+  return target === "integrated_gpu" || target === "high_performance_gpu"
     ? target
-    : "SystemDefaultGpu";
+    : "system_default_gpu";
 }
 
 function formatGpuTarget(target: string) {
-  return target === "AutoIdleGpu"
+  return target === "auto_idle_gpu"
     ? uiText.gpuTarget.autoIdle
-    : target || uiText.gpuTarget.specificGpu;
+    : /^gpu\d+$/.test(target) ? target.toLocaleUpperCase() : target || uiText.gpuTarget.specificGpu;
 }
 
 function mapExactTargets(
@@ -78,7 +78,7 @@ function preserveUnavailableCurrentTarget(
   currentTarget: string,
   reason: string): readonly GpuPolicySelectOption[] {
   if (!isExactGpuTarget(currentTarget)
-      || options.some(([value]) => value.toLowerCase() === currentTarget.toLowerCase())) {
+      || options.some(([value]) => value === currentTarget)) {
     return options;
   }
 
@@ -86,5 +86,5 @@ function preserveUnavailableCurrentTarget(
 }
 
 function isExactGpuTarget(target: string) {
-  return /^GPU\d+$/i.test(target);
+  return /^gpu\d+$/.test(target);
 }

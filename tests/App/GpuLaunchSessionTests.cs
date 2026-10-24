@@ -189,7 +189,7 @@ public sealed partial class GpuLaunchSessionTests
             if (FailFirstResolve && ResolveCalls == 1) throw new System.Text.Json.JsonException("Corrupt startup policy fixture.");
             return Task.FromResult(new GpuStartupPlacementDecision(GpuStartupPlacementDecisionKinds.PassThrough,
                 "probe-resolved", "owned resolver", request.ExecutablePath, "fixture-software", "fixture-process",
-                "IntegratedGpu", null, null, null, null, []));
+                GpuPlacementTargets.IntegratedGpu, null, null, null, null, []));
         }
         public Task<GpuLaunchExecutionReport> RecordAsync(GpuLaunchExecutionReport report, CancellationToken cancellationToken)
         { ReportCalls++; Report = report; return Task.FromResult(report); }

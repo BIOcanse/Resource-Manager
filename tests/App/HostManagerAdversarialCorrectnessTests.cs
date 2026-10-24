@@ -1354,7 +1354,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
                 generation),
             StringComparer.OrdinalIgnoreCase);
         var gpuSensors = new GpuSensorMetrics(
-            new HardwareSensorProviderState("test", "Active", null),
+            new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, null),
             null,
             null,
             null,
@@ -1404,7 +1404,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
                 generation,
                 capturedAt.UtcTicks)]);
         var cpuSensors = new CpuSensorMetrics(
-            new HardwareSensorProviderState("test", "Active", null),
+            new HardwareSensorProviderState("test", HardwareSensorProviderStates.Active, null),
             null,
             null,
             null,

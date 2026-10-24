@@ -16,7 +16,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         {
             logger?.LogError(error, "Network process attribution sampling failed.");
             return new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
-                new("network-attribution", "Failed", "The network process source is unavailable."));
+                new("network-attribution", NetworkAttributionProviderStates.Failed, "The network process source is unavailable."));
         }
     }
 

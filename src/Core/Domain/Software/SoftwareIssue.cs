@@ -2,14 +2,14 @@ namespace ResourceManager.App.Domain.Software;
 
 public static class SoftwareIssueKinds
 {
-    public const string Unclassified = "Unclassified";
-    public const string KnownSecurityVulnerability = "KnownSecurityVulnerability";
-    public const string DependencyIssue = "DependencyIssue";
-    public const string CompatibilityIssue = "CompatibilityIssue";
-    public const string KnownMalware = "KnownMalware";
-    public const string AbnormalMemoryUsage = "AbnormalMemoryUsage";
-    public const string ExcessiveSystemInterrupts = "ExcessiveSystemInterrupts";
-    public const string LongSystemInterrupts = "LongSystemInterrupts";
+    public const string Unclassified = "unclassified";
+    public const string KnownSecurityVulnerability = "known_security_vulnerability";
+    public const string DependencyIssue = "dependency_issue";
+    public const string CompatibilityIssue = "compatibility_issue";
+    public const string KnownMalware = "known_malware";
+    public const string AbnormalMemoryUsage = "abnormal_memory_usage";
+    public const string ExcessiveSystemInterrupts = "excessive_system_interrupts";
+    public const string LongSystemInterrupts = "long_system_interrupts";
 
     public static bool IsKnown(string value)
         => value is Unclassified or KnownSecurityVulnerability
@@ -28,16 +28,16 @@ public static class SoftwareIssueKinds
 
 public static class SoftwareIssueSources
 {
-    public const string RuntimeAttribution = "RuntimeAttribution";
-    public const string StaticCatalog = "StaticCatalog";
-    public const string DynamicReport = "DynamicReport";
+    public const string RuntimeAttribution = "runtime_attribution";
+    public const string StaticCatalog = "static_catalog";
+    public const string DynamicReport = "dynamic_report";
 }
 
 public static class SoftwareIssueSeverities
 {
-    public const string Info = "Info";
-    public const string Warning = "Warning";
-    public const string Critical = "Critical";
+    public const string Info = "info";
+    public const string Warning = "warning";
+    public const string Critical = "critical";
 
     public static bool IsKnown(string value)
         => value is Info or Warning or Critical;
@@ -62,6 +62,14 @@ public sealed record SoftwareIssueTag(
 }
 
 public sealed record SoftwareIssueEvidence(string MetricKind, double Value, string ValueUnit, string? ModuleName = null);
+
+public static class SoftwareIssueMetricKinds
+{
+    public const string Memory = "memory";
+    public const string InterruptMaximumSingleDurationMilliseconds = "interrupt_maximum_single_duration_milliseconds";
+    public const string InterruptEventsAtOrAboveOneMillisecond = "interrupt_events_at_or_above_one_millisecond";
+    public const string InterruptCpuCapacityPercent = "interrupt_cpu_capacity_percent";
+}
 
 public sealed record SoftwareIssueCatalogDocument(
     string Version,

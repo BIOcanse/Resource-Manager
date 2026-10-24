@@ -531,7 +531,7 @@ public sealed class MetricDeviceFieldAddressTests
         var now = DateTimeOffset.UtcNow;
         return new HardwareMetricSnapshot(now,
             new("fixture", 0, false, CpuMetricObservationStatus.NotRequested, 0, 0, 0, 0, 0,
-                "fixture", new(new("fixture", "NotRequested", null), null, null, null, null)),
+                "fixture", new(new("fixture", HardwareSensorProviderStates.NotRequested, null), null, null, null, null)),
             new(0, 0, 0, false, "fixture"),
             new(0, 0, 0, "fixture", false), [],
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),

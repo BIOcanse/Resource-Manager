@@ -6,6 +6,7 @@ using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.Overlay;
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -87,7 +88,7 @@ public sealed class GpuLaunchInterceptionTests
                 AllowedProviders = [GpuPlacementProviderIds.VulkanExplicitLayer, GpuPlacementProviderIds.D3dDeviceCreateShim]
             });
         var decision = new GpuStartupPlacementDecision(GpuStartupPlacementDecisionKinds.Inject,
-            "ready", "configured", @"C:\Apps\target.exe", "software", "process", "GPU0", "gpu:0",
+            "ready", "configured", @"C:\Apps\target.exe", "software", "process", "gpu0", "gpu:0",
             @"C:\Package\UserData\GpuPlacement\gpu-policy.txt", "GPU", "0x00000000_0x00000001",
             [GpuPlacementProviderIds.D3dDeviceCreateShim, GpuPlacementProviderIds.VulkanExplicitLayer]);
         Assert.Equal(new[] { GpuPlacementProviderIds.D3dDeviceCreateShim, GpuPlacementProviderIds.VulkanExplicitLayer }, decision.StartupProviders);
@@ -163,7 +164,7 @@ public sealed class GpuLaunchInterceptionTests
             "processId=42",
             "outcome=provider-ready",
             "message=ready",
-            "startupTargetGpu=AutoIdleGpu",
+            "startupTargetGpu=auto_idle_gpu",
             "assignedPositionId=gpu:1",
             "targetAdapterName=Test GPU");
 
@@ -197,6 +198,85 @@ public sealed class GpuLaunchInterceptionTests
             var report = Assert.Single(await reloaded.GetLatestAsync(CancellationToken.None));
             Assert.Equal(GpuLaunchExecutionOutcomes.ProviderReady, report.Outcome);
             Assert.Equal(Path.GetFullPath(path), report.ExecutablePath, ignoreCase: true);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("HighPerformanceGpu")]
+    [InlineData("HIGH_PERFORMANCE_GPU")]
+    public async Task ExecutionReportStoreReadsPriorTargetSpellingAsCurrentWireValue(string storedTarget)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"resource-manager-gpu-report-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "test.exe");
+            var report = Report(path, GpuLaunchExecutionOutcomes.ProviderReady) with
+            {
+                StartupTargetGpu = storedTarget
+            };
+            var storagePath = Path.Combine(root, "UserData", "SoftwareProfiles", "gpu-launch-results.local.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(storagePath)!);
+            await File.WriteAllTextAsync(storagePath, JsonSerializer.Serialize(
+                new GpuLaunchExecutionReportDocument(1, [report], DateTimeOffset.UnixEpoch),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+            var loaded = Assert.Single(await new JsonGpuLaunchExecutionReportStore(
+                new TestHostEnvironment(root)).GetLatestAsync(CancellationToken.None));
+
+            Assert.Equal(GpuPlacementTargets.HighPerformanceGpu, loaded.StartupTargetGpu);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutionReportStoreRejectsUnknownStoredTarget()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"resource-manager-gpu-report-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "test.exe");
+            var report = Report(path, GpuLaunchExecutionOutcomes.ProviderReady) with
+            {
+                StartupTargetGpu = "future_gpu_target"
+            };
+            var storagePath = Path.Combine(root, "UserData", "SoftwareProfiles", "gpu-launch-results.local.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(storagePath)!);
+            await File.WriteAllTextAsync(storagePath, JsonSerializer.Serialize(
+                new GpuLaunchExecutionReportDocument(1, [report], DateTimeOffset.UnixEpoch),
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+            await Assert.ThrowsAsync<InvalidDataException>(() => new JsonGpuLaunchExecutionReportStore(
+                new TestHostEnvironment(root)).GetLatestAsync(CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExecutionReportStoreRejectsLegacyTargetOnWrite()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"resource-manager-gpu-report-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var report = Report(Path.Combine(root, "test.exe"), GpuLaunchExecutionOutcomes.ProviderReady) with
+            {
+                StartupTargetGpu = "HighPerformanceGpu"
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => new JsonGpuLaunchExecutionReportStore(
+                new TestHostEnvironment(root)).RecordAsync(report, CancellationToken.None));
         }
         finally
         {

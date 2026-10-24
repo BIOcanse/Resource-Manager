@@ -63,10 +63,10 @@ public sealed class GpuVendorLibraryIntegrationTests
         var packet = new NativeAdlxGpuMetrics { AvailableFlags = 16, PowerWatts = 0 };
         var raw = AmdAdlxBridgeReader.CreateSensors(packet, "GPU");
         var described = AmdAdlxBridgeReader.CreateSensors(packet, "GPU", GpuProviderMessages.Describe);
-        Assert.Equal("Partial", raw.ProviderState.State);
+        Assert.Equal(HardwareSensorProviderStates.Partial, raw.ProviderState.State);
         Assert.Equal(0, raw.PowerWatts);
         Assert.Null(raw.ProviderState.Message);
-        Assert.Equal(GpuProviderMessages.Describe("AMD ADLX", "Partial"), described.ProviderState.Message);
+        Assert.Equal(GpuProviderMessages.Describe("AMD ADLX", HardwareSensorProviderStates.Partial), described.ProviderState.Message);
         Assert.Equal(raw.PowerWatts, described.PowerWatts);
         Assert.Null(raw.CurrentAmps);
     }

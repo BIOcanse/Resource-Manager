@@ -16,9 +16,9 @@ public sealed partial class ComponentManager
         var dependencyStatus = dependencyStatuses.FirstOrDefault(item =>
             item.Definition.Id.Equals(definition.Id, StringComparison.OrdinalIgnoreCase));
         var providerStatus = BuildProviderStatus(definition, snapshot, dependencyStatus);
-        var providerActive = providerStatus.Any(static provider => provider.State == "Active");
+        var providerActive = providerStatus.Any(static provider => provider.State == ComponentProviderStates.Active);
         var providerRuntimeAvailable = providerStatus.Any(static provider =>
-            provider.State is "RuntimeAvailable" or "InstalledUnverified");
+            provider.State is ComponentProviderStates.RuntimeAvailable or ComponentProviderStates.InstalledUnverified);
 
         if (IsBundledComponent(definition))
         {
@@ -40,10 +40,10 @@ public sealed partial class ComponentManager
         }
 
         var state = providerActive
-            ? "Active"
+            ? ComponentStatusStates.Active
             : providerRuntimeAvailable
-                ? "InstalledUnverified"
-                : "ProviderMissing";
+                ? ComponentStatusStates.InstalledUnverified
+                : ComponentStatusStates.ProviderMissing;
         return new ComponentStatus(
             definition,
             state,
@@ -74,10 +74,10 @@ public sealed partial class ComponentManager
         bool providerRuntimeAvailable)
     {
         var state = providerActive
-            ? "Active"
+            ? ComponentStatusStates.Active
             : providerRuntimeAvailable
-                ? "InstalledUnverified"
-                : "Installed";
+                ? ComponentStatusStates.InstalledUnverified
+                : ComponentStatusStates.Installed;
         var providerMessage = providerStatus.FirstOrDefault()?.Message;
 
         return new ComponentStatus(
@@ -109,15 +109,15 @@ public sealed partial class ComponentManager
         bool providerRuntimeAvailable)
     {
         var state = providerActive
-            ? "Active"
+            ? ComponentStatusStates.Active
             : providerRuntimeAvailable
-                ? "InstalledUnverified"
+                ? ComponentStatusStates.InstalledUnverified
                 : dependencyStatus.State switch
                 {
-                    "installed" => "Installed",
-                    "readyToInstall" => "ReadyToInstall",
-                    "downloadable" => "Available",
-                    "manualDownloadRequired" => "ManualDownloadRequired",
+                    "installed" => ComponentStatusStates.Installed,
+                    "readyToInstall" => ComponentStatusStates.ReadyToInstall,
+                    "downloadable" => ComponentStatusStates.Available,
+                    "manualDownloadRequired" => ComponentStatusStates.ManualDownloadRequired,
                     _ => dependencyStatus.State
                 };
         var message = providerActive
@@ -128,7 +128,7 @@ public sealed partial class ComponentManager
                 ? BackendMessage.Create(
                     BackendMessageDomains.Dependency,
                     BackendMessageCodes.Dependency.ProviderRuntimeUnverified)
-                : state == "InstalledUnverified"
+                : state == ComponentStatusStates.InstalledUnverified
                     ? BackendMessage.Create(
                         BackendMessageDomains.Dependency,
                         BackendMessageCodes.Dependency.ComponentFilesUnverified)

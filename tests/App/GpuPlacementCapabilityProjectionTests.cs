@@ -33,24 +33,24 @@ public sealed class GpuPlacementCapabilityProjectionTests
             inventory,
             new Dictionary<string, MetricValue>());
 
-        var result = GpuPlacementTargetInventoryProjection.Create(snapshot, ["GPU2", "GPU3"]);
+        var result = GpuPlacementTargetInventoryProjection.Create(snapshot, ["gpu2", "gpu3"]);
 
         Assert.Equal(GpuPlacementTargetInventoryStates.Current, result.State);
         Assert.Collection(
             result.ExactTargets,
-            option => Assert.Equal(("GPU0", true), (option.TargetGpu, option.Available)),
-            option => Assert.Equal(("GPU2", true), (option.TargetGpu, option.Available)),
-            option => Assert.Equal(("GPU3", false), (option.TargetGpu, option.Available)));
+            option => Assert.Equal(("gpu0", true), (option.TargetGpu, option.Available)),
+            option => Assert.Equal(("gpu2", true), (option.TargetGpu, option.Available)),
+            option => Assert.Equal(("gpu3", false), (option.TargetGpu, option.Available)));
     }
 
     [Fact]
     public void TargetInventory_WhenObservationIsIncomplete_DisablesEverySavedExactTarget()
     {
-        var result = GpuPlacementTargetInventoryProjection.Create(null, ["GPU1", "SystemDefaultGpu"]);
+        var result = GpuPlacementTargetInventoryProjection.Create(null, ["gpu1", GpuPlacementTargets.SystemDefaultGpu]);
 
         Assert.Equal(GpuPlacementTargetInventoryStates.Unavailable, result.State);
         var target = Assert.Single(result.ExactTargets);
-        Assert.Equal("GPU1", target.TargetGpu);
+        Assert.Equal("gpu1", target.TargetGpu);
         Assert.False(target.Available);
     }
 

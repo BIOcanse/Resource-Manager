@@ -11,8 +11,8 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuRuntimeTargetPersistenceTests
 {
     [Theory]
-    [InlineData("IntegratedGpu")]
-    [InlineData("GPU1")]
+    [InlineData("integrated_gpu")]
+    [InlineData("gpu1")]
     public async Task OldRuntimeTargetIsDiscardedWithoutChangingStartupPreference(string oldTarget)
     {
         var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "rm-gpu-policy-" + Guid.NewGuid().ToString("N"))).FullName;

@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.SystemHealth;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -27,7 +28,7 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
 
         Assert.NotSame(first, frozen);
         Assert.Same(frozen, source.Read());
-        Assert.Equal("Frozen", frozen.ProviderState.State);
+        Assert.Equal(SystemInterruptProviderStates.Frozen, frozen.ProviderState.State);
     }
 
     [Fact]

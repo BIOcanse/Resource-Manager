@@ -80,6 +80,10 @@ public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environme
                 cancellationToken);
             return NormalizeDocument(document);
         }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
         catch (Exception ex) when (ex is IOException or JsonException)
         {
             return GpuLaunchExecutionReportDocument.Empty;
@@ -130,7 +134,7 @@ public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environme
         }
 
         var reports = (document.Reports ?? [])
-            .Select(report => TryNormalizeReport(report, report.OccurredAt))
+            .Select(report => TryNormalizeReport(report, report.OccurredAt, readStoredValues: true))
             .OfType<GpuLaunchExecutionReport>()
             .GroupBy(static report => report.ExecutablePath, StringComparer.OrdinalIgnoreCase)
             .Select(static group => group.OrderByDescending(static report => report.OccurredAt).First())
@@ -144,16 +148,22 @@ public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environme
         GpuLaunchExecutionReport report,
         DateTimeOffset occurredAt)
     {
-        return TryNormalizeReport(report, occurredAt)
+        return TryNormalizeReport(report, occurredAt, readStoredValues: false)
             ?? throw new InvalidOperationException("GPU 启动执行回执无效。");
     }
 
     private static GpuLaunchExecutionReport? TryNormalizeReport(
         GpuLaunchExecutionReport? report,
-        DateTimeOffset occurredAt)
+        DateTimeOffset occurredAt,
+        bool readStoredValues)
     {
-        if (report is null
-            || string.IsNullOrWhiteSpace(report.ExecutablePath)
+        if (report is null)
+        {
+            return null;
+        }
+
+        var startupTargetGpu = NormalizeStartupTargetGpu(report.StartupTargetGpu, readStoredValues);
+        if (string.IsNullOrWhiteSpace(report.ExecutablePath)
             || !GpuLaunchExecutionOutcomes.Known.Contains(report.Outcome))
         {
             return null;
@@ -170,7 +180,7 @@ public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environme
                 ProcessId = report.ProcessId is > 0 ? report.ProcessId : null,
                 Outcome = report.Outcome.Trim().ToLowerInvariant(),
                 Message = Clean(report.Message, 1024) ?? string.Empty,
-                StartupTargetGpu = Clean(report.StartupTargetGpu, 128),
+                StartupTargetGpu = startupTargetGpu,
                 AssignedPositionId = Clean(report.AssignedPositionId, 128),
                 TargetAdapterName = Clean(report.TargetAdapterName, 512),
                 OccurredAt = occurredAt == DateTimeOffset.MinValue ? DateTimeOffset.UtcNow : occurredAt
@@ -180,6 +190,26 @@ public sealed class JsonGpuLaunchExecutionReportStore(IHostEnvironment environme
         {
             return null;
         }
+    }
+
+    private static string? NormalizeStartupTargetGpu(string? value, bool readStoredValues)
+    {
+        var clean = Clean(value, 128);
+        if (clean is null)
+        {
+            return null;
+        }
+
+        if (readStoredValues)
+        {
+            // Compatibility read for previously persisted launch reports only. Remove after
+            // supported report files have been rewritten or retired.
+            return GpuPlacementTargets.ReadStored(clean);
+        }
+
+        return GpuPlacementTargets.IsKnown(clean)
+            ? clean
+            : throw new InvalidOperationException($"GPU launch target '{clean}' is unsupported.");
     }
 
     private static string? Clean(string? value, int maxLength)

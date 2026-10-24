@@ -8,12 +8,12 @@ public sealed partial class WindowsStorageOwner
 {
     public StorageOwnerSensorSnapshot ReadNvmeSensorsCore(StorageSensorReadRequest request)
     {
-        if (request.Devices.Count == 0) return new(new("Windows NVMe health", "NotRequested", ""), []);
+        if (request.Devices.Count == 0) return new(new("Windows NVMe health", HardwareSensorProviderStates.NotRequested, ""), []);
         var physical = query(@"root\Microsoft\Windows\Storage",
             "SELECT DeviceId, FriendlyName, SerialNumber, UniqueId, UniqueIdFormat, Size, BusType FROM MSFT_PhysicalDisk");
         var osDisks = query(@"root\Microsoft\Windows\Storage", "SELECT Number, SerialNumber, UniqueId, Size, BusType FROM MSFT_Disk");
         if (physical.Error is not null || osDisks.Error is not null)
-            return new(new("Windows NVMe health", "Unavailable", physical.Error ?? osDisks.Error!), [])
+            return new(new("Windows NVMe health", HardwareSensorProviderStates.Unavailable, physical.Error ?? osDisks.Error!), [])
             { Identities = physical.Error is null ? ProjectIdentities(physical.Rows) : null };
         var sensors = new List<DiskTemperatureSensor>();
         foreach (var (index, identity) in request.Devices)
@@ -39,7 +39,9 @@ public sealed partial class WindowsStorageOwner
                 BytesValues = result.BytesValues
             });
         }
-        return new(new("Windows NVMe health", sensors.Count > 0 ? "Active" : "Unavailable", ""), sensors)
+        return new(new("Windows NVMe health", sensors.Count > 0
+            ? HardwareSensorProviderStates.Active
+            : HardwareSensorProviderStates.Unavailable, ""), sensors)
         { Identities = ProjectIdentities(physical.Rows) };
     }
 

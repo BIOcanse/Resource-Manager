@@ -18,7 +18,7 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     }
     const response = await route.fetch();
     const data = await response.json();
-    data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "GPU1", displayName: "GPU 1 Test", available: true }] };
+    data.targetInventory = { state: "current", exactTargets: [{ targetGpu: "gpu1", displayName: "GPU 1 Test", available: true }] };
     data.processCapabilities = [{ processKey: "fixture",
       startup: { state: "supported", providerId: "fixture", graphicsApi: "D3D11", reason: "fixture" },
       runtime: { state: "unknown", providerId: "fixture", graphicsApi: "D3D11", reason: "Requires runtime validation" } }];
@@ -47,8 +47,8 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
   await dialog.getByRole("button", { name: "重新应用", exact: true }).click();
   await dialog.getByText("已保存软件级调度策略。", { exact: true }).waitFor();
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].startupTargetGpu, "GPU1");
+  assert.equal(writes[0].startupTargetGpu, "gpu1");
   assert.equal(writes[0].runtimeHotSwitchEnabled, true);
-  assert.equal(writes[0].preferredRuntimeSwitchMethod, "WindowRerender");
-  return { runtimeState: "unknown", savedTarget: "GPU1", savedSwitchMethod: "WindowRerender" };
+  assert.equal(writes[0].preferredRuntimeSwitchMethod, "window_rerender");
+  return { runtimeState: "unknown", savedTarget: "gpu1", savedSwitchMethod: "window_rerender" };
 }

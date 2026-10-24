@@ -32,7 +32,7 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
     internal static HardwareMonitorSensorSnapshot FormatSnapshot(HardwareMonitorSensorSnapshot raw)
     {
         var state = raw.ProviderState;
-        var message = state.Message ?? (state.State == "Active"
+        var message = state.Message ?? (state.State == HardwareSensorProviderStates.Active
             ? "已读取内存温度、主板传感或风扇。"
             : "未发现内存温度、主板传感或风扇。");
         return raw with
@@ -63,6 +63,6 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
         };
 
     private static HardwareMonitorSensorSnapshot HardwareMonitorSensorsFrozen()
-        => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", "Frozen",
+        => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", HardwareSensorProviderStates.Frozen,
             "LibreHardwareMonitor Core 监控源当前处于功能区冻结。"), null, null, null, null, null, null, null, [], []);
 }

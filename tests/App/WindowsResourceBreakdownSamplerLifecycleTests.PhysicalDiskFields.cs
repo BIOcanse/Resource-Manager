@@ -78,7 +78,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             var zero = new PhysicalDiskIoScope(37, 0); var two = new PhysicalDiskIoScope(37, 2);
             var captured = DateTimeOffset.UtcNow;
             return new(captured, new Dictionary<int, PhysicalDiskProcessAttribution>(),
-                new("etw-fileio-disk", complete ? "Running" : "Warming", "recorded"))
+                new("etw-fileio-disk", complete ? PhysicalDiskIoProviderStates.Running : PhysicalDiskIoProviderStates.Warming, "recorded"))
             { ObservedTraffic = new(captured, 2000,
                 [new(zero, process.Id, birth, ReadBytes, "0"), new(two, process.Id, birth, "0", "23")])
                 { Complete = complete, Disks = [zero, two] } };

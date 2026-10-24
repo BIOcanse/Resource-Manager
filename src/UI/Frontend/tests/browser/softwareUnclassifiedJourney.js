@@ -10,8 +10,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   let removed = false;
   const removals = [];
   const writes = [];
-  const issue = { id: "classification:unclassified", kind: "Unclassified", severity: "Info",
-    source: "RuntimeAttribution", label: "", message: "", dynamic: false, references: [], reportIds: [] };
+  const issue = { id: "classification:unclassified", kind: "unclassified", severity: "info",
+    source: "runtime_attribution", label: "", message: "", dynamic: false, references: [], reportIds: [] };
   const software = ["runtime_product", "runtime_package", "runtime_root"].map((kind, index) => ({
     id: `runtime:${index}`, name: `Runtime App ${index}`, kind, displayKind: "other", state: "runtime",
     sources: [kind], rootPaths: index === 0 ? [] : [`C:/Apps/Runtime${index}`], message: "",

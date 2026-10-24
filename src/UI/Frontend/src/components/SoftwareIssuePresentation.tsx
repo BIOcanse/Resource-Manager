@@ -41,7 +41,7 @@ export function SoftwareIssueDetailSection(props: {
                     {softwareIssueLabel(issue)}
                   </span>
                   <span class="software-issue-source">
-                    {issue.source === "RuntimeAttribution" ? uiText.management.runtimeDiscovery : issue.dynamic ? uiText.management.issueCurrentReport : uiText.management.issueKnownCatalog}
+                    {issue.source === "runtime_attribution" ? uiText.management.runtimeDiscovery : issue.dynamic ? uiText.management.issueCurrentReport : uiText.management.issueKnownCatalog}
                   </span>
                 </div>
                 <p>{softwareIssueMessage(issue)}</p>
@@ -67,9 +67,9 @@ export function SoftwareIssueDetailSection(props: {
 
 function issueToneClass(severity: string) {
   switch (severity) {
-    case "Critical":
+    case "critical":
       return "critical";
-    case "Warning":
+    case "warning":
       return "warning";
     default:
       return "info";

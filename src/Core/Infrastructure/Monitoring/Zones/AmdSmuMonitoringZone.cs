@@ -50,7 +50,7 @@ public sealed class AmdSmuMonitoringZone : MonitoringSourceZone, IDisposable
         return new CpuSensorMetrics(
             new HardwareSensorProviderState(
                 "AMD SMU / PawnIO",
-                "Frozen",
+                HardwareSensorProviderStates.Frozen,
                 "AMD SMU CPU 传感监控源当前处于功能区冻结。"),
             null,
             null,

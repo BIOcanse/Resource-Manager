@@ -17,14 +17,14 @@ public sealed partial class ComponentManager
             ? providerRuntimeProbe.Probe(definition.Id)
             : null;
         var state = active
-            ? "Active"
+            ? ComponentProviderStates.Active
             : runtimeProbe?.RuntimeAvailable == true
                 ? runtimeProbe.State
             : bundled
-                ? runtimeProbe?.State ?? "Installed"
+                ? runtimeProbe?.State ?? ComponentProviderStates.Installed
             : dependencyStatus?.Installed == true
-                ? "Installed"
-                : "Missing";
+                ? ComponentProviderStates.Installed
+                : ComponentProviderStates.Missing;
 
         var message = active
             ? "已从实时指标读到该 Provider 数据。"

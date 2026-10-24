@@ -2,9 +2,9 @@ namespace ResourceManager.App.Domain.Optimization;
 
 public static class OptimizationTrustStates
 {
-    public const string Active = "Active";
-    public const string Missing = "Missing";
-    public const string Stale = "Stale";
+    public const string Active = "active";
+    public const string Missing = "missing";
+    public const string Stale = "stale";
 }
 
 public sealed record TrustedOptimizationTarget(

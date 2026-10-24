@@ -482,18 +482,18 @@ const koKrAppCopy: AppCopy = {
     Empty: "여유"
   },
   managementRole: {
-    Dependency: "종속성",
-    Support: "지원"
+    dependency: "종속성",
+    support: "지원"
   },
   management: {
     issueText: {
-      AbnormalMemoryUsage: "비정상 메모리 사용량",
-      LongSystemInterrupts: "긴 시스템 인터럽트",
-      ExcessiveSystemInterrupts: "높은 시스템 인터럽트 사용량",
-      KnownSecurityVulnerability: "알려진 보안 취약점",
-      DependencyIssue: "종속성 문제",
-      CompatibilityIssue: "호환성 문제",
-      KnownMalware: "알려진 악성 소프트웨어",
+      abnormal_memory_usage: "비정상 메모리 사용량",
+      long_system_interrupts: "긴 시스템 인터럽트",
+      excessive_system_interrupts: "높은 시스템 인터럽트 사용량",
+      known_security_vulnerability: "알려진 보안 취약점",
+      dependency_issue: "종속성 문제",
+      compatibility_issue: "호환성 문제",
+      known_malware: "알려진 악성 소프트웨어",
       memoryAdvice: "이 백그라운드 앱이 필요한지 확인하고 더 이상 사용하지 않으면 종료하세요.",
       interruptAdvice: "관련 드라이버의 업데이트를 확인하세요. 드라이버 파일을 직접 삭제하지 마세요.",
       winringMessage: "설치된 WinRing0x64.sys 1.2.0.5가 공개된 취약점 기록과 일치합니다. 이 드라이버가 포함된 이전 소프트웨어를 업데이트하거나 제거하세요. 악성 소프트웨어로 판정한 것은 아닙니다.",
