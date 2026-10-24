@@ -153,7 +153,7 @@ public sealed class ManagementInventoryRevisionOwnerTests
             "Purpose",
             "https://example.invalid/source",
             null,
-            "Dependency",
+            "dependency",
             false,
             false,
             false,
