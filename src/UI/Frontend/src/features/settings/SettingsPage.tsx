@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { ReportRuleSettings } from "./components/ReportRuleSettings";
 import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
@@ -34,6 +35,8 @@ interface SettingsPageProps {
   activeSection: SettingsSection;
   saveState: "idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict";
   runtimeCapabilityConstrainedPaths: readonly string[];
+  runtimeFailureCode: string | null;
+  onReportsChange: (reports: NonNullable<AppSettings["reports"]>) => void;
   preciseGpuPlacementAvailable: boolean;
   publicServicesAvailable: boolean;
   optimizationRuntimeAvailable: boolean;
@@ -242,6 +245,8 @@ export function SettingsPage(props: SettingsPageProps) {
           >
           <Show when={props.activeSection === "performance"}>
             <HardwareControlSettings control={props.settings.control!} onChange={props.onControlChange} />
+            <ReportRuleSettings reports={props.settings.reports!} onChange={props.onReportsChange}
+              runtimeFailureCode={props.runtimeFailureCode} />
             <PerformanceSettingsSection
               settings={props.settings.performance}
               text={text()}

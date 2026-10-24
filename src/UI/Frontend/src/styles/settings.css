@@ -1021,3 +1021,14 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Report rules use the settings row, input, button and feedback tokens. */
+.report-rule-group, .report-rule { min-width: 0; display: grid; gap: 10px; }
+.report-rule-group h3 { margin: 8px 0 0; font-size: 14px; }
+.report-rule { border-top: 1px solid var(--divider-soft); padding-top: 10px; }
+.report-rule-field { flex-wrap: wrap; justify-content: flex-start; }
+.report-rule-default { color: var(--muted); font-size: 13px; }
+.report-rule-names { flex: 1 1 100%; overflow-wrap: anywhere; }
+.report-rule-names label { display: grid; gap: 6px; }
+.report-rule-names textarea { width: min(100%, 600px); resize: vertical; }
+.report-rule-error, .report-rule > p[role="alert"] { color: var(--danger); margin: 0; flex-basis: 100%; font-size: 13px; }

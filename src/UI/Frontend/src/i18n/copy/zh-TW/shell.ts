@@ -22,6 +22,54 @@ export const zhShellCopy = {
     diskUsage: "磁碟佔用",
     control: "控制面"
   },
+  reportRules: {
+    "title": "報告判定",
+    "note": "修改一條規則後，該規則的計數和已啟用報告會清除，並按新值重新判斷；信任紀錄保留。",
+    "strayProcessTitle": "疑似游離程式",
+    "backgroundMemoryTitle": "背景記憶體使用量偏高",
+    "loading": "正在讀取判定規則…",
+    "loadFailed": "無法讀取判定規則。",
+    "retry": "重新讀取",
+    "defaultValue": "預設",
+    "reset": "還原預設值",
+    "executableNamesHelp": "每行一個執行檔名稱，不含副檔名（寫 node，不寫 node.exe）；空白清單將不產生報告。",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU 溫度",
+      "cpu_throttle_usage": "CPU 使用率",
+      "cpu_throttle_frequency": "CPU 頻率比例",
+      "interrupt_longest_event": "最長中斷時間",
+      "interrupt_cpu_share": "中斷 CPU 使用率",
+      "background_memory_share": "背景記憶體占比",
+      "background_memory_bytes": "背景記憶體大小",
+      "stray_process_memory": "處理程序記憶體大小",
+      "stray_process_idle": "處理程序閒置時間"
+    },
+    "fields": {
+      "activationThreshold": "啟用門檻",
+      "clearThreshold": "解除門檻",
+      "requiredConsecutiveHits": "連續命中次數",
+      "requiredConsecutiveMisses": "連續未命中次數",
+      "zeroActivityThreshold": "視為無活動的上限",
+      "executableNames": "執行型工具清單"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "分鐘",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "次"
+    },
+    "reasons": {
+      "unknown-rule": "規則不存在。",
+      "duplicate-rule": "規則重複。",
+      "not-editable": "此欄位無法編輯。",
+      "out-of-range": "數值超出允許範圍。",
+      "clear-on-wrong-side": "解除門檻必須位於啟用門檻的安全一側。",
+      "invalid-executable-names": "工具清單無效：最多 256 項，每項 1–260 個字元，不能含 /、\\、:，且不能重複。"
+    }
+  },
   control: {
     reassertionInterval: "重新套用間隔（秒）",
     stateUnavailable: "尚未讀取到權威控制設定，暫時無法套用。",

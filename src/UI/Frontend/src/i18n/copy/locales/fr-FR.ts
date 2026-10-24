@@ -29,6 +29,54 @@ const frFrAppCopy: AppCopy = {
     diskUsage: "Disque",
     control: "Réglages"
   },
+  reportRules: {
+    "title": "Règles des rapports",
+    "note": "Modifier une règle efface ses compteurs et rapports actifs, puis relance son évaluation avec les nouvelles valeurs. Les entrées de confiance sont conservées.",
+    "strayProcessTitle": "Processus abandonnés suspects",
+    "backgroundMemoryTitle": "Utilisation mémoire élevée en arrière-plan",
+    "loading": "Chargement des règles de rapport…",
+    "loadFailed": "Impossible de charger les règles de rapport.",
+    "retry": "Réessayer",
+    "defaultValue": "Valeur par défaut",
+    "reset": "Rétablir la valeur par défaut",
+    "executableNamesHelp": "Un exécutable par ligne, sans extension (node, pas node.exe). Une liste vide ne produit aucun rapport.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "Température du processeur",
+      "cpu_throttle_usage": "Utilisation du processeur",
+      "cpu_throttle_frequency": "Rapport de fréquence du processeur",
+      "interrupt_longest_event": "Interruption la plus longue",
+      "interrupt_cpu_share": "Part processeur des interruptions",
+      "background_memory_share": "Part de mémoire en arrière-plan",
+      "background_memory_bytes": "Taille de mémoire en arrière-plan",
+      "stray_process_memory": "Mémoire du processus",
+      "stray_process_idle": "Durée d’inactivité du processus"
+    },
+    "fields": {
+      "activationThreshold": "Seuil d’activation",
+      "clearThreshold": "Seuil de désactivation",
+      "requiredConsecutiveHits": "Détections consécutives",
+      "requiredConsecutiveMisses": "Non-détections consécutives",
+      "zeroActivityThreshold": "Plafond d’activité nulle",
+      "executableNames": "Liste des outils d’exécution"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "minutes",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "observations"
+    },
+    "reasons": {
+      "unknown-rule": "Règle inconnue.",
+      "duplicate-rule": "Règle en double.",
+      "not-editable": "Ce champ ne peut pas être modifié.",
+      "out-of-range": "Valeur hors de la plage autorisée.",
+      "clear-on-wrong-side": "Le seuil de désactivation doit se situer du côté sûr du seuil d’activation.",
+      "invalid-executable-names": "Liste non valide : 256 noms maximum de 1–260 caractères, sans /, \\, : ni doublons sans distinction de casse."
+    }
+  },
   control: {
     reassertionInterval: "Intervalle de réapplication (secondes)",
     stateUnavailable: "Les réglages de contrôle confirmés sont indisponibles. Leur application est suspendue.",

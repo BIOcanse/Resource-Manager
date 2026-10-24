@@ -111,16 +111,29 @@ public static class AppSettingsMigrator
             new AppUpdateSettings(
                 ReadBoolean(root, "update", "autoUpdateEnabled", defaults.Update!.AutoUpdateEnabled)),
             new AppHardwareControlSettings(
-                ReadInt32(root, "control", "reassertionIntervalSeconds", 120)));
+                ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
+            ReadReports(root));
 
         return AppSettingsNormalizer.Normalize(settings);
     }
+
+    // A malformed override list is a malformed settings file (JsonException), not a reason to drop entries.
+    private static AppReportSettings ReadReports(JsonElement root)
+        => root.TryGetProperty("reports", out var reports) && reports.ValueKind == JsonValueKind.Object
+            && reports.TryGetProperty("ruleOverrides", out var overrides) && overrides.ValueKind == JsonValueKind.Array
+                ? new AppReportSettings(overrides.Deserialize<AppReportRuleOverride[]>(WebJsonOptions) ?? [])
+                : new AppReportSettings([]);
+
+    private static readonly JsonSerializerOptions WebJsonOptions = new(JsonSerializerDefaults.Web);
 
     public static bool RequiresRewrite(JsonElement root)
     {
         if (!root.TryGetProperty("control", out var control) || control.ValueKind != JsonValueKind.Object
             || !control.TryGetProperty("reassertionIntervalSeconds", out var interval)
             || interval.ValueKind != JsonValueKind.Number || !interval.TryGetInt32(out var seconds) || seconds is < 1 or > 86400) return true;
+        if (!root.TryGetProperty("reports", out var reports) || reports.ValueKind != JsonValueKind.Object
+            || !reports.TryGetProperty("ruleOverrides", out var ruleOverrides)
+            || ruleOverrides.ValueKind != JsonValueKind.Array) return true;
         if (!root.TryGetProperty("version", out var version)
             || version.ValueKind != JsonValueKind.String
             || !string.Equals(version.GetString(), AppSettingsDefaults.CurrentVersion, StringComparison.Ordinal)

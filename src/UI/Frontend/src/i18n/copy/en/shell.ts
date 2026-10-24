@@ -1,7 +1,7 @@
 import { enControlPresentationCopy } from "./controlPresentation.ts";
 import type { AppCopy } from "../zh/index.ts";
 
-export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
+export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
   common: {
     saving: "Saving",
     saveFailed: "Save failed"
@@ -23,6 +23,54 @@ export const enShellCopy: Pick<AppCopy, "common" | "feedback" | "page" | "contro
     settings: "Settings",
     diskUsage: "Disk",
     control: "Control"
+  },
+  reportRules: {
+    "title": "Report rules",
+    "note": "Changing a rule clears its counts and active reports and starts judging again with the new values. Trust entries stay.",
+    "strayProcessTitle": "Suspected stray processes",
+    "backgroundMemoryTitle": "Background memory usage",
+    "loading": "Loading report rules…",
+    "loadFailed": "Could not load report rules.",
+    "retry": "Retry",
+    "defaultValue": "Default",
+    "reset": "Reset to default",
+    "executableNamesHelp": "One executable name per line, without the extension (node, not node.exe). An empty list produces no reports.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU temperature",
+      "cpu_throttle_usage": "CPU usage",
+      "cpu_throttle_frequency": "CPU frequency ratio",
+      "interrupt_longest_event": "Longest interrupt event",
+      "interrupt_cpu_share": "Interrupt CPU share",
+      "background_memory_share": "Background memory share",
+      "background_memory_bytes": "Background memory size",
+      "stray_process_memory": "Process memory size",
+      "stray_process_idle": "Process idle duration"
+    },
+    "fields": {
+      "activationThreshold": "Activation threshold",
+      "clearThreshold": "Clear threshold",
+      "requiredConsecutiveHits": "Consecutive hits",
+      "requiredConsecutiveMisses": "Consecutive misses",
+      "zeroActivityThreshold": "Zero activity ceiling",
+      "executableNames": "Runtime tool names"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "min",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "observations"
+    },
+    "reasons": {
+      "unknown-rule": "Unknown rule.",
+      "duplicate-rule": "Duplicate rule.",
+      "not-editable": "This field cannot be edited.",
+      "out-of-range": "Value is outside the allowed range.",
+      "clear-on-wrong-side": "The clear threshold must be on the safe side of the activation threshold.",
+      "invalid-executable-names": "Invalid tool list: up to 256 names, 1–260 characters each, without /, \\, : or case-insensitive duplicates."
+    }
   },
   control: {
     reassertionInterval: "Reapply interval (seconds)",

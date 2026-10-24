@@ -29,6 +29,54 @@ const esEsAppCopy: AppCopy = {
     diskUsage: "Disco",
     control: "Control"
   },
+  reportRules: {
+    "title": "Reglas de informes",
+    "note": "Al cambiar una regla se borran sus contadores e informes activos y se vuelve a evaluar con los nuevos valores. Se conservan las entradas de confianza.",
+    "strayProcessTitle": "Posibles procesos abandonados",
+    "backgroundMemoryTitle": "Uso elevado de memoria en segundo plano",
+    "loading": "Cargando reglas de informes…",
+    "loadFailed": "No se pudieron cargar las reglas de informes.",
+    "retry": "Reintentar",
+    "defaultValue": "Predeterminado",
+    "reset": "Restablecer valor predeterminado",
+    "executableNamesHelp": "Un ejecutable por línea, sin extensión (node, no node.exe). Una lista vacía no genera informes.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "Temperatura de CPU",
+      "cpu_throttle_usage": "Uso de CPU",
+      "cpu_throttle_frequency": "Proporción de frecuencia de CPU",
+      "interrupt_longest_event": "Interrupción más larga",
+      "interrupt_cpu_share": "Uso de CPU por interrupciones",
+      "background_memory_share": "Porcentaje de memoria en segundo plano",
+      "background_memory_bytes": "Tamaño de memoria en segundo plano",
+      "stray_process_memory": "Memoria del proceso",
+      "stray_process_idle": "Tiempo de inactividad del proceso"
+    },
+    "fields": {
+      "activationThreshold": "Umbral de activación",
+      "clearThreshold": "Umbral de desactivación",
+      "requiredConsecutiveHits": "Coincidencias consecutivas",
+      "requiredConsecutiveMisses": "Ausencias consecutivas",
+      "zeroActivityThreshold": "Límite de actividad nula",
+      "executableNames": "Lista de herramientas de ejecución"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "minutos",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "observaciones"
+    },
+    "reasons": {
+      "unknown-rule": "Regla desconocida.",
+      "duplicate-rule": "Regla duplicada.",
+      "not-editable": "Este campo no se puede editar.",
+      "out-of-range": "Valor fuera del intervalo permitido.",
+      "clear-on-wrong-side": "El umbral de desactivación debe estar en el lado seguro del umbral de activación.",
+      "invalid-executable-names": "Lista no válida: hasta 256 nombres de 1–260 caracteres, sin /, \\, : ni duplicados sin distinguir mayúsculas."
+    }
+  },
   control: {
     reassertionInterval: "Intervalo de reaplicación (segundos)",
     stateUnavailable: "Los ajustes de control confirmados no están disponibles. La aplicación está suspendida.",

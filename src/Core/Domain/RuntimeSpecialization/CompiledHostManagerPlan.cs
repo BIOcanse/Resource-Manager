@@ -236,7 +236,8 @@ public enum HostManagerBindingId : ushort
     PublicServiceAiModelCatalogEnabled = 10,
     AiModelProvider = 11,
     AiModelEndpoint = 12,
-    AiModelAutoStart = 13
+    AiModelAutoStart = 13,
+    ReportRuleOverrides = 14
 }
 
 public sealed record CompiledHostManagerBindingProvenance(
@@ -255,7 +256,7 @@ public sealed record CompiledHostManagerBindingProvenance(
         && SettingsEffectiveSha256.Length == 64
         && SettingsInputSha256.All(static value => char.IsAsciiHexDigit(value))
         && SettingsEffectiveSha256.All(static value => char.IsAsciiHexDigit(value))
-        && AppliedBindingIds.Length == 13
+        && AppliedBindingIds.Length == 14
         && AppliedBindingIds.Distinct().Count() == AppliedBindingIds.Length;
 
     public static CompiledHostManagerBindingProvenance Unpublished { get; } = new(

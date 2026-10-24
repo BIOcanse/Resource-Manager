@@ -29,6 +29,54 @@ const koKrAppCopy: AppCopy = {
     diskUsage: "디스크 사용량",
     control: "제어"
   },
+  reportRules: {
+    "title": "보고서 판정",
+    "note": "규칙을 변경하면 해당 규칙의 횟수와 활성 보고서를 지우고 새 값으로 다시 판정합니다. 신뢰 항목은 유지됩니다.",
+    "strayProcessTitle": "분리된 것으로 의심되는 프로세스",
+    "backgroundMemoryTitle": "백그라운드 메모리 사용량 높음",
+    "loading": "판정 규칙을 불러오는 중…",
+    "loadFailed": "판정 규칙을 불러올 수 없습니다.",
+    "retry": "다시 불러오기",
+    "defaultValue": "기본값",
+    "reset": "기본값으로 복원",
+    "executableNamesHelp": "실행 파일 이름을 확장자 없이 한 줄에 하나씩 입력하세요(node.exe가 아니라 node). 목록이 비어 있으면 보고서를 생성하지 않습니다.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU 온도",
+      "cpu_throttle_usage": "CPU 사용률",
+      "cpu_throttle_frequency": "CPU 주파수 비율",
+      "interrupt_longest_event": "가장 긴 인터럽트 시간",
+      "interrupt_cpu_share": "인터럽트 CPU 사용률",
+      "background_memory_share": "백그라운드 메모리 비율",
+      "background_memory_bytes": "백그라운드 메모리 크기",
+      "stray_process_memory": "프로세스 메모리 크기",
+      "stray_process_idle": "프로세스 유휴 시간"
+    },
+    "fields": {
+      "activationThreshold": "활성화 기준값",
+      "clearThreshold": "해제 기준값",
+      "requiredConsecutiveHits": "연속 감지 횟수",
+      "requiredConsecutiveMisses": "연속 미감지 횟수",
+      "zeroActivityThreshold": "활동 없음으로 간주할 상한",
+      "executableNames": "실행 도구 목록"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "분",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "회"
+    },
+    "reasons": {
+      "unknown-rule": "알 수 없는 규칙입니다.",
+      "duplicate-rule": "중복된 규칙입니다.",
+      "not-editable": "이 필드는 수정할 수 없습니다.",
+      "out-of-range": "허용 범위를 벗어난 값입니다.",
+      "clear-on-wrong-side": "해제 기준값은 활성화 기준값의 안전한 쪽에 있어야 합니다.",
+      "invalid-executable-names": "도구 목록이 올바르지 않습니다. 최대 256개, 각 1–260자이며 /, \\, : 또는 대소문자를 무시한 중복은 허용되지 않습니다."
+    }
+  },
   control: {
     reassertionInterval: "다시 적용 간격(초)",
     stateUnavailable: "확정된 제어 설정을 읽을 수 없어 적용이 중지되었습니다.",

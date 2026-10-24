@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -27,9 +28,11 @@ public sealed partial class HostManagerPlanCompiler
                 "build_specialize.capacity_limits.report_coordinator"));
     }
 
-    private static CompiledHostManagerReportCoordinatorRecreatePlan CompileReportCoordinatorRecreate(
+    private static (CompiledHostManagerReportCoordinatorRecreatePlan Plan,
+        ImmutableArray<CompiledHostManagerReportRuleSetting> RuleSettings) CompileReportCoordinatorRecreate(
         HostManagerReportCoordinatorRecreateProfile source,
-        CompiledHostManagerReportCoordinatorBuildPlan build)
+        CompiledHostManagerReportCoordinatorBuildPlan build,
+        AppReportSettings? userSettings)
     {
         ArgumentNullException.ThrowIfNull(source);
         var capacity = CompileReportCoordinatorCapacity(
@@ -52,11 +55,12 @@ public sealed partial class HostManagerPlanCompiler
         ValidateMaximum(capacity.TrustIndexCapacity, limit.TrustIndexCapacity, "host_recreate.report_coordinator.capacity.trust_index_capacity");
         ValidateMaximum(capacity.BucketIndexCapacity, limit.BucketIndexCapacity, "host_recreate.report_coordinator.capacity.bucket_index_capacity");
         ValidateMaximum(capacity.PlannedPersistenceIndexCapacity, limit.PlannedPersistenceIndexCapacity, "host_recreate.report_coordinator.capacity.planned_persistence_index_capacity");
-        var rules = CompileReportCoordinatorRules(
+        var (rules, ruleSettings) = CompileReportCoordinatorRules(
             source.Rules
                 ?? throw Missing("host_recreate.report_coordinator.rules"),
-            capacity.MaximumRuleCount);
-        return new CompiledHostManagerReportCoordinatorRecreatePlan(capacity, rules);
+            capacity.MaximumRuleCount,
+            userSettings?.RuleOverrides ?? []);
+        return (new CompiledHostManagerReportCoordinatorRecreatePlan(capacity, rules), ruleSettings);
     }
 
     private static CompiledHostManagerReportCoordinatorHotPublishPlan CompileReportCoordinatorHotPublish(
@@ -101,7 +105,8 @@ public sealed partial class HostManagerPlanCompiler
     private static CompiledHostManagerReportCoordinatorPlan CompileReportCoordinatorPlan(
         CompiledHostManagerReportCoordinatorBuildPlan build,
         CompiledHostManagerReportCoordinatorRecreatePlan recreate,
-        CompiledHostManagerReportCoordinatorHotPublishPlan hotPublish)
+        CompiledHostManagerReportCoordinatorHotPublishPlan hotPublish,
+        ImmutableArray<CompiledHostManagerReportRuleSetting> ruleSettings)
     {
         var bucketsPerRollingObservation = checked(
             hotPublish.Window7DaysMilliseconds / hotPublish.BucketWidthMilliseconds + 1);
@@ -123,7 +128,10 @@ public sealed partial class HostManagerPlanCompiler
             recreate,
             hotPublish,
             hotPublish.ConfigurationGeneration,
-            configurationSha256);
+            configurationSha256)
+        {
+            RuleSettings = ruleSettings
+        };
     }
 
     private static CompiledHostManagerReportCoordinatorCapacityPlan CompileReportCoordinatorCapacity(
@@ -174,9 +182,11 @@ public sealed partial class HostManagerPlanCompiler
         return result;
     }
 
-    private static ImmutableArray<CompiledHostManagerReportCoordinatorRulePlan> CompileReportCoordinatorRules(
+    private static (ImmutableArray<CompiledHostManagerReportCoordinatorRulePlan> Rules,
+        ImmutableArray<CompiledHostManagerReportRuleSetting> RuleSettings) CompileReportCoordinatorRules(
         IReadOnlyList<HostManagerReportCoordinatorRuleProfile> source,
-        int maximumRuleCount)
+        int maximumRuleCount,
+        IReadOnlyList<AppReportRuleOverride> userOverrides)
     {
         if (source.Count is 0 || source.Count > maximumRuleCount)
         {
@@ -184,17 +194,25 @@ public sealed partial class HostManagerPlanCompiler
                 "host_recreate.report_coordinator.rules must be non-empty and fit maximum_rule_count.");
         }
 
+        var overridesByName = IndexReportRuleOverrides(source, userOverrides);
         var result = ImmutableArray.CreateBuilder<CompiledHostManagerReportCoordinatorRulePlan>(
             source.Count);
+        var settings = ImmutableArray.CreateBuilder<CompiledHostManagerReportRuleSetting>(source.Count);
         var handles = new HashSet<ulong>();
         ulong previousGroupHandle = 0;
         uint expectedPredicateIndex = 0;
         CompiledHostManagerReportCoordinatorRulePlan? groupPrimary = null;
-        foreach (var item in source)
+        foreach (var profileItem in source)
         {
-            ArgumentNullException.ThrowIfNull(item);
-            if (item.FactKind == HostManagerReportFactKind.ProcessIdleMilliseconds && item.ExecutableNames is null)
+            ArgumentNullException.ThrowIfNull(profileItem);
+            if (profileItem.FactKind == HostManagerReportFactKind.ProcessIdleMilliseconds && profileItem.ExecutableNames is null)
                 throw Missing("host_recreate.report_coordinator.rules.executable_names");
+            var name = profileItem.Name!;
+            var setting = CompileReportRuleSetting(profileItem);
+            var user = overridesByName.GetValueOrDefault(name);
+            var item = WithUserValues(profileItem, user, setting);
+            ValidateReportRuleUserValues(item, user, setting);
+            settings.Add(setting);
             var rule = new CompiledHostManagerReportCoordinatorRulePlan(
                 item.FactKind,
                 item.RuleHandle,
@@ -275,7 +293,7 @@ public sealed partial class HostManagerPlanCompiler
                 "host_recreate.report_coordinator.rules contains an incomplete predicate group.");
         }
 
-        return result.MoveToImmutable();
+        return (result.MoveToImmutable(), settings.MoveToImmutable());
     }
 
     private static void ValidateReportCoordinatorRule(

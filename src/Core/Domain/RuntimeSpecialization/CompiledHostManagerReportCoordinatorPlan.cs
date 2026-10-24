@@ -187,6 +187,9 @@ public sealed record CompiledHostManagerReportCoordinatorPlan(
     ulong ConfigurationGeneration,
     string ConfigurationSha256)
 {
+    // What the settings page may edit for each named rule. Not part of the native plan or its digests.
+    public ImmutableArray<CompiledHostManagerReportRuleSetting> RuleSettings { get; init; } = [];
+
     public bool IsPublished => Build.IsPublished
         && Recreate.IsPublished
         && HotPublish.IsPublished
@@ -202,3 +205,28 @@ public sealed record CompiledHostManagerReportCoordinatorPlan(
         0,
         string.Empty);
 }
+
+// One named rule as the settings page sees it. Ranges are in the rule's stored unit;
+// stored value = displayed value x Scale; Step is in display units.
+public sealed record CompiledHostManagerReportRuleSetting(
+    string Name,
+    HostManagerReportFactKind FactKind,
+    uint Comparison,
+    string DisplayUnit,
+    double Scale,
+    double Step,
+    double ThresholdMinimum,
+    double ThresholdMaximum,
+    uint CountMaximum,
+    double? ZeroActivityMaximum,
+    ImmutableArray<string> EditableFields,
+    CompiledHostManagerReportRuleValues Defaults);
+
+// Only editable fields carry a value.
+public sealed record CompiledHostManagerReportRuleValues(
+    double? ActivationThreshold,
+    double? ClearThreshold,
+    uint? RequiredConsecutiveHits,
+    uint? RequiredConsecutiveMisses,
+    double? ZeroActivityThreshold,
+    IReadOnlyList<string>? ExecutableNames);

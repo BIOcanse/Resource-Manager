@@ -27,6 +27,8 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onReapply={() => void settings.reapply()}
         onSave={() => void settings.saveDraft()}
         onRestoreDefaults={settings.resetDraftToDefaults}
+        runtimeFailureCode={settings.runtimeFailureCode()}
+        onReportsChange={settings.updateReports}
         onControlChange={settings.updateControl}
         onSmartMonitoringModeChange={settings.updateSmartMonitoringMode}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}

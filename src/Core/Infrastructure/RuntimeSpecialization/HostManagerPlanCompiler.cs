@@ -209,10 +209,11 @@ public sealed partial class HostManagerPlanCompiler
             recreate.SoftwareIdentityResolution
             ?? throw Missing("host_recreate.software_identity_resolution"),
             buildSpecialize.SoftwareIdentityResolution);
-        var recreateReportCoordinator = CompileReportCoordinatorRecreate(
+        var (recreateReportCoordinator, reportRuleSettings) = CompileReportCoordinatorRecreate(
             recreate.ReportCoordinator
                 ?? throw Missing("host_recreate.report_coordinator"),
-            buildSpecialize.ReportCoordinator);
+            buildSpecialize.ReportCoordinator,
+            settingsInput.Settings.Reports);
         var recreateFileQuery = CompileFileQueryRecreate(
             recreate.FileQuery ?? throw Missing("host_recreate.file_query"),
             buildSpecialize.FileQuery);
@@ -330,7 +331,8 @@ public sealed partial class HostManagerPlanCompiler
         var reportCoordinator = CompileReportCoordinatorPlan(
             buildSpecialize.ReportCoordinator,
             recreateReportCoordinator,
-            reportCoordinatorHotPublish);
+            reportCoordinatorHotPublish,
+            reportRuleSettings);
         var fileQueryHotPublish = CompileFileQueryHotPublish(
             hotPublish.FileQuery ?? throw Missing("hot_publish.file_query"),
             buildSpecialize.FileQuery,
@@ -787,7 +789,8 @@ public sealed partial class HostManagerPlanCompiler
                 HostManagerBindingId.PublicServiceAiModelCatalogEnabled,
                 HostManagerBindingId.AiModelProvider,
                 HostManagerBindingId.AiModelEndpoint,
-                HostManagerBindingId.AiModelAutoStart
+                HostManagerBindingId.AiModelAutoStart,
+                HostManagerBindingId.ReportRuleOverrides
             ]);
     }
 

@@ -13,15 +13,18 @@ namespace ResourceManager.App.Infrastructure.Optimization.Reports;
 
 internal sealed partial class HostManagerReportCoordinatorOwner
 {
+    // The plan records hold immutable arrays, so record equality would see every
+    // republished plan as changed; the compiled module digests compare content.
+    private CompiledHostManagerModuleDigests? appliedDigests;
+
     private async Task ApplyPlanCoreAsync(
         CompiledHostManagerPlan hostPlan,
         CancellationToken cancellationToken)
     {
         await SettlePendingAsync(cancellationToken);
         var desired = hostPlan.ReportCoordinator;
-        if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256
-            && appliedPlan.Build == desired.Build
-            && appliedPlan.Recreate == desired.Recreate)
+        var desiredDigests = hostPlan.DeploymentDigests.ReportCoordinator;
+        if (appliedDigests == desiredDigests)
         {
             return;
         }
@@ -31,8 +34,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         await RestoreRegisteredTargetsAsync(cancellationToken);
         var initial = workspace is null;
         var recreate = !initial
-            && (appliedPlan!.Build != desired.Build
-                || appliedPlan.Recreate != desired.Recreate);
+            && appliedDigests!.RecreateSha256 != desiredDigests.RecreateSha256;
         var token = initial
             ? deployment.BeginInitialCreate(hostPlan)
             : recreate
@@ -96,6 +98,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         var previous = workspace;
         workspace = replacement;
         appliedPlan = desired;
+        appliedDigests = desiredDigests;
         coordinatorState = replacementState;
         PruneRetainedMetadata(replacementState, replacementModel);
         Volatile.Write(ref readModel, replacementModel);

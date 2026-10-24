@@ -29,6 +29,54 @@ const ruRuAppCopy: AppCopy = {
     diskUsage: "Диск",
     control: "Управление"
   },
+  reportRules: {
+    "title": "Правила отчётов",
+    "note": "Изменение правила сбрасывает его счётчики и активные отчёты и запускает оценку с новыми значениями. Доверенные записи сохраняются.",
+    "strayProcessTitle": "Предположительно оставленные процессы",
+    "backgroundMemoryTitle": "Высокое потребление памяти в фоне",
+    "loading": "Загрузка правил отчётов…",
+    "loadFailed": "Не удалось загрузить правила отчётов.",
+    "retry": "Повторить",
+    "defaultValue": "По умолчанию",
+    "reset": "Вернуть значение по умолчанию",
+    "executableNamesHelp": "Одно имя исполняемого файла на строку, без расширения (node, а не node.exe). Пустой список не создаёт отчётов.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "Температура ЦП",
+      "cpu_throttle_usage": "Загрузка ЦП",
+      "cpu_throttle_frequency": "Отношение частоты ЦП",
+      "interrupt_longest_event": "Самое долгое прерывание",
+      "interrupt_cpu_share": "Доля ЦП для прерываний",
+      "background_memory_share": "Доля фоновой памяти",
+      "background_memory_bytes": "Объём фоновой памяти",
+      "stray_process_memory": "Объём памяти процесса",
+      "stray_process_idle": "Время простоя процесса"
+    },
+    "fields": {
+      "activationThreshold": "Порог активации",
+      "clearThreshold": "Порог снятия",
+      "requiredConsecutiveHits": "Последовательные срабатывания",
+      "requiredConsecutiveMisses": "Последовательные пропуски",
+      "zeroActivityThreshold": "Верхняя граница отсутствия активности",
+      "executableNames": "Список запускаемых инструментов"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "мин",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "наблюдений"
+    },
+    "reasons": {
+      "unknown-rule": "Неизвестное правило.",
+      "duplicate-rule": "Повторяющееся правило.",
+      "not-editable": "Это поле нельзя изменять.",
+      "out-of-range": "Значение вне допустимого диапазона.",
+      "clear-on-wrong-side": "Порог снятия должен находиться с безопасной стороны порога активации.",
+      "invalid-executable-names": "Недопустимый список: до 256 имён длиной 1–260 символов, без /, \\, : и повторов без учёта регистра."
+    }
+  },
   control: {
     reassertionInterval: "Интервал повторного применения (секунды)",
     stateUnavailable: "Подтверждённые настройки управления недоступны. Применение приостановлено.",

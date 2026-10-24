@@ -29,6 +29,54 @@ const deDeAppCopy: AppCopy = {
     diskUsage: "Speicher",
     control: "Steuerung"
   },
+  reportRules: {
+    "title": "Berichtsregeln",
+    "note": "Eine Regeländerung löscht deren Zähler und aktive Berichte und beginnt die Beurteilung mit den neuen Werten erneut. Vertrauenseinträge bleiben erhalten.",
+    "strayProcessTitle": "Verdächtige verwaiste Prozesse",
+    "backgroundMemoryTitle": "Hohe Speichernutzung im Hintergrund",
+    "loading": "Berichtsregeln werden geladen…",
+    "loadFailed": "Berichtsregeln konnten nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "defaultValue": "Standardwert",
+    "reset": "Auf Standard zurücksetzen",
+    "executableNamesHelp": "Ein Programmname pro Zeile, ohne Erweiterung (node, nicht node.exe). Eine leere Liste erzeugt keine Berichte.",
+    "ruleLabels": {
+      "cpu_throttle_temperature": "CPU-Temperatur",
+      "cpu_throttle_usage": "CPU-Auslastung",
+      "cpu_throttle_frequency": "CPU-Taktverhältnis",
+      "interrupt_longest_event": "Längstes Interrupt-Ereignis",
+      "interrupt_cpu_share": "CPU-Anteil der Interrupts",
+      "background_memory_share": "Anteil des Hintergrundspeichers",
+      "background_memory_bytes": "Größe des Hintergrundspeichers",
+      "stray_process_memory": "Prozessspeichergröße",
+      "stray_process_idle": "Leerlaufdauer des Prozesses"
+    },
+    "fields": {
+      "activationThreshold": "Aktivierungsschwelle",
+      "clearThreshold": "Aufhebungsschwelle",
+      "requiredConsecutiveHits": "Aufeinanderfolgende Treffer",
+      "requiredConsecutiveMisses": "Aufeinanderfolgende Nichttreffer",
+      "zeroActivityThreshold": "Obergrenze für Inaktivität",
+      "executableNames": "Liste der Laufzeitwerkzeuge"
+    },
+    "units": {
+      "celsius": "°C",
+      "percent": "%",
+      "milliseconds": "ms",
+      "minutes": "Min.",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "count": "Beobachtungen"
+    },
+    "reasons": {
+      "unknown-rule": "Unbekannte Regel.",
+      "duplicate-rule": "Doppelte Regel.",
+      "not-editable": "Dieses Feld kann nicht bearbeitet werden.",
+      "out-of-range": "Wert außerhalb des zulässigen Bereichs.",
+      "clear-on-wrong-side": "Die Aufhebungsschwelle muss auf der sicheren Seite der Aktivierungsschwelle liegen.",
+      "invalid-executable-names": "Ungültige Werkzeugliste: höchstens 256 Namen mit je 1–260 Zeichen, ohne /, \\, : oder Duplikate (Groß-/Kleinschreibung wird ignoriert)."
+    }
+  },
   control: {
     reassertionInterval: "Intervall für erneutes Anwenden (Sekunden)",
     stateUnavailable: "Die bestätigten Steuerungseinstellungen sind nicht verfügbar. Anwenden ist ausgesetzt.",

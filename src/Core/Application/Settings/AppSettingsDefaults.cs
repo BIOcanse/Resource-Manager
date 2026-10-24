@@ -84,7 +84,8 @@ public static class AppSettingsDefaults
                 Endpoint: "http://127.0.0.1:1234",
                 AutoStartEnabled: false),
             new AppUpdateSettings(AutoUpdateEnabled: false),
-            new AppHardwareControlSettings());
+            new AppHardwareControlSettings(),
+            new AppReportSettings([]));
     }
 
     public static AppPresetNumericSetting CreateLogicRefreshIntervalDefault(

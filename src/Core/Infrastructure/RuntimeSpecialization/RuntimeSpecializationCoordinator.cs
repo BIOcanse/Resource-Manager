@@ -166,9 +166,11 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
             return previous with
             {
                 RuntimeApplicationDisposition = "rejectedBeforeCommit",
-                RuntimeFailureCode = candidatePlan is null
-                    ? "runtime-plan-compile-failed"
-                    : "settings-commit-failed"
+                RuntimeFailureCode = exception is ReportRuleSettingException invalidRule
+                    ? invalidRule.FailureCode
+                    : candidatePlan is null
+                        ? "runtime-plan-compile-failed"
+                        : "settings-commit-failed"
             };
         }
 
