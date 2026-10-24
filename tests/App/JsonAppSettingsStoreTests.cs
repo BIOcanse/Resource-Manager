@@ -15,6 +15,30 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         "resource-manager-app-settings-tests",
         Guid.NewGuid().ToString("N"));
 
+    [Fact]
+    public async Task Version128LoadRewritesRetiredGpuUseCasesAndSchemaVersionOnDisk()
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var config = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
+        var source = JsonNode.Parse(JsonSerializer.Serialize(AppSettingsDefaults.Create(), JsonSerializerOptions.Web))!;
+        source["version"] = "1.0.28";
+        source["performance"]!["gpuPerformanceUseCases"] = new JsonArray("ai");
+        source["update"]!.AsObject().Remove("checkIntervalHours");
+        source["appearance"]!["language"] = "ja-JP";
+        var path = Path.Combine(config, "app-settings.json");
+        await File.WriteAllTextAsync(path, source.ToJsonString());
+
+        var loaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
+
+        Assert.Equal(AppSettingsSourceKind.MigratedPersisted, loaded.Source.Kind);
+        Assert.True(loaded.Source.RewritePerformed);
+        using var written = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, written.RootElement.GetProperty("version").GetString());
+        Assert.False(written.RootElement.GetProperty("performance").TryGetProperty("gpuPerformanceUseCases", out _));
+        Assert.Equal(6, written.RootElement.GetProperty("update").GetProperty("checkIntervalHours").GetInt32());
+        Assert.Equal("ja-JP", written.RootElement.GetProperty("appearance").GetProperty("language").GetString());
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

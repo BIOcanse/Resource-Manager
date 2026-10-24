@@ -32,7 +32,6 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onControlChange={settings.updateControl}
         onSmartMonitoringModeChange={settings.updateSmartMonitoringMode}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
-        onGpuPerformanceUseCasesChange={settings.updateGpuPerformanceUseCases}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}
         onMemoryOptimizationTargetLinesChange={settings.updateMemoryOptimizationTargetLines}
         onGpuOverflowThresholdsChange={settings.updateGpuOverflowThresholds}
@@ -50,6 +49,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onTaskManagerShortcutReplacementChange={settings.updateTaskManagerShortcutReplacement}
         onAutoStartChange={settings.updateAutoStart}
         onAutoUpdateChange={settings.updateAutoUpdate}
+        onCheckIntervalChange={settings.updateCheckInterval}
         onEditableHotkeyChange={settings.updateEditableHotkey}
         onLocalPublicServiceChange={settings.updateLocalPublicService}
         onPublicFileIndexChange={settings.updatePublicFileIndex}

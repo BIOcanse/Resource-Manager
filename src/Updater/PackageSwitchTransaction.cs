@@ -25,7 +25,8 @@ internal static class PackageSwitchTransaction
         void Journal(string value)
         {
             WriteJournal(workspace, plan.InstallRoot, plan.PreviousVersion,
-                plan.Package.Version, plan.ServiceWasRunning, value, preserveManagement: true, preserveAuthority: true);
+                plan.Package.Version, plan.ServiceWasRunning, value, preserveManagement: true, preserveAuthority: true,
+                sourcePackageRoot: plan.Package.Root);
             stage = value;
         }
         try
@@ -340,12 +341,22 @@ internal static class PackageSwitchTransaction
 
     private static void WriteJournal(string workspace, UpdatePlan plan, string stage)
         => WriteJournal(workspace, plan.InstallRoot, plan.PreviousVersion,
-            plan.Package.Version, plan.ServiceWasRunning, stage);
+            plan.Package.Version, plan.ServiceWasRunning, stage, sourcePackageRoot: plan.Package.Root);
 
     private static void WriteJournal(string workspace, string installRoot, string previousVersion,
-        string targetVersion, bool serviceWasRunning, string stage, bool preserveManagement = false, bool preserveAuthority = false)
+        string targetVersion, bool serviceWasRunning, string stage, bool preserveManagement = false,
+        bool preserveAuthority = false, string? sourcePackageRoot = null)
     {
         var path = Path.Combine(workspace, "update-transaction.json");
+        if (sourcePackageRoot is null && File.Exists(path))
+        {
+            ReleasePackageLayout.RejectReparse(path);
+            if (new FileInfo(path).Length > 16_384) throw new InvalidDataException("Invalid update journal.");
+            using var previous = JsonDocument.Parse(File.ReadAllText(path));
+            if (previous.RootElement.TryGetProperty("sourcePackageRoot", out var source)
+                && source.ValueKind == JsonValueKind.String)
+                sourcePackageRoot = source.GetString();
+        }
         var temp = path + ".writing";
         var data = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -356,6 +367,7 @@ internal static class PackageSwitchTransaction
             serviceWasRunning,
             preserveManagement,
             preserveAuthority,
+            sourcePackageRoot,
             updatedAt = DateTimeOffset.UtcNow
         });
         using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))

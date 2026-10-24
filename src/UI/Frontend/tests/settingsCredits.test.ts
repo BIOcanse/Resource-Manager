@@ -67,7 +67,7 @@ for (const [path, project] of [
 }
 const acknowledged = new Set(managed.map((item) => `${item.name}/${item.version}`.toLowerCase()));
 assert.deepEqual([...actualManaged].filter((id) => !acknowledged.has(id)), [], "Every resolved package must be acknowledged");
-assert.ok(managed.every((item) => item.kind === "publish tool" || actualManaged.has(`${item.name}/${item.version}`.toLowerCase())), "Only explicitly identified publish tools may be absent from a plain build graph");
+assert.deepEqual(managed.filter((item) => item.kind !== "publish tool" && !actualManaged.has(`${item.name}/${item.version}`.toLowerCase())).map(item => `${item.name}/${item.version}`), [], "Only explicitly identified publish tools may be absent from a plain build graph");
 assert.ok(managed.every((item) => item.authors && item.license));
 const managedNotices = readFileSync(new URL("ManagedDependencyAcknowledgements.md", notices), "utf8");
 for (const item of managed) assert.ok(managedNotices.includes(`| ${item.name}/${item.version} |`), item.name);

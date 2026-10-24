@@ -1,3 +1,4 @@
+import { productUpdateCopy } from "../../src/features/settings/productUpdatePresentation.ts";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -78,6 +79,7 @@ export default async function localizationJourney(page, baseUrl) {
   });
   await page.route("**/api/targeted-recordings", route => route.fulfill({ json: [] }));
   let stage = "idle";
+  let errorCode = null;
   const history = [
     { choice: "latest", version: "0.3.9", channel: "preview", selectable: true },
     { choice: "latestStable", version: "0.3.8", channel: "stable", selectable: true },
@@ -89,7 +91,7 @@ export default async function localizationJourney(page, baseUrl) {
   await page.route("**/api/updates/product/versions", route => route.fulfill({ json: {
     installedVersion: "0.3.5", status: "loaded", complete: true, checkedAt: "2026-10-01T12:00:00Z", options: history
   } }));
-  await page.route("**/api/updates/product/status", route => route.fulfill({ json: { stage } }));
+  await page.route("**/api/updates/product/status", route => route.fulfill({ json: { stage, errorCode } }));
   await page.setViewportSize({ width: 1180, height: 850 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
@@ -225,6 +227,7 @@ export default async function localizationJourney(page, baseUrl) {
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
     stage = "idle";
+    errorCode = null;
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     await page.getByRole("checkbox", { name: settings.updates.autoUpdateTitle, exact: true }).waitFor();
     await page.getByText(settings.updates.versionsDescription, { exact: true }).waitFor();
@@ -242,7 +245,13 @@ export default async function localizationJourney(page, baseUrl) {
     if (dialog.message() !== settings.updates.confirmPrepare("0.3.9")) throw new Error(`${option.id}: confirmation uses the wrong language`);
     await dialog.dismiss();
     await click;
+    stage = "error";
+    errorCode = "update.versionNotNewer";
+    await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: productUpdateCopy(option.id).error(errorCode) }).waitFor();
     stage = "verifying";
+    errorCode = null;
     await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     await page.getByRole("status").filter({ hasText: settings.updates.stages.verifying }).waitFor();

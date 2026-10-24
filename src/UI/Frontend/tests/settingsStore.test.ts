@@ -21,7 +21,7 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.28", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.29", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -47,6 +47,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
 // 按需监控只剩开、关：旧值 auto 读成开，显式 disabled 保持，缺省为开。
 {
   const retiredPerformanceKeys = [
+    "gpuPerformanceUseCases",
     "smartMonitoringEnabled",
     "monitoringIdleSeconds",
     "pauseFrontendRefreshWhenHiddenInNormalMode",
@@ -84,7 +85,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.28", `${label}: version`);
+    assert.equal(settings.version, "1.0.29", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -110,7 +111,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
   assert.equal(normalizedMissingFields.performance!.gpuOverflowUsagePercent, 95);
   assert.equal(normalizedMissingFields.performance!.gpuOverflowDedicatedMemoryPercent, 80);
   const clamped = normalizeAppSettings({
-    version: "1.0.28",
+    version: "1.0.29",
     performance: {
       gpuOverflowUsagePercent: 120,
       gpuOverflowDedicatedMemoryPercent: -4
@@ -119,7 +120,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
   assert.equal(clamped.gpuOverflowUsagePercent, 100);
   assert.equal(clamped.gpuOverflowDedicatedMemoryPercent, 1);
   const rounded = normalizeAppSettings({
-    version: "1.0.28",
+    version: "1.0.29",
     performance: {
       gpuOverflowUsagePercent: 33.6,
       gpuOverflowDedicatedMemoryPercent: Number.NaN
@@ -512,6 +513,35 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(store.isDirty(), true);
       store.resetDraftToDefaults();
       assert.deepEqual(store.draftSettings().performance!.monitorRefreshIntervalMs, frontendRefreshIntervals.defaults.monitor);
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});
+
+// A reload and a fresh store project the backend's current application disposition.
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      const store = createSettingsStore({ source, requestClient: { request: async () => { throw new Error("No write expected"); } } });
+      for (const disposition of ["committedWithDeliveryFailures", "savedNotApplied", "committedWithCapabilityConstraints"] as const) {
+        const current = { ...result(disposition, "normal", "system"), runtimeApplicationDisposition: disposition,
+          runtimeFailureCode: "delivery-unavailable", runtimeCapabilityConstrainedPaths: ["performance.preciseGpuPlacementEnabled"] };
+        source.publishReady(current);
+        const expected = disposition === "committedWithCapabilityConstraints" ? "constrained" : "partial";
+        assert.equal(store.saveState(), expected);
+        const reload = store.refresh(); source.finishRefresh(current); await reload;
+        assert.equal(store.saveState(), expected, "Reload must retain backend application warning and Reapply state");
+        assert.equal(store.runtimeFailureCode(), "delivery-unavailable");
+        assert.deepEqual(store.runtimeCapabilityConstrainedPaths(), ["performance.preciseGpuPlacementEnabled"]);
+      }
+      source.publishReady({ ...result("applied", "normal", "system"), runtimeApplicationDisposition: "committedAndApplied" });
+      assert.equal(store.saveState(), "idle");
+      assert.equal(store.runtimeFailureCode(), null);
+      assert.equal(store.settings().update!.checkIntervalHours, 6);
+      store.updateCheckInterval(24); store.updateAutoUpdate(true);
+      assert.deepEqual(store.draftSettings().update, { checkIntervalHours: 24, autoUpdateEnabled: true });
+      store.updateCheckInterval(999); assert.equal(store.draftSettings().update!.checkIntervalHours, 168);
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

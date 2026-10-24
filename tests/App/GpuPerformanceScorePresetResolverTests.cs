@@ -16,7 +16,6 @@ public sealed class GpuPerformanceScorePresetResolverTests
         var rx7600 = GpuPerformanceScorePresetResolver.Resolve("AMD Radeon RX 7600", 8UL << 30, 2000);
 
         Assert.Equal(14636, rtx5090.RasterScore);
-        Assert.Equal(0, rtx5090.GenerationBonusScore);
         Assert.Equal(rtx5090.RasterScore, rtx5090.Score);
         Assert.True(rtx5090.Score > rtx4090.Score);
         Assert.True(rtx4090.Score > rx7900Xtx.Score);
@@ -69,29 +68,6 @@ public sealed class GpuPerformanceScorePresetResolverTests
         Assert.False(result.IsIntegrated);
         Assert.Equal("unavailable:steel-nomad-dx12", result.Source);
         Assert.Equal(0, result.Score);
-    }
-
-    [Theory]
-    [InlineData("NVIDIA GeForce RTX 5090")]
-    [InlineData("NVIDIA GeForce RTX 3080")]
-    [InlineData("NVIDIA GeForce RTX 5060 Laptop GPU")]
-    [InlineData("NVIDIA RTX PRO 6000 Blackwell Workstation Edition")]
-    [InlineData("AMD Radeon PRO W7900")]
-    [InlineData("AMD Radeon(TM) 610M")]
-    [InlineData("NVIDIA RTX B3000 Experimental")]
-    public void Resolve_LegacyUseCasesCannotAlterRasterOrAddBonuses(string model)
-    {
-        var general = GpuPerformanceScorePresetResolver.Resolve(model, 8UL << 30, 2000);
-        string[][] legacyChoices = [[], ["general"], ["gaming"], ["ai"], ["ai", "gaming"], ["unknown"]];
-        foreach (var choices in legacyChoices)
-        {
-            var result = GpuPerformanceScorePresetResolver.Resolve(model, 8UL << 30, 2000, choices);
-            Assert.Equal(general.Score, result.Score);
-            Assert.Equal(result.RasterScore, result.Score);
-            Assert.Equal(0, result.GenerationBonusScore);
-            Assert.Equal(0, result.UseCaseBonusScore);
-            Assert.Equal([AppGpuPerformanceUseCases.General], result.GpuPerformanceUseCases);
-        }
     }
 
     [Theory]

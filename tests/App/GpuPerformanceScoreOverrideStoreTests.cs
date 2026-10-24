@@ -83,7 +83,7 @@ public sealed class GpuPerformanceScoreOverrideStoreTests
             Assert.True(Record.Exception(() => reopened.LoadScores()) is JsonException or InvalidDataException);
             Assert.Equal(corrupt, File.ReadAllText(path));
             var scores = ResourceManager.App.Infrastructure.RuntimeSpecialization.RuntimePlanCompiler.CompileHardwareScores(
-                ["general"], "cpu", new Dictionary<int, double> { [0] = 42 }, reopened);
+                "cpu", new Dictionary<int, double> { [0] = 42 }, reopened);
             Assert.NotNull(scores.GpuPerformanceScoreUnavailableReason);
             Assert.Equal(42, scores.ResolveCpuPerformanceScore(0, 10));
             Assert.Throws<InvalidOperationException>(() => scores.ResolveGpuPerformanceScore(null!));

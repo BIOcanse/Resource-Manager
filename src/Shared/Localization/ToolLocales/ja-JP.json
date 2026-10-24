@@ -92,5 +92,11 @@
   "ReinstallPreviousFormat": "以前のインストールが見つかりました：\n{0}",
   "ReinstallStop": "ユーザーデータをコピーする前に、旧版の画面とバックグラウンドサービスを停止します。",
   "ReinstallIdentity": "旧版の LocalSystem サービスと自動起動、HKLM と App Paths の項目、アンインストール登録、スタートメニューのショートカットを削除し、新しいインストール用に登録します。",
-  "ReinstallData": "Config、UserData、Misc を新しいインストール先にコピーし、旧プログラム、元のデータと保守ファイルを保持します。旧外部エントリーファイルがある場合は旧フォルダーの Internal に移します。独立コンポーネントはコンポーネント管理で扱います。"
+  "ReinstallData": "Config、UserData、Misc を新しいインストール先にコピーし、旧プログラム、元のデータと保守ファイルを保持します。旧外部エントリーファイルがある場合は旧フォルダーの Internal に移します。独立コンポーネントはコンポーネント管理で扱います。",
+  "WebViewInstallTitle": "WebView2 が必要です",
+  "WebViewInstallConsent": "Resource Manager の画面表示には Microsoft WebView2 が必要です。「インストール」を選ぶと、署名を検証した Microsoft インストーラーをダウンロードしてセットアップ画面を開きます。「キャンセル」を選ぶと WebView2 をインストールせずに Resource Manager を終了します。",
+  "WebViewInstall": "インストール",
+  "WebViewInstallCancelled": "WebView2 のインストールをキャンセルしたため、Resource Manager を終了します。",
+  "UpdateVersionNotNewerFormat": "パッケージ {1} はインストール済みのバージョン {0} より新しい必要があります。",
+  "RepairVersionMismatchFormat": "修復パッケージ {1} はインストール済みのバージョン {0} と一致する必要があります。アップグレードには更新を使用してください。"
 }

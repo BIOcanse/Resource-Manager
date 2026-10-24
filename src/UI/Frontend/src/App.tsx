@@ -28,6 +28,7 @@ import {
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
 import { applyLanguage, uiText } from "./text.ts";
+import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
 import { applyByteUnitMode } from "./presentation/byteUnits.ts";
 import { applyReadingSourceMode } from "./presentation/readingSources.ts";
 import type {
@@ -164,7 +165,8 @@ export default function App() {
 
   // 界面语言：设置里的选择是唯一来源，解析、载入和 <html lang/dir> 都由 appTextStore 完成。
   createEffect(() => {
-    applyLanguage(settings.settings().appearance?.language ?? "system");
+    // appTextStore publishes a persistent error with an explicit retry action.
+    void applyLanguage(settings.settings().appearance?.language ?? "system").catch(() => undefined);
   });
 
   // 容量进制：设置里的选择是唯一来源，换算与单位标签都由 byteUnits 统一给出。
@@ -324,6 +326,7 @@ export default function App() {
         onManagementSubpageSelect={selectManagementSubpage}
         onTaskCenterOpen={() => setTaskCenterOpen(true)}
       >
+        <LanguageLoadNotice />
         <AppRoutes
           animationMode={gpuRuntimePlan().animations}
           activePage={activePage}

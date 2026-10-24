@@ -1,4 +1,5 @@
 import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.js";
+import productUpdatesJourney from "./productUpdatesJourney.js";
 import managementInventoryRevisionJourney from "./managementInventoryRevisionJourney.js";
 import diskUsageReadRecoveryJourney from "./diskUsageReadRecoveryJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
@@ -54,6 +55,8 @@ import localizationJourney from "./localizationJourney.js";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const allJourneys = [
+  ["product-updates", productUpdatesJourney],
+  ["language-load-failure", async (...args) => (await import("./languageLoadFailureJourney.js")).default(...args)],
   ["frontend-refresh-intervals", frontendRefreshIntervalsJourney],
   ["management-inventory-revisions", managementInventoryRevisionJourney],
   ["disk-usage-read-recovery", diskUsageReadRecoveryJourney],

@@ -1,4 +1,5 @@
 import { portProtocol } from "../src/features/deviceTopology/deviceVocabulary.ts";
+import { createComputed, createRoot } from "solid-js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { languageOptions, normalizeLanguageMode, resolveLanguageMode } from "../src/i18n/settingsLanguages.ts";
@@ -11,6 +12,9 @@ import {
 } from "../src/i18n/appTextStore.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
+import { createLanguageBundleLoader } from "../src/i18n/languageBundleLoader.ts";
+import { languageFailureText } from "../src/i18n/languageFailureText.ts";
+import type { LanguageLoadError } from "../src/i18n/appTextStore.ts";
 import { operationTitleForKind } from "../src/frontendRuntime/taskCenter/TaskCenterProjection.ts";
 import type { AppCopy } from "../src/i18n/copy/index.ts";
 import type {
@@ -106,12 +110,121 @@ assert.equal(committedBundles[0].language, "en-US");
 assert.equal(committedBundles[0].appCopy.page.monitor, englishCopy.page.monitor);
 assert.equal(committedBundles[0].settingsText.language, "en-US");
 
+// Both production bundle loaders use the same failure-evicting cache. Test each
+// failure independently: neither half may change the visible language alone.
+for (const failedBundle of ["appCopy", "settingsText"] as const) {
+  let attempts = 0;
+  const failure = new Error(`${failedBundle} download failed`);
+  const cachedCopy = createLanguageBundleLoader(async (language) => {
+    if (language === "ja-JP" && failedBundle === "appCopy" && attempts++ === 0) throw failure;
+    return language === "ja-JP" ? japaneseCopy : englishCopy;
+  });
+  const cachedSettings = createLanguageBundleLoader(async (language) => {
+    if (language === "ja-JP" && failedBundle === "settingsText" && attempts++ === 0) throw failure;
+    return language === "ja-JP" ? japaneseSettings : englishSettings;
+  });
+  const visible: string[] = [];
+  const errors: Array<LanguageLoadError | null> = [];
+  const apply = createLanguageApplier({ appCopy: cachedCopy.load, settingsText: cachedSettings.load },
+    (language, copy, settings) => {
+      assert.equal(copy.page.monitor, language === "ja-JP" ? japaneseCopy.page.monitor : englishCopy.page.monitor);
+      assert.equal(settings.language, language);
+      visible.push(language);
+    }, (error) => errors.push(error));
+  await apply("en-US");
+  await assert.rejects(apply("ja-JP"), (error) => error === failure);
+  assert.deepEqual(visible, ["en-US"], `${failedBundle}: retain last fully loaded bundles`);
+  assert.equal(errors.at(-1)?.language, "ja-JP");
+  assert.equal(errors.at(-1)?.cause, failure);
+  const failedCache = failedBundle === "appCopy" ? cachedCopy : cachedSettings;
+  assert.equal(failedCache.isReady("ja-JP"), false);
+  await apply("ja-JP");
+  assert.equal(attempts, 2, "explicit retry must perform a fresh failed-bundle load");
+  assert.equal(failedCache.isReady("ja-JP"), true);
+  assert.deepEqual(visible, ["en-US", "ja-JP"]);
+  assert.equal(errors.at(-1), null);
+}
+
+// A late failure of an abandoned request must not replace the current state.
+const staleCopy = deferred<AppCopy>();
+const staleErrors: Array<LanguageLoadError | null> = [];
+const applyStale = createLanguageApplier({
+  appCopy: language => language === "ja-JP" ? staleCopy.promise : Promise.resolve(englishCopy),
+  settingsText: () => Promise.resolve(englishSettings)
+}, () => undefined, error => staleErrors.push(error));
+await applyStale("en-US");
+const abandoned = applyStale("ja-JP");
+const abandonedResult = assert.rejects(abandoned, /abandoned download/u);
+await applyStale("en-US");
+staleCopy.reject(new Error("abandoned download"));
+await abandonedResult;
+assert.ok(staleErrors.every(error => error === null));
+
+// Repeating the same target does not let its older unfinished request commit.
+const oldCopy = deferred<AppCopy>();
+const newCopy = deferred<AppCopy>();
+let copyRequests = 0;
+const sameTargetCommits: string[] = [];
+const sameTarget = createLanguageApplier({
+  appCopy: () => ++copyRequests === 1 ? oldCopy.promise : newCopy.promise,
+  settingsText: () => Promise.resolve(japaneseSettings)
+}, language => sameTargetCommits.push(language));
+const older = sameTarget("ja-JP");
+const newer = sameTarget("ja-JP");
+oldCopy.resolve(japaneseCopy);
+await older;
+assert.deepEqual(sameTargetCommits, []);
+newCopy.resolve(japaneseCopy);
+await newer;
+assert.deepEqual(sameTargetCommits, ["ja-JP"]);
+
+// Reactive consumers see complete bundles, document attributes and the shell
+// notification from the same commit, never an intermediate language.
+const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+const documentElement = { lang: "", dir: "" };
+const messages: Array<{ type: string; language: string }> = [];
+Object.defineProperty(globalThis, "document", { configurable: true, value: { documentElement } });
+Object.defineProperty(globalThis, "window", { configurable: true,
+  value: { chrome: { webview: { postMessage: (message: { type: string; language: string }) => messages.push(message) } } } });
+let dispose: () => void = () => undefined;
+try {
+  await applyLanguage("en-US");
+  const expected = await loadAppCopy("de-DE");
+  createRoot(cleanup => {
+    dispose = cleanup;
+    createComputed(() => {
+      if (currentLanguage() !== "de-DE") return;
+      assert.equal(currentSettingsText().language, "de-DE");
+      assert.equal(uiText.page.monitor, expected.page.monitor);
+      assert.equal(documentElement.lang, "de-DE");
+      assert.equal(documentElement.dir, "ltr");
+      assert.deepEqual(messages.at(-1), { type: "shell.language", language: "de-DE" });
+    });
+  });
+  await applyLanguage("de-DE");
+  assert.equal(documentElement.lang, "de-DE");
+} finally {
+  dispose();
+  if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+  else Reflect.deleteProperty(globalThis, "document");
+  if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+  else Reflect.deleteProperty(globalThis, "window");
+}
+
 const shippedLanguages = languageOptions
   .map((option) => option.id)
   .filter((language): language is ConcreteAppLanguageMode => language !== "system");
 assert.equal(shippedLanguages.length, 9);
 const englishAppCopy = await loadAppCopy("en-US");
 for (const language of shippedLanguages) {
+  const failureText = languageFailureText(language);
+  assert.ok(failureText.message.trim(), `${language}: failure message`);
+  assert.ok(failureText.retry.trim(), `${language}: retry action`);
+  if (language !== "en-US") {
+    assert.notEqual(failureText.message, languageFailureText("en-US").message);
+    assert.notEqual(failureText.retry, languageFailureText("en-US").retry);
+  }
   const expectedCopy = await loadAppCopy(language);
   await applyLanguage(language);
   assert.equal(currentLanguage(), language);
@@ -187,10 +300,12 @@ console.log("Language normalization, script matching, lazy-load cancellation and
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 for (const language of languageOptions.filter(option => option.id !== "system")) {

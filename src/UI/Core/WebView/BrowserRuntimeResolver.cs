@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Web.WebView2.Core;
+using ResourceManager.NativeUi.Localization;
+using ResourceManager.Shared.Localization;
 
 namespace ResourceManager.NativeUi.WebView;
 
@@ -12,14 +14,17 @@ internal sealed record BrowserRuntimeResolution(
 internal static class BrowserRuntimeResolver
 {
     public static Task<BrowserRuntimeResolution> ResolveAsync()
-        => ResolveAsync(ProbeSystem, InstallSystemRuntimeAsync);
+        => ResolveAsync(ProbeSystem, ConfirmInstallation, InstallSystemRuntimeAsync);
 
     internal static async Task<BrowserRuntimeResolution> ResolveAsync(
-        Func<string?> probeSystem, Func<Task> installSystemRuntime)
+        Func<string?> probeSystem, Func<bool> confirmInstallation, Func<Task> installSystemRuntime)
     {
         var version = probeSystem();
         if (string.IsNullOrWhiteSpace(version))
         {
+            if (!confirmInstallation())
+                throw new BrowserRuntimeInstallationDeclinedException(
+                    ToolText.For(NativeUiText.Language).WebViewInstallCancelled);
             await installSystemRuntime();
             version = probeSystem();
             if (string.IsNullOrWhiteSpace(version))
@@ -28,6 +33,27 @@ internal static class BrowserRuntimeResolver
         }
 
         return new BrowserRuntimeResolution(null, version, "SystemShared");
+    }
+
+    private static bool ConfirmInstallation()
+    {
+        var page = CreateConsentPage(ToolText.For(NativeUiText.Language));
+        return TaskDialog.ShowDialog(page) == page.Buttons[0];
+    }
+
+    internal static TaskDialogPage CreateConsentPage(ToolText text)
+    {
+        var install = new TaskDialogButton(text.WebViewInstall);
+        var cancel = new TaskDialogButton(text.Cancel);
+        return new TaskDialogPage
+        {
+            Caption = NativeUiText.Current.AppName,
+            Heading = text.WebViewInstallTitle,
+            Text = text.WebViewInstallConsent,
+            Buttons = { install, cancel },
+            DefaultButton = cancel,
+            AllowCancel = true
+        };
     }
 
     private static string? ProbeSystem()

@@ -2,7 +2,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("zh-TW", {
   "updates": {
     "autoUpdateTitle": "自動更新",
-    "autoUpdateDescription": "儲存自動更新偏好。可信釋出簽名接入前不會自動安裝；手動更新可用。",
+    "autoUpdateDescription": "定期檢查、下載並驗證更新；關閉所有桌面工作階段中的資源管理器介面後自動套用，也可點選立即套用。",
     "installedVersionTitle": "當前安裝版本",
     "unknownVersion": "無法識別",
     "checking": "檢查中…",
@@ -13,7 +13,7 @@ export default createSettingsLocale("zh-TW", {
     "versionsDescription": "從新到舊排列；每個系列預設顯示最新一版。",
     "lastChecked": "上次檢查：",
     "selectedTarget": "已選擇目標版本：",
-    "prepare": "準備並安裝所選更新",
+    "prepare": "準備所選更新",
     "confirmPrepare": (version) => `將更新到 ${version}。更新器會校驗發行包，等待你退出所有桌面介面，停止服務，保留並遷移資料，驗證新版本；失敗時恢復舊版。繼續準備嗎？`,
     "prepareFailed": "無法準備更新。",
     "waitingForExit": "更新包已準備。請從托盤退出所有 Resource Manager 桌面介面；更新器會隨後切換版本。",
@@ -87,8 +87,6 @@ export default createSettingsLocale("zh-TW", {
         "label": "關閉"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "GPU 用途",
-    "gpuPerformanceUseCasesDescription": "選擇主要用途，以更合適地比較不同顯示卡的能力。可多選。",
     "preciseGpuPlacementTitle": "精確 GPU 選擇",
     "preciseGpuPlacementDescription": "允許受支援的渲染程序精確選卡；執行時換卡仍取決於該程序的相容能力。每個軟體可單獨設。",
     "preciseGpuPlacementModeOptions": {
@@ -296,20 +294,6 @@ export default createSettingsLocale("zh-TW", {
         "description": "關閉額外文字平滑，使用最直接的字形柵格化"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "綜合",
-        "description": "光柵基礎分始終疊加小幅 GPU 代際加成"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "增大代際加成，並重點參考 NVIDIA 生態、視訊記憶體容量和視訊記憶體速度"
-      },
-      "gaming": {
-        "label": "遊戲",
-        "description": "獲得更高的代際加成，並小幅參考視訊記憶體容量"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "工作管理員快捷鍵替換",

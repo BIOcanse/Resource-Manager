@@ -18,13 +18,50 @@ public sealed class AppSettingsMigratorTests
             } }
             """);
         var migrated = AppSettingsMigrator.MigrateForRead(input.RootElement);
-        Assert.Equal("1.0.28", migrated.Version);
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, migrated.Version);
         Assert.Equal(95, migrated.Performance.GpuOverflowUsagePercent);
         Assert.Equal(80, migrated.Performance.GpuOverflowDedicatedMemoryPercent);
         using var saved = JsonDocument.Parse(JsonSerializer.Serialize(migrated, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         var performance = saved.RootElement.GetProperty("performance");
         Assert.False(performance.TryGetProperty("vramMoveDownPhysicalMemoryDangerPercent", out _));
         Assert.False(performance.TryGetProperty("physicalMemoryMoveDownVirtualMemoryDangerPercent", out _));
+    }
+
+    [Fact]
+    public void Version128_RewritesRetiredGpuUseCasesAndAddsCheckInterval()
+    {
+        var input = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        input["version"] = "1.0.28";
+        input["performance"]!["gpuPerformanceUseCases"] = new JsonArray("gaming", "ai");
+        input["update"]!.AsObject().Remove("checkIntervalHours");
+        using var document = JsonDocument.Parse(input.ToJsonString());
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+        var migrated = AppSettingsMigrator.MigrateForRead(document.RootElement);
+        Assert.Equal(AppSettingsDefaults.CurrentVersion, migrated.Version);
+        Assert.Equal(6, migrated.Update!.CheckIntervalHours);
+        using var written = JsonDocument.Parse(JsonSerializer.Serialize(migrated, JsonSerializerOptions.Web));
+        Assert.False(written.RootElement.GetProperty("performance").TryGetProperty("gpuPerformanceUseCases", out _));
+        Assert.False(AppSettingsMigrator.RequiresRewrite(written.RootElement));
+    }
+
+    [Theory]
+    [InlineData("0", 1)]
+    [InlineData("169", 168)]
+    [InlineData("24", 24)]
+    [InlineData("\"24\"", 6)]
+    public void CheckIntervalIsNormalizedAndCanBePatched(string input, int expected)
+    {
+        using var patch = JsonDocument.Parse("{\"update\":{\"checkIntervalHours\":" + input + "}}");
+        if (patch.RootElement.GetProperty("update").GetProperty("checkIntervalHours").ValueKind == JsonValueKind.String)
+        {
+            var root = JsonNode.Parse(CurrentShapeJson)!;
+            root["update"]!["checkIntervalHours"] = "24";
+            using var invalid = JsonDocument.Parse(root.ToJsonString());
+            Assert.True(AppSettingsMigrator.RequiresRewrite(invalid.RootElement));
+            Assert.Equal(expected, AppSettingsMigrator.MigrateForRead(invalid.RootElement).Update!.CheckIntervalHours);
+            return;
+        }
+        Assert.Equal(expected, AppSettingsPatchApplier.Apply(AppSettingsDefaults.Create(), patch.RootElement).Update!.CheckIntervalHours);
     }
 
     [Fact]
@@ -49,7 +86,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.26", true)]
     [InlineData("1.0.27", true)]
     [InlineData("1.0.28", true)]
-    [InlineData("1.0.29", false)]
+    [InlineData("1.0.29", true)]
+    [InlineData("1.0.30", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -81,7 +119,6 @@ public sealed class AppSettingsMigratorTests
         Assert.Equal(AppSettingsDefaults.CurrentVersion, settings.Version);
         Assert.Equal(AppAdaptiveBooleanModes.Enabled, settings.Performance.SmartMonitoringMode);
         Assert.Equal("system", settings.Appearance.Theme);
-        Assert.Equal([AppGpuPerformanceUseCases.General], settings.Performance.GpuPerformanceUseCases);
         Assert.False(settings.SystemIntegration.TaskManagerShortcutReplacementEnabled);
         Assert.False(settings.SystemIntegration.Hotkeys.Single().Enabled);
         Assert.False(settings.Debug.DebugModeEnabled);
@@ -303,7 +340,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DropsLegacyExternalUiDebugSetting()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace($"\"version\": \"{AppSettingsDefaults.CurrentVersion}\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false",
                 "\"hostManagerSmartCoordinatorPerformanceLogEnabled\": false, \"externalDebugEnabled\": true",
@@ -320,7 +357,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_DoesNotImportVersion117KeysFromOlderSchemas()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
+            .Replace($"\"version\": \"{AppSettingsDefaults.CurrentVersion}\"", "\"version\": \"1.0.16\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -340,7 +377,7 @@ public sealed class AppSettingsMigratorTests
     public void MigrateForRead_ConvertsVersion117HostManagerCoordinatorDebugKeysOnce()
     {
         using var document = JsonDocument.Parse(CurrentShapeJson
-            .Replace("\"version\": \"1.0.28\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
+            .Replace($"\"version\": \"{AppSettingsDefaults.CurrentVersion}\"", "\"version\": \"1.0.17\"", StringComparison.Ordinal)
             .Replace(
                 "\"hostManagerSmartCoordinatorScoreOnlyEnabled\": false",
                 "\"smartOptimizationScoreOnlyEnabled\": true",
@@ -585,13 +622,12 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.28",
+          "version": "1.0.29",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,
             "gpuOverflowUsagePercent": 95,
             "gpuOverflowDedicatedMemoryPercent": 80,
-            "gpuPerformanceUseCases": ["general"],
             "smartMonitoringMode": "enabled",
             "monitorRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
             "resourceTableRefreshIntervalMs": { "mode": "aotu", "preset": "responsive", "customValue": 1000 },
@@ -623,7 +659,7 @@ public sealed class AppSettingsMigratorTests
             "endpoint": "http://127.0.0.1:1234",
             "autoStartEnabled": true
           },
-          "update": { "autoUpdateEnabled": false },
+          "update": { "autoUpdateEnabled": false, "checkIntervalHours": 6 },
           "control": { "enabled": true, "reassertionIntervalSeconds": 120 },
           "reports": { "ruleOverrides": [] },
           "debug": {

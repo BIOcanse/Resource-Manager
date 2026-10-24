@@ -137,14 +137,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             HttpResponse response,
             IMetricSampler metricSampler,
             IGpuPerformanceScoreOverrideStore overrideStore,
-            IAppSettingsStore settingsStore,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
             var hardware = await metricSampler.GetSnapshotAsync(MetricSampleRequest.CatalogProbe, cancellationToken);
             var loaded = overrideStore.Load();
-            var appSettings = await settingsStore.LoadReadOnlyAsync(cancellationToken);
-            var gpuPerformanceUseCases = appSettings.Settings.Performance.GpuPerformanceUseCases;
             var items = hardware.Gpus
                 .OrderBy(static gpu => gpu.Index)
                 .Select(gpu =>
@@ -153,17 +150,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     var preset = GpuPerformanceScorePresetResolver.Resolve(
                         gpu.Name,
                         gpu.TotalMemoryBytes,
-                        gpu.StandardGraphicsFrequencyMhz,
-                        gpuPerformanceUseCases);
+                        gpu.StandardGraphicsFrequencyMhz);
                     var hasOverride = loaded.ScoresByGpuId.TryGetValue(gpuId, out var overrideScore);
                     return new GpuPerformanceScoreItem(
                         gpuId,
                         gpu.Index,
                         gpu.Name,
                         preset.RasterScore,
-                        preset.GenerationBonusScore,
-                        preset.UseCaseBonusScore,
-                        preset.GpuPerformanceUseCases,
                         preset.Score,
                         hasOverride ? GpuPerformanceScorePresetResolver.NormalizeManualScore(overrideScore) : preset.Score,
                         hasOverride,

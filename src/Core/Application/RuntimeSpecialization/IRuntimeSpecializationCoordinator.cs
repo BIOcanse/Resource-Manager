@@ -7,6 +7,8 @@ namespace ResourceManager.App.Application.RuntimeSpecialization;
 
 public interface IRuntimeSpecializationCoordinator
 {
+    AppSettingsUpdateResult ProjectAppSettingsRuntimeState(AppSettingsUpdateResult stored) => stored;
+
     Task<CpuBaselineRatioUpdateResult> ApplyCpuBaselineRatioAsync(
         double? overrideRatio,
         CancellationToken cancellationToken);

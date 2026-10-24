@@ -26,7 +26,7 @@ internal static class Program
         }
         catch (Exception exception)
         {
-            UpdateManagerCommand.WriteResult(args, false, exception.ToString());
+            UpdateManagerCommand.WriteFailure(args, exception, text);
             return 1;
         }
     }

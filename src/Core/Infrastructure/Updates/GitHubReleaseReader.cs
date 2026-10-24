@@ -28,10 +28,12 @@ public static class GitHubReleaseReader
         for (var page = 1; page <= MaxPages; page++)
         {
             var url = $"https://api.github.com/repos/{Uri.EscapeDataString(owner)}/{Uri.EscapeDataString(repository)}/releases?per_page={PageSize}&page={page}";
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            var requestUri = new Uri(url);
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
             request.Headers.UserAgent.ParseAdd("ResourceManager-VersionCatalog");
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
             using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            ProductUpdateSource.EnsureUnredirectedResponse(response, requestUri);
             response.EnsureSuccessStatusCode();
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
@@ -54,10 +56,7 @@ public static class GitHubReleaseReader
                         var name = ReadString(asset, "name");
                         var downloadUrl = ReadString(asset, "browser_download_url");
                         if (name is not null && downloadUrl is not null
-                            && Uri.TryCreate(downloadUrl, UriKind.Absolute, out var parsed)
-                            && parsed.Scheme == Uri.UriSchemeHttps
-                            && parsed.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase)
-                            && parsed.AbsolutePath.StartsWith($"/{owner}/{repository}/releases/download/", StringComparison.OrdinalIgnoreCase))
+                            && ProductUpdateSource.IsReleaseAssetUrl(downloadUrl, owner, repository, tag, name))
                             assets.Add(new GitHubReleaseAsset(name, downloadUrl));
                     }
                 }

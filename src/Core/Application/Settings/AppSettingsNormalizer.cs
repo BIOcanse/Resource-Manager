@@ -21,7 +21,8 @@ public static class AppSettingsNormalizer
             NormalizeDebug(settings.Debug),
             NormalizePublicService(settings.PublicService),
             NormalizeAiModelService(settings.AiModelService),
-            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false),
+            new AppUpdateSettings(settings.Update?.AutoUpdateEnabled ?? false,
+                Math.Clamp(settings.Update?.CheckIntervalHours ?? 6, 1, 168)),
             new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400)),
             // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []));
@@ -38,7 +39,6 @@ public static class AppSettingsNormalizer
             NormalizeDangerPercent(performance?.VirtualMemoryAutomaticCleanupPercent, AppSettingsDefaults.VirtualMemoryAutomaticCleanupPercent),
             NormalizeTargetUsagePercent(performance?.PhysicalMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.PhysicalMemoryOptimizationTargetUsagePercent),
             NormalizeTargetUsagePercent(performance?.VirtualMemoryOptimizationTargetUsagePercent, AppSettingsDefaults.VirtualMemoryOptimizationTargetUsagePercent),
-            NormalizeGpuPerformanceUseCases(performance?.GpuPerformanceUseCases),
             NormalizeAdaptiveBooleanMode(performance?.SmartMonitoringMode),
             NormalizeLogicRefreshInterval(
                 performance?.MonitorRefreshIntervalMs,
@@ -294,30 +294,6 @@ public static class AppSettingsNormalizer
 
     private static string NormalizeOptimizationMode(string? mode)
         => AppOptimizationModes.Normalize(mode);
-
-    public static IReadOnlyList<string> NormalizeGpuPerformanceUseCases(IEnumerable<string>? useCases)
-    {
-        var normalized = (useCases ?? [])
-            .Where(static useCase => !string.IsNullOrWhiteSpace(useCase))
-            .Select(static useCase => useCase.Trim())
-            .Where(static useCase => AppGpuPerformanceUseCases.Supported.Contains(useCase))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        return normalized.Length > 0
-            ? normalized
-            : [AppGpuPerformanceUseCases.General];
-    }
-
-    public static IReadOnlyList<string> NormalizeGpuPerformanceUseCase(string? useCase)
-    {
-        return useCase switch
-        {
-            AppGpuPerformanceUseCases.Ai => [AppGpuPerformanceUseCases.Ai],
-            AppGpuPerformanceUseCases.Gaming => [AppGpuPerformanceUseCases.Gaming],
-            _ => [AppGpuPerformanceUseCases.General]
-        };
-    }
 
     private static byte NormalizeDangerPercent(byte? percent, byte fallback)
     {

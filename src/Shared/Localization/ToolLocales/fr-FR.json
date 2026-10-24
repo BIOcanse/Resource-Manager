@@ -92,5 +92,11 @@
   "ReinstallPreviousFormat": "Installation précédente détectée :\n{0}",
   "ReinstallStop": "Arrêter l’interface et le service en arrière-plan précédents avant de copier les données utilisateur.",
   "ReinstallIdentity": "Supprimer l’ancien service LocalSystem et son démarrage automatique, les entrées HKLM et App Paths, l’enregistrement de désinstallation et les raccourcis du menu Démarrer. Enregistrer ces identités pour la nouvelle installation.",
-  "ReinstallData": "Copier Config, UserData et Misc vers la nouvelle installation. Conserver l’ancien programme, les données originales et les fichiers de maintenance. Déplacer les éventuels anciens fichiers de lancement externes dans Internal de l’ancien dossier ; gérer les composants indépendants dans la gestion des composants."
+  "ReinstallData": "Copier Config, UserData et Misc vers la nouvelle installation. Conserver l’ancien programme, les données originales et les fichiers de maintenance. Déplacer les éventuels anciens fichiers de lancement externes dans Internal de l’ancien dossier ; gérer les composants indépendants dans la gestion des composants.",
+  "WebViewInstallTitle": "WebView2 est requis",
+  "WebViewInstallConsent": "Resource Manager a besoin de Microsoft WebView2 pour afficher son interface. Installer téléchargera le programme Microsoft dont la signature sera vérifiée et ouvrira sa fenêtre d’installation. Annuler ferme Resource Manager sans installer WebView2.",
+  "WebViewInstall": "Installer",
+  "WebViewInstallCancelled": "L’installation de WebView2 a été annulée. Resource Manager se ferme.",
+  "UpdateVersionNotNewerFormat": "Le paquet {1} doit être plus récent que la version installée {0}.",
+  "RepairVersionMismatchFormat": "Le paquet de réparation {1} doit correspondre à la version installée {0}. Utilisez la mise à jour pour changer de version."
 }

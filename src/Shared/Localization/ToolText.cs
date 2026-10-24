@@ -106,6 +106,12 @@ public sealed record ToolText
     public required string ImportUserDataCompleted { get; init; }
     public required string LaunchRecovery { get; init; }
     public required string UpdateCleanupFailedFormat { get; init; }
+    public required string WebViewInstallTitle { get; init; }
+    public required string WebViewInstallConsent { get; init; }
+    public required string WebViewInstall { get; init; }
+    public required string WebViewInstallCancelled { get; init; }
+    public required string UpdateVersionNotNewerFormat { get; init; }
+    public required string RepairVersionMismatchFormat { get; init; }
 
     public string Format(string template, params object[] values) =>
         string.Format(CultureInfo.GetCultureInfo(Language), template, values);

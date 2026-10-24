@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("ko-KR", {
   "updates": {
     "autoUpdateTitle": "자동 업데이트",
-    "autoUpdateDescription": "자동 업데이트 설정을 저장합니다. 신뢰할 수 있는 릴리스 서명 지원 전에는 자동 설치하지 않습니다. 수동 업데이트는 사용할 수 있습니다.",
+    "autoUpdateDescription": "정기적으로 업데이트를 확인하고 다운로드 및 검증합니다. 모든 데스크톱 세션에서 Resource Manager 창을 닫으면 자동 적용하거나 지금 적용을 선택할 수 있습니다.",
     "installedVersionTitle": "설치된 버전",
     "unknownVersion": "알 수 없음",
     "checking": "확인 중…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("ko-KR", {
     "versionsDescription": "최신순으로 표시합니다. 각 계열은 기본적으로 최신 릴리스를 표시합니다.",
     "lastChecked": "마지막 확인: ",
     "selectedTarget": "선택한 대상 버전: ",
-    "prepare": "선택한 업데이트 준비 및 설치",
+    "prepare": "선택한 업데이트 준비",
     "confirmPrepare": (version: string) => `버전 ${version}을 준비할까요? 패키지를 검증하고 모든 데스크톱 화면이 종료될 때까지 기다린 뒤 서비스를 중지합니다. 데이터를 보존하고 변환하여 새 버전을 검증합니다. 실패하면 이전 버전을 복원합니다.`,
     "prepareFailed": "업데이트를 준비할 수 없습니다.",
     "waitingForExit": "업데이트가 준비되었습니다. 적용하려면 트레이에서 모든 Resource Manager 데스크톱 세션을 종료하세요.",
@@ -88,8 +88,6 @@ export default createSettingsLocale("ko-KR", {
         "label": "꺼짐"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "GPU 용도",
-    "gpuPerformanceUseCasesDescription": "GPU 성능을 적절히 비교하기 위해 주요 작업을 선택하세요. 여러 항목을 선택할 수 있습니다.",
     "preciseGpuPlacementTitle": "정확한 GPU 선택",
     "preciseGpuPlacementDescription": "지원되는 렌더링 프로세스에서 GPU를 정확히 지정할 수 있습니다. 실행 중 전환은 프로세스 호환성에 따라 달라지며 앱별로 설정할 수 있습니다.",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("ko-KR", {
         "description": "추가 텍스트 다듬기를 끄고 글리프를 직접 래스터화합니다"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "일반",
-        "description": "래스터 성능 기본 점수에 작은 세대 보너스를 항상 추가합니다"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "세대 가중치를 높이고 NVIDIA 생태계, VRAM 용량 및 대역폭에 높은 가중치를 부여합니다"
-      },
-      "gaming": {
-        "label": "게임",
-        "description": "가장 큰 세대 보너스와 작은 VRAM 용량 보너스를 적용합니다"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "작업 관리자 단축키 대체",

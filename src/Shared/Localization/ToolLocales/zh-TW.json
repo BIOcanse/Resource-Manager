@@ -92,5 +92,11 @@
   "ReinstallPreviousFormat": "偵測到舊安裝：\n{0}",
   "ReinstallStop": "停止舊版介面和背景服務，確保複製的是停止後的使用者資料。",
   "ReinstallIdentity": "移除舊版 LocalSystem 服務及其自動啟動，刪除舊版 HKLM、App Paths、解除安裝登錄和開始功能表捷徑；這些身分將改為新安裝。",
-  "ReinstallData": "複製 Config、UserData、Misc 到新安裝，保留舊程式和原始資料。舊維護檔案仍保留；舊外置入口檔案歸入舊資料夾的 Internal 中。獨立元件仍由元件管理入口處理。"
+  "ReinstallData": "複製 Config、UserData、Misc 到新安裝，保留舊程式和原始資料。舊維護檔案仍保留；舊外置入口檔案歸入舊資料夾的 Internal 中。獨立元件仍由元件管理入口處理。",
+  "WebViewInstallTitle": "需要 WebView2",
+  "WebViewInstallConsent": "資源管理器需要 Microsoft WebView2 才能顯示介面。選擇「安裝」將下載通過簽章驗證的 Microsoft 安裝程式並開啟安裝視窗。選擇「取消」將退出資源管理器，不安裝 WebView2。",
+  "WebViewInstall": "安裝",
+  "WebViewInstallCancelled": "已取消安裝 WebView2，資源管理器正在退出。",
+  "UpdateVersionNotNewerFormat": "發行套件 {1} 必須高於已安裝版本 {0}。",
+  "RepairVersionMismatchFormat": "修復套件 {1} 必須與已安裝版本 {0} 相同。升級請使用更新操作。"
 }

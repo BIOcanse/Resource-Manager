@@ -18,8 +18,8 @@ try {
         throw 'The downloaded WebView2 installer does not have a valid Microsoft signature.'
     }
     Move-Item -LiteralPath $download -Destination $installer -Force
-    $process = Start-Process -FilePath $installer -ArgumentList @('/silent', '/install') `
-        -PassThru -WindowStyle Hidden
+    $process = Start-Process -FilePath $installer -ArgumentList @('/install') `
+        -PassThru -WindowStyle Normal
     try {
         if (-not $process.WaitForExit(900000)) {
             throw 'WebView2 setup is still running. Allow it to finish before starting Resource Manager again.'

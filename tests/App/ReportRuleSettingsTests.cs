@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -25,6 +26,28 @@ namespace Resource_Manager_APP.Tests;
 // 设置页「报告判定」：default.json 给出规则名和默认值，用户值逐项覆盖，编译器统一校验。
 public sealed class ReportRuleSettingsTests
 {
+    [Fact]
+    public async Task SettingsGetPreservesDeliveryFailuresAndReapplyClearsThem()
+    {
+        await using var fixture = await SettingsFixture.StartAsync();
+        Action<CompiledRuntimePlan> failure = _ => throw new InvalidOperationException("delivery-test");
+        fixture.Plans.Published += failure;
+        using var changed = await fixture.PatchAsync("{\"update\":{\"checkIntervalHours\":12}}");
+        Assert.Equal(HttpStatusCode.Accepted, changed.StatusCode);
+        var response = (await changed.Content.ReadFromJsonAsync<JsonObject>())!;
+        var read = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/app"))!;
+        Assert.Equal("committedWithDeliveryFailures", read["runtimeApplicationDisposition"]!.GetValue<string>());
+        Assert.Equal(1, read["runtimeDeliveryFailureCount"]!.GetValue<int>());
+        Assert.Equal(response["runtimePlanVersion"]!.GetValue<long>(), read["runtimePlanVersion"]!.GetValue<long>());
+        fixture.Plans.Published -= failure;
+        using var reapplied = await fixture.Client.PostAsync("/api/settings/app/reapply", null);
+        Assert.Equal(HttpStatusCode.OK, reapplied.StatusCode);
+        read = (await fixture.Client.GetFromJsonAsync<JsonObject>("/api/settings/app"))!;
+        Assert.Equal("committedAndApplied", read["runtimeApplicationDisposition"]!.GetValue<string>());
+        Assert.Equal(0, read["runtimeDeliveryFailureCount"]!.GetValue<int>());
+        Assert.Equal(12, read["settings"]!["update"]!["checkIntervalHours"]!.GetValue<int>());
+    }
+
     private static readonly string[] RuleNames =
     [
         "cpu_throttle_temperature", "cpu_throttle_usage", "cpu_throttle_frequency",
@@ -255,7 +278,7 @@ public sealed class ReportRuleSettingsTests
 
     private sealed class SettingsFixture(WebApplication app, string root) : IAsyncDisposable
     {
-        public HttpClient Client { get; } = new()
+        public HttpClient Client { get; } = new(new HttpClientHandler { UseProxy = false })
         {
             BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
                 .Features.Get<IServerAddressesFeature>()!.Addresses)),

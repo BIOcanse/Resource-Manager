@@ -52,9 +52,6 @@ interface GpuSchedulingPosition {
   label: string;
   name: string;
   rasterPerformanceScore: number;
-  generationBonusScore: number;
-  useCaseBonusScore: number;
-  gpuPerformanceUseCases: string[];
   defaultPerformanceScore: number;
   performanceScore: number;
   hasPerformanceOverride: boolean;
@@ -418,12 +415,6 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                       <small>
                         {uiText.gpuScheduling.defaultScore(formatScore(position.defaultPerformanceScore))}
                         {" "}· {uiText.gpuScheduling.rasterScore(formatScore(position.rasterPerformanceScore))}
-                        <Show when={position.generationBonusScore > 0}>
-                          {" "}+ {uiText.gpuScheduling.generationBonus(formatScore(position.generationBonusScore))}
-                        </Show>
-                        <Show when={position.useCaseBonusScore > 0}>
-                          {" "}+ {uiText.gpuScheduling.useCaseBonus(formatScore(position.useCaseBonusScore))}
-                        </Show>
                       </small>
                     </label>
                   </Show>
@@ -634,9 +625,6 @@ function buildGpuPositions(
       label,
       name,
       rasterPerformanceScore: scoreItem?.rasterPerformanceScore ?? defaultPerformanceScore,
-      generationBonusScore: scoreItem?.generationBonusScore ?? 0,
-      useCaseBonusScore: scoreItem?.useCaseBonusScore ?? 0,
-      gpuPerformanceUseCases: scoreItem?.gpuPerformanceUseCases ?? ["general"],
       defaultPerformanceScore,
       performanceScore,
       hasPerformanceOverride: scoreItem?.hasPerformanceOverride ?? fallbackOverrideScore !== null,

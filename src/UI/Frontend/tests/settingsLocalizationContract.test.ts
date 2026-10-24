@@ -13,7 +13,9 @@ const settingsControls = readSource("../src/features/settings/components/Setting
 assert.doesNotMatch(settingsPage, /createSignal<SettingsTextBundle>/);
 assert.doesNotMatch(settingsPage, /loadSettingsText\(/);
 assert.match(settingsPage, /const text = \(\) => currentSettingsText\(\);/);
-assert.match(settingsLoader, /return fallbackSettingsText;/);
+assert.doesNotMatch(settingsLoader, /return fallbackSettingsText;|return loadSettingsText\("zh-CN"\)/);
+assert.match(settingsLoader, /createLanguageBundleLoader<SettingsTextBundle>/);
+assert.match(settingsLoader, /throw error;/);
 assert.match(settingsLoader, /createSettingsLocale\("zh-CN"\)/);
 assert.match(settingsPage, /<nav class="settings-nav" aria-label=\{text\(\)\.navigationLabel\}>/);
 assert.match(settingsLoader, /navigationLabel: ""/);

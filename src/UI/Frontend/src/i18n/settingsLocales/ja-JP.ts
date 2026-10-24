@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("ja-JP", {
   "updates": {
     "autoUpdateTitle": "自動更新",
-    "autoUpdateDescription": "自動更新の設定を保存します。信頼できるリリース署名への対応まで自動インストールは行いません。手動更新は利用できます。",
+    "autoUpdateDescription": "定期的に更新を確認・ダウンロード・検証します。すべてのデスクトップセッションで Resource Manager の画面を閉じると自動適用します。今すぐ適用も選択できます。",
     "installedVersionTitle": "インストール済みバージョン",
     "unknownVersion": "不明",
     "checking": "確認中…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("ja-JP", {
     "versionsDescription": "新しい順に表示します。各系列では初期状態で最新リリースを表示します。",
     "lastChecked": "最終確認：",
     "selectedTarget": "選択したバージョン：",
-    "prepare": "選択した更新を準備してインストール",
+    "prepare": "選択した更新を準備",
     "confirmPrepare": (version: string) => `バージョン ${version} を準備しますか？パッケージを検証し、すべてのデスクトップ画面の終了を待ってサービスを停止します。データを保持・移行し、新しいバージョンを検証します。失敗した場合は以前のバージョンに戻します。`,
     "prepareFailed": "更新を準備できません。",
     "waitingForExit": "更新の準備ができました。適用するには、トレイからすべての Resource Manager デスクトップ画面を終了してください。",
@@ -88,8 +88,6 @@ export default createSettingsLocale("ja-JP", {
         "label": "オフ"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "GPU の用途",
-    "gpuPerformanceUseCasesDescription": "GPU の能力を適切に比較するため、主な用途を選んでください。複数選択できます。",
     "preciseGpuPlacementTitle": "GPU の正確な選択",
     "preciseGpuPlacementDescription": "対応する描画プロセスで GPU を正確に指定できます。実行中の切り替えはプロセスの互換性に依存し、アプリごとに設定できます。",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("ja-JP", {
         "description": "追加の文字平滑化を無効にし、字形を直接描画します"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "一般",
-        "description": "ラスタライズ性能の基礎点に小さな世代加点を常に追加します"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "世代の重みを増やし、NVIDIA のエコシステム、VRAM 容量と帯域幅を重視します"
-      },
-      "gaming": {
-        "label": "ゲーム",
-        "description": "最大の世代加点と、小さな VRAM 容量加点を適用します"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "タスクマネージャーのショートカット置換",

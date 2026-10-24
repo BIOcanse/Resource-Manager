@@ -38,6 +38,8 @@ public sealed class ToolLocalizationContractTests
                 Assert.NotEqual(english.PackageActions, text.PackageActions);
                 Assert.NotEqual(english.InstallConsent, text.InstallConsent);
                 Assert.NotEqual(english.RecoveryActions, text.RecoveryActions);
+                Assert.NotEqual(english.WebViewInstallConsent, text.WebViewInstallConsent);
+                Assert.NotEqual(english.WebViewInstall, text.WebViewInstall);
             }
             Assert.Contains("HKLM", text.InstallRegistry);
             Assert.Contains("App Paths", text.InstallRegistry);
@@ -45,6 +47,10 @@ public sealed class ToolLocalizationContractTests
             Assert.Contains("release-manifest.json", text.PackagePlaceholder);
             Assert.Contains("SOURCE-TOKEN", text.Format(text.UpdateSummaryFormat, "SOURCE-TOKEN", "TARGET-TOKEN"));
             Assert.Contains("TARGET-TOKEN", text.Format(text.UpdateSummaryFormat, "SOURCE-TOKEN", "TARGET-TOKEN"));
+            Assert.Contains("WebView2", text.WebViewInstallConsent);
+            Assert.Contains("Microsoft", text.WebViewInstallConsent);
+            Assert.Contains("SOURCE-TOKEN", text.Format(text.UpdateVersionNotNewerFormat, "SOURCE-TOKEN", "TARGET-TOKEN"));
+            Assert.Contains("TARGET-TOKEN", text.Format(text.UpdateVersionNotNewerFormat, "SOURCE-TOKEN", "TARGET-TOKEN"));
         }
         var traditional = ToolText.For("zh-TW");
         Assert.Contains("資料夾", traditional.PackagePlaceholder);

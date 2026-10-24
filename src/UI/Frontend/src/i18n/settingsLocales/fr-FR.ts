@@ -3,7 +3,7 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("fr-FR", {
   "updates": {
     "autoUpdateTitle": "Mises à jour automatiques",
-    "autoUpdateDescription": "Enregistre la préférence de mise à jour. L’installation automatique attend une signature de publication fiable ; les mises à jour manuelles sont disponibles.",
+    "autoUpdateDescription": "Vérifie, télécharge et valide régulièrement les mises à jour. Application automatique après la fermeture des fenêtres Resource Manager dans toutes les sessions de bureau, ou via Appliquer maintenant.",
     "installedVersionTitle": "Version installée",
     "unknownVersion": "Inconnu",
     "checking": "Vérification…",
@@ -14,7 +14,7 @@ export default createSettingsLocale("fr-FR", {
     "versionsDescription": "Les plus récentes d’abord ; chaque série affiche sa dernière version par défaut.",
     "lastChecked": "Dernière vérification : ",
     "selectedTarget": "Version cible : ",
-    "prepare": "Préparer et installer la mise à jour choisie",
+    "prepare": "Préparer la mise à jour choisie",
     "confirmPrepare": (version: string) => `Préparer la version ${version} ? Le gestionnaire vérifie le paquet, attend la fermeture de toutes les sessions de bureau, arrête le service, conserve et migre les données, puis vérifie la nouvelle version. En cas d’échec, il restaure la version précédente.`,
     "prepareFailed": "Impossible de préparer la mise à jour.",
     "waitingForExit": "Mise à jour prête. Quittez toutes les sessions de bureau Resource Manager depuis la zone de notification pour l’appliquer.",
@@ -88,8 +88,6 @@ export default createSettingsLocale("fr-FR", {
         "label": "Désactivé"
       }
     ],
-    "gpuPerformanceUseCasesTitle": "Usages du GPU",
-    "gpuPerformanceUseCasesDescription": "Sélectionnez les usages principaux pour mieux comparer les capacités des GPU. Plusieurs choix sont possibles.",
     "preciseGpuPlacementTitle": "Sélection précise du GPU",
     "preciseGpuPlacementDescription": "Permet de choisir précisément le GPU des processus de rendu compatibles. Le changement en cours d’exécution dépend de leur compatibilité et reste configurable par application.",
     "preciseGpuPlacementModeOptions": {
@@ -297,20 +295,6 @@ export default createSettingsLocale("fr-FR", {
         "description": "Désactiver le lissage supplémentaire et rasteriser directement les glyphes"
       }
     },
-    "gpuPerformanceUseCaseOptions": {
-      "general": {
-        "label": "Général",
-        "description": "Toujours ajouter un petit bonus de génération au score de rastérisation"
-      },
-      "ai": {
-        "label": "AI",
-        "description": "Renforcer la pondération de génération, de l’écosystème NVIDIA, de la capacité VRAM et de la bande passante"
-      },
-      "gaming": {
-        "label": "Jeux",
-        "description": "Appliquer le plus grand bonus de génération et un petit bonus de capacité VRAM"
-      }
-    }
   },
   "systemIntegration": {
     "taskManagerTitle": "Remplacement du raccourci du Gestionnaire des tâches",

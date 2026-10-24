@@ -23,6 +23,16 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     private long changedSequence;
     private long processedChangedSequence;
     private long version;
+    private AppSettingsUpdateResult? currentSettingsApplication;
+
+    public AppSettingsUpdateResult ProjectAppSettingsRuntimeState(AppSettingsUpdateResult stored)
+        => AppSettingsRuntimeState.Project(stored, Volatile.Read(ref currentSettingsApplication));
+
+    private AppSettingsUpdateResult RecordSettingsApplication(AppSettingsUpdateResult result)
+    {
+        Volatile.Write(ref currentSettingsApplication, result);
+        return result;
+    }
 
     public RuntimeSpecializationCoordinator(
         RuntimePlanCompiler compiler,
@@ -152,11 +162,11 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
             {
                 observed = previous;
             }
-            return observed with
+            return RecordSettingsApplication(observed with
             {
                 RuntimeApplicationDisposition = "savedNotApplied",
                 RuntimeFailureCode = "settings-commit-ambiguous"
-            };
+            });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -183,7 +193,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         try
         {
             var publication = Publish(candidatePlan);
-            return committed with
+            return RecordSettingsApplication(committed with
             {
                 RuntimeApplicationDisposition =
                     AppSettingsRuntimeApplicationDisposition.ResolvePublished(
@@ -194,20 +204,20 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
                 RuntimeDeliveryFailureCount = publication.DeliveryFailures.Count,
                 RuntimeCapabilityConstrainedPaths =
                     publication.Plan.RuntimeCapabilityConstrainedPaths
-            };
+            });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogError(
                 exception,
                 "Application settings committed, but runtime plan publication failed.");
-            return committed with
+            return RecordSettingsApplication(committed with
             {
                 RuntimeApplicationDisposition = "savedNotApplied",
                 RuntimeCapabilityConstrainedPaths =
                     candidatePlan.RuntimeCapabilityConstrainedPaths,
                 RuntimeFailureCode = "runtime-plan-publication-failed"
-            };
+            });
         }
     }
 
@@ -347,8 +357,19 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     {
         var nextVersion = Interlocked.Increment(ref version);
         var plan = await compiler.CompileAsync(nextVersion, reason, cancellationToken);
-        return Publish(ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
+        var publication = Publish(ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
             planProvider.Current, plan));
+        var stored = await settingsStore.LoadReadOnlyAsync(CancellationToken.None);
+        RecordSettingsApplication(stored with
+        {
+            RuntimeApplicationDisposition = AppSettingsRuntimeApplicationDisposition.ResolvePublished(
+                publication.HasDeliveryFailures, publication.Plan.RuntimeCapabilityConstrainedPaths),
+            RuntimePlanVersion = publication.Plan.Version,
+            RuntimePublicationSequence = publication.PublicationSequence,
+            RuntimeDeliveryFailureCount = publication.DeliveryFailures.Count,
+            RuntimeCapabilityConstrainedPaths = publication.Plan.RuntimeCapabilityConstrainedPaths
+        });
+        return publication;
     }
 
     private RuntimePlanPublicationResult Publish(CompiledRuntimePlan plan)
