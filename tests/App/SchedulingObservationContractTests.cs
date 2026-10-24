@@ -426,8 +426,7 @@ public sealed class SchedulingObservationContractTests
             {
                 [visible.ProcessId] = new(
                     HasVisibleWindow: true,
-                    HasBackgroundWindow: false,
-                    HasHiddenWindow: false)
+                    HasBackgroundWindow: false)
             },
             ownershipIncomplete: true,
             static _ => true);
@@ -456,13 +455,41 @@ public sealed class SchedulingObservationContractTests
         Assert.False(fact.HasVisibleWindow);
     }
 
-    [Fact]
-    public void RuntimeState_HiddenWindowDoesNotProveTrayIcon()
+    // Window observation never proves a tray icon (ATTR-10). Every state it can project must also pass
+    // the scheduling completeness check: a mismatch here stopped every scheduling round.
+    [Theory]
+    [InlineData(false, false, false, HostManagerRuntimeStates.BackgroundProcess)]
+    [InlineData(false, false, true, HostManagerRuntimeStates.BackgroundWindow)]
+    [InlineData(false, true, false, HostManagerRuntimeStates.ForegroundUnfocused)]
+    [InlineData(true, false, false, HostManagerRuntimeStates.ForegroundFocused)]
+    public void RuntimeState_EveryProjectedWindowStatePassesSchedulingCompleteness(
+        bool foreground, bool visible, bool background, string expected)
     {
-        var process = new ProcessInstanceKey(104, 1004);
-        var snapshot = WindowsProcessRuntimeStateSnapshot.Project([process], null,
-            new Dictionary<int, ProcessWindowPresence> { [104] = new(false, false, true) }, false, _ => true);
-        Assert.Equal(HostManagerRuntimeStates.BackgroundProcess, snapshot.Processes[process].RuntimeState);
+        var key = new ProcessInstanceKey(123, 456);
+        var fact = WindowsProcessRuntimeStateSnapshot.Project([key], foreground ? key.ProcessId : null,
+            new Dictionary<int, ProcessWindowPresence> { [key.ProcessId] = new(visible, background) },
+            false, _ => true).Processes[key];
+        Assert.Equal(expected, fact.RuntimeState);
+
+        var facts = CreateProcessFacts();
+        var observations = facts.DatasetObservations.ToDictionary();
+        observations[SchedulingProcessMetricMask.RuntimeState] = SchedulingProcessDatasetObservation.CreateCurrent(
+            SchedulingProcessMetricMask.RuntimeState, 31, 37, 31, 37);
+        var withRuntimeState = facts with
+        {
+            RequestedMetricMask = facts.RequestedMetricMask | SchedulingProcessMetricMask.RuntimeState,
+            CurrentMetricMask = facts.CurrentMetricMask | SchedulingProcessMetricMask.RuntimeState,
+            DatasetObservations = observations,
+            Processes = facts.Processes.Select(process => process with
+            {
+                ValidMetricMask = process.ValidMetricMask | SchedulingProcessMetricMask.RuntimeState,
+                RuntimeState = fact.RuntimeState,
+                ForegroundFocused = fact.ForegroundFocused,
+                HasVisibleWindow = fact.HasVisibleWindow,
+                HasBackgroundWindow = fact.HasBackgroundWindow
+            }).ToArray()
+        };
+        Assert.True(withRuntimeState.IsRuntimeStateCurrentComplete(), fact.RuntimeState);
     }
 
     [Fact]

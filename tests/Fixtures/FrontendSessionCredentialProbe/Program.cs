@@ -77,11 +77,11 @@ if (args.Length == 6)
             Windows = Enumerable.Range(0, args[5] switch
                 {
                     "desktop-count" => InteractiveDesktopObservation.MaximumWindows + 1,
-                    "desktop-oversize" => InteractiveDesktopObservation.MaximumWindows * 2,
+                    "desktop-oversize" => InteractiveDesktopObservation.MaximumWindows * 3,
                     _ => InteractiveDesktopObservation.MaximumWindows
                 })
                 .Select(index => new DesktopProcessWindowObservation(int.MaxValue - index,
-                    sample.PublisherCreationFileTimeUtc, false, false, false)).ToArray() };
+                    sample.PublisherCreationFileTimeUtc, false, false)).ToArray() };
     else if (args[5] != "desktop") return 2;
     var sessionType = assembly.GetType("ResourceManager.NativeUi.BackendServiceSession", true)!;
     using var session = (IDisposable)sessionType.GetMethod("CreateDefault", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [args[2]])!;

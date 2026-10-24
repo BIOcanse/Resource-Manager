@@ -152,6 +152,8 @@ public sealed record SchedulingProcessFact(
 
     public bool HasBackgroundWindow { get; init; }
 
+    // Tray evidence (native tray_only). No source proves a tray icon today; a window that is not
+    // shown is not tray evidence (ATTR-10), so producers leave this false.
     public bool HasHiddenWindow { get; init; }
 }
 

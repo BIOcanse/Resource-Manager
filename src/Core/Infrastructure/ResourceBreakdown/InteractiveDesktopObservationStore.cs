@@ -65,7 +65,7 @@ public sealed class InteractiveDesktopObservationStore
             if (session == 0)
             {
                 verifiedProcesses.Add(process);
-                result[process] = new(HostManagerRuntimeStates.BackgroundProcess, false, false, false, false);
+                result[process] = new(HostManagerRuntimeStates.BackgroundProcess, false, false, false);
                 continue;
             }
             if (!current.TryGetValue(session.Value, out var sample)
@@ -79,7 +79,7 @@ public sealed class InteractiveDesktopObservationStore
             var projected = WindowsProcessRuntimeStateSnapshot.Project([process],
                 foreground?.ProcessId == process.ProcessId ? process.ProcessId : null,
                 window is null ? new Dictionary<int, ProcessWindowPresence>() : new Dictionary<int, ProcessWindowPresence>
-                { [process.ProcessId] = new(window.HasVisibleWindow, window.HasBackgroundWindow, window.HasHiddenWindow) },
+                { [process.ProcessId] = new(window.HasVisibleWindow, window.HasBackgroundWindow) },
                 ownershipIncomplete: !sample.Complete, _ => true);
             foreach (var fact in projected.Processes) result[fact.Key] = fact.Value;
         }

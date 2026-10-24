@@ -86,7 +86,7 @@ public sealed class RuntimeProcessAttributionPipelineTests
         Func<ProcessInstanceKey, int?>? readSession = null)
     {
         var desktop = new InteractiveDesktopObservationStore(TimeProvider.System, _ => true, readSession ?? (_ => 1));
-        var rows = windows.Select(process => new DesktopProcessWindowObservation(process.ProcessId, process.StartKey, true, false, false)).ToArray();
+        var rows = windows.Select(process => new DesktopProcessWindowObservation(process.ProcessId, process.StartKey, true, false)).ToArray();
         Assert.True(desktop.Publish(new(999, 1, 1, DateTimeOffset.UtcNow.UtcTicks, true, true,
             rows.Single(row => row.ProcessId == foreground), rows)));
         return desktop;

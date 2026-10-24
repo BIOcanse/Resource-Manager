@@ -252,8 +252,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     ?? HostManagerRuntimeStates.BackgroundProcess,
                 ForegroundFocused = runtimeState?.ForegroundFocused == true,
                 HasVisibleWindow = runtimeState?.HasVisibleWindow == true,
-                HasBackgroundWindow = runtimeState?.HasBackgroundWindow == true,
-                HasHiddenWindow = runtimeState?.HasHiddenWindow == true
+                HasBackgroundWindow = runtimeState?.HasBackgroundWindow == true
             });
         }
 
