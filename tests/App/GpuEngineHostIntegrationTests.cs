@@ -29,15 +29,27 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         const ulong luid = 0xE4A6;
         const string field = "gpu_all_engine_busy_percent";
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]) with
-        {
-            GpuAdapters = [new(0, "Recorded GPU", "gpu-exact", luid, 1, 1, false)
-                { PhysicalPnpInstanceIds = [@"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041"] }]
-        });
-        var inventory = new WindowsGpuAdapterOrderMonitoringZone(() => new WindowsGpuAdapterInventoryRead(
+        // The live GPU check uses the topology owner's physical identity projection, so the recorded
+        // catalog is derived from the same inventory instead of a hand-written identity.
+        const string pnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041";
+        var inventoryRead = new WindowsGpuAdapterInventoryRead(
             SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 1, 0, 0, 1,
             [new WindowsGpuAdapter(0, "Recorded GPU", 0x1002, 0x164E, 0, new AdapterLuid { LowPart = (uint)luid }, false, 0,
-                WindowsGpuAdapterKind.Integrated)]));
+                WindowsGpuAdapterKind.Integrated)
+            {
+                PhysicalIdentityStatus = SamplingObservationStatus.Current,
+                PhysicalIdentities = [new(0, pnp, WindowsGpuPnpKind.Pci, true, false, 0, 0, 0, 0, 0x1002, 0x164E, 0, 0, 1,
+                    WindowsGpuIdentityEvidence.KmtLuidOpen | WindowsGpuIdentityEvidence.KmtHardwarePnpKey | WindowsGpuIdentityEvidence.CmExactDevNode |
+                    WindowsGpuIdentityEvidence.CmCanonicalInstanceRoundTrip | WindowsGpuIdentityEvidence.KmtDeviceIds | WindowsGpuIdentityEvidence.CmPciAddress,
+                    WindowsGpuPhysicalIdentityStatus.Bound, 0)]
+            }]);
+        var captured = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(inventoryRead);
+        Assert.Null(captured.FailureCode);
+        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]) with
+        {
+            GpuAdapters = captured.Rows
+        });
+        var inventory = new WindowsGpuAdapterOrderMonitoringZone(() => inventoryRead);
         var pdh = new RecordedGpuEngineSource(luid);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, inventory, null!,
             new PdhGpuEngineMonitoringZone(pdh), null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!,

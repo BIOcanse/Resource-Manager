@@ -98,15 +98,13 @@ public sealed class NvidiaPerformanceStateCollectorTests
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var root = Path.Combine(Path.GetTempPath(),$"pstate-worker-{Guid.NewGuid():N}");
-        var adapters = new WindowsGpuAdapter[] {
-            new(9,"NVIDIA A",0x10DE,1,0,new() { LowPart=0xA1 },false,8UL<<30,WindowsGpuAdapterKind.Dedicated),
-            new(3,"NVIDIA B",0x10DE,2,0,new() { LowPart=0xB1 },false,8UL<<30,WindowsGpuAdapterKind.Dedicated) };
+        var adapters = new WindowsGpuAdapter[] { NvidiaAdapter(9,1,0xA1,PnpA), NvidiaAdapter(3,2,0xB1,PnpB) };
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current,1,DateTimeOffset.UtcNow.UtcTicks,2,0,0,1,adapters);
         var inventoryZone = new WindowsGpuAdapterOrderMonitoringZone(() => inventory);
         using var owner = new HostManagerMetricSnapshotOwner(slots.Provider,
             new HostManagerMetricSnapshotRuntime(slots.Provider,slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => new(1,NativeMetricSnapshotCatalogTopologyStatus.Complete,
-                [new(9,"NVIDIA A","gpu-a",0xA1,1,1,true),new(3,"NVIDIA B","gpu-b",0xB1,1,1,true)],
+                RecordedGpuIdentities(inventory),
                 NativeMetricSnapshotCatalogTopologyStatus.Complete,[],NativeMetricSnapshotCatalogTopologyStatus.Complete,[])),
             new Environment(root),NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
         await owner.StartAsync(CancellationToken.None);
@@ -114,7 +112,8 @@ public sealed class NvidiaPerformanceStateCollectorTests
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(lease.Workspace.ReadCommitted(),"CPU","RAM",lease.WorkspaceIdentity));
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.Field.Code == MetricFieldCode.NvmlPerformanceState
-            && binding.RequestAddress.Contains(Name) && binding.DeviceIdentity.Contains("gpu-a")).DeviceIdentity;
+            && binding.RequestAddress.Contains(Name)
+            && binding.DeviceIdentity == RecordedGpuIdentities(inventory).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var reads = 0;
         var zone = new NvidiaNvmlMonitoringZone((request,current,token) => {
             Assert.Equal(inventory,current); Assert.Equal([9],request.DisplayIndexes!.Order().ToArray());
@@ -151,6 +150,26 @@ public sealed class NvidiaPerformanceStateCollectorTests
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
     }
+
+    // The live GPU check uses the topology owner's physical identity projection, so the recorded catalog
+    // is derived from the same inventory instead of hand-written identities.
+    private const string PnpA = @"PCI\VEN_10DE&DEV_0001&SUBSYS_00000000&REV_A1\4&1&0&0008";
+    private const string PnpB = @"PCI\VEN_10DE&DEV_0002&SUBSYS_00000000&REV_A1\4&2&0&0010";
+    private static IReadOnlyList<NativeMetricSnapshotGpuCatalogIdentity> RecordedGpuIdentities(WindowsGpuAdapterInventoryRead inventory)
+    {
+        var captured = ResourceManager.ReadWrite.Windows.Metrics.Topology.WindowsHardwareMetricTopologySource.CaptureGpuIdentities(inventory);
+        Assert.Null(captured.FailureCode);
+        return captured.Rows;
+    }
+    private static WindowsGpuAdapter NvidiaAdapter(int index,uint device,uint luid,string pnp) =>
+        new(index,index == 9 ? "NVIDIA A" : "NVIDIA B",0x10DE,device,0,new() { LowPart=luid },false,8UL<<30,WindowsGpuAdapterKind.Dedicated)
+        {
+            PhysicalIdentityStatus=SamplingObservationStatus.Current,
+            PhysicalIdentities=[new(0,pnp,WindowsGpuPnpKind.Pci,true,false,0,(uint)index,0,0,0x10DE,device,0,0,1,
+                WindowsGpuIdentityEvidence.KmtLuidOpen|WindowsGpuIdentityEvidence.KmtHardwarePnpKey|WindowsGpuIdentityEvidence.CmExactDevNode|
+                WindowsGpuIdentityEvidence.CmCanonicalInstanceRoundTrip|WindowsGpuIdentityEvidence.KmtDeviceIds|WindowsGpuIdentityEvidence.CmPciAddress,
+                WindowsGpuPhysicalIdentityStatus.Bound,0)]
+        };
 
     private static GpuMetrics Gpu(int index,ulong? state) => new(index,"NVIDIA",0,0,0,0,0,0,0,0,null!) {
         AdditionalIntegerReadings = state is { } value ? new Dictionary<MetricFieldCode,ulong> { [MetricFieldCode.NvmlPerformanceState]=value } : new(),
