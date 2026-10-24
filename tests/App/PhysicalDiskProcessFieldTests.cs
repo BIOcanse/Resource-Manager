@@ -33,7 +33,7 @@ public sealed class PhysicalDiskProcessFieldTests
         Assert.Equal("9007199254740993", complete.ObservedTraffic.Processes.Single(row => row.Disk.DiskNumber == 0).ReadBytes);
         Assert.Equal("17", complete.ObservedTraffic.Processes.Single(row => row.Disk.DiskNumber == 1).WriteBytes);
         Assert.All(complete.ObservedTraffic.Processes, row => Assert.Equal("100", row.CreationWindowsFileTime100Ns));
-        Assert.Equal(1, releases); // One held process identity handle for both disks.
+        Assert.Equal(2, releases); // One intake identity lease plus one read/recheck lease shared by both disks.
         Assert.True(broker.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process));
         Assert.Equal(typeof(ProcessMetricFieldRegistry).Assembly, typeof(EtwPhysicalDiskIoCaptureOwner).Assembly);
     }
@@ -75,7 +75,7 @@ public sealed class PhysicalDiskProcessFieldTests
         owner.Stop(); Assert.Equal(1, broker.Releases);
         owner.Read(true);
         owner.ObserveBoundDiskTransfer(previous, broker.Context, 41, 9UL, false, 4200, 0, 102);
-        Assert.Equal(0, owner.RetainedEventCount);
+        Assert.Equal(0, owner.RetainedPairCount);
         broker.Generation++;
         Assert.Null(owner.Read(true).ObservedTraffic);
     }

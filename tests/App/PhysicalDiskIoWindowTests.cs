@@ -146,7 +146,7 @@ public sealed class PhysicalDiskIoWindowTests
         using var reader = NewReader(new Broker());
         reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, 3001, null, 100);
         Assert.Empty(reader.ReadWindow(3000).Processes);
-        Assert.Equal(1, reader.RetainedEventCount);
+        Assert.Equal(1, reader.RetainedPairCount);
         Assert.Equal(2048, reader.ReadWindow(3001).Processes[41].ReadBytesPerSecond);
     }
 
@@ -154,16 +154,16 @@ public sealed class PhysicalDiskIoWindowTests
     public void CapacityLimitSuppressesAnIncompleteWindowAndRecoversWithoutInventedShares()
     {
         using var reader = NewReader(new Broker());
-        for (var index = 0; index <= EtwPhysicalDiskIoAttributionReader.MaximumTrackedEvents; index++)
-            reader.CaptureResource.ObserveDiskTransfer(41, (ulong)(4096), false, 2000, null, 100);
-        Assert.Equal(EtwPhysicalDiskIoAttributionReader.MaximumTrackedEvents, reader.RetainedEventCount);
+        for (var index = 0; index <= EtwPhysicalDiskIoAttributionReader.MaximumActivePairs; index++)
+            reader.CaptureResource.ObserveDiskTransfer(100 + index, (ulong)(4096), false, 2000, null, 100);
+        Assert.Equal(EtwPhysicalDiskIoAttributionReader.MaximumActivePairs, reader.RetainedPairCount);
         var incomplete = reader.ReadWindow(3000);
         Assert.False(incomplete.Complete); Assert.Empty(incomplete.Processes);
         reader.CaptureResource.ObserveDiskTransfer(42, (ulong)(16384), true, 4000, null, 100);
         var recovered = reader.ReadWindow(5001);
         Assert.True(recovered.Complete);
         Assert.Equal(8192, Assert.Single(recovered.Processes).Value.WriteBytesPerSecond);
-        Assert.Empty(reader.ReadWindow(12001).Processes); Assert.Equal(0, reader.RetainedEventCount);
+        Assert.Empty(reader.ReadWindow(12001).Processes); Assert.Equal(0, reader.RetainedPairCount);
     }
 
     [Fact]

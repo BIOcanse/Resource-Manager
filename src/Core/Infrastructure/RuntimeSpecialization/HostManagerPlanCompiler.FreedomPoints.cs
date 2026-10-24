@@ -46,7 +46,7 @@ public sealed partial class HostManagerPlanCompiler
         }
 
         if (source.Kind != CpuExecutionTimeSourceKinds.KernelEtwContextSwitchClosedIntervals
-            || source.MaximumClosedSlices <= 0)
+            || source.MaximumActivePairs <= 0 || source.BucketWidthMilliseconds <= 0)
         {
             throw new InvalidDataException(
                 "The CPU core-residency execution-time source is not supported.");
@@ -61,7 +61,7 @@ public sealed partial class HostManagerPlanCompiler
             observationWindowMilliseconds,
             new CompiledCpuExecutionTimeSourcePlan(
                 source.Kind,
-                source.MaximumClosedSlices),
+                source.MaximumActivePairs, source.BucketWidthMilliseconds),
             CpuSmtAccounting.FixedLogicalProcessorShare,
             CompilePhysicalCoreAccounting(topology));
     }
@@ -132,7 +132,8 @@ public sealed partial class HostManagerPlanCompiler
 
     private sealed record CpuExecutionTimeSourceDeclaration(
         [property: JsonPropertyName("kind")] string Kind,
-        [property: JsonPropertyName("maximum_closed_slices")] int MaximumClosedSlices);
+        [property: JsonPropertyName("maximum_active_pairs")] int MaximumActivePairs,
+        [property: JsonPropertyName("bucket_width_ms")] int BucketWidthMilliseconds);
 
     private sealed record CpuSmtAccountingDeclaration([property: JsonPropertyName("kind")] string Kind);
 }

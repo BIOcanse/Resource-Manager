@@ -87,12 +87,12 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
-    public void SlidingWindowReusesSliceSegmentsAcrossWrapAndResetWhileSnapshotsStayIndependent()
+    public void SlidingWindowReusesBucketsAcrossWrapAndResetWhileSnapshotsStayIndependent()
     {
-        const int maximumClosedSlices = 64;
+        const int maximumActivePairs = 64;
         const int firstWarmThroughQpc = 256;
         const int measuredIterations = 2048;
-        var buffer = CreateBuffer(windowMilliseconds: 8, maximumClosedSlices: maximumClosedSlices);
+        var buffer = CreateBuffer(windowMilliseconds: 8, maximumActivePairs: maximumActivePairs);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -140,12 +140,12 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.Equal(8, last.Records.Sum(static record => record.ExecutionTimeQpc));
         Assert.Equal(4, Assert.Single(last.Records, static record => record.ProcessId == 100).ExecutionTimeQpc);
         Assert.Equal(4, Assert.Single(last.Records, static record => record.ProcessId == 200).ExecutionTimeQpc);
-        Assert.InRange(buffer.GetDiagnostics().ClosedSliceCount, 0, maximumClosedSlices);
+        Assert.InRange(buffer.GetDiagnostics().ActivePairCount, 0, maximumActivePairs);
         Assert.NotSame(first.Records, last.Records);
         Assert.Equal(8, first.Records.Sum(static record => record.ExecutionTimeQpc));
 
         buffer.ResetContinuity();
-        Assert.Equal(0, buffer.GetDiagnostics().ClosedSliceCount);
+        Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
         Switch(buffer, firstWarmThroughQpc + measuredIterations, 0, 0, 0, 100, 10);
         for (var qpc = firstWarmThroughQpc + measuredIterations + 1;
             qpc <= firstWarmThroughQpc + measuredIterations + 8;
@@ -167,7 +167,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void RepeatedSameInstanceProcessCallbacksDoNotAllocateIdentityRecords()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 8);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 8);
         StartProcess(buffer, 0, 100, 1000, "Game", 10, uniqueProcessKey: 11);
         for (var qpc = 1; qpc <= 32; qpc++)
         {
@@ -206,7 +206,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void ThirtyTwoProcessorsProduceOneExactFiveSecondWindow()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 5000, maximumClosedSlices: 64);
+        var buffer = CreateBuffer(windowMilliseconds: 5000, maximumActivePairs: 64);
         var logicalProcessors = Enumerable.Range(0, 32).ToArray();
 
         foreach (var logicalProcessorId in logicalProcessors)
@@ -593,7 +593,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void CapacityOverflowFailsClosedAndRewarms()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 1);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 1);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -608,7 +608,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void CapacityOverflowRecoversOnlyAfterOneCompleteCleanWindow()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 1);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 1);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -629,9 +629,9 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
-    public void CapacityEvictsExpiredSlicesBeforeRejectingAnAppend()
+    public void CapacityEvictsExpiredPairsBeforeRejectingAnAppend()
     {
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 2);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 2);
         StartProcess(buffer, 0, 100, 1000, "A", 10);
         StartProcess(buffer, 0, 200, 2000, "B", 20);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -653,7 +653,7 @@ public sealed class CpuResidencyAggregationBufferTests
     public void RetiredIdentityStorageRemainsBoundedAcrossIncompleteSettlementAndOverflow()
     {
         const int capacity = 8;
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: capacity);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: capacity);
         Switch(buffer, 0, 0, 0, 0, 0, 0);
 
         for (var index = 0; index < 1000; index++)
@@ -676,7 +676,7 @@ public sealed class CpuResidencyAggregationBufferTests
         }
 
         var diagnostics = buffer.GetDiagnostics();
-        Assert.InRange(diagnostics.ClosedSliceCount, 0, capacity);
+        Assert.InRange(diagnostics.ActivePairCount, 0, capacity);
         Assert.InRange(diagnostics.RetainedProcessIdentityCount, 0, capacity);
         Assert.InRange(diagnostics.RetainedThreadIdentityCount, 0, capacity);
         Assert.Equal(0, diagnostics.CurrentProcessCount);
@@ -685,7 +685,7 @@ public sealed class CpuResidencyAggregationBufferTests
 
         buffer.ResetContinuity();
         diagnostics = buffer.GetDiagnostics();
-        Assert.Equal(0, diagnostics.ClosedSliceCount);
+        Assert.Equal(0, diagnostics.ActivePairCount);
         Assert.Equal(0, diagnostics.RetainedProcessIdentityCount);
         Assert.Equal(0, diagnostics.RetainedThreadIdentityCount);
     }
@@ -693,7 +693,7 @@ public sealed class CpuResidencyAggregationBufferTests
     [Fact]
     public void MaximumQpcBoundaryIsNotConfusedWithAnUnsetBoundary()
     {
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1, 4);
+        var buffer = new CpuResidencyAggregationBuffer(1000, 1, 4, 1);
         buffer.ObserveProcessStart(
             long.MaxValue - 1,
             DateTimeOffset.UnixEpoch,
@@ -766,7 +766,7 @@ public sealed class CpuResidencyAggregationBufferTests
     public async Task ConcurrentIngestionAndSettlementKeepMakingProgress()
     {
         const int switchCount = 50_000;
-        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumClosedSlices: 4096);
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 4096);
         StartProcess(buffer, 0, 100, 1000, "A", 10, uniqueProcessKey: 11);
         StartProcess(buffer, 0, 200, 2000, "B", 20, uniqueProcessKey: 22);
         Switch(buffer, 0, 0, 0, 0, 100, 10);
@@ -858,8 +858,8 @@ public sealed class CpuResidencyAggregationBufferTests
 
     private static CpuResidencyAggregationBuffer CreateBuffer(
         int windowMilliseconds,
-        int maximumClosedSlices = 1024)
-        => new(1000, windowMilliseconds, maximumClosedSlices);
+        int maximumActivePairs = 1024)
+        => new(1000, windowMilliseconds, maximumActivePairs, Math.Max(1, (windowMilliseconds + 99) / 100));
 
     private static void StartProcess(
         CpuResidencyAggregationBuffer buffer,

@@ -1,4 +1,5 @@
 using ResourceManager.Adapter;
+using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -19,12 +20,19 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     private bool disposed;
     private DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
-    internal const int MaximumTrackedEvents = EtwPhysicalDiskIoCaptureOwner.MaximumTrackedEvents;
+    internal const int MaximumActivePairs = EtwPhysicalDiskIoCaptureOwner.MaximumActivePairs;
     internal EtwPhysicalDiskIoCaptureOwner CaptureResource => capture;
     public EtwPhysicalDiskIoAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwPhysicalDiskIoAttributionReader> logger)
     {
         capture = new(broker, new KernelEtwDiagnostics(item =>
             logger.Log(item.Level switch { KernelEtwDiagnosticLevel.Debug => LogLevel.Debug, KernelEtwDiagnosticLevel.Information => LogLevel.Information, KernelEtwDiagnosticLevel.Warning => LogLevel.Warning, _ => LogLevel.Error }, item.Exception, item.MessageTemplate, item.Arguments.ToArray())));
+    }
+    internal EtwPhysicalDiskIoAttributionReader(IKernelEtwSessionBroker broker, ILogger<EtwPhysicalDiskIoAttributionReader> logger,
+        ResourceManagerLedgerOwner ledgerOwner) : this(broker, logger)
+    {
+        capture = new(broker, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)),
+            static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open,
+            allocateBuckets: length => LedgerCaptureBucketMemory.Create(ledgerOwner, length));
     }
     internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture) => this.capture = capture;
     public ulong ZoneKey => ZoneObjectKey;
@@ -73,7 +81,7 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     internal void ObserveDiskTransfer(int pid, long bytes, bool write, long tick) => capture.ObserveDiskTransfer(pid, bytes, write, tick);
     internal void ObserveBoundDiskTransfer(KernelEtwEventSource source, KernelEtwSessionContext context, int pid, long bytes, bool write, long tick)
         => capture.ObserveBoundDiskTransfer(source, context, pid, bytes, write, tick);
-    internal int RetainedEventCount => capture.RetainedEventCount;
+    internal int RetainedPairCount => capture.RetainedPairCount;
     internal (IReadOnlyDictionary<int, PhysicalDiskProcessAttribution> Processes, bool Complete) ReadWindow(long now) => capture.ReadWindow(now);
 }
 

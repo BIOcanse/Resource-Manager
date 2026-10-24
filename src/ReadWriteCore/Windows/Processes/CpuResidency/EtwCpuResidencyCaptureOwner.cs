@@ -23,10 +23,12 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
     private readonly KernelEtwDiagnostics logger;
     private readonly Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory;
     private readonly Action? published;
+    private readonly Func<int, CaptureBucketMemory>? allocateBuckets;
     private readonly object subscriptionGate = new(), snapshotGate = new();
     public SamplingPublicationSignal Publications { get; } = new();
     private IKernelEtwSubscription? kernelSubscription;
     private ResidencySessionState? activeSession;
+    private readonly HashSet<CpuResidencyAggregationBuffer> retiredBuffers = [];
     private long bindingEpoch;
     private long revision;
     public long Revision => Interlocked.Read(ref revision);
@@ -39,12 +41,12 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         Func<CpuResidencyCaptureConfiguration> configuration, KernelEtwDiagnostics? diagnostics = null)
         : this(broker, configuration, diagnostics ?? new(), SeedExistingProcesses) { }
     internal EtwCpuResidencyCaptureOwner(IKernelEtwSessionBroker broker, Func<CpuResidencyCaptureConfiguration> configuration,
-        KernelEtwDiagnostics diagnostics, Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seed, Action? published = null)
+        KernelEtwDiagnostics diagnostics, Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seed, Action? published = null, Func<int, CaptureBucketMemory>? allocateBuckets = null)
     {
         ArgumentNullException.ThrowIfNull(broker); ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(diagnostics); ArgumentNullException.ThrowIfNull(seed);
         kernelEtwBroker = broker; readConfiguration = configuration; logger = diagnostics;
-        seedProcessInventory = seed; this.published = published;
+        seedProcessInventory = seed; this.published = published; this.allocateBuckets = allocateBuckets;
     }
     public CpuCoreResidencySnapshot? Read()
     {
@@ -112,7 +114,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                 (lease, session) = DetachSessionCore(); state = "Idle"; message = idleMessage;
             }
         }
-        try { lease?.Dispose(); } finally { session?.Buffer.Clear(); }
+        try { lease?.Dispose(); } finally { ClearRetiredBuffers(); }
     }
     public bool HasSessionLease
     {
@@ -121,7 +123,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             lock (subscriptionGate)
             {
                 return kernelSubscription is not null
-                    || activeSession is not null;
+                    || activeSession is not null || retiredBuffers.Count != 0;
             }
         }
     }
@@ -173,6 +175,8 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             lock (subscriptionGate)
             {
                 if (stopped || bindingEpoch != expectedBindingEpoch) return;
+                var failed = Volatile.Read(ref activeSession);
+                if (failed is not null) retiredBuffers.Add(failed.Buffer);
                 Volatile.Write(ref activeSession, null);
                 state = "Unavailable";
                 message = $"ETW CPU 执行时长归因启动失败：{ex.Message}";
@@ -200,7 +204,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             context.StartedAt,
             expectedBindingEpoch,
             plan,
-            CreateAggregationBuffer(plan, Stopwatch.Frequency));
+            CreateAggregationBuffer(plan, Stopwatch.Frequency, allocateBuckets));
         var processorIds = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
         BindKernelEventCallbacks(
             kernel,
@@ -216,6 +220,11 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
                 return;
             }
 
+            var previous = Volatile.Read(ref activeSession);
+            if (previous is not null) retiredBuffers.Add(previous.Buffer);
+            Volatile.Write(ref activeSession, null);
+            SetCachedSnapshot(null);
+            ClearRetiredBuffersCore();
             Volatile.Write(ref activeSession, session);
             state = "Warming";
             message = $"ETW CPU 执行时长归因正在形成最近 {plan.ObservationWindow.TotalSeconds:0.###} 秒完整窗口。";
@@ -283,14 +292,14 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
     internal static CpuResidencyAggregationBuffer CreateAggregationBuffer(
         CpuResidencyCaptureConfiguration plan,
-        long qpcFrequency)
+        long qpcFrequency, Func<int, CaptureBucketMemory>? allocateBuckets = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         var published = plan.RequirePublished();
         return new CpuResidencyAggregationBuffer(
             qpcFrequency,
             published.ObservationWindowMilliseconds,
-            published.MaximumClosedSlices);
+            published.MaximumActivePairs, published.BucketWidthMilliseconds, allocateBuckets);
     }
 
     internal static void BindKernelEventCallbacks(
@@ -999,10 +1008,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         ResidencySessionState? sessionToClear = null;
         lock (subscriptionGate)
         {
-            if (stopped)
-            {
-                return;
-            }
+            if (stopped) { ClearRetiredBuffersCore(); return; }
 
             (subscriptionToRelease, sessionToClear) = DetachSessionCore();
             state = "Idle";
@@ -1010,7 +1016,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         }
 
         try { subscriptionToRelease?.Dispose(); }
-        finally { sessionToClear?.Buffer.Clear(); }
+        finally { ClearRetiredBuffers(); }
     }
 
     private (IKernelEtwSubscription? Subscription, ResidencySessionState? Session) DetachSessionCore()
@@ -1019,9 +1025,25 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         var subscription = kernelSubscription;
         kernelSubscription = null;
         var session = Volatile.Read(ref activeSession);
+        if (session is not null) retiredBuffers.Add(session.Buffer);
         Volatile.Write(ref activeSession, null);
         SetCachedSnapshot(null);
         return (subscription, session);
+    }
+
+    private void ClearRetiredBuffers()
+    {
+        lock (subscriptionGate) ClearRetiredBuffersCore();
+    }
+    private void ClearRetiredBuffersCore()
+    {
+        while (retiredBuffers.Count != 0)
+        {
+            var buffer = retiredBuffers.First();
+            buffer.Clear(); // Keep ownership on failure; a later Stop/Dispose/rebind retries the same close.
+            retiredBuffers.Remove(buffer);
+        }
+        retiredBuffers.TrimExcess();
     }
 
     private static long? ReadEventCreation(int pid, DateTimeOffset eventTime)
@@ -1151,10 +1173,10 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         IKernelEtwSubscription? lease; ResidencySessionState? session;
         lock (subscriptionGate)
         {
-            if (stopped) return;
+            if (stopped) { ClearRetiredBuffersCore(); return; }
             stopped = true; (lease, session) = DetachSessionCore(); state = "Stopped";
         }
-        try { lease?.Dispose(); } finally { session?.Buffer.Clear(); }
+        try { lease?.Dispose(); } finally { ClearRetiredBuffers(); }
     }
 }
 #pragma warning restore CS0618

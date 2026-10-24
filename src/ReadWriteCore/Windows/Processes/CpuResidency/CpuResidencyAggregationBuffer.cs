@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using ResourceManager.ReadWrite.Windows.Processes;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
@@ -24,9 +25,13 @@ internal sealed record CpuResidencyAggregationSnapshot(
 internal readonly record struct CpuResidencyAggregationDiagnostics(
     long QpcFrequency,
     long WindowQpc,
-    int MaximumClosedSlices,
-    int ClosedSliceCount,
-    int SegmentCount,
+    int MaximumActivePairs,
+    int ActivePairCount,
+    int BucketCount,
+    int MaximumBucketCount,
+    long BucketWidthQpc,
+    long RetainedBucketBytes,
+    long MaximumBucketBytes,
     int CurrentProcessCount,
     int CurrentThreadCount,
     int RetainedProcessIdentityCount,
@@ -36,59 +41,41 @@ internal readonly record struct CpuResidencyAggregationDiagnostics(
 
 internal sealed class CpuResidencyAggregationBuffer
 {
-    // Segments stay below the LOH threshold. Snapshots pin a fixed prefix while writers only append.
-    private const int ClosedSliceSegmentCapacity = 1024;
-
     private readonly object sync = new();
-    private readonly object snapshotSync = new();
-    private readonly long qpcFrequency;
-    private readonly long windowQpc;
-    private readonly int maximumClosedSlices;
+    private readonly long qpcFrequency, windowQpc, bucketWidthQpc;
+    private readonly int maximumActivePairs, bucketCount, maximumBucketCount;
+    private readonly Func<int, CaptureBucketMemory> allocateBuckets;
     private readonly Dictionary<int, ProcessState> currentProcesses = [];
     private readonly Dictionary<int, ThreadState> currentThreads = [];
     private readonly Dictionary<int, RunningState> runningByLogicalProcessor = [];
     private readonly Dictionary<int, long> continuousSinceByLogicalProcessor = [];
     private readonly Dictionary<int, ProcessorBoundary> lastBoundaryByLogicalProcessor = [];
-    private readonly Queue<ClosedSliceSegment> closedSegments = [];
-    private readonly Queue<ClosedSliceSegment> recycledSegments = [];
-    private readonly HashSet<int> expectedProcessorWorkspace = [];
-    private SliceRange[] snapshotRangeWorkspace = [];
-    private ClosedSliceSegment? writableSegment;
-    private int closedSegmentHeadOffset;
-    private int closedSliceCount;
+    private readonly Dictionary<AggregateKey, PairTotals> pairs = [];
+    private readonly long maximumBucketSlots;
+    private long retainedBucketSlots;
+    private CaptureBucketMemory? pendingBuckets;
+    private int pendingBucketCount;
     private long retainedWindowStartQpc = long.MinValue;
-    private long latestEventQpc = -1;
-    private long nextProcessInstanceId;
-    private long nextThreadInstanceId;
-    private long continuityEpoch;
-    private long inventoryVersion;
-    private long capacityResetCount;
+    private long lastPrunedBucket = -1, lastRetentionAttemptBucket = -1, latestEventQpc = -1;
+    private long nextProcessInstanceId, nextThreadInstanceId, continuityEpoch, inventoryVersion, capacityResetCount;
 
-    public CpuResidencyAggregationBuffer(
-        long qpcFrequency,
-        int observationWindowMilliseconds,
-        int maximumClosedSlices)
+    public CpuResidencyAggregationBuffer(long qpcFrequency, int observationWindowMilliseconds,
+        int maximumActivePairs, int bucketWidthMilliseconds = 50,
+        Func<int, CaptureBucketMemory>? allocateBuckets = null)
     {
-        if (qpcFrequency <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(qpcFrequency));
-        }
-
-        if (observationWindowMilliseconds <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(observationWindowMilliseconds));
-        }
-
-        if (maximumClosedSlices <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maximumClosedSlices));
-        }
-
+        if (qpcFrequency <= 0) throw new ArgumentOutOfRangeException(nameof(qpcFrequency));
+        if (observationWindowMilliseconds <= 0) throw new ArgumentOutOfRangeException(nameof(observationWindowMilliseconds));
+        if (maximumActivePairs <= 0) throw new ArgumentOutOfRangeException(nameof(maximumActivePairs));
+        if (bucketWidthMilliseconds <= 0) throw new ArgumentOutOfRangeException(nameof(bucketWidthMilliseconds));
         this.qpcFrequency = qpcFrequency;
-        windowQpc = checked(DivideRoundUp(
-            checked(qpcFrequency * observationWindowMilliseconds),
-            1000));
-        this.maximumClosedSlices = maximumClosedSlices;
+        windowQpc = DivideRoundUp(checked(qpcFrequency * observationWindowMilliseconds), 1000);
+        bucketWidthQpc = DivideRoundUp(checked(qpcFrequency * bucketWidthMilliseconds), 1000);
+        bucketCount = checked((int)DivideRoundUp(windowQpc, bucketWidthQpc) + 2);
+        maximumBucketCount = checked(bucketCount * 2);
+        this.maximumActivePairs = maximumActivePairs;
+        maximumBucketSlots = checked((long)maximumActivePairs * bucketCount);
+        _ = checked(maximumBucketSlots * Marshal.SizeOf<BucketTotal>());
+        this.allocateBuckets = allocateBuckets ?? CaptureBucketMemory.AllocateManaged;
     }
 
     public void ObserveProcessStart(
@@ -221,8 +208,8 @@ internal sealed class CpuResidencyAggregationBuffer
         lock (sync)
         {
             inventoryVersion = checked(inventoryVersion + 1);
-            currentProcesses.Clear();
-            currentThreads.Clear();
+            currentProcesses.Clear(); currentProcesses.TrimExcess();
+            currentThreads.Clear(); currentThreads.TrimExcess();
             ResetContinuityCore();
             // Keep the QPC floor and monotonically increasing identity IDs.
             // A delayed event or a reused PID must not become the old instance again.
@@ -369,6 +356,7 @@ internal sealed class CpuResidencyAggregationBuffer
 
         lock (sync)
         {
+            if (pendingBuckets is not null) ResetContinuityCore();
             if (!TryAdvanceEventTimeCore(eventQpc))
             {
                 return;
@@ -389,16 +377,13 @@ internal sealed class CpuResidencyAggregationBuffer
             else if (!previous.IsIdle && previous.Process is not null && previous.Thread is not null)
             {
                 // Unattributed execution is omitted; it is not a gap in context-switch continuity.
-                if (!AppendClosedSliceCore(
-                    new ClosedSlice(
-                        previous.StartQpc,
-                        eventQpc,
-                        previous.Process,
-                        previous.Thread,
-                        logicalProcessorId,
-                        previous.SwitchInQpc),
-                    logicalProcessorId,
-                    eventQpc))
+                bool appended;
+                try
+                {
+                    appended = AppendClosedTotalsCore(in previous, logicalProcessorId, eventQpc);
+                }
+                catch { ResetContinuityCore(); throw; }
+                if (!appended)
                 {
                     capacityResetCount = checked(capacityResetCount + 1);
                     ResetContinuityCore();
@@ -420,108 +405,64 @@ internal sealed class CpuResidencyAggregationBuffer
     {
         ArgumentNullException.ThrowIfNull(expectedLogicalProcessorIds);
 
-        lock (snapshotSync)
+        lock (sync)
         {
-            SnapshotCapture capture;
-            lock (sync)
+            if (pendingBuckets is not null || expectedLogicalProcessorIds.Count == 0) return IncompleteSnapshotCore();
+            var expected = new HashSet<int>(expectedLogicalProcessorIds);
+            if (expected.Count != expectedLogicalProcessorIds.Count) return IncompleteSnapshotCore();
+            var measuredThroughQpc = long.MaxValue;
+            DateTimeOffset? measuredThrough = null;
+            foreach (var id in expected)
             {
-                if (expectedLogicalProcessorIds.Count == 0)
-                {
-                    return IncompleteSnapshotCore();
-                }
-
-                expectedProcessorWorkspace.Clear();
-                foreach (var logicalProcessorId in expectedLogicalProcessorIds)
-                {
-                    if (!expectedProcessorWorkspace.Add(logicalProcessorId))
-                    {
-                        return IncompleteSnapshotCore();
-                    }
-                }
-
-                var foundBoundary = false;
-                var measuredThroughQpc = 0L;
-                DateTimeOffset? measuredThrough = null;
-                foreach (var logicalProcessorId in expectedProcessorWorkspace)
-                {
-                    if (!lastBoundaryByLogicalProcessor.TryGetValue(logicalProcessorId, out var boundary))
-                    {
-                        return IncompleteSnapshotCore();
-                    }
-
-                    if (!foundBoundary || boundary.Qpc < measuredThroughQpc)
-                    {
-                        foundBoundary = true;
-                        measuredThroughQpc = boundary.Qpc;
-                        measuredThrough = boundary.Time;
-                    }
-                }
-
-                if (!foundBoundary || measuredThroughQpc < windowQpc)
-                {
-                    return new CpuResidencyAggregationSnapshot(
-                        qpcFrequency,
-                        0,
-                        measuredThroughQpc,
-                        measuredThrough,
-                        false,
-                        []);
-                }
-
-                var windowStartQpc = measuredThroughQpc - windowQpc;
-                AdvanceRetentionCore(windowStartQpc);
-                foreach (var logicalProcessorId in expectedProcessorWorkspace)
-                {
-                    if (!continuousSinceByLogicalProcessor.TryGetValue(logicalProcessorId, out var continuousSince)
-                        || continuousSince > windowStartQpc)
-                    {
-                        return new CpuResidencyAggregationSnapshot(
-                            qpcFrequency,
-                            windowStartQpc,
-                            measuredThroughQpc,
-                            measuredThrough,
-                            false,
-                            []);
-                    }
-                }
-
-                var rangeCount = CaptureRangesCore();
-                capture = new SnapshotCapture(
-                    continuityEpoch,
-                    qpcFrequency,
-                    windowStartQpc,
-                    measuredThroughQpc,
-                    measuredThrough,
-                    expectedProcessorWorkspace,
-                    rangeCount);
+                if (!lastBoundaryByLogicalProcessor.TryGetValue(id, out var boundary)) return IncompleteSnapshotCore();
+                if (measuredThrough is null || boundary.Qpc < measuredThroughQpc)
+                { measuredThroughQpc = boundary.Qpc; measuredThrough = boundary.Time; }
             }
-
-            try
+            var start = Math.Max(0, measuredThroughQpc - windowQpc);
+            AdvanceRetentionCore(start);
+            if (measuredThroughQpc < windowQpc || expected.Any(id =>
+                !continuousSinceByLogicalProcessor.TryGetValue(id, out var since) || since > start))
+                return new(qpcFrequency, start, measuredThroughQpc, measuredThrough, false, []);
+            var rows = new List<CpuExecutionTimeAggregate>(pairs.Count);
+            var firstBucket = start / bucketWidthQpc;
+            var lastBucket = (measuredThroughQpc - 1) / bucketWidthQpc;
+            foreach (var pair in pairs)
             {
-                var records = Aggregate(capture);
-                lock (sync)
+                if (!expected.Contains(pair.Key.LogicalProcessorId)) continue;
+                long duration = 0; int switches = 0;
+                var cells = pair.Value.Cells;
+                var boundary = lastBoundaryByLogicalProcessor[pair.Key.LogicalProcessorId].Qpc;
+                var slot = (int)(firstBucket % cells.Length);
+                for (var id = firstBucket; id <= lastBucket; id++)
                 {
-                    if (continuityEpoch != capture.ContinuityEpoch)
+                    ref var cell = ref cells[slot];
+                    if (++slot == cells.Length) slot = 0;
+                    if (cell.Id != id) continue;
+                    if (id > firstBucket && id < lastBucket)
                     {
-                        return IncompleteSnapshotCore();
+                        duration = checked(duration + cell.Duration);
+                        switches = checked(switches + cell.Switches);
+                        continue;
                     }
+                    var bucketStart = id * bucketWidthQpc;
+                    var coverageStart = bucketStart;
+                    var coverageEnd = bucketStart > long.MaxValue - bucketWidthQpc
+                        ? boundary : Math.Min(boundary, bucketStart + bucketWidthQpc);
+                    var from = Math.Max(start, coverageStart);
+                    var to = Math.Min(measuredThroughQpc, coverageEnd);
+                    var covered = coverageEnd - coverageStart;
+                    if (covered <= 0 || to <= from) continue;
+                    var overlap = to - from;
+                    duration = checked(duration + (overlap == covered ? cell.Duration
+                        : (long)((Int128)cell.Duration * overlap / covered)));
+                    if (bucketStart >= start) switches = checked(switches + cell.Switches);
                 }
-
-                return new CpuResidencyAggregationSnapshot(
-                    capture.QpcFrequency,
-                    capture.WindowStartQpc,
-                    capture.MeasuredThroughQpc,
-                    capture.MeasuredThrough,
-                    true,
-                    records);
+                if (duration == 0 && switches == 0) continue;
+                var identity = pair.Value.Process.Identity;
+                rows.Add(new(identity.InstanceId, identity.ProcessId, identity.ProcessStartKey, identity.ProcessName,
+                    pair.Key.ThreadInstanceId, pair.Value.Thread.ThreadId, pair.Key.LogicalProcessorId, duration, switches));
             }
-            finally
-            {
-                lock (sync)
-                {
-                    ReleaseCapturedRangesCore(capture.RangeCount);
-                }
-            }
+            return new(qpcFrequency, start, measuredThroughQpc, measuredThrough, true, rows.ToArray());
         }
     }
 
@@ -538,12 +479,12 @@ internal sealed class CpuResidencyAggregationBuffer
         lock (sync)
         {
             inventoryVersion = checked(inventoryVersion + 1);
-            currentProcesses.Clear();
-            currentThreads.Clear();
+            currentProcesses.Clear(); currentProcesses.TrimExcess();
+            currentThreads.Clear(); currentThreads.TrimExcess();
             runningByLogicalProcessor.Clear();
             continuousSinceByLogicalProcessor.Clear();
             lastBoundaryByLogicalProcessor.Clear();
-            ClearClosedSlicesCore();
+            ClearBucketTotalsCore();
             latestEventQpc = -1;
             nextProcessInstanceId = 0;
             nextThreadInstanceId = 0;
@@ -572,7 +513,7 @@ internal sealed class CpuResidencyAggregationBuffer
                 }
             }
 
-            foreach (var slice in EnumerateClosedSlicesCore())
+            foreach (var slice in pairs.Values)
             {
                 retainedProcesses.Add(slice.Process.Identity.InstanceId);
                 retainedThreads.Add(slice.Thread.InstanceId);
@@ -581,9 +522,13 @@ internal sealed class CpuResidencyAggregationBuffer
             return new CpuResidencyAggregationDiagnostics(
                 qpcFrequency,
                 windowQpc,
-                maximumClosedSlices,
-                closedSliceCount,
-                closedSegments.Count,
+                maximumActivePairs,
+                pairs.Count,
+                bucketCount,
+                maximumBucketCount,
+                bucketWidthQpc,
+                (retainedBucketSlots + pendingBucketCount) * Marshal.SizeOf<BucketTotal>(),
+                (maximumBucketSlots + maximumBucketCount) * Marshal.SizeOf<BucketTotal>(),
                 currentProcesses.Count,
                 currentThreads.Count,
                 retainedProcesses.Count,
@@ -640,274 +585,124 @@ internal sealed class CpuResidencyAggregationBuffer
     {
         if (threadId == 0)
         {
-            return new RunningState(processId, 0, null, null, eventQpc, eventQpc, true);
+            return new RunningState(processId, 0, null, null, eventQpc, true);
         }
 
-        if (threadId < 0
-            || !currentThreads.TryGetValue(threadId, out var thread)
-            || !currentProcesses.TryGetValue(thread.Process.Identity.ProcessId, out var currentProcess)
-            || !ReferenceEquals(currentProcess, thread.Process)
-            || (processId > 0 && thread.Process.Identity.ProcessId != processId))
-        {
-            return new RunningState(processId, threadId, null, null, eventQpc, eventQpc, false);
-        }
-
-        thread.Process.UpdateIdentity(0, null, processName);
+        // Add/retire updates both current indexes under sync; a current thread already owns a current process.
+        if (threadId < 0 || !currentThreads.TryGetValue(threadId, out var thread))
+            return new RunningState(processId, threadId, null, null, eventQpc, false);
+        var identity = thread.Process.Identity;
+        if (processId > 0 && identity.ProcessId != processId)
+            return new RunningState(processId, threadId, null, null, eventQpc, false);
+        if (processName is not null && !ReferenceEquals(processName, identity.ProcessName))
+            thread.Process.UpdateIdentity(0, null, processName);
         return new RunningState(
-            thread.Process.Identity.ProcessId,
+            identity.ProcessId,
             threadId,
             thread.Process,
             thread,
             eventQpc,
-            eventQpc,
             false);
     }
 
-    private bool AppendClosedSliceCore(
-        ClosedSlice slice,
-        int logicalProcessorId,
-        long prospectiveBoundaryQpc)
+    private bool AppendClosedTotalsCore(in RunningState previous, int logicalProcessorId, long prospectiveBoundaryQpc)
     {
-        if (closedSliceCount == maximumClosedSlices)
+        var eventBucket = prospectiveBoundaryQpc / bucketWidthQpc;
+        if (eventBucket != lastRetentionAttemptBucket || pairs.Count >= maximumActivePairs)
         {
             AdvanceRetentionForProspectiveBoundaryCore(logicalProcessorId, prospectiveBoundaryQpc);
-            if (closedSliceCount == maximumClosedSlices)
-            {
-                return false;
-            }
+            lastRetentionAttemptBucket = eventBucket;
         }
-
-        if (writableSegment is null)
+        var start = Math.Max(previous.StartQpc, Math.Max(0, retainedWindowStartQpc));
+        if (prospectiveBoundaryQpc <= start) return true;
+        var thread = previous.Thread!;
+        var totals = thread.LastTotals;
+        if (totals is null || totals.LogicalProcessorId != logicalProcessorId)
         {
-            writableSegment = RentClosedSliceSegmentCore(
-                Math.Min(ClosedSliceSegmentCapacity, maximumClosedSlices - closedSliceCount));
-            if (closedSegments.Count == 0)
+            var key = new AggregateKey(thread.InstanceId, logicalProcessorId);
+            if (!pairs.TryGetValue(key, out totals))
             {
-                closedSegmentHeadOffset = 0;
+                if (pairs.Count >= maximumActivePairs || retainedBucketSlots + bucketCount > maximumBucketSlots) return false;
+                totals = new PairTotals(previous.Process!, thread, logicalProcessorId, allocateBuckets(checked(bucketCount * Marshal.SizeOf<BucketTotal>())));
+                pairs.Add(key, totals);
+                retainedBucketSlots += bucketCount;
             }
-
-            closedSegments.Enqueue(writableSegment);
+            thread.LastTotals = totals;
         }
-
-        writableSegment.Append(slice);
-        closedSliceCount++;
-        if (writableSegment.IsFull)
+        var firstId = start / bucketWidthQpc;
+        var lastId = (prospectiveBoundaryQpc - 1) / bucketWidthQpc;
+        var retainedId = Math.Max(0, retainedWindowStartQpc) / bucketWidthQpc;
+        var required = lastId - retainedId + 1;
+        if (required > maximumBucketCount) return false;
+        if (required > totals.CellCount && !ResizeTotalsCore(totals, (int)required, retainedId)) return false;
+        var cells = totals.Cells;
+        for (var id = firstId; id <= lastId; id++)
         {
-            writableSegment = null;
+            ref var cell = ref cells[(int)(id % cells.Length)];
+            if (cell.Id != id)
+            {
+                // A lagging processor can hold the common boundary back. Never overwrite still-needed totals.
+                if (cell.Duration != 0 && cell.Id >= Math.Max(0, retainedWindowStartQpc) / bucketWidthQpc) return false;
+                cell = new BucketTotal { Id = id };
+            }
+            var bucketStart = id * bucketWidthQpc;
+            var end = bucketStart > long.MaxValue - bucketWidthQpc ? prospectiveBoundaryQpc : Math.Min(prospectiveBoundaryQpc, bucketStart + bucketWidthQpc);
+            cell.Duration = checked(cell.Duration + end - Math.Max(start, bucketStart));
+            if (previous.StartQpc >= bucketStart && previous.StartQpc - bucketStart < bucketWidthQpc)
+                cell.Switches = checked(cell.Switches + 1);
         }
-
+        totals.LastEndQpc = prospectiveBoundaryQpc;
         return true;
     }
 
-    private void AdvanceRetentionForProspectiveBoundaryCore(
-        int logicalProcessorId,
-        long prospectiveBoundaryQpc)
+    private bool ResizeTotalsCore(PairTotals totals, int count, long retainedId)
     {
-        var foundBoundary = false;
-        var minimumBoundary = 0L;
+        var previousCount = totals.CellCount;
+        if (retainedBucketSlots - previousCount + count > maximumBucketSlots) return false;
+        // One replacement for the entire capture, retained until both copy and old close succeed.
+        if (pendingBuckets is not null) throw new InvalidOperationException("CPU bucket storage requires close retry.");
+        pendingBuckets = allocateBuckets(checked(count * Marshal.SizeOf<BucketTotal>()));
+        pendingBucketCount = count;
+        var next = MemoryMarshal.Cast<byte, BucketTotal>(pendingBuckets.Bytes);
+        foreach (var cell in totals.Cells)
+            if (cell.Duration != 0 && cell.Id >= retainedId) next[(int)(cell.Id % next.Length)] = cell;
+        totals.Memory.Dispose();
+        totals.Memory = pendingBuckets; pendingBuckets = null; pendingBucketCount = 0; totals.CellCount = count;
+        retainedBucketSlots += count - previousCount;
+        return true;
+    }
+
+    private void AdvanceRetentionForProspectiveBoundaryCore(int logicalProcessorId, long prospectiveBoundaryQpc)
+    {
+        var minimum = prospectiveBoundaryQpc;
         foreach (var pair in lastBoundaryByLogicalProcessor)
-        {
-            var boundary = pair.Key == logicalProcessorId
-                ? prospectiveBoundaryQpc
-                : pair.Value.Qpc;
-            if (!foundBoundary || boundary < minimumBoundary)
-            {
-                foundBoundary = true;
-                minimumBoundary = boundary;
-            }
-        }
-
-        if (!lastBoundaryByLogicalProcessor.ContainsKey(logicalProcessorId))
-        {
-            minimumBoundary = foundBoundary
-                ? Math.Min(minimumBoundary, prospectiveBoundaryQpc)
-                : prospectiveBoundaryQpc;
-            foundBoundary = true;
-        }
-
-        if (foundBoundary && minimumBoundary >= windowQpc)
-        {
-            AdvanceRetentionCore(minimumBoundary - windowQpc);
-        }
+            if (pair.Key != logicalProcessorId) minimum = Math.Min(minimum, pair.Value.Qpc);
+        if (minimum >= windowQpc) AdvanceRetentionCore(minimum - windowQpc);
     }
 
-    private void AdvanceRetentionCore(long windowStartQpc)
+    private void AdvanceRetentionCore(long start)
     {
-        if (windowStartQpc <= retainedWindowStartQpc)
-        {
-            return;
-        }
-
-        retainedWindowStartQpc = windowStartQpc;
-        while (closedSegments.TryPeek(out var segment))
-        {
-            while (closedSegmentHeadOffset < segment.Count
-                && segment[closedSegmentHeadOffset].EndQpc <= windowStartQpc)
-            {
-                closedSegmentHeadOffset++;
-                closedSliceCount--;
-            }
-
-            if (closedSegmentHeadOffset < segment.Count)
-            {
-                break;
-            }
-
-            closedSegments.Dequeue();
-            if (ReferenceEquals(segment, writableSegment))
-            {
-                writableSegment = null;
-            }
-
-            RecycleClosedSliceSegmentCore(segment);
-            closedSegmentHeadOffset = 0;
-        }
+        if (start <= retainedWindowStartQpc) return;
+        retainedWindowStartQpc = start;
+        var bucket = start / bucketWidthQpc;
+        if (bucket <= lastPrunedBucket) return;
+        lastPrunedBucket = bucket;
+        // Dictionary removal during value enumeration is supported; disposal precedes removal so failures retain ownership.
+        foreach (var pair in pairs)
+            if (pair.Value.LastEndQpc <= bucket * bucketWidthQpc)
+            { RetirePairCore(pair.Key, pair.Value); }
+            else if (pair.Value.CellCount > bucketCount
+                && (pair.Value.LastEndQpc - 1) / bucketWidthQpc - bucket + 1 <= bucketCount)
+                ResizeTotalsCore(pair.Value, bucketCount, bucket);
+        if (pairs.EnsureCapacity(0) > Math.Max(16, pairs.Count * 4)) pairs.TrimExcess();
     }
 
-    private ClosedSliceSegment RentClosedSliceSegmentCore(int minimumCapacity)
+    private void RetirePairCore(AggregateKey key, PairTotals totals)
     {
-        if (recycledSegments.TryDequeue(out var recycled))
-        {
-            return recycled;
-        }
-
-        return new ClosedSliceSegment(minimumCapacity);
-    }
-
-    private void RecycleClosedSliceSegmentCore(ClosedSliceSegment segment)
-    {
-        if (segment.HasSnapshotReaders)
-        {
-            segment.MarkForRecycle();
-            return;
-        }
-
-        segment.Reset();
-        recycledSegments.Enqueue(segment);
-    }
-
-    private int CaptureRangesCore()
-    {
-        EnsureSnapshotRangeCapacityCore(closedSegments.Count);
-        var index = 0;
-        foreach (var segment in closedSegments)
-        {
-            var start = index == 0 ? closedSegmentHeadOffset : 0;
-            snapshotRangeWorkspace[index++] = new SliceRange(segment, start, segment.Count - start);
-            segment.AcquireSnapshot();
-        }
-
-        return index;
-    }
-
-    private void EnsureSnapshotRangeCapacityCore(int required)
-    {
-        if (snapshotRangeWorkspace.Length >= required)
-        {
-            return;
-        }
-
-        var capacity = snapshotRangeWorkspace.Length == 0
-            ? Math.Min(4, required)
-            : snapshotRangeWorkspace.Length;
-        while (capacity < required)
-        {
-            capacity = checked(capacity * 2);
-        }
-
-        Array.Resize(ref snapshotRangeWorkspace, capacity);
-    }
-
-    private void ReleaseCapturedRangesCore(int rangeCount)
-    {
-        for (var index = 0; index < rangeCount; index++)
-        {
-            var segment = snapshotRangeWorkspace[index].Segment;
-            if (segment.ReleaseSnapshot() && segment.NeedsRecycle)
-            {
-                segment.Reset();
-                recycledSegments.Enqueue(segment);
-            }
-
-            snapshotRangeWorkspace[index] = default;
-        }
-    }
-
-    private IEnumerable<ClosedSlice> EnumerateClosedSlicesCore()
-    {
-        var segmentIndex = 0;
-        foreach (var segment in closedSegments)
-        {
-            var start = segmentIndex++ == 0 ? closedSegmentHeadOffset : 0;
-            for (var index = start; index < segment.Count; index++)
-            {
-                yield return segment[index];
-            }
-        }
-    }
-
-    private IReadOnlyList<CpuExecutionTimeAggregate> Aggregate(SnapshotCapture capture)
-    {
-        var aggregates = new Dictionary<AggregateKey, MutableAggregate>();
-        for (var rangeIndex = 0; rangeIndex < capture.RangeCount; rangeIndex++)
-        {
-            var range = snapshotRangeWorkspace[rangeIndex];
-            var end = range.Start + range.Count;
-            for (var index = range.Start; index < end; index++)
-            {
-                var slice = range.Segment[index];
-                if (slice.EndQpc <= capture.WindowStartQpc
-                    || slice.StartQpc >= capture.MeasuredThroughQpc
-                    || !capture.ExpectedLogicalProcessorIds.Contains(slice.LogicalProcessorId))
-                {
-                    continue;
-                }
-
-                var overlapStart = Math.Max(slice.StartQpc, capture.WindowStartQpc);
-                var overlapEnd = Math.Min(slice.EndQpc, capture.MeasuredThroughQpc);
-                var executionTimeQpc = overlapEnd > overlapStart
-                    ? checked(overlapEnd - overlapStart)
-                    : 0;
-                var switchCount = slice.SwitchInQpc >= capture.WindowStartQpc
-                    && slice.SwitchInQpc < capture.MeasuredThroughQpc
-                    ? 1
-                    : 0;
-                var identity = slice.Process.Identity;
-                var key = new AggregateKey(
-                    identity.InstanceId,
-                    slice.Thread.InstanceId,
-                    slice.LogicalProcessorId);
-                ref var aggregate = ref CollectionsMarshal.GetValueRefOrAddDefault(
-                    aggregates,
-                    key,
-                    out var exists);
-                if (!exists)
-                {
-                    aggregate = new MutableAggregate(identity, slice.Thread.ThreadId);
-                }
-
-                aggregate.ExecutionTimeQpc = checked(aggregate.ExecutionTimeQpc + executionTimeQpc);
-                aggregate.SwitchCount = checked(aggregate.SwitchCount + switchCount);
-            }
-        }
-
-        var records = new CpuExecutionTimeAggregate[aggregates.Count];
-        var recordIndex = 0;
-        foreach (var pair in aggregates)
-        {
-            records[recordIndex++] = new CpuExecutionTimeAggregate(
-                pair.Key.ProcessInstanceId,
-                pair.Value.Process.ProcessId,
-                pair.Value.Process.ProcessStartKey,
-                pair.Value.Process.ProcessName,
-                pair.Key.ThreadInstanceId,
-                pair.Value.ThreadId,
-                pair.Key.LogicalProcessorId,
-                pair.Value.ExecutionTimeQpc,
-                pair.Value.SwitchCount);
-        }
-
-        return records;
+        var count = totals.CellCount;
+        totals.Memory.Dispose();
+        if (ReferenceEquals(totals.Thread.LastTotals, totals)) totals.Thread.LastTotals = null;
+        pairs.Remove(key); retainedBucketSlots -= count;
     }
 
     private void ResetContinuityCore()
@@ -915,22 +710,18 @@ internal sealed class CpuResidencyAggregationBuffer
         runningByLogicalProcessor.Clear();
         continuousSinceByLogicalProcessor.Clear();
         lastBoundaryByLogicalProcessor.Clear();
-        ClearClosedSlicesCore();
+        ClearBucketTotalsCore();
         continuityEpoch = checked(continuityEpoch + 1);
     }
 
-    private void ClearClosedSlicesCore()
+    private void ClearBucketTotalsCore()
     {
-        foreach (var segment in closedSegments)
-        {
-            RecycleClosedSliceSegmentCore(segment);
-        }
-
-        closedSegments.Clear();
-        writableSegment = null;
-        closedSegmentHeadOffset = 0;
-        closedSliceCount = 0;
+        if (pendingBuckets is not null) { pendingBuckets.Dispose(); pendingBuckets = null; pendingBucketCount = 0; }
+        foreach (var pair in pairs)
+        { RetirePairCore(pair.Key, pair.Value); }
+        pairs.TrimExcess();
         retainedWindowStartQpc = long.MinValue;
+        lastPrunedBucket = -1; lastRetentionAttemptBucket = -1;
     }
 
     private void RetireProcessCore(ProcessState process)
@@ -940,6 +731,7 @@ internal sealed class CpuResidencyAggregationBuffer
             && ReferenceEquals(current, process))
         {
             currentProcesses.Remove(identity.ProcessId);
+            if (currentProcesses.EnsureCapacity(0) > Math.Max(16, currentProcesses.Count * 4)) currentProcesses.TrimExcess();
         }
 
         foreach (var thread in process.Threads.Values.ToArray())
@@ -954,12 +746,14 @@ internal sealed class CpuResidencyAggregationBuffer
             && ReferenceEquals(current, thread))
         {
             currentThreads.Remove(thread.ThreadId);
+            if (currentThreads.EnsureCapacity(0) > Math.Max(16, currentThreads.Count * 4)) currentThreads.TrimExcess();
         }
 
         if (thread.Process.Threads.TryGetValue(thread.ThreadId, out var processThread)
             && ReferenceEquals(processThread, thread))
         {
             thread.Process.Threads.Remove(thread.ThreadId);
+            if (thread.Process.Threads.EnsureCapacity(0) > Math.Max(16, thread.Process.Threads.Count * 4)) thread.Process.Threads.TrimExcess();
         }
     }
 
@@ -1011,36 +805,34 @@ internal sealed class CpuResidencyAggregationBuffer
     private static long DivideRoundUp(long numerator, long denominator)
         => checked((numerator + denominator - 1) / denominator);
 
-    private readonly record struct ClosedSlice(
-        long StartQpc,
-        long EndQpc,
-        ProcessState Process,
-        ThreadState Thread,
-        int LogicalProcessorId,
-        long SwitchInQpc);
-
     private readonly record struct RunningState(
         int RawProcessId,
         int RawThreadId,
         ProcessState? Process,
         ThreadState? Thread,
         long StartQpc,
-        long SwitchInQpc,
         bool IsIdle);
 
     private readonly record struct ProcessorBoundary(long Qpc, DateTimeOffset Time);
 
-    private readonly record struct AggregateKey(
-        long ProcessInstanceId,
-        long ThreadInstanceId,
-        int LogicalProcessorId);
+    // Thread instance IDs are global within this buffer and already identify the owning process instance.
+    private readonly record struct AggregateKey(long ThreadInstanceId, int LogicalProcessorId);
 
-    private struct MutableAggregate(ProcessIdentity process, int threadId)
+    private struct BucketTotal
     {
-        public ProcessIdentity Process = process;
-        public int ThreadId = threadId;
-        public long ExecutionTimeQpc;
-        public int SwitchCount;
+        internal long Id, Duration;
+        internal int Switches;
+    }
+
+    private sealed class PairTotals(ProcessState process, ThreadState thread, int logicalProcessorId, CaptureBucketMemory memory)
+    {
+        internal ProcessState Process { get; } = process;
+        internal ThreadState Thread { get; } = thread;
+        internal int LogicalProcessorId { get; } = logicalProcessorId;
+        internal CaptureBucketMemory Memory { get; set; } = memory;
+        internal int CellCount { get; set; } = memory.Bytes.Length / Marshal.SizeOf<BucketTotal>();
+        internal long LastEndQpc;
+        internal Span<BucketTotal> Cells => MemoryMarshal.Cast<byte, BucketTotal>(Memory.Bytes);
     }
 
     private sealed class ProcessState(ProcessIdentity identity)
@@ -1090,67 +882,10 @@ internal sealed class CpuResidencyAggregationBuffer
         long? ProcessStartKey,
         string ProcessName);
 
-    private sealed record ThreadState(
-        long InstanceId,
-        int ThreadId,
-        ProcessState Process);
-
-    private sealed class ClosedSliceSegment(int capacity)
+    private sealed record ThreadState(long InstanceId, int ThreadId, ProcessState Process)
     {
-        private readonly ClosedSlice[] items = new ClosedSlice[capacity];
-
-        public int Count { get; private set; }
-        public bool IsFull => Count == items.Length;
-        public bool HasSnapshotReaders => snapshotReaders != 0;
-        public bool NeedsRecycle => needsRecycle;
-        public ClosedSlice this[int index] => items[index];
-        private int snapshotReaders;
-        private bool needsRecycle;
-
-        public void Append(ClosedSlice slice)
-        {
-            if (IsFull)
-            {
-                throw new InvalidOperationException("The CPU-residency slice segment is full.");
-            }
-
-            items[Count++] = slice;
-        }
-
-        public void AcquireSnapshot() => snapshotReaders = checked(snapshotReaders + 1);
-
-        public bool ReleaseSnapshot()
-        {
-            if (snapshotReaders <= 0)
-            {
-                throw new InvalidOperationException("The CPU-residency slice segment has no active snapshot reader.");
-            }
-
-            snapshotReaders--;
-            return snapshotReaders == 0;
-        }
-
-        public void MarkForRecycle() => needsRecycle = true;
-
-        public void Reset()
-        {
-            Array.Clear(items, 0, Count);
-            Count = 0;
-            needsRecycle = false;
-        }
+        // One reference, not another history. Retirement clears it; migrated threads use the main pair index.
+        internal PairTotals? LastTotals;
     }
 
-    private readonly record struct SliceRange(
-        ClosedSliceSegment Segment,
-        int Start,
-        int Count);
-
-    private readonly record struct SnapshotCapture(
-        long ContinuityEpoch,
-        long QpcFrequency,
-        long WindowStartQpc,
-        long MeasuredThroughQpc,
-        DateTimeOffset? MeasuredThrough,
-        HashSet<int> ExpectedLogicalProcessorIds,
-        int RangeCount);
 }

@@ -26,7 +26,8 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal(
             CpuExecutionTimeSourceKinds.KernelEtwContextSwitchClosedIntervals,
             plan.CpuCoreResidency.ExecutionTimeSource.Kind);
-        Assert.Equal(524288, plan.CpuCoreResidency.ExecutionTimeSource.MaximumClosedSlices);
+        Assert.Equal(16384, plan.CpuCoreResidency.ExecutionTimeSource.MaximumActivePairs);
+        Assert.Equal(50, plan.CpuCoreResidency.ExecutionTimeSource.BucketWidthMilliseconds);
         Assert.Equal(CpuSmtAccounting.FixedLogicalProcessorShare, plan.CpuCoreResidency.SmtAccounting);
         foreach (var address in new[]
                  {
@@ -75,11 +76,11 @@ public sealed class HostManagerFreedomPointPlanTests
         {
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)["value"] = 7500;
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_closed_slices"] = 262144;
+                ["value"]!["maximum_active_pairs"] = 262144;
         });
 
         Assert.Equal(TimeSpan.FromMilliseconds(7500), changed.CpuCoreResidency.ObservationWindow);
-        Assert.Equal(262144, changed.CpuCoreResidency.ExecutionTimeSource.MaximumClosedSlices);
+        Assert.Equal(262144, changed.CpuCoreResidency.ExecutionTimeSource.MaximumActivePairs);
         Assert.NotEqual(baseline.PlanSha256, changed.PlanSha256);
         Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
     }
@@ -143,8 +144,9 @@ public sealed class HostManagerFreedomPointPlanTests
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
         {
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)["value"] = 7500;
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)["value"]!["bucket_width_ms"] = 25;
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_closed_slices"] = 262144;
+                ["value"]!["maximum_active_pairs"] = 262144;
         });
 
         var buffer = EtwCpuCoreResidencyReader.CreateAggregationBuffer(
@@ -154,7 +156,8 @@ public sealed class HostManagerFreedomPointPlanTests
 
         Assert.Equal(1000, diagnostics.QpcFrequency);
         Assert.Equal(7500, diagnostics.WindowQpc);
-        Assert.Equal(262144, diagnostics.MaximumClosedSlices);
+        Assert.Equal(262144, diagnostics.MaximumActivePairs);
+        Assert.Equal(25, diagnostics.BucketWidthQpc);
     }
 
     [Fact]
@@ -165,7 +168,7 @@ public sealed class HostManagerFreedomPointPlanTests
         {
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)["value"] = 7500;
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_closed_slices"] = 262144;
+                ["value"]!["maximum_active_pairs"] = 262144;
         });
 
         Assert.Equal(baseline.SchedulerSamplingInterval, changed.SchedulerSamplingInterval);
@@ -199,11 +202,24 @@ public sealed class HostManagerFreedomPointPlanTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void CpuResidencyClosedSliceCapacityMustRemainPositive(int capacity)
+    public void CpuResidencyPairCapacityMustRemainPositive(int capacity)
     {
         Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_closed_slices"] = capacity));
+                ["value"]!["maximum_active_pairs"] = capacity));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void CpuResidencyBucketWidthMustBeExplicitAndPositive(int width)
+    {
+        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
+                ["value"]!["bucket_width_ms"] = width));
+        Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
+                ["value"]!.AsObject().Remove("bucket_width_ms")));
     }
 
     [Fact]

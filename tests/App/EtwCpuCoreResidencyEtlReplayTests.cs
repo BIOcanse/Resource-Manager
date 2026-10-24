@@ -29,7 +29,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
     private static async Task VerifyProductionReaderPlanAsync(bool mixedPhysicalCores)
     {
         const int configuredWindowMilliseconds = 1250;
-        const int configuredMaximumClosedSlices = 262144;
+        const int configuredMaximumActivePairs = 262144;
         var path = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_ETL_REPLAY_PATH");
         Assert.False(string.IsNullOrWhiteSpace(path));
         Assert.True(File.Exists(path), $"Kernel ETL does not exist: {path}");
@@ -42,7 +42,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyObservationWindow)
                 ["value"] = configuredWindowMilliseconds;
             FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.CpuResidencyExecutionTimeSource)
-                ["value"]!["maximum_closed_slices"] = configuredMaximumClosedSlices;
+                ["value"]!["maximum_active_pairs"] = configuredMaximumActivePairs;
         }, cpuTopology: topology);
         using var sampling = new HostManagerSamplingSubscriptionTestFixture(hostPlan);
         Assert.Equal(Stopwatch.Frequency, broker.QpcFrequency);
@@ -167,7 +167,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
         var buffer = new CpuResidencyAggregationBuffer(
             qpcFrequency,
             observationWindowMilliseconds: ReplayWindowMilliseconds,
-            maximumClosedSlices: compiledPlan.ExecutionTimeSource.MaximumClosedSlices);
+            maximumActivePairs: compiledPlan.ExecutionTimeSource.MaximumActivePairs);
         var dispatcher = new KernelEtwSubscriptionDispatcher();
         dispatcher.AttachParser(kernel);
         dispatcher.InitializeSubscriptions(
@@ -288,44 +288,26 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
     }
 
     [EnvironmentVariableFact("RESOURCE_MANAGER_ETL_REPLAY_PATH")]
-    public void RealKernelEtlSliceDemandFitsTheCompiledCapacity()
+    public void RealKernelEtlActivePairDemandFitsTheCompiledCapacity()
     {
         var path = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_ETL_REPLAY_PATH");
         Assert.False(string.IsNullOrWhiteSpace(path));
         Assert.True(File.Exists(path), $"Kernel ETL does not exist: {path}");
-        var plan = HostManagerTestPlanFactory.CreatePlan().CpuCoreResidency.RequirePublished();
-        var closedSliceBoundaries = new Queue<long>();
-        var maximumDemand = 0;
-
         using var source = new ETWTraceEventSource(path);
-        var qpcFrequency = ReadQpcFrequency(source);
-        var windowQpcNumerator = checked(
-            qpcFrequency * plan.ObservationWindowMilliseconds);
-        var windowQpc = checked((windowQpcNumerator + 999) / 1000);
-        var kernel = new KernelTraceEventParser(source);
-#pragma warning disable CS0618 // Capacity is measured over the same exact QPC domain as production slices.
-        kernel.ThreadCSwitch += data =>
-        {
-            if (data.OldThreadID != 0)
-            {
-                closedSliceBoundaries.Enqueue(data.TimeStampQPC);
-            }
-            var windowStart = data.TimeStampQPC - windowQpc;
-            while (closedSliceBoundaries.TryPeek(out var boundary)
-                && boundary <= windowStart)
-            {
-                closedSliceBoundaries.Dequeue();
-            }
-            maximumDemand = Math.Max(maximumDemand, closedSliceBoundaries.Count);
-        };
-#pragma warning restore CS0618
-
+        var topology = new ReplayTopologySampler(source.NumberOfProcessors).CaptureTopology();
+        var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: topology).CpuCoreResidency.RequirePublished();
+        var buffer = EtwCpuCoreResidencyReader.CreateAggregationBuffer(plan, ReadQpcFrequency(source));
+        var dispatcher = new KernelEtwSubscriptionDispatcher();
+        dispatcher.AttachParser(new KernelTraceEventParser(source));
+        dispatcher.InitializeSubscriptions(
+            [new(1, "etl-pair-capacity", KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
+                | KernelTraceEventParser.Keywords.ContextSwitch,
+                (callbacks, _) => EtwCpuCoreResidencyReader.BindKernelEventCallbacks(callbacks, buffer, static () => true, static _ => null))],
+            new(1, DateTimeOffset.UnixEpoch));
         source.Process();
-
-        Assert.True(maximumDemand > 0);
-        Assert.True(
-            maximumDemand <= plan.ExecutionTimeSource.MaximumClosedSlices,
-            $"The real {plan.ObservationWindowMilliseconds} ms ETL window needs {maximumDemand} closed slices, but the compiled freedom point allows only {plan.ExecutionTimeSource.MaximumClosedSlices}.");
+        var diagnostics = buffer.GetDiagnostics();
+        Assert.InRange(diagnostics.ActivePairCount, 0, plan.ExecutionTimeSource.MaximumActivePairs);
+        Assert.Equal(0, diagnostics.CapacityResetCount);
     }
 
     private static long ReadQpcFrequency(TraceEventSource source)

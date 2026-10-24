@@ -249,7 +249,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>();
 
-        services.AddSingleton<EtwPhysicalDiskIoAttributionReader>();
+        services.AddSingleton<EtwPhysicalDiskIoAttributionReader>(static provider => new(
+            provider.GetRequiredService<IKernelEtwSessionBroker>(),
+            provider.GetRequiredService<ILogger<EtwPhysicalDiskIoAttributionReader>>(),
+            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IPhysicalDiskIoAttributionReader>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());

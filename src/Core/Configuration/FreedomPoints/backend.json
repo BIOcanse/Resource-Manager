@@ -39,7 +39,8 @@
                     "value_source": "registry",
                     "value": {
                       "kind": "kernel_etw_context_switch_qpc_closed_intervals_v1",
-                      "maximum_closed_slices": 524288
+                      "maximum_active_pairs": 16384,
+                        "bucket_width_ms": 50
                     },
                     "consumers": [
                       "HostManagerPlanCompiler.CompileCpuCoreResidency"

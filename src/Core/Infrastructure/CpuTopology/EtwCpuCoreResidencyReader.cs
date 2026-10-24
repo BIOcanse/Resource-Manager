@@ -48,6 +48,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
     private readonly NativeItemSamplingSubscriptionTracker<CpuResidencySampleRequest> subscriptions =
         CreateSubscriptions(subscriptionOwner, null);
     private EtwCpuResidencyCaptureOwner? captureOwner;
+    private readonly Func<int, CaptureBucketMemory>? allocateBuckets;
     private CompiledCpuCoreResidencyPlan? sessionPlan;
     private long nextLeaseId;
     private bool stopped;
@@ -61,7 +62,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             sessionPlan = runtimePlanProvider.Current.HostManager.RequirePublished().CpuCoreResidency.RequirePublished();
             return MapPlan(sessionPlan);
-        }, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)), seedProcessInventory, () => publicationSignal.Publish());
+        }, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)), seedProcessInventory, () => publicationSignal.Publish(), allocateBuckets);
     private readonly Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory = EtwCpuResidencyCaptureOwner.SeedInventory;
 
     private static NativeItemSamplingSubscriptionTracker<CpuResidencySampleRequest> CreateSubscriptions(
@@ -81,6 +82,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         : this(kernelEtwBroker, runtimePlanProvider, subscriptionOwner, logger)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
+        allocateBuckets = length => LedgerCaptureBucketMemory.Create(ledgerOwner, length);
         subscriptions = CreateSubscriptions(subscriptionOwner,
             (length, alignment) => SamplingOutputScratch.Create(ledgerOwner.CreateScratch, length, alignment));
     }
@@ -333,10 +335,10 @@ public sealed partial class EtwCpuCoreResidencyReader(
         SignalDemand();
     }
     private static CpuResidencyCaptureConfiguration MapPlan(CompiledCpuCoreResidencyPlan plan)
-        => new(plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumClosedSlices,
+        => new(plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.MaximumActivePairs,
             plan.PhysicalCoreByLogicalProcessor.ToFrozenDictionary(pair => pair.Key, pair => new CpuResidencyCoreAccounting(
                 pair.Value.PhysicalCoreId, pair.Value.CcdId, pair.Value.LogicalProcessorCount, pair.Value.LogicalProcessorShare)),
-            "Host published typed core/CCD accounting plan");
+            "Host published typed core/CCD accounting plan", plan.ExecutionTimeSource.BucketWidthMilliseconds);
     internal static CpuResidencyAggregationBuffer CreateAggregationBuffer(CompiledCpuCoreResidencyPlan plan, long qpcFrequency)
         => EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(MapPlan(plan.RequirePublished()), qpcFrequency);
     internal static void BindKernelEventCallbacks(KernelEtwEventSource source, CpuResidencyAggregationBuffer buffer,
