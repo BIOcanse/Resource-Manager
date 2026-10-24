@@ -1,3 +1,5 @@
+import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+
 export default async function cpuCurrentValueSubscriptionJourney(
   page,
   baseUrl = "http://127.0.0.1:4177"
@@ -9,6 +11,7 @@ export default async function cpuCurrentValueSubscriptionJourney(
   const channelPath = "/api/subscriptions/stream";
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
+  const channelProbe = await observeSubscriptionChannel(page);
 
   await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
@@ -41,6 +44,7 @@ export default async function cpuCurrentValueSubscriptionJourney(
   assertSingleLogicalSubscription(initial.topology, "CPU topology");
   assertSingleLogicalSubscription(initial.residency, "CPU residency");
   assertSinglePhysicalChannel(initial.channel);
+  initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
   assert(initial.topologyDirect.started === 0 && initial.residencyDirect.started === 0,
     `CPU current values used direct GET: ${JSON.stringify(initial)}`);
 
@@ -135,6 +139,7 @@ export default async function cpuCurrentValueSubscriptionJourney(
     && reactivated.residency.logicalMaxInFlight === 1,
   `CPU logical subscriptions overlapped on reactivation: ${JSON.stringify(reactivated)}`);
   assertSinglePhysicalChannel(reactivated.channel);
+  reactivated.browserChannel = await channelProbe.assertSinglePhysicalChannel();
   assert(reactivated.topologyDirect.started === 0 && reactivated.residencyDirect.started === 0,
     `CPU direct GET appeared after reactivation: ${JSON.stringify(reactivated)}`);
   assert(pageErrors.length === 0,
@@ -211,7 +216,6 @@ function assertSingleLogicalSubscription(telemetry, label) {
 function assertSinglePhysicalChannel(telemetry) {
   assert(telemetry.physicalStarted >= 1
     && telemetry.physicalInFlight === 1
-    && telemetry.physicalMaxInFlight === 1
     && telemetry.physicalCompleted === 0
     && telemetry.physicalStarted === telemetry.physicalAborted + 1,
   `Shared callback channel was not single-flight: ${JSON.stringify(telemetry)}`);

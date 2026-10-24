@@ -1,3 +1,5 @@
+import { observeSubscriptionChannel } from "./subscriptionChannelProbe.js";
+
 export default async function currentValueSubscriptionJourney(
   page,
   baseUrl = "http://127.0.0.1:4177"
@@ -9,6 +11,7 @@ export default async function currentValueSubscriptionJourney(
   const channelPath = "/api/subscriptions/stream";
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
+  const channelProbe = await observeSubscriptionChannel(page);
 
   const scenarioResponse = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST",
@@ -38,6 +41,7 @@ export default async function currentValueSubscriptionJourney(
   assertSingleActiveSubscription(initial.local, "local system");
   assertSingleActiveSubscription(initial.scheduling, "self scheduling");
   assertSinglePhysicalChannel(initial.channel, "physical callback channel");
+  initial.browserChannel = await channelProbe.assertSinglePhysicalChannel();
   assert(initial.localDirect.started === 0,
     `Local-system value used periodic/direct GET: ${JSON.stringify(initial.localDirect)}`);
   assert(initial.schedulingDirect.started === 0,
@@ -95,6 +99,7 @@ export default async function currentValueSubscriptionJourney(
     && smartContinued.logicalMaxInFlight === 1 && smartDirect.started === 0,
   `Smart report reintroduced requests beside its subscription: ${JSON.stringify({ smartStarted, smartContinued, smartDirect })}`);
   assertSinglePhysicalChannel(await readTelemetry(page, channelPath), "smart report callback channel");
+  await channelProbe.assertSinglePhysicalChannel();
   await page.getByRole("navigation", { name: "页面切换" })
     .getByRole("button", { name: "监视控制台", exact: true }).click();
   await page.waitForFunction(async (path) => {
@@ -125,7 +130,6 @@ function assertSingleActiveSubscription(telemetry, label) {
 function assertSinglePhysicalChannel(telemetry, label) {
   assert(telemetry.physicalStarted >= 1
     && telemetry.physicalInFlight === 1
-    && telemetry.physicalMaxInFlight === 1
     && telemetry.logicalInFlight === 0
     && telemetry.physicalCompleted === 0
     && telemetry.physicalStarted === telemetry.physicalAborted + 1,
