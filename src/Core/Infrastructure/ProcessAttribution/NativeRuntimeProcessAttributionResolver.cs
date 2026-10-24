@@ -48,6 +48,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     private readonly INativeSoftwareIdentityProcessObserver bundledCatalog;
     private readonly IReadOnlySet<string> windowsGamePaths;
     private readonly HashSet<string> explicitKindSoftwareIds;
+    private readonly IReadOnlyDictionary<string, RuntimeSoftwareAttribution> sourceClassifications;
     private NativeSoftwareIdentityPayloadCatalog resolutionPayloads = new();
     private bool disposed;
 
@@ -97,6 +98,10 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 .ToArray();
 
             registeredSoftware = software.ToDictionary(static item => item.Id, StringComparer.Ordinal);
+            sourceClassifications = softwareRecords
+                .Where(static record => record.HasExplicitKind && !string.IsNullOrWhiteSpace(record.SourceSoftwareId))
+                .ToDictionary(static record => record.SourceSoftwareId!,
+                    record => registeredSoftware[record.Id], StringComparer.OrdinalIgnoreCase);
             var prohibitedAliases = acquiredLease.CatalogPlan.Recreate.ProhibitedExecutableAliases
                 .ToHashSet(StringComparer.Ordinal);
             var adapted = BuildAdaptedDefinitions(
@@ -246,6 +251,14 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     $"Native software identity resolution failed with {status}.");
             }
             var attribution = ResolveOutput(output);
+            if (output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched
+                && output.SelectedSourceId is not (NativeRuntimeAttributionSources.Adapted
+                    or NativeRuntimeAttributionSources.Controlled
+                    or NativeRuntimeAttributionSources.ResourceManagerSelf)
+                && sourceClassifications.TryGetValue(attribution.Id, out var classification))
+            {
+                attribution = classification;
+            }
             // Category evidence does not compete with or replace software identity.
             // Explicit registrations and user classifications retain their category.
             return output.Status == (uint)NativeSoftwareIdentityResolutionStatus.Matched

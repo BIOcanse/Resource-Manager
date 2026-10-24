@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 
 export default async function softwareUnclassifiedJourney(page, baseUrl) {
   const errors = [];
@@ -13,6 +16,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
     operations: { canUninstall: false, uninstallKind: "None", uninstallLabel: "", uninstallMessage: "" },
     issues: [issue]
   }));
+  software.push({ ...software[0], id: "runtime:game", name: "Windows Game", kind: "game", displayKind: "game",
+    categorySource: "Windows GameConfigStore\\Children\\MatchedExeFullPath", issues: [] });
   await page.route("**/api/software", route => route.fulfill({ json: software.map((item, index) =>
     classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item) }));
   await page.route("**/api/software/manual", async route => {
@@ -49,6 +54,33 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   await nav.getByRole("button", { name: /^一般应用/ }).click();
   await page.locator(".software-item").filter({ hasText: "Runtime App 0" }).waitFor();
   assert.equal(await page.locator(".software-item .software-issue-tag").count(), 0);
+
+  const sourceLanguages = [];
+  let previous = "zh-CN";
+  for (const option of languageOptions.filter(option => option.id !== "system")) {
+    const oldApp = await loadAppCopy(previous);
+    const oldSettings = await loadSettingsText(previous);
+    await page.getByRole("navigation").getByRole("button", { name: oldApp.page.settings, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.sections.appearance, exact: true }).click();
+    await page.getByRole("button", { name: oldSettings.appearance.languageSelectLabel, exact: true }).click();
+    await page.getByRole("option", { name: `${option.nativeLabel} · ${option.label}`, exact: true }).click();
+    if (option.id !== previous)
+      await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
+    await page.waitForFunction(language => document.documentElement.lang === language, option.id);
+    const app = await loadAppCopy(option.id);
+    await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
+    await page.getByRole("navigation", { name: app.management.categoryNav })
+      .getByRole("button", { name: new RegExp(app.softwareKind.game) }).click();
+    await page.locator(".software-item").filter({ hasText: "Windows Game" })
+      .getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
+    const details = page.getByRole("dialog", { name: "Windows Game", exact: true });
+    await details.getByText(app.management.categorySource, { exact: true }).waitFor();
+    await details.getByText(app.management.windowsGameList, { exact: true }).waitFor();
+    await details.locator(`button.icon-button[aria-label="${app.softwareDetail.close}"]`).click();
+    sourceLanguages.push(option.id);
+    previous = option.id;
+  }
   assert.deepEqual(errors, []);
-  return { runtimeSources: 3, leaveWithoutWrite: true, categorySelection: true, sourceIdPreserved: true, reminderCleared: true };
+  return { runtimeSources: 3, leaveWithoutWrite: true, categorySelection: true, sourceIdPreserved: true,
+    reminderCleared: true, sourceLanguages };
 }

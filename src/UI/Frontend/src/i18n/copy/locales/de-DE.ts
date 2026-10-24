@@ -390,6 +390,8 @@ const deDeAppCopy: AppCopy = {
     Support: "Support"
   },
   management: {
+    categorySource: "Quelle der Kategorie",
+    windowsGameList: "Windows-Spieleliste (GameConfigStore)",
     classifySoftware: "Kategorie wählen",
     unclassifiedReminder: "Zur Laufzeit ohne bekannte Kategorie erkannt. Wählen Sie eine Kategorie oder erledigen Sie dies später.",
     discoveredPackage: "Über ein laufendes App-Paket erkannt",

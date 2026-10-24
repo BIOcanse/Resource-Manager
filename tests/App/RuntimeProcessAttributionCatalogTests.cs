@@ -15,6 +15,17 @@ public sealed class RuntimeProcessAttributionCatalogTests
     private readonly NullSystemProcessClassifier systemClassifier = new();
 
     [Fact]
+    public void CreateOrReuse_RebuildsWhenTheManualSourceIdentityChanges()
+    {
+        var record = CreateSoftware("manual:app", "App", []) with
+            { HasExplicitKind = true, SourceSoftwareId = "package:first" };
+        using var first = CreateCatalog(null, [record], [], []);
+        using var changed = CreateCatalog(first, [record with { SourceSoftwareId = "package:second" }], [], []);
+        Assert.NotSame(first, changed);
+        Assert.NotEqual(first.Version.Software, changed.Version.Software);
+    }
+
+    [Fact]
     public void CreateOrReuse_ReusesCatalogAndPipelineForEquivalentSourceVersions()
     {
         using var first = CreateCatalog(

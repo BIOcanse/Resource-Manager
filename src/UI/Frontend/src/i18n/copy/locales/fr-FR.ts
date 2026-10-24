@@ -390,6 +390,8 @@ const frFrAppCopy: AppCopy = {
     Support: "Assistance"
   },
   management: {
+    categorySource: "Source de la catégorie",
+    windowsGameList: "Liste des jeux Windows (GameConfigStore)",
     classifySoftware: "Choisir une catégorie",
     unclassifiedReminder: "Identifié en cours d’exécution sans catégorie connue. Choisissez une catégorie ou faites-le plus tard.",
     discoveredPackage: "Identifié par un paquet d’application en cours d’exécution",

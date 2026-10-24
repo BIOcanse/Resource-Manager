@@ -4,6 +4,7 @@ using ResourceManager.App.Application.Dependencies;
 using ResourceManager.App.Application.SoftwareIdentity;
 using ResourceManager.App.Application.SoftwareDiscovery;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.ProcessAttribution;
 
 namespace ResourceManager.App.Application.Software;
 
@@ -43,9 +44,11 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         return GetSoftwareCoreAsync(refreshPortableRegistrations: false, windowsSid: null, cancellationToken: cancellationToken);
     }
 
-    public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(string? windowsSid, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<SoftwareRecord>> GetSoftwareAsync(string? windowsSid, CancellationToken cancellationToken,
+        IReadOnlyList<RuntimeSoftwareAttribution>? runtimeSoftware = null)
     {
-        return GetSoftwareCoreAsync(refreshPortableRegistrations: false, windowsSid: windowsSid, cancellationToken: cancellationToken);
+        return GetSoftwareCoreAsync(refreshPortableRegistrations: false, windowsSid: windowsSid, cancellationToken: cancellationToken,
+            runtimeSoftware: runtimeSoftware);
     }
 
     public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(CancellationToken cancellationToken)
@@ -53,15 +56,18 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         return GetSoftwareCoreAsync(refreshPortableRegistrations: true, windowsSid: null, cancellationToken: cancellationToken);
     }
 
-    public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(string? windowsSid, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<SoftwareRecord>> RefreshSoftwareAsync(string? windowsSid, CancellationToken cancellationToken,
+        IReadOnlyList<RuntimeSoftwareAttribution>? runtimeSoftware = null)
     {
-        return GetSoftwareCoreAsync(refreshPortableRegistrations: true, windowsSid: windowsSid, cancellationToken: cancellationToken);
+        return GetSoftwareCoreAsync(refreshPortableRegistrations: true, windowsSid: windowsSid, cancellationToken: cancellationToken,
+            runtimeSoftware: runtimeSoftware);
     }
 
     private async Task<IReadOnlyList<SoftwareRecord>> GetSoftwareCoreAsync(
         bool refreshPortableRegistrations,
         string? windowsSid,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<RuntimeSoftwareAttribution>? runtimeSoftware = null)
     {
         var records = new List<SoftwareRecord>();
         var policyProfile = await policyProfileProvider.GetProfileAsync(cancellationToken);
@@ -87,6 +93,8 @@ public sealed partial class SoftwareRegistryView : ISoftwareRegistryView
         records.AddRange(portableSoftware.Select(ToPortableSoftwareRecord));
 
         ApplyPolicyProfile(records, policyProfile);
+
+        IncludeRuntimeSoftware(records, runtimeSoftware ?? []);
 
         var manualRecords = await manualSoftwareRegistry.GetAllAsync(cancellationToken);
         ApplyManualRecords(records, manualRecords);

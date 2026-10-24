@@ -390,6 +390,8 @@ const koKrAppCopy: AppCopy = {
     Support: "지원"
   },
   management: {
+    categorySource: "분류 출처",
+    windowsGameList: "Windows 게임 목록(GameConfigStore)",
     classifySoftware: "분류 선택",
     unclassifiedReminder: "실행 중에 식별되었지만 알려진 분류가 없습니다. 분류를 선택하거나 나중에 처리할 수 있습니다.",
     discoveredPackage: "실행 중인 앱 패키지로 식별",

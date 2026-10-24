@@ -1,6 +1,8 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Monitoring;
 
@@ -382,7 +384,7 @@ internal sealed class SchedulingProcessFactSnapshotState
         return clone;
     }
 
-    public IReadOnlyList<ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution> ReadLatestSoftware()
+    public IReadOnlyList<RuntimeSoftwareAttribution> ReadLatestSoftware()
     {
         lock (gate)
         {
@@ -394,11 +396,24 @@ internal sealed class SchedulingProcessFactSnapshotState
                 .Where(pair => inventory.Processes.ContainsKey(pair.Key))
                 .Select(static pair => pair.Value)
                 .GroupBy(static process => process.SoftwareId, StringComparer.OrdinalIgnoreCase)
-                .Select(static group => new ResourceManager.App.Domain.ProcessAttribution.RuntimeSoftwareAttribution(
-                    group.Key, group.First().SoftwareName, group.First().SoftwareKind,
-                    group.First().SoftwareDisplayKind,
-                    group.SelectMany(static process => process.SoftwareRootPaths)
-                        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray()))
+                .Select(static group =>
+                {
+                    // A category fact wins over discovery-only kinds for the software
+                    // view, regardless of process enumeration order.
+                    var selected = group
+                        .OrderBy(static process => process.SoftwareKind is SoftwareKinds.RuntimePackage
+                            or SoftwareKinds.RuntimeProduct or SoftwareKinds.RuntimeRoot ? 1 : 0)
+                        .ThenBy(static process => process.SoftwareKind, StringComparer.Ordinal)
+                        .ThenBy(static process => process.SoftwareName, StringComparer.Ordinal)
+                        .ThenBy(static process => process.SoftwareCategorySource, StringComparer.Ordinal)
+                        .First();
+                    return new RuntimeSoftwareAttribution(
+                        group.Key, selected.SoftwareName, selected.SoftwareKind, selected.SoftwareDisplayKind,
+                        group.SelectMany(static process => process.SoftwareRootPaths)
+                            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+                        selected.SoftwareCategorySource);
+                })
+                .OrderBy(static software => software.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
         }
     }
@@ -582,6 +597,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareKind = attributionProcess.SoftwareKind,
             SoftwareDisplayKind = attributionProcess.SoftwareDisplayKind,
             SoftwareRootPaths = attributionProcess.SoftwareRootPaths,
+            SoftwareCategorySource = attributionProcess.SoftwareCategorySource,
             BaseScore = attributionProcess.BaseScore
         };
 
@@ -673,6 +689,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareKind = string.Empty,
             SoftwareDisplayKind = string.Empty,
             SoftwareRootPaths = [],
+            SoftwareCategorySource = null,
             BaseScore = 0,
             ValidMetricMask = SchedulingProcessMetricMask.None,
             CpuUsagePercent = 0,

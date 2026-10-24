@@ -23,6 +23,8 @@ export const zhSoftwareCopy = {
     Support: "支持"
   },
   management: {
+    categorySource: "分类来源",
+    windowsGameList: "Windows 游戏列表（GameConfigStore）",
     classifySoftware: "选择分类",
     unclassifiedReminder: "仅在运行时识别，尚无已知分类。可选择分类，也可稍后处理。",
     discoveredPackage: "通过运行中的应用包识别",

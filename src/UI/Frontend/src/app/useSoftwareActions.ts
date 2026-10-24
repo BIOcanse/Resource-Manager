@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { softwareCategorySourceLabel } from "../presentation/softwareClassification.ts";
 import { systemProcessResultDetail, systemProcessResultSummary } from "../presentation/systemProcessResult";
 import type { Accessor, Setter } from "solid-js";
 import {
@@ -679,6 +680,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       baseRows: [
         [uiText.softwareActions.field.name, name],
         [uiText.softwareActions.field.type, displayKind],
+        [uiText.management.categorySource, softwareCategorySourceLabel(record.categorySource)],
         [uiText.softwareActions.field.state, userFacingState(record.state)],
         [uiText.softwareActions.field.stateDescription, userFacingMessage(record.message, displayKind)]
       ],

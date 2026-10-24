@@ -26,6 +26,10 @@ public sealed partial class SoftwareRegistryView
             return true;
         }
 
+        // A published runtime identity already failed known-root matching.
+        // Only the user's exact source identity may replace that observation.
+        if (record.State == "runtime") return false;
+
         if (NormalizeSoftwareKey(record.Name) == NormalizeSoftwareKey(manualRecord.Name))
         {
             return true;

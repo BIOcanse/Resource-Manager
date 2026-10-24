@@ -11,6 +11,34 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(2);
 
+    [Theory]
+    [InlineData(false, "game")]
+    [InlineData(true, "game")]
+    [InlineData(false, "runtime_package")]
+    [InlineData(true, "runtime_package")]
+    public void SoftwareCategoryAndSourceDoNotDependOnProcessEnumerationOrder(bool reverse, string kind)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var game = Fact(42, 100, SchedulingProcessMetricMask.None, 0, 0) with
+        {
+            SoftwareKind = kind, SoftwareDisplayKind = kind == "game" ? "game" : "other",
+            SoftwareCategorySource = kind == "game" ? @"Windows GameConfigStore\Children\MatchedExeFullPath" : null,
+            SoftwareRootPaths = [@"C:\Apps\Game"]
+        };
+        var sibling = game with { ProcessId = 43, ProcessStartKey = 101,
+            SoftwareKind = "runtime_product", SoftwareDisplayKind = "other", SoftwareCategorySource = null };
+        var sample = Sample(now, 1, SchedulingProcessMetricMask.None,
+            reverse ? sibling : game, reverse ? game : sibling);
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory), sample, now, Schedule(now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessAttribution), sample, now, Schedule(now));
+        var software = Assert.Single(state.ReadLatestSoftware());
+        Assert.Equal(game.SoftwareId, software.Id);
+        Assert.Equal(game.SoftwareKind, software.Kind);
+        Assert.Equal(game.SoftwareCategorySource, software.CategorySource);
+        Assert.Equal(game.SoftwareRootPaths, software.RootPaths);
+    }
+
     [Fact]
     public void RuntimeSoftwareReadsAttributionWithoutRequiringPerformanceMetrics()
     {
