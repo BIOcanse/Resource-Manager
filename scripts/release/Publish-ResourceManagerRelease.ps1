@@ -29,22 +29,27 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Frontend publication build failed: $LASTEXITCODE" }
 }
 finally { Pop-Location }
+# The backend service publishes as a folder (user decision 2026-10-24): every assembly is mapped from
+# its own file, so the long-running service does not keep a private decompressed copy of each
+# assembly beside the mapped bundle. The other programs stay single-file.
 $projects = @(
-    @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend' },
-    @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui' },
-    @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher' },
-    @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer' }
-    @{ Project = (Join-Path $repo 'src\Uninstaller\ResourceManager.Uninstaller.csproj'); Directory = 'uninstaller' }
-    @{ Project = (Join-Path $repo 'src\Updater\WinUI\ResourceManager.UpdateManager.csproj'); Directory = 'update-manager' }
+    @{ Project = (Join-Path $app 'ResourceManager.App.csproj'); Directory = 'backend'; SingleFile = $false },
+    @{ Project = (Join-Path $repo 'src\UI\Core\ResourceManager.NativeUi.csproj'); Directory = 'ui'; SingleFile = $true },
+    @{ Project = (Join-Path $repo 'src\UI\Launcher\ResourceManager.Launcher.csproj'); Directory = 'launcher'; SingleFile = $true },
+    @{ Project = (Join-Path $repo 'src\Installer\ResourceManager.Installer.csproj'); Directory = 'installer'; SingleFile = $true }
+    @{ Project = (Join-Path $repo 'src\Uninstaller\ResourceManager.Uninstaller.csproj'); Directory = 'uninstaller'; SingleFile = $true }
+    @{ Project = (Join-Path $repo 'src\Updater\WinUI\ResourceManager.UpdateManager.csproj'); Directory = 'update-manager'; SingleFile = $true }
 )
 foreach ($project in $projects) {
     $destination = Join-Path $OutputRoot $project.Directory
     if (Test-Path -LiteralPath $destination) { throw "Publish directory already exists: $destination" }
+    $layout = if ($project.SingleFile) {
+        @('-p:PublishSingleFile=true', '-p:EnableCompressionInSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true')
+    }
+    else { @('-p:PublishSingleFile=false') }
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
     # The Ledger native build only runs inside a registered workspace; the caller's build root is one.
-    & dotnet publish $project.Project -c Release -r win-x64 --self-contained true `
-        -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true `
-        -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishReadyToRun=true `
+    & dotnet publish $project.Project -c Release -r win-x64 --self-contained true @layout -p:PublishReadyToRun=true `
         -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$(Join-Path $OutputRoot 'ledger')" `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }

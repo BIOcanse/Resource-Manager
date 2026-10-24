@@ -1,7 +1,8 @@
 <Project>
-  <!-- Composite R2R recompiles the framework together with a single-file app.
-       Publish each assembly separately within the existing bounded build. -->
-  <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true' and '$(PublishSingleFile)' == 'true'">
+  <!-- Composite R2R recompiles the framework together with the app, whether it
+       publishes single-file or as a folder. Publish each assembly separately
+       within the existing bounded build. -->
+  <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
     <PublishReadyToRunComposite Condition="'$(PublishReadyToRunComposite)' == ''">false</PublishReadyToRunComposite>
     <PublishReadyToRunCrossgen2ExtraArgs Condition="'$(PublishReadyToRunCrossgen2ExtraArgs)' == ''">--parallelism:1</PublishReadyToRunCrossgen2ExtraArgs>
   </PropertyGroup>

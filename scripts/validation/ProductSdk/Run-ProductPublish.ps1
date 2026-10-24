@@ -114,7 +114,7 @@ if($Stage -eq 'ProductBackend') {
     if($state.state -ne 'running'){throw 'Do not reopen completed candidate artifacts.'}
 }
 $evidence=Join-Path $RunDirectory 'publish-inputs';[void][IO.Directory]::CreateDirectory($evidence)
-$common=@('-p:PublishSingleFile=true','-p:PublishReadyToRun=true','-p:PublishReadyToRunComposite=false','-p:PublishReadyToRunCrossgen2ExtraArgs=--parallelism:1','-p:DebugType=none','-p:DebugSymbols=false','-p:CopyOutputSymbolsToPublishDirectory=false',
+$common=@('-p:PublishReadyToRun=true','-p:PublishReadyToRunComposite=false','-p:PublishReadyToRunCrossgen2ExtraArgs=--parallelism:1','-p:DebugType=none','-p:DebugSymbols=false','-p:CopyOutputSymbolsToPublishDirectory=false',
     ('-p:ArtifactsPath='+$artifacts),('-p:RestorePackagesPath='+(Join-Path $artifacts 'packages')),('-p:RestoreConfigFile='+(Join-Path $TaskRoot 'NuGet.official.config')),
     '-p:BuildInParallel=false','-maxcpucount:1','-nodeReuse:false','-p:UseSharedCompilation=false','-p:NuGetAudit=false',
     ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $PSScriptRoot 'ProductPublishCapture.targets')),('-p:RMProductEvidenceRoot='+$evidence),
@@ -128,7 +128,7 @@ if($Stage -eq 'ProductBackend') {
     $adapterProof=@($native.outputs|Where-Object {$_.path -ieq $adapter})
     if($adapterProof.Count -ne 1){throw 'Exact rebuilt legacy Adapter output proof is required.'}
     $probeOutput=Join-Path $ScratchRoot 'legacy-probe'
-    $probeProperties=@($common|Where-Object {$_ -notlike '-p:PublishSingleFile=*' -and $_ -notlike '-p:PublishReadyToRun=*'})
+    $probeProperties=@($common|Where-Object {$_ -notlike '-p:PublishReadyToRun=*'})
     $probeArguments=@('build',(Join-Path $repo 'tests/Fixtures/LegacyAdapterInitializationProbe/LegacyAdapterInitializationProbe.csproj'),'-c','Release','-r','win-x64','--output',$probeOutput,'--nologo','--verbosity','minimal')+$probeProperties+@('-p:PublishSingleFile=false','-p:PublishReadyToRun=false','-p:SelfContained=false','-p:SkipAdapterNativeBuild=true',('-p:AdapterNativeOutput='+$adapter))
     Save-Json @{executable=$dotnet;arguments=$probeArguments} (Join-Path $RunDirectory 'legacy-probe-build-command.json')
     & $dotnet @probeArguments *> (Join-Path $RunDirectory 'legacy-probe-build.log')
@@ -139,7 +139,8 @@ if($Stage -eq 'ProductBackend') {
     if($LASTEXITCODE -ne 0){throw 'Legacy Adapter initialization/layout probe failed.'}
     $probe=Get-Content (Join-Path $RunDirectory 'legacy-probe-result.json') -Raw|ConvertFrom-Json
     if($probe.status -ne 'passed' -or @($probe.sessions).Count -ne 4 -or @($probe.sessions|Where-Object {-not $_.initialized -or -not $_.disposed}).Count){throw 'Legacy Adapter probe result incomplete.'}
-    $extra=@('-p:SkipClientAppBuild=true','-p:EnableCompressionInSingleFile=true','-p:IncludeNativeLibrariesForSelfExtract=true',
+    # The backend publishes as a folder like the release script; the shell programs stay single-file.
+    $extra=@('-p:SkipClientAppBuild=true','-p:PublishSingleFile=false',
         ('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $ScratchRoot 'ledger-work')),('-p:ResourceManagerLedgerBuildRoot='+[IO.Path]::GetFullPath($LedgerBuildRoot)),
         ('-p:ResourceManagerLedgerPowerShell='+[Environment]::ProcessPath))
     foreach($property in $native.properties.psobject.Properties){$extra+=('-p:'+$property.Name+'='+[string]$property.Value)}
@@ -148,10 +149,10 @@ if($Stage -eq 'ProductBackend') {
     $requiredManaged=@('ResourceManager.dll','ResourceManager.ReadWriteCore.dll','ResourceManager.SubscriptionCore.dll','FreedomPoint.Core.dll','ResourceManager.Ledger.dll')
     if($diskInputs){$requiredManaged+='Disk.ReadWrite.dll'}
     foreach($name in $requiredManaged) {
-        if(-not @($resolved|Where-Object {$_.list -eq 'ResourceManager.App.bundle-inputs.txt' -and [IO.Path]::GetFileName($_.path) -ceq $name}).Count){throw "Actual single-file bundle omitted $name"}
+        if(-not @($resolved|Where-Object {$_.list -eq 'ResourceManager.App.publish-inputs.txt' -and [IO.Path]::GetFileName($_.path) -ceq $name}).Count){throw "Actual backend publish omitted $name"}
     }
     foreach($name in @('Dia2Lib.dll','TraceReloggerLib.dll')) {
-        foreach($phase in @('pre-r2r','bundle')) {
+        foreach($phase in @('pre-r2r','publish')) {
             if(@($resolved|Where-Object {$_.list -eq ('ResourceManager.App.'+$phase+'-inputs.txt') -and [IO.Path]::GetFileName($_.path) -ceq $name}).Count -ne 1){throw "TraceEvent interop input must occur once in $phase : $name"}
         }
     }
@@ -250,8 +251,8 @@ if($Stage -eq 'ProductBackend') {
     Save-Json @(Get-TreeManifest (Join-Path $artifacts 'freedom-point-generated')) (Join-Path $RunDirectory 'freedom-point-generated-output.json')
     Save-Json @{accepted=$true;backendRun=$RunDirectory;artifacts=$artifacts;candidate=$candidate;backendDirectory=$backend;nativeContext=$nativeContextPath;frontendContext=(Join-Path $TaskRoot 'frontend-product-context.json')} (Join-Path $TaskRoot 'product-publish-context.json')
 } elseif($Stage -eq 'ProductShell') {
-    $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @()
-    $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @()
+    $nativeUi=Invoke-Publish 'src/UI/Core/ResourceManager.NativeUi.csproj' 'native-ui' @('-p:PublishSingleFile=true')
+    $launcher=Invoke-Publish 'src/UI/Launcher/ResourceManager.Launcher.csproj' 'launcher' @('-p:PublishSingleFile=true')
     [void](Capture-ResolvedInputs $evidence)
     $product|Add-Member -NotePropertyName shellRun -NotePropertyValue $RunDirectory -Force
     $product|Add-Member -NotePropertyName nativeUiDirectory -NotePropertyValue $nativeUi -Force
