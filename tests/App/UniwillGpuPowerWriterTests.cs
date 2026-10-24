@@ -188,6 +188,14 @@ public sealed class UniwillGpuPowerWriterTests
             Assert.False(UniwillGpuPowerHardware.IsUniqueInternalTarget(0, 123, [internalGpu with { Type = type }]));
     }
 
+    [Fact]
+    public void WriterDisposesItsOwnedHardware()
+    {
+        var hardware = new FakeHardware();
+        new UniwillGpuPowerWriter(hardware).Dispose();
+        Assert.True(hardware.Disposed);
+    }
+
     [Theory]
     [InlineData(Offset)]
     [InlineData("gpu.dynamic-boost-offset")]
@@ -330,6 +338,7 @@ public sealed class UniwillGpuPowerWriterTests
 
     private sealed class FakeHardware : IUniwillGpuPowerHardware
     {
+        public bool Disposed { get; private set; }
         public bool IsAvailable => true;
         public bool IsBudgetFirmwareConfirmed { get; init; } = true;
         public bool TargetConfirmed { get; init; } = true;
@@ -361,5 +370,6 @@ public sealed class UniwillGpuPowerWriterTests
             if (address == 0x0746) DynamicBoost = readback;
             return readback;
         }
+        public void Dispose() => Disposed = true;
     }
 }

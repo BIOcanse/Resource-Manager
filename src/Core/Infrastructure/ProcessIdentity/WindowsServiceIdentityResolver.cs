@@ -1,5 +1,4 @@
-using System.ComponentModel;
-using System.Diagnostics;
+using ResourceManager.ReadWrite.Windows.Processes;
 using ResourceManager.ReadWrite.Windows.Services;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Domain.ProcessAttribution;
@@ -10,6 +9,7 @@ namespace ResourceManager.App.Infrastructure.ProcessIdentity;
 public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityResolver
 {
     private static readonly TimeSpan CacheLifetime = TimeSpan.FromSeconds(5);
+    private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private ServiceSnapshot cachedSnapshot = ServiceSnapshot.Unavailable;
     private DateTimeOffset cachedAt;
@@ -124,25 +124,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
     }
 
     private static long? TryReadProcessStartKey(int processId)
-    {
-        Process? process = null;
-        try
-        {
-            process = Process.GetProcessById(processId);
-            return process.StartTime.ToFileTimeUtc();
-        }
-        catch (Exception exception) when (exception is ArgumentException
-            or InvalidOperationException
-            or Win32Exception
-            or NotSupportedException)
-        {
-            return null;
-        }
-        finally
-        {
-            process?.Dispose();
-        }
-    }
+        => BasicMetricReader.ReadCurrentCreationFileTime(processId);
 
     private static string NormalizeId(string value)
     {

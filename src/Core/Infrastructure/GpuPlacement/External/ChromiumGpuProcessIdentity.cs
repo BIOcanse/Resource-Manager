@@ -2,8 +2,10 @@ using ResourceManager.ReadWrite.Windows.Processes;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
@@ -38,15 +40,15 @@ internal static class ChromiumGpuProcessIdentity
             if (!Matches(gpu, expected) || !HasCompatibleRenderer(Arguments(gpu), confirmedApi))
                 return null;
             var basic = new BasicInformation();
-            if (NtQueryInformationProcess(gpu.Handle, 0, ref basic, Marshal.SizeOf<BasicInformation>(), out _) < 0)
+            if (NtQueryInformationProcess(gpu.SafeHandle, 0, ref basic, Marshal.SizeOf<BasicInformation>(), out _) < 0)
                 return null;
             using var browser = Process.GetProcessById(checked((int)basic.ParentId));
             var browserStartKey = checked((ulong)browser.StartTime.ToUniversalTime().ToFileTimeUtc());
-            var browserImage = browser.MainModule?.FileName;
+            var browserImage = WindowsProcessImagePathReader.TryRead(browser);
             if (browserStartKey > expected.ProcessStartKey || browser.SessionId == 0 || browser.SessionId != gpu.SessionId
                 || string.IsNullOrWhiteSpace(browserImage)
                 || Arguments(browser).Any(argument => argument.StartsWith("--type=", StringComparison.Ordinal))
-                || !CheckRemoteDebuggerPresent(browser.Handle, out var debugged) || debugged) return null;
+                || !CheckRemoteDebuggerPresent(browser.SafeHandle, out var debugged) || debugged) return null;
             return new(new(browser.Id, browserStartKey,
                 browser.ProcessName, browserImage), expected);
         }
@@ -58,7 +60,8 @@ internal static class ChromiumGpuProcessIdentity
 
     internal static bool Matches(Process process, GpuPlacementProcessInstance expected)
         => !process.HasExited && checked((ulong)process.StartTime.ToUniversalTime().ToFileTimeUtc()) == expected.ProcessStartKey
-            && string.Equals(process.MainModule?.FileName, expected.ExecutablePath, StringComparison.OrdinalIgnoreCase);
+            && string.Equals(WindowsProcessImagePathReader.TryRead(process), expected.ExecutablePath,
+                StringComparison.OrdinalIgnoreCase);
 
     private static string[] Arguments(Process process)
     {
@@ -76,7 +79,7 @@ internal static class ChromiumGpuProcessIdentity
     }
 
     private static string CommandLine(Process process)
-        => WindowsProcessCommandLineQuery.Read(process.Handle);
+        => WindowsProcessCommandLineQuery.Read(process.SafeHandle);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct BasicInformation { public IntPtr Exit, Peb, Affinity, Priority, Id, ParentId; }
@@ -85,8 +88,8 @@ internal static class ChromiumGpuProcessIdentity
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr pointer);
     [DllImport("ntdll.dll")]
-    private static extern int NtQueryInformationProcess(IntPtr process, int kind, ref BasicInformation information, int length, out int returned);
+    private static extern int NtQueryInformationProcess(SafeProcessHandle process, int kind, ref BasicInformation information, int length, out int returned);
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CheckRemoteDebuggerPresent(IntPtr process, [MarshalAs(UnmanagedType.Bool)] out bool present);
+    private static extern bool CheckRemoteDebuggerPresent(SafeProcessHandle process, [MarshalAs(UnmanagedType.Bool)] out bool present);
 }

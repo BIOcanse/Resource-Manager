@@ -52,7 +52,7 @@ public sealed class WindowsFileIndexCallerAccessTests : IDisposable
         var context = new DefaultHttpContext();
         context.Request.Headers["X-Windows-Sid"] = "S-1-5-18";
         Assert.False(WindowsFileIndexCallerAccess.TryOpenCallerToken(context, out var token));
-        token.Dispose();
+        Assert.Null(token);
     }
 
     [Fact]

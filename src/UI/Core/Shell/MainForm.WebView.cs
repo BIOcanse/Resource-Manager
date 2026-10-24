@@ -128,7 +128,11 @@ public sealed partial class MainForm
 
     private void PublishHostVisibility(bool forceHidden = false)
     {
-        var visible = !forceHidden && Visible && WindowState != FormWindowState.Minimized;
+        var visible = NativeUiHostVisibilityPolicy.IsVisible(
+            Visible,
+            WindowState == FormWindowState.Minimized,
+            desktopOccluded,
+            forceHidden);
         if (lastPublishedHostVisibility == visible || !frontendHost.IsReady)
         {
             return;

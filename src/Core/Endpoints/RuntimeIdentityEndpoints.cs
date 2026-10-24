@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.Security;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.Shared.Runtime;
 
 namespace ResourceManager.App.Endpoints;
@@ -61,11 +62,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 runtimeIdentity.InstanceId,
                 runtimeIdentity.ProcessId,
                 runtimeIdentity.ProcessCreatedUtcTicks,
-                Path.GetFullPath(
-                    Environment.ProcessPath
-                    ?? Process.GetCurrentProcess().MainModule?.FileName
-                    ?? throw new InvalidOperationException(
-                        "The backend executable path is unavailable.")),
+                ResolveProcessImagePath(),
                 challenge!));
         }).AllowAnonymous();
 
@@ -95,5 +92,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .InformationalVersion
             ?? assembly.GetName().Version?.ToString()
             ?? "unknown";
+    }
+
+    private static string ResolveProcessImagePath()
+    {
+        var path = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(path)) return Path.GetFullPath(path);
+        using var process = Process.GetCurrentProcess();
+        return Path.GetFullPath(WindowsProcessImagePathReader.TryRead(process)
+            ?? throw new InvalidOperationException("The backend executable path is unavailable."));
     }
 }

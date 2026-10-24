@@ -22,22 +22,22 @@ internal static class ResourceManagerSelfProcessFamilySampler
         var parents = ReadProcessParentIds();
         var rows = new List<ResourceManagerSelfProcessResource>();
         var expectedUiPath = NativeUiLaunchHostedService.ResolveNativeUiPath();
-        foreach (var process in Process.GetProcesses())
+        return ProcessCollectionOwner.Use(Process.GetProcesses(), processes =>
         {
-            using (process)
+            foreach (var process in processes)
             {
                 if (TryCreateProcessResource(process, backendProcessId, expectedUiPath, out var row)) rows.Add(row);
             }
-        }
-        var identities = rows.ToDictionary(row => row.ProcessId, row => new ProcessAncestryIdentity(
-            row.ProcessId, parents.GetValueOrDefault(row.ProcessId), row.StartedAt.UtcDateTime.ToFileTimeUtc()));
-        var roots = rows.Where(row => row.IsBackend || row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
-        var uiRoots = rows.Where(row => row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
-        var family = ProcessAncestry.FindFamily(identities, roots);
-        var uiFamily = ProcessAncestry.FindFamily(identities, uiRoots);
-        return rows.Where(row => family.Contains(row.ProcessId))
-            .Select(row => row with { IsNativeUiDescendant = !row.IsBackend && !row.IsNativeUi && uiFamily.Contains(row.ProcessId) })
-            .OrderBy(row => row.ProcessId).ToArray();
+            var identities = rows.ToDictionary(row => row.ProcessId, row => new ProcessAncestryIdentity(
+                row.ProcessId, parents.GetValueOrDefault(row.ProcessId), row.StartedAt.UtcDateTime.ToFileTimeUtc()));
+            var roots = rows.Where(row => row.IsBackend || row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
+            var uiRoots = rows.Where(row => row.IsNativeUi).Select(row => row.ProcessId).ToHashSet();
+            var family = ProcessAncestry.FindFamily(identities, roots);
+            var uiFamily = ProcessAncestry.FindFamily(identities, uiRoots);
+            return rows.Where(row => family.Contains(row.ProcessId))
+                .Select(row => row with { IsNativeUiDescendant = !row.IsBackend && !row.IsNativeUi && uiFamily.Contains(row.ProcessId) })
+                .OrderBy(row => row.ProcessId).ToArray();
+        });
     }
 
     private static bool TryCreateProcessResource(Process process, int backendProcessId,

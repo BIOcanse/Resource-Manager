@@ -238,7 +238,7 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Windows uninstall inventory requires Windows.");
         var records = new Dictionary<string, InstalledSoftwareEntry>(StringComparer.OrdinalIgnoreCase);
 
-        var includeCurrentUser = userSid is null && !WindowsIdentity.GetCurrent().IsSystem;
+        var includeCurrentUser = IncludesCurrentUser(userSid, WindowsIdentity.GetCurrent);
         var selectedUserSids = userSid is null ? Array.Empty<string>() : [userSid];
         foreach (var root in CreateInventoryRoots(selectedUserSids, includeCurrentUser))
         {
@@ -250,6 +250,14 @@ public sealed class WindowsInstalledSoftwareInventory : IInstalledSoftwareInvent
             .OrderBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static item => item.Publisher, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    [SupportedOSPlatform("windows")]
+    internal static bool IncludesCurrentUser(string? userSid, Func<WindowsIdentity> openIdentity)
+    {
+        if (userSid is not null) return false;
+        using var identity = openIdentity();
+        return !identity.IsSystem;
     }
 
     [SupportedOSPlatform("windows")]

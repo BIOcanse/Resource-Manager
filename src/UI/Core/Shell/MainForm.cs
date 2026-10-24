@@ -20,6 +20,7 @@ public sealed partial class MainForm : Form
         FrontendConnectionState.NotStarted;
     private string? frontendConnectionDetail;
     private bool? lastPublishedHostVisibility;
+    private bool desktopOccluded;
     private readonly ResizeGripMessageFilter resizeGripMessageFilter;
     private readonly Action<bool> taskManagerShortcutReplacementChanged;
     private readonly Action editableHotkeysChanged;
@@ -129,6 +130,14 @@ public sealed partial class MainForm : Form
     public void StopPolling()
     {
         PublishHostVisibility(forceHidden: true);
+    }
+
+    internal void SetDesktopOccluded(bool occluded)
+    {
+        if (desktopOccluded == occluded)
+            return;
+        desktopOccluded = occluded;
+        PublishHostVisibility();
     }
 
     /// <summary>语言切换后重新取一遍窗口内常驻文案；状态文案由外壳状态投影推送。</summary>

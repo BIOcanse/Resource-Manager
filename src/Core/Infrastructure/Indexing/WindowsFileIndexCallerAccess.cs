@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Domain.Indexing;
@@ -8,12 +9,12 @@ namespace ResourceManager.App.Infrastructure.Indexing;
 
 internal static class WindowsFileIndexCallerAccess
 {
-    internal static bool TryOpenCallerToken(HttpContext context, out SafeAccessTokenHandle token)
+    internal static bool TryOpenCallerToken(HttpContext context, [NotNullWhen(true)] out SafeAccessTokenHandle? token)
     {
         if (!WindowsLoopbackApiAdministratorReader.TryOpenCallerToken(context, out var caller, out token)) return false;
         if (caller.ProcessId != Environment.ProcessId) return true;
         token.Dispose();
-        token = SafeAccessTokenHandle.InvalidHandle;
+        token = null;
         return false;
     }
 

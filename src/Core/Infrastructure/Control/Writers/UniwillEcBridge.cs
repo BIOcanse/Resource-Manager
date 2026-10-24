@@ -19,7 +19,7 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// Uniwill 复用了微软 ACPI 示例 MOF 的 GUID，所以类名看着毫不相干。
 /// 需要管理员权限，本程序本来就是提权运行的。
 /// </summary>
-internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
+internal sealed class UniwillEcBridge : IDisposable
 {
     /// <summary>厂商 ACPI 设备。它不在，这台机器就不是 Uniwill 平台。</summary>
     internal const string AcpiDeviceId = "ACPI\\INOU0000";
@@ -43,20 +43,49 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     private const int AgreeingReads = 3;
     private const int ReadAttempts = 6;
 
+    private readonly ILogger<UniwillEcBridge>? logger;
+    private readonly Func<IUniwillEcWmiSession?> openSession;
+    private readonly object operationGate = new();
     private readonly object gate = new();
     private readonly EcChannelLock channel = new();
     private bool probed;
-    private ManagementObject? device;
+    private bool disposed;
+    private IUniwillEcWmiSession? device;
+
+    internal UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
+        : this(OpenWmiSession, logger) { }
+
+    internal UniwillEcBridge(Func<IUniwillEcWmiSession?> openSession, ILogger<UniwillEcBridge>? logger = null)
+    {
+        this.openSession = openSession ?? throw new ArgumentNullException(nameof(openSession));
+        this.logger = logger;
+    }
 
     /// <summary>这台机器有没有这条通道。</summary>
-    internal bool IsAvailable => ResolveDevice() is not null;
+    internal bool IsAvailable
+    {
+        get
+        {
+            lock (operationGate)
+            {
+                ThrowIfDisposed();
+                return ResolveDevice() is not null;
+            }
+        }
+    }
 
     /// <summary>
     /// 读一个 EC 字节。读到连续一致的值才返回，否则返回 null ——
     /// 单次读数不可信，见 <see cref="AgreeingReads"/>。
     /// </summary>
     internal byte? Read(ushort address)
-        => channel.Hold(() => ReadHeld(address), out var value) ? value : null;
+    {
+        lock (operationGate)
+        {
+            ThrowIfDisposed();
+            return channel.Hold(() => ReadHeld(address), out var value) ? value : null;
+        }
+    }
 
     private byte? ReadHeld(ushort address)
     {
@@ -102,9 +131,15 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
     /// 写一个 EC 字节，返回随后观测到的寄存器值；通道失败返回 null。
     /// 回读不同不能区分固件限幅、写入未生效或其他写入者覆盖。
     /// </summary>
+    // Serializes our cooperating clients, not the OEM service or firmware.
     internal byte? WriteReadingBack(ushort address, byte value)
-        // Serializes our cooperating clients, not the OEM service or firmware.
-        => channel.Hold(() => WriteHeld(address, value), out var readBack) ? readBack : null;
+    {
+        lock (operationGate)
+        {
+            ThrowIfDisposed();
+            return channel.Hold(() => WriteHeld(address, value), out var readBack) ? readBack : null;
+        }
+    }
 
     private byte? WriteHeld(ushort address, byte value)
     {
@@ -138,10 +173,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
 
         try
         {
-            using var parameters = target.GetMethodParameters(MethodName);
-            parameters["Data"] = data;
-            using var result = target.InvokeMethod(MethodName, parameters, null);
-            if (result?["Return"] is not uint returned || returned == CallFailed)
+            if (target.Invoke(data) is not { } returned || returned == CallFailed)
             {
                 return null;
             }
@@ -153,9 +185,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
             // 接口可能是刚刚消失的（驱动被停用），下次重新解析。
             lock (gate)
             {
-                device?.Dispose();
-                device = null;
-                probed = false;
+                InvalidateDevice();
             }
             return null;
         }
@@ -166,10 +196,11 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
         }
     }
 
-    private ManagementObject? ResolveDevice()
+    private IUniwillEcWmiSession? ResolveDevice()
     {
         lock (gate)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             if (probed)
             {
                 return device;
@@ -178,16 +209,7 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
             probed = true;
             try
             {
-                using var searcher = new ManagementObjectSearcher(
-                    Scope,
-                    $"SELECT * FROM {ClassName} WHERE InstanceName = '{InstanceName.Replace(@"\", @"\\")}'");
-                using var collection = searcher.Get();
-                foreach (var found in collection)
-                {
-                    // Ownership transfers to the device cache; only the query closes here.
-                    device = (ManagementObject)found;
-                    return device;
-                }
+                device = openSession();
             }
             catch (ManagementException error)
             {
@@ -200,6 +222,89 @@ internal sealed class UniwillEcBridge(ILogger<UniwillEcBridge>? logger = null)
             return device;
         }
     }
+
+    private static IUniwillEcWmiSession? OpenWmiSession()
+    {
+        using var searcher = new ManagementObjectSearcher(
+            Scope,
+            $"SELECT * FROM {ClassName} WHERE InstanceName = '{InstanceName.Replace(@"\", @"\\")}'");
+        using var collection = searcher.Get();
+        foreach (ManagementBaseObject found in collection)
+        {
+            if (found is not ManagementObject target)
+            {
+                found.Dispose();
+                continue;
+            }
+
+            try
+            {
+                return new WmiSession(target);
+            }
+            catch
+            {
+                target.Dispose();
+                throw;
+            }
+        }
+        return null;
+    }
+
+    private void InvalidateDevice()
+    {
+        device?.Dispose();
+        device = null;
+        probed = false;
+    }
+
+    public void Dispose()
+    {
+        lock (operationGate)
+        {
+            if (disposed) return;
+            lock (gate)
+            {
+                disposed = true;
+                device?.Dispose();
+                device = null;
+            }
+            channel.Dispose();
+        }
+    }
+
+    private void ThrowIfDisposed()
+        => ObjectDisposedException.ThrowIf(disposed, this);
+
+    private sealed class WmiSession(ManagementObject target) : IUniwillEcWmiSession
+    {
+        private ManagementBaseObject? parameters;
+        private bool disposed;
+
+        public uint? Invoke(ulong data)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            parameters ??= target.GetMethodParameters(MethodName);
+            if (parameters is null) return null;
+            parameters["Data"] = data;
+            using var result = target.InvokeMethod(MethodName, parameters, null);
+            return result?["Return"] is uint returned ? returned : null;
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            var ownedParameters = parameters;
+            parameters = null;
+            try { ownedParameters?.Dispose(); }
+            finally { target.Dispose(); }
+        }
+    }
+}
+
+internal interface IUniwillEcWmiSession : IDisposable
+{
+    uint? Invoke(ulong data);
 }
 
 /// <summary>

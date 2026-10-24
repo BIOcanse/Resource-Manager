@@ -25,6 +25,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
     }
 
     internal int TargetCount => targets.Count;
+    internal bool WindowRefreshTimerEnabled => windowTimer.Enabled;
 
     public void Start(BackendServiceSession session)
     {
@@ -32,7 +33,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
         if (disposed) return;
         var cancellation = new CancellationTokenSource();
         subscriptionCancellation = cancellation;
-        windowTimer.Start();
+        UpdateWindowTimerState();
         _ = ReadStreamAsync(session, ++streamGeneration, cancellation.Token);
     }
 
@@ -48,7 +49,8 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
 
     internal void ApplySnapshot(OverlaySnapshot snapshot)
     {
-        if (disposed || snapshot.Version != 1) { Clear(); return; }
+        if (disposed) return;
+        if (snapshot.Version != 1) { Clear(); return; }
         var current = OverlayTargetSelection.Current(snapshot);
         foreach (var id in targets.Keys.Where(id => !current.ContainsKey(id)).ToArray())
             Remove(id);
@@ -72,6 +74,7 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
                 }
             }
         }
+        UpdateWindowTimerState();
         Refresh();
     }
 
@@ -218,12 +221,22 @@ internal sealed class PerformanceOverlayCoordinator : IDisposable
     {
         if (!targets.Remove(id, out var target)) return;
         target.ResetOutput();
+        UpdateWindowTimerState();
     }
 
     private void Clear()
     {
         foreach (var target in targets.Values) target.ResetOutput();
         targets.Clear();
+        UpdateWindowTimerState();
+    }
+
+    private void UpdateWindowTimerState()
+    {
+        if (disposed || targets.Count == 0)
+            windowTimer.Stop();
+        else if (!windowTimer.Enabled)
+            windowTimer.Start();
     }
 
     public void Dispose()

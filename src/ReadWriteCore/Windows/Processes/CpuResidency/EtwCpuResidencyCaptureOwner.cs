@@ -810,28 +810,66 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
     internal static void SeedInventory(CpuResidencyAggregationBuffer.InventorySeed inventory, Func<bool> shouldSeed) => SeedExistingProcesses(inventory, shouldSeed);
     private static void SeedExistingProcesses(CpuResidencyAggregationBuffer.InventorySeed inventory, Func<bool> shouldSeed)
     {
-        foreach (var process in Process.GetProcesses())
-        using (process)
+        VisitOwnedArray(Process.GetProcesses(), process =>
         {
-            if (!shouldSeed()) return;
+            if (!shouldSeed()) return false;
             try
             {
                 using var identity = WindowsNetworkEndpointProcessLease.Open(unchecked((uint)process.Id));
-                if (identity is null || !identity.TryReadCreationFileTime(out var birth) || birth == 0 || birth > long.MaxValue) continue;
+                if (identity is null || !identity.TryReadCreationFileTime(out var birth) || birth == 0 || birth > long.MaxValue) return true;
                 var name = process.ProcessName;
-                var threads = new List<int>();
-                foreach (ProcessThread thread in process.Threads)
-                using (thread)
+                if (!shouldSeed()) return false;
+                var threadLeases = process.Threads.Cast<ProcessThread>().ToArray();
+                var threads = new List<int>(threadLeases.Length);
+                if (!VisitOwnedArray(threadLeases, thread =>
                 {
-                    if (!shouldSeed()) return;
+                    if (!shouldSeed()) return false;
                     threads.Add(thread.Id);
-                }
-                if (!shouldSeed() || !identity.TryReadCreationFileTime(out var after) || after != birth) continue;
+                    return true;
+                })) return false;
+                if (!shouldSeed() || !identity.TryReadCreationFileTime(out var after) || after != birth) return true;
                 var seeded = inventory.SeedProcess(process.Id, (long)birth, name);
-                if (seeded is null) continue;
+                if (seeded is null) return true;
                 foreach (var thread in threads) seeded.SeedThread(thread);
             }
             catch { /* Permission/retirement means no proven inventory entry; never PID-only fallback. */ }
+            return true;
+        });
+    }
+
+    internal static bool VisitOwnedArray<T>(T[] items, Func<T, bool> visit) where T : IDisposable
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(visit);
+        var next = 0;
+        try
+        {
+            while (next < items.Length)
+            {
+                var item = items[next];
+                bool continueVisiting;
+                try { continueVisiting = visit(item); }
+                finally
+                {
+                    try { item.Dispose(); }
+                    finally { next++; }
+                }
+                if (!continueVisiting) return false;
+            }
+            return true;
+        }
+        finally
+        {
+            List<Exception>? disposalErrors = null;
+            for (; next < items.Length; next++)
+            {
+                try { items[next].Dispose(); }
+                catch (Exception error) { (disposalErrors ??= []).Add(error); }
+            }
+            if (disposalErrors is { Count: 1 })
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(disposalErrors[0]).Throw();
+            if (disposalErrors is { Count: > 1 })
+                throw new AggregateException("Some owned process inventory handles could not be disposed.", disposalErrors);
         }
     }
 

@@ -8,6 +8,15 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class GpuAllocationLedgerTests
 {
+    [Fact]
+    public void BoundaryProviderGuidMatchesTheEventSourceDefinition()
+    {
+        var field = typeof(GpuAllocationCollector).GetField("BoundaryProvider",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        Assert.Equal(new Guid("37BB21BA-90C3-4F21-947D-CAB8F561950F"), field!.GetValue(null));
+    }
+
     private static GpuAllocationLedger Ledger()
     {
         var ledger = new GpuAllocationLedger();

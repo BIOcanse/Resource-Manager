@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Globalization;
 using ResourceManager.ReadWrite.Native.Pdh;
+using ResourceManager.ReadWrite.Windows.Processes;
 
 namespace ResourceManager.ReadWrite.ProcessFields;
 
@@ -14,6 +14,7 @@ public sealed record ProcessGpuEngineInterval(long BeginWindowsFileTime100Ns, lo
 public static class WindowsPdhProcessGpuFields
 {
     public const string FieldName = "process_all_gpu_residency_attributed";
+    private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     public static ProcessMetricFieldSnapshot Read(INativePdhSnapshotSource source,
         ProcessMetricFieldSnapshot inventory, ulong? topologyFingerprint = null)
     {
@@ -71,10 +72,5 @@ public static class WindowsPdhProcessGpuFields
         { Sources = [new("windows.pdh.gpu-engine", capturedAt, null)] };
     }
     private static long? ReadCurrentCreation(int pid)
-    {
-        try { using var process = Process.GetProcessById(pid); var birth = process.StartTime.ToFileTimeUtc();
-            return process.HasExited ? null : birth; }
-        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
-            or System.ComponentModel.Win32Exception or NotSupportedException) { return null; }
-    }
+        => BasicMetricReader.ReadCurrentCreationFileTime(pid);
 }

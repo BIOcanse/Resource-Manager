@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Security;
@@ -36,13 +37,18 @@ public sealed partial class WindowsLoopbackApiAdministratorReader
     }
 
     private static bool TryOpenProcessIdentity(int processId, out LoopbackApiProcess identity,
-        out SafeAccessTokenHandle processToken, Func<bool>? confirmConnection = null)
+        [NotNullWhen(true)] out SafeAccessTokenHandle? processToken, Func<bool>? confirmConnection = null)
     {
         identity = null!;
-        processToken = SafeAccessTokenHandle.InvalidHandle;
+        processToken = null;
         if (!OperatingSystem.IsWindows() || processId <= 0) return false;
         using var process = OpenProcess(0x1000, false, processId);
-        if (process.IsInvalid || !OpenProcessToken(process, 0x000A, out var token)) return false;
+        if (process.IsInvalid) return false;
+        if (!OpenProcessToken(process, 0x000A, out var token))
+        {
+            token?.Dispose();
+            return false;
+        }
         var accepted = false;
         try
         {

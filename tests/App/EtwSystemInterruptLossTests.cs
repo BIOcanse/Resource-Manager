@@ -184,6 +184,36 @@ public sealed class EtwSystemInterruptLossTests
     }
 
     [Fact]
+    public async Task InterruptCallbacksDoNotWaitForTheSnapshotCoordinationGate()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        var now = Start;
+        using var source = NewSource(broker, fixture, () => now);
+        Invoke(source, "EnsureStarted");
+        var binding = Capture(source, broker);
+        var eventGate = (object)Field(source, "eventGate");
+        Task callback = Task.CompletedTask;
+        Monitor.Enter(eventGate);
+        try
+        {
+            callback = Task.Run(() => Interrupt(source, binding, Start.AddSeconds(2), 8));
+            Assert.True(callback.Wait(TimeSpan.FromSeconds(5)),
+                "An interrupt callback waited for the snapshot coordination gate.");
+        }
+        finally
+        {
+            Monitor.Exit(eventGate);
+        }
+        await callback;
+
+        now = Start.AddSeconds(11);
+        Assert.True(Publish(source, now));
+        Assert.Equal(1, source.Read().EventCount);
+        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+    }
+
+    [Fact]
     public void CancelledSourceAndRevokedOwnerCannotPublishMoreStatistics()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
@@ -257,19 +287,17 @@ public sealed class EtwSystemInterruptLossTests
         => (bool)Invoke(source, "TryPublishCurrentSnapshot", now, new SamplingOwnerToken(1, 1))!;
 
     private static Binding Capture(EtwSystemInterruptSnapshotSource source, Broker broker)
-        => new(broker.Source, broker.Context,
-            (KernelModuleAddressMap)Field(source, "modules"),
-            (SystemInterruptWindowAggregator)Field(source, "aggregator"));
+        => new(broker.Source, broker.Context, Field(source, "currentSession"));
 
     private static void Image(EtwSystemInterruptSnapshotSource source, Binding binding,
         string name, DateTimeOffset at)
-        => Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Modules,
+        => Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
             0x1000UL, 0x100, name, false, at.ToUnixTimeMilliseconds());
 
     private static void Interrupt(EtwSystemInterruptSnapshotSource source, Binding binding,
         DateTimeOffset at, double duration)
         => Invoke(source, "ObserveBoundInterrupt", binding.Source, binding.Context,
-            binding.Modules, binding.Aggregator, SystemInterruptEventKinds.Dpc, duration, 0x1010UL, at.ToUnixTimeMilliseconds());
+            binding.Session, SystemInterruptEventKinds.Dpc, duration, 0x1010UL, at.ToUnixTimeMilliseconds());
 
     private static object Field(EtwSystemInterruptSnapshotSource source, string name)
         => typeof(EtwSystemInterruptSnapshotSource).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -279,8 +307,7 @@ public sealed class EtwSystemInterruptLossTests
         => typeof(EtwSystemInterruptSnapshotSource).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(source, arguments);
 
-    private sealed record Binding(KernelEtwEventSource Source, KernelEtwSessionContext Context,
-        KernelModuleAddressMap Modules, SystemInterruptWindowAggregator Aggregator);
+    private sealed record Binding(KernelEtwEventSource Source, KernelEtwSessionContext Context, object Session);
 
     private sealed class Broker : IKernelEtwSessionBroker
     {

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.Windows;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -43,7 +44,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter : IProcessResourc
             }
 
             var processName = SafeRead(() => process.ProcessName) ?? $"PID {processId}";
-            var executablePath = SafeRead(() => process.MainModule?.FileName);
+            var executablePath = SafeRead(() => WindowsProcessImagePathReader.TryRead(process));
             var startedAt = SafeRead(() => new DateTimeOffset(process.StartTime));
             var priority = SafeRead(() => process.PriorityClass.ToString()) ?? string.Empty;
             var affinity = SafeRead(() => process.ProcessorAffinity.ToInt64());

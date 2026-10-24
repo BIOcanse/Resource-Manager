@@ -2,6 +2,7 @@ using System.Diagnostics;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 
@@ -20,22 +21,21 @@ public sealed class ProductUiSessionPresence(IHostEnvironment environment) : IPr
     {
         var root = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath)
             .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        var processes = Process.GetProcessesByName("ResourceManager.NativeUi");
-        var open = false;
-        foreach (var process in processes)
+        return ProcessCollectionOwner.Use(Process.GetProcessesByName("ResourceManager.NativeUi"), processes =>
         {
-            using (process)
+            var open = false;
+            foreach (var process in processes)
             {
                 try
                 {
-                    if (process.MainModule?.FileName is not { } path
+                    if (WindowsProcessImagePathReader.TryRead(process) is not { } path
                         || Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase)) open = true;
                 }
                 catch (System.ComponentModel.Win32Exception) { open = true; }
                 catch (InvalidOperationException) { /* Process exited while inspected. */ }
             }
-        }
-        return open;
+            return open;
+        });
     }
 }
 

@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.ServiceHosting;
 
@@ -19,7 +20,11 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         using var current = WindowsIdentity.GetCurrent();
         using var process = Process.GetCurrentProcess();
         if (!current.IsSystem && process.SessionId == sessionId) return current.User?.Value;
-        if (!WTSQueryUserToken(sessionId, out var token)) return null;
+        if (!WTSQueryUserToken(sessionId, out var token))
+        {
+            token?.Dispose();
+            return null;
+        }
         using (token)
         using (var user = new WindowsIdentity(token.DangerousGetHandle())) return user.User?.Value;
     }
@@ -65,9 +70,9 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
         var expected = NormalizeExecutablePath(expectedExecutablePath);
         var processName = Path.GetFileNameWithoutExtension(expected);
         var foundConflict = false;
-        foreach (var process in Process.GetProcessesByName(processName))
+        return ProcessCollectionOwner.Use(Process.GetProcessesByName(processName), processes =>
         {
-            using (process)
+            foreach (var process in processes)
             {
                 try
                 {
@@ -76,7 +81,7 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                         continue;
                     }
 
-                    var actual = process.MainModule?.FileName;
+                    var actual = WindowsProcessImagePathReader.TryRead(process);
                     if (!string.IsNullOrWhiteSpace(actual)
                         && PathsEqual(actual, expected))
                     {
@@ -92,11 +97,11 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                     foundConflict = true;
                 }
             }
-        }
 
-        return foundConflict
-            ? NativeUiProcessPresence.Conflicting
-            : NativeUiProcessPresence.Absent;
+            return foundConflict
+                ? NativeUiProcessPresence.Conflicting
+                : NativeUiProcessPresence.Absent;
+        });
     }
 
     public uint LaunchNativeUi(
@@ -130,7 +135,9 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
 
         if (!WTSQueryUserToken(sessionId, out var sessionToken))
         {
-            throw CreateWin32Exception("WTSQueryUserToken");
+            var error = Marshal.GetLastWin32Error();
+            sessionToken?.Dispose();
+            throw CreateWin32Exception("WTSQueryUserToken", error);
         }
 
         using (sessionToken)
@@ -149,7 +156,9 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
                     TokenPrimary,
                     out var primaryToken))
             {
-                throw CreateWin32Exception("DuplicateTokenEx");
+                var error = Marshal.GetLastWin32Error();
+                primaryToken?.Dispose();
+                throw CreateWin32Exception("DuplicateTokenEx", error);
             }
 
             using (primaryToken)
@@ -261,6 +270,11 @@ public sealed class WindowsInteractiveUserSessionBroker : IInteractiveUserSessio
     private static Win32Exception CreateWin32Exception(string operation)
     {
         var error = Marshal.GetLastWin32Error();
+        return CreateWin32Exception(operation, error);
+    }
+
+    private static Win32Exception CreateWin32Exception(string operation, int error)
+    {
         return new Win32Exception(error, $"{operation} failed with Win32 error {error}.");
     }
 

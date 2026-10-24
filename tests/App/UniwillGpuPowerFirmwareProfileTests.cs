@@ -45,6 +45,27 @@ public sealed class UniwillGpuPowerFirmwareProfileTests
         Assert.Equal(new ushort[] { 0x0456 }, reads);
     }
 
+    [Fact]
+    public void SharedBoardReadFailureRemainsUnknownForTheNextProbe()
+    {
+        var identity = new FirmwareIdentitySnapshot(null, null, "TUXEDO", null, null, "PHxARX1_PHxAQF1");
+        Assert.Null(UniwillGpuPowerFirmwareProfile.Detect(identity, true, _ => null));
+        Assert.True(UniwillGpuPowerFirmwareProfile.Detect(identity, true, _ => 0x80));
+    }
+
+    [Fact]
+    public void UnsupportedIdentitySkipsTheAcpiPresenceQuery()
+    {
+        var identity = new FirmwareIdentitySnapshot(null, null, "Other Vendor", null, null, "Board");
+        var queried = false;
+        Assert.False(UniwillGpuPowerFirmwareProfile.Detect(identity, () =>
+        {
+            queried = true;
+            return true;
+        }, _ => throw new InvalidOperationException("Unsupported profiles must not read EC.")));
+        Assert.False(queried);
+    }
+
     [Theory]
     [InlineData("ACPI\\INOU0000\\1", true)]
     [InlineData("acpi\\inou0000\\1", true)]

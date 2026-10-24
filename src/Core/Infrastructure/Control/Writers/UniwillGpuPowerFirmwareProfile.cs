@@ -18,17 +18,48 @@ internal static class UniwillGpuPowerFirmwareProfile
 
     internal static bool Supports(
         FirmwareIdentitySnapshot identity, bool hasAcpiDevice, Func<ushort, byte?> read)
+        => Detect(identity, () => hasAcpiDevice, read) is true;
+
+    internal static bool? Detect(
+        FirmwareIdentitySnapshot identity, Func<bool?> hasAcpiDevice, Func<ushort, byte?> read)
     {
-        if (!hasAcpiDevice || identity.SystemManufacturer is not { } manufacturer
-            || identity.BaseBoardProduct is not { } board) return false;
+        ArgumentNullException.ThrowIfNull(hasAcpiDevice);
+        return IsProfileCandidate(identity)
+            ? Detect(identity, hasAcpiDevice(), read)
+            : false;
+    }
+
+    /// <summary>
+    /// Returns null only when the shared-board discriminator could not be read yet.
+    /// A determined result is stable for the lifetime of the hardware owner; unknown remains retryable.
+    /// </summary>
+    internal static bool? Detect(
+        FirmwareIdentitySnapshot identity, bool? hasAcpiDevice, Func<ushort, byte?> read)
+    {
+        if (!IsProfileCandidate(identity)) return false;
+        if (hasAcpiDevice is null) return null;
+        if (!hasAcpiDevice.Value) return false;
+
+        var manufacturer = identity.SystemManufacturer!;
+        var board = identity.BaseBoardProduct!;
 
         if (manufacturer.Contains("MACHENIKE", StringComparison.Ordinal) && board == "L16P") return true;
-        if (!manufacturer.Contains("TUXEDO", StringComparison.Ordinal)) return false;
         if (TuxedoBoards.Contains(board)) return true;
 
         // The same Gen7 board identifies variants with and without a discrete GPU.
-        return board == "PHxARX1_PHxAQF1"
-            && read(UniwillEcRegisters.SystemId) is { } systemId && (systemId & 0x80) != 0;
+        if (board != "PHxARX1_PHxAQF1") return false;
+        return read(UniwillEcRegisters.SystemId) is { } systemId
+            ? (systemId & 0x80) != 0
+            : null;
+    }
+
+    private static bool IsProfileCandidate(FirmwareIdentitySnapshot identity)
+    {
+        if (identity.SystemManufacturer is not { } manufacturer
+            || identity.BaseBoardProduct is not { } board) return false;
+        return (manufacturer.Contains("MACHENIKE", StringComparison.Ordinal) && board == "L16P")
+            || (manufacturer.Contains("TUXEDO", StringComparison.Ordinal)
+                && (TuxedoBoards.Contains(board) || board == "PHxARX1_PHxAQF1"));
     }
 
     internal static bool IsAcpiDeviceId(string? deviceId)

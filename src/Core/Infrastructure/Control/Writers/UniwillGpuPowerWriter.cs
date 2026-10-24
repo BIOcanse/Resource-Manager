@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.Paths;
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
 /// <summary>OEM GPU offsets. Readback is a register observation, not measured power or a firmware limit.</summary>
-public sealed partial class UniwillGpuPowerWriter : IControlWriter
+public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
 {
     private readonly ILogger<UniwillGpuPowerWriter>? logger;
     private readonly IUniwillGpuPowerHardware bridge;
@@ -23,6 +23,9 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter
         this.baselinePath = baselinePath;
         this.logger = logger;
     }
+
+    public void Dispose() => bridge.Dispose();
+
     internal const string CtgpOffsetCapabilityId = "gpu.ctgp-offset";
     internal const string DynamicBoostEnabledCapabilityId = "gpu.dynamic-boost-enabled";
     internal const string DynamicBoostOffsetCapabilityId = "gpu.dynamic-boost-offset";

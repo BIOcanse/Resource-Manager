@@ -116,10 +116,22 @@ public sealed class PerformanceOverlayNativeUiTests
         using var coordinator = new PerformanceOverlayCoordinator(dispatcher);
         coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
         Assert.Equal(1, coordinator.TargetCount);
+        Assert.True(coordinator.WindowRefreshTimerEnabled);
         coordinator.ApplySnapshot(new OverlaySnapshot(1, []));
         Assert.Equal(0, coordinator.TargetCount);
+        Assert.False(coordinator.WindowRefreshTimerEnabled);
         coordinator.ApplySnapshot(new OverlaySnapshot(1, [target with { ProcessStartKey = id + 1 }]));
         Assert.Equal(0, coordinator.TargetCount);
+        Assert.False(coordinator.WindowRefreshTimerEnabled);
+        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
+        Assert.True(coordinator.WindowRefreshTimerEnabled);
+        coordinator.ApplySnapshot(new OverlaySnapshot(2, [target]));
+        Assert.Equal(0, coordinator.TargetCount);
+        Assert.False(coordinator.WindowRefreshTimerEnabled);
+        coordinator.ApplySnapshot(new OverlaySnapshot(1, [target]));
+        Assert.True(coordinator.WindowRefreshTimerEnabled);
+        coordinator.Stop();
+        Assert.False(coordinator.WindowRefreshTimerEnabled);
     }
 
     [Fact]

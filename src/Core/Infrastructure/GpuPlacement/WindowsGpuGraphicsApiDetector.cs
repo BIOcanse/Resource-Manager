@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Infrastructure.ProcessIdentity;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
@@ -53,10 +54,12 @@ public sealed class WindowsGpuGraphicsApiDetector : IGpuGraphicsApiDetector
         try
         {
             using var process = Process.GetProcessById(processId);
-            var path = process.MainModule?.FileName;
+            var path = WindowsProcessImagePathReader.TryRead(process);
             if (string.IsNullOrWhiteSpace(path) || !Path.GetFullPath(path).Equals(
                     Path.GetFullPath(executablePath), StringComparison.OrdinalIgnoreCase)) return null;
-            return process.Modules.Cast<ProcessModule>().Select(static module => module.ModuleName).ToArray();
+            return ProcessModuleSnapshotReader.ReadAndDispose(
+                process.Modules.Cast<ProcessModule>(),
+                static module => module.ModuleName);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
             or Win32Exception or IOException or NotSupportedException)

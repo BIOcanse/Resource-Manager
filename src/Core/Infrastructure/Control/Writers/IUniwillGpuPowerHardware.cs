@@ -4,7 +4,7 @@ using ResourceManager.App.Infrastructure.NativeCore;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
-internal interface IUniwillGpuPowerHardware
+internal interface IUniwillGpuPowerHardware : IDisposable
 {
     bool IsAvailable { get; }
     bool IsBudgetFirmwareConfirmed { get; }
@@ -19,19 +19,39 @@ internal sealed class UniwillGpuPowerHardware : IUniwillGpuPowerHardware
     private readonly UniwillEcBridge ec = new();
     private readonly NvidiaNvmlControlBridge nvml = new();
     private readonly WindowsGpuAdapterOrderReader adapters = new();
+    private readonly object firmwareGate = new();
     private readonly Lazy<ResourceManager.App.Domain.RuntimeSpecialization.FirmwareIdentitySnapshot> firmware
         = new(() => new FirmwareIdentityReader().Read());
+    private bool? acpiDevicePresent;
+    private bool? budgetFirmwareConfirmed;
 
     public bool IsAvailable => ec.IsAvailable;
     public bool IsBudgetFirmwareConfirmed
-        => UniwillGpuPowerFirmwareProfile.Supports(firmware.Value, HasAcpiDevice(), ec.Read);
-
-    private static bool HasAcpiDevice()
     {
+        get
+        {
+            lock (firmwareGate)
+            {
+                if (budgetFirmwareConfirmed is { } cached) return cached;
+                var confirmed = UniwillGpuPowerFirmwareProfile.Detect(
+                    firmware.Value,
+                    HasAcpiDevice,
+                    ec.Read);
+                if (confirmed is { } result) budgetFirmwareConfirmed = result;
+                return confirmed is true;
+            }
+        }
+    }
+
+    private bool? HasAcpiDevice()
+    {
+        if (acpiDevicePresent is { } cached) return cached;
         var devices = PlatformSensorWmiUtilities.QueryObjects(@"root\CIMV2",
             "SELECT PNPDeviceID FROM Win32_PnPEntity WHERE ConfigManagerErrorCode = 0");
-        return devices.Rows.Any(static row => UniwillGpuPowerFirmwareProfile.IsAcpiDeviceId(
+        if (devices.Error is not null) return null;
+        acpiDevicePresent = devices.Rows.Any(static row => UniwillGpuPowerFirmwareProfile.IsAcpiDeviceId(
             PlatformSensorWmiUtilities.ReadString(row, "PNPDeviceID")));
+        return acpiDevicePresent;
     }
     public bool IsBudgetTarget(int adapterIndex, ulong adapterKey)
     {
@@ -64,4 +84,6 @@ internal sealed class UniwillGpuPowerHardware : IUniwillGpuPowerHardware
     public byte? WriteReadingBack(ushort address, byte value) => ec.WriteReadingBack(address, value);
     public NvidiaPowerLimitWatts? ReadPowerLimit(int adapterIndex)
         => nvml.FindHandleByAdapterIndex(adapterIndex) is { } device ? nvml.ReadPowerLimit(device) : null;
+
+    public void Dispose() => ec.Dispose();
 }

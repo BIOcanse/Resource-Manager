@@ -37,11 +37,11 @@ public sealed class HardwareMonitorCoreReader : IDisposable
 
     public HardwareMonitorFanIdentityRead ReadFanIdentities(TimeSpan timeout)
     {
-        var rows = ReadRows(timeout);
+        var rows = ReadRows(timeout, skipMemory: true);
         return HardwareMonitorWmiReader.ProjectFanIdentities(ProviderIdentity, new(rows.Sensors, rows.Error));
     }
 
-    private Rows ReadRows(TimeSpan timeout)
+    private Rows ReadRows(TimeSpan timeout, bool skipMemory = false)
     {
         if (timeout <= TimeSpan.Zero || timeout > TimeSpan.FromSeconds(30))
             throw new ArgumentOutOfRangeException(nameof(timeout));
@@ -67,6 +67,10 @@ public sealed class HardwareMonitorCoreReader : IDisposable
                     if (started.Elapsed > timeout) throw new TimeoutException("Core sensor collection timed out.");
                     if (++nodes > MaximumNodes || !seen.Add(item.Identifier.ToString()))
                         throw new InvalidDataException("Invalid core hardware tree.");
+                    // Fan identity refreshes need the motherboard tree only. LHM's Memory
+                    // hardware updates poll SPD over SMBus, so leave that tree untouched here.
+                    if (skipMemory && item.HardwareType == HardwareType.Memory)
+                        continue;
                     item.Update();
                     hardware.Add(new(StringComparer.OrdinalIgnoreCase)
                     {
