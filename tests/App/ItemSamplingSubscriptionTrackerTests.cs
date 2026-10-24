@@ -579,6 +579,58 @@ public sealed class ItemSamplingSubscriptionTrackerTests
         tracker.MarkSkipped(replacementPlan.Request!, startedAt.AddSeconds(6));
     }
 
+    [Theory]
+    [InlineData("remove")]
+    [InlineData("expire")]
+    [InlineData("replace")]
+    public void HistoricalItemsReleaseNativeCapacityAndManagedMappings(string mode)
+    {
+        var configuration = HostManagerTestPlanFactory.CreatePlan(root =>
+        {
+            var role = root["host_recreate"]!["sampling_subscription"]!["roles"]![0]!;
+            role["maximum_item_count"] = 2;
+            role["maximum_due_item_count"] = 2;
+        });
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture(configuration);
+        var tracker = CreateMetricTracker(fixture);
+        var now = DateTimeOffset.UtcNow;
+        for (var index = 0; index < 12; index++)
+        {
+            var request = MetricSampleRequest.ForIds([$"recorded-{index}"]);
+            if (mode == "expire") tracker.Track(request, now);
+            else tracker.TrackPersistent("same-source", request, now, TimeSpan.FromSeconds(1));
+            if (mode == "remove") Assert.True(tracker.Remove("same-source", now));
+            if (mode == "expire")
+            {
+                now += TimeSpan.FromMilliseconds(configuration.SamplingSubscription.HotPublish.Roles[0].ActiveTtlMilliseconds + 1);
+                Assert.False(tracker.CreatePlan(now).IsActive);
+            }
+            var state = typeof(ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<MetricSampleRequest,
+                ResourceManager.App.Infrastructure.RuntimeSpecialization.SamplingOwnerToken>);
+            var maps = Assert.IsType<Dictionary<ulong, string>>(state.GetField("itemIds",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(tracker));
+            Assert.Equal(mode == "replace" ? 1 : 0, maps.Count);
+        }
+        tracker.Clear(now);
+    }
+
+    [Fact]
+    public void RemovingInflightDemandRetainsMappingUntilSettlement()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var tracker = CreateMetricTracker(fixture);
+        var now = DateTimeOffset.UtcNow;
+        tracker.TrackPersistent("old", MetricSampleRequest.ForIds(["old-field"]), now, TimeSpan.FromSeconds(1));
+        var pending = tracker.CreatePlan(now);
+        Assert.True(tracker.Remove("old", now));
+        tracker.TrackPersistent("new", MetricSampleRequest.ForIds(["new-field"]), now, TimeSpan.FromSeconds(1));
+        tracker.MarkSkipped(pending.Request!, now);
+        var next = tracker.CreatePlan(now);
+        Assert.Equal(["new-field"], next.DueItemIds);
+        tracker.MarkSampled(next.Request!, now);
+        tracker.Clear(now);
+    }
+
     private static NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateMetricTracker(
         HostManagerSamplingSubscriptionTestFixture fixture,
         bool coalesceItemsIntoLatestCapture = false)

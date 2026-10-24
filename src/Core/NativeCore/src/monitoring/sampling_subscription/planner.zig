@@ -194,6 +194,7 @@ pub fn plan(
             .plan_epoch = header.plan_epoch,
         };
         membership.last_planned_epoch = header.plan_epoch;
+        item.last_planned_epoch = header.plan_epoch;
         trigger_count += 1;
     }
 

@@ -306,8 +306,6 @@ public sealed class PdhProcessGpuReader
         {
             NativePdhProviderAvailability.Available =>
                 SamplingObservationStatus.Current,
-            NativePdhProviderAvailability.LastGood =>
-                SamplingObservationStatus.RetainedLastGood,
             NativePdhProviderAvailability.NotRequested =>
                 SamplingObservationStatus.NotRequested,
             _ => SamplingObservationStatus.Unavailable
@@ -329,8 +327,7 @@ public sealed class PdhProcessGpuReader
                 : domain ?? MissingDomainAvailability(aggregate);
 
     private static bool HasPayload(SamplingObservationStatus status)
-        => status is SamplingObservationStatus.Current
-            or SamplingObservationStatus.RetainedLastGood;
+        => status is SamplingObservationStatus.Current;
 
     private static void AddValue(
         Dictionary<int, Dictionary<int, double>> valuesByAdapter,

@@ -253,6 +253,38 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         Assert.Null(sampler.CaptureSamplingWorkerTask());
     }
 
+    [Fact]
+    public async Task FreshProjectedEngineUsesInternalQueryReceiptAndPublicDeliveryItem()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var sampler = CreateSampler(subscriptions, new DashboardMonitoringCatalogState());
+        var backend = new FieldSubscriptionSamplingModeRecordedBorrow();
+        var field = backend.QueryA;
+        const string publicAddress = "gpu-engine/recorded/0/1/busyPercent";
+        const string triggerAddress = "gpu.0.engineUsage";
+        var binding = new MetricDeviceFieldBinding("recorded-gpu",
+            MetricFieldRegistry.FindByName("gpu_all_engine_busy_percent")!, publicAddress, "pdh.gpu.engine")
+            { SampleRequestAddress = triggerAddress };
+        var selection = new ResourceManager.ReadWrite.Fields.MetricFieldSelection(binding,
+            MetricSampleRequest.ForIds([publicAddress]));
+        var bindings = Assert.IsType<System.Collections.Immutable.ImmutableArray<ResourceManager.ReadWrite.FieldCollectionBinding>>(
+            typeof(WindowsHardwareMetricSampler).GetMethod("CreateFieldCollectionBindings",
+                BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(sampler,
+                    [System.Collections.Immutable.ImmutableArray.Create(field), new[] { selection }]));
+        var delivery = new ResourceManager.Subscription.NativeFieldSubscriptionDelivery();
+        using var registration = delivery.Register("engine-fresh", backend, [field], bindings);
+        backend.SetCurrent(field, "fresh-engine-27.5");
+        System.Collections.Immutable.ImmutableArray<ResourceManager.Subscription.NativeItemSamplingSubscriptionTrigger<string>> triggers =
+            [new("engine-fresh", publicAddress, 100, 1, "recorded", IsFresh: true)];
+        var result = delivery.CaptureCompleted(triggers, new HashSet<string>([triggerAddress]), committed: true);
+        Assert.Equal(new[] { field }, result.QueriedFields.ToArray());
+        delivery.Deliver(triggers, result);
+        await using var reader = registration.ReadAllAsync().GetAsyncEnumerator();
+        Assert.True(await reader.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal("fresh-engine-27.5", Assert.Single(reader.Current).Value!.Text);
+        Assert.Equal(ResourceManager.ReadWrite.FieldObservationStatus.Current, Assert.Single(reader.Current).Status);
+    }
+
     private static WindowsHardwareMetricSampler CreateSampler(
         HostManagerSamplingSubscriptionTestFixture subscriptions,
         DashboardMonitoringCatalogState catalog,

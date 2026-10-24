@@ -295,6 +295,34 @@ pub const Session = struct {
         return null;
     }
 
+    fn releaseItemAt(self: *Session, index: usize) void {
+        removeIndex(self.item_index, self.items, self.items[index].item_handle, itemHandleAt);
+        self.items[index] = .{};
+    }
+
+    // Count slots the replacement will release before mutating anything, so a
+    // rejected Track leaves the old source and every pending plan unchanged.
+    fn replacementFreeItemCount(self: *Session, source_index: ?u32, handles: []const u64) usize {
+        _ = self.rebuildItemAggregates();
+        if (source_index) |replaced_source| {
+            for (self.memberships) |membership| {
+                if (membership.active and membership.source_index == replaced_source)
+                    self.scratch_source_counts[membership.item_index] -= 1;
+            }
+        }
+        var count: usize = 0;
+        for (self.items, 0..) |item, index| {
+            if (!item.active) {
+                count += 1;
+                continue;
+            }
+            if (item.last_planned_epoch != 0 or
+                std.mem.indexOfScalar(u64, handles, item.item_handle) != null) continue;
+            if (self.scratch_source_counts[index] == 0) count += 1;
+        }
+        return count;
+    }
+
     pub fn removeSourceAt(self: *Session, source_slot_index: u32) void {
         self.deactivateSourceAt(source_slot_index);
         for (self.memberships) |*membership| {
@@ -407,6 +435,10 @@ pub const Session = struct {
         for (self.items, 0..) |*item, item_index| {
             if (!item.active) continue;
             if (self.scratch_source_counts[item_index] == 0) {
+                if (item.last_planned_epoch == 0) {
+                    self.releaseItemAt(item_index);
+                    continue;
+                }
                 item.retry_at_milliseconds = 0;
                 item.scheduled_due_milliseconds = 0;
                 item.effective_interval_milliseconds = 0;
@@ -480,7 +512,7 @@ pub const Session = struct {
         for (handles) |handle| if (self.findItem(handle) == null) {
             new_item_count += 1;
         };
-        if (new_item_count > self.freeItemCount()) return .out_of_memory;
+        if (new_item_count > self.replacementFreeItemCount(existing_source_index, handles)) return .out_of_memory;
         if (existing_source_index == null and self.freeSourceCount() == 0) return .out_of_memory;
         const reusable_memberships = if (existing_source_index) |source_index|
             self.sourceItemCount(source_index)
@@ -525,6 +557,16 @@ pub const Session = struct {
                 membership.sampling_flags != source.sampling_flags)
             {
                 membership.* = .{};
+            }
+        }
+
+        _ = self.rebuildItemAggregates();
+        for (self.items, 0..) |item, index| {
+            if (item.active and self.scratch_source_counts[index] == 0 and
+                item.last_planned_epoch == 0 and
+                std.mem.indexOfScalar(u64, handles, item.item_handle) == null)
+            {
+                self.releaseItemAt(index);
             }
         }
 
@@ -620,14 +662,6 @@ pub const Session = struct {
     fn freeSourceCount(self: *const Session) usize {
         var count: usize = 0;
         for (self.sources) |source| if (!source.active) {
-            count += 1;
-        };
-        return count;
-    }
-
-    fn freeItemCount(self: *const Session) usize {
-        var count: usize = 0;
-        for (self.items) |item| if (!item.active) {
             count += 1;
         };
         return count;

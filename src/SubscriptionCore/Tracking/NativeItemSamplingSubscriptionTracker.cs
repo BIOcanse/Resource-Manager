@@ -176,6 +176,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                     latestMergedItemIdsDirty = true;
                 }
                 sourceHandles.Remove(sourceKey);
+                ReleaseUnusedItemMappings();
                 return true;
             }
             finally
@@ -261,6 +262,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                         latestMergedItemIdsDirty = true;
                     }
                 }
+                ReleaseUnusedItemMappings();
 
                 var active = (header.Flags & (ulong)NativeSamplingSubscriptionPlanFlags.Active) != 0;
                 var triggers = ProjectTriggers(header, triggerBuffer);
@@ -669,7 +671,27 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 persistent,
                 explicitInterval,
                 samplingFlags);
+            ReleaseUnusedItemMappings();
             latestMergedItemIdsDirty = true;
+        }
+    }
+
+    private void ReleaseUnusedItemMappings()
+    {
+        var retained = new HashSet<ulong>(pendingItems.Select(static item => item.ItemHandle));
+        retained.UnionWith(pendingTriggers.Select(static trigger => trigger.ItemHandle));
+        foreach (var payload in sourcePayloads.Values)
+        {
+            if (coalesceItemsIntoLatestCapture)
+                retained.Add(itemHandles[CoalescedCaptureItemId]);
+            else
+                foreach (var itemId in payload.ItemIds) retained.Add(itemHandles[itemId]);
+        }
+        foreach (var (handle, itemId) in itemIds.ToArray())
+        {
+            if (retained.Contains(handle)) continue;
+            itemIds.Remove(handle);
+            itemHandles.Remove(itemId);
         }
     }
 
@@ -930,6 +952,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         pendingItems = [];
         pendingTriggers = [];
         pendingPlanEpoch = 0;
+        ReleaseUnusedItemMappings();
         var schedule = CreateCompletionSchedule(
             in output,
             completedPlanEpoch,
