@@ -297,7 +297,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             schedulableFacts,
             fixture.Workspace,
             fixture.RuntimePlan.HostManager.RequirePublished()
-                .HotPublish.SmartCoordinator.ProcessStateMultipliers);
+                .HotPublish.SmartCoordinator.ProcessStateMultipliers,
+            schedulingAuthority.Compute!.Welfare.CpuBonus);
         Assert.All(nativeCpuScores, score => Assert.False(score.CpuScoreValid));
         var nativeInputProjection = AssertAndCaptureNativeInputProjection(
             runSalt,
@@ -524,7 +525,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         string runSalt,
         SchedulingProcessFactSnapshot processFacts,
         NativeSmartCoordinatorWorkspace workspace,
-        IReadOnlyList<double> processStateMultipliers)
+        IReadOnlyList<double> processStateMultipliers,
+        double cpuWelfareBonus)
     {
         var rows = workspace.CurrentSnapshotRows
             .ToArray()
@@ -573,13 +575,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var runtimeStateValue = checked((int)row.RuntimeState);
             Assert.InRange(runtimeStateValue, 0, processStateMultipliers.Count - 1);
             var multiplier = processStateMultipliers[runtimeStateValue];
-            // Without core residency the CPU domain scores each process from its CPU usage:
-            // no usage means no score, and any usage of a weighted process scores above zero.
+            // Without core residency the CPU domain scores each process from its CPU usage. A running
+            // process with no usage keeps exactly the CPU welfare bonus; a process that is not running
+            // gets no welfare. Any usage of a weighted process scores above zero.
             Assert.True(double.IsFinite(row.CpuScore));
             Assert.True(row.CpuScore >= 0);
             if (fact.CpuUsagePercent == 0)
             {
-                Assert.Equal(0d, row.CpuScore);
+                Assert.Equal(
+                    row.RuntimeState == NativeSmartCoordinatorRuntimeState.NotRunning ? 0d : cpuWelfareBonus,
+                    row.CpuScore,
+                    precision: 12);
             }
             else if (fact.BaseScore > 0 && multiplier > 0)
             {
