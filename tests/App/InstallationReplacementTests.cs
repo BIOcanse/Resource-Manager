@@ -66,7 +66,7 @@ public sealed class InstallationReplacementTests
         }
         else File.WriteAllText(Path.Combine(fixture.Plan.Root, "Config", "app-settings.json"), "{\"version\":\"9.0.0\"}");
         var original = fixture.OriginalDigests();
-        Assert.Throws<InvalidDataException>(() => fixture.Replacement.Run(fixture.Prepared, () => Assert.Fail("Installation must not begin.")));
+        Assert.Throws<UpdatePackageIncompatibleException>(() => fixture.Replacement.Run(fixture.Prepared, () => Assert.Fail("Installation must not begin.")));
         Assert.Equal(new[] { "stop", "restore" }, fixture.Runtime.Events);
         Assert.True(fixture.Runtime.Registered);
         Assert.Equal(original, fixture.OriginalDigests());
