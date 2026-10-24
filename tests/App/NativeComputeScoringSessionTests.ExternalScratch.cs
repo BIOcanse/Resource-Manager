@@ -12,9 +12,13 @@ public sealed partial class NativeComputeScoringSessionTests
         using var cpu = new NativeComputeScoringSession(in configuration, [1]);
         using var gpu = new NativeComputeScoringSession(in configuration, [1]);
         var capacity = cpu.Capacity;
-        Assert.Equal(0x00050000U, NativeComputeScoringSession.GetAbiVersion());
+        Assert.Equal(0x00060000U, NativeComputeScoringSession.GetAbiVersion());
         Assert.Equal(72U, capacity.StructSize);
-        Assert.Equal(112UL * (configuration.MaximumProcessCount + configuration.MaximumGpuRowCount), capacity.ScratchByteCount);
+        // Each process/GPU slot stores its input row, computed score and two u32 order indexes.
+        var processBytes = (ulong)Marshal.SizeOf<NativeComputeScoringProcessInput>() + sizeof(double) + 2UL * sizeof(uint);
+        var gpuBytes = (ulong)Marshal.SizeOf<NativeComputeScoringGpuInput>() + sizeof(double) + 2UL * sizeof(uint);
+        Assert.Equal(processBytes * configuration.MaximumProcessCount + gpuBytes * configuration.MaximumGpuRowCount,
+            capacity.ScratchByteCount);
         Assert.Equal(8U, capacity.ScratchAlignment); // Executed ABI assertion still required, not a managed allocation assumption.
         Assert.Equal(capacity.ScratchByteCount, gpu.Capacity.ScratchByteCount);
         Assert.Equal(capacity.ScratchAlignment, gpu.Capacity.ScratchAlignment);
@@ -26,7 +30,7 @@ public sealed partial class NativeComputeScoringSessionTests
     [InlineData("misaligned", NativeComputeScoringStatus.InvalidArgument)]
     [InlineData("overflow", NativeComputeScoringStatus.InvalidArgument)]
     [InlineData("length-overflow", NativeComputeScoringStatus.InvalidArgument)]
-    internal void BadRegionDoesNotWriteOrCommitAndSameGenerationCanRetry(string kind, NativeComputeScoringStatus expected)
+    internal void BadRegionDoesNotWriteAndSameRoundCanRetry(string kind, NativeComputeScoringStatus expected)
     {
         var configuration = CreateConfiguration();
         using var session = new NativeComputeScoringSession(in configuration, [1]);
@@ -38,20 +42,20 @@ public sealed partial class NativeComputeScoringSessionTests
         var process = CreateProcess(1, 10, 100, 1, 50);
         var outputs = new NativeComputeScoringOutput[4];
         outputs[0].Score = 987;
-        var snapshot = new NativeComputeScoringSnapshot { SchedulingGeneration = 999 };
+        var snapshot = new NativeComputeScoringSnapshot { RoundNumber = 999 };
         var envelope = CreateEnvelope(1, 1, 0, 0, outputs.Length, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
         Assert.Equal(expected, session.Score(in envelope, [process], [], outputs, pointer, length, ref snapshot));
         Assert.Equal(987D, outputs[0].Score);
-        Assert.Equal(999UL, snapshot.SchedulingGeneration);
+        Assert.Equal(999UL, snapshot.RoundNumber);
         Assert.Equal<byte>(before, scratch.CopyBytes());
         Assert.Equal(NativeComputeScoringStatus.Ok,
             session.Score(in envelope, [process], [], outputs, scratch.Pointer, scratch.Length, ref snapshot));
-        Assert.Equal(1UL, snapshot.SchedulingGeneration);
+        Assert.Equal(1UL, snapshot.RoundNumber);
         Assert.Equal(50D, outputs[0].Score);
     }
 
     [Fact]
-    public void CpuAndGpuKeepIndependentGenerationsWhileReusingOnePoisonedRegion()
+    public void CpuAndGpuRecomputeWhileReusingOnePoisonedRegion()
     {
         var configuration = CreateConfiguration();
         using var cpu = new NativeComputeScoringSession(in configuration, [1]);
@@ -74,43 +78,18 @@ public sealed partial class NativeComputeScoringSessionTests
         Assert.Equal(50D, cpuOutputs[0].Score);
         Assert.Equal(25D, gpuOutputs[0].Score);
         Assert.Equal<NativeComputeScoringOutput>(saved, cpuOutputs);
-        Assert.Equal(0UL, cpuSnapshot.GpuSourceGeneration);
-        Assert.Equal(202UL, gpuSnapshot.GpuSourceGeneration);
-        cpuEnvelope.SchedulingGeneration = 2;
+        cpuEnvelope.RoundNumber = 2;
         scratch.Poison(0xFF);
         Assert.Equal(NativeComputeScoringStatus.Ok,
             cpu.Score(in cpuEnvelope, [process], [], cpuOutputs, scratch.Pointer, scratch.Length, ref cpuSnapshot));
-        Assert.Equal(1UL, gpuSnapshot.SchedulingGeneration);
-        Assert.Equal(NativeComputeScoringStatus.StaleGeneration,
+        Assert.Equal(1UL, gpuSnapshot.RoundNumber);
+        Assert.Equal(NativeComputeScoringStatus.Ok,
             gpu.Score(in gpuEnvelope, [process], [row], gpuOutputs, scratch.Pointer, scratch.Length, ref gpuSnapshot));
-        gpuEnvelope.SchedulingGeneration = 2;
+        gpuEnvelope.RoundNumber = 2;
         Assert.Equal(NativeComputeScoringStatus.Ok,
             gpu.Score(in gpuEnvelope, [process], [row], gpuOutputs, scratch.Pointer, scratch.Length, ref gpuSnapshot));
     }
 
-    [Fact]
-    public void ReconfigureKeepsScratchRequirementAndExplicitlyResetsOnlySessionGeneration()
-    {
-        var configuration = CreateConfiguration();
-        using var session = new NativeComputeScoringSession(in configuration, [1]);
-        using var scratch = new NativeComputeScoringScratchFixture(session.Capacity);
-        var process = CreateProcess(1, 10, 100, 1, 50);
-        var outputs = new NativeComputeScoringOutput[4];
-        var snapshot = default(NativeComputeScoringSnapshot);
-        var envelope = CreateEnvelope(1, 1, 0, 0, 4, NativeComputeScoringEnvelopeFlags.CpuSnapshotComplete);
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process], [], outputs,
-            scratch.Pointer, scratch.Length, ref snapshot));
-        var previous = session.Capacity;
-        configuration.Generation = 2;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Reconfigure(in configuration, [1]));
-        Assert.Equal(previous.ScratchByteCount, session.Capacity.ScratchByteCount);
-        Assert.Equal(previous.ScratchAlignment, session.Capacity.ScratchAlignment);
-        envelope.ConfigurationGeneration = 2;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Score(in envelope, [process], [], outputs,
-            scratch.Pointer, scratch.Length, ref snapshot));
-        Assert.Equal(1UL, snapshot.SchedulingGeneration);
-        Assert.Equal(2UL, snapshot.ConfigurationGeneration);
-    }
 }
 
 // Test-only ordinary allocation; production Session never allocates or retains scratch.

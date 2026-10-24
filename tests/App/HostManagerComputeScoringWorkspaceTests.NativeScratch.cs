@@ -60,8 +60,11 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(savedGpu.Select(value => value.Score), afterReclaim.Gpu!.Scores.Select(value => value.Score));
         Assert.Equal<HostManagerComputeScore>(savedCpu, first.Cpu.Scores);
         Assert.Equal<HostManagerComputeScore>(savedGpu, first.Gpu.Scores);
-        Assert.Throws<InvalidOperationException>(() => workspace.Score(3, facts, inventory,
-            CreateRuntimeFacts(), CreateCpuResidency())); // Scratch reclaim did not reset accepted native state.
+        var repeated = workspace.Score(3, facts, inventory,
+            CreateRuntimeFacts(), CreateCpuResidency())!;
+        Assert.Equal(3UL, repeated.RoundNumber);
+        Assert.Equal<HostManagerComputeScore>(afterReclaim.Cpu!.Scores, repeated.Cpu!.Scores);
+        Assert.Equal<HostManagerComputeScore>(afterReclaim.Gpu!.Scores, repeated.Gpu!.Scores);
         Assert.Equal(1, creates);
     }
 }

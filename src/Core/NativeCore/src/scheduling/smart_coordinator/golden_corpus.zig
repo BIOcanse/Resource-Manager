@@ -68,16 +68,11 @@ pub fn cycle(
         .config_generation = config.generation,
         .cycle_sequence = sequence,
         .observed_at_ms = observed_at_ms,
-        .valid_mask = protocol.CycleValidity.score_only_mode | protocol.CycleValidity.maximum_actions_this_cycle |
-            protocol.CycleValidity.score_scheduling_generation |
-            protocol.CycleValidity.cpu_score_source_fingerprint |
-            protocol.CycleValidity.gpu_score_source_fingerprint,
+        .valid_mask = protocol.CycleValidity.score_only_mode | protocol.CycleValidity.maximum_actions_this_cycle,
         .flags = flags,
         .input_count = input_count,
         .action_capacity = config.max_actions,
-        .score_scheduling_generation = sequence,
-        .cpu_score_source_fingerprint = 0xC000_0000_0000_0000 | sequence,
-        .gpu_score_source_fingerprint = 0xD000_0000_0000_0000 | sequence,
+        .round_number = sequence,
         .maximum_actions_this_cycle = config.max_actions,
         .reserved = 0,
     };
@@ -141,7 +136,6 @@ pub fn processFact(
         .applied_cpu_grade = @intFromEnum(applied_cpu_grade),
         .applied_gpu_grade = @intFromEnum(applied_gpu_grade),
         .reserved2 = [_]u8{0} ** 3,
-        .applied_epoch = if (ownership_flags == 0) 0 else 1,
         .process_score = 0,
         .software_score = 0,
     };
@@ -153,7 +147,6 @@ pub fn softwareFact(
     applied_cpu_grade: protocol.AdapterGrade,
     applied_gpu_grade: protocol.AdapterGrade,
     ownership_flags: u64,
-    applied_epoch: u64,
 ) protocol.InputRow {
     return .{
         .struct_size = @sizeOf(protocol.InputRow),
@@ -180,7 +173,6 @@ pub fn softwareFact(
         .applied_cpu_grade = @intFromEnum(applied_cpu_grade),
         .applied_gpu_grade = @intFromEnum(applied_gpu_grade),
         .reserved2 = [_]u8{0} ** 3,
-        .applied_epoch = applied_epoch,
         .process_score = 0,
         .software_score = 0,
     };

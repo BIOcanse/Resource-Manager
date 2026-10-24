@@ -67,9 +67,6 @@ public sealed partial class HostManagerSmartCoordinator
         var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
             HostManagerSmartControlZoneIds.PolicyExecution);
         var cleanup = hostPlan.HotPublish.MemoryCleanup;
-        sample.Hardware.TryGetCurrentDataset(
-            SamplingDatasetIds.SystemMemoryUsage,
-            out var memoryDataset);
         var normalReleaseCycle = new HostPublicResourceNormalReleaseCycle(
             runtimePlanVersion,
             hostPublicationSequence,
@@ -85,11 +82,7 @@ public sealed partial class HostManagerSmartCoordinator
                 && HostManagerProcessEffectValidationCyclePolicy.AllowsCycleEffect(
                     processEffectValidationScope,
                     HostManagerCycleEffectKind.AutomaticMemoryCleanup),
-            memoryDataset?.WorkspaceIdentity ?? 0,
-            memoryDataset?.ConfigurationGeneration ?? 0,
-            memoryDataset?.CatalogGeneration ?? 0,
-            memoryDataset?.SourceGeneration ?? 0,
-            memoryDataset?.ObservedAtUtcTicks ?? 0);
+            sample.RoundNumber);
         var memoryCapacityWithReleaseEvidence =
             hostPublicResourceNormalReleaseEvidence.BeginCycle(
                 normalReleaseCycle,
@@ -102,17 +95,13 @@ public sealed partial class HostManagerSmartCoordinator
             policyExecutionEnabled,
             hostPlan.HotPublish.ResourceScheduler.Configuration,
             sample.Hardware.GpuInventory);
-        var capacityFreshness =
-            hostPublicResourceCapacitySampleFreshness.Observe(sample.Hardware);
-        var memoryCapacity = capacityFreshness.Memory
-            ? memoryCapacityWithReleaseEvidence
+        var newCapacityRound = sample.RoundNumber > lastPublicResourceCapacityRound;
+        if (newCapacityRound) lastPublicResourceCapacityRound = sample.RoundNumber;
+        var memoryCapacity = newCapacityRound ? memoryCapacityWithReleaseEvidence
             : HostPublicResourceCapacityObservation.UnknownOrStale;
-        var videoMemoryCapacity = capacityFreshness.VideoMemory
-            ? videoMemoryCapacityCurrent.Summary
+        var videoMemoryCapacity = newCapacityRound ? videoMemoryCapacityCurrent.Summary
             : HostPublicResourceCapacityObservation.UnknownOrStale;
-        var videoMemoryAdapters = capacityFreshness.VideoMemory
-            ? videoMemoryCapacityCurrent.Adapters
-            : [];
+        var videoMemoryAdapters = newCapacityRound ? videoMemoryCapacityCurrent.Adapters : [];
         var sink = new NativeExternalEffectSink(
             this,
             processEffectValidationScope,
@@ -123,7 +112,6 @@ public sealed partial class HostManagerSmartCoordinator
                 videoMemoryCapacity,
                 videoMemoryAdapters),
             cycleSequence,
-            memoryCleanupCapacitySampleFresh: capacityFreshness.Memory,
             cancellationToken);
         // Z4 hardware placement and Z5 adapted-resource scheduling stay capability-off here.
         // The current Z3 snapshot ABI does not export their exact native handoff fields, so
@@ -140,7 +128,6 @@ public sealed partial class HostManagerSmartCoordinator
         private readonly CompiledRuntimePlan runtimePlan;
         private readonly HostPublicResourceCapacityShortage shortage;
         private readonly ulong cycleSequence;
-        private readonly bool memoryCleanupCapacitySampleFresh;
         private readonly CancellationToken cancellationToken;
 
         internal NativeExternalEffectSink(
@@ -150,7 +137,6 @@ public sealed partial class HostManagerSmartCoordinator
             CompiledRuntimePlan runtimePlan,
             HostPublicResourceCapacityShortage shortage,
             ulong cycleSequence,
-            bool memoryCleanupCapacitySampleFresh,
             CancellationToken cancellationToken)
         {
             this.owner = owner;
@@ -159,8 +145,6 @@ public sealed partial class HostManagerSmartCoordinator
             this.runtimePlan = runtimePlan;
             this.shortage = shortage;
             this.cycleSequence = cycleSequence;
-            this.memoryCleanupCapacitySampleFresh =
-                memoryCleanupCapacitySampleFresh;
             this.cancellationToken = cancellationToken;
             MemoryCleanupResult = default;
         }
@@ -178,7 +162,6 @@ public sealed partial class HostManagerSmartCoordinator
                 authority.Compute,
                 runtimePlan,
                 cycleSequence,
-                memoryCleanupCapacitySampleFresh,
                 cancellationToken);
         }
 

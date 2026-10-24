@@ -7,7 +7,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 internal readonly record struct HostManagerProcessMemoryTransactionAction(
     ulong ConfigurationGeneration,
-    ulong SchedulingGeneration,
+    ulong RoundNumber,
     ulong ActionId,
     ulong HostSessionIncarnation,
     ulong MemoryPolicyTargetKey,
@@ -97,7 +97,7 @@ internal static class HostManagerProcessMemoryTransactionProjection
 
         var action = new HostManagerProcessMemoryTransactionAction(
             configurationGeneration,
-            directive.SchedulingGeneration,
+            directive.RoundNumber,
             actionId,
             hostSessionIncarnation,
             directive.MemoryPolicyTargetKey,
@@ -457,7 +457,7 @@ internal static class HostManagerProcessMemoryTransactionProjection
         uint toMemoryPriority)
         => new(
             configurationGeneration,
-            directive.SchedulingGeneration,
+            directive.RoundNumber,
             actionId,
             hostSessionIncarnation,
             directive.MemoryPolicyTargetKey,
@@ -475,7 +475,7 @@ internal static class HostManagerProcessMemoryTransactionProjection
         in HostManagerProcessMemoryTransactionAction action)
     {
         if (action.ConfigurationGeneration == 0 ||
-            action.SchedulingGeneration == 0 ||
+            action.RoundNumber == 0 ||
             action.ActionId == 0 ||
             action.HostSessionIncarnation == 0 ||
             action.MemoryPolicyTargetKey == 0 ||
@@ -718,7 +718,7 @@ internal static class HostManagerProcessMemoryTransactionProjection
         => new()
         {
             ConfigurationGeneration = action.ConfigurationGeneration,
-            PlanEpoch = action.SchedulingGeneration,
+            PlanEpoch = action.RoundNumber,
             ActionId = action.ActionId,
             HostSessionIncarnation = action.HostSessionIncarnation,
             TargetId = action.MemoryPolicyTargetKey,

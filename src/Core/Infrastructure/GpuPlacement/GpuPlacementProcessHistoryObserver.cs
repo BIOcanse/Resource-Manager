@@ -21,7 +21,7 @@ public sealed class GpuPlacementProcessHistoryObserver(
     internal static readonly TimeSpan ObservationWindow = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(5);
     private static readonly SchedulingProcessFactRequest Request = new(
-        SchedulingProcessMetricMask.RuntimeState, null,
+        SchedulingProcessMetricMask.RuntimeState,
         new SchedulingGpuInventorySnapshot(SamplingObservationStatus.Unavailable, 0, 0, 0, 0, 0, 0, []));
     private readonly Dictionary<(int Pid, ulong Birth), Attempt> attempts = [];
 

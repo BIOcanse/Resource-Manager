@@ -17,7 +17,6 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
 
         Assert.True(HostManagerMemoryCleanupScoreIndex.TryCreate(
             compute,
-            processInventoryGeneration: 20,
             expectedTargets: ExpectedTargets((1, 101), (2, 202)),
             out var scores));
         Assert.Equal(2, scores.Count);
@@ -34,35 +33,20 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
 
         Assert.False(HostManagerMemoryCleanupScoreIndex.TryCreate(
             compute,
-            processInventoryGeneration: 21,
-            expectedTargets: ExpectedTargets((1, 101)),
-            out var stale));
-        Assert.Empty(stale);
-
-        Assert.False(HostManagerMemoryCleanupScoreIndex.TryCreate(
-            compute,
-            processInventoryGeneration: 20,
             expectedTargets: ExpectedTargets((1, 101), (2, 202)),
             out var incomplete));
         Assert.Empty(incomplete);
     }
 
     [Fact]
-    public void TryCreate_MatchesInventoryWithoutRequiringThePhysicalWindowToShareItsGeneration()
+    public void TryCreate_ReusesTheSameRoundWithoutFreshnessState()
     {
         var compute = CreateCompute(20, ProcessScore(1, 101, 1001, 11));
-        compute = compute with
-        {
-            Cpu = compute.Cpu! with
-            {
-                SourceIdentity = compute.Cpu!.SourceIdentity with { MetricGeneration = 91 }
-            }
-        };
         Assert.True(HostManagerMemoryCleanupScoreIndex.TryCreate(
-            compute, 20, ExpectedTargets((1, 101)), out var scores));
-        Assert.Single(scores);
-        Assert.False(HostManagerMemoryCleanupScoreIndex.TryCreate(
-            compute, 91, ExpectedTargets((1, 101)), out _));
+            compute, ExpectedTargets((1, 101)), out var first));
+        Assert.True(HostManagerMemoryCleanupScoreIndex.TryCreate(
+            compute, ExpectedTargets((1, 101)), out var repeated));
+        Assert.Equal(first[new(1, 101)], repeated[new(1, 101)]);
     }
 
     [Fact]
@@ -158,12 +142,9 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
         ulong sourceGeneration,
         params HostManagerComputeScore[] scores)
         => new(
-            SchedulingGeneration: 10,
+            RoundNumber: 10,
             Cpu: new(
-                SchedulingGeneration: 10,
-                SourceGeneration: sourceGeneration,
-                TopologyGeneration: 0,
-                TopologyFingerprint: 0,
+                RoundNumber: 10,
                 scores.ToImmutableArray()),
             Gpu: null);
 
@@ -174,7 +155,7 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
         double score)
         => new(
             NativeComputeScoringOutputKind.ProcessCpu,
-            SchedulingGeneration: 10,
+            RoundNumber: 10,
             TargetKey: checked((ulong)processId + 10_000),
             SoftwareKey: softwareKey,
             ProcessId: processId,
@@ -189,7 +170,7 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
         double score)
         => new(
             NativeComputeScoringOutputKind.SoftwareCpu,
-            SchedulingGeneration: 10,
+            RoundNumber: 10,
             TargetKey: softwareKey,
             SoftwareKey: softwareKey,
             ProcessId: 0,
@@ -204,7 +185,7 @@ public sealed class HostManagerMemoryCleanupScoreIndexTests
         double score)
         => new(
             NativeComputeScoringOutputKind.ProcessCpu,
-            SchedulingGeneration: 10,
+            RoundNumber: 10,
             TargetKey: NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId),
             SoftwareKey: NativeStableIdentity.CreateCaseInsensitiveKey(target.SoftwareId),
             ProcessId: target.ProcessId,

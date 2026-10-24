@@ -84,15 +84,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
         var startedAtUtc = DateTimeOffset.UtcNow;
         var startedAtQpcTicks = Stopwatch.GetTimestamp();
-        Assert.True(SystemMemoryUsageDependency.TryCreate(
-            fixture.MetricSampler.Snapshot,
-            DateTimeOffset.UtcNow,
-            out var memoryDependency));
         var providerRequest = new SchedulingProcessFactRequest(
             SchedulingProcessMetricMask.CpuUsage
                 | SchedulingProcessMetricMask.MemoryUsage
                 | SchedulingProcessMetricMask.RuntimeState,
-            memoryDependency,
             fixture.MetricSampler.Snapshot.GpuInventory);
         _ = await realSource!.CaptureAsync(
             providerRequest,
@@ -125,6 +120,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             realSource.LastSnapshot);
         Assert.Equal(
             SchedulingProcessMetricMask.CpuUsage |
+            SchedulingProcessMetricMask.MemoryUsage |
             SchedulingProcessMetricMask.RuntimeState,
             realSource.CoordinatorRequest!.RequestedMetricMask);
         Assert.Equal(
@@ -137,11 +133,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             SchedulingProcessMetricMask.MemoryUsage |
             SchedulingProcessMetricMask.RuntimeState,
             baselineFacts.RequestedMetricMask);
+        const SchedulingProcessMetricMask cpuMemory =
+            SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.MemoryUsage;
+        Assert.Equal(cpuMemory, baselineFacts.CurrentMetricMask & cpuMemory);
+        Assert.Equal(SchedulingProcessMetricMask.None,
+            baselineFacts.CurrentMetricMask & ~baselineFacts.RequestedMetricMask);
         Assert.Equal(
-            SchedulingProcessMetricMask.CpuUsage |
-            SchedulingProcessMetricMask.MemoryUsage |
-            SchedulingProcessMetricMask.RuntimeState,
-            baselineFacts.CurrentMetricMask);
+            baselineFacts.TryGetCurrentDataset(SchedulingProcessMetricMask.RuntimeState, out _),
+            baselineFacts.CurrentMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState));
         Assert.Equal(SamplingObservationStatus.Current, baselineFacts.InventoryStatus);
         Assert.True(baselineFacts.IsInventoryCurrentComplete());
         Assert.True(baselineFacts.IsMemoryCurrentComplete());
@@ -210,6 +209,38 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.True(fact.ValidMetricMask.HasFlag(
                 SchedulingProcessMetricMask.MemoryUsage));
         });
+
+        if (!processFacts.IsRuntimeStateCurrentComplete())
+        {
+            var unavailable = fixture.Coordinator.SchedulingAuthority;
+            Assert.Equal(HostManagerSchedulingAuthorityAvailability.Unavailable,
+                unavailable.Availability);
+            Assert.Equal("scheduling-runtime-state-incomplete", unavailable.UnavailableReason);
+            Assert.Equal(0UL, unavailable.RoundNumber);
+            Assert.Null(unavailable.Compute);
+            Assert.Null(unavailable.MemoryModes);
+            Assert.Same(workspaceBefore, fixture.Workspace);
+            Assert.Equal(capacityBefore, fixture.Workspace.Capacity);
+            Assert.Equal(0UL, fixture.Workspace.Snapshot.CycleSequence);
+            Assert.Empty(nativeInputs.Rows);
+            Assert.Equal(rollbackIncarnationBefore,
+                fixture.StateStore.Current.NativeHostSessionIncarnation);
+            Assert.Equal(normalReleaseEvidenceBefore,
+                CapturePrivateState(fixture.Coordinator,
+                    "hostPublicResourceNormalReleaseEvidence"));
+            Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
+            fixture.AssertNoMemoryCleanupAttemptEntries();
+            fixture.CaptureHostedScoreOnlyEffectCounters().AssertAllZero();
+            mutationWatcher.AssertNoMutation();
+            Assert.NotNull(status);
+            Assert.Throws<InvalidOperationException>(() => inventoryReader.GetProcesses());
+            Assert.Equal(3, inventoryReader.AttemptCount);
+            Assert.Equal(2, inventoryReader.InnerReadCount);
+            Assert.True(evidence is null,
+                "The requested real-provider scoring measurement requires current RuntimeState; "
+                + "the environment did not provide it, scheduling did not run, and no receipt was written.");
+            return;
+        }
 
         // The provider census remains complete above. Host scheduling deliberately
         // admits only records whose runtime-state observation is current.
@@ -979,12 +1010,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 coordinatorMetricMask = (ulong)coordinatorRequest.RequestedMetricMask,
                 providerMetricMask = (ulong)providerRequest.RequestedMetricMask,
-                totalMemoryBytes = coordinatorRequest
-                    .ExpectedMemoryUsageDependency?.DenominatorBytes.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture),
-                providerTotalMemoryBytes = providerRequest
-                    .ExpectedMemoryUsageDependency?.DenominatorBytes.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture),
+                totalMemoryBytes = fixture.MetricSampler.Snapshot.Memory.TotalBytes.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                providerTotalMemoryBytes = fixture.MetricSampler.Snapshot.Memory.TotalBytes.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
                 sourceCaptureAttempts = realSource.AttemptCount,
                 providerCaptureAttempts = realSource.ProviderCaptureCount,
                 inventoryAttempts = inventoryReader.AttemptCount,

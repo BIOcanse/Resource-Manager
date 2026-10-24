@@ -303,7 +303,7 @@ fn copyProcessFacts(
         target.transition.desired = grade;
         target.transition.compensation_required = false;
         target.transition.clearPending();
-        target.transition.last_source_fingerprint = 0;
+        target.transition.last_round_number = 0;
     }
 }
 
@@ -377,7 +377,7 @@ fn syncAuthoritativeAdapterTransition(
     transition.inflight_action_id = 0;
     transition.desired = transition.applied;
     transition.clearPending();
-    transition.last_source_fingerprint = 0;
+    transition.last_round_number = 0;
 }
 
 fn copyGpuFacts(session: *state.Session, slot: u32, staged: state.StagedGpu, input: *const protocol.CycleInput) void {
@@ -692,7 +692,7 @@ fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput)
         updateProcessTransition(
             &process.transition,
             process.candidate_grade,
-            input.cpu_score_source_fingerprint,
+            input.round_number,
             input.observed_at_ms,
             session.config.required_consecutive_decisions,
             immediate,
@@ -712,7 +712,7 @@ fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput)
         if (software.cpu_candidate_valid) updateAdapterTransition(
             &software.cpu_transition,
             software.cpu_candidate_grade,
-            input.cpu_score_source_fingerprint,
+            input.round_number,
             input.observed_at_ms,
             session.config.required_consecutive_decisions,
             cpu_immediate,
@@ -720,7 +720,7 @@ fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput)
         if (software.gpu_candidate_valid) updateAdapterTransition(
             &software.gpu_transition,
             software.gpu_candidate_grade,
-            input.gpu_score_source_fingerprint,
+            input.round_number,
             input.observed_at_ms,
             session.config.required_consecutive_decisions,
             gpu_immediate,
@@ -731,7 +731,7 @@ fn updateTransitions(session: *state.Session, input: *const protocol.CycleInput)
 fn updateProcessTransition(
     transition: *state.ProcessTransition,
     candidate: i8,
-    source_fingerprint: u64,
+    round_number: u64,
     now_ms: i64,
     required: u32,
     immediate: bool,
@@ -739,7 +739,7 @@ fn updateProcessTransition(
     transition.desired = candidate;
     if (candidate == transition.applied) {
         transition.clearPending();
-        transition.last_source_fingerprint = source_fingerprint;
+        transition.last_round_number = @max(transition.last_round_number, round_number);
         return;
     }
     if (transition.inflight_action_id != 0) return;
@@ -749,13 +749,10 @@ fn updateProcessTransition(
         transition.pending_count = required;
         transition.pending_first_seen_ms = now_ms;
         transition.pending_last_seen_ms = now_ms;
-        transition.last_source_fingerprint = source_fingerprint;
+        transition.last_round_number = @max(transition.last_round_number, round_number);
         return;
     }
-    // Restore confirmations follow cycles, independently of CPU score freshness.
-    const restoring = transition.owned and candidate == protocol.ProcessGrade.normal;
-    if (!restoring and source_fingerprint == 0) return;
-    if (!restoring and transition.last_source_fingerprint == source_fingerprint) {
+    if (round_number <= transition.last_round_number) {
         if (transition.pending_count > 0 and transition.pending_to != candidate) {
             transition.pending_from = transition.applied;
             transition.pending_to = candidate;
@@ -765,7 +762,7 @@ fn updateProcessTransition(
         }
         return;
     }
-    transition.last_source_fingerprint = source_fingerprint;
+    transition.last_round_number = @max(transition.last_round_number, round_number);
     if (transition.pending_count > 0 and transition.pending_from == transition.applied and transition.pending_to == candidate) {
         transition.pending_count +|= 1;
         transition.pending_last_seen_ms = now_ms;
@@ -781,7 +778,7 @@ fn updateProcessTransition(
 fn updateAdapterTransition(
     transition: *state.AdapterTransition,
     candidate: u8,
-    source_fingerprint: u64,
+    round_number: u64,
     now_ms: i64,
     required: u32,
     immediate: bool,
@@ -789,7 +786,7 @@ fn updateAdapterTransition(
     transition.desired = candidate;
     if (candidate == transition.applied) {
         transition.clearPending();
-        transition.last_source_fingerprint = source_fingerprint;
+        transition.last_round_number = @max(transition.last_round_number, round_number);
         return;
     }
     if (transition.inflight_action_id != 0) return;
@@ -799,11 +796,10 @@ fn updateAdapterTransition(
         transition.pending_count = required;
         transition.pending_first_seen_ms = now_ms;
         transition.pending_last_seen_ms = now_ms;
-        transition.last_source_fingerprint = source_fingerprint;
+        transition.last_round_number = @max(transition.last_round_number, round_number);
         return;
     }
-    if (source_fingerprint == 0) return;
-    if (transition.last_source_fingerprint == source_fingerprint) {
+    if (round_number <= transition.last_round_number) {
         if (transition.pending_count > 0 and transition.pending_to != candidate) {
             transition.pending_from = transition.applied;
             transition.pending_to = candidate;
@@ -813,7 +809,7 @@ fn updateAdapterTransition(
         }
         return;
     }
-    transition.last_source_fingerprint = source_fingerprint;
+    transition.last_round_number = @max(transition.last_round_number, round_number);
     if (transition.pending_count > 0 and transition.pending_from == transition.applied and transition.pending_to == candidate) {
         transition.pending_count +|= 1;
         transition.pending_last_seen_ms = now_ms;

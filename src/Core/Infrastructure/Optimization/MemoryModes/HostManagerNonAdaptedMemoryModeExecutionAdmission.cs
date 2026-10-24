@@ -6,9 +6,7 @@ using ResourceManager.App.Infrastructure.Optimization.Transactions;
 namespace ResourceManager.App.Infrastructure.Optimization;
 
 internal sealed record HostManagerNonAdaptedMemoryExecutionBatch(
-    ulong SchedulingGeneration,
-    ulong InventoryGeneration,
-    ulong CpuSourceGeneration,
+    ulong RoundNumber,
     ImmutableArray<HostManagerNonAdaptedMemoryProcessDirective> Processes);
 
 internal enum HostManagerNonAdaptedMemoryDirectiveDecisionKind : byte
@@ -66,21 +64,11 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         var currentProjection = projection
             ?? throw new InvalidDataException(
                 "A ready memory-mode authority publication has no non-adapted process projection.");
-        if (authority.AttemptGeneration == 0
+        if (authority.RoundNumber == 0
             || authority.ObservedAt == default
             || authority.PlanBinding != currentPlanBinding
-            || compute.SchedulingGeneration != authority.AttemptGeneration
-            || cpu.SchedulingGeneration != authority.AttemptGeneration
-            || cpu.SourceGeneration == 0
-            || cpu.SourceIdentity.InventoryGeneration != processFacts.Generation
             || memoryModes.ConfigurationGeneration
                 != currentPlanBinding.MemoryModeConfigurationGeneration
-             || memoryModes.SchedulingGeneration != authority.AttemptGeneration
-             || memoryModes.SnapshotGeneration != authority.AttemptGeneration
-             || !memoryModes.MemorySource.IsValid
-             || currentProjection.SchedulingGeneration != authority.AttemptGeneration
-            || currentProjection.InventoryGeneration != processFacts.Generation
-            || currentProjection.CpuSourceGeneration != cpu.SourceGeneration
             || !processFacts.IsInventoryCurrentComplete()
             || !policyEvidence.IsBoundTo(
                 currentPlanBinding,
@@ -103,8 +91,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         foreach (var directive in currentProjection.Processes)
         {
             var identity = (directive.ProcessId, directive.ProcessStartKey);
-            if (directive.SchedulingGeneration != authority.AttemptGeneration
-                || directive.ProcessId <= 0
+            if (directive.ProcessId <= 0
                 || directive.ProcessStartKey == 0
                 || directive.SoftwareKey == 0
                 || string.IsNullOrWhiteSpace(directive.SoftwareId)
@@ -115,14 +102,11 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
                     directive.SoftwareId,
                     StringComparison.OrdinalIgnoreCase)
                 || !processScores.TryGetValue(identity, out var processScore)
-                || processScore.SchedulingGeneration != authority.AttemptGeneration
                 || processScore.SoftwareKey != directive.SoftwareKey
                 || processScore.MemberCount != 1
                 || !desiredModes.TryGetValue(
                     directive.SoftwareKey,
                     out var desired)
-                || desired.SchedulingGeneration != authority.AttemptGeneration
-                || desired.SnapshotGeneration != authority.AttemptGeneration
                 || desired.Rank != directive.SoftwareRank
                 || desired.Mode != directive.Mode
                 || directive.MemoryPolicyTargetKey !=
@@ -142,9 +126,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         }
 
         return new(
-            currentProjection.SchedulingGeneration,
-            currentProjection.InventoryGeneration,
-            currentProjection.CpuSourceGeneration,
+            currentProjection.RoundNumber,
             currentProjection.Processes);
     }
 
@@ -174,7 +156,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
             throw new InvalidDataException(
                 "Owned process-memory recovery received an unknown authority availability.");
         }
-        if (authority.AttemptGeneration == 0
+        if (authority.RoundNumber == 0
             || authority.ObservedAt == default
             || authority.PlanBinding is null)
         {
@@ -191,9 +173,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         }
 
         return new(
-            authority.AttemptGeneration,
-            processFacts.Generation,
-            0,
+            authority.RoundNumber,
             []);
     }
 
@@ -206,9 +186,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
         ArgumentNullException.ThrowIfNull(batch);
         ArgumentNullException.ThrowIfNull(processFacts);
         ArgumentNullException.ThrowIfNull(ownershipIndex);
-        if (batch.SchedulingGeneration == 0
-            || batch.InventoryGeneration == 0
-            || batch.InventoryGeneration != processFacts.Generation
+        if (batch.RoundNumber == 0
             || !processFacts.IsInventoryCurrentComplete())
         {
             throw new InvalidDataException(
@@ -237,8 +215,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
             var incarnation = new NativeAppliedOwnershipProcessIncarnation(
                 checked((uint)directive.ProcessId),
                 directive.ProcessStartKey);
-            if (directive.SchedulingGeneration != batch.SchedulingGeneration
-                || !liveFacts.TryGetValue(incarnation, out var fact)
+            if (!liveFacts.TryGetValue(incarnation, out var fact)
                 || directive.SoftwareId is null
                 || !fact.SoftwareId.Equals(
                     directive.SoftwareId,
@@ -274,7 +251,7 @@ internal static class HostManagerNonAdaptedMemoryModeExecutionAdmission
                 : pair.Key.SoftwareKey;
             var softwareId = hasLiveFact ? fact!.SoftwareId : null;
             var restoreDirective = new HostManagerNonAdaptedMemoryProcessDirective(
-                batch.SchedulingGeneration,
+                batch.RoundNumber,
                 softwareKey,
                 softwareId,
                 checked((int)pair.Key.ProcessId),

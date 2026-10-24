@@ -9,7 +9,7 @@ namespace ResourceManager.App.Tests;
 public sealed class HostManagerProcessMemoryTransactionProjectionTests
 {
     private const ulong ConfigurationGeneration = 0x101;
-    private const ulong SchedulingGeneration = 0x202;
+    private const ulong RoundNumber = 0x202;
     private const ulong HostSessionIncarnation = 0x303;
     private const ulong JournalInstanceLow = 0x401;
     private const ulong JournalInstanceHigh = 0x402;
@@ -46,7 +46,7 @@ public sealed class HostManagerProcessMemoryTransactionProjectionTests
             PreparedAt);
 
         Assert.Equal(ConfigurationGeneration, prepare.Identity.ConfigurationGeneration);
-        Assert.Equal(SchedulingGeneration, prepare.Identity.PlanEpoch);
+        Assert.Equal(RoundNumber, prepare.Identity.PlanEpoch);
         Assert.Equal(action.MemoryPolicyTargetKey, prepare.Identity.TargetId);
         Assert.Equal(action.SoftwareKey, prepare.Identity.SoftwareId);
         Assert.Equal(ProcessStartKey, prepare.Identity.ProcessStartKey);
@@ -472,7 +472,7 @@ public sealed class HostManagerProcessMemoryTransactionProjectionTests
                 ProcessId,
                 ProcessStartKey));
         return new(
-            SchedulingGeneration,
+            RoundNumber,
             softwareKey,
             SoftwareId,
             ProcessId,

@@ -147,9 +147,6 @@ public sealed partial class HostManagerSmartCoordinator
                     ? ToNativeProcessGrade(processRecord.CurrentGrades.ProcessGrade)
                     : NativeSmartCoordinatorProcessGrade.Normal;
                 var processOwned = hasProcessRecord;
-                var appliedEpoch = processOwned || cpuOwned || gpuOwned
-                    ? ownership.LedgerRevision
-                    : 0;
                 var processScoreKey = new NativeProcessScoreKey(targetKey, processId, startKey);
                 var processCpuMetricsComplete = scoreProjection.ProcessCpu.TryGetValue(processScoreKey, out var cpuScore);
                 var rawCpuAvailable = target.HasCpuMetric && IsPercent(target.CpuUsagePercent);
@@ -169,7 +166,6 @@ public sealed partial class HostManagerSmartCoordinator
                     processGrade,
                     cpuGrade,
                     gpuGrade,
-                    appliedEpoch,
                     processOwned,
                     cpuOwned,
                     gpuOwned,
@@ -297,7 +293,6 @@ public sealed partial class HostManagerSmartCoordinator
             Append(inputRows, CreateNativeStandaloneProcessRestoreFact(
                 pair.Key,
                 in record,
-                ownership.LedgerRevision,
                 sourceIndex++));
             seenProcessOwnership.Add(pair.Key);
         }
@@ -310,7 +305,6 @@ public sealed partial class HostManagerSmartCoordinator
             Append(inputRows, CreateNativeStandaloneAdapterFact(
                 pair.Key,
                 in record,
-                ownership.LedgerRevision,
                 sourceIndex++));
             seenAdapterOwnership.Add(pair.Key);
         }
@@ -323,10 +317,7 @@ public sealed partial class HostManagerSmartCoordinator
         return new NativeFactProjectionResult(
             checked((uint)cursor),
             fullProcessSnapshot,
-            allNativeOwnershipRepresented,
-            scoreProjection.SchedulingGeneration,
-            scoreProjection.CpuSourceFingerprint,
-            scoreProjection.GpuSourceFingerprint);
+            allNativeOwnershipRepresented);
 
         void AppendMetric(
             Span<NativeSmartCoordinatorInputRow> outputRows,
@@ -391,7 +382,6 @@ public sealed partial class HostManagerSmartCoordinator
         NativeSmartCoordinatorProcessGrade processGrade,
         NativeSmartCoordinatorAdapterGrade cpuGrade,
         NativeSmartCoordinatorAdapterGrade gpuGrade,
-        ulong appliedEpoch,
         bool processOwned,
         bool cpuOwned,
         bool gpuOwned,
@@ -482,19 +472,16 @@ public sealed partial class HostManagerSmartCoordinator
             GpuCapabilityMask = gpuSchedulingEnabled ? CreateCapabilityMask(target.SupportedGpuGrades) : (byte)0,
             AppliedProcessGrade = processGrade,
             AppliedCpuGrade = cpuGrade,
-            AppliedGpuGrade = gpuGrade,
-            AppliedEpoch = appliedEpoch
+            AppliedGpuGrade = gpuGrade
         };
     }
 
     internal static NativeSmartCoordinatorInputRow CreateNativeStandaloneAdapterFact(
         ulong softwareKey,
         in NativeAppliedOwnershipRecord record,
-        ulong ledgerRevision,
         uint sourceIndex)
     {
         if (softwareKey == 0
-            || ledgerRevision == 0
             || record.Primary.Scope != (uint)NativeAppliedOwnershipScope.Adapter
             || record.Primary.SoftwareId != softwareKey)
         {
@@ -531,21 +518,18 @@ public sealed partial class HostManagerSmartCoordinator
                 : NativeSmartCoordinatorAdapterGrade.Normal,
             AppliedGpuGrade = gpuOwned
                 ? ToNativeAdapterGrade(grades.GpuGrade)
-                : NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedEpoch = ledgerRevision
+                : NativeSmartCoordinatorAdapterGrade.Normal
         };
     }
 
     internal static NativeSmartCoordinatorInputRow CreateNativeStandaloneProcessRestoreFact(
         NativeAppliedOwnershipProcessIdentity identity,
         in NativeAppliedOwnershipRecord record,
-        ulong ledgerRevision,
         uint sourceIndex)
     {
         if (identity.TargetKey == 0
             || identity.ProcessId == 0
             || identity.ProcessStartKey == 0
-            || ledgerRevision == 0
             || record.Primary.Scope != (uint)NativeAppliedOwnershipScope.Process
             || record.Primary.TargetId != identity.TargetKey
             || record.Primary.SoftwareId != identity.SoftwareKey
@@ -576,8 +560,7 @@ public sealed partial class HostManagerSmartCoordinator
             AppliedProcessGrade = ToNativeProcessGrade(
                 record.CurrentGrades.ProcessGrade),
             AppliedCpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal,
-            AppliedEpoch = ledgerRevision
+            AppliedGpuGrade = NativeSmartCoordinatorAdapterGrade.Normal
         };
     }
 
@@ -1014,7 +997,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return NativeComputeScoreProjection.Empty;
         }
-        if (result.SchedulingGeneration == 0
+        if (result.RoundNumber == 0
             || result.Cpu is null && result.Gpu is null)
         {
             throw new InvalidDataException(
@@ -1025,38 +1008,34 @@ public sealed partial class HostManagerSmartCoordinator
         var softwareCpu = new Dictionary<ulong, HostManagerComputeScore>();
         var processGpu = new Dictionary<NativeGpuScoreKey, HostManagerComputeScore>();
         var softwareGpu = new Dictionary<NativeSoftwareGpuScoreKey, HostManagerComputeScore>();
-        var cpuFingerprint = IndexDomain(result.Cpu, gpuDomain: false);
-        var gpuFingerprint = IndexDomain(result.Gpu, gpuDomain: true);
+        IndexDomain(result.Cpu, gpuDomain: false);
+        IndexDomain(result.Gpu, gpuDomain: true);
 
         return new NativeComputeScoreProjection(
-            result.SchedulingGeneration,
-            cpuFingerprint,
-            gpuFingerprint,
+            result.Cpu is not null,
+            result.Gpu is not null,
             processCpu,
             softwareCpu,
             processGpu,
             softwareGpu);
 
-        ulong IndexDomain(
+        void IndexDomain(
             HostManagerComputeScoreDomainSnapshot? domain,
             bool gpuDomain)
         {
             if (domain is null)
             {
-                return 0;
+                return;
             }
-            if (domain.SchedulingGeneration != result.SchedulingGeneration
-                || !domain.SourceIdentity.IsWellFormed(gpuDomain)
-                || domain.Scores.IsDefault)
+            if (domain.Scores.IsDefault)
             {
                 throw new InvalidDataException(
-                    "The canonical compute score domain is not bound to one complete source identity.");
+                    "The canonical compute score domain has no complete score collection.");
             }
 
             foreach (var score in domain.Scores)
             {
-                if (score.SchedulingGeneration != result.SchedulingGeneration
-                    || score.SoftwareKey == 0
+                if (score.SoftwareKey == 0
                     || !double.IsFinite(score.Score)
                     || score.Score < 0)
                 {
@@ -1134,8 +1113,6 @@ public sealed partial class HostManagerSmartCoordinator
                             "The canonical compute score row appears in the wrong domain.");
                 }
             }
-
-            return domain.SourceFingerprint;
         }
     }
 
@@ -1187,10 +1164,7 @@ public sealed partial class HostManagerSmartCoordinator
     private readonly record struct NativeFactProjectionResult(
         uint InputCount,
         bool FullProcessSnapshot,
-        bool AllAppliedOwnershipRecordsRepresented,
-        ulong ScoreSchedulingGeneration,
-        ulong CpuScoreSourceFingerprint,
-        ulong GpuScoreSourceFingerprint);
+        bool AllAppliedOwnershipRecordsRepresented);
 
     private readonly record struct NativeProcessScoreKey(
         ulong TargetKey,
@@ -1208,26 +1182,20 @@ public sealed partial class HostManagerSmartCoordinator
         ulong AdapterKey);
 
     private sealed record NativeComputeScoreProjection(
-        ulong SchedulingGeneration,
-        ulong CpuSourceFingerprint,
-        ulong GpuSourceFingerprint,
+        bool HasCpu,
+        bool HasGpu,
         IReadOnlyDictionary<NativeProcessScoreKey, HostManagerComputeScore> ProcessCpu,
         IReadOnlyDictionary<ulong, HostManagerComputeScore> SoftwareCpu,
         IReadOnlyDictionary<NativeGpuScoreKey, HostManagerComputeScore> ProcessGpu,
         IReadOnlyDictionary<NativeSoftwareGpuScoreKey, HostManagerComputeScore> SoftwareGpu)
     {
         internal static NativeComputeScoreProjection Empty { get; } = new(
-            0,
-            0,
-            0,
+            false,
+            false,
             new Dictionary<NativeProcessScoreKey, HostManagerComputeScore>(),
             new Dictionary<ulong, HostManagerComputeScore>(),
             new Dictionary<NativeGpuScoreKey, HostManagerComputeScore>(),
             new Dictionary<NativeSoftwareGpuScoreKey, HostManagerComputeScore>());
-
-        internal bool HasCpu => CpuSourceFingerprint != 0;
-
-        internal bool HasGpu => GpuSourceFingerprint != 0;
     }
 
     private static bool IsProcessGpuMetricsComplete(
@@ -1243,12 +1211,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return false;
         }
-        if (!processFacts.TryGetCurrentDataset(
-                SchedulingProcessMetricMask.GpuUsage,
-                out var usageDataset))
-        {
-            return false;
-        }
         processFacts.TryGetCurrentDataset(
             SchedulingProcessMetricMask.GpuDedicatedMemory,
             out var dedicatedMemoryDataset);
@@ -1258,8 +1220,6 @@ public sealed partial class HostManagerSmartCoordinator
         {
             if (!byAdapterKey.TryGetValue(adapter.AdapterKey, out var fact)
                 || fact.GpuIndex != adapter.Index
-                || fact.UsageSourceGeneration != usageDataset.SourceGeneration
-                || fact.UsageTopologyGeneration != usageDataset.TopologyGeneration
                 || adapter.UsageStatus != SamplingObservationStatus.Current
                 || !fact.HasUsageMetric
                 || !IsPercent(fact.GpuUsagePercent))
@@ -1271,10 +1231,6 @@ public sealed partial class HostManagerSmartCoordinator
                 && (adapter.CapacityStatus != SamplingObservationStatus.Current
                     || !fact.HasVramMetric
                     || dedicatedMemoryDataset is null
-                    || fact.DedicatedMemorySourceGeneration !=
-                        dedicatedMemoryDataset.SourceGeneration
-                    || fact.DedicatedMemoryTopologyGeneration !=
-                        dedicatedMemoryDataset.TopologyGeneration
                     || !IsPercent(fact.VramUsedPercent)))
             {
                 return false;
@@ -1296,15 +1252,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (!inventory.IsCurrentComplete()
             || !processFacts.TryGetCurrentDataset(metric, out var dataset)
             || dataset.TopologyFingerprint == 0
-            || dataset.TopologyFingerprint != inventory.TopologyFingerprint
-            || metric == SchedulingProcessMetricMask.GpuUsage
-                && (fact.UsageSourceGeneration != dataset.SourceGeneration
-                    || fact.UsageTopologyGeneration != dataset.TopologyGeneration)
-            || metric == SchedulingProcessMetricMask.GpuDedicatedMemory
-                && (fact.DedicatedMemorySourceGeneration !=
-                        dataset.SourceGeneration
-                    || fact.DedicatedMemoryTopologyGeneration !=
-                        dataset.TopologyGeneration))
+            || dataset.TopologyFingerprint != inventory.TopologyFingerprint)
         {
             return false;
         }

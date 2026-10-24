@@ -9,13 +9,16 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private ulong lastPublicResourceCapacityRound;
+
     private bool HasAvailablePublicResourceLifecycle()
         => hostPublicResourceSelfManagerOwner is not IHostPublicResourceCapability capability
             || capability.GetCapability().Available;
 
     private void RunNormalModePublicResourceLifecycle(
         HostManagerCycleEffectAdmission effectAdmission,
-        HostManagerSmartCoordinatorRuntimePlan desired)
+        HostManagerSmartCoordinatorRuntimePlan desired,
+        (ResourceManager.App.Domain.Metrics.HardwareMetricSnapshot Hardware, ulong RoundNumber)? capture)
     {
         if (!HasAvailablePublicResourceLifecycle()
             || !effectAdmission.TryAcquire(
@@ -28,12 +31,12 @@ public sealed partial class HostManagerSmartCoordinator
         var memory = HostPublicResourceCapacityObservation.UnknownOrStale;
         var videoMemory = HostPublicResourceCapacityObservation.UnknownOrStale;
         IReadOnlyList<HostPublicResourceAdapterCapacityObservation> adapters = [];
-        var hardware = metricSnapshotSource.ReadLatest(CreatePublicResourceMetricRequest());
-        if (hardware is not null)
+        if (capture is { } sample && sample.RoundNumber > lastPublicResourceCapacityRound)
         {
             var policyExecutionEnabled = hostManagerSmartControlZones.CanRun(
                 HostManagerSmartControlZoneIds.PolicyExecution);
-            var freshness = hostPublicResourceCapacitySampleFreshness.Observe(hardware);
+            var hardware = sample.Hardware;
+            lastPublicResourceCapacityRound = sample.RoundNumber;
             var idle = CreateIdleCapacity(hardware);
             var observedMemory = HostPublicResourceCapacityObserver.ObserveMemory(
                 policyExecutionEnabled,
@@ -44,15 +47,9 @@ public sealed partial class HostManagerSmartCoordinator
                 policyExecutionEnabled,
                 desired.HostPlan.HotPublish.ResourceScheduler.Configuration,
                 hardware.GpuInventory);
-            if (freshness.Memory)
-            {
-                memory = observedMemory;
-            }
-            if (freshness.VideoMemory)
-            {
-                videoMemory = observedVideoMemory.Summary;
-                adapters = observedVideoMemory.Adapters;
-            }
+            memory = observedMemory;
+            videoMemory = observedVideoMemory.Summary;
+            adapters = observedVideoMemory.Adapters;
         }
 
         RunHostPublicResourceSelfManager(

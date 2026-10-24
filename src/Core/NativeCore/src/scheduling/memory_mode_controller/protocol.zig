@@ -1,7 +1,7 @@
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x0006_0001;
+pub const abi_version: u32 = 0x0007_0000;
 
 pub const Status = enum(i32) {
     ok = 0,
@@ -9,7 +9,6 @@ pub const Status = enum(i32) {
     abi_mismatch = 2,
     no_data = 3,
     buffer_too_small = 4,
-    stale_generation = 5,
     capacity_exceeded = 6,
     conflicting_facts = 7,
     invalid_facts = 8,
@@ -48,10 +47,9 @@ pub const MemoryGradeSet = struct {
 };
 
 pub const EnvelopeValidity = struct {
-    pub const memory_source: u64 = 1 << 0;
     pub const memory_pressure: u64 = 1 << 1;
     pub const cpu_scores: u64 = 1 << 2;
-    pub const required: u64 = memory_source | memory_pressure | cpu_scores;
+    pub const required: u64 = memory_pressure | cpu_scores;
     pub const known: u64 = required;
 };
 
@@ -64,10 +62,9 @@ pub const EnvelopeFlags = struct {
 
 pub const SoftwareValidity = struct {
     pub const identity: u64 = 1 << 0;
-    pub const scheduling_generation: u64 = 1 << 1;
     pub const cpu_score: u64 = 1 << 2;
     pub const base_score: u64 = 1 << 3;
-    pub const required: u64 = identity | scheduling_generation | cpu_score | base_score;
+    pub const required: u64 = identity | cpu_score | base_score;
     pub const known: u64 = required;
 };
 
@@ -78,15 +75,13 @@ pub const DesiredSoftwareFlags = struct {
 
 pub const DesiredSoftwareValidity = struct {
     pub const software_identity: u64 = 1 << 0;
-    pub const snapshot_generation: u64 = 1 << 1;
-    pub const scheduling_generation: u64 = 1 << 2;
+    pub const round_number: u64 = 1 << 2;
     pub const score: u64 = 1 << 3;
     pub const rank: u64 = 1 << 4;
     pub const mode: u64 = 1 << 5;
     pub const base_score: u64 = 1 << 6;
     pub const base_score_allowed_grades: u64 = 1 << 7;
-    pub const required: u64 = software_identity | snapshot_generation |
-        scheduling_generation | score | rank | mode | base_score | base_score_allowed_grades;
+    pub const required: u64 = software_identity | round_number | score | rank | mode | base_score | base_score_allowed_grades;
     pub const known: u64 = required;
 };
 
@@ -128,10 +123,7 @@ pub const GenerationEnvelope = extern struct {
     software_input_struct_size: u32,
     software_output_struct_size: u32,
     configuration_generation: u64,
-    scheduling_generation: u64,
-    memory_source_workspace_identity: u64,
-    memory_source_committed_generation: u64,
-    snapshot_generation: u64,
+    round_number: u64,
     valid_mask: u64,
     flags: u64,
     memory_free_ratio_units: u32,
@@ -146,7 +138,6 @@ pub const SoftwareInput = extern struct {
     flags: u32,
     valid_mask: u64,
     software_key: u64,
-    scheduling_generation: u64,
     cpu_score: f64,
     base_score: f64,
     source_index: u32,
@@ -162,8 +153,7 @@ pub const DesiredSoftwareOutput = extern struct {
     reserved0: u8,
     valid_mask: u64,
     software_key: u64,
-    snapshot_generation: u64,
-    scheduling_generation: u64,
+    round_number: u64,
     score: f64,
     base_score: f64,
     rank: u32,
@@ -174,10 +164,7 @@ pub const Snapshot = extern struct {
     abi_version: u32,
     struct_size: u32,
     configuration_generation: u64,
-    scheduling_generation: u64,
-    memory_source_workspace_identity: u64,
-    memory_source_committed_generation: u64,
-    snapshot_generation: u64,
+    round_number: u64,
     flags: u64,
     output_count: u32,
     optimize_count: u32,
@@ -228,16 +215,8 @@ comptime {
         @compileError("memory mode allowed grades offset drift");
     if (@sizeOf(Config) != 80) @compileError("memory mode Config ABI drift");
     if (@sizeOf(Capacity) != 64) @compileError("memory mode Capacity ABI drift");
-    if (@sizeOf(GenerationEnvelope) != 112) @compileError("memory mode envelope ABI drift");
-    if (@sizeOf(SoftwareInput) != 64) @compileError("memory mode software input ABI drift");
-    if (@sizeOf(DesiredSoftwareOutput) != 64) @compileError("memory mode software output ABI drift");
-    if (@sizeOf(Snapshot) != 96) @compileError("memory mode snapshot ABI drift");
-    if (@offsetOf(GenerationEnvelope, "memory_source_workspace_identity") != 32)
-        @compileError("memory mode envelope workspace identity offset drift");
-    if (@offsetOf(GenerationEnvelope, "memory_source_committed_generation") != 40)
-        @compileError("memory mode envelope committed generation offset drift");
-    if (@offsetOf(Snapshot, "memory_source_workspace_identity") != 24)
-        @compileError("memory mode snapshot workspace identity offset drift");
-    if (@offsetOf(Snapshot, "memory_source_committed_generation") != 32)
-        @compileError("memory mode snapshot committed generation offset drift");
+    if (@sizeOf(GenerationEnvelope) != 88) @compileError("memory mode envelope ABI drift");
+    if (@sizeOf(SoftwareInput) != 56) @compileError("memory mode software input ABI drift");
+    if (@sizeOf(DesiredSoftwareOutput) != 56) @compileError("memory mode software output ABI drift");
+    if (@sizeOf(Snapshot) != 72) @compileError("memory mode snapshot ABI drift");
 }

@@ -212,7 +212,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             CanApply: true);
         var score = new HostManagerComputeScore(
             NativeComputeScoringOutputKind.ProcessCpu,
-            SchedulingGeneration: 7,
+            RoundNumber: 7,
             TargetKey: NativeStableIdentity.CreateCaseInsensitiveKey(targetId),
             SoftwareKey: NativeStableIdentity.CreateCaseInsensitiveKey(softwareId),
             processId,
@@ -233,7 +233,7 @@ public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
             BaseScore: 20,
             SchedulingProcessMetricMask.MemoryUsage,
             CpuUsagePercent: 0,
-            MemoryUsagePercent: 10,
+            MemoryUsedBytes: 10,
             SourceGeneration: 2,
             Gpus: []);
         return new AdmissionFixture(candidate, score, current);

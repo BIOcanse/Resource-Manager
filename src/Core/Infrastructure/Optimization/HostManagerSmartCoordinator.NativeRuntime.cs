@@ -208,7 +208,7 @@ public sealed partial class HostManagerSmartCoordinator
                 }
                 else
                 {
-                    PublishSchedulingAuthorityUnavailable(NextComputeScoringGeneration(), binding,
+                    PublishSchedulingAuthorityUnavailable(roundNumber, binding,
                         durableTimeSource.NextUtc(), capture.UnavailableReason ?? "sampling-snapshot-unavailable");
                 }
             }
@@ -216,7 +216,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 hostPublicResourceNormalReleaseEvidence.Stop();
                 ClearNonAdaptedMemoryModeProjection();
-                schedulingAuthorityOwner.PublishUnavailable(NextComputeScoringGeneration(),
+                schedulingAuthorityOwner.PublishUnavailable(roundNumber,
                     HostManagerSchedulingPlanBinding.Create(desired), durableTimeSource.NextUtc(), "optimization-mode-normal");
             }
             cycleDiagnostics?.Defer("placement-ledger-busy-for-workspace");
@@ -266,12 +266,15 @@ public sealed partial class HostManagerSmartCoordinator
         }
         var runtimePlan = desired.RuntimePlan;
         var modePlan = runtimePlan.OptimizationMode;
+        var normalCapacitySample = !modePlan.SchedulingEnabled && HasAvailablePublicResourceLifecycle()
+            ? CapturePublicResourceCapacitySample()
+            : null;
         if (!modePlan.SchedulingEnabled)
         {
             hostPublicResourceNormalReleaseEvidence.Stop();
             ClearNonAdaptedMemoryModeProjection();
             schedulingAuthorityOwner.PublishUnavailable(
-                NextComputeScoringGeneration(),
+                roundNumber,
                 HostManagerSchedulingPlanBinding.Create(desired),
                 durableTimeSource.NextUtc(),
                 "optimization-mode-normal");
@@ -309,7 +312,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
         if (!modePlan.SchedulingEnabled)
         {
-            RunNormalModePublicResourceLifecycle(effectAdmission, desired);
+            RunNormalModePublicResourceLifecycle(effectAdmission, desired, normalCapacitySample);
             cycleDiagnostics?.Complete();
             return new(runtimePlan.HostManager.SchedulerSamplingInterval, effectAdmission);
         }
@@ -322,7 +325,7 @@ public sealed partial class HostManagerSmartCoordinator
             var unavailableReason = sampleCapture.UnavailableReason
                 ?? "sampling-snapshot-unavailable";
             PublishSchedulingAuthorityUnavailable(
-                NextComputeScoringGeneration(),
+                roundNumber,
                 schedulingPlanBinding,
                 durableTimeSource.NextUtc(),
                 unavailableReason);

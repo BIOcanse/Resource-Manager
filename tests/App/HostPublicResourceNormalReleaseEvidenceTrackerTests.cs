@@ -23,7 +23,7 @@ public sealed class HostPublicResourceNormalReleaseEvidenceTrackerTests
     }
 
     [Fact]
-    public void ReusedGenerationAndPreCompletionCaptureCannotAdvanceProof()
+    public void OnlyLargerRoundsAdvanceProofRegardlessOfWallClock()
     {
         var tracker = new HostPublicResourceNormalReleaseEvidenceTracker();
         var first = CreateCycle(1, capturedAtSecond: 1);
@@ -168,11 +168,7 @@ public sealed class HostPublicResourceNormalReleaseEvidenceTrackerTests
             SmartConfigurationGeneration: 1,
             SmartConfigurationSha256: new string('B', 64),
             NormalMemoryReleaseEnabled: true,
-            HardwareWorkspaceIdentity: 1,
-            HardwareConfigurationGeneration: 1,
-            HardwareCatalogGeneration: 1,
-            HardwareCommittedGeneration: committedGeneration,
-            HardwareCapturedAtUtcTicks: AtSecond(capturedAtSecond).UtcTicks);
+            RoundNumber: committedGeneration);
 
     private static DateTimeOffset AtSecond(double second)
         => DateTimeOffset.UnixEpoch.AddTicks(

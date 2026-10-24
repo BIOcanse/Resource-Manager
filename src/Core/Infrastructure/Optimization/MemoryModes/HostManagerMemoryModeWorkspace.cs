@@ -45,21 +45,12 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
     internal HostManagerMemoryModeDesiredSnapshot Plan(
         HostManagerComputeScoringCycleResult scoring,
         SchedulingProcessFactSnapshot processFacts,
-        HostManagerMemorySourceStamp memorySource,
         uint memoryFreeRatioUnits,
-        ulong snapshotGeneration,
         bool allowUnrestricted)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(scoring);
         ArgumentNullException.ThrowIfNull(processFacts);
-        if (!memorySource.IsValid)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(memorySource),
-                "Memory mode planning requires a complete source stamp.");
-        }
-        ArgumentOutOfRangeException.ThrowIfZero(snapshotGeneration);
         if (memoryFreeRatioUnits > configuration.RatioUnitsMaximum)
         {
             throw new ArgumentOutOfRangeException(nameof(memoryFreeRatioUnits));
@@ -67,7 +58,10 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
 
         var cpu = scoring.Cpu ?? throw new InvalidDataException(
             "Memory mode planning requires a complete CPU score domain.");
-        ValidateGenerationEnvelope(scoring, cpu, processFacts);
+        if (!processFacts.IsInventoryCurrentComplete())
+        {
+            throw new InvalidDataException("Memory mode planning requires a complete process inventory.");
+        }
         var softwareScores = cpu.Scores
             .Where(static row => row.Kind == NativeComputeScoringOutputKind.SoftwareCpu)
             .OrderBy(static row => row.SoftwareKey)
@@ -78,7 +72,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
             throw new InvalidDataException("Memory mode planning capacity was exceeded.");
         }
         var softwareBaseScores = AggregateSoftwareBaseScores(cpu, processFacts);
-        FillSoftware(scoring.SchedulingGeneration, softwareScores, softwareBaseScores);
+        FillSoftware(softwareScores, softwareBaseScores);
 
         var flags = NativeMemoryModeEnvelopeFlags.Required;
         if (allowUnrestricted) flags |= NativeMemoryModeEnvelopeFlags.AllowUnrestricted;
@@ -89,10 +83,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
             SoftwareInputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
             SoftwareOutputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeDesiredSoftwareOutput>(),
             ConfigurationGeneration = ConfigurationGeneration,
-            SchedulingGeneration = scoring.SchedulingGeneration,
-            MemorySourceWorkspaceIdentity = memorySource.WorkspaceIdentity,
-            MemorySourceCommittedGeneration = memorySource.CommittedGeneration,
-            SnapshotGeneration = snapshotGeneration,
+            RoundNumber = scoring.RoundNumber,
             ValidMask = NativeMemoryModeEnvelopeValidity.Required,
             Flags = flags,
             MemoryFreeRatioUnits = memoryFreeRatioUnits,
@@ -120,25 +111,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
         session.Dispose();
     }
 
-    private static void ValidateGenerationEnvelope(
-        HostManagerComputeScoringCycleResult scoring,
-        HostManagerComputeScoreDomainSnapshot cpu,
-        SchedulingProcessFactSnapshot processFacts)
-    {
-        if (scoring.SchedulingGeneration == 0 ||
-            cpu.SchedulingGeneration != scoring.SchedulingGeneration ||
-            cpu.SourceGeneration == 0 ||
-            cpu.SourceIdentity.InventoryGeneration != processFacts.Generation ||
-            !processFacts.IsInventoryCurrentComplete() ||
-            cpu.TopologyGeneration != 0 || cpu.TopologyFingerprint != 0)
-        {
-            throw new InvalidDataException(
-                "Memory mode planning inputs do not form one complete CPU scoring generation.");
-        }
-    }
-
     private void FillSoftware(
-        ulong schedulingGeneration,
         HostManagerComputeScore[] softwareScores,
         IReadOnlyDictionary<ulong, SoftwareBaseScore> softwareBaseScores)
     {
@@ -151,7 +124,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
         for (var index = 0; index < softwareScores.Length; index++)
         {
             var score = softwareScores[index];
-            if (score.SchedulingGeneration != schedulingGeneration || score.SoftwareKey == 0 ||
+            if (score.SoftwareKey == 0 ||
                 score.SoftwareKey <= previousKey || score.AdapterKey != 0 ||
                 !double.IsFinite(score.Score) || score.Score < 0 || score.MemberCount == 0 ||
                 !softwareBaseScores.TryGetValue(score.SoftwareKey, out var baseScore) ||
@@ -166,7 +139,6 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
                 StructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
                 ValidMask = NativeMemoryModeSoftwareValidity.Required,
                 SoftwareKey = score.SoftwareKey,
-                SchedulingGeneration = schedulingGeneration,
                 CpuScore = score.Score,
                 BaseScore = baseScore.Value,
                 SourceIndex = checked((uint)index)
@@ -189,8 +161,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
                 continue;
             }
             var identity = new HostManagerComputeProcessIdentity(score.ProcessId, score.ProcessStartKey);
-            if (score.SchedulingGeneration != cpu.SchedulingGeneration
-                || score.MemberCount != 1
+            if (score.MemberCount != 1
                 || !members.Add(identity)
                 || !factsByIdentity.TryGetValue(identity, out var process))
             {
@@ -230,12 +201,6 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
         if (snapshot.AbiVersion != NativeMemoryModeControllerAbi.Version ||
             snapshot.StructSize != NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSnapshot>() ||
             snapshot.ConfigurationGeneration != envelope.ConfigurationGeneration ||
-            snapshot.SchedulingGeneration != envelope.SchedulingGeneration ||
-            snapshot.MemorySourceWorkspaceIdentity
-                != envelope.MemorySourceWorkspaceIdentity ||
-            snapshot.MemorySourceCommittedGeneration
-                != envelope.MemorySourceCommittedGeneration ||
-            snapshot.SnapshotGeneration != envelope.SnapshotGeneration ||
             snapshot.Flags != expectedFlags ||
             snapshot.OutputCount != envelope.SoftwareCount || snapshot.Reserved0 != 0 ||
             snapshot.Reserved[0] != 0 || snapshot.Reserved[1] != 0 ||
@@ -257,7 +222,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
         for (var index = 0; index < softwareCount; index++)
         {
             var row = outputs[index];
-            ValidateOutput(row, snapshot, index, softwareCount);
+            ValidateOutput(row, index, softwareCount);
             if (rankSeen[row.Rank])
             {
                 throw new InvalidOperationException("Native memory ranks are not unique.");
@@ -267,8 +232,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
             if (row.Mode == NativeMemoryMode.PagedFrozen) strongestCount++;
             software.Add(new(
                 row.SoftwareKey,
-                row.SchedulingGeneration,
-                row.SnapshotGeneration,
+                row.RoundNumber,
                 row.Score,
                 row.Rank,
                 row.Mode,
@@ -284,11 +248,7 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
 
         return new(
             snapshot.ConfigurationGeneration,
-            snapshot.SchedulingGeneration,
-            new HostManagerMemorySourceStamp(
-                snapshot.MemorySourceWorkspaceIdentity,
-                snapshot.MemorySourceCommittedGeneration),
-            snapshot.SnapshotGeneration,
+            snapshot.RoundNumber,
             snapshot.Flags.HasFlag(NativeMemoryModeSnapshotFlags.UnrestrictedAllowed),
             snapshot.OptimizeCount,
             snapshot.StrongestCount,
@@ -297,15 +257,14 @@ internal sealed class HostManagerMemoryModeWorkspace : IDisposable
 
     private void ValidateOutput(
         NativeMemoryModeDesiredSoftwareOutput row,
-        NativeMemoryModeSnapshot snapshot,
         int index,
         int softwareCount)
     {
         var input = softwareInputs[index];
         if (row.StructSize != NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeDesiredSoftwareOutput>() ||
             row.ValidMask != NativeMemoryModeDesiredSoftwareValidity.Required ||
-            row.SoftwareKey != input.SoftwareKey || row.SnapshotGeneration != snapshot.SnapshotGeneration ||
-            row.SchedulingGeneration != snapshot.SchedulingGeneration || row.Score != input.CpuScore ||
+            row.SoftwareKey != input.SoftwareKey ||
+            row.Score != input.CpuScore ||
             row.BaseScore != input.BaseScore ||
             row.Rank >= softwareCount || row.SourceIndex != index ||
             row.Mode is < NativeMemoryMode.Unrestricted or > NativeMemoryMode.PagedFrozen ||

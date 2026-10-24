@@ -41,12 +41,7 @@ internal static class HostManagerSelfMemoryModeProjection
         var policyEvidence = authority.PolicyEvidence
             ?? throw new InvalidDataException(
                 "A ready self memory-mode projection requires memory policy evidence.");
-        if (authority.AttemptGeneration == 0
-            || compute.SchedulingGeneration != authority.AttemptGeneration
-            || cpu.SchedulingGeneration != authority.AttemptGeneration
-             || memoryModes.SchedulingGeneration != authority.AttemptGeneration
-             || memoryModes.SnapshotGeneration != authority.AttemptGeneration
-             || !memoryModes.MemorySource.IsValid
+        if (authority.RoundNumber == 0
              || memoryModes.ConfigurationGeneration
                 != currentPlanBinding.MemoryModeConfigurationGeneration
             || !policyEvidence.IsBoundTo(
@@ -54,7 +49,7 @@ internal static class HostManagerSelfMemoryModeProjection
                 memoryModes.UnrestrictedAllowed))
         {
             throw new InvalidDataException(
-                "Resource Manager self memory-mode authority is not one sealed generation.");
+                "Resource Manager self memory-mode authority is not one sealed round.");
         }
 
         HostManagerComputeScore? selfScore = null;
@@ -95,13 +90,10 @@ internal static class HostManagerSelfMemoryModeProjection
 
         if (selfScore is null
             || selfMode is null
-            || selfScore.SchedulingGeneration != authority.AttemptGeneration
             || selfScore.ProcessId != 0
             || selfScore.ProcessStartKey != 0
             || selfScore.AdapterKey != 0
             || selfScore.MemberCount == 0
-            || selfMode.SchedulingGeneration != authority.AttemptGeneration
-            || selfMode.SnapshotGeneration != authority.AttemptGeneration
             || BitConverter.DoubleToInt64Bits(selfMode.CpuScore)
                 != BitConverter.DoubleToInt64Bits(selfScore.Score)
             || selfMode.Mode is < NativeMemoryMode.Unrestricted

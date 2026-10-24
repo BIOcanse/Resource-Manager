@@ -123,10 +123,13 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
         var fallback = workspace.Score(1, facts, inventory, CreateRuntimeFacts(), null);
         var weighted = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), physical);
+        var recomputed = workspace.Score(2, facts, inventory, CreateRuntimeFacts(), physical);
 
         Assert.Equal(HostManagerCpuOccupancySource.ProcessCpuUsage, fallback?.CpuOccupancySource);
         Assert.Equal(HostManagerCpuOccupancySource.CoreResidency, weighted?.CpuOccupancySource);
         Assert.NotNull(weighted?.Memory);
+        Assert.Equal(2UL, weighted.RoundNumber);
+        Assert.Equal<HostManagerComputeScore>(weighted.Cpu!.Scores, recomputed!.Cpu!.Scores);
     }
 
     [Fact]

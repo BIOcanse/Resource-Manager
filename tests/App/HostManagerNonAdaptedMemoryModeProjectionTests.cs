@@ -9,7 +9,7 @@ namespace ResourceManager.App.Tests;
 
 public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
 {
-    private const ulong SchedulingGeneration = 71;
+    private const ulong RoundNumber = 71;
     private const ulong InventoryGeneration = 901;
     private const ulong CpuSourceGeneration = 902;
 
@@ -47,9 +47,7 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
             optimizeMemoryPriority: 3,
             pagedFrozenMemoryPriority: 1);
 
-        Assert.Equal(SchedulingGeneration, result.SchedulingGeneration);
-        Assert.Equal(InventoryGeneration, result.InventoryGeneration);
-        Assert.Equal(CpuSourceGeneration, result.CpuSourceGeneration);
+        Assert.Equal(RoundNumber, result.RoundNumber);
         var directive = Assert.Single(result.Processes);
         Assert.Equal("software-a", directive.SoftwareId);
         Assert.Equal(101, directive.ProcessId);
@@ -126,13 +124,10 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
             fixture.Capabilities,
             optimizeMemoryPriority: 3,
             pagedFrozenMemoryPriority: 1);
-        Assert.Equal(CpuSourceGeneration, result.CpuSourceGeneration);
-        Assert.Equal(InventoryGeneration, result.InventoryGeneration);
         Assert.Single(result.Processes);
     }
 
     [Theory]
-    [InlineData("inventory")]
     [InlineData("processStart")]
     [InlineData("software")]
     public void Create_RejectsScoredInventoryOrProcessDrift(string changedField)
@@ -142,10 +137,6 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
         var process = cpu.Scores[0];
         var changed = changedField switch
         {
-            "inventory" => cpu with
-            {
-                SourceIdentity = cpu.SourceIdentity with { InventoryGeneration = InventoryGeneration + 1 }
-            },
             "processStart" => cpu with
             {
                 Scores = cpu.Scores.SetItem(0, process with { ProcessStartKey = process.ProcessStartKey + 1 })
@@ -274,36 +265,29 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
             CreateSoftwareScore(softwareAKey, 0.25),
             CreateSoftwareScore(softwareBKey, 0.75));
         var cpu = new HostManagerComputeScoreDomainSnapshot(
-                SchedulingGeneration,
-                CpuSourceGeneration,
-                0,
-                0,
+                RoundNumber,
                 scores);
         var compute = new HostManagerComputeScoringCycleResult(
-            SchedulingGeneration,
-            cpu with { SourceIdentity = cpu.SourceIdentity with { InventoryGeneration = InventoryGeneration } },
+            RoundNumber,
+            cpu,
             null);
         var memoryModes = new HostManagerMemoryModeDesiredSnapshot(
             300,
-            SchedulingGeneration,
-            new HostManagerMemorySourceStamp(350, 400),
-            SchedulingGeneration,
+            RoundNumber,
             false,
             firstMode == NativeMemoryMode.Optimize ? 1U : 0U,
             firstMode == NativeMemoryMode.PagedFrozen ? 1U : 0U,
             ImmutableArray.Create(
                 new HostManagerDesiredMemoryMode(
                     softwareAKey,
-                    SchedulingGeneration,
-                    SchedulingGeneration,
+                    RoundNumber,
                     0.25,
                     0,
                     firstMode,
                     NativeMemoryGradeSet.Known),
                 new HostManagerDesiredMemoryMode(
                     softwareBKey,
-                    SchedulingGeneration,
-                    SchedulingGeneration,
+                    RoundNumber,
                     0.75,
                     1,
                     NativeMemoryMode.Normal,
@@ -354,7 +338,7 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
         double score)
         => new(
             NativeComputeScoringOutputKind.ProcessCpu,
-            SchedulingGeneration,
+            RoundNumber,
             checked((ulong)processId),
             softwareKey,
             processId,
@@ -369,7 +353,7 @@ public sealed class HostManagerNonAdaptedMemoryModeProjectionTests
         double score)
         => new(
             NativeComputeScoringOutputKind.SoftwareCpu,
-            SchedulingGeneration,
+            RoundNumber,
             softwareKey,
             softwareKey,
             0,

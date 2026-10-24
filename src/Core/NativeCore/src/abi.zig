@@ -39,7 +39,6 @@ comptime {
     _ = compute_scoring_abi.rm_compute_scoring_abi_version;
     _ = compute_scoring_abi.rm_compute_scoring_create;
     _ = compute_scoring_abi.rm_compute_scoring_destroy;
-    _ = compute_scoring_abi.rm_compute_scoring_reconfigure;
     _ = compute_scoring_abi.rm_compute_scoring_query_capacity;
     _ = compute_scoring_abi.rm_compute_scoring_score_with_scratch;
     _ = compute_scoring_abi.rm_compute_scoring_weighted_cpu_use;

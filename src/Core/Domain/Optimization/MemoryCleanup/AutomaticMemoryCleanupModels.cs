@@ -24,7 +24,10 @@ public sealed record AutomaticMemoryCleanupCandidate(
     double BaseScore,
     double CpuScore,
     double MemoryUsedPercent,
-    bool CanApply);
+    bool CanApply)
+{
+    public ulong RoundNumber { get; init; }
+}
 
 public sealed record AutomaticMemoryCleanupPlanRequest(
     AutomaticMemoryCleanupRequestKind Kind,

@@ -133,7 +133,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             subscriptions.Provider, subscriptions.Owner, new PdhProcessGpuReader(),
             new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]));
         var request = new SchedulingProcessFactRequest(
-            SchedulingProcessMetricMask.CpuUsage, null, CreateMemorySnapshot().GpuInventory);
+            SchedulingProcessMetricMask.CpuUsage, CreateMemorySnapshot().GpuInventory);
 
         var snapshot = await sampler.CaptureAsync(request, CancellationToken.None);
 

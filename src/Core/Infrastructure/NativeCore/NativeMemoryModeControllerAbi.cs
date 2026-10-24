@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeMemoryModeControllerAbi
 {
-    public const uint Version = 0x0006_0001;
+    public const uint Version = 0x0007_0000;
 }
 
 internal enum NativeMemoryModeControllerStatus : int
@@ -14,7 +14,6 @@ internal enum NativeMemoryModeControllerStatus : int
     AbiMismatch = 2,
     NoData = 3,
     BufferTooSmall = 4,
-    StaleGeneration = 5,
     CapacityExceeded = 6,
     ConflictingFacts = 7,
     InvalidFacts = 8,
@@ -47,10 +46,9 @@ internal enum NativeMemoryGradeSet : byte
 internal enum NativeMemoryModeEnvelopeValidity : ulong
 {
     None = 0,
-    MemorySource = 1UL << 0,
     MemoryPressure = 1UL << 1,
     CpuScores = 1UL << 2,
-    Required = MemorySource | MemoryPressure | CpuScores,
+    Required = MemoryPressure | CpuScores,
     Known = Required
 }
 
@@ -69,10 +67,9 @@ internal enum NativeMemoryModeSoftwareValidity : ulong
 {
     None = 0,
     Identity = 1UL << 0,
-    SchedulingGeneration = 1UL << 1,
     CpuScore = 1UL << 2,
     BaseScore = 1UL << 3,
-    Required = Identity | SchedulingGeneration | CpuScore | BaseScore,
+    Required = Identity | CpuScore | BaseScore,
     Known = Required
 }
 
@@ -89,14 +86,13 @@ internal enum NativeMemoryModeDesiredSoftwareValidity : ulong
 {
     None = 0,
     SoftwareIdentity = 1UL << 0,
-    SnapshotGeneration = 1UL << 1,
-    SchedulingGeneration = 1UL << 2,
+    RoundNumber = 1UL << 2,
     Score = 1UL << 3,
     Rank = 1UL << 4,
     Mode = 1UL << 5,
     BaseScore = 1UL << 6,
     BaseScoreAllowedGrades = 1UL << 7,
-    Required = SoftwareIdentity | SnapshotGeneration | SchedulingGeneration |
+    Required = SoftwareIdentity | RoundNumber |
         Score | Rank | Mode | BaseScore | BaseScoreAllowedGrades,
     Known = Required
 }
@@ -140,7 +136,7 @@ internal unsafe struct NativeMemoryModeCapacity
     public fixed ulong Reserved[4];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 112)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 88)]
 internal unsafe struct NativeMemoryModeGenerationEnvelope
 {
     public uint AbiVersion;
@@ -148,10 +144,7 @@ internal unsafe struct NativeMemoryModeGenerationEnvelope
     public uint SoftwareInputStructSize;
     public uint SoftwareOutputStructSize;
     public ulong ConfigurationGeneration;
-    public ulong SchedulingGeneration;
-    public ulong MemorySourceWorkspaceIdentity;
-    public ulong MemorySourceCommittedGeneration;
-    public ulong SnapshotGeneration;
+    public ulong RoundNumber;
     public NativeMemoryModeEnvelopeValidity ValidMask;
     public NativeMemoryModeEnvelopeFlags Flags;
     public uint MemoryFreeRatioUnits;
@@ -161,14 +154,13 @@ internal unsafe struct NativeMemoryModeGenerationEnvelope
     public fixed ulong Reserved[3];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 64)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 56)]
 internal unsafe struct NativeMemoryModeSoftwareInput
 {
     public uint StructSize;
     public uint Flags;
     public NativeMemoryModeSoftwareValidity ValidMask;
     public ulong SoftwareKey;
-    public ulong SchedulingGeneration;
     public double CpuScore;
     public double BaseScore;
     public uint SourceIndex;
@@ -176,7 +168,7 @@ internal unsafe struct NativeMemoryModeSoftwareInput
     public fixed ulong Reserved[1];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 64)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 56)]
 internal struct NativeMemoryModeDesiredSoftwareOutput
 {
     public uint StructSize;
@@ -186,24 +178,20 @@ internal struct NativeMemoryModeDesiredSoftwareOutput
     public byte Reserved0;
     public NativeMemoryModeDesiredSoftwareValidity ValidMask;
     public ulong SoftwareKey;
-    public ulong SnapshotGeneration;
-    public ulong SchedulingGeneration;
+    public ulong RoundNumber;
     public double Score;
     public double BaseScore;
     public uint Rank;
     public uint SourceIndex;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 72)]
 internal unsafe struct NativeMemoryModeSnapshot
 {
     public uint AbiVersion;
     public uint StructSize;
     public ulong ConfigurationGeneration;
-    public ulong SchedulingGeneration;
-    public ulong MemorySourceWorkspaceIdentity;
-    public ulong MemorySourceCommittedGeneration;
-    public ulong SnapshotGeneration;
+    public ulong RoundNumber;
     public NativeMemoryModeSnapshotFlags Flags;
     public uint OutputCount;
     public uint OptimizeCount;

@@ -23,8 +23,7 @@ pub const Frame = extern struct {
     struct_size: u32,
     generation: u64,
     topology_key: u64,
-    observation_source: u64,
-    observed_through: u64,
+    round_number: u64,
     core_count: u32,
     ccd_count: u32,
     software_count: u32,
@@ -63,8 +62,7 @@ pub const State = struct {
     output: []Reservation,
     owner_count: usize = 0,
     topology_key: u64 = 0,
-    observation_source: u64 = 0,
-    observed_through: u64 = 0,
+    last_round_number: u64 = 0,
 
     pub fn create(allocator: std.mem.Allocator, config: Config) !*State {
         if (!validConfig(config)) return error.InvalidConfiguration;
@@ -117,8 +115,7 @@ pub const State = struct {
     pub fn reset(self: *State) void {
         self.owner_count = 0;
         self.topology_key = 0;
-        self.observation_source = 0;
-        self.observed_through = 0;
+        self.last_round_number = 0;
         @memset(self.owners, .{});
         @memset(self.core_active, false);
         @memset(self.ccd_active, false);
@@ -138,7 +135,7 @@ pub const State = struct {
         frame.output_count = 0;
         if (frame.abi_version != version or frame.struct_size != @sizeOf(Frame) or frame.reserved != 0) return .abi_mismatch;
         if (frame.generation != self.config.generation) return .stale_frame;
-        if (frame.topology_key == 0 or cores.len == 0 or cores.len > self.config.core_capacity or
+        if (frame.round_number == 0 or frame.topology_key == 0 or cores.len == 0 or cores.len > self.config.core_capacity or
             frame.ccd_count == 0 or frame.ccd_count > self.config.ccd_capacity or software.len > self.config.software_capacity or
             usage.len > @as(u64, self.config.software_capacity) * self.config.core_capacity or manual.len > self.config.reservation_capacity or
             frame.core_count != cores.len or frame.software_count != software.len or frame.usage_count != usage.len or
@@ -147,8 +144,7 @@ pub const State = struct {
         var last_key: u64 = 0;
         for (software) |owner| {
             if (owner.key <= last_key or owner.instance_digest == 0 or owner.automatic > 1 or owner.observed > 1 or
-                !std.math.isFinite(owner.priority) or owner.priority < 0 or
-                (owner.observed == 1 and (frame.observation_source == 0 or frame.observed_through == 0))) return .invalid_argument;
+                !std.math.isFinite(owner.priority) or owner.priority < 0) return .invalid_argument;
             last_key = owner.key;
         }
         var previous_usage: ?Usage = null;
@@ -162,11 +158,8 @@ pub const State = struct {
             previous_usage = row;
         }
         for (manual) |row| if (row.software_index >= software.len or row.core_index >= cores.len) return .invalid_argument;
-        const same_topology = self.topology_key == frame.topology_key;
-        const same_source = frame.observation_source == 0 or self.observation_source == frame.observation_source;
-        if (same_topology and same_source and frame.observed_through != 0 and frame.observed_through < self.observed_through) return .stale_frame;
-        const retain = same_topology and same_source;
-        const fresh = frame.observed_through != 0 and (!retain or frame.observed_through > self.observed_through);
+        const retain = self.topology_key == frame.topology_key;
+        const fresh = frame.round_number > self.last_round_number;
         @memset(self.next_core_active, false);
         @memset(self.next_ccd_active, false);
         var prior_index: usize = 0;
@@ -249,10 +242,7 @@ pub const State = struct {
         std.mem.swap([]bool, &self.ccd_active, &self.next_ccd_active);
         self.owner_count = software.len;
         self.topology_key = frame.topology_key;
-        if (frame.observation_source != 0) {
-            self.observation_source = frame.observation_source;
-            self.observed_through = frame.observed_through;
-        }
+        self.last_round_number = @max(self.last_round_number, frame.round_number);
         @memcpy(output[0..output_count], self.output[0..output_count]);
         frame.output_count = @intCast(output_count);
         return .ok;
@@ -283,6 +273,42 @@ pub fn validConfig(c: Config) bool {
 }
 
 comptime {
-    if (@sizeOf(Config) != 80 or @sizeOf(Frame) != 72 or @sizeOf(Software) != 32 or
+    if (@sizeOf(Config) != 80 or @sizeOf(Frame) != 64 or @sizeOf(Software) != 32 or
         @sizeOf(Core) != 8 or @sizeOf(Usage) != 16 or @sizeOf(Reservation) != 8) @compileError("CPU exclusivity ABI layout changed");
+}
+
+test "CPU exclusivity qualification counts larger scheduling rounds only" {
+    const state = try State.create(std.testing.allocator, .{
+        .abi_version = version, .struct_size = @sizeOf(Config), .generation = 1,
+        .core_capacity = 2, .ccd_capacity = 1, .software_capacity = 1, .reservation_capacity = 2,
+        .core_enter = 75, .core_exit = 20, .ccd_enter = 60, .ccd_exit = 30,
+        .qualification_rounds = 3, .enabled = 1,
+    });
+    defer state.destroy();
+    const cores = [_]Core{ .{ .ccd_index = 0 }, .{ .ccd_index = 0 } };
+    const software = [_]Software{.{ .key = 1, .instance_digest = 1, .priority = 100, .automatic = 1, .observed = 1 }};
+    var usage = [_]Usage{.{ .software_index = 0, .core_index = 0, .percent = 80 }};
+    var output: [2]Reservation = undefined;
+    var frame: Frame = .{
+        .abi_version = version, .struct_size = @sizeOf(Frame), .generation = 1, .topology_key = 1,
+        .round_number = 1, .core_count = 2, .ccd_count = 1, .software_count = 1,
+        .usage_count = 1, .manual_count = 0, .output_capacity = 2,
+    };
+    for ([_]u64{ 1, 1, 2, 2, 3, 3 }) |round| {
+        frame.round_number = round;
+        try std.testing.expectEqual(ResultCode.ok, state.plan(&frame, &cores, &software, &usage, &.{}, &output));
+        try std.testing.expectEqual(@as(u32, 0), frame.output_count);
+    }
+    frame.round_number = 4;
+    try std.testing.expectEqual(ResultCode.ok, state.plan(&frame, &cores, &software, &usage, &.{}, &output));
+    try std.testing.expectEqual(@as(u32, 1), frame.output_count);
+    usage[0].percent = 0;
+    for ([_]u64{ 2, 4 }) |round| {
+        frame.round_number = round;
+        try std.testing.expectEqual(ResultCode.ok, state.plan(&frame, &cores, &software, &usage, &.{}, &output));
+        try std.testing.expectEqual(@as(u32, 1), frame.output_count);
+    }
+    frame.round_number = 5;
+    try std.testing.expectEqual(ResultCode.ok, state.plan(&frame, &cores, &software, &usage, &.{}, &output));
+    try std.testing.expectEqual(@as(u32, 0), frame.output_count);
 }

@@ -14,13 +14,8 @@ internal readonly record struct HostManagerMemoryCleanupValidationFactContext(
     double GuardedFreeRatio,
     double PhysicalEmergencyFreeRatio,
     double VirtualEmergencyFreeRatio,
-    ulong CapacityWorkspaceIdentity,
-    ulong CapacityConfigurationGeneration,
-    ulong CapacityCatalogGeneration,
-    ulong BaselineCapacityCommittedGeneration,
-    ulong FinalCapacityCommittedGeneration,
-    long BaselineCapacityCapturedAtUtcTicks,
-    long FinalCapacityCapturedAtUtcTicks,
+    ulong BaselineRoundNumber,
+    ulong RoundNumber,
     bool OrdinaryMemoryFreeRatioCurrent,
     bool PhysicalMemoryFreeRatioCurrent,
     bool VirtualMemoryFreeRatioCurrent);
@@ -145,9 +140,9 @@ internal sealed class HostManagerMemoryCleanupValidationEvidenceReservation : ID
 
 internal sealed class HostManagerMemoryCleanupValidationEvidenceLedger
 {
-    internal const int SchemaVersion = 3;
+    internal const int SchemaVersion = 4;
     internal const string Contract =
-        "host-manager-memory-cleanup-validation-evidence-v3";
+        "host-manager-memory-cleanup-validation-evidence-v4";
     internal const int MaximumBatchCount = 256;
     internal const int MaximumActionCount = 4096;
 
@@ -452,13 +447,8 @@ internal sealed class HostManagerMemoryCleanupValidationEvidenceLedger
                 batch.FactContext.GuardedFreeRatio,
                 batch.FactContext.PhysicalEmergencyFreeRatio,
                 batch.FactContext.VirtualEmergencyFreeRatio,
-                batch.FactContext.CapacityWorkspaceIdentity,
-                batch.FactContext.CapacityConfigurationGeneration,
-                batch.FactContext.CapacityCatalogGeneration,
-                batch.FactContext.BaselineCapacityCommittedGeneration,
-                batch.FactContext.FinalCapacityCommittedGeneration,
-                batch.FactContext.BaselineCapacityCapturedAtUtcTicks,
-                batch.FactContext.FinalCapacityCapturedAtUtcTicks,
+                batch.FactContext.BaselineRoundNumber,
+                batch.FactContext.RoundNumber,
                 batch.RequestKind,
                 batch.OrdinaryMemoryFreeRatio,
                 batch.FactContext.OrdinaryMemoryFreeRatioCurrent,
@@ -577,13 +567,8 @@ internal sealed class HostManagerMemoryCleanupValidationEvidenceLedger
             batch.FactContext.GuardedFreeRatio,
             batch.FactContext.PhysicalEmergencyFreeRatio,
             batch.FactContext.VirtualEmergencyFreeRatio,
-            batch.FactContext.CapacityWorkspaceIdentity,
-            batch.FactContext.CapacityConfigurationGeneration,
-            batch.FactContext.CapacityCatalogGeneration,
-            batch.FactContext.BaselineCapacityCommittedGeneration,
-            batch.FactContext.FinalCapacityCommittedGeneration,
-            batch.FactContext.BaselineCapacityCapturedAtUtcTicks,
-            batch.FactContext.FinalCapacityCapturedAtUtcTicks,
+            batch.FactContext.BaselineRoundNumber,
+            batch.FactContext.RoundNumber,
             batch.RequestKind,
             batch.OrdinaryMemoryFreeRatio,
             batch.FactContext.OrdinaryMemoryFreeRatioCurrent,
@@ -625,15 +610,9 @@ internal sealed class HostManagerMemoryCleanupValidationEvidenceLedger
             && IsRatio(factContext.GuardedFreeRatio)
             && IsRatio(factContext.PhysicalEmergencyFreeRatio)
             && IsRatio(factContext.VirtualEmergencyFreeRatio)
-            && factContext.CapacityWorkspaceIdentity != 0
-            && factContext.CapacityConfigurationGeneration != 0
-            && factContext.CapacityCatalogGeneration != 0
-            && factContext.BaselineCapacityCommittedGeneration != 0
-            && factContext.FinalCapacityCommittedGeneration
-                > factContext.BaselineCapacityCommittedGeneration
-            && factContext.BaselineCapacityCapturedAtUtcTicks > 0
-            && factContext.FinalCapacityCapturedAtUtcTicks
-                > factContext.BaselineCapacityCapturedAtUtcTicks
+            && factContext.BaselineRoundNumber != 0
+            && factContext.RoundNumber
+                > factContext.BaselineRoundNumber
             && request.Candidates is not null
             && request.Kind != AutomaticMemoryCleanupRequestKind.None
             && (request.Kind & ~allKinds) == 0

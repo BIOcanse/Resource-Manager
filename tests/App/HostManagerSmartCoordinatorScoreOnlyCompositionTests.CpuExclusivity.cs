@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
     [Fact]
-    public async Task AutomaticExclusivityReachesOwnedCpuEffectsWithoutLockingGameAndRestoresInNormalMode()
+    public async Task AutomaticExclusivitySurvivesClockRollbackReachesOwnedCpuEffectsAndRestoresInNormalMode()
     {
         const int gameId = 42411, backgroundId = 42412;
         const ulong birth = 133900000000000001;
@@ -54,7 +54,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         for (window = 1; window <= 8; window++)
         {
             if (window > 1) fixture.PublishNextHostedCpuObservation();
-            residency = residency with { CapturedAt = at.AddSeconds(window), MeasuredFrom = at.AddSeconds(window - 5), MeasuredThrough = at.AddSeconds(window) };
+            var measuredThrough = at.AddSeconds(window >= 4 ? -window : window);
+            residency = residency with { CapturedAt = at.AddSeconds(window), MeasuredFrom = measuredThrough.AddSeconds(-5), MeasuredThrough = measuredThrough };
             _ = await fixture.RunRealtimeCycleAsync();
             if (window == 3) Assert.Contains(1U, allowed[backgroundId]);
             if (window >= 4 && !allowed[backgroundId].Contains(1U) && allowed[gameId].Count == 4) break;

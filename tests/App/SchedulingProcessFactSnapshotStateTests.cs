@@ -164,8 +164,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         var composed = state.ReadLatest(
             FactRequest(
                 SchedulingProcessMetricMask.CpuUsage
-                | SchedulingProcessMetricMask.MemoryUsage,
-                MemoryDependency(now.AddSeconds(1), 2)),
+                | SchedulingProcessMetricMask.MemoryUsage),
             now.AddSeconds(2));
 
         var snapshot = Assert.IsType<SchedulingProcessFactSnapshot>(composed);
@@ -205,8 +204,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
             state.ReadLatest(
                 FactRequest(
                     SchedulingProcessMetricMask.CpuUsage
-                    | SchedulingProcessMetricMask.MemoryUsage,
-                    MemoryDependency(now.AddSeconds(1), 12)),
+                    | SchedulingProcessMetricMask.MemoryUsage),
                 now.AddSeconds(2)));
 
         Assert.Equal(12UL, composed.Generation);
@@ -220,8 +218,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         Assert.Equal(12UL, memory.SourceGeneration);
         Assert.Equal(12UL, memory.InventoryGeneration);
         Assert.True(composed.IsCpuCurrentComplete());
-        Assert.True(composed.IsMemoryCurrentComplete(
-            MemoryDependency(now.AddSeconds(1), 12)));
+        Assert.True(composed.IsMemoryCurrentComplete());
     }
 
     [Fact]
@@ -350,7 +347,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     }
 
     [Fact]
-    public void MemoryDependencyMismatchRevokesOnlyTheMemoryDomain()
+    public void MemoryPublicationComposesWithoutHardwareLockstep()
     {
         var now = DateTimeOffset.UtcNow;
         var state = new SchedulingProcessFactSnapshotState();
@@ -377,24 +374,15 @@ public sealed class SchedulingProcessFactSnapshotStateTests
             state.ReadLatest(
                 FactRequest(
                     SchedulingProcessMetricMask.CpuUsage
-                    | SchedulingProcessMetricMask.MemoryUsage,
-                    MemoryDependency(now.AddSeconds(1), 3)),
+                    | SchedulingProcessMetricMask.MemoryUsage),
                 now.AddSeconds(2)));
 
-        Assert.Equal(
-            SchedulingProcessMetricMask.CpuUsage,
+        Assert.Equal(SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.MemoryUsage,
             mismatched.CurrentMetricMask);
         Assert.True(mismatched.IsCpuCurrentComplete());
-        Assert.False(mismatched.IsMemoryCurrentComplete());
-        var memory = mismatched.DatasetObservations[
-            SchedulingProcessMetricMask.MemoryUsage];
-        Assert.Equal(SamplingObservationStatus.Unavailable, memory.Status);
-        Assert.Equal(
-            "scheduling-process-memory-dependency-mismatch",
-            memory.FailureCode);
-        Assert.Equal(
-            MemoryDependency(now.AddSeconds(1), 2),
-            memory.MemoryUsageDependency);
+        Assert.True(mismatched.IsMemoryCurrentComplete());
+        Assert.Equal(31, Assert.Single(mismatched.Processes).MemoryUsedBytes);
+
     }
 
     [Fact]
@@ -535,13 +523,9 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         };
 
     private static SchedulingProcessFactRequest FactRequest(
-        SchedulingProcessMetricMask metrics,
-        SystemMemoryUsageDependency? memoryUsageDependency = null)
+        SchedulingProcessMetricMask metrics)
         => new(
             metrics,
-            metrics.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
-                ? memoryUsageDependency
-                : null,
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
                 0,
@@ -586,22 +570,10 @@ public sealed class SchedulingProcessFactSnapshotStateTests
                         generation,
                         observedAt.UtcTicks,
                         generation,
-                        observedAt.UtcTicks,
-                        memoryUsageDependency:
-                            current == SchedulingProcessMetricMask.MemoryUsage
-                                ? MemoryDependency(observedAt, generation)
-                                : null)
+                        observedAt.UtcTicks)
                 }
         };
     }
-
-    private static SystemMemoryUsageDependency MemoryDependency(
-        DateTimeOffset observedAt,
-        ulong generation)
-        => TestSystemMemoryUsageDependency.Create(
-            sourceGeneration: generation,
-            observedAtUtcTicks: observedAt.UtcTicks,
-            committedGeneration: generation);
 
     private static SchedulingProcessFact Fact(
         int processId,

@@ -211,7 +211,8 @@ public sealed class NativeMemoryModeControllerSessionTests
     [Theory]
     [InlineData(0x0005_0000U)]
     [InlineData(0x0006_0000U)]
-    public void PreEligibilityConfigurationAndEnvelopeAreRejectedWithoutFallback(uint oldVersion)
+    [InlineData(0x0006_0001U)]
+    public void PriorAbiConfigurationAndEnvelopeAreRejectedWithoutFallback(uint oldVersion)
     {
         var oldConfiguration = CreateConfiguration();
         oldConfiguration.AbiVersion = oldVersion;
@@ -237,63 +238,22 @@ public sealed class NativeMemoryModeControllerSessionTests
     }
 
     [Fact]
-    public void MemorySourceLineageAcceptsWorkspaceResetAndRejectsRegressionsWithoutAdvancingState()
+    public void RepeatingARoundIsDeterministicAndRecomputesTheCurrentPressure()
     {
         var configuration = CreateConfiguration();
         using var session = new NativeMemoryModeControllerSession(in configuration);
-        var software = new[]
-        {
-            CreateSoftware(10, 0, 1, 60),
-            CreateSoftware(20, 1, 2, 60),
-            CreateSoftware(30, 2, 3, 60)
-        };
+        var inputs = new[] { CreateSoftware(10, 0, 1, 20), CreateSoftware(20, 1, 2, 20), CreateSoftware(30, 2, 3, 20) };
         var outputs = new NativeMemoryModeDesiredSoftwareOutput[3];
         var snapshot = default(NativeMemoryModeSnapshot);
-        var envelope = CreateEnvelope(4_000, allowUnrestricted: false);
-        envelope.MemorySourceWorkspaceIdentity = 10;
-
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.Ok,
-            session.Plan(in envelope, software, outputs, ref snapshot));
-
-        envelope.SchedulingGeneration = 11;
-        envelope.SnapshotGeneration = 81;
-        envelope.MemorySourceCommittedGeneration = 19;
-        SetSchedulingGeneration(software, 11);
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.StaleGeneration,
-            session.Plan(in envelope, software, outputs, ref snapshot));
-
-        envelope.MemorySourceCommittedGeneration = 20;
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.Ok,
-            session.Plan(in envelope, software, outputs, ref snapshot));
-
-        envelope.SchedulingGeneration = 12;
-        envelope.SnapshotGeneration = 82;
-        envelope.MemorySourceWorkspaceIdentity = 11;
-        envelope.MemorySourceCommittedGeneration = 1;
-        SetSchedulingGeneration(software, 12);
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.Ok,
-            session.Plan(in envelope, software, outputs, ref snapshot));
-        Assert.Equal(11UL, snapshot.MemorySourceWorkspaceIdentity);
-        Assert.Equal(1UL, snapshot.MemorySourceCommittedGeneration);
-
-        envelope.SchedulingGeneration = 13;
-        envelope.SnapshotGeneration = 83;
-        envelope.MemorySourceWorkspaceIdentity = 10;
-        envelope.MemorySourceCommittedGeneration = 99;
-        SetSchedulingGeneration(software, 13);
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.StaleGeneration,
-            session.Plan(in envelope, software, outputs, ref snapshot));
-
-        envelope.MemorySourceWorkspaceIdentity = 11;
-        envelope.MemorySourceCommittedGeneration = 1;
-        Assert.Equal(
-            NativeMemoryModeControllerStatus.Ok,
-            session.Plan(in envelope, software, outputs, ref snapshot));
+        var envelope = CreateEnvelope(4_000, false);
+        Assert.Equal(NativeMemoryModeControllerStatus.Ok, session.Plan(in envelope, inputs, outputs, ref snapshot));
+        var first = outputs.ToArray();
+        Assert.Equal(NativeMemoryModeControllerStatus.Ok, session.Plan(in envelope, inputs, outputs, ref snapshot));
+        Assert.Equal(first.Select(row => (row.Mode, row.Score, row.Rank)), outputs.Select(row => (row.Mode, row.Score, row.Rank)));
+        envelope.MemoryFreeRatioUnits = 500;
+        Assert.Equal(NativeMemoryModeControllerStatus.Ok, session.Plan(in envelope, inputs, outputs, ref snapshot));
+        Assert.Equal(envelope.RoundNumber, snapshot.RoundNumber);
+        Assert.Equal(NativeMemoryMode.PagedFrozen, outputs[0].Mode);
     }
 
     private static NativeMemoryModeConfiguration CreateConfiguration()
@@ -318,10 +278,7 @@ public sealed class NativeMemoryModeControllerSessionTests
             SoftwareInputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
             SoftwareOutputStructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeDesiredSoftwareOutput>(),
             ConfigurationGeneration = 1,
-            SchedulingGeneration = 10,
-            MemorySourceWorkspaceIdentity = 7,
-            MemorySourceCommittedGeneration = 20,
-            SnapshotGeneration = 80,
+            RoundNumber = 10,
             ValidMask = NativeMemoryModeEnvelopeValidity.Required,
             Flags = NativeMemoryModeEnvelopeFlags.Required |
                 (allowUnrestricted ? NativeMemoryModeEnvelopeFlags.AllowUnrestricted : 0),
@@ -370,19 +327,9 @@ public sealed class NativeMemoryModeControllerSessionTests
             StructSize = NativeMemoryModeControllerSession.SizeOf<NativeMemoryModeSoftwareInput>(),
             ValidMask = NativeMemoryModeSoftwareValidity.Required,
             SoftwareKey = softwareKey,
-            SchedulingGeneration = 10,
             CpuScore = score,
             BaseScore = baseScore,
             SourceIndex = sourceIndex
         };
 
-    private static void SetSchedulingGeneration(
-        NativeMemoryModeSoftwareInput[] software,
-        ulong generation)
-    {
-        for (var index = 0; index < software.Length; index++)
-        {
-            software[index].SchedulingGeneration = generation;
-        }
-    }
 }

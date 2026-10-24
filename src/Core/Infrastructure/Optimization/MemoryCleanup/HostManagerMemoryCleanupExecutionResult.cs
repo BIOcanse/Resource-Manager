@@ -5,7 +5,7 @@ internal enum HostManagerMemoryCleanupRoundDisposition : byte
     Incomplete = 0,
     InvalidCapacitySample = 1,
     IncompleteCandidateProjection = 2,
-    MissingSchedulingGeneration = 3,
+    MissingAttemptGeneration = 3,
     JournalReconcileFailed = 4,
     PlannerFailed = 5,
     CompleteNoDecision = 6,
@@ -28,7 +28,7 @@ internal enum HostManagerMemoryCleanupRoundDisposition : byte
     ValidationEvidenceCapacityUnavailable = 23,
     ValidationEvidenceSettlementFailed = 24,
     PlannerConfigurationMismatch = 25,
-    AwaitingNewHostedCapacityObservation = 26
+    AwaitingNewSchedulingRound = 26
 }
 
 internal readonly record struct HostManagerMemoryCleanupExecutionResult(

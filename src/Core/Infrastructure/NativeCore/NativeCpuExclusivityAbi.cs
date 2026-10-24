@@ -17,7 +17,7 @@ internal struct NativeCpuExclusivityConfiguration
 internal struct NativeCpuExclusivityFrame
 {
     public uint AbiVersion, StructSize;
-    public ulong Generation, TopologyKey, ObservationSource, ObservedThrough;
+    public ulong Generation, TopologyKey, RoundNumber;
     public uint CoreCount, CcdCount, SoftwareCount, UsageCount, ManualCount, OutputCapacity, OutputCount, Reserved;
 }
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x0008_0000;
+pub const abi_version: u32 = 0x0009_0000;
 pub const runtime_state_count: usize = 7;
 pub const adapter_grade_count: u8 = 4;
 
@@ -115,11 +115,7 @@ pub const FeatureFlags = struct {
 pub const CycleValidity = struct {
     pub const score_only_mode: u64 = 1 << 2;
     pub const maximum_actions_this_cycle: u64 = 1 << 3;
-    pub const score_scheduling_generation: u64 = 1 << 4;
-    pub const cpu_score_source_fingerprint: u64 = 1 << 5;
-    pub const gpu_score_source_fingerprint: u64 = 1 << 6;
-    pub const known: u64 = score_only_mode | maximum_actions_this_cycle | score_scheduling_generation |
-        cpu_score_source_fingerprint | gpu_score_source_fingerprint;
+    pub const known: u64 = score_only_mode | maximum_actions_this_cycle;
     pub const required: u64 = score_only_mode | maximum_actions_this_cycle;
 };
 
@@ -369,9 +365,7 @@ pub const CycleInput = extern struct {
     flags: u64,
     input_count: u32,
     action_capacity: u32,
-    score_scheduling_generation: u64,
-    cpu_score_source_fingerprint: u64,
-    gpu_score_source_fingerprint: u64,
+    round_number: u64,
     maximum_actions_this_cycle: u32,
     reserved: u32,
 };
@@ -399,7 +393,6 @@ pub const InputRow = extern struct {
     applied_cpu_grade: u8,
     applied_gpu_grade: u8,
     reserved2: [3]u8,
-    applied_epoch: u64,
     process_score: f64,
     software_score: f64,
 };
@@ -616,21 +609,11 @@ pub fn validateCycleInput(input: *const CycleInput) Status {
     {
         return .abi_mismatch;
     }
-    if (input.config_generation == 0 or input.cycle_sequence == 0 or
+    if (input.config_generation == 0 or input.cycle_sequence == 0 or input.round_number == 0 or
         (input.valid_mask & ~CycleValidity.known) != 0 or
         (input.valid_mask & CycleValidity.required) != CycleValidity.required or
         (input.flags & ~CycleFlags.known) != 0 or
         input.reserved != 0)
-    {
-        return .invalid_argument;
-    }
-    const has_score_generation = (input.valid_mask & CycleValidity.score_scheduling_generation) != 0;
-    const has_cpu_fingerprint = (input.valid_mask & CycleValidity.cpu_score_source_fingerprint) != 0;
-    const has_gpu_fingerprint = (input.valid_mask & CycleValidity.gpu_score_source_fingerprint) != 0;
-    if (has_score_generation != (has_cpu_fingerprint or has_gpu_fingerprint) or
-        has_score_generation != (input.score_scheduling_generation != 0) or
-        has_cpu_fingerprint != (input.cpu_score_source_fingerprint != 0) or
-        has_gpu_fingerprint != (input.gpu_score_source_fingerprint != 0))
     {
         return .invalid_argument;
     }
@@ -717,8 +700,6 @@ pub fn validateInputRow(row: *const InputRow, expected_source_index: u32) Status
     if (owns_process and (row.valid_mask & InputValidity.applied_process_grade) == 0) return .invalid_argument;
     if (owns_cpu and (row.valid_mask & InputValidity.applied_cpu_grade) == 0) return .invalid_argument;
     if (owns_gpu and (row.valid_mask & InputValidity.applied_gpu_grade) == 0) return .invalid_argument;
-    if ((owns_process or owns_cpu or owns_gpu) and row.applied_epoch == 0) return .invalid_argument;
-    if (!owns_process and !owns_cpu and !owns_gpu and row.applied_epoch != 0) return .invalid_argument;
     if ((row.valid_mask & (InputValidity.applied_cpu_grade | InputValidity.applied_gpu_grade)) != 0 and !has_software) return .invalid_argument;
     return .ok;
 }

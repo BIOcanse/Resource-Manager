@@ -201,20 +201,10 @@ public sealed partial class WindowsResourceBreakdownSampler
                 cpuUsagePercent = Math.Clamp(sample.CpuPercent, 0, 100);
             }
 
-            var memoryUsagePercent = 0d;
             if (request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
-                && request.ExpectedMemoryUsageDependency is { } memoryDependency
-                && memoryDependency.IsCurrentAt(new DateTimeOffset(
-                    observedAtUtcTicks,
-                    TimeSpan.Zero))
                 && sample.HasWorkingSetBytes)
             {
                 validMask |= SchedulingProcessMetricMask.MemoryUsage;
-                memoryUsagePercent = Math.Clamp(
-                    Math.Max(0, sample.WorkingSetBytes) * 100d
-                        / memoryDependency.DenominatorBytes,
-                    0,
-                    100);
             }
 
             var processInstance = new ProcessInstanceKey(
@@ -259,7 +249,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             {
                 ValidMetricMask = validMask,
                 CpuUsagePercent = cpuUsagePercent,
-                MemoryUsagePercent = memoryUsagePercent,
+                MemoryUsedBytes = validMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
+                    ? Math.Max(0, sample.WorkingSetBytes) : 0,
                 Gpus = gpuFacts,
                 RuntimeState = runtimeState?.RuntimeState
                     ?? HostManagerRuntimeStates.BackgroundProcess,
@@ -383,8 +374,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             current |= SchedulingProcessMetricMask.CpuUsage;
         }
         if (request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
-            && request.ExpectedMemoryUsageDependency is { } memoryDependency
-            && memoryDependency.IsCurrentAt(DateTimeOffset.UtcNow))
+)
         {
             current |= SchedulingProcessMetricMask.MemoryUsage;
         }
@@ -538,9 +528,6 @@ public sealed partial class WindowsResourceBreakdownSampler
             };
             var gpuMetric = metric is SchedulingProcessMetricMask.GpuUsage
                 or SchedulingProcessMetricMask.GpuDedicatedMemory;
-            var memoryDependency = metric == SchedulingProcessMetricMask.MemoryUsage
-                ? request.ExpectedMemoryUsageDependency
-                : null;
             result.Add(
                 metric,
                 SchedulingProcessDatasetObservation.CreateCurrent(
@@ -555,8 +542,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                         : 0,
                     topologyFingerprint: gpuMetric
                         ? request.GpuInventory.TopologyFingerprint
-                        : 0,
-                    memoryUsageDependency: memoryDependency));
+                        : 0));
         }
         return result;
     }

@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x0008_0000;
+    public const uint Version = 0x0009_0000;
     public const int RuntimeStateCount = 7;
     public const int AdapterGradeCount = 4;
 }
@@ -137,11 +137,7 @@ internal enum NativeSmartCoordinatorCycleValidity : ulong
     None = 0,
     ScoreOnlyMode = 1UL << 2,
     MaximumActionsThisCycle = 1UL << 3,
-    ScoreSchedulingGeneration = 1UL << 4,
-    CpuScoreSourceFingerprint = 1UL << 5,
-    GpuScoreSourceFingerprint = 1UL << 6,
-    Known = ScoreOnlyMode | MaximumActionsThisCycle | ScoreSchedulingGeneration |
-        CpuScoreSourceFingerprint | GpuScoreSourceFingerprint,
+    Known = ScoreOnlyMode | MaximumActionsThisCycle,
     Required = ScoreOnlyMode | MaximumActionsThisCycle
 }
 
@@ -410,7 +406,7 @@ internal unsafe struct NativeSmartCoordinatorCapacity
     public fixed ulong Reserved[2];
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 96)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 80)]
 internal struct NativeSmartCoordinatorCycleInput
 {
     public uint AbiVersion;
@@ -424,14 +420,12 @@ internal struct NativeSmartCoordinatorCycleInput
     public NativeSmartCoordinatorCycleFlags Flags;
     public uint InputCount;
     public uint ActionCapacity;
-    public ulong ScoreSchedulingGeneration;
-    public ulong CpuScoreSourceFingerprint;
-    public ulong GpuScoreSourceFingerprint;
+    public ulong RoundNumber;
     public uint MaximumActionsThisCycle;
     public uint Reserved;
 }
 
-[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 112)]
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 104)]
 internal unsafe struct NativeSmartCoordinatorInputRow
 {
     public uint StructSize;
@@ -456,7 +450,6 @@ internal unsafe struct NativeSmartCoordinatorInputRow
     public NativeSmartCoordinatorAdapterGrade AppliedCpuGrade;
     public NativeSmartCoordinatorAdapterGrade AppliedGpuGrade;
     public fixed byte Reserved2[3];
-    public ulong AppliedEpoch;
     public double ProcessScore;
     public double SoftwareScore;
 }

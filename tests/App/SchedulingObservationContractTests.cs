@@ -111,6 +111,19 @@ public sealed class SchedulingObservationContractTests
     }
 
     [Fact]
+    public void ProcessMemoryFactsCarryBytesWithoutAHardwareDenominator()
+    {
+        var snapshot = CreateProcessFacts();
+        snapshot = snapshot with
+        {
+            Processes = [snapshot.Processes[0] with { MemoryUsedBytes = 4_096 }]
+        };
+        Assert.True(snapshot.IsMemoryCurrentComplete());
+        Assert.True(snapshot.IsCurrentComplete());
+        Assert.Equal(4_096, Assert.Single(snapshot.Processes).MemoryUsedBytes);
+    }
+
+    [Fact]
     public void ProcessFacts_CpuCompletenessIsIndependentFromMemoryAndGpuDomains()
     {
         var current = CreateProcessFacts();
@@ -308,7 +321,6 @@ public sealed class SchedulingObservationContractTests
     {
         var request = new SchedulingProcessFactRequest(
             SchedulingProcessMetricMask.CpuUsage,
-            null,
             new SchedulingGpuInventorySnapshot(
                 SamplingObservationStatus.NotRequested,
                 0,
@@ -358,7 +370,6 @@ public sealed class SchedulingObservationContractTests
         var request = new SchedulingProcessFactRequest(
             SchedulingProcessMetricMask.GpuUsage
                 | SchedulingProcessMetricMask.GpuDedicatedMemory,
-            null,
             CreateGpuInventory());
         var usageOnly = new SchedulingProcessGpuRead(
             SamplingObservationStatus.Current,
@@ -470,7 +481,7 @@ public sealed class SchedulingObservationContractTests
     {
         var current = CreateProcessFacts();
 
-        Assert.False((current with
+        Assert.True((current with
         {
             DatasetObservations = current.DatasetObservations.ToDictionary(
                 static pair => pair.Key,
@@ -486,6 +497,31 @@ public sealed class SchedulingObservationContractTests
                     ? pair.Value with { TopologyFingerprint = 18 }
                     : pair.Value)
         }).IsGpuUsageCurrentComplete(CreateGpuInventory()));
+    }
+
+    [Fact]
+    public void ProcessFacts_InventoryAndGpuRowsDoNotEchoDatasetPublicationNumbers()
+    {
+        var current = CreateProcessFacts();
+        var process = current.Processes[0];
+        var gpu = process.Gpus[0];
+        var independent = current with
+        {
+            Processes = [process with
+            {
+                SourceGeneration = 77,
+                Gpus = [gpu with
+                {
+                    UsageSourceGeneration = 98,
+                    UsageTopologyGeneration = 99,
+                    DedicatedMemorySourceGeneration = 100,
+                    DedicatedMemoryTopologyGeneration = 101
+                }]
+            }]
+        };
+        Assert.True(independent.IsInventoryCurrentComplete());
+        Assert.True(independent.IsGpuUsageCurrentComplete(CreateGpuInventory()));
+        Assert.True(independent.IsGpuDedicatedMemoryCurrentComplete(CreateGpuInventory()));
     }
 
     [Fact]
@@ -750,12 +786,7 @@ public sealed class SchedulingObservationContractTests
                         31,
                         37,
                         31,
-                        37,
-                        memoryUsageDependency:
-                            TestSystemMemoryUsageDependency.Create(
-                                sourceGeneration: 31,
-                                observedAtUtcTicks: 37,
-                                committedGeneration: 31)),
+                        37),
                 [SchedulingProcessMetricMask.GpuUsage] =
                     SchedulingProcessDatasetObservation.CreateCurrent(
                         SchedulingProcessMetricMask.GpuUsage,

@@ -6,7 +6,6 @@ internal static class HostManagerMemoryCleanupScoreIndex
 {
     internal static bool TryCreate(
         HostManagerComputeScoringCycleResult? compute,
-        ulong processInventoryGeneration,
         IReadOnlyCollection<HostManagerMemoryCleanupTargetFact> expectedTargets,
         out IReadOnlyDictionary<HostManagerComputeProcessIdentity, HostManagerComputeScore> scores)
     {
@@ -15,10 +14,7 @@ internal static class HostManagerMemoryCleanupScoreIndex
         if (compute is null
             || cpu is null
             || expectedTargets is null
-            || compute.SchedulingGeneration == 0
-            || cpu.SchedulingGeneration != compute.SchedulingGeneration
-            || cpu.SourceIdentity.InventoryGeneration == 0
-            || cpu.SourceIdentity.InventoryGeneration != processInventoryGeneration)
+            || compute.RoundNumber == 0)
         {
             return false;
         }
@@ -52,8 +48,7 @@ internal static class HostManagerMemoryCleanupScoreIndex
             {
                 continue;
             }
-            if (score.SchedulingGeneration != compute.SchedulingGeneration
-                || score.TargetKey == 0
+            if (score.TargetKey == 0
                 || score.SoftwareKey == 0
                 || score.ProcessId <= 0
                 || score.ProcessStartKey == 0

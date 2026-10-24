@@ -38,7 +38,7 @@ public sealed partial class HostManagerSmartCoordinator
         EnsurePlacementCoordinatorWorkspace();
         var plan = appliedPlacementCoordinatorPlan!;
         var projection = HostManagerCpuExclusivityProjection.Create(topology, sample.CpuResidency, processes,
-            plan.HotPublish.ConfigurationGeneration, plan.Recreate);
+            plan.HotPublish.ConfigurationGeneration, sample.RoundNumber, plan.Recreate);
         var frame = projection.Frame;
         var status = placementCoordinatorSession!.PlanCpuExclusivity(ref frame, projection.Cores,
             projection.Software, projection.Usage, projection.Manual, projection.Output);

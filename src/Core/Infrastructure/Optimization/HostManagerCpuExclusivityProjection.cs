@@ -33,7 +33,7 @@ internal sealed class HostManagerCpuExclusivityProjection
 
     internal static HostManagerCpuExclusivityProjection Create(CpuTopologySnapshot topology,
         CpuCoreResidencySnapshot? observation, IReadOnlyList<HostManagerAutomaticPlacementProcess> processes,
-        ulong generation, CompiledHostManagerPlacementCoordinatorRecreatePlan capacity)
+        ulong generation, ulong roundNumber, CompiledHostManagerPlacementCoordinatorRecreatePlan capacity)
     {
         var cores = topology.PhysicalCores.OrderBy(static core => core.Index).ThenBy(static core => core.Id, StringComparer.OrdinalIgnoreCase).ToArray();
         var ccdIds = cores.Select(static core => core.CcdId).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -49,7 +49,7 @@ internal sealed class HostManagerCpuExclusivityProjection
             throw new InvalidDataException("CPU exclusivity facts exceed the published topology/software capacity.");
         if (groups.Select(static group => group.Key).Distinct().Count() != groups.Length)
             throw new InvalidDataException("CPU exclusivity software identity hash collision.");
-        var validObservation = observation is { SessionGeneration: > 0 } && observation.MeasuredThrough > observation.MeasuredFrom;
+        var validObservation = observation is not null && observation.MeasuredThrough > observation.MeasuredFrom;
         var resident = validObservation ? observation!.Processes
             .Where(static process => ulong.TryParse(process.ProcessStartKey, NumberStyles.None, CultureInfo.InvariantCulture, out var key) && key > 0)
             .ToDictionary(static process => (process.ProcessId, Start: ulong.Parse(process.ProcessStartKey!, CultureInfo.InvariantCulture))) : [];
@@ -94,8 +94,7 @@ internal sealed class HostManagerCpuExclusivityProjection
             {
                 AbiVersion = NativePlacementCoordinatorAbi.Version, StructSize = NativePlacementCoordinatorSession.SizeOf<NativeCpuExclusivityFrame>(),
                 Generation = generation, TopologyKey = topologyKey,
-                ObservationSource = validObservation ? checked((ulong)observation!.SessionGeneration) : 0,
-                ObservedThrough = validObservation ? checked((ulong)observation!.MeasuredThrough.UtcTicks) : 0,
+                RoundNumber = roundNumber,
                 CoreCount = checked((uint)cores.Length), CcdCount = checked((uint)ccdIds.Length), SoftwareCount = checked((uint)software.Length),
                 UsageCount = checked((uint)usage.Count), ManualCount = checked((uint)manual.Count), OutputCapacity = checked((uint)capacity.ReservationCapacity)
             },

@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativePlacementCoordinatorAbi
 {
-    public const uint Version = 0x0001_0000;
+    public const uint Version = 0x0002_0000;
 }
 
 internal enum NativePlacementCoordinatorStatus : int

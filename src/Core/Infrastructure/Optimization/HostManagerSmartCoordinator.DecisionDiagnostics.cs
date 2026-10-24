@@ -25,7 +25,7 @@ public sealed partial class HostManagerSmartCoordinator
                     workspace.CurrentSnapshotRows.ToArray());
 
             return new HostManagerDecisionDiagnosticsSnapshot(
-                "resource-manager-smart-decision-diagnostics-v1",
+                "resource-manager-smart-decision-diagnostics-v2",
                 DateTimeOffset.UtcNow,
                 runtimePlan.Version,
                 runtimePlan.OptimizationMode.Mode,
@@ -64,7 +64,7 @@ public sealed partial class HostManagerSmartCoordinator
                 authority.PolicyEvidence.BindingSha256);
 
         return new HostManagerSchedulingAuthorityDiagnostics(
-            Exact(authority.AttemptGeneration),
+            Exact(authority.RoundNumber),
             authority.Availability.ToString(),
             authority.ObservedAt == default ? null : authority.ObservedAt,
             authority.UnavailableReason,
@@ -86,14 +86,11 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         return new HostManagerComputeDomainDiagnostics(
-            Exact(domain.SchedulingGeneration),
-            Exact(domain.SourceGeneration),
-            Exact(domain.TopologyGeneration),
-            Exact(domain.TopologyFingerprint),
+            Exact(domain.RoundNumber),
             domain.Scores.Select(static score =>
                 new HostManagerComputeScoreDiagnostics(
                     score.Kind.ToString(),
-                    Exact(score.SchedulingGeneration),
+                    Exact(score.RoundNumber),
                     Exact(score.TargetKey),
                     Exact(score.SoftwareKey),
                     score.ProcessId,
@@ -115,18 +112,14 @@ public sealed partial class HostManagerSmartCoordinator
 
         return new HostManagerMemoryModeDiagnostics(
             Exact(memoryModes.ConfigurationGeneration),
-            Exact(memoryModes.SchedulingGeneration),
-            Exact(memoryModes.MemorySource.WorkspaceIdentity),
-            Exact(memoryModes.MemorySource.CommittedGeneration),
-            Exact(memoryModes.SnapshotGeneration),
+            Exact(memoryModes.RoundNumber),
             memoryModes.UnrestrictedAllowed,
             memoryModes.OptimizeCount,
             memoryModes.StrongestCount,
             memoryModes.Software.Select(static desired =>
                 new HostManagerDesiredMemoryModeDiagnostics(
                     Exact(desired.SoftwareKey),
-                    Exact(desired.SchedulingGeneration),
-                    Exact(desired.SnapshotGeneration),
+                    Exact(desired.RoundNumber),
                     desired.CpuScore,
                     desired.Rank,
                     desired.Mode.ToString(),
@@ -227,7 +220,7 @@ public sealed partial class HostManagerSmartCoordinator
 
         return projection.Processes.Select(static directive =>
             new HostManagerNonAdaptedMemoryDecisionDiagnostics(
-                Exact(directive.SchedulingGeneration),
+                Exact(directive.RoundNumber),
                 Exact(directive.SoftwareKey),
                 directive.SoftwareId ?? string.Empty,
                 directive.ProcessId,
@@ -259,7 +252,7 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
         NonAdaptedMemoryDecisions);
 
 internal sealed record HostManagerSchedulingAuthorityDiagnostics(
-    string AttemptGeneration,
+    string RoundNumber,
     string Availability,
     DateTimeOffset? ObservedAt,
     string? UnavailableReason,
@@ -287,15 +280,12 @@ internal sealed record HostManagerMemoryModePolicyEvidenceDiagnostics(
     string BindingSha256);
 
 internal sealed record HostManagerComputeDomainDiagnostics(
-    string SchedulingGeneration,
-    string SourceGeneration,
-    string TopologyGeneration,
-    string TopologyFingerprint,
+    string RoundNumber,
     IReadOnlyList<HostManagerComputeScoreDiagnostics> Scores);
 
 internal sealed record HostManagerComputeScoreDiagnostics(
     string Kind,
-    string SchedulingGeneration,
+    string RoundNumber,
     string TargetKey,
     string SoftwareKey,
     int ProcessId,
@@ -307,10 +297,7 @@ internal sealed record HostManagerComputeScoreDiagnostics(
 
 internal sealed record HostManagerMemoryModeDiagnostics(
     string ConfigurationGeneration,
-    string SchedulingGeneration,
-    string MemoryWorkspaceIdentity,
-    string MemoryCommittedGeneration,
-    string SnapshotGeneration,
+    string RoundNumber,
     bool UnrestrictedAllowed,
     uint OptimizeCount,
     uint StrongestCount,
@@ -318,8 +305,7 @@ internal sealed record HostManagerMemoryModeDiagnostics(
 
 internal sealed record HostManagerDesiredMemoryModeDiagnostics(
     string SoftwareKey,
-    string SchedulingGeneration,
-    string SnapshotGeneration,
+    string RoundNumber,
     double CpuScore,
     uint Rank,
     string Mode,
@@ -390,7 +376,7 @@ internal sealed record HostManagerNativeCoordinatorRowDiagnostics(
     long GameStartedAtMilliseconds);
 
 internal sealed record HostManagerNonAdaptedMemoryDecisionDiagnostics(
-    string SchedulingGeneration,
+    string RoundNumber,
     string SoftwareKey,
     string SoftwareId,
     int ProcessId,

@@ -60,8 +60,6 @@ public sealed record SchedulingProcessDatasetObservation(
 
     public ulong TopologyFingerprint { get; init; }
 
-    public SystemMemoryUsageDependency? MemoryUsageDependency { get; init; }
-
     public static SchedulingProcessDatasetObservation CreateCurrent(
         SchedulingProcessMetricMask metric,
         ulong sourceGeneration,
@@ -70,19 +68,8 @@ public sealed record SchedulingProcessDatasetObservation(
         long inventoryObservedAtUtcTicks,
         long readyUntilUtcTicks = long.MaxValue,
         ulong topologyGeneration = 0,
-        ulong topologyFingerprint = 0,
-        SystemMemoryUsageDependency? memoryUsageDependency = null)
+        ulong topologyFingerprint = 0)
     {
-        var memoryMetric = metric == SchedulingProcessMetricMask.MemoryUsage;
-        if (memoryMetric != (memoryUsageDependency is not null)
-            || memoryUsageDependency is not null
-                && !memoryUsageDependency.IsWellFormed())
-        {
-            throw new ArgumentException(
-                "Current process-memory observations require one valid system-memory dependency, and other metrics cannot carry it.",
-                nameof(memoryUsageDependency));
-        }
-
         return new(
             metric,
             SchedulingProcessFactSnapshot.DatasetIdFor(metric),
@@ -96,8 +83,7 @@ public sealed record SchedulingProcessDatasetObservation(
             LastSuccessAtUtcTicks = observedAtUtcTicks,
             ReadyUntilUtcTicks = readyUntilUtcTicks,
             TopologyGeneration = topologyGeneration,
-            TopologyFingerprint = topologyFingerprint,
-            MemoryUsageDependency = memoryUsageDependency
+            TopologyFingerprint = topologyFingerprint
         };
     }
 }
@@ -150,7 +136,7 @@ public sealed record SchedulingProcessFact(
     double BaseScore,
     SchedulingProcessMetricMask ValidMetricMask,
     double CpuUsagePercent,
-    double MemoryUsagePercent,
+    double MemoryUsedBytes,
     ulong SourceGeneration,
     IReadOnlyList<SchedulingProcessGpuFact> Gpus)
 {
@@ -171,7 +157,6 @@ public sealed record SchedulingProcessFact(
 
 public sealed record SchedulingProcessFactRequest(
     SchedulingProcessMetricMask RequestedMetricMask,
-    SystemMemoryUsageDependency? ExpectedMemoryUsageDependency,
     SchedulingGpuInventorySnapshot GpuInventory);
 
 public readonly record struct SoftwareBaseScore(string SoftwareId, double BaseScore);
@@ -275,15 +260,6 @@ public sealed record SchedulingProcessFactSnapshot(
             return false;
         }
 
-        var memoryMetric = metric == SchedulingProcessMetricMask.MemoryUsage;
-        if (memoryMetric != (observation.MemoryUsageDependency is not null)
-            || observation.MemoryUsageDependency is not null
-                && !observation.MemoryUsageDependency.IsWellFormed())
-        {
-            observation = null!;
-            return false;
-        }
-
         return true;
     }
 
@@ -303,7 +279,7 @@ public sealed record SchedulingProcessFactSnapshot(
                 || (process.ValidMetricMask & ~RequestedMetricMask)
                     != SchedulingProcessMetricMask.None
                 || !IsPercentValid(process.CpuUsagePercent, process.ValidMetricMask, SchedulingProcessMetricMask.CpuUsage)
-                || !IsPercentValid(process.MemoryUsagePercent, process.ValidMetricMask, SchedulingProcessMetricMask.MemoryUsage)
+                || !IsMemoryValid(process.MemoryUsedBytes, process.ValidMetricMask)
                 || process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState)
                     && !IsRuntimeStateValid(process)
                 || !AreGpuFactsValid(process))
@@ -333,7 +309,6 @@ public sealed record SchedulingProcessFactSnapshot(
         {
             if (process.ProcessId <= 0
                 || process.ProcessStartKey == 0
-                || process.SourceGeneration != Generation
                 || string.IsNullOrWhiteSpace(process.ProcessName)
                 || string.IsNullOrWhiteSpace(process.SoftwareId)
                 || !double.IsFinite(process.BaseScore)
@@ -352,16 +327,6 @@ public sealed record SchedulingProcessFactSnapshot(
 
     public bool IsMemoryCurrentComplete()
         => IsScalarMetricCurrentComplete(SchedulingProcessMetricMask.MemoryUsage);
-
-    public bool IsMemoryCurrentComplete(
-        SystemMemoryUsageDependency expectedDependency)
-        => expectedDependency is not null
-            && expectedDependency.IsWellFormed()
-            && IsMemoryCurrentComplete()
-            && TryGetCurrentDataset(
-                SchedulingProcessMetricMask.MemoryUsage,
-                out var observation)
-            && observation.MemoryUsageDependency == expectedDependency;
 
     public bool IsRuntimeStateCurrentComplete()
     {
@@ -406,12 +371,9 @@ public sealed record SchedulingProcessFactSnapshot(
 
         return Processes
             .Where(process => process.ValidMetricMask.HasFlag(metric))
-            .All(process => IsPercentValid(
-                metric == SchedulingProcessMetricMask.CpuUsage
-                    ? process.CpuUsagePercent
-                    : process.MemoryUsagePercent,
-                process.ValidMetricMask,
-                metric));
+            .All(process => metric == SchedulingProcessMetricMask.CpuUsage
+                ? IsPercentValid(process.CpuUsagePercent, process.ValidMetricMask, metric)
+                : IsMemoryValid(process.MemoryUsedBytes, process.ValidMetricMask));
     }
 
     private bool IsGpuMetricCurrentComplete(
@@ -452,10 +414,7 @@ public sealed record SchedulingProcessFactSnapshot(
                         : adapters;
                 if (!eligibleAdapters.Any(adapter =>
                         adapter.AdapterKey == gpu.AdapterKey
-                        && adapter.Index == gpu.GpuIndex)
-                    || SourceGenerationFor(gpu, metric) != dataset.SourceGeneration
-                    || TopologyGenerationFor(gpu, metric)
-                        != dataset.TopologyGeneration)
+                        && adapter.Index == gpu.GpuIndex))
                 {
                     return false;
                 }
@@ -516,10 +475,7 @@ public sealed record SchedulingProcessFactSnapshot(
         }
 
         return sourceGeneration > 0
-            && topologyGeneration > 0
-            && (!DatasetObservations.TryGetValue(metric, out var observation)
-                || sourceGeneration == observation.SourceGeneration
-                    && topologyGeneration == observation.TopologyGeneration);
+            && topologyGeneration > 0;
     }
 
     private static ulong SourceGenerationFor(
@@ -582,6 +538,10 @@ public sealed record SchedulingProcessFactSnapshot(
             }
         }
     }
+
+    private static bool IsMemoryValid(double bytes, SchedulingProcessMetricMask validMask)
+        => !validMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
+            || double.IsFinite(bytes) && bytes >= 0;
 
     private static bool IsPercentValid(
         double value,

@@ -13,11 +13,7 @@ internal readonly record struct HostPublicResourceNormalReleaseCycle(
     ulong SmartConfigurationGeneration,
     string SmartConfigurationSha256,
     bool NormalMemoryReleaseEnabled,
-    ulong HardwareWorkspaceIdentity,
-    ulong HardwareConfigurationGeneration,
-    ulong HardwareCatalogGeneration,
-    ulong HardwareCommittedGeneration,
-    long HardwareCapturedAtUtcTicks)
+    ulong RoundNumber)
 {
     internal bool IsValid => RuntimePlanVersion > 0
         && HostPublicationSequence > 0
@@ -27,11 +23,7 @@ internal readonly record struct HostPublicResourceNormalReleaseCycle(
         && MemoryCleanupConfigurationGeneration > 0
         && SmartConfigurationGeneration > 0
         && IsSha256(SmartConfigurationSha256)
-        && HardwareWorkspaceIdentity > 0
-        && HardwareConfigurationGeneration > 0
-        && HardwareCatalogGeneration > 0
-        && HardwareCommittedGeneration > 0
-        && HardwareCapturedAtUtcTicks > 0;
+        && RoundNumber > 0;
 
     private static bool IsSha256(string? value)
         => value is not null
@@ -77,26 +69,13 @@ internal sealed class HostPublicResourceNormalReleaseEvidenceTracker
 
         if (pendingRound is { } pending)
         {
-            if (!pending.IsSameHardwareStream(cycle)
-                || cycle.HardwareCommittedGeneration < pending.HardwareCommittedGeneration)
-            {
-                confirmedRoundCount = 0;
-                pressureEscalated = false;
-                pendingRound = null;
-            }
-            else if (cycle.HardwareCommittedGeneration == pending.HardwareCommittedGeneration)
+            if (cycle.RoundNumber <= pending.RoundNumber)
             {
                 currentCycle = cycle;
-                return HostPublicResourceCapacityObservation.ShortageFresh(
-                    pressureEscalated);
+                return HostPublicResourceCapacityObservation.ShortageFresh(pressureEscalated);
             }
             else
             {
-                if (cycle.HardwareCapturedAtUtcTicks <= pending.CompletedAtUtcTicks)
-                {
-                    return HostPublicResourceCapacityObservation.ShortageFresh(
-                        pressureEscalated);
-                }
                 confirmedRoundCount = Math.Min(
                     RequiredCompletedRoundCount,
                     checked(confirmedRoundCount + 1));
@@ -126,15 +105,14 @@ internal sealed class HostPublicResourceNormalReleaseEvidenceTracker
         }
 
         acceptsCurrentRound = false;
-        if (!result.CompletedNormalReleaseRound
-            || result.CompletedAtUtcTicks <= cycle.HardwareCapturedAtUtcTicks)
+        if (!result.CompletedNormalReleaseRound)
         {
             confirmedRoundCount = 0;
             pendingRound = null;
             return;
         }
 
-        pendingRound = PendingRound.From(cycle, result.CompletedAtUtcTicks);
+        pendingRound = new PendingRound(cycle.RoundNumber);
     }
 
     private void Reset()
@@ -155,10 +133,7 @@ internal sealed class HostPublicResourceNormalReleaseEvidenceTracker
         string HostPlanSha256,
         ulong MemoryCleanupConfigurationGeneration,
         ulong SmartConfigurationGeneration,
-        string SmartConfigurationSha256,
-        ulong HardwareWorkspaceIdentity,
-        ulong HardwareConfigurationGeneration,
-        ulong HardwareCatalogGeneration)
+        string SmartConfigurationSha256)
     {
         internal static ChainIdentity From(HostPublicResourceNormalReleaseCycle cycle)
             => new(
@@ -169,32 +144,8 @@ internal sealed class HostPublicResourceNormalReleaseEvidenceTracker
                 cycle.HostPlanSha256,
                 cycle.MemoryCleanupConfigurationGeneration,
                 cycle.SmartConfigurationGeneration,
-                cycle.SmartConfigurationSha256,
-                cycle.HardwareWorkspaceIdentity,
-                cycle.HardwareConfigurationGeneration,
-                cycle.HardwareCatalogGeneration);
+                cycle.SmartConfigurationSha256);
     }
 
-    private readonly record struct PendingRound(
-        ulong HardwareWorkspaceIdentity,
-        ulong HardwareConfigurationGeneration,
-        ulong HardwareCatalogGeneration,
-        ulong HardwareCommittedGeneration,
-        long CompletedAtUtcTicks)
-    {
-        internal static PendingRound From(
-            HostPublicResourceNormalReleaseCycle cycle,
-            long completedAtUtcTicks)
-            => new(
-                cycle.HardwareWorkspaceIdentity,
-                cycle.HardwareConfigurationGeneration,
-                cycle.HardwareCatalogGeneration,
-                cycle.HardwareCommittedGeneration,
-                completedAtUtcTicks);
-
-        internal bool IsSameHardwareStream(HostPublicResourceNormalReleaseCycle cycle)
-            => HardwareWorkspaceIdentity == cycle.HardwareWorkspaceIdentity
-                && HardwareConfigurationGeneration == cycle.HardwareConfigurationGeneration
-                && HardwareCatalogGeneration == cycle.HardwareCatalogGeneration;
-    }
+    private readonly record struct PendingRound(ulong RoundNumber);
 }

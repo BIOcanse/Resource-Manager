@@ -79,7 +79,6 @@ public sealed partial class HostManagerSmartCoordinator(
     private PlacementCoordinatorRuntimePlan? appliedPlacementCoordinatorPlan;
     private ulong placementCoordinatorCycleEpoch;
     private long nativeCycleSequence;
-    private ulong computeScoringSequence;
     private ulong nativeHostSessionIncarnation;
     private bool authoritativeAppliedFactsRequired = true;
     private bool legacyStatePrepared;
@@ -95,8 +94,6 @@ public sealed partial class HostManagerSmartCoordinator(
             nameof(hostPublicResourceSelfManager));
     private readonly HostPublicResourceNormalReleaseEvidenceTracker
         hostPublicResourceNormalReleaseEvidence = new();
-    private readonly HostPublicResourceCapacitySampleFreshnessTracker
-        hostPublicResourceCapacitySampleFreshness = new();
     private readonly HostManagerSchedulingAuthority schedulingAuthorityOwner =
         schedulingAuthority ?? throw new ArgumentNullException(nameof(schedulingAuthority));
     private readonly HostManagerMemoryModePolicyAuthority memoryModePolicyAuthorityOwner =
@@ -313,7 +310,6 @@ public sealed partial class HostManagerSmartCoordinator(
         IDisposable? cpuCoreSubscription = null;
         IDisposable? hardwareSubscription = null;
         IDisposable? processComputeSubscription = null;
-        IDisposable? processMemoryFinalAdmissionSubscription = null;
         string? subscribedHardwareRequestKey = null;
         var subscribedProcessMetricMask = SchedulingProcessMetricMask.None;
         schedulerRunning = true;
@@ -354,6 +350,10 @@ public sealed partial class HostManagerSmartCoordinator(
                     {
                         processMask |= SchedulingProcessMetricMask.CpuUsage;
                     }
+                    if (mode.AutomaticMemoryCleanupEnabled)
+                    {
+                        processMask |= SchedulingProcessMetricMask.MemoryUsage;
+                    }
                     if (mode.GpuSchedulingEnabled)
                     {
                         processMask |= SchedulingProcessMetricMask.GpuUsage
@@ -373,21 +373,6 @@ public sealed partial class HostManagerSmartCoordinator(
                             samplingInterval);
                         subscribedProcessMetricMask = processMask;
                     }
-                    if (!mode.MemorySchedulingEnabled)
-                    {
-                        processMemoryFinalAdmissionSubscription?.Dispose();
-                        processMemoryFinalAdmissionSubscription = null;
-                    }
-                    else
-                    {
-                        processMemoryFinalAdmissionSubscription ??=
-                            schedulingProcessFactSource.AcquireSubscription(
-                                "host-manager-smart-coordinator:memory-final-admission",
-                                SchedulingProcessMetricMask.MemoryUsage
-                                    | SchedulingProcessMetricMask.RuntimeState,
-                                samplingInterval);
-                    }
-
                     var hardwareRequired = mode.SchedulingEnabled || publicResourcesAvailable;
                     var hardwareRequest = mode.SchedulingEnabled
                         ? CreateSmartSchedulingMetricRequest(mode, publicResourcesAvailable)
@@ -471,7 +456,6 @@ public sealed partial class HostManagerSmartCoordinator(
         finally
         {
             schedulerRunning = false;
-            processMemoryFinalAdmissionSubscription?.Dispose();
             processComputeSubscription?.Dispose();
             hardwareSubscription?.Dispose();
             cpuCoreSubscription?.Dispose();

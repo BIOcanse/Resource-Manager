@@ -8,14 +8,14 @@ test "single memory domain ranks low CPU scores first" {
     defer session.destroy();
 
     var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 40, 0),
-        input(2, 1, 10, 1),
-        input(3, 1, 30, 2),
-        input(4, 1, 20, 3),
+        input(1, 40, 0),
+        input(2, 10, 1),
+        input(3, 30, 2),
+        input(4, 20, 3),
     };
     var outputs: [4]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 500, 4, false);
+    var envelope = testEnvelope(1, 1, 500, 4, false);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
@@ -38,13 +38,13 @@ test "equal scores use stable software identity and unrestricted is explicit" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        inputWithBase(11, 1, 7, 81, 0),
-        inputWithBase(12, 1, 7, 81, 1),
-        inputWithBase(13, 1, 7, 81, 2),
+        inputWithBase(11, 7, 81, 0),
+        inputWithBase(12, 7, 81, 1),
+        inputWithBase(13, 7, 81, 2),
     };
     var outputs: [3]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 8_000, 3, true);
+    var envelope = testEnvelope(1, 1, 8_000, 3, true);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
@@ -65,13 +65,13 @@ test "base score tiers constrain modes after pressure ranking" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        inputWithBase(1, 1, 1, 20, 0),
-        inputWithBase(2, 1, 2, 21, 1),
-        inputWithBase(3, 1, 3, 81, 2),
+        inputWithBase(1, 1, 20, 0),
+        inputWithBase(2, 2, 21, 1),
+        inputWithBase(3, 3, 81, 2),
     };
     var outputs: [3]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 0, 3, true);
+    var envelope = testEnvelope(1, 1, 0, 3, true);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
@@ -98,12 +98,12 @@ test "protected low CPU rows do not consume optimize pressure quota" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        inputWithBase(1, 1, 0, 81, 0),
-        inputWithBase(2, 1, 1, 21, 1),
+        inputWithBase(1, 0, 81, 0),
+        inputWithBase(2, 1, 21, 1),
     };
     var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 2_000, 2, false);
+    var envelope = testEnvelope(1, 1, 2_000, 2, false);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
@@ -124,14 +124,14 @@ test "strongest and remaining restricted quotas refill over eligible tiers" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        inputWithBase(1, 1, 0, 81, 0),
-        inputWithBase(2, 1, 1, 21, 1),
-        inputWithBase(3, 1, 2, 20, 2),
-        inputWithBase(4, 1, 3, 20, 3),
+        inputWithBase(1, 0, 81, 0),
+        inputWithBase(2, 1, 21, 1),
+        inputWithBase(3, 2, 20, 2),
+        inputWithBase(4, 3, 20, 3),
     };
     var outputs: [4]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 500, 4, false);
+    var envelope = testEnvelope(1, 1, 500, 4, false);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
@@ -150,123 +150,40 @@ test "memory planning has no GPU completeness dependency" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 0, 0),
-        input(2, 1, 1, 1),
+        input(1, 0, 0),
+        input(2, 1, 1),
     };
     var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 9, 1, 2_000, 2, false);
+    var envelope = testEnvelope(1, 1, 2_000, 2, false);
 
     try std.testing.expectEqual(
         protocol.Status.ok,
         desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
     );
-    try std.testing.expectEqual(@as(u64, 9), snapshot.memory_source_committed_generation);
-    try std.testing.expectEqual(@as(u64, 1), snapshot.memory_source_workspace_identity);
     try std.testing.expectEqual(@as(u32, 1), snapshot.optimize_count);
     try std.testing.expectEqual(protocol.MemoryMode.optimize, mode(outputs[0]));
     try std.testing.expectEqual(protocol.MemoryMode.normal, mode(outputs[1]));
 }
 
-test "controller rejects stale generations and noncanonical facts" {
+test "planning can repeat the same round and recompute policy without advancing" {
     var config = testConfig(1, 2);
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
-    var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 1, 0),
-        input(2, 1, 2, 1),
-    };
+    var inputs = [_]protocol.SoftwareInput{ input(1, 1, 0), input(2, 2, 1) };
     var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 4, 1, 4_000, 2, false);
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-    try std.testing.expectEqual(
-        protocol.Status.stale_generation,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.scheduling_generation = 2;
-    envelope.snapshot_generation = 2;
-    envelope.memory_source_committed_generation = 3;
-    inputs[0].scheduling_generation = 2;
-    inputs[1].scheduling_generation = 2;
-    try std.testing.expectEqual(
-        protocol.Status.stale_generation,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.memory_source_committed_generation = 5;
+    var envelope = testEnvelope(1, 10, 4_000, 2, false);
+    try std.testing.expectEqual(protocol.Status.ok, desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot));
+    const first = outputs;
+    try std.testing.expectEqual(protocol.Status.ok, desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot));
+    try std.testing.expectEqualSlices(u8, std.mem.asBytes(&first), std.mem.asBytes(&outputs));
+    envelope.memory_free_ratio_units = 500;
+    try std.testing.expectEqual(protocol.Status.ok, desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot));
+    try std.testing.expectEqual(@as(u64, 10), snapshot.round_number);
+    try std.testing.expectEqual(protocol.MemoryMode.paged_frozen, mode(outputs[0]));
     inputs[1].software_key = 1;
-    try std.testing.expectEqual(
-        protocol.Status.invalid_facts,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-}
-
-test "memory source lineage accepts reset and rejects regressions without advancing state" {
-    var config = testConfig(1, 2);
-    const session = try desired_state.Session.create(&config);
-    defer session.destroy();
-    var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 1, 0),
-        input(2, 1, 2, 1),
-    };
-    var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
-    var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 20, 1, 4_000, 2, false);
-    envelope.memory_source_workspace_identity = 10;
-
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.scheduling_generation = 2;
-    envelope.snapshot_generation = 2;
-    envelope.memory_source_committed_generation = 19;
-    for (&inputs) |*row| row.scheduling_generation = 2;
-    try std.testing.expectEqual(
-        protocol.Status.stale_generation,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.memory_source_committed_generation = 20;
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.scheduling_generation = 3;
-    envelope.snapshot_generation = 3;
-    envelope.memory_source_workspace_identity = 11;
-    envelope.memory_source_committed_generation = 1;
-    for (&inputs) |*row| row.scheduling_generation = 3;
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-    try std.testing.expectEqual(@as(u64, 11), snapshot.memory_source_workspace_identity);
-    try std.testing.expectEqual(@as(u64, 1), snapshot.memory_source_committed_generation);
-
-    envelope.scheduling_generation = 4;
-    envelope.snapshot_generation = 4;
-    envelope.memory_source_workspace_identity = 10;
-    envelope.memory_source_committed_generation = 99;
-    for (&inputs) |*row| row.scheduling_generation = 4;
-    try std.testing.expectEqual(
-        protocol.Status.stale_generation,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
-
-    envelope.memory_source_workspace_identity = 11;
-    envelope.memory_source_committed_generation = 1;
-    try std.testing.expectEqual(
-        protocol.Status.ok,
-        desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
-    );
+    try std.testing.expectEqual(protocol.Status.invalid_facts, desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot));
 }
 
 test "reconfigure changes thresholds but capacity changes require recreation" {
@@ -274,13 +191,12 @@ test "reconfigure changes thresholds but capacity changes require recreation" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 1, 0),
-        input(2, 1, 2, 1),
+        input(1, 1, 0),
+        input(2, 2, 1),
     };
     var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 20, 1, 4_000, 2, false);
-    envelope.memory_source_workspace_identity = 10;
+    var envelope = testEnvelope(1, 1, 4_000, 2, false);
     try std.testing.expectEqual(
         protocol.Status.ok,
         desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
@@ -293,14 +209,15 @@ test "reconfigure changes thresholds but capacity changes require recreation" {
     const capacity = session.capacity();
     try std.testing.expectEqual(@as(u64, 2), capacity.configuration_generation);
     envelope.configuration_generation = 2;
-    envelope.memory_source_workspace_identity = 1;
-    envelope.memory_source_committed_generation = 1;
     try std.testing.expectEqual(
         protocol.Status.ok,
         desired_state.plan(session, &envelope, &inputs, 2, &outputs, 2, &snapshot),
     );
 
-    next.generation = 3;
+    next.generation = 1;
+    try std.testing.expectEqual(protocol.Status.ok, session.reconfigure(&next));
+    try std.testing.expectEqual(protocol.Status.ok, session.reconfigure(&next));
+
     next.maximum_output_count = 3;
     try std.testing.expectEqual(protocol.Status.recreate_required, session.reconfigure(&next));
 }
@@ -317,12 +234,12 @@ test "v5 configuration and envelope are rejected without fallback" {
     const session = try desired_state.Session.create(&config);
     defer session.destroy();
     var inputs = [_]protocol.SoftwareInput{
-        input(1, 1, 1, 0),
-        input(2, 1, 2, 1),
+        input(1, 1, 0),
+        input(2, 2, 1),
     };
     var outputs: [2]protocol.DesiredSoftwareOutput = undefined;
     var snapshot: protocol.Snapshot = undefined;
-    var envelope = testEnvelope(1, 1, 1, 1, 4_000, 2, false);
+    var envelope = testEnvelope(1, 1, 4_000, 2, false);
     envelope.abi_version = 0x0005_0000;
 
     try std.testing.expectEqual(
@@ -339,7 +256,7 @@ test "large pressure grid preserves count summaries and score ordering" {
     var inputs: [count]protocol.SoftwareInput = undefined;
     var outputs: [count]protocol.DesiredSoftwareOutput = undefined;
     for (&inputs, 0..) |*row, index| {
-        row.* = input(index + 1, 1, @floatFromInt(count - index), index);
+        row.* = input(index + 1, @floatFromInt(count - index), index);
     }
 
     var generation: u64 = 1;
@@ -347,16 +264,7 @@ test "large pressure grid preserves count summaries and score ordering" {
     var previous_restricted: u32 = 0;
     while (true) {
         var snapshot: protocol.Snapshot = undefined;
-        var envelope = testEnvelope(
-            1,
-            generation,
-            generation,
-            generation,
-            step,
-            count,
-            true,
-        );
-        for (&inputs) |*row| row.scheduling_generation = generation;
+        var envelope = testEnvelope(1, generation, step, count, true);
         try std.testing.expectEqual(
             protocol.Status.ok,
             desired_state.plan(session, &envelope, &inputs, count, &outputs, count, &snapshot),
@@ -396,9 +304,7 @@ fn testConfig(generation: u64, count: usize) protocol.Config {
 
 fn testEnvelope(
     configuration_generation: u64,
-    scheduling_generation: u64,
-    memory_source_committed_generation: u64,
-    snapshot_generation: u64,
+    round_number: u64,
     free_ratio_units: u32,
     count: usize,
     allow_unrestricted: bool,
@@ -409,10 +315,7 @@ fn testEnvelope(
         .software_input_struct_size = @sizeOf(protocol.SoftwareInput),
         .software_output_struct_size = @sizeOf(protocol.DesiredSoftwareOutput),
         .configuration_generation = configuration_generation,
-        .scheduling_generation = scheduling_generation,
-        .memory_source_workspace_identity = 1,
-        .memory_source_committed_generation = memory_source_committed_generation,
-        .snapshot_generation = snapshot_generation,
+        .round_number = round_number,
         .valid_mask = protocol.EnvelopeValidity.required,
         .flags = protocol.EnvelopeFlags.required |
             (if (allow_unrestricted) protocol.EnvelopeFlags.allow_unrestricted else 0),
@@ -426,16 +329,14 @@ fn testEnvelope(
 
 fn input(
     software_key: anytype,
-    scheduling_generation: u64,
     score: f64,
     source_index: anytype,
 ) protocol.SoftwareInput {
-    return inputWithBase(software_key, scheduling_generation, score, 0, source_index);
+    return inputWithBase(software_key, score, 0, source_index);
 }
 
 fn inputWithBase(
     software_key: anytype,
-    scheduling_generation: u64,
     score: f64,
     base_score: f64,
     source_index: anytype,
@@ -445,7 +346,6 @@ fn inputWithBase(
         .flags = 0,
         .valid_mask = protocol.SoftwareValidity.required,
         .software_key = @intCast(software_key),
-        .scheduling_generation = scheduling_generation,
         .cpu_score = score,
         .base_score = base_score,
         .source_index = @intCast(source_index),

@@ -35,17 +35,6 @@ pub fn stage(
         const result = protocol.validateInputRow(row, @intCast(index));
         if (result != .ok) return result;
         if (!validFlagOwnership(row)) return .invalid_argument;
-        const has_score = (row.valid_mask & (protocol.InputValidity.process_score |
-            protocol.InputValidity.software_score)) != 0;
-        if (has_score) {
-            const metric: protocol.MetricKind = @enumFromInt(row.metric_kind);
-            const required_fingerprint = switch (metric) {
-                .cpu_usage_percent => protocol.CycleValidity.cpu_score_source_fingerprint,
-                .gpu_usage_percent => protocol.CycleValidity.gpu_score_source_fingerprint,
-                else => return .invalid_argument,
-            };
-            if ((input.valid_mask & required_fingerprint) == 0) return .invalid_argument;
-        }
     }
 
     session.clearStage();
@@ -183,7 +172,6 @@ fn newStagedProcess(row: *const protocol.InputRow) state.StagedProcess {
         .applied_process_grade = protocol.ProcessGrade.normal,
         .applied_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
         .applied_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_epoch = 0,
     };
 }
 
@@ -282,13 +270,11 @@ fn mergeAppliedProcessFact(process: *state.StagedProcess, row: *const protocol.I
     const owned = (row.flags & protocol.InputFlags.owns_process_grade) != 0;
     if ((process.valid_mask & bit) != 0) {
         const current_owned = (process.input_flags & protocol.InputFlags.owns_process_grade) != 0;
-        if (process.applied_process_grade != row.applied_process_grade or current_owned != owned or
-            (owned and process.applied_epoch != row.applied_epoch)) return .conflicting_facts;
+        if (process.applied_process_grade != row.applied_process_grade or current_owned != owned) return .conflicting_facts;
         return .ok;
     }
     process.valid_mask |= bit;
     process.applied_process_grade = row.applied_process_grade;
-    process.applied_epoch = row.applied_epoch;
     if (owned) process.input_flags |= protocol.InputFlags.owns_process_grade;
     return .ok;
 }
@@ -302,16 +288,13 @@ fn mergeAppliedAdapterFact(process: *state.StagedProcess, row: *const protocol.I
     if ((process.valid_mask & bit) != 0) {
         const current_grade = if (cpu) process.applied_cpu_grade else process.applied_gpu_grade;
         const current_owned = (process.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned or
-            (owned and process.applied_epoch != row.applied_epoch)) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
         return .ok;
     }
     process.valid_mask |= bit;
     if (cpu) process.applied_cpu_grade = grade else process.applied_gpu_grade = grade;
-    if (process.applied_epoch != 0 and owned and process.applied_epoch != row.applied_epoch) return .conflicting_facts;
     if (owned) {
         process.input_flags |= owned_flag;
-        process.applied_epoch = row.applied_epoch;
     }
     return .ok;
 }
@@ -391,7 +374,6 @@ fn newStagedSoftware(software_key: u64, source_index: u32) state.StagedSoftware 
         .critical_fact = false,
         .applied_cpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
         .applied_gpu_grade = @intFromEnum(protocol.AdapterGrade.normal),
-        .applied_epoch = 0,
         .selected_gpu_present = false,
         .selected_gpu_index = 0,
         .selected_gpu_usage = 0,
@@ -476,16 +458,13 @@ fn mergeStandaloneSoftwareAppliedFact(
     if ((software.valid_mask & bit) != 0) {
         const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
         const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned or
-            (owned and software.applied_epoch != row.applied_epoch)) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
         return .ok;
     }
     software.valid_mask |= bit;
     if (cpu) software.applied_cpu_grade = grade else software.applied_gpu_grade = grade;
-    if (software.applied_epoch != 0 and owned and software.applied_epoch != row.applied_epoch) return .conflicting_facts;
     if (owned) {
         software.input_flags |= owned_flag;
-        software.applied_epoch = row.applied_epoch;
     }
     return .ok;
 }
@@ -548,16 +527,13 @@ fn mergeSoftwareAppliedFact(software: *state.StagedSoftware, process: *const sta
     if ((software.valid_mask & bit) != 0) {
         const current_grade = if (cpu) software.applied_cpu_grade else software.applied_gpu_grade;
         const current_owned = (software.input_flags & owned_flag) != 0;
-        if (current_grade != grade or current_owned != owned or
-            (owned and software.applied_epoch != process.applied_epoch)) return .conflicting_facts;
+        if (current_grade != grade or current_owned != owned) return .conflicting_facts;
         return .ok;
     }
     software.valid_mask |= bit;
     if (cpu) software.applied_cpu_grade = grade else software.applied_gpu_grade = grade;
-    if (software.applied_epoch != 0 and owned and software.applied_epoch != process.applied_epoch) return .conflicting_facts;
     if (owned) {
         software.input_flags |= owned_flag;
-        software.applied_epoch = process.applied_epoch;
     }
     return .ok;
 }

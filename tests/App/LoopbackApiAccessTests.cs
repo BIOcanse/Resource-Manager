@@ -164,8 +164,10 @@ public sealed partial class LoopbackApiAccessTests
         using var first = JsonDocument.Parse((await stream.ReadLineAsync(deadline.Token))!);
         using var second = JsonDocument.Parse((await stream.ReadLineAsync(deadline.Token))!);
         Assert.Equal("decision-snapshot", first.RootElement.GetProperty("subscriptionId").GetString());
-        Assert.Equal("resource-manager-smart-decision-diagnostics-v1",
+        Assert.Equal("resource-manager-smart-decision-diagnostics-v2",
             second.RootElement.GetProperty("value").GetProperty("contract").GetString());
+        Assert.Equal("0", second.RootElement.GetProperty("value")
+            .GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString());
         var firstTime = first.RootElement.GetProperty("value").GetProperty("capturedAtUtc").GetDateTimeOffset();
         var secondTime = second.RootElement.GetProperty("value").GetProperty("capturedAtUtc").GetDateTimeOffset();
         Assert.True(secondTime > firstTime);

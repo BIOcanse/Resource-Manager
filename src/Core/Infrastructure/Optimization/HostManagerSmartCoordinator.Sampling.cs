@@ -12,6 +12,14 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
+    private ulong roundNumber;
+    private CapturedSourceIdentities? previousRoundSources;
+
+    private sealed record CapturedSourceIdentities(
+        (string Dataset, ulong Workspace, ulong Generation, SamplingObservationStatus Status)[] HardwarePublications,
+        (string Dataset, ulong Generation, SamplingObservationStatus Status)[] ProcessPublications,
+        (long Session, DateTimeOffset CapturedAt)? Residency);
+
     private Task<HostManagerSampleCaptureResult> CaptureHostManagerSampleAsync(
         CompiledRuntimePlan runtimePlan,
         CancellationToken cancellationToken)
@@ -30,6 +38,10 @@ public sealed partial class HostManagerSmartCoordinator
         {
             requestedMetricMask |= SchedulingProcessMetricMask.CpuUsage;
         }
+        if (mode.AutomaticMemoryCleanupEnabled)
+        {
+            requestedMetricMask |= SchedulingProcessMetricMask.MemoryUsage;
+        }
         if (mode.GpuSchedulingEnabled
             && hardware.GpuInventory.Status == SamplingObservationStatus.Current)
         {
@@ -40,7 +52,6 @@ public sealed partial class HostManagerSmartCoordinator
         var processFacts = schedulingProcessFactSource.ReadLatest(
             new SchedulingProcessFactRequest(
                 requestedMetricMask,
-                ExpectedMemoryUsageDependency: null,
                 hardware.GpuInventory));
         if (processFacts is null)
         {
@@ -52,17 +63,65 @@ public sealed partial class HostManagerSmartCoordinator
             return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
                 "scheduling-runtime-state-incomplete"));
         }
+        var residency = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled
+            ? cpuCoreResidencyReader.Read()
+            : null;
+        var identities = new CapturedSourceIdentities(
+            CaptureHardwarePublicationIdentities(hardware),
+            processFacts.FoundationDatasetObservations.Values
+                .Select(static observation => (observation.DatasetId,
+                    observation.SourceGeneration, observation.Status))
+                .Concat(processFacts.DatasetObservations.Values
+                    .Select(static observation => (observation.DatasetId,
+                        observation.SourceGeneration, observation.Status)))
+                .OrderBy(static identity => identity.DatasetId, StringComparer.Ordinal)
+                .ToArray(),
+            residency is null ? null : (residency.SessionGeneration, residency.CapturedAt));
         processFacts = ProjectSchedulableProcessFacts(processFacts);
         var targetInfos = BuildTargetInfos(processFacts, runtimePlan).ToArray();
+        AcceptCapturedSources(identities);
         return Task.FromResult(HostManagerSampleCaptureResult.Available(
             new HostManagerSample(
+                roundNumber,
                 hardware,
                 CreateIdleCapacity(hardware),
                 processFacts,
                 targetInfos,
-                mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled
-                    ? cpuCoreResidencyReader.Read()
-                    : null)));
+                residency)));
+    }
+
+    // Normal mode subscribes only to capacity. It shares the capture-owned round
+    // without making public-resource maintenance depend on process sampling.
+    private (HardwareMetricSnapshot Hardware, ulong RoundNumber)? CapturePublicResourceCapacitySample()
+    {
+        var hardware = metricSnapshotSource.ReadLatest(CreatePublicResourceMetricRequest());
+        if (hardware is null) return null;
+        var identities = new CapturedSourceIdentities(
+            CaptureHardwarePublicationIdentities(hardware),
+            previousRoundSources?.ProcessPublications ?? [],
+            previousRoundSources?.Residency);
+        AcceptCapturedSources(identities);
+        return (hardware, roundNumber);
+    }
+
+    private static (string Dataset, ulong Workspace, ulong Generation, SamplingObservationStatus Status)[]
+        CaptureHardwarePublicationIdentities(HardwareMetricSnapshot hardware)
+        => hardware.Datasets.Values
+            .Select(static observation => (observation.DatasetId, observation.WorkspaceIdentity,
+                observation.SourceGeneration, observation.Status))
+            .OrderBy(static identity => identity.DatasetId, StringComparer.Ordinal)
+            .ToArray();
+
+    private void AcceptCapturedSources(CapturedSourceIdentities identities)
+    {
+        if (previousRoundSources is null
+            || !identities.HardwarePublications.AsSpan().SequenceEqual(previousRoundSources.HardwarePublications)
+            || !identities.ProcessPublications.AsSpan().SequenceEqual(previousRoundSources.ProcessPublications)
+            || identities.Residency != previousRoundSources.Residency)
+        {
+            roundNumber = checked(roundNumber + 1);
+            previousRoundSources = identities;
+        }
     }
 
     private sealed record HostManagerSampleCaptureResult(

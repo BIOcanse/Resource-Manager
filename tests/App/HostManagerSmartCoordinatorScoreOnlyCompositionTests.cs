@@ -900,7 +900,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(
             HostManagerSchedulingAuthorityAvailability.Unavailable,
             unavailable.Availability);
-        Assert.True(unavailable.AttemptGeneration > ready.AttemptGeneration);
+        Assert.Equal(ready.RoundNumber, unavailable.RoundNumber);
         Assert.Equal(
             "hardware-snapshot-unavailable",
             unavailable.UnavailableReason);
@@ -1129,12 +1129,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             processFacts,
             finalHardware,
             process => process.ProcessId == completeProcessId
-                ? process with { MemoryUsagePercent = 37 }
+                ? process with { MemoryUsedBytes = 37 }
                 : process with
                 {
                     ValidMetricMask = process.ValidMetricMask
                         & ~SchedulingProcessMetricMask.MemoryUsage,
-                    MemoryUsagePercent = 0
+                    MemoryUsedBytes = 0
                 }));
 
         _ = await fixture.RunRealtimeCycleAsync();
@@ -1154,10 +1154,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             candidate => candidate.ProcessId == missingProcessId);
         Assert.Contains(
             fixture.ProcessFacts.ReadLatestRequests,
-            static request => request.RequestedMetricMask ==
-                    (SchedulingProcessMetricMask.MemoryUsage
-                        | SchedulingProcessMetricMask.RuntimeState)
-                && request.ExpectedMemoryUsageDependency is not null);
+            static request => request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.MemoryUsage)
+                && request.RequestedMetricMask.HasFlag(SchedulingProcessMetricMask.RuntimeState));
     }
 
     [Theory]
@@ -1313,7 +1311,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData("process")]
     [InlineData("memory")]
-    public async Task AutomaticMemoryCleanupFinalAdmission_RejectsStaleFinalSample(
+    public async Task AutomaticMemoryCleanupConfirmation_AnyNewPublicationAdvancesRound(
         string sampleKind)
     {
         const int processId = 24_225;
@@ -1336,18 +1334,44 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: AppOptimizationModes.MemoryOnly);
         fixture.MemoryCleanupPlanner.PlanHandler =
             CreateFinalAdmissionAwareMemoryCleanupPlan;
-        await fixture.PrimeMemoryCleanupAdmissionAsync(
-            publishHardware: sampleKind != "memory",
-            publishProcessMemory: sampleKind != "process");
         _ = await fixture.RunRealtimeCycleAsync();
+        var baselineRound = fixture.Coordinator.SchedulingAuthority.RoundNumber;
+        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
+        var reads = fixture.ProcessFacts.ReadLatestCalls;
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(baselineRound, fixture.Coordinator.SchedulingAuthority.RoundNumber);
+        Assert.Equal(0, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Equal(reads + 1, fixture.ProcessFacts.ReadLatestCalls);
+        if (sampleKind == "process")
+        {
+            fixture.MetricSampler.PublishNextHostedMemoryObservation();
+            var hardware = fixture.MetricSampler.Snapshot;
+            fixture.MetricSampler.SetSnapshot(hardware with
+            {
+                Memory = hardware.Memory with { TotalBytes = 200, UsedBytes = 198 }
+            });
+        }
+        else
+        {
+            fixture.ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
+                fixture.ProcessFacts.Snapshot, fixture.MetricSampler.Snapshot));
+        }
+        reads = fixture.ProcessFacts.ReadLatestCalls;
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.True(fixture.Coordinator.SchedulingAuthority.RoundNumber > baselineRound);
+        Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
+        Assert.Equal(reads + 1, fixture.ProcessFacts.ReadLatestCalls);
+        var candidate = Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
+        Assert.Equal(fixture.Coordinator.SchedulingAuthority.RoundNumber, candidate.RoundNumber);
+        Assert.Equal(sampleKind == "process" ? 12.5 : 25, candidate.MemoryUsedPercent);
+        Assert.Equal(25, Assert.Single(fixture.ProcessFacts.Snapshot.Processes).MemoryUsedBytes);
 
-        AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
     }
 
     [Theory]
     [InlineData("skipped")]
     [InlineData("overflow")]
-    public async Task AutomaticMemoryCleanupFinalAdmission_RejectsIncompleteProcessInventory(
+    public async Task AutomaticMemoryCleanupFinalAdmission_RejectsOverflowAndKeepsAccountedSkippedInventory(
         string incompleteKind)
     {
         const int processId = 24_229;
@@ -1389,7 +1413,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await fixture.PrimeMemoryCleanupAdmissionAsync();
         _ = await fixture.RunRealtimeCycleAsync();
 
-        AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
+        if (incompleteKind == "overflow")
+        {
+            AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
+        }
+        else
+        {
+            Assert.Equal(1, fixture.MemoryCleanupPlanner.PlanCalls);
+            Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
+        }
     }
 
     [Fact]
@@ -1428,7 +1460,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [InlineData("high-base-score")]
     [InlineData("adapted")]
     [InlineData("process-exited")]
-    public async Task AutomaticMemoryCleanupFinalAdmission_StopsForCurrentProcessFacts(
+    public async Task AutomaticMemoryCleanupPlanning_UsesCapturedProcessFacts(
         string transition)
     {
         const int processId = 24_221;
@@ -1490,9 +1522,16 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         };
 
         await fixture.PrimeMemoryCleanupAdmissionAsync();
+        var reads = fixture.ProcessFacts.ReadLatestCalls;
         _ = await fixture.RunRealtimeCycleAsync();
 
-        AssertFinalAdmissionDeferredWithoutEffects(fixture, expectedPlanCalls: 0);
+        Assert.Equal(reads + 1, fixture.ProcessFacts.ReadLatestCalls);
+        AssertFinalAdmissionDeferredWithoutEffects(fixture,
+            expectedPlanCalls: transition == "process-exited" ? 0 : 1);
+        if (transition == "process-exited") return;
+        var candidate = Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
+        Assert.Equal(transition == "high-base-score" ? 81 : 20, candidate.BaseScore);
+        Assert.Equal(transition != "adapted", candidate.CanApply);
     }
 
     [Fact]
@@ -1887,7 +1926,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.True(hardware.Request.Includes("virtualMemory.usage"));
             Assert.False(hardware.Request.Includes("virtualMemory.percent"));
 
-            Assert.Equal(2, fixture.ProcessFacts.SubscriptionHistory.Count);
+            Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
             var computeProcesses = Assert.Single(
                 fixture.ProcessFacts.SubscriptionHistory,
                 static subscription => subscription.SubscriptionId ==
@@ -1899,18 +1938,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     | SchedulingProcessMetricMask.GpuDedicatedMemory
                     | SchedulingProcessMetricMask.RuntimeState,
                 computeProcesses.MetricMask);
-            var memoryProcesses = Assert.Single(
-                fixture.ProcessFacts.SubscriptionHistory,
-                static subscription => subscription.SubscriptionId ==
-                    "host-manager-smart-coordinator:memory-final-admission");
-            Assert.Equal(TimeSpan.FromSeconds(5), memoryProcesses.RefreshInterval);
-            Assert.Equal(
-                SchedulingProcessMetricMask.MemoryUsage
-                    | SchedulingProcessMetricMask.RuntimeState,
-                memoryProcesses.MetricMask);
-
             Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
-            Assert.Equal(2, fixture.ProcessFacts.ActiveSubscriptionCount);
+            Assert.Equal(1, fixture.ProcessFacts.ActiveSubscriptionCount);
             Assert.Equal(0, fixture.MetricSampler.CaptureCalls);
             Assert.Equal(0, fixture.ProcessFacts.CaptureCalls);
             Assert.Contains(
@@ -1920,8 +1949,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     && request.RequestedMetricMask.HasFlag(
                         SchedulingProcessMetricMask.RuntimeState)
                     && !request.RequestedMetricMask.HasFlag(
-                        SchedulingProcessMetricMask.MemoryUsage)
-                    && request.ExpectedMemoryUsageDependency is null);
+                        SchedulingProcessMetricMask.MemoryUsage));
         }
         finally
         {
@@ -2106,7 +2134,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.ProcessFacts.ActiveSubscriptionCount != (memory ? 2 : 1))
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }
@@ -2123,9 +2151,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             if (cpu) expected |= SchedulingProcessMetricMask.CpuUsage;
             if (gpu) expected |= SchedulingProcessMetricMask.GpuUsage
                 | SchedulingProcessMetricMask.GpuDedicatedMemory;
+            if (memory) expected |= SchedulingProcessMetricMask.MemoryUsage;
             Assert.Equal(expected, process.MetricMask);
-            Assert.Equal(memory, fixture.ProcessFacts.SubscriptionHistory.Any(
-                static item => item.SubscriptionId == "host-manager-smart-coordinator:memory-final-admission"));
+            Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
         }
         finally
         {
@@ -2215,13 +2243,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 Version = 2,
                 OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Smart)
             });
-            while (fixture.ProcessFacts.ActiveSubscriptionCount != 2)
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }
             Assert.Equal(1, fixture.MetricSampler.ActiveSubscriptionCount);
             Assert.Single(cpuReader.Subscriptions);
-            Assert.Equal(2, fixture.ProcessFacts.SubscriptionHistory.Count);
+            Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
             Assert.Equal(2, fixture.MetricSampler.SubscriptionHistory.Count);
             Assert.True(fixture.MetricSampler.SubscriptionHistory[1].Request.Includes("cpu.usage"));
 
@@ -2271,7 +2299,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(TimeSpan.FromMilliseconds(2500),
                 Assert.Single(fixture.MetricSampler.SubscriptionHistory).RefreshInterval);
             Assert.Equal(TimeSpan.FromMilliseconds(2500), Assert.Single(cpuReader.Subscriptions).Interval);
-            Assert.Equal(2, fixture.ProcessFacts.SubscriptionHistory.Count);
+            Assert.Single(fixture.ProcessFacts.SubscriptionHistory);
             Assert.All(fixture.ProcessFacts.SubscriptionHistory,
                 subscription => Assert.Equal(TimeSpan.FromMilliseconds(2500), subscription.RefreshInterval));
             Assert.Equal(0, fixture.MetricSampler.CaptureCalls);
@@ -2746,13 +2774,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             batch.PhysicalEmergencyFreeRatio);
         Assert.Equal(cleanupPlan.VirtualEmergencyFreeRatio,
             batch.VirtualEmergencyFreeRatio);
-        Assert.Equal(1UL, batch.CapacityWorkspaceIdentity);
-        Assert.Equal(1UL, batch.CapacityConfigurationGeneration);
-        Assert.Equal(1UL, batch.CapacityCatalogGeneration);
-        Assert.Equal(1UL, batch.BaselineCapacityCommittedGeneration);
-        Assert.Equal(2UL, batch.FinalCapacityCommittedGeneration);
-        Assert.Equal(1L, batch.BaselineCapacityCapturedAtUtcTicks);
-        Assert.Equal(2L, batch.FinalCapacityCapturedAtUtcTicks);
+        Assert.Equal(1UL, batch.BaselineRoundNumber);
+        Assert.Equal(2UL, batch.RoundNumber);
         Assert.Equal(request.Kind, batch.RequestKind);
         Assert.Equal(request.OrdinaryMemoryFreeRatio, batch.OrdinaryMemoryFreeRatio);
         Assert.True(batch.OrdinaryMemoryFreeRatioCurrent);
@@ -5639,10 +5662,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var initialProcessFacts = processFactsSnapshot ?? CreateProcessFacts();
             if (initialProcessFacts.RequestedMetricMask.HasFlag(
                     SchedulingProcessMetricMask.MemoryUsage)
-                && SystemMemoryUsageDependency.TryCreate(
-                    metricSampler.Snapshot,
-                    DateTimeOffset.UtcNow,
-                    out _))
+)
             {
                 initialProcessFacts = CreateHostedFinalAdmissionProcessFacts(
                     initialProcessFacts,
@@ -6288,32 +6308,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             _ = MetricSampler.Snapshot.TryGetCurrentDataset(
                 SamplingDatasetIds.SystemMemoryUsage,
                 out var hardwareMemory);
-            var baseline = ReadPrivateReference(
-                Coordinator,
-                "memoryCleanupHostedAdmissionBaseline");
-            var baselineHardware = baseline?.GetType()
-                .GetProperty("Hardware")?
-                .GetValue(baseline) as HardwareMetricSnapshot;
-            var baselineMemorySource = baselineHardware is not null
-                && baselineHardware.TryGetCurrentDataset(
-                    SamplingDatasetIds.SystemMemoryUsage,
-                    out var baselineMemory)
-                    ? baselineMemory.SourceGeneration
-                    : 0;
-            var dependencyCurrent = SystemMemoryUsageDependency.TryCreate(
-                MetricSampler.Snapshot,
-                DateTimeOffset.UtcNow,
-                out var dependency);
-            var finalFacts = dependencyCurrent
-                ? SchedulingProcessFactTestProjection.Project(
-                    ProcessFacts.Snapshot,
-                    new SchedulingProcessFactRequest(
-                        SchedulingProcessMetricMask.MemoryUsage
-                            | SchedulingProcessMetricMask.RuntimeState,
-                        dependency,
-                        MetricSampler.Snapshot.GpuInventory))
-                : null;
-            return $"Memory cleanup planner calls={MemoryCleanupPlanner.PlanCalls}; authority={authority.Availability}; reason={authority.UnavailableReason ?? "none"}; schedulingGeneration={authority.Compute?.SchedulingGeneration ?? 0}; computeCpuSource={authority.Compute?.Cpu?.SourceGeneration ?? 0}; processCpuSource={processCpu?.SourceGeneration ?? 0}; processMemorySource={processMemory?.SourceGeneration ?? 0}; hardwareMemorySource={hardwareMemory?.SourceGeneration ?? 0}; baselineMemorySource={baselineMemorySource}; dependencyCurrent={dependencyCurrent}; finalFactsPresent={finalFacts is not null}; finalInventory={finalFacts?.IsInventoryCurrentComplete()}; finalMemory={finalFacts?.IsMemoryCurrentComplete(dependency!)}; finalRuntime={finalFacts?.IsRuntimeStateCurrentComplete()}; finalGeneration={finalFacts?.Generation ?? 0}; finalObserved={finalFacts?.ObservedAtUtcTicks ?? 0}.";
+            return $"Memory cleanup planner calls={MemoryCleanupPlanner.PlanCalls}; authority={authority.Availability}; reason={authority.UnavailableReason ?? "none"}; round={authority.Compute?.RoundNumber ?? 0}; processMemorySource={processMemory?.SourceGeneration ?? 0}; hardwareMemorySource={hardwareMemory?.SourceGeneration ?? 0}.";
+
         }
 
         internal void PublishNextHostedCpuObservation()
@@ -6333,11 +6329,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             {
                 MetricSampler.PublishNextHostedMemoryObservation();
             }
-            if (publishProcessMemory
-                && SystemMemoryUsageDependency.TryCreate(
-                    MetricSampler.Snapshot,
-                    MetricSampler.Snapshot.CapturedAt,
-                    out _))
+            if (publishProcessMemory)
             {
                 ProcessFacts.SetSnapshot(CreateHostedFinalAdmissionProcessFacts(
                     ProcessFacts.Snapshot,
@@ -6533,7 +6525,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             var observedAt = _snapshot.CapturedAt.AddTicks(1);
             var sourceGeneration = checked(current.SourceGeneration + 1);
-            var committedGeneration = checked(current.CommittedGeneration + 1);
+            var committedGeneration = checked(_snapshot.CommittedGeneration + 1);
             var datasets = _snapshot.Datasets.ToDictionary(
                 static pair => pair.Key,
                 static pair => pair.Value,
@@ -7667,10 +7659,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         HardwareMetricSnapshot hardware,
         Func<SchedulingProcessFact, SchedulingProcessFact>? transform = null)
     {
-        Assert.True(SystemMemoryUsageDependency.TryCreate(
-            hardware,
-            hardware.CapturedAt,
-            out var memoryDependency));
         var processes = source.Processes
             .Select(process => transform?.Invoke(process) ?? process)
             .Select(process => process with
@@ -7684,11 +7672,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         observations[SchedulingProcessMetricMask.MemoryUsage] =
             SchedulingProcessDatasetObservation.CreateCurrent(
                 SchedulingProcessMetricMask.MemoryUsage,
-                memoryDependency.SourceGeneration,
-                memoryDependency.ObservedAtUtcTicks,
-                source.Generation,
+                checked(source.DatasetObservations.GetValueOrDefault(
+                    SchedulingProcessMetricMask.MemoryUsage)?.SourceGeneration + 1 ?? 1),
                 source.ObservedAtUtcTicks,
-                memoryUsageDependency: memoryDependency);
+                source.Generation,
+                source.ObservedAtUtcTicks);
         return source with
         {
             EmittedCount = checked((uint)processes.Length),
@@ -7745,14 +7733,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     generation,
                     observedAtUtcTicks,
                     generation,
-                    observedAtUtcTicks,
-                    memoryUsageDependency:
-                        metric == SchedulingProcessMetricMask.MemoryUsage
-                            ? TestSystemMemoryUsageDependency.Create(
-                                sourceGeneration: generation,
-                                observedAtUtcTicks: observedAtUtcTicks,
-                                committedGeneration: generation)
-                            : null));
+                    observedAtUtcTicks));
 
     private static SchedulingProcessFactSnapshot CreateScaleProcessFacts(int count)
     {

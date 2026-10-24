@@ -81,7 +81,7 @@ public sealed partial class NativeComputeScoringSessionTests
     }
 
     [Fact]
-    public void CutoffReconfigurationChangesWelfareWithoutChangingRawScore()
+    public void ReplacementSessionCutoffChangesWelfareWithoutChangingRawScore()
     {
         var configuration = CreateConfiguration(welfareUtilizationBaselinePercent: 100);
         using var session = new NativeComputeScoringSession(in configuration, [1]);
@@ -98,10 +98,9 @@ public sealed partial class NativeComputeScoringSessionTests
 
         configuration.Generation = 2;
         configuration.WelfareUtilizationBaselinePercent = 70;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.Reconfigure(in configuration, [1]));
-        envelope.SchedulingGeneration = 2;
-        envelope.ConfigurationGeneration = 2;
-        Assert.Equal(NativeComputeScoringStatus.Ok, session.ScoreWithScratchFixture(in envelope, [process],
+        using var replacement = new NativeComputeScoringSession(in configuration, [1]);
+        envelope.RoundNumber = 2;
+        Assert.Equal(NativeComputeScoringStatus.Ok, replacement.ScoreWithScratchFixture(in envelope, [process],
             ReadOnlySpan<NativeComputeScoringGpuInput>.Empty, outputs, ref snapshot));
         Assert.Equal(80, outputs[0].Score, 10);
     }

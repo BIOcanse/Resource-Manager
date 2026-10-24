@@ -13,8 +13,8 @@ public sealed class NativeSmartCoordinatorAbiTests
         Assert.Equal(80, Unsafe.SizeOf<NativeSmartCoordinatorAdapterPolicyConfiguration>());
         Assert.Equal(424, Unsafe.SizeOf<NativeSmartCoordinatorConfiguration>());
         Assert.Equal(88, Unsafe.SizeOf<NativeSmartCoordinatorCapacity>());
-        Assert.Equal(96, Unsafe.SizeOf<NativeSmartCoordinatorCycleInput>());
-        Assert.Equal(112, Unsafe.SizeOf<NativeSmartCoordinatorInputRow>());
+        Assert.Equal(80, Unsafe.SizeOf<NativeSmartCoordinatorCycleInput>());
+        Assert.Equal(104, Unsafe.SizeOf<NativeSmartCoordinatorInputRow>());
         Assert.Equal(136, Unsafe.SizeOf<NativeSmartCoordinatorAction>());
         Assert.Equal(96, Unsafe.SizeOf<NativeSmartCoordinatorFeedback>());
         Assert.Equal(120, Unsafe.SizeOf<NativeSmartCoordinatorSnapshot>());
@@ -75,19 +75,16 @@ public sealed class NativeSmartCoordinatorAbiTests
         AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.ValidMask), 40);
         AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.Flags), 48);
         AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.InputCount), 56);
-        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.ScoreSchedulingGeneration), 64);
-        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.CpuScoreSourceFingerprint), 72);
-        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.GpuScoreSourceFingerprint), 80);
-        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.MaximumActionsThisCycle), 88);
-        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.Reserved), 92);
+        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.RoundNumber), 64);
+        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.MaximumActionsThisCycle), 72);
+        AssertOffset<NativeSmartCoordinatorCycleInput>(nameof(NativeSmartCoordinatorCycleInput.Reserved), 76);
 
         AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.ValidMask), 8);
         AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.TargetKey), 24);
         AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.SourceIndex), 64);
         AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.ScoreMemberCount), 76);
-        AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.AppliedEpoch), 88);
-        AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.ProcessScore), 96);
-        AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.SoftwareScore), 104);
+        AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.ProcessScore), 88);
+        AssertOffset<NativeSmartCoordinatorInputRow>(nameof(NativeSmartCoordinatorInputRow.SoftwareScore), 96);
 
         AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.ActionId), 24);
         AssertOffset<NativeSmartCoordinatorAction>(nameof(NativeSmartCoordinatorAction.CpuScore), 80);
@@ -120,10 +117,7 @@ public sealed class NativeSmartCoordinatorAbiTests
         Assert.Equal(0x0FUL, (ulong)NativeSmartCoordinatorFeatures.Known);
         Assert.Equal(1UL << 2, (ulong)NativeSmartCoordinatorCycleValidity.ScoreOnlyMode);
         Assert.Equal(1UL << 3, (ulong)NativeSmartCoordinatorCycleValidity.MaximumActionsThisCycle);
-        Assert.Equal(1UL << 4, (ulong)NativeSmartCoordinatorCycleValidity.ScoreSchedulingGeneration);
-        Assert.Equal(1UL << 5, (ulong)NativeSmartCoordinatorCycleValidity.CpuScoreSourceFingerprint);
-        Assert.Equal(1UL << 6, (ulong)NativeSmartCoordinatorCycleValidity.GpuScoreSourceFingerprint);
-        Assert.Equal(0x7CUL, (ulong)NativeSmartCoordinatorCycleValidity.Known);
+        Assert.Equal(0x0CUL, (ulong)NativeSmartCoordinatorCycleValidity.Known);
         Assert.Equal(0x0CUL, (ulong)NativeSmartCoordinatorCycleValidity.Required);
         Assert.Equal(1UL << 3, (ulong)NativeSmartCoordinatorCycleFlags.ScoreOnly);
         Assert.Equal(1UL << 4, (ulong)NativeSmartCoordinatorCycleFlags.ExternalEvent);

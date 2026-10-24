@@ -23,7 +23,7 @@ public sealed class ExternalGpuResidentObservation(
             SamplingDatasetIds.SystemVirtualMemoryUsage]))?.GpuInventory;
         if (inventory is null) return null;
         var snapshot = processes.ReadLatest(new(SchedulingProcessMetricMask.GpuDedicatedMemory
-            | SchedulingProcessMetricMask.GpuUsage, null, inventory));
+            | SchedulingProcessMetricMask.GpuUsage, inventory));
         if (snapshot is null || !snapshot.DatasetObservations.TryGetValue(
                 SchedulingProcessMetricMask.GpuDedicatedMemory, out var memory)
             || memory.Status != SamplingObservationStatus.Current
