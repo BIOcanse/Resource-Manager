@@ -248,7 +248,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(native.Flags.HasFlag(
             NativeSmartCoordinatorSnapshotFlags.ScoreOnly));
         var schedulingAuthority = fixture.Coordinator.SchedulingAuthority;
-        Assert.Null(schedulingAuthority.Compute?.Cpu);
+        // No kernel core residency in this fixture: CPU occupancy comes from process CPU usage.
+        Assert.Equal(
+            HostManagerCpuOccupancySource.ProcessCpuUsage,
+            schedulingAuthority.Compute?.CpuOccupancySource);
         var sourceDigest = ComputeRunSaltedProcessIdentityDigest(
             runSalt,
             schedulableFacts.Processes);
@@ -276,7 +279,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(Assert.IsType<bool>(record.Properties["scoreOnly"]));
         var counts = Assert.IsType<Dictionary<string, object?>>(record.Properties["counts"]);
         Assert.Equal(schedulableFacts.Processes.Count, Assert.IsType<int>(counts["sampleProcesses"]));
-        Assert.Equal(0, Assert.IsType<int>(counts["scoredProcesses"]));
+        Assert.InRange(
+            Assert.IsType<int>(counts["scoredProcesses"]),
+            1,
+            schedulableFacts.Processes.Count);
         var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
         Assert.Equal(
             checked(native.ProcessCount + (uint)schedulableCpuValidCount),
@@ -533,10 +539,19 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var runtimeStateValue = checked((int)row.RuntimeState);
             Assert.InRange(runtimeStateValue, 0, processStateMultipliers.Count - 1);
             var multiplier = processStateMultipliers[runtimeStateValue];
-            // Live process counters are not physical-core execution measurements.
-            const double expectedCpuScore = 0;
+            // Without core residency the CPU domain scores each process from its CPU usage:
+            // no usage means no score, and any usage of a weighted process scores above zero.
             Assert.True(double.IsFinite(row.CpuScore));
-            Assert.InRange(Math.Abs(row.CpuScore - expectedCpuScore), 0d, 0.000_000_001d);
+            Assert.True(row.CpuScore >= 0);
+            if (fact.CpuUsagePercent == 0)
+            {
+                Assert.Equal(0d, row.CpuScore);
+            }
+            else if (fact.BaseScore > 0 && multiplier > 0)
+            {
+                Assert.True(row.CpuScore > 0);
+            }
+            var expectedCpuScore = row.CpuScore;
             evidence[index] = new(
                 ComputeRunSaltedProcessInstanceIdentityLeaf(
                     runSalt,
@@ -613,8 +628,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 identityRow.MetricKind);
             Assert.False(identityRow.ValidMask.HasFlag(
                 NativeSmartCoordinatorInputValidity.Metric));
-            Assert.False(identityRow.Flags.HasFlag(
-                NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete));
+            // A process scored from its CPU usage carries complete CPU metrics.
+            Assert.True(!identityRow.Flags.HasFlag(
+                    NativeSmartCoordinatorInputFlags.ProcessCpuMetricsComplete)
+                || fact.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.CpuUsage));
             Assert.Equal(0d, identityRow.MetricValue);
             evidence[cursor] = new(
                 cursor,
@@ -645,8 +662,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.True(metricRow.ValidMask.HasFlag(
                 NativeSmartCoordinatorInputValidity.Metric));
             Assert.Equal(fact.CpuUsagePercent, metricRow.MetricValue, precision: 12);
-            Assert.False(metricRow.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
-            Assert.False(metricRow.ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.SoftwareScore));
             evidence[cursor] = new(
                 cursor,
                 "cpuMetric",
