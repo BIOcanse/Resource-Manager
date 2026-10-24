@@ -168,6 +168,8 @@ public sealed partial class LoopbackApiAccessTests
             second.RootElement.GetProperty("value").GetProperty("contract").GetString());
         Assert.Equal("0", second.RootElement.GetProperty("value")
             .GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString());
+        Assert.Equal("unavailable", second.RootElement.GetProperty("value")
+            .GetProperty("schedulingAuthority").GetProperty("availability").GetString());
         var firstTime = first.RootElement.GetProperty("value").GetProperty("capturedAtUtc").GetDateTimeOffset();
         var secondTime = second.RootElement.GetProperty("value").GetProperty("capturedAtUtc").GetDateTimeOffset();
         Assert.True(secondTime > firstTime);

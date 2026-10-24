@@ -77,9 +77,49 @@ public sealed class HostManagerDecisionDiagnosticsTests
         Assert.Equal("foreground_focused", actual.RuntimeState);
         Assert.Equal(64, actual.CpuScore);
         Assert.Equal(80, actual.CpuOccupancyPercent);
-        Assert.Equal("A1", actual.DesiredProcessGrade);
-        Assert.Equal("Normal", actual.AppliedProcessGrade);
-        Assert.Equal("AwaitingStability", actual.ReasonMask);
+        Assert.Equal("a1", actual.DesiredProcessGrade);
+        Assert.Equal("normal", actual.AppliedProcessGrade);
+        Assert.Equal(["event_boost_active"], projected.Flags);
+        Assert.Equal("2", projected.FlagsValue);
+        Assert.Equal(["awaiting_stability"], projected.ReasonMask);
+        Assert.Equal(["process_inflight"], actual.Flags);
+        Assert.Equal(["process_identity", "software_identity"], actual.ValidMask);
+        Assert.Equal(["awaiting_stability"], actual.ReasonMask);
+    }
+
+    [Fact]
+    public void FlagArraysPreserveNamedBitsAndExactUnknownBitsOnTheWire()
+    {
+        const ulong unknownReason = 1UL << 63;
+        var projected = HostManagerSmartCoordinator.ProjectNativeDiagnostics(
+            new NativeSmartCoordinatorSnapshot
+            {
+                SnapshotRowCount = 1,
+                Flags = NativeSmartCoordinatorSnapshotFlags.ScoreOnly | (NativeSmartCoordinatorSnapshotFlags)(1U << 31),
+                ReasonMask = NativeSmartCoordinatorReason.AwaitingStability | (NativeSmartCoordinatorReason)unknownReason
+            },
+            [new NativeSmartCoordinatorSnapshotRow
+            {
+                RowKind = NativeSmartCoordinatorSnapshotRowKind.Process,
+                Flags = NativeSmartCoordinatorSnapshotRowFlags.ProcessOwned | NativeSmartCoordinatorSnapshotRowFlags.CpuInflight,
+                ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity | (NativeSmartCoordinatorInputValidity)(1UL << 63)
+            }]);
+        var wire = System.Text.Json.JsonSerializer.SerializeToElement(projected,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        Assert.Equal(["score_only"], wire.GetProperty("flags").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal("2147483652", wire.GetProperty("flagsValue").GetString());
+        Assert.Equal(["awaiting_stability"], wire.GetProperty("reasonMask").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal("9223372036855037952", wire.GetProperty("reasonMaskValue").GetString());
+        var row = Assert.Single(wire.GetProperty("rows").EnumerateArray());
+        Assert.Equal(["process_owned", "cpu_inflight"], row.GetProperty("flags").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal(["process_identity"], row.GetProperty("validMask").EnumerateArray().Select(value => value.GetString()));
+        Assert.Equal("9223372036854775809", row.GetProperty("validMaskValue").GetString());
+        Assert.Equal(0, row.GetProperty("reasonMask").GetArrayLength());
+        Assert.Equal("0", row.GetProperty("reasonMaskValue").GetString());
+        var empty = HostManagerSmartCoordinator.ProjectNativeDiagnostics(new NativeSmartCoordinatorSnapshot(), []);
+        Assert.Empty(empty.Flags);
+        Assert.Empty(empty.ReasonMask);
     }
 
     [Fact]

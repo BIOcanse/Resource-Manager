@@ -124,6 +124,9 @@ const componentProviderStateValues = [
   "active", "installed", "missing", "runtime_available", "installed_unverified", "driver_missing", "runtime_active"
 ] as const;
 const managementRoleValues = ["dependency", "support"] as const;
+const componentProviderKindValues = [
+  "runtime", "cpu", "fan", "hardware_monitor", "provider", "gpu", "notebook_oem"
+] as const;
 const softwareKindValues = [
   "adapted", "controlled", "managed", "game", "high_performance", "other", "windows_system",
   "windows_component", "windows_service", "runtime_package", "runtime_product", "runtime_root", "unattributed"
@@ -139,8 +142,17 @@ function readStoredComponent(component: ManagedComponent) {
   let value = result.value;
   if (isRecord(value.definition)) {
     const definition = migrateProperty(value.definition, "managementRole", readStoredManagementRole);
-    if (definition.changed) {
-      value = { ...value, definition: definition.value };
+    let nextDefinition = definition.value;
+    const originalCapabilities = nextDefinition.capabilities;
+    if (Array.isArray(originalCapabilities)) {
+      const capabilities = originalCapabilities.map((capability) =>
+        migrateProperty(capability, "providerKind", readStoredComponentProviderKind).value);
+      if (capabilities.some((capability, index) => capability !== originalCapabilities[index])) {
+        nextDefinition = { ...nextDefinition, capabilities };
+      }
+    }
+    if (nextDefinition !== value.definition) {
+      value = { ...value, definition: nextDefinition };
       changed = true;
     }
   }
@@ -148,8 +160,9 @@ function readStoredComponent(component: ManagedComponent) {
   if (Array.isArray(originalProviders)) {
     const providers = originalProviders.map((provider) => {
       const state = migrateProperty(provider as ComponentProviderState, "state", readStoredComponentProviderState);
-      changed ||= state.changed;
-      return state.value;
+      const kind = migrateProperty(state.value, "providerKind", readStoredComponentProviderKind);
+      changed ||= state.changed || kind.changed;
+      return kind.value;
     });
     if (providers.some((provider, index) => provider !== originalProviders[index])) {
       value = { ...value, providers };
@@ -219,6 +232,11 @@ function readStoredComponentStatus(value: unknown) {
 function readStoredComponentProviderState(value: unknown) {
   // Compatibility read for v3 cached provider state; delete after supported v3 management snapshots are rewritten/retired.
   return readStoredToken(value, "component provider state", componentProviderStateValues);
+}
+
+function readStoredComponentProviderKind(value: unknown) {
+  // Compatibility read for v3 cached provider kinds (capabilities and statuses); delete after supported v3 snapshots are rewritten/retired.
+  return readStoredToken(value, "component provider kind", componentProviderKindValues);
 }
 
 function readStoredManagementRole(value: unknown) {

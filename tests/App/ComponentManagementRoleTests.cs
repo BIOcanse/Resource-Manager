@@ -1,10 +1,41 @@
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Domain.Components;
 using ResourceManager.App.Domain.Software;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class ComponentManagementRoleTests
 {
+    [Fact]
+    public void CatalogProviderKindsUseCanonicalClassificationTokens()
+    {
+        var expected = new Dictionary<string, string>
+        {
+            ["shared-webview2-runtime"] = ComponentProviderKinds.Runtime,
+            ["amd-smu-pawnio-provider"] = ComponentProviderKinds.Cpu,
+            ["intel-msr-pawnio-provider"] = ComponentProviderKinds.Cpu,
+            ["fan-control-core"] = ComponentProviderKinds.Fan,
+            ["hardware-bridge"] = ComponentProviderKinds.Cpu,
+            ["hardware-sensors-pawnio-provider"] = ComponentProviderKinds.HardwareMonitor,
+            ["librehardwaremonitor-provider"] = ComponentProviderKinds.HardwareMonitor,
+            ["notebook-oem-fan-provider"] = ComponentProviderKinds.NotebookOem,
+            ["nvidia-nvml-provider"] = ComponentProviderKinds.Gpu,
+            ["nvidia-nvapi-provider"] = ComponentProviderKinds.Gpu,
+            ["amd-adlx-provider"] = ComponentProviderKinds.Gpu
+        };
+        Assert.Equal(expected.Count, ComponentCatalog.Definitions.Count);
+        foreach (var definition in ComponentCatalog.Definitions)
+        {
+            Assert.NotEmpty(definition.Capabilities);
+            Assert.All(definition.Capabilities, capability =>
+                Assert.Equal(expected[definition.Id], capability.ProviderKind));
+        }
+        var tokens = typeof(ComponentProviderKinds).GetFields()
+            .Select(field => Assert.IsType<string>(field.GetRawConstantValue())).ToArray();
+        Assert.Equal(tokens.Length, tokens.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(tokens, token => Assert.Matches("^[a-z][a-z0-9_]*$", token));
+    }
+
     [Fact]
     public void CurrentComponentsAreDependenciesAndSupportRemainsAvailableForExtensions()
     {
